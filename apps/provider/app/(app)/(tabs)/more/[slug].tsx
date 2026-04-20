@@ -36,10 +36,13 @@ const SLUG_TO_NATIVE_ROUTE: Record<string, string> = {
   "finance-hub": "/(app)/(tabs)/more/finance",
   "finance-billing-hub": "/(app)/(tabs)/more/finance-billing-hub",
   "products-ecommerce-hub": "/(app)/(tabs)/more/products-ecommerce-hub",
-  "catalogue-offerings-hub": "/(app)/(tabs)/more/catalogue-overview",
+  "catalogue-offerings-hub": "/(app)/(tabs)/more/catalogue",
   "custom-requests": "/(app)/(tabs)/more/custom-requests",
-  "resources-forms-hub": "/(app)/(tabs)/more/forms",
-  "engagement-hub": "/(app)/(tabs)/more/marketing-hub",
+  /** Hub: resources + forms preview; full form CRUD is `more/forms`. */
+  "resources-forms-hub": "/(app)/(tabs)/more/resources-forms-hub",
+  "engagement-hub": "/(app)/(tabs)/more/engagement-hub",
+  "bookings-calendar-hub": "/(app)/(tabs)/more/bookings",
+  "team-hub": "/(app)/(tabs)/more/team",
 };
 
 function slugToTitle(slug: string): string {

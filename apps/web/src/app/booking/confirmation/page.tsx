@@ -162,15 +162,22 @@ export default function BookingConfirmationPage() {
     loadBooking();
   }, [bookingId]);
 
-  // Attribute referral conversion when user has referred_by and completes this booking (fire once)
+  // Attribute referral when booking is eligible (paid etc.). Only mark fired after success so
+  // a failed "not yet paid" response can retry when the user returns after payment.
   useEffect(() => {
     if (!bookingId || !booking || referralTracked.current) return;
-    referralTracked.current = true;
     fetcher
       .post("/api/me/referrals/track", { booking_id: bookingId })
+      .then(() => {
+        referralTracked.current = true;
+      })
       .catch((err) => {
-        // Expected when referral rules do not apply (validation / not first booking / no referrer).
-        if (err instanceof FetchError && (err.status === 400 || err.status === 404)) return;
+        if (
+          err instanceof FetchError &&
+          (err.status === 400 || err.status === 404 || err.status === 503)
+        ) {
+          return;
+        }
       });
   }, [bookingId, booking]);
 

@@ -1,7 +1,7 @@
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo } from "react";
-import { View, Platform, TouchableOpacity } from "react-native";
+import { View, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -18,6 +18,7 @@ function TabIcon({ name, focused }: { name: IconName; focused: boolean }) {
 }
 
 export default function TabsLayout() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const { t } = useTranslation();
@@ -72,21 +73,12 @@ export default function TabsLayout() {
         fontWeight: "600" as const,
         marginTop: 2,
       },
-      tabBarButton: (props: any) => {
-        const { onPress, children, ...rest } = props;
-        return (
-          <TouchableOpacity
-            {...rest}
-            onPress={(e) => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onPress?.(e);
-            }}
-            activeOpacity={0.7}
-          >
-            {children}
-          </TouchableOpacity>
-        );
-      },
+      /**
+       * Six tabs on a narrow phone used to overlap when squeezed into one row; that made the
+       * last tab (More) register presses on the wrong route (often Chats). Scrolling tabs fixes it.
+       * We use the default tab bar button so React Navigation receives refs/hitSlop correctly.
+       */
+      tabBarScrollEnabled: Platform.OS !== "web",
     }),
     [TAB_BAR_HEIGHT, isTablet, safeBottom],
   );
@@ -95,7 +87,14 @@ export default function TabsLayout() {
     <View style={{ flex: 1 }}>
       <AppHeader />
 
-    <Tabs screenOptions={screenOptions}>
+    <Tabs
+      screenOptions={screenOptions}
+      screenListeners={{
+        tabPress: () => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        },
+      }}
+    >
       <Tabs.Screen
         name="dashboard"
         options={{
@@ -137,6 +136,16 @@ export default function TabsLayout() {
           title: t("common.more"),
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "menu" : "menu-outline"} focused={focused} />,
         }}
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            const state = navigation.getState();
+            const moreRoute = state.routes.find((r: { name: string }) => r.name === "more");
+            const st = moreRoute?.state as { index?: number } | undefined;
+            if (typeof st?.index === "number" && st.index > 0) {
+              router.replace("/(app)/(tabs)/more" as never);
+            }
+          },
+        })}
       />
       {/* Hide settings from tab bar - it's now inside More */}
       <Tabs.Screen name="settings" options={{ href: null }} />

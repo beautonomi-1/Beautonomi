@@ -66,6 +66,7 @@ export async function GET(
         rate_per_km: providerSettings.rate_per_km,
         minimum_fee: providerSettings.minimum_fee,
         maximum_fee: providerSettings.maximum_fee,
+        free_within_km: providerSettings.free_within_km ?? null,
         currency: providerSettings.currency,
       });
     }
@@ -75,6 +76,7 @@ export async function GET(
       rate_per_km: travelFees.default_rate_per_km,
       minimum_fee: travelFees.default_minimum_fee,
       maximum_fee: travelFees.default_maximum_fee,
+      free_within_km: travelFees.default_free_within_km ?? 0,
       currency: travelFees.default_currency,
     });
   } catch (error) {

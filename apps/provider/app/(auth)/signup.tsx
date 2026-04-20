@@ -11,7 +11,6 @@ import {
   Modal,
   Pressable,
   FlatList,
-  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -29,6 +28,7 @@ import {
 } from "@/lib/phone-country-codes";
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { APP_URL } from "@/config/public-env";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { supabase } from "@/lib/supabase/client";
 
 const PRIMARY = Colors.primary;
@@ -495,7 +495,7 @@ export default function SignupScreen() {
             , and{" "}
             <Text
               style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }}
-              onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/cookie-policy`).catch(() => {})}
+              onPress={() => pushInAppBrowser(router, `${APP_URL.replace(/\/$/, "")}/cookie-policy`, "Cookie Policy")}
             >
               Cookie Policy
             </Text>

@@ -36,6 +36,7 @@ type ProductOrderRow = {
     id: string;
     business_name?: string | null;
     slug?: string | null;
+    thumbnail_url?: string | null;
     logo_url?: string | null;
   } | null;
   delivery_address?: {
@@ -83,7 +84,7 @@ export async function GET(
           product_variant:product_variants (id, option_values)
         ),
         provider:providers (
-          id, business_name, slug, logo_url
+          id, business_name, slug, thumbnail_url
         ),
         delivery_address:user_addresses (
           id, label, address_line1, address_line2, city, state, postal_code, country
@@ -105,6 +106,13 @@ export async function GET(
     }
 
     const order = orderRaw as ProductOrderRow;
+    const prov = order.provider;
+    if (prov && "thumbnail_url" in prov) {
+      order.provider = {
+        ...prov,
+        logo_url: prov.thumbnail_url ?? prov.logo_url ?? null,
+      };
+    }
 
     const tenantRegion = order.tenant_id
       ? await getTenantRegionConfig(order.tenant_id)

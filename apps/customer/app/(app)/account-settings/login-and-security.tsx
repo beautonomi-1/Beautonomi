@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { ScreenFrame } from "@/components/ScreenFrame";
@@ -35,6 +35,7 @@ type PhoneStep = "enter_phone" | "enter_otp" | null;
 
 export default function LoginAndSecurityScreen() {
   const { user } = useAuth();
+  const canUseQuietRefresh = useRef(false);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,26 +58,38 @@ export default function LoginAndSecurityScreen() {
 
   const biometric = useBiometricAuth();
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
+  const load = useCallback(async () => {
+    const quiet = canUseQuietRefresh.current;
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const res = await api.get<any>("/api/me/profile");
-      if (res.error) setError(res.error.message || "Failed to load");
-      else {
+      if (res.error) {
+        if (!quiet) setError(res.error.message || "Failed to load");
+      } else {
         setProfile(res.data);
         setEmailChangePending(!!(res.data as any)?.email_change_pending);
+        if (!quiet) setError(null);
+        canUseQuietRefresh.current = true;
       }
     } catch (e) {
-      setError(getApiErrorMessage(e, "Failed to load"));
+      if (!quiet) setError(getApiErrorMessage(e, "Failed to load"));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    load();
-  }, []);
+    canUseQuietRefresh.current = false;
+  }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const updatePassword = async () => {
     if (!currentPassword?.trim()) {

@@ -44,6 +44,8 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
+import { formatPhone } from "@/lib/format";
+import { useProvider } from "@/providers/ProviderContext";
 
 const IMAGE_CONSTRAINTS = { maxSizeBytes: 2 * 1024 * 1024 }; // 2MB
 const PRIMARY = Colors.primary;
@@ -65,6 +67,8 @@ interface ProfileData {
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { role } = useProvider();
+  const canManageSubscription = role === "provider_owner" || role === "superadmin";
   const { screenPadding } = useResponsive();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [plan, setPlan] = useState<string>("Free");
@@ -82,6 +86,9 @@ export default function ProfileScreen() {
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
   const [phoneFieldError, setPhoneFieldError] = useState<string | null>(null);
+  /** Last loaded phone from server (for “on file” line; updates after save / OTP). */
+  const [savedPhoneForDisplay, setSavedPhoneForDisplay] = useState("");
+  const [savedEmailForDisplay, setSavedEmailForDisplay] = useState("");
   const initialProfileRef = useRef<{ email: string; phone: string }>({ email: "", phone: "" });
 
   const load = useCallback(async () => {
@@ -89,24 +96,30 @@ export default function ProfileScreen() {
     setError(null);
     try {
       const [profileRes, subscriptionRes] = await Promise.all([
-        api.get<{ data: any }>("/api/me/profile"),
-        api.get<{ data: any }>("/api/provider/subscription").catch(() => ({ data: null })),
+        api.get<Record<string, unknown>>("/api/me/profile"),
+        api.get<Record<string, unknown> | null>("/api/provider/subscription").catch(() => ({ data: null, error: null })),
       ]);
       if (profileRes.error || !profileRes.data) {
-        setError((profileRes as any).error?.message || "Failed to load profile");
+        setError(
+          typeof profileRes.error === "object" && profileRes.error && "message" in profileRes.error
+            ? String((profileRes.error as { message: string }).message)
+            : "Failed to load profile",
+        );
         setProfile(null);
         return;
       }
-      const data = (profileRes as any).data ?? profileRes.data;
+      const data = profileRes.data as Record<string, unknown>;
       let planName = "Free";
-      if (subscriptionRes?.data) {
-        const sub = (subscriptionRes as any).data?.data ?? (subscriptionRes as any).data;
-        if (sub?.plan?.name) planName = sub.plan.name;
-        else if (sub?.plan_name) planName = sub.plan_name;
-      }
+      const subRaw = subscriptionRes?.data;
+      const sub =
+        subRaw && typeof subRaw === "object" && "plan_id" in (subRaw as object)
+          ? (subRaw as { plan?: { name?: string }; plan_name?: string })
+          : null;
+      if (sub?.plan?.name) planName = String(sub.plan.name);
+      else if (sub?.plan_name) planName = String(sub.plan_name);
       setPlan(planName);
-      const loadedEmail = data.email ?? "";
-      const loadedPhone = data.phone ?? "";
+      const loadedEmail = typeof data.email === "string" ? data.email : "";
+      const loadedPhone = typeof data.phone === "string" ? data.phone : "";
       initialProfileRef.current = { email: loadedEmail, phone: loadedPhone };
       const { countryCode, nationalDisplay } = splitPhoneForNationalInput(
         loadedPhone,
@@ -115,21 +128,28 @@ export default function ProfileScreen() {
       setPhoneCountryCode(countryCode);
       setPhoneNational(nationalDisplay);
       setPhoneFieldError(null);
+      setSavedPhoneForDisplay(loadedPhone || "");
+      setSavedEmailForDisplay(loadedEmail || "");
 
       setProfile({
         email: loadedEmail,
         phone: loadedPhone,
-        avatar_url: data.avatar_url ?? null,
-        address: data.address
-          ? {
-              line1: data.address.line1 ?? data.address.street ?? "",
-              line2: data.address.line2 ?? data.address.apt ?? "",
-              city: data.address.city ?? "",
-              state: data.address.state ?? "",
-              postal_code: data.address.postal_code ?? data.address.zip ?? "",
-              country: data.address.country ?? "",
-            }
-          : { line1: "", city: "", state: "", postal_code: "", country: "" },
+        avatar_url: typeof data.avatar_url === "string" ? data.avatar_url : null,
+        address: (() => {
+          const a = data.address as Record<string, unknown> | null | undefined;
+          if (!a || typeof a !== "object") {
+            return { line1: "", city: "", state: "", postal_code: "", country: "" };
+          }
+          return {
+            line1: (typeof a.line1 === "string" ? a.line1 : typeof a.street === "string" ? a.street : "") || "",
+            line2: (typeof a.line2 === "string" ? a.line2 : typeof a.apt === "string" ? a.apt : "") || "",
+            city: typeof a.city === "string" ? a.city : "",
+            state: typeof a.state === "string" ? a.state : "",
+            postal_code:
+              (typeof a.postal_code === "string" ? a.postal_code : typeof a.zip === "string" ? a.zip : "") || "",
+            country: typeof a.country === "string" ? a.country : "",
+          };
+        })(),
         plan: planName,
       });
     } catch (e) {
@@ -277,8 +297,14 @@ export default function ProfileScreen() {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           Alert.alert("Saved", "Your profile has been updated.");
         }
-        if (data?.email) initialProfileRef.current.email = data.email;
-        if (data?.phone) initialProfileRef.current.phone = data.phone;
+        if (data?.email) {
+          initialProfileRef.current.email = data.email;
+          setSavedEmailForDisplay(data.email);
+        }
+        if (data?.phone) {
+          initialProfileRef.current.phone = data.phone;
+          setSavedPhoneForDisplay(data.phone);
+        }
         load();
       }
     } catch (e) {
@@ -304,6 +330,7 @@ export default function ProfileScreen() {
       });
       if (res.error) throw new Error((res as any).error?.message || "Failed to save phone");
       initialProfileRef.current.phone = normalizeSupabaseAuthPhone(pendingPhoneE164);
+      setSavedPhoneForDisplay(normalizeSupabaseAuthPhone(pendingPhoneE164));
       setPhoneStep(null);
       setPendingPhoneE164("");
       setPhoneOtpCode("");
@@ -356,7 +383,7 @@ export default function ProfileScreen() {
       <ScreenHeader title="Profile" subtitle="Manage your personal information" onBack={() => router.back()} />
       <ScrollView
         style={twStyle("flex-1")}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: 200 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -401,6 +428,11 @@ export default function ProfileScreen() {
             <View>
               <View>
                 <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Email</Text>
+                {savedEmailForDisplay.trim() ? (
+                  <Text style={twStyle("mb-2 text-sm text-gray-700")}>On file: {savedEmailForDisplay}</Text>
+                ) : (
+                  <Text style={twStyle("mb-2 text-sm text-gray-500")}>On file: none yet</Text>
+                )}
                 <TextInput
                   value={profile.email}
                   onChangeText={(email) => setProfile((p) => (p ? { ...p, email } : p))}
@@ -416,6 +448,13 @@ export default function ProfileScreen() {
               </View>
               <View style={{ marginTop: 12 }}>
                 <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Phone</Text>
+                {savedPhoneForDisplay.trim() ? (
+                  <Text style={twStyle("mb-2 text-sm text-gray-700")}>
+                    On file: {formatPhone(savedPhoneForDisplay)}
+                  </Text>
+                ) : (
+                  <Text style={twStyle("mb-2 text-sm text-gray-500")}>On file: none yet</Text>
+                )}
                 <View
                   style={{
                     flexDirection: "row",
@@ -558,19 +597,36 @@ export default function ProfileScreen() {
           <View style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-white p-4")}>
             <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Plan</Text>
             <View>
-              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Current Plan</Text>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Current plan</Text>
               <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 px-4 py-3")}>
                 <Text style={twStyle("text-base text-gray-700")}>{plan}</Text>
               </View>
-              <Text style={twStyle("mt-2 text-xs text-gray-500")}>Contact support to change your plan.</Text>
+              {canManageSubscription ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push("/(app)/(tabs)/more/settings/subscription" as never);
+                  }}
+                  style={twStyle("mt-3 rounded-xl bg-gray-900 py-3 items-center")}
+                  accessibilityLabel="Manage subscription and billing"
+                  accessibilityRole="button"
+                >
+                  <Text style={twStyle("font-semibold text-white")}>Manage subscription & billing</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+                  Subscription changes are available to the business owner.
+                </Text>
+              )}
               <TouchableOpacity
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   router.push("/(app)/(tabs)/more/contact-support" as never);
                 }}
-                style={twStyle("mt-2")}
+                style={twStyle("mt-3")}
+                accessibilityRole="button"
               >
-                <Text style={twStyle("text-sm font-medium text-primary")}>Contact Support</Text>
+                <Text style={twStyle("text-sm font-medium text-primary")}>Contact support</Text>
               </TouchableOpacity>
             </View>
           </View>

@@ -23,10 +23,10 @@ export async function GET(request: NextRequest) {
     const { user } = await requireAuthInApi(request);
     const supabase = await getSupabaseServer(request);
 
-    // Get user preferences (would need preferences table or user table columns)
+    // Align with `users` columns and PATCH /api/me/profile (preferred_* not legacy language/currency).
     const { data: userData } = await supabase
       .from("users")
-      .select("language, currency, timezone")
+      .select("preferred_language, preferred_currency, timezone")
       .eq("id", user.id)
       .single();
 
@@ -36,8 +36,12 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       preferences: {
-        language: (userData?.language as SupportedLanguage) || "en",
-        currency: userData?.currency || lastResortCurrency,
+        language: (() => {
+          const raw = String(userData?.preferred_language || "en").trim() || "en";
+          const base = raw.split(/[-_]/)[0] as SupportedLanguage;
+          return base || "en";
+        })(),
+        currency: userData?.preferred_currency || lastResortCurrency,
         timezone: userData?.timezone || "Africa/Johannesburg",
       },
     });
@@ -59,10 +63,9 @@ export async function POST(request: NextRequest) {
 
     const validated = preferencesSchema.parse(body);
 
-    // Update user preferences (would need preferences table or user table columns)
-    const updateData: any = {};
-    if (validated.language !== undefined) updateData.language = validated.language;
-    if (validated.currency !== undefined) updateData.currency = validated.currency;
+    const updateData: Record<string, string> = {};
+    if (validated.language !== undefined) updateData.preferred_language = validated.language;
+    if (validated.currency !== undefined) updateData.preferred_currency = validated.currency;
     if (validated.timezone !== undefined) updateData.timezone = validated.timezone;
 
     const { error } = await supabase

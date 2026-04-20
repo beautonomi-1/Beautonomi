@@ -19,10 +19,14 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import {
+  getReportDateRange,
+  formatReportRangeCaption,
+  type ReportDateRangeKey,
+} from "@/lib/reportDateRanges";
+import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
-type DateRange = "today" | "week" | "month" | "last_month" | "3months";
-
-const DATE_RANGES: { label: string; value: DateRange }[] = [
+const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
   { label: "This Week", value: "week" },
   { label: "This Month", value: "month" },
@@ -46,25 +50,11 @@ interface ProductsData {
   package_revenue?: number;
 }
 
-function getDateParams(range: DateRange) {
-  const now = new Date();
-  const to = now.toISOString().split("T")[0];
-  let from = to;
-  if (range === "week") { const d = new Date(now); d.setDate(d.getDate() - 7); from = d.toISOString().split("T")[0]; }
-  else if (range === "month") { const d = new Date(now); d.setMonth(d.getMonth() - 1); from = d.toISOString().split("T")[0]; }
-  else if (range === "last_month") {
-    const d = new Date(now); d.setMonth(d.getMonth() - 1);
-    from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
-    return { from, to: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split("T")[0] };
-  }
-  else if (range === "3months") { const d = new Date(now); d.setMonth(d.getMonth() - 3); from = d.toISOString().split("T")[0]; }
-  return { from, to };
-}
-
 export default function ProductsReport() {
   const { selectedLocationId } = useProvider();
-  const [dateRange, setDateRange] = useState<DateRange>("month");
-  const { from, to } = getDateParams(dateRange);
+  const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
+  const { from, to } = getReportDateRange(dateRange);
+  const rangeCaption = formatReportRangeCaption(from, to);
   const productsReportUrl = `/api/provider/reports/products?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
   const { data, loading, error: dataError, refresh } = useApi<ProductsData>(productsReportUrl);
 
@@ -88,17 +78,20 @@ export default function ProductsReport() {
     <ScreenContainer>
       <ScreenHeader title="Products" showBack subtitle="Top sellers, stock & packages" />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4")} contentContainerStyle={{ flexDirection: "row" }}>
-        {DATE_RANGES.map((r) => (
-          <TouchableOpacity
-            key={r.value}
-            style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
-          >
-            <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={twStyle("mb-3")}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
+          {DATE_RANGES.map((r) => (
+            <TouchableOpacity
+              key={r.value}
+              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
+            >
+              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <Text style={twStyle("text-xs text-gray-500")}>{rangeCaption}</Text>
+      </View>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#8b5cf6" />}
       {!loading && dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
@@ -106,13 +99,11 @@ export default function ProductsReport() {
 
       {data && (
         <View>
-          <View style={[twStyle("flex-row"), { marginBottom: 16 }]}>
-            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+          <View style={twStyle("mb-4")}>
+            <ReportResponsiveStatRow>
               <StatCard title="Product Revenue" value={formatCurrency(data.total_product_revenue)} icon="cash-outline" iconColor="#8b5cf6" iconBg="bg-violet-50" compact />
-            </View>
-            <View style={twStyle("flex-1")}>
               <StatCard title="Units Sold" value={String(data.total_units_sold)} icon="cube-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
-            </View>
+            </ReportResponsiveStatRow>
           </View>
 
           {data.top_products.length > 0 && (

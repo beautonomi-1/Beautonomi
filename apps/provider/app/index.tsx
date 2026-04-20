@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import { Redirect } from "expo-router";
-import { View, Text, ActivityIndicator, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
+import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
@@ -44,6 +46,7 @@ function portalFromRole(role: string | undefined | null): string | null {
 }
 
 export default function Index() {
+  const { t } = useTranslation();
   const { session, loading, signOut } = useAuth();
   const [portalState, setPortalState] = useState<"idle" | "loading" | "wrong_app" | "ok" | "error">("idle");
   const [portalErrorKind, setPortalErrorKind] = useState<PortalErrorKind | null>(null);
@@ -365,10 +368,11 @@ export default function Index() {
   //    lands before React commits the new session state doesn't redirect back to login.
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 16, fontSize: 16, color: Colors.gray[600] }}>Loading…</Text>
-      </View>
+      <GateLoadingScreen
+        message={t("authGate.checkingPartnerAccess")}
+        primaryColor={Colors.primary}
+        backgroundColor={Colors.white}
+      />
     );
   }
 
@@ -380,10 +384,11 @@ export default function Index() {
   // 3. Session present but portal check not yet started or in progress.
   if (portalState === "idle" || portalState === "loading") {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 16, fontSize: 16, color: Colors.gray[600] }}>Loading…</Text>
-      </View>
+      <GateLoadingScreen
+        message={t("authGate.checkingPartnerAccess")}
+        primaryColor={Colors.primary}
+        backgroundColor={Colors.white}
+      />
     );
   }
 
@@ -525,10 +530,11 @@ export default function Index() {
 
   if (portalState === "ok" && (checkingProfile || hasProfile === null)) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 16, fontSize: 16, color: Colors.gray[600] }}>Loading…</Text>
-      </View>
+      <GateLoadingScreen
+        message={t("authGate.preparingProfile")}
+        primaryColor={Colors.primary}
+        backgroundColor={Colors.white}
+      />
     );
   }
 

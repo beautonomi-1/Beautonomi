@@ -76,8 +76,12 @@ export async function POST(
       return errorResponse("This endpoint is only for at-home bookings", "INVALID_REQUEST", 400);
     }
 
-    // Check if booking is in correct state (confirmed or journey started)
-    if (bookingData.status !== "confirmed" && bookingData.current_stage !== "provider_on_way") {
+    // Confirmed / booked, or already en route
+    if (
+      bookingData.status !== "confirmed" &&
+      bookingData.status !== "booked" &&
+      bookingData.current_stage !== "provider_on_way"
+    ) {
       return errorResponse("Booking must be confirmed before marking arrival", "INVALID_STATUS", 400);
     }
 

@@ -2,11 +2,12 @@
  * Native React Native Terms of Service screen. 100% in-app, no WebView or browser.
  */
 import { useRouter } from "expo-router";
-import { View, Text, ScrollView, TouchableOpacity, Linking } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 
 export default function TermsScreen() {
   const router = useRouter();
@@ -35,7 +36,7 @@ export default function TermsScreen() {
           Full terms on the web
         </Text>
         <TouchableOpacity
-          onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/terms-and-condition`).catch(() => {})}
+          onPress={() => pushInAppBrowser(router, `${APP_URL.replace(/\/$/, "")}/terms-and-condition`, "Terms of Service")}
           style={{ marginBottom: 12, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: Colors.gray[50], borderRadius: 10, borderWidth: 1, borderColor: Colors.gray[200] }}
           accessibilityRole="button"
           accessibilityLabel="Open full terms of service in browser"
@@ -44,7 +45,7 @@ export default function TermsScreen() {
           <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 4 }}>Complete marketplace terms, payments, and dispute sections.</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/privacy-policy`).catch(() => {})}
+          onPress={() => pushInAppBrowser(router, `${APP_URL.replace(/\/$/, "")}/privacy-policy`, "Privacy Policy")}
           style={{ marginBottom: 12, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: Colors.gray[50], borderRadius: 10, borderWidth: 1, borderColor: Colors.gray[200] }}
           accessibilityRole="button"
           accessibilityLabel="Open privacy policy in browser"

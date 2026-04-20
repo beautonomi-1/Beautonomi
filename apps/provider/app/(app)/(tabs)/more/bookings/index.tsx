@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import {
   format,
@@ -31,6 +32,7 @@ import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
+import { tabScreenScrollBottomPadding } from "@/constants/layout";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -175,14 +177,29 @@ function formatScheduledAt(value: string | null | undefined): string {
 
 export default function BookingsListScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const listBottomPadding = tabScreenScrollBottomPadding(insets.bottom, 16);
   const { screenPadding } = useResponsive();
   const { selectedLocationId } = useProvider();
   const currency = getTenantDefaultCurrency();
 
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>("month");
+
+  // §Provider-audit 2026-04 (round 6): debounce search input so every
+  // keystroke doesn't refetch. Matches the clients screen pattern.
+  useEffect(() => {
+    const trimmed = search.trim();
+    if (trimmed.length === 0) {
+      setDebouncedSearch("");
+      return;
+    }
+    const timer = setTimeout(() => setDebouncedSearch(trimmed), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const dateParams = useMemo(() => buildDateParams(dateRange), [dateRange]);
 
@@ -191,6 +208,7 @@ export default function BookingsListScreen() {
   if (dateParams.end_date) queryParts.push(`end_date=${dateParams.end_date}`);
   if (statusFilter) queryParts.push(`status=${encodeURIComponent(statusFilter)}`);
   if (selectedLocationId) queryParts.push(`location_id=${encodeURIComponent(selectedLocationId)}`);
+  if (debouncedSearch.length > 0) queryParts.push(`search=${encodeURIComponent(debouncedSearch)}`);
   // §UX-audit 2026-04: list order previously relied on the API default,
   // which flipped between newest-first and oldest-first depending on
   // query variant. Owners expect chronological upcoming-first so they
@@ -457,7 +475,10 @@ export default function BookingsListScreen() {
         data={filtered}
         keyExtractor={bookingKeyExtractor}
         renderItem={renderBookingItem}
-        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
+        contentContainerStyle={{
+          paddingHorizontal: screenPadding,
+          paddingBottom: listBottomPadding,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

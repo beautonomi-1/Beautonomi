@@ -55,5 +55,6 @@ https://a7e3a18afec25e88e4f4fdaf3b7b6664@o4510953897852928.ingest.de.sentry.io/4
 
 ## Reference
 
+- Customer mobile app: `docs/SENTRY_MOBILE_CUSTOMER_SETUP.md`
 - [Sentry for React Native](https://docs.sentry.io/platforms/react-native/)
 - [Sentry – Expo](https://docs.sentry.io/platforms/react-native/manual-setup/expo/)

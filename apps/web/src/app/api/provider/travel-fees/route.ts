@@ -17,6 +17,7 @@ const travelFeesSchema = z
     rate_per_km: z.number().min(0).optional(),
     minimum_fee: z.number().min(0).optional(),
     maximum_fee: z.number().min(0).nullable().optional(),
+    free_within_km: z.number().min(0).nullable().optional(),
     currency: z.string().optional(),
     use_platform_default: z.boolean().optional(),
     pricing_model: z.enum(["per_km", "tiered"]).nullable().optional(),
@@ -69,6 +70,14 @@ export async function GET(request: NextRequest) {
 
     const { data: travelFeeSettings, error } = await query.single();
 
+    const { data: platformSettings } = await supabase
+      .from("platform_settings")
+      .select("settings")
+      .eq("is_active", true)
+      .maybeSingle();
+    const allowCustomization =
+      platformSettings?.settings?.travel_fees?.allow_provider_customization !== false;
+
     // Return default if not found
     if (error && error.code === 'PGRST116') {
       let defaultCurrency: string = LAST_RESORT_CURRENCY;
@@ -86,10 +95,12 @@ export async function GET(request: NextRequest) {
         rate_per_km: null,
         minimum_fee: null,
         maximum_fee: null,
+        free_within_km: null,
         currency: defaultCurrency,
         use_platform_default: true,
         pricing_model: null,
         tiers: null,
+        allow_provider_customization: allowCustomization,
       });
     }
 
@@ -101,6 +112,9 @@ export async function GET(request: NextRequest) {
       ...travelFeeSettings,
       pricing_model: travelFeeSettings.pricing_model ?? null,
       tiers: travelFeeSettings.tiers ?? null,
+      free_within_km: travelFeeSettings.free_within_km ?? null,
+      use_platform_default: allowCustomization ? Boolean(travelFeeSettings.use_platform_default) : true,
+      allow_provider_customization: allowCustomization,
     });
   } catch (error) {
     return handleApiError(error, 'Failed to fetch travel fee settings');
@@ -135,7 +149,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const validatedData = travelFeesSchema.parse(body);
+    let validatedData = travelFeesSchema.parse(body);
 
     const { data: provForTenant } = await supabase
       .from("providers")
@@ -155,7 +169,12 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     const travelFees = platformSettings?.settings?.travel_fees || {};
-    
+    const allowCustomization = travelFees.allow_provider_customization !== false;
+
+    if (!allowCustomization) {
+      validatedData = { ...validatedData, use_platform_default: true };
+    }
+
     // Validate against platform limits if provider is setting custom rates
     if (!validatedData.use_platform_default && validatedData.rate_per_km !== undefined) {
       const minRate = travelFees.provider_min_rate_per_km || 0;
@@ -201,15 +220,25 @@ export async function PATCH(request: NextRequest) {
     const upsertPayload: Record<string, unknown> = {
       provider_id: providerId,
       enabled: validatedData.enabled !== false,
-      maximum_fee: validatedData.maximum_fee ?? null,
       currency: validatedData.currency || tenantDefaultCurrency,
       use_platform_default: validatedData.use_platform_default !== false,
       updated_at: new Date().toISOString(),
     };
-    if (validatedData.rate_per_km !== undefined) upsertPayload.rate_per_km = validatedData.rate_per_km;
-    if (validatedData.minimum_fee !== undefined) upsertPayload.minimum_fee = validatedData.minimum_fee;
-    if (validatedData.pricing_model !== undefined) upsertPayload.pricing_model = validatedData.pricing_model;
-    if (validatedData.tiers !== undefined) upsertPayload.tiers = validatedData.tiers;
+
+    if (allowCustomization) {
+      upsertPayload.maximum_fee = validatedData.maximum_fee ?? null;
+      if (validatedData.rate_per_km !== undefined) upsertPayload.rate_per_km = validatedData.rate_per_km;
+      if (validatedData.minimum_fee !== undefined) upsertPayload.minimum_fee = validatedData.minimum_fee;
+      if (validatedData.pricing_model !== undefined) upsertPayload.pricing_model = validatedData.pricing_model;
+      if (validatedData.pricing_model === "per_km") {
+        upsertPayload.tiers = null;
+      } else if (validatedData.tiers !== undefined) {
+        upsertPayload.tiers = validatedData.tiers;
+      }
+      if (validatedData.free_within_km !== undefined) upsertPayload.free_within_km = validatedData.free_within_km;
+    } else {
+      upsertPayload.use_platform_default = true;
+    }
 
     const { data: settings, error } = await supabase
       .from('provider_travel_fee_settings')
@@ -223,7 +252,10 @@ export async function PATCH(request: NextRequest) {
       throw error;
     }
 
-    return successResponse(settings);
+    return successResponse({
+      ...settings,
+      allow_provider_customization: allowCustomization,
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(

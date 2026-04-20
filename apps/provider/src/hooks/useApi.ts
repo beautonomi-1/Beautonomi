@@ -202,6 +202,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
 export function useApiPost<TReq, TRes>(path: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -210,21 +211,35 @@ export function useApiPost<TReq, TRes>(path: string) {
   }, []);
 
   const execute = useCallback(
-    async (body: TReq): Promise<{ data: TRes | null; error: string | null }> => {
+    async (
+      body: TReq,
+    ): Promise<{ data: TRes | null; error: string | null; errorCode: string | null }> => {
       try {
         setLoading(true);
         setError(null);
+        setErrorCode(null);
         const result = await api.post<TRes>(path, body as Record<string, unknown>);
         if (result.error) {
-          const msg = getApiErrorMessage(result.error, "Request failed");
-          if (mountedRef.current) setError(msg);
-          return { data: null, error: msg };
+          // §Provider-audit 2026-04: surface `error.code` so callers can
+          // branch on specific server contracts (e.g. CONFLICT, CALENDAR_BLOCK,
+          // RESOURCE_CONFLICT) instead of regex-matching the message. This
+          // keeps error handling consistent with `useApiMutation`.
+          const apiErr = result.error as ApiError;
+          const msg = getApiErrorMessage(apiErr, "Request failed");
+          if (mountedRef.current) {
+            setError(msg);
+            setErrorCode(apiErr.code ?? null);
+          }
+          return { data: null, error: msg, errorCode: apiErr.code ?? null };
         }
-        return { data: result.data, error: null };
+        return { data: result.data, error: null, errorCode: null };
       } catch (err) {
         const msg = getApiErrorMessage(err, "Request failed");
-        if (mountedRef.current) setError(msg);
-        return { data: null, error: msg };
+        if (mountedRef.current) {
+          setError(msg);
+          setErrorCode(null);
+        }
+        return { data: null, error: msg, errorCode: null };
       } finally {
         if (mountedRef.current) setLoading(false);
       }
@@ -232,7 +247,7 @@ export function useApiPost<TReq, TRes>(path: string) {
     [path]
   );
 
-  return { execute, loading, error };
+  return { execute, loading, error, errorCode };
 }
 
 export function useApiMutation<TRes>(method: "put" | "patch" | "post" | "delete" = "put") {

@@ -1,13 +1,15 @@
 /**
  * Subscription screen – view plan, upgrade, cancel, renew.
- * Uses GET /api/provider/subscription, /subscription/plans, POST cancel, renew, initialize-payment, upgrade.
+ * Uses GET /api/provider/subscription, /subscription/plans, POST cancel, renew, initialize-payment, upgrade
+ * (paid: upgrade first when Paystack auth exists, else initialize-payment — same as provider web).
  * Plan feature bullets match public /pricing (pricing_plan_features), not raw subscription_plans.features JSON.
  */
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { View, Text, TouchableOpacity, Alert, AppState, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
+import { useRouter, useFocusEffect } from "expo-router";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -125,6 +127,7 @@ function statusLabel(sub: Subscription): string {
 }
 
 export default function SubscriptionScreen() {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [upgradingId, setUpgradingId] = useState<string | null>(null);
   const appState = useRef(AppState.currentState);
@@ -155,6 +158,17 @@ export default function SubscriptionScreen() {
     });
     return () => sub.remove();
   }, [refresh]);
+
+  // §Provider-audit 2026-04 (round 9): refresh whenever the screen regains
+  // focus. Paystack checkout opens via `pushInAppBrowser` which stays in the
+  // app process, so `AppState` never fires inactive→active and the
+  // subscription status could stay stale after a completed upgrade until
+  // the user pulled to refresh.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -194,9 +208,16 @@ export default function SubscriptionScreen() {
       Alert.alert("Error", err);
       return;
     }
-    const url = (data as { payment_url?: string })?.payment_url;
+    const d = data as { payment_url?: string; is_free?: boolean; message?: string };
+    if (d?.is_free) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Done", d.message ?? "Plan renewed.");
+      refresh();
+      return;
+    }
+    const url = d?.payment_url;
     if (url) {
-      await Linking.openURL(url);
+      pushInAppBrowser(router, url, "Renew subscription");
     } else {
       Alert.alert("No payment link", "Unable to start renewal. Please try again or contact support.");
     }
@@ -226,6 +247,44 @@ export default function SubscriptionScreen() {
           refresh();
           return;
         }
+        Alert.alert("Could not activate plan", "Please try again or contact support.");
+        return;
+      }
+
+      // Paid plans: match provider web — try Paystack subscription upgrade when authorization exists,
+      // otherwise initialize a checkout (first payment or new card).
+      const { error: upErr, data: upData } = await postAction("/api/provider/subscription/upgrade", {
+        plan_id: barePlanId,
+        billing_period: billingPeriod,
+      });
+      if (upErr) {
+        Alert.alert("Error", upErr);
+        return;
+      }
+      const upgraded = upData as {
+        is_free?: boolean;
+        subscription_id?: string;
+        requires_payment?: boolean;
+        payment_url?: string;
+        authorization_url?: string;
+      };
+      if (upgraded?.is_free) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Success", "Plan updated!");
+        refresh();
+        return;
+      }
+      if (upgraded?.subscription_id && !upgraded?.requires_payment) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Success", "Subscription updated!");
+        refresh();
+        return;
+      }
+      const upUrl = upgraded?.authorization_url ?? upgraded?.payment_url;
+      if (upUrl) {
+        pushInAppBrowser(router, upUrl, "Subscription checkout");
+        refresh();
+        return;
       }
 
       const { error: err, data } = await postAction("/api/provider/subscription/initialize-payment", {
@@ -240,12 +299,12 @@ export default function SubscriptionScreen() {
       const d = data as { authorization_url?: string; payment_url?: string; requires_payment?: boolean };
       const url = d?.authorization_url ?? d?.payment_url;
       if (d?.requires_payment && url) {
-        await Linking.openURL(url);
+        pushInAppBrowser(router, url, "Subscription checkout");
         refresh();
         return;
       }
       if (url) {
-        await Linking.openURL(url);
+        pushInAppBrowser(router, url, "Subscription checkout");
       } else {
         Alert.alert("No payment link", "Unable to start checkout. Please try again or contact support.");
       }

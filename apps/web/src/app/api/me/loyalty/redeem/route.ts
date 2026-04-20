@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
 
 const redeemSchema = z.object({
   points: z.number().min(1, "Points must be at least 1"),
@@ -35,10 +36,29 @@ export async function POST(request: NextRequest) {
       (redeemUserRow as { preferred_home_tenant_id?: string | null } | null)?.preferred_home_tenant_id ??
       null;
 
-    // Get current points balance
-    const { data: balanceData } = await supabase.rpc("get_user_loyalty_balance", { p_user_id: user.id });
-
-    const currentBalance = balanceData != null ? Number(balanceData) : 0;
+    // §Customer-audit 2026-04: check the canonical ledger first, then fall
+    // back to the legacy balance function so users whose points come from
+    // either source can redeem correctly. Previously this only consulted
+    // `get_user_loyalty_balance`, so users who had earned via the ledger
+    // (most recent path) saw "Insufficient points" even with a positive
+    // balance shown in the UI.
+    let currentBalance = 0;
+    try {
+      const { data: ledgerBalance } = await supabase.rpc(
+        "get_customer_available_points",
+        { customer_uuid: user.id },
+      );
+      currentBalance = Number(ledgerBalance) || 0;
+    } catch {
+      currentBalance = 0;
+    }
+    if (currentBalance <= 0) {
+      const { data: legacyBalance } = await supabase.rpc(
+        "get_user_loyalty_balance",
+        { p_user_id: user.id },
+      );
+      currentBalance = Math.max(currentBalance, Number(legacyBalance) || 0);
+    }
 
     if (validated.points > currentBalance) {
       return handleApiError(
@@ -89,38 +109,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: transaction, error: transactionError } = await adminSupabase
-      .from("loyalty_point_transactions")
-      .insert({
-        user_id: user.id,
-        points: validated.points,
-        transaction_type: "redeemed",
-        description: validated.description || `Redeemed ${validated.points} points for ${redemptionValue} ${currency}`,
-      })
-      .select()
-      .single();
+    const redemptionDescription =
+      validated.description ||
+      `Redeemed ${validated.points} points for ${redemptionValue.toFixed(2)} ${currency} wallet credit`;
 
-    if (transactionError) {
-      console.error(
-        "CRITICAL: Loyalty redeem transaction insert failed after wallet credit:",
-        transactionError
-      );
-      return successResponse({
-        transaction: null,
-        points_redeemed: validated.points,
-        redemption_value: redemptionValue,
+    await recordLoyaltyRedemption(adminSupabase, {
+      customerId: user.id,
+      points: validated.points,
+      description: redemptionDescription,
+      metadata: {
+        source: "self_service_wallet_redeem",
+        wallet_credit_amount: redemptionValue,
         currency,
-        new_balance: currentBalance,
-        message: "Points redeemed successfully",
-      });
-    }
+      },
+    });
 
     return successResponse({
-      transaction,
+      transaction: null,
       points_redeemed: validated.points,
       redemption_value: redemptionValue,
       currency,
-      new_balance: currentBalance - validated.points,
+      new_balance: Math.max(0, currentBalance - validated.points),
       message: "Points redeemed successfully",
     });
   } catch (error) {

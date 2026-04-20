@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import {
   Platform,
   View,
   Text,
   ScrollView,
+  InteractionManager,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -14,6 +15,7 @@ import {
   Modal,
   Pressable,
   RefreshControl,
+  Share,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { format, addDays, isSameDay, parseISO, startOfDay } from "date-fns";
@@ -31,9 +33,11 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import * as ImagePicker from "expo-image-picker";
 import { APP_URL } from "@/config/public-env";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase/client";
 import { twStyle } from "@/lib/twStyle";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { useProvider } from "@/providers/ProviderContext";
@@ -50,6 +54,7 @@ import {
   PROVIDER_HOUSE_CALL_EXCELLENCE_NUDGE,
   PROVIDER_ON_PLATFORM_PAYMENT_NUDGE,
   PROVIDER_SALON_CHECKIN_EXCELLENCE_NUDGE,
+  PROVIDER_SALON_VISIT_FLOW_EXPLAINER,
 } from "@beautonomi/utils";
 import { buildSaleItemsFromBookingDetail } from "@/lib/build-sale-items-from-booking";
 
@@ -267,7 +272,7 @@ const ETA_OPTIONS = [15, 30, 45] as const;
 
 const PAYMENT_METHODS = [
   { label: "Cash", value: "cash" },
-  { label: "Card", value: "card" },
+  { label: "Card (Yoco / terminal)", value: "card" },
   { label: "EFT", value: "bank_transfer" },
   { label: "Other", value: "other" },
 ] as const;
@@ -288,11 +293,50 @@ const SEND_LINK_OPTIONS = [
 
 const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = "provider_booking_completion_modal_seen_";
 
+function providerParamTruthy(v: string | string[] | undefined): boolean {
+  const s = typeof v === "string" ? v : Array.isArray(v) ? v[0] ?? "" : "";
+  return s === "1" || s.toLowerCase() === "true";
+}
+
+/** After creating a booking with Card, deep-link opens Yoco once (POS sale + terminal). */
+function AutoYocoCollectGate({ shouldRun, onTrigger }: { shouldRun: boolean; onTrigger: () => void }) {
+  const cbRef = useRef(onTrigger);
+  cbRef.current = onTrigger;
+  const fired = useRef(false);
+  useEffect(() => {
+    if (!shouldRun || fired.current) return;
+    fired.current = true;
+    const task = InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        cbRef.current();
+      }, 450);
+    });
+    return () => task.cancel();
+  }, [shouldRun]);
+  return null;
+}
+
 export default function BookingDetailScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, focusPayment, collectYoco } = useLocalSearchParams<{
+    id: string;
+    focusPayment?: string;
+    collectYoco?: string;
+  }>();
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
   const { data, loading, error, refresh } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
+
+  // §Provider-audit 2026-04: `useApi` cache has a 20s stale window, so
+  // returning from the calendar / list after a lifecycle mutation (elsewhere,
+  // e.g. from another device or web) could show stale data. Refetch on focus
+  // so the provider always sees the latest booking state.
+  useFocusEffect(
+    useCallback(() => {
+      if (id) {
+        void refresh();
+      }
+    }, [id, refresh]),
+  );
   // §Release-audit 2026-04: provider timezone for tz-aware reschedule. Falls
   // back to device local via buildZonedIsoForWallClock when unavailable.
   const { provider: providerProfile } = useProvider();
@@ -302,6 +346,7 @@ export default function BookingDetailScreen() {
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationPermissionDeniedRef = useRef(false);
+  const mainScrollRef = useRef<ScrollView>(null);
 
   const durationMinutes = useMemo(() => {
     const svcs = data?.services ?? [];
@@ -485,7 +530,12 @@ export default function BookingDetailScreen() {
   /** Whether this booking already has a row in provider_client_ratings (null = not loaded yet). */
   const [hasProviderClientRating, setHasProviderClientRating] = useState<boolean | null>(null);
 
-  const isAtHomeFromData = data?.location_type === "at_home";
+  const isAtHomeFromData =
+    data?.location_type === "at_home" ||
+    (data != null &&
+      data.location_type == null &&
+      !data.location_id &&
+      !!data.address?.line1?.trim());
   const isJourneyTrackingStageFromData =
     data?.current_stage === "provider_on_way" || data?.current_stage === "provider_arrived";
   useEffect(() => {
@@ -670,6 +720,18 @@ export default function BookingDetailScreen() {
     }
   }, [data]);
 
+  useEffect(() => {
+    const fp = typeof focusPayment === "string" ? focusPayment : Array.isArray(focusPayment) ? focusPayment[0] : "";
+    if (fp !== "1" && fp !== "true") return;
+    if (!data) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        mainScrollRef.current?.scrollToEnd({ animated: true });
+      }, 400);
+    });
+    return () => task.cancel();
+  }, [focusPayment, data]);
+
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
@@ -701,7 +763,19 @@ export default function BookingDetailScreen() {
     ? [b.address.line1, b.address.line2, b.address.city, b.address.postal_code].filter(Boolean).join(", ")
     : locationName;
 
-  const isAtHome = b.location_type === "at_home";
+  const rawLocationType = b.location_type;
+  const effectiveLocationType: "at_home" | "at_salon" =
+    rawLocationType === "at_home"
+      ? "at_home"
+      : rawLocationType === "at_salon"
+        ? "at_salon"
+        : b.location_id
+          ? "at_salon"
+          : b.address?.line1
+            ? "at_home"
+            : "at_salon";
+  const isAtHome = effectiveLocationType === "at_home";
+  const isAtSalon = effectiveLocationType === "at_salon";
   const addr = b.address;
   const accessCodes = addr?.access_codes;
   const hasAccessCodes =
@@ -722,10 +796,9 @@ export default function BookingDetailScreen() {
         b.house_call_instructions?.trim() ||
         hasAccessCodes
     );
-  const isAtSalon = b.location_type === "at_salon";
   const canStartJourney =
     isAtHome &&
-    (b.status === "confirmed" || b.status === "pending" || b.status === "booked") &&
+    (b.status === "confirmed" || b.status === "booked") &&
     (b.current_stage == null || b.current_stage === "confirmed");
   const canMarkArrived = isAtHome && b.current_stage === "provider_on_way";
   const isEnRoute = b.current_stage === "provider_on_way";
@@ -752,14 +825,120 @@ export default function BookingDetailScreen() {
   const outstandingRaw = totalAmount - effectivePaid - walletAmountApplied - giftCardAmountApplied;
   const ps = ((b as any).payment_status || "").toLowerCase();
   const outstanding = ps === "refunded" ? 0 : Math.max(0, outstandingRaw);
+  /**
+   * Amount for Yoco / POS sale / "Mark paid" without a custom line: deposit bookings collect the
+   * remaining deposit first (pending or partially_paid until deposit is satisfied), then full AR.
+   */
+  const depositTarget =
+    b.deposit_required === true &&
+    b.payment_option === "deposit" &&
+    typeof b.deposit_amount === "number" &&
+    b.deposit_amount > 0
+      ? b.deposit_amount
+      : null;
+  const depositRemaining =
+    depositTarget != null ? Math.max(0, depositTarget - totalPaid) : 0;
+  const yocoTerminalAmount =
+    depositRemaining > 0 && (ps === "pending" || ps === "partially_paid")
+      ? Math.min(outstanding, depositRemaining)
+      : outstanding;
   const netPaidAfterRefunds = totalPaid - totalRefunded;
-  const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
+  /** Align with POST /api/provider/bookings/[id]/mark-paid — collect cash/Yoco before or during visit. */
+  const statusesAllowingPayment = new Set([
+    "pending",
+    "booked",
+    "confirmed",
+    "started",
+    "in_progress",
+    "completed",
+  ]);
+  const canMarkPaid =
+    yocoTerminalAmount > 0 &&
+    typeof b.status === "string" &&
+    statusesAllowingPayment.has(b.status);
   const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
 
+  /** Show payment lines + receipt actions for paid bookings and for closed bookings that may be $0 (complimentary / settled). */
+  const showPaymentAndReceiptCard =
+    totalAmount > 0 ||
+    totalPaid > 0 ||
+    b.status === "completed" ||
+    b.status === "cancelled" ||
+    b.status === "no_show";
+
+  async function openBookingReceiptPdf() {
+    if (!id) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const res = await api.post<{ url: string; expires_at: string }>(
+        `/api/provider/bookings/${id}/receipt/signed-url`,
+        {},
+      );
+      if (res.error) {
+        const msg =
+          typeof res.error === "object" && res.error && "message" in res.error
+            ? String((res.error as { message: string }).message)
+            : "Could not open the receipt right now. Please try again.";
+        Alert.alert("Receipt", msg);
+        return;
+      }
+      const signedUrl = res.data?.url;
+      if (!signedUrl) {
+        Alert.alert("Receipt", "Could not open the receipt right now. Please try again.");
+        return;
+      }
+      pushInAppBrowser(router, signedUrl, "Receipt");
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Something went wrong while opening the receipt.";
+      Alert.alert("Receipt", msg);
+    }
+  }
+
+  async function shareBookingReceiptSummary() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const cur = b.currency ?? getTenantDefaultCurrency();
+    const portalBase = APP_URL?.replace(/\/$/, "") ?? "";
+    const manageUrl = portalBase ? `${portalBase}/provider/bookings` : "";
+    const lines: string[] = [
+      "Beautonomi booking",
+      `Booking #${b.booking_number ?? String(id).slice(0, 8)}`,
+      "",
+      `Provider: ${providerProfile?.business_name ?? "—"}`,
+      `When: ${formatDateTimeSafe(b.scheduled_at)} ${formatTimeSafe(b.scheduled_at)}`,
+      `Status: ${b.status}`,
+      "",
+      ...services.map((svc) => {
+        const title = svc.offering_name ?? (svc as { name?: string }).name ?? "Service";
+        const price = Number((svc as { price?: number }).price ?? 0);
+        return `• ${title} – ${cur} ${price.toFixed(2)}`;
+      }),
+      "",
+      `Total: ${cur} ${Number(totalAmount).toFixed(2)}`,
+    ];
+    if (outstanding > 0) {
+      lines.push(`Outstanding: ${cur} ${outstanding.toFixed(2)}`);
+    }
+    if (manageUrl) {
+      lines.push("", `Portal: ${manageUrl}`);
+    }
+    try {
+      await Share.share({ message: lines.join("\n"), title: "Booking receipt" });
+    } catch (e) {
+      Alert.alert("Share", e instanceof Error ? e.message : "Could not share this receipt.");
+    }
+  }
+
   async function openYocoCheckout() {
     if (!id) return;
-    const chargeAmount = Number(outstanding.toFixed(2));
+    // Card payment chains several authenticated POSTs; refresh session first to avoid stale-token "sign in again" races after backgrounding.
+    try {
+      await supabase.auth.refreshSession();
+    } catch {
+      /* non-fatal; api client still retries on 401 */
+    }
+    const chargeAmount = Number(yocoTerminalAmount.toFixed(2));
     if (chargeAmount <= 0) {
       Alert.alert(
         "Nothing to charge",
@@ -771,8 +950,8 @@ export default function BookingDetailScreen() {
     }
     if (!canMarkPaid) {
       Alert.alert(
-        "Not ready to pay",
-        "Start or complete the booking before recording a card payment.",
+        "Cannot take card payment",
+        "This booking is not in a state where a card payment can be recorded (for example it may be cancelled).",
       );
       return;
     }
@@ -877,7 +1056,7 @@ export default function BookingDetailScreen() {
       );
       return;
     }
-    const chargeForBooking = yocoPendingChargeAmountRef.current ?? outstanding;
+    const chargeForBooking = yocoPendingChargeAmountRef.current ?? yocoTerminalAmount;
     const res = await postMutation(`/api/provider/bookings/${id}/mark-paid`, {
       payment_method: "card",
       reference: result.reference,
@@ -1031,7 +1210,26 @@ export default function BookingDetailScreen() {
         exclude_booking_id: id,
       });
       if (staffIds.length > 0) checkParams.set("staff_ids", staffIds.join(","));
-      const checkRes = await api.get<{ available?: boolean }>(
+      // §Provider-audit 2026-04: include location_id so multi-location
+      // availability rules (working hours, closed periods, resources) are
+      // evaluated against the booking's actual location, matching the
+      // calendar drag-to-reschedule flow.
+      const rescheduleLocationId = (b as BookingDetail & { location_id?: string | null }).location_id;
+      if (rescheduleLocationId) checkParams.set("location_id", String(rescheduleLocationId));
+      // §Provider-audit 2026-04 (round 2): include offerings so the server
+      // can pre-flight room / equipment resources for the new slot too.
+      const rescheduleOfferingIds = Array.from(
+        new Set(
+          (b.services ?? [])
+            .map((s: { offering_id?: string | null; service_id?: string | null }) =>
+              s.offering_id ?? s.service_id ?? null,
+            )
+            .filter((id: string | null): id is string => !!id),
+        ),
+      );
+      if (rescheduleOfferingIds.length > 0)
+        checkParams.set("offering_ids", rescheduleOfferingIds.join(","));
+      const checkRes = await api.get<{ available?: boolean; conflicts?: string[] }>(
         `/api/provider/bookings/check-availability?${checkParams}`
       );
       if (checkRes.error) {
@@ -1040,7 +1238,16 @@ export default function BookingDetailScreen() {
         return;
       }
       if (checkRes.data?.available === false) {
-        Alert.alert("Slot unavailable", "This time is no longer available. Choose another.");
+        // §Provider-audit 2026-04 (round 3): surface the SPECIFIC reasons
+        // (resource at capacity, outside staff hours, overlaps break,
+        // existing booking, etc.) instead of a generic "not available".
+        // Providers need to know whether to pick a different time, a
+        // different staff member, or a different location.
+        const conflicts = checkRes.data.conflicts ?? [];
+        const msg = conflicts.length > 0
+          ? conflicts.join("\n")
+          : "This time is no longer available. Choose another.";
+        Alert.alert("Slot unavailable", msg);
         setRescheduling(false);
         return;
       }
@@ -1097,14 +1304,14 @@ export default function BookingDetailScreen() {
 
   const handleMarkPaid = async () => {
     if (!id) return;
-    if (outstanding <= 0) {
+    if (yocoTerminalAmount <= 0) {
       Alert.alert("Nothing to record", "There is no remaining balance to mark as paid.");
       return;
     }
     setMarkingPaid(true);
     const res = await postMutation(`/api/provider/bookings/${id}/mark-paid`, {
       payment_method: markPaidMethod,
-      amount: Number(outstanding.toFixed(2)),
+      amount: Number(yocoTerminalAmount.toFixed(2)),
     });
     setMarkingPaid(false);
     if (res.error) {
@@ -1458,6 +1665,19 @@ export default function BookingDetailScreen() {
 
   return (
     <ScreenContainer>
+      <AutoYocoCollectGate
+        shouldRun={
+          providerParamTruthy(collectYoco) &&
+          yocoTerminalAmount > 0 &&
+          yocoIntegration?.is_enabled === true &&
+          Boolean(yocoIntegration?.api_key_set) &&
+          canMarkPaid
+        }
+        onTrigger={() => {
+          router.setParams({ collectYoco: undefined });
+          void openYocoCheckout();
+        }}
+      />
       <ScreenHeader
         title={b.booking_number ?? "Booking"}
         subtitle={b.status}
@@ -1476,6 +1696,7 @@ export default function BookingDetailScreen() {
         }
       />
       <ScrollView
+        ref={mainScrollRef}
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
@@ -1515,7 +1736,7 @@ export default function BookingDetailScreen() {
             <TouchableOpacity
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push("/(app)/(tabs)/more/rewards" as any);
+                router.push("/(app)/(tabs)/more/rewards-hub" as any);
               }}
               accessibilityRole="button"
               accessibilityLabel={PROVIDER_EXCELLENCE_DASHBOARD_CTA}
@@ -1537,6 +1758,17 @@ export default function BookingDetailScreen() {
             ) : (
               <Text style={twStyle("text-xs text-violet-800")}>No address on file — check notes or contact the client.</Text>
             )}
+          </View>
+        ) : null}
+
+        {isAtSalon && (isActive || isStarted) ? (
+          <View style={twStyle("rounded-2xl border-2 border-slate-200 bg-slate-50 p-4 mb-3")}>
+            <View style={twStyle("flex-row items-center mb-2")}>
+              <Ionicons name="business" size={22} color="#334155" />
+              <Text style={twStyle("ml-2 text-base font-bold text-slate-900")}>At salon</Text>
+            </View>
+            <Text style={twStyle("text-sm text-slate-800 leading-5 mb-2")}>{PROVIDER_SALON_VISIT_FLOW_EXPLAINER}</Text>
+            <Text style={twStyle("text-xs text-slate-600 leading-5")}>{PROVIDER_SALON_CHECKIN_EXCELLENCE_NUDGE}</Text>
           </View>
         ) : null}
 
@@ -2016,7 +2248,7 @@ export default function BookingDetailScreen() {
         )}
 
         {/* Payment summary & Mark paid / Refund */}
-        {(totalAmount > 0 || totalPaid > 0) && (
+        {showPaymentAndReceiptCard && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Payment</Text>
             {b.payment_status ? (
@@ -2057,7 +2289,8 @@ export default function BookingDetailScreen() {
                 ) : null}
                 {typeof b.service_fee_amount === "number" && b.service_fee_amount > 0 ? (
                   <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
-                    Service fee: {b.currency ?? getTenantDefaultCurrency()} {b.service_fee_amount.toLocaleString()}
+                    Platform fee (customer-paid, retained by platform): {b.currency ?? getTenantDefaultCurrency()}{" "}
+                    {b.service_fee_amount.toLocaleString()}
                   </Text>
                 ) : null}
                 {typeof b.tip_amount === "number" && b.tip_amount > 0 ? (
@@ -2140,7 +2373,7 @@ export default function BookingDetailScreen() {
                       <Text style={twStyle("font-medium text-white")}>Mark paid</Text>
                     )}
                   </TouchableOpacity>
-                  {yocoIntegration?.is_enabled && outstanding > 0 && (
+                  {yocoIntegration?.is_enabled && yocoIntegration?.api_key_set && outstanding > 0 && (
                     <TouchableOpacity
                       onPress={() => void openYocoCheckout()}
                       disabled={preparingYocoSale}
@@ -2193,40 +2426,20 @@ export default function BookingDetailScreen() {
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                onPress={async () => {
-                  // §Provider-launch (audit 2026-04): mint a short-lived
-                  // HMAC-signed URL via authenticated API call, then open
-                  // in the system viewer. Never expose the raw
-                  // /receipt/pdf route to an unauthenticated browser
-                  // window — it would fail auth and show a blank page /
-                  // JSON error.
-                  try {
-                    const res = await api.post<{
-                      url: string;
-                      expires_at: string;
-                    }>(`/api/provider/bookings/${id}/receipt/signed-url`);
-                    const signedUrl = res.data?.url;
-                    if (!signedUrl) {
-                      Alert.alert("Receipt", "Could not open the receipt right now. Please try again.");
-                      return;
-                    }
-                    const can = await Linking.canOpenURL(signedUrl);
-                    if (!can) {
-                      Alert.alert("Receipt", "This device cannot open the receipt link.");
-                      return;
-                    }
-                    await Linking.openURL(signedUrl);
-                  } catch (err) {
-                    const msg =
-                      err instanceof Error ? err.message : "Please try again.";
-                    Alert.alert("Receipt", msg);
-                  }
-                }}
+                onPress={() => void shareBookingReceiptSummary()}
                 style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
                 accessibilityRole="button"
-                accessibilityLabel="View receipt"
+                accessibilityLabel="Share receipt summary"
               >
-                <Text style={twStyle("font-medium text-gray-700")}>View receipt</Text>
+                <Text style={twStyle("font-medium text-gray-700")}>Share summary</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void openBookingReceiptPdf()}
+                style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
+                accessibilityRole="button"
+                accessibilityLabel="Download PDF receipt"
+              >
+                <Text style={twStyle("font-medium text-gray-700")}>Download PDF</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2511,7 +2724,21 @@ export default function BookingDetailScreen() {
       {/* Mark paid modal */}
       <BottomSheet visible={showMarkPaid} onClose={() => setShowMarkPaid(false)} title="Mark as paid">
         <View>
-          <Text style={twStyle("text-sm text-gray-600 mb-2")}>Outstanding: {b.currency ?? getTenantDefaultCurrency()} {outstanding.toFixed(2)}</Text>
+          {Math.abs(yocoTerminalAmount - outstanding) > 0.01 ? (
+            <>
+              <Text style={twStyle("text-sm text-gray-600 mb-1")}>
+                Full balance: {b.currency ?? getTenantDefaultCurrency()} {outstanding.toFixed(2)}
+              </Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900 mb-2")}>
+                This payment: {b.currency ?? getTenantDefaultCurrency()} {yocoTerminalAmount.toFixed(2)}
+                {depositTarget != null ? " (deposit due)" : ""}
+              </Text>
+            </>
+          ) : (
+            <Text style={twStyle("text-sm text-gray-600 mb-2")}>
+              Outstanding: {b.currency ?? getTenantDefaultCurrency()} {outstanding.toFixed(2)}
+            </Text>
+          )}
           {totalPaid > 0 ? (
             <Text style={twStyle("text-xs text-gray-500 mb-2")}>
               This records another payment toward the booking (e.g. after cash, EFT, or Paystack). Only the remaining balance is applied.
@@ -2681,7 +2908,7 @@ export default function BookingDetailScreen() {
       <YocoPaymentSheet
         visible={showYocoPayment}
         onClose={() => setShowYocoPayment(false)}
-        amountCents={Math.round(outstanding * 100)}
+        amountCents={Math.round(yocoTerminalAmount * 100)}
         currency={b.currency ?? getTenantDefaultCurrency()}
         bookingId={id}
         saleId={yocoBookingSaleId ?? undefined}
@@ -2954,7 +3181,13 @@ export default function BookingDetailScreen() {
                         {(answers as Record<string, unknown>)._consent_document_url ? (
                           <TouchableOpacity
                             style={twStyle("mt-2 flex-row items-center")}
-                            onPress={() => Linking.openURL(String((answers as Record<string, unknown>)._consent_document_url))}
+                            onPress={() =>
+                              pushInAppBrowser(
+                                router,
+                                String((answers as Record<string, unknown>)._consent_document_url),
+                                "Consent",
+                              )
+                            }
                           >
                             <Ionicons name="document-text-outline" size={16} color="#6366f1" />
                             <Text style={twStyle("ml-1 text-sm font-medium text-indigo-600")}>View consent document</Text>

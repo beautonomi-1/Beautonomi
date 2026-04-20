@@ -11,6 +11,7 @@ import {
   Alert,
   TextInput,
   Switch,
+  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -35,6 +36,7 @@ import { useConfigBundle, useFeatureFlag, useModuleConfig } from "@/providers/Co
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import type { SavedPaymentMethod } from "@/types/api";
+import { APP_URL } from "@/config/public-env";
 
 /* ─── Types ─── */
 
@@ -232,6 +234,25 @@ function CountdownBar({ expiresAt, t }: { expiresAt: string; t: (key: string, op
       )}
     </View>
   );
+}
+
+/** True when the hold exposes any cancellation / fee / policy text — same visibility as <CancellationPolicy />. */
+function cancellationPolicyRequiresCustomerAck(
+  policy: HoldData["cancellation_policy"] | null | undefined,
+): boolean {
+  if (!policy) return false;
+  const windowHrs = policy.cancellation_window_hours;
+  const graceMin = policy.grace_window_minutes;
+  const noShowFee = policy.no_show_fee_enabled && policy.no_show_fee_amount != null && policy.no_show_fee_amount > 0;
+  const latePct = policy.late_refund_percentage;
+  const showLateLine =
+    latePct !== undefined && latePct !== null && !Number.isNaN(Number(latePct)) && Number(latePct) < 100;
+  const policyTextTrimmed = typeof policy.policy_text === "string" ? policy.policy_text.trim() : "";
+  const policySnippet = policyTextTrimmed.length > 0 ? policyTextTrimmed : null;
+  if (!windowHrs && !noShowFee && !(graceMin != null && graceMin > 0) && !showLateLine && !policySnippet) {
+    return false;
+  }
+  return true;
 }
 
 /* ─── Cancellation Policy Section ─── */
@@ -514,6 +535,15 @@ export default function BookCheckoutScreen() {
   }>();
   const pickRouteParam = (v: string | string[] | undefined) =>
     typeof v === "string" ? v : Array.isArray(v) ? v[0] : undefined;
+  /** Preserved across login / 401 so reschedule checkout does not lose `reschedule_booking_id`. */
+  const bookContinueReturnTo = useMemo(() => {
+    const hid = pickRouteParam(hold_id as string | string[] | undefined);
+    if (!hid) return "/(app)/(tabs)/home" as const;
+    const rid = pickRouteParam(routeRescheduleBookingId as string | string[] | undefined);
+    const q = new URLSearchParams({ hold_id: hid });
+    if (rid) q.set("reschedule_booking_id", rid);
+    return `/(app)/book/continue?${q.toString()}`;
+  }, [hold_id, routeRescheduleBookingId]);
   const initialPackageIdFromRoute =
     pickRouteParam(routePackageId)?.trim() || pickRouteParam(routePrimaryPackageId)?.trim() || undefined;
   const { user } = useAuth();
@@ -549,6 +579,8 @@ export default function BookCheckoutScreen() {
   const [bookingCustomValues, setBookingCustomValues] = useState<Record<string, string | number | boolean | null>>({});
   const [providerForms, setProviderForms] = useState<ProviderForm[]>([]);
   const [providerFormValues, setProviderFormValues] = useState<Record<string, Record<string, string | number | boolean | null>>>({});
+  /** Parity with web booking engine StepReview — required when hold includes a visible cancellation / fee policy. */
+  const [cancellationPolicyAccepted, setCancellationPolicyAccepted] = useState(false);
   const [specialRequests, setSpecialRequests] = useState("");
   /** Prefilled from book flow (venue step) via AsyncStorage; sent as house_call_instructions on consume */
   const [houseCallInstructionsPrefill, setHouseCallInstructionsPrefill] = useState("");
@@ -616,6 +648,10 @@ export default function BookCheckoutScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only sync when defaultCard changes
   }, [defaultCard]);
+
+  useEffect(() => {
+    setCancellationPolicyAccepted(false);
+  }, [hold_id]);
 
   useEffect(() => {
     if (!hold_id) {
@@ -1519,6 +1555,11 @@ export default function BookCheckoutScreen() {
       setError("This time slot has expired. Please go back and select a new time.");
       return;
     }
+    if (cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && !cancellationPolicyAccepted) {
+      haptic.error();
+      setError(t("checkout.acceptCancellationPolicyRequired"));
+      return;
+    }
     setRequestingNow(true);
     setError(null);
     try {
@@ -1571,7 +1612,7 @@ export default function BookCheckoutScreen() {
     } finally {
       setRequestingNow(false);
     }
-  }, [hold_id, hold, user]);
+  }, [hold_id, hold, user, cancellationPolicyAccepted, t]);
 
   const handleComplete = useCallback(async () => {
     if (!hold_id || !hold) return;
@@ -1579,7 +1620,7 @@ export default function BookCheckoutScreen() {
     if (!user) {
       router.replace({
         pathname: "/(auth)/login",
-        params: { return_to: `/(app)/book/continue?hold_id=${hold_id}` },
+        params: { return_to: bookContinueReturnTo },
       });
       return;
     }
@@ -1615,7 +1656,6 @@ export default function BookCheckoutScreen() {
       return;
     }
     for (const form of providerForms) {
-      if (!form.is_required) continue;
       for (const field of form.fields || []) {
         if (!field.is_required) continue;
         const val = providerFormValues[form.id]?.[field.id];
@@ -1624,6 +1664,12 @@ export default function BookCheckoutScreen() {
           return;
         }
       }
+    }
+
+    if (cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && !cancellationPolicyAccepted) {
+      haptic.error();
+      setError(t("checkout.acceptCancellationPolicyRequired"));
+      return;
     }
 
     setConsuming(true);
@@ -1707,16 +1753,19 @@ export default function BookCheckoutScreen() {
         if (errStatus === 401) {
           router.replace({
             pathname: "/(auth)/login",
-            params: { return_to: `/(app)/book/continue?hold_id=${hold_id}` },
+            params: { return_to: bookContinueReturnTo },
           });
           return;
         }
         if (errStatus === 403) {
-          const msg403 = errCode === "SUBSCRIPTION_LIMIT_EXCEEDED"
-            ? "You've reached your booking limit. Please upgrade your plan."
-            : errCode === "MARKET_SWITCH_REQUIRED"
-            ? "This provider is in a different market. Please update your location."
-            : "You don't have permission to complete this booking. Please sign in again.";
+          const msg403 =
+            errCode === "SUBSCRIPTION_LIMIT_EXCEEDED"
+              ? "You've reached your booking limit. Please upgrade your plan."
+              : errCode === "MARKET_SWITCH_REQUIRED"
+                ? "This provider is in a different market. Please update your location."
+                : errCode === "HOLD_OWNERSHIP"
+                  ? "This booking slot is tied to another device or session. Go back, pick the time again, and complete checkout within a few minutes."
+                  : "You don't have permission to complete this booking. Please sign in again.";
           setError(msg403);
           return;
         }
@@ -1835,7 +1884,7 @@ export default function BookCheckoutScreen() {
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
-  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied]);
+  }, [hold_id, hold, user, bookContinueReturnTo, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied, cancellationPolicyAccepted, t]);
 
   /* ─── Loading skeleton ─── */
   if (loading) {
@@ -1889,6 +1938,9 @@ export default function BookCheckoutScreen() {
   }
 
   if (!hold) return null;
+
+  const cancellationPolicyAckRequired = cancellationPolicyRequiresCustomerAck(hold.cancellation_policy);
+  const policyAckBlocksCheckout = cancellationPolicyAckRequired && !cancellationPolicyAccepted;
 
   /** Re-open book with the same services/staff/venue so editing date/time or services works (params-only navigation used to drop cart state). */
   const navigateToEditBooking = (step: "date" | "service") => {
@@ -3256,6 +3308,47 @@ export default function BookCheckoutScreen() {
 
             {/* ═══ Cancellation Policy ═══ */}
             <CancellationPolicy policy={hold.cancellation_policy} currency={currency} contentPadding={contentPadding} t={t} />
+            {cancellationPolicyAckRequired ? (
+              <Pressable
+                onPress={() => { haptic.light(); setCancellationPolicyAccepted((v) => !v); }}
+                style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 12 }}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: cancellationPolicyAccepted }}
+                accessibilityLabel={t("checkout.acceptCancellationPolicy")}
+              >
+                <View style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 6,
+                  borderWidth: 2,
+                  borderColor: cancellationPolicyAccepted ? Colors.primary : "#D1D5DB",
+                  backgroundColor: cancellationPolicyAccepted ? Colors.primary : "#fff",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 10,
+                  marginTop: 2,
+                }}>
+                  {cancellationPolicyAccepted ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+                </View>
+                <Text style={{ flex: 1, fontSize: 13, color: "#374151", lineHeight: 20 }}>
+                  {t("checkout.acceptCancellationPolicy")}
+                </Text>
+              </Pressable>
+            ) : null}
+            {APP_URL?.trim() ? (
+              <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 16, lineHeight: 18 }}>
+                <Text>{t("checkout.platformTermsLead")}</Text>
+                <Text
+                  style={{ color: Colors.primary, fontWeight: "600" }}
+                  onPress={() => {
+                    Linking.openURL(`${APP_URL.replace(/\/$/, "")}/terms-and-condition`).catch(() => {});
+                  }}
+                >
+                  {t("checkout.platformTermsLink")}
+                </Text>
+                <Text>{t("checkout.platformTermsTrail")}</Text>
+              </Text>
+            ) : null}
 
             {/* Error banner */}
             {error && (() => {
@@ -3297,7 +3390,7 @@ export default function BookCheckoutScreen() {
             {onDemandEnabled && user && hold?.provider_on_demand_accept_enabled && (
               <TouchableOpacity
                 onPress={() => { haptic.medium(); handleRequestNow(); }}
-                disabled={requestingNow || isExpired}
+                disabled={requestingNow || isExpired || policyAckBlocksCheckout}
                 style={{
                   backgroundColor: isExpired ? "#D1D5DB" : "#F3F4F6",
                   borderRadius: 14,
@@ -3308,7 +3401,7 @@ export default function BookCheckoutScreen() {
                   marginBottom: 10,
                   borderWidth: 1.5,
                   borderColor: "#E5E7EB",
-                  opacity: (requestingNow || isExpired) ? 0.7 : 1,
+                  opacity: (requestingNow || isExpired || policyAckBlocksCheckout) ? 0.7 : 1,
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={t("checkout.requestNowAccessibility")}
@@ -3325,17 +3418,17 @@ export default function BookCheckoutScreen() {
             )}
             <TouchableOpacity
               onPress={() => { haptic.medium(); handleComplete(); }}
-              disabled={consuming || isExpired}
+              disabled={consuming || isExpired || policyAckBlocksCheckout}
               style={{
                 backgroundColor: isExpired ? "#D1D5DB" : Colors.primary,
                 borderRadius: 14, paddingVertical: 16,
                 alignItems: "center", flexDirection: "row", justifyContent: "center",
-                opacity: consuming ? 0.7 : 1,
+                opacity: consuming || policyAckBlocksCheckout ? 0.7 : 1,
               }}
               accessibilityRole="button"
               accessibilityLabel={user ? t("checkout.completeBooking") : t("checkout.signInToComplete")}
               accessibilityHint={user ? "Double tap to confirm and pay for your appointment" : "Double tap to sign in first"}
-              accessibilityState={{ disabled: consuming || isExpired }}
+              accessibilityState={{ disabled: consuming || isExpired || policyAckBlocksCheckout }}
             >
               {consuming ? (
                 <View style={{ flexDirection: "row", alignItems: "center" }}>

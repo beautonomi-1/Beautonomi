@@ -171,12 +171,13 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
     if (arbMatch) {
       const [, prop, value] = arbMatch;
       const num = value.endsWith("px") ? parsePx(value) : parseInt(value, 10);
+      const isPct = value.endsWith("%");
       if (prop === "min-h") style.minHeight = Number.isNaN(num) ? value : num;
       else if (prop === "max-h") style.maxHeight = Number.isNaN(num) ? value : num;
-      else if (prop === "min-w") style.minWidth = Number.isNaN(num) ? value : num;
-      else if (prop === "max-w") style.maxWidth = Number.isNaN(num) ? value : num;
-      else if (prop === "w") style.width = Number.isNaN(num) ? value : num;
-      else if (prop === "h") style.height = Number.isNaN(num) ? value : num;
+      else if (prop === "min-w") style.minWidth = isPct || Number.isNaN(num) ? value : num;
+      else if (prop === "max-w") style.maxWidth = isPct || Number.isNaN(num) ? value : num;
+      else if (prop === "w") style.width = isPct || Number.isNaN(num) ? value : num;
+      else if (prop === "h") style.height = isPct || Number.isNaN(num) ? value : num;
       continue;
     }
 
@@ -231,6 +232,11 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
     // Gap
     const gMatch = c.match(/^gap-(\d+(?:\.\d+)?)$/);
     if (gMatch) { style.gap = getSpace(gMatch[1]); continue; }
+
+    // Width — Tailwind rem-scale tokens (must run before numeric w-* which would treat w-80 as 80px)
+    if (c === "w-72") { style.width = 288; continue; }
+    if (c === "w-80") { style.width = 320; continue; }
+    if (c === "w-96") { style.width = 384; continue; }
 
     // Width / height (fixed)
     const whMatch = c.match(/^(w|h)-(\d+(?:\.\d+)?)$/);

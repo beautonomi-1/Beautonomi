@@ -17,7 +17,6 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
-import * as Linking from "expo-linking";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -25,6 +24,7 @@ import { useApi } from "@/hooks/useApi";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -128,13 +128,13 @@ export default function VerificationScreen() {
       }
       const baseUrl = getWebProviderBaseUrl().replace(/\/$/, "");
       const hash = `token=${encodeURIComponent(access_token)}${refresh_token ? `&refresh_token=${encodeURIComponent(refresh_token)}` : ""}`;
-      await Linking.openURL(`${baseUrl}/provider/verification/embed#${hash}`);
+      pushInAppBrowser(router, `${baseUrl}/provider/verification/embed#${hash}`, "Verification");
     } catch {
       Alert.alert("Error", "Could not start verification. Please use the manual upload below.");
     } finally {
       setLaunching(false);
     }
-  }, [env]);
+  }, [env, router]);
 
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {

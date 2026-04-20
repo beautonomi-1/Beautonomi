@@ -19,10 +19,14 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatPercentage } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import {
+  getReportDateRange,
+  formatReportRangeCaption,
+  type ReportDateRangeKey,
+} from "@/lib/reportDateRanges";
+import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
-type DateRange = "today" | "week" | "month" | "last_month" | "3months";
-
-const DATE_RANGES: { label: string; value: DateRange }[] = [
+const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
   { label: "This Week", value: "week" },
   { label: "This Month", value: "month" },
@@ -41,21 +45,6 @@ interface BookingsData {
   cancellation_reasons?: { reason: string; count: number }[];
 }
 
-function getDateParams(range: DateRange) {
-  const now = new Date();
-  const to = now.toISOString().split("T")[0];
-  let from = to;
-  if (range === "week") { const d = new Date(now); d.setDate(d.getDate() - 7); from = d.toISOString().split("T")[0]; }
-  else if (range === "month") { const d = new Date(now); d.setMonth(d.getMonth() - 1); from = d.toISOString().split("T")[0]; }
-  else if (range === "last_month") {
-    const d = new Date(now); d.setMonth(d.getMonth() - 1);
-    from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
-    return { from, to: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split("T")[0] };
-  }
-  else if (range === "3months") { const d = new Date(now); d.setMonth(d.getMonth() - 3); from = d.toISOString().split("T")[0]; }
-  return { from, to };
-}
-
 const STATUS_COLORS: Record<string, string> = {
   confirmed: "#22c55e",
   completed: "#3b82f6",
@@ -66,8 +55,9 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function BookingsReport() {
   const { selectedLocationId } = useProvider();
-  const [dateRange, setDateRange] = useState<DateRange>("month");
-  const { from, to } = getDateParams(dateRange);
+  const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
+  const { from, to } = getReportDateRange(dateRange);
+  const rangeCaption = formatReportRangeCaption(from, to);
   const bookingsReportUrl = `/api/provider/reports/bookings?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
   const { data, loading, error: dataError, refresh } = useApi<BookingsData>(bookingsReportUrl);
 
@@ -90,17 +80,20 @@ export default function BookingsReport() {
     <ScreenContainer>
       <ScreenHeader title="Bookings" showBack subtitle="Booking analytics & trends" />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4")} contentContainerStyle={{ flexDirection: "row" }}>
-        {DATE_RANGES.map((r) => (
-          <TouchableOpacity
-            key={r.value}
-            style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
-          >
-            <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={twStyle("mb-3")}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
+          {DATE_RANGES.map((r) => (
+            <TouchableOpacity
+              key={r.value}
+              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
+            >
+              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <Text style={twStyle("text-xs text-gray-500")}>{rangeCaption}</Text>
+      </View>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#3b82f6" />}
       {!loading && dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
@@ -108,27 +101,23 @@ export default function BookingsReport() {
 
       {data && (
         <View>
-          <View style={twStyle("flex-row")}>
-            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-              <StatCard title="Total Bookings" value={String(data.total_bookings)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
-            </View>
-            <View style={twStyle("flex-1")}>
-              <StatCard title="Completion Rate" value={formatPercentage(data.completion_rate)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-            </View>
-          </View>
+          <ReportResponsiveStatRow>
+            <StatCard title="Total Bookings" value={String(data.total_bookings)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
+            <StatCard title="Completion Rate" value={formatPercentage(data.completion_rate)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+          </ReportResponsiveStatRow>
 
-          <View style={[twStyle("flex-row"), { marginTop: 16 }]}>
-            {data.cancellation_count != null && (
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                <StatCard title="Cancellations" value={String(data.cancellation_count)} icon="close-circle-outline" iconColor="#ef4444" iconBg="bg-red-50" compact />
-              </View>
-            )}
-            {data.no_show_count != null && (
-              <View style={twStyle("flex-1")}>
-                <StatCard title="No Shows" value={String(data.no_show_count)} icon="eye-off-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
-              </View>
-            )}
-          </View>
+          {(data.cancellation_count != null || data.no_show_count != null) && (
+            <View style={twStyle("mt-3")}>
+              <ReportResponsiveStatRow>
+                {data.cancellation_count != null ? (
+                  <StatCard title="Cancellations" value={String(data.cancellation_count)} icon="close-circle-outline" iconColor="#ef4444" iconBg="bg-red-50" compact />
+                ) : null}
+                {data.no_show_count != null ? (
+                  <StatCard title="No Shows" value={String(data.no_show_count)} icon="eye-off-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+                ) : null}
+              </ReportResponsiveStatRow>
+            </View>
+          )}
 
           {data.by_status.length > 0 && (
             <View>

@@ -29,6 +29,10 @@ export async function getGuestFingerprintHash(): Promise<string | null> {
     cachedFp = fp;
     return fp;
   } catch {
-    return null;
+    // Still return a stable in-memory id so hold create + consume match in this app session
+    // (server rejects mismatch when a fingerprint is stored on the hold but the client sends null).
+    const fallback = generateUUID();
+    cachedFp = fallback;
+    return fallback;
   }
 }

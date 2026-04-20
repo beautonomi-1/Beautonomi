@@ -1,21 +1,41 @@
 import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 /** True after init when DSN exists and SDK is enabled (preview/prod, or dev with EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV). */
 let sentryRecording = false;
 
+function getExpoExtra(): Record<string, string | undefined> {
+  return (Constants.expoConfig?.extra ?? {}) as Record<string, string | undefined>;
+}
+
 /** DSN for mobile-customer project (from .env.local → app.config.js extra or process.env). */
 function getSentryDsn(): string {
-  const fromExtra = (Constants.expoConfig?.extra as Record<string, string> | undefined)
-    ?.EXPO_PUBLIC_SENTRY_DSN;
+  const fromExtra = getExpoExtra().EXPO_PUBLIC_SENTRY_DSN;
   return fromExtra ?? process.env.EXPO_PUBLIC_SENTRY_DSN ?? "";
 }
 
 function sentryEnableInDev(): boolean {
-  return (
-    process.env.EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV === "1" ||
-    process.env.EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV === "true"
-  );
+  const v =
+    getExpoExtra().EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV ??
+    process.env.EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV;
+  return v === "1" || v === "true";
+}
+
+/** Release + dist help Sentry group events and match source maps (EAS builds). */
+function getSentryReleaseAndDist(): { release?: string; dist?: string } {
+  const cfg = Constants.expoConfig;
+  if (!cfg) return {};
+  const slug = cfg.slug ?? "customer";
+  const version = cfg.version ?? "0.0.0";
+  const release = `${slug}@${version}`;
+  const dist =
+    Platform.OS === "ios"
+      ? (cfg.ios as { buildNumber?: string } | undefined)?.buildNumber
+      : (cfg.android as { versionCode?: number } | undefined)?.versionCode != null
+        ? String((cfg.android as { versionCode: number }).versionCode)
+        : undefined;
+  return { release, ...(dist ? { dist } : {}) };
 }
 
 /**
@@ -30,11 +50,14 @@ export function initSentry() {
     return;
   }
   const enabled = !__DEV__ || sentryEnableInDev();
+  const { release, dist } = getSentryReleaseAndDist();
   Sentry.init({
     dsn,
     enabled,
     tracesSampleRate: 0.2,
     environment: __DEV__ ? "development" : "production",
+    ...(release ? { release } : {}),
+    ...(dist ? { dist } : {}),
     beforeSend(event) {
       if (event.user) {
         delete event.user.ip_address;

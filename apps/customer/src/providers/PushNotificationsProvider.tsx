@@ -169,12 +169,24 @@ function usePushRegistration() {
   const oneSignalInitKeyRef = useRef<string | null>(null);
   const [appId, setAppId] = useState<string | null>(null);
 
+  // §Customer-audit 2026-04: reset registration guard whenever the
+  // authenticated user id changes, not just on sign-out. Previously if
+  // the Supabase session flipped from user A to user B without an
+  // explicit sign-out (token refresh edge cases, biometric re-auth into
+  // a different account), `registeredRef.current` stayed `true` from
+  // user A's original register call and `/api/me/devices` never got
+  // called for user B — so user B's player id was still linked to user
+  // A's server-side row and push notifications routed to the wrong
+  // account.
+  const lastUserIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!user) {
+    const nextUserId = user?.id ?? null;
+    if (nextUserId !== lastUserIdRef.current) {
       registeredRef.current = false;
       oneSignalInitKeyRef.current = null;
+      lastUserIdRef.current = nextUserId;
     }
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (Platform.OS === "web" || !user) return;

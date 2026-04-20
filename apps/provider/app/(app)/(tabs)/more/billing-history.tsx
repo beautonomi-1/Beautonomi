@@ -6,8 +6,9 @@ import {
   ScrollView,
   RefreshControl,
 } from "react-native";
-import * as Linking from "expo-linking";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -35,6 +36,7 @@ function formatDateSafe(value: unknown): string {
 
 /** Content-only for use in Settings hub tab. */
 export function BillingHistoryContent() {
+  const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<BillingItem[]>(
@@ -53,7 +55,7 @@ export function BillingHistoryContent() {
   const openInvoice = (item: BillingItem) => {
     const url = item.invoice_url?.trim();
     if (!url) return;
-    Linking.openURL(url);
+    pushInAppBrowser(router, url, "Invoice");
   };
 
   if (loading && !data) {

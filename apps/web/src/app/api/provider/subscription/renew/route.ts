@@ -156,7 +156,11 @@ export async function POST(request: NextRequest) {
       .update({ paystack_reference: reference, updated_at: new Date().toISOString() })
       .eq("id", order.id);
 
-    return successResponse({ order_id: order.id, payment_url: paymentUrl });
+    return successResponse({
+      order_id: order.id,
+      payment_url: paymentUrl,
+      authorization_url: paymentUrl,
+    });
   } catch (error) {
     return handleApiError(error, 'Failed to renew subscription');
   }

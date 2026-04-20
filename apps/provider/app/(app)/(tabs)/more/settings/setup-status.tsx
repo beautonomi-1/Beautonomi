@@ -21,7 +21,7 @@ const WEB_PATH_TO_NATIVE: Record<string, string> = {
   "/provider/settings/locations": "/(app)/(tabs)/more/locations",
   "/provider/settings/gallery": "/(app)/(tabs)/more/gallery",
   "/provider/settings/operating-hours":
-    "/(app)/(tabs)/more/settings-operating-hours",
+    "/(app)/(tabs)/more/settings/hours",
   "/provider/settings/verification":
     "/(app)/(tabs)/more/settings/verification",
   "/provider/settings/sales/yoco-integration":

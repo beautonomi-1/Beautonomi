@@ -8,8 +8,9 @@ import {
   Alert,
   TextInput,
   Switch,
-  Linking,
 } from "react-native";
+import type { Router } from "expo-router";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -23,22 +24,19 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { Colors } from "@/constants/colors";
-import { APP_URL } from "@/config/public-env";
+import { getWebProviderBaseUrl } from "@/lib/web-url";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 
-function providerSubscriptionUrl(): string {
-  const base = (APP_URL || "").replace(/\/$/, "");
-  if (!base) return "/provider/subscription";
-  return `${base}/provider/subscription`;
-}
-
-function alertApiError(title: string, message: string, errorCode: string | null) {
-  if (errorCode === "SUBSCRIPTION_REQUIRED") {
+function alertApiError(title: string, message: string, errorCode: string | null, router: Router | null) {
+  if (errorCode === "SUBSCRIPTION_REQUIRED" && router) {
+    const base = getWebProviderBaseUrl().replace(/\/$/, "");
+    const url = `${base}/provider/subscription`;
     Alert.alert(title, message, [
       { text: "OK", style: "cancel" },
       {
         text: "View plans & billing",
         onPress: () => {
-          void Linking.openURL(providerSubscriptionUrl());
+          pushInAppBrowser(router, url, "Subscription");
         },
       },
     ]);
@@ -178,6 +176,7 @@ function timeToHhMmSs(hhmm: string): string {
 }
 
 export default function RecurringAppointmentsScreen() {
+  const router = useRouter();
   const { selectedLocationId } = useProvider();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
@@ -229,9 +228,38 @@ export default function RecurringAppointmentsScreen() {
 
   const saveScheduleEdits = useCallback(async () => {
     if (!viewItem) return;
-    if (!editNoEnd && !editEnd.trim()) {
-      Alert.alert("End date", 'Choose an end date or turn on "No end date".');
+    // §Provider-audit 2026-04 (round 7): previously the edit sheet passed
+    // whatever the user typed straight to the server. The PATCH route only
+    // validates shape (HH:MM:SS and a date-parseable end_date), so "99:99"
+    // silently became the stored preferred_time and a malformed end date
+    // returned an opaque 400. Validate on the client so the error message
+    // points at the exact field.
+    const hhmm = editTime.trim();
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm)) {
+      Alert.alert("Invalid time", "Enter a time as HH:MM (e.g. 14:30), 24-hour clock.");
       return;
+    }
+    if (!editNoEnd) {
+      const endTrim = editEnd.trim();
+      if (!endTrim) {
+        Alert.alert("End date", 'Choose an end date or turn on "No end date".');
+        return;
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(endTrim)) {
+        Alert.alert("Invalid end date", "Enter as YYYY-MM-DD (e.g. 2026-12-31).");
+        return;
+      }
+      const parsed = new Date(`${endTrim}T00:00:00Z`);
+      if (!Number.isFinite(parsed.getTime())) {
+        Alert.alert("Invalid end date", "That date is not valid.");
+        return;
+      }
+      // end must not be before start_date
+      const startStr = String(viewItem.start_date || "").slice(0, 10);
+      if (startStr && endTrim < startStr) {
+        Alert.alert("End before start", "The end date cannot be before the series start date.");
+        return;
+      }
     }
     setSavingEdit(true);
     const body: Record<string, unknown> = {
@@ -248,7 +276,7 @@ export default function RecurringAppointmentsScreen() {
     );
     setSavingEdit(false);
     if (err) {
-      alertApiError("Could not save", err, patchCode);
+      alertApiError("Could not save", err, patchCode, router);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setViewItem(null);
@@ -265,7 +293,7 @@ export default function RecurringAppointmentsScreen() {
         { is_active: newActive }
       );
       if (err) {
-        alertApiError("Could not update", err, patchCode);
+        alertApiError("Could not update", err, patchCode, router);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setViewItem(null);
@@ -292,7 +320,7 @@ export default function RecurringAppointmentsScreen() {
                 {}
               );
               if (err) {
-                alertApiError("Could not delete", err, delCode);
+                alertApiError("Could not delete", err, delCode, router);
               } else {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 setViewItem(null);
@@ -332,7 +360,13 @@ export default function RecurringAppointmentsScreen() {
           />
           {isSub && errorCode === "SUBSCRIPTION_REQUIRED" && (
             <TouchableOpacity
-              onPress={() => void Linking.openURL(providerSubscriptionUrl())}
+              onPress={() =>
+                pushInAppBrowser(
+                  router,
+                  `${getWebProviderBaseUrl().replace(/\/$/, "")}/provider/subscription`,
+                  "Subscription",
+                )
+              }
               style={{
                 marginTop: 20,
                 alignSelf: "center",

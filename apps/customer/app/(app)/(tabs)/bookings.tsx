@@ -304,6 +304,7 @@ export default function BookingsScreen() {
       ) : (
         <FlashList
           data={bookings}
+          extraData={tab}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
           contentContainerStyle={{

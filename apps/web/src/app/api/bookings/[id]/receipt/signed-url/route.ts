@@ -20,7 +20,11 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { mintReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
+import {
+  hasReceiptDownloadSigningSecret,
+  mintReceiptDownloadToken,
+  resolveReceiptDownloadOrigin,
+} from "@/lib/receipts/receipt-download-token";
 
 export async function POST(
   request: NextRequest,
@@ -74,6 +78,26 @@ export async function POST(
       return errorResponse("Forbidden", "FORBIDDEN", 403);
     }
 
+    if (!hasReceiptDownloadSigningSecret()) {
+      console.error(
+        "Receipt signed-url: set RECEIPT_DOWNLOAD_TOKEN_SECRET or RETENTION_LINK_SECRET (see apps/web/.env.example).",
+      );
+      return errorResponse(
+        "Receipt download is not available right now. Please try again later.",
+        "CONFIG_ERROR",
+        500,
+      );
+    }
+
+    const origin = resolveReceiptDownloadOrigin();
+    if (!origin) {
+      return errorResponse(
+        "App URL is not configured for receipt links. Set NEXT_PUBLIC_APP_URL (or deploy on Vercel with VERCEL_URL).",
+        "CONFIG_ERROR",
+        500,
+      );
+    }
+
     const ttlSeconds = 5 * 60;
     const token = mintReceiptDownloadToken({
       kind: "customer_booking_receipt",
@@ -81,15 +105,6 @@ export async function POST(
       userId: user.id,
       ttlSeconds,
     });
-
-    const origin = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-    if (!origin) {
-      return errorResponse(
-        "NEXT_PUBLIC_APP_URL is not configured",
-        "CONFIG_ERROR",
-        500,
-      );
-    }
 
     const url = `${origin}/api/bookings/${encodeURIComponent(id)}/receipt/pdf?token=${encodeURIComponent(token)}`;
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();

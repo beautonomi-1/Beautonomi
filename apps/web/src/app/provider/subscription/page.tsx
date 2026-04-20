@@ -20,7 +20,9 @@ interface SubscriptionPlan {
   name: string;
   /** Short pitch — same source as public /pricing cards when linked in CMS */
   description?: string | null;
-  price: number;
+  price?: number;
+  /** Present on `/api/provider/subscription/plans` (alias of price for paid options) */
+  amount?: number;
   currency: string;
   billing_period: "monthly" | "yearly";
   /** Marketing bullets (from `pricing_plan_features`, same as /pricing) */
@@ -51,15 +53,26 @@ interface ProviderSubscription {
   };
 }
 
+function planDisplayPrice(plan: SubscriptionPlan): number {
+  const n = plan.price ?? plan.amount ?? 0;
+  return Number(n);
+}
+
 function formatPlanPriceMain(plan: SubscriptionPlan): string {
-  if (plan.is_free || plan.price === 0) return "Free";
-  if (plan.currency === "ZAR") return `R${plan.price}`;
-  return `${plan.currency} ${plan.price}`;
+  const p = planDisplayPrice(plan);
+  if (plan.is_free || p === 0) return "Free";
+  if (plan.currency === "ZAR") return `R${p}`;
+  return `${plan.currency} ${p}`;
 }
 
 function formatPlanPricePeriod(plan: SubscriptionPlan): string {
-  if (plan.is_free || plan.price === 0) return "";
+  if (plan.is_free || planDisplayPrice(plan) === 0) return "";
   return plan.billing_period === "monthly" ? "/month" : "/year";
+}
+
+function isInProviderAppWebView(): boolean {
+  if (typeof window === "undefined") return false;
+  return Boolean((window as Window & { ReactNativeWebView?: unknown }).ReactNativeWebView);
 }
 
 export default function SubscriptionPage() {
@@ -106,12 +119,13 @@ export default function SubscriptionPage() {
 
       const [subscriptionRes, plansRes] = await Promise.all([
         fetcher.get<{ data: ProviderSubscription | null }>("/api/provider/subscription"),
-        fetcher.get<{ data: SubscriptionPlan[] }>("/api/public/subscription-plans"),
+        /** Same source as the provider app: tenant-aware options + Paystack-backed plan rows */
+        fetcher.get<{ data: SubscriptionPlan[] }>("/api/provider/subscription/plans"),
       ]);
 
       const sub = (subscriptionRes as any)?.data ?? null;
       setSubscription(sub);
-      const rawPlans = (plansRes as any)?.data ?? [];
+      const rawPlans = (plansRes as { data?: SubscriptionPlan[] })?.data ?? [];
       setPlans(Array.isArray(rawPlans) ? rawPlans : []);
     } catch (err) {
       const errorMessage =
@@ -166,17 +180,24 @@ export default function SubscriptionPage() {
       // If payment authorization is required
       if (data.requires_payment || data.payment_url) {
         // Initialize payment to get authorization
-        const paymentRes = await fetcher.post<{ 
-          data: { 
+        const paymentRes = await fetcher.post<{
+          data: {
             payment_url: string | null;
+            authorization_url?: string | null;
             order_id: string;
-          } 
+          };
         }>(
           "/api/provider/subscription/initialize-payment",
-          { plan_id: plan.plan_id, billing_period: plan.billing_period }
+          {
+            plan_id: plan.plan_id,
+            billing_period: plan.billing_period,
+            ...(isInProviderAppWebView() ? { in_app: true } : {}),
+          }
         );
 
-        const paymentUrl = (paymentRes as any).data?.payment_url;
+        const pay = (paymentRes as { data?: { payment_url?: string | null; authorization_url?: string | null } })
+          .data;
+        const paymentUrl = pay?.authorization_url ?? pay?.payment_url;
         if (paymentUrl) {
           window.location.href = paymentUrl;
           return;
@@ -215,10 +236,16 @@ export default function SubscriptionPage() {
 
   const handleRenew = async () => {
     try {
-      const res = await fetcher.post<{ data: { payment_url: string | null } }>(
-        "/api/provider/subscription/renew"
-      );
-      const url = (res as any).data?.payment_url;
+      const res = await fetcher.post<{
+        data: { payment_url?: string | null; is_free?: boolean; message?: string };
+      }>("/api/provider/subscription/renew", isInProviderAppWebView() ? { in_app: true } : {});
+      const d = (res as { data?: { payment_url?: string | null; is_free?: boolean; message?: string } }).data;
+      if (d?.is_free) {
+        toast.success(d.message ?? "Plan renewed.");
+        await loadData();
+        return;
+      }
+      const url = d?.payment_url;
       if (url) {
         window.location.href = url;
         return;

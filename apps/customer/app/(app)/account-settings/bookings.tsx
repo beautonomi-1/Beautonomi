@@ -34,15 +34,23 @@ export default function AccountBookingsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Ignore late responses when switching Upcoming / Past / Cancelled quickly. */
+  const requestGeneration = useRef(0);
 
   const load = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+    const gen = ++requestGeneration.current;
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setBookings([]);
+    }
     setError(null);
     try {
       const res = await api.get<any>(
         `/api/me/bookings?status=${encodeURIComponent(tab)}&limit=100&page=1`
       );
+      if (gen !== requestGeneration.current) return;
       if (res.error) {
         setError(res.error.message || "Failed to load");
         setBookings([]);
@@ -54,11 +62,14 @@ export default function AccountBookingsScreen() {
         setBookings(Array.isArray(list) ? list : []);
       }
     } catch (e) {
+      if (gen !== requestGeneration.current) return;
       setError(e instanceof Error ? e.message : "Failed");
       setBookings([]);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (gen === requestGeneration.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [tab]);
 

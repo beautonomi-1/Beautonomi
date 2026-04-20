@@ -40,6 +40,8 @@ export async function GET(request: NextRequest) {
       pricing_model: travelFees.pricing_model ?? "per_km",
       default_tiers: travelFees.default_tiers ?? null,
       allow_provider_tiered: travelFees.allow_provider_tiered !== false,
+      default_free_within_km:
+        travelFees.default_free_within_km != null ? Number(travelFees.default_free_within_km) : 0,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch travel fee limits");

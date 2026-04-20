@@ -48,6 +48,7 @@ interface FinanceTransaction {
   id: string;
   booking_id: string | null;
   transaction_type: string;
+  /** API: booking | payout | refund | platform_fee (booking = provider earnings & similar credits) */
   type: string;
   date: string;
   amount: number;
@@ -94,7 +95,8 @@ function formatType(type: string): string {
     gift_card_sale: "Gift card",
     walk_in_additional_charge: "Walk-in add-on",
     payout: "Payout",
-    service_fee: "Service fee",
+    /** Ledger name for customer-paid Beautonomi fee on bookings (not provider revenue). */
+    service_fee: "Platform fee",
     platform_fee: "Platform fee",
     tax: "Tax",
     additional_charge: "Additional charge",
@@ -109,6 +111,14 @@ function formatType(type: string): string {
     product_refund: "Product refund",
   };
   return map[type] || type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function isPlatformRetainedFee(tx: FinanceTransaction): boolean {
+  return (
+    tx.transaction_type === "service_fee" ||
+    tx.transaction_type === "platform_fee" ||
+    tx.type === "platform_fee"
+  );
 }
 
 const RANGE_OPTIONS: { value: "week" | "month" | "year"; label: string }[] = [
@@ -312,7 +322,14 @@ export function FinanceOverviewContent() {
           </View>
         ) : (
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
-            {transactions.map((tx) => (
+            {transactions.map((tx) => {
+              const platformFee = isPlatformRetainedFee(tx);
+              const amountClass = platformFee
+                ? "text-amber-700"
+                : tx.net >= 0
+                  ? "text-green-600"
+                  : "text-red-600";
+              return (
               <View
                 key={tx.id}
                 style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3 last:border-b-0")}
@@ -323,16 +340,15 @@ export function FinanceOverviewContent() {
                   </Text>
                   <Text style={twStyle("text-xs text-gray-500")}>
                     {formatDateTimeSafe(tx.date)}
+                    {platformFee ? " · Retained by platform" : ""}
                   </Text>
                 </View>
-                <Text
-                  style={twStyle(`text-sm font-semibold ${tx.net >= 0 ? "text-green-600" : "text-red-600"}`)}
-                >
-                  {tx.net >= 0 ? "" : "−"}
+                <Text style={twStyle(`text-sm font-semibold ${amountClass}`)}>
+                  {platformFee || tx.net < 0 ? "−" : ""}
                   {formatCurrency(Math.abs(tx.net), tx.currency || currency)}
                 </Text>
               </View>
-            ))}
+            );})}
           </View>
         )}
 

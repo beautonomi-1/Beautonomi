@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { verifyCurrentPasswordForUser } from "@/lib/auth/verify-current-password";
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (!authUser) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
     const body = await request.json();
 
     const { password, reason } = body;
@@ -17,13 +25,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify password by attempting to sign in
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: user.email!,
-      password: password,
-    });
+    const passwordOk = await verifyCurrentPasswordForUser(supabase, authUser, password);
 
-    if (signInError) {
+    if (!passwordOk) {
       return NextResponse.json(
         { error: "Password is incorrect" },
         { status: 401 }
@@ -39,7 +43,7 @@ export async function POST(request: NextRequest) {
         deactivation_reason: reason || null,
         deactivated_by: 'user',
       })
-      .eq('id', user.id);
+      .eq('id', authUser.id);
 
     if (updateError) {
       throw updateError;

@@ -10,6 +10,8 @@ This document tracks alignment between the provider **mobile app** More menu, th
 
 **Quick reference:** Finance & billing → `finance-billing-hub` (Earnings, Payroll, Invoices, Payouts, Billing history, Gift cards). External checkout/compliance/document URLs (subscription payment, invoice docs, verification links) open in the **device browser**. Native screens are used for all core workflows.
 
+**Legacy route aliases (redirects):** These file routes are kept so bookmarks and old links keep working; each redirects to the canonical screen: `catalogue-offerings-hub` → `more/catalogue`; `catalogue-overview` → `more/catalogue`; `finance-hub` → `more/finance`; `bookings-calendar-hub` → `more/bookings`; `team-hub` → `more/team`. The More tab slug fallback (`more/[slug]`) maps `catalogue-offerings-hub` and `finance-hub` the same way.
+
 ---
 
 ## 1. Route → Screen existence
@@ -30,6 +32,7 @@ This document tracks alignment between the provider **mobile app** More menu, th
 | Time Blocks | `more/time-blocks` | ✅ | `/provider/time-blocks` |
 | Days Off | `more/days-off` | ✅ | `/provider/team/days-off` |
 | **E-Commerce & Products** | | | |
+| Products & e-commerce (hub) | `more/products-ecommerce-hub` | ✅ (overview → products hub, orders hub) | (e-commerce overview) |
 | Products & Inventory | `more/products` | ✅ | `/provider/ecommerce/products`, `/provider/catalogue/products` |
 | Suppliers | `more/suppliers` | ✅ | (ecommerce/suppliers) |
 | Inventory Manager | `more/inventory` | ✅ (via products-hub) | `/provider/reports/products/inventory` |
@@ -127,7 +130,7 @@ This document tracks alignment between the provider **mobile app** More menu, th
 - **Error handling:** If the API fails (e.g. 404 for no provider), a non-blocking message “Couldn’t load profile status” is shown with a “Try again” button that refetches. Card is hidden when there is no data.
 - **i18n:** Card title, subtitle, and error message use `provider.profileCompletionTitle`, `provider.profileCompletionSubtitle`, `provider.profileCompletionLoadError`; retry uses `common.retry` (all locales: en, af, zu, st).
 - **Mandatory for completion (required: true in API):** Business name, business description, logo/photo, phone & email, at least one location, first service, operating hours. **Optional:** Portfolio photos (gallery).
-- **Route map (dedicated screens):** API routes are mapped so the card deep-links to: `more/settings/business` → `more/settings/business`; `more/settings/locations` → `more/locations`; `more/settings/hours` → `more/settings-operating-hours`; `more/catalogue` → `more/catalogue-offerings-hub`; `more/gallery` → `more/gallery`. **Business details** (`more/settings/business`), **Locations** (`more/locations` + `locations/add`, `locations/[id]`), and **Operating hours** (`more/settings-operating-hours`) are full screens with real APIs and UI: GET/PATCH `/api/provider/settings/business`; GET/POST `/api/provider/locations`, GET/PATCH/DELETE `/api/provider/locations/[id]`; GET/PATCH `/api/provider/settings/operating-hours`.
+- **Route map (dedicated screens):** `GET /api/provider/profile-completion` returns native paths (e.g. first service → `more/catalogue`). The More screen maps a few API paths for clarity: `more/settings/locations` → `more/locations`; `more/settings/hours` → `more/settings-operating-hours`. **Catalogue** is always `more/catalogue` (full services/products/packages entry; legacy `catalogue-offerings-hub` / `catalogue-overview` redirect there). **Business details** (`more/settings/business`), **Locations** (`more/locations` + `locations/add`, `locations/[id]`), and **Operating hours** (`more/settings/hours` or `more/settings-operating-hours`) use GET/PATCH `/api/provider/settings/business`; GET/POST `/api/provider/locations`, GET/PATCH/DELETE `/api/provider/locations/[id]`; GET/PATCH `/api/provider/settings/operating-hours`. **Gallery:** `more/gallery`.
 
 ---
 

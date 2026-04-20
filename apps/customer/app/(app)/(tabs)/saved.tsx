@@ -1,9 +1,10 @@
 import { useAuth } from "@/providers/AuthProvider";
-import { View, Text, StyleSheet } from "react-native";
-import { ScreenFrame } from "@/components/ScreenFrame";
+import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { SavedTabContent } from "@/components/SavedTabContent";
+import { Colors } from "@/constants/colors";
 
 /**
  * Saved tab: saved posts + providers + products (unified with wishlists).
@@ -11,29 +12,46 @@ import { SavedTabContent } from "@/components/SavedTabContent";
  */
 export default function SavedScreen() {
   const { user, loading } = useAuth();
-  const { contentPadding } = useResponsive();
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
+
+  const tabletConstraint = isTablet
+    ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
+    : {};
 
   if (loading) {
     return (
-      <ScreenFrame paddingBottom={tabScrollPaddingBottom}>
-        <View style={[styles.center, { paddingHorizontal: contentPadding }]}>
-          <Text style={styles.loading}>Loading...</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
+        <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
+        <View style={[tabletConstraint, { flex: 1, backgroundColor: Colors.white, paddingBottom: tabScrollPaddingBottom }]}>
+          <View style={{ paddingHorizontal: contentPadding, paddingTop: contentPadding, paddingBottom: 8 }}>
+            <Text style={styles.screenTitle}>Saved</Text>
+          </View>
+          <View style={[styles.center, { paddingHorizontal: contentPadding, flex: 1 }]}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loading}>Loading...</Text>
+          </View>
         </View>
-      </ScreenFrame>
+      </View>
     );
   }
 
   if (!user) {
     return (
-      <ScreenFrame paddingBottom={tabScrollPaddingBottom}>
-        <View style={[styles.center, { paddingHorizontal: contentPadding }]}>
-          <Text style={styles.emptyTitle}>Saved</Text>
-          <Text style={styles.emptySubtitle}>
-            Sign in to see your saved providers, products and posts
-          </Text>
+      <View style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
+        <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
+        <View style={[tabletConstraint, { flex: 1, backgroundColor: Colors.white, paddingBottom: tabScrollPaddingBottom }]}>
+          <View style={{ paddingHorizontal: contentPadding, paddingTop: contentPadding, paddingBottom: 8 }}>
+            <Text style={styles.screenTitle}>Saved</Text>
+          </View>
+          <View style={[styles.center, { paddingHorizontal: contentPadding, flex: 1 }]}>
+            <Text style={styles.emptyTitle}>Nothing saved yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Sign in to see your saved providers, products and posts
+            </Text>
+          </View>
         </View>
-      </ScreenFrame>
+      </View>
     );
   }
 
@@ -46,6 +64,11 @@ export default function SavedScreen() {
 }
 
 const styles = StyleSheet.create({
+  screenTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: Colors.gray[900],
+  },
   center: {
     flex: 1,
     justifyContent: "center",
@@ -53,17 +76,19 @@ const styles = StyleSheet.create({
   },
   loading: {
     fontSize: 16,
-    color: "#6b7280",
+    color: Colors.gray[600],
+    marginTop: 12,
   },
   emptyTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#111827",
+    color: Colors.gray[900],
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: "#6b7280",
+    color: Colors.gray[600],
     textAlign: "center",
+    maxWidth: 320,
   },
 });

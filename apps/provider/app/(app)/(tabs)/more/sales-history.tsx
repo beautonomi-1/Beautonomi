@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -20,6 +20,8 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { getReportDateRange, formatReportRangeCaption, type ReportDateRangeKey } from "@/lib/reportDateRanges";
+import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
 interface SaleItem {
   id: string;
@@ -60,16 +62,9 @@ const DATE_FILTERS = [
 ];
 
 function getDateRange(filter: string): { from?: string; to?: string } {
-  const now = new Date();
-  const today = now.toISOString().split("T")[0];
-  if (filter === "today") return { from: today, to: today };
-  if (filter === "week") {
-    const weekAgo = new Date(now.getTime() - 7 * 86400000);
-    return { from: weekAgo.toISOString().split("T")[0], to: today };
-  }
-  if (filter === "month") {
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { from: monthStart.toISOString().split("T")[0], to: today };
+  if (filter === "all") return {};
+  if (filter === "today" || filter === "week" || filter === "month") {
+    return getReportDateRange(filter as ReportDateRangeKey);
   }
   return {};
 }
@@ -84,20 +79,41 @@ export default function SalesHistoryScreen() {
   useResponsive();
   const { selectedLocationId } = useProvider();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [page, setPage] = useState(1);
 
+  // §Provider-audit 2026-04 (round 6): debounce search so each keystroke
+  // doesn't spawn a `/api/provider/sales` fetch (and cancel the previous).
+  useEffect(() => {
+    const trimmed = search.trim();
+    const timer = setTimeout(() => setDebouncedSearch(trimmed), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // §Provider-audit 2026-04 (round 6): reset to page 1 whenever the
+  // filter set changes. Previously, changing the date filter while on
+  // page 3 would request page 3 of the new result set — often empty —
+  // and show the empty state even though page 1 had data.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, dateFilter, selectedLocationId]);
+
   const dateRange = useMemo(() => getDateRange(dateFilter), [dateFilter]);
+  const dateRangeCaption = useMemo(() => {
+    if (!dateRange.from || !dateRange.to) return null;
+    return formatReportRangeCaption(dateRange.from, dateRange.to);
+  }, [dateRange.from, dateRange.to]);
   const params = useMemo(() => {
     const parts: string[] = [`page=${page}`, "limit=25"];
-    if (search.trim()) parts.push(`search=${encodeURIComponent(search.trim())}`);
+    if (debouncedSearch) parts.push(`search=${encodeURIComponent(debouncedSearch)}`);
     if (dateRange.from) parts.push(`date_from=${dateRange.from}`);
     if (dateRange.to) parts.push(`date_to=${dateRange.to}`);
     if (selectedLocationId) parts.push(`location_id=${selectedLocationId}`);
     return parts.join("&");
-  }, [page, search, dateRange, selectedLocationId]);
+  }, [page, debouncedSearch, dateRange, selectedLocationId]);
 
   const { data: salesData, loading, error: salesError, refresh } = useApi<SalesResponse>(
     `/api/provider/sales?${params}`
@@ -128,8 +144,8 @@ export default function SalesHistoryScreen() {
       />
 
       {/* Stats row */}
-      <View style={twStyle("mb-4 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+      <View style={twStyle("mb-4")}>
+        <ReportResponsiveStatRow>
           <StatCard
             title="Total Sales"
             value={String(stats.count)}
@@ -138,8 +154,6 @@ export default function SalesHistoryScreen() {
             iconBg="bg-indigo-50"
             compact
           />
-        </View>
-        <View style={twStyle("flex-1")}>
           <StatCard
             title="Revenue"
             value={formatCurrency(stats.revenue)}
@@ -148,13 +162,16 @@ export default function SalesHistoryScreen() {
             iconBg="bg-green-50"
             compact
           />
-        </View>
+        </ReportResponsiveStatRow>
       </View>
 
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search by ref or client..." />
 
       <View style={twStyle("my-3")}>
         <FilterChipGroup options={DATE_FILTERS} selected={dateFilter} onSelect={setDateFilter} />
+        {dateRangeCaption ? (
+          <Text style={twStyle("mt-2 text-xs text-gray-500")}>{dateRangeCaption}</Text>
+        ) : null}
       </View>
 
       {loading && !sales.length && !salesError ? (
@@ -176,10 +193,6 @@ export default function SalesHistoryScreen() {
           onRefresh={handleRefresh}
           contentContainerStyle={{ paddingBottom: 120 }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          onEndReached={() => {
-            if (salesData && page < salesData.total_pages) setPage((p) => p + 1);
-          }}
-          onEndReachedThreshold={0.3}
           renderItem={({ item: sale }: { item: Sale }) => (
             <TouchableOpacity
               style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}

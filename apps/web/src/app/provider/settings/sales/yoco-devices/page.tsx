@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
-import type { YocoDevice } from "@/lib/provider-portal/types";
+import type { Salon, YocoDevice } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -35,27 +35,31 @@ import EmptyState from "@/components/ui/empty-state";
 
 export default function YocoDevicesPage() {
   const [devices, setDevices] = useState<YocoDevice[]>([]);
+  const [salons, setSalons] = useState<Salon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<YocoDevice | null>(null);
   const [formData, setFormData] = useState({
     name: "",
-    device_id: "",
     location_id: "",
     is_active: true,
   });
 
   useEffect(() => {
-    loadDevices();
+    loadPageData();
   }, []);
 
-  const loadDevices = async () => {
+  const loadPageData = async () => {
     try {
       setIsLoading(true);
-      const data = await providerApi.listYocoDevices();
-      setDevices(data);
+      const [deviceData, salonData] = await Promise.all([
+        providerApi.listYocoDevices(),
+        providerApi.getSalons(),
+      ]);
+      setDevices(deviceData);
+      setSalons(salonData);
     } catch (error) {
-      console.error("Failed to load devices:", error);
+      console.error("Failed to load devices or locations:", error);
       toast.error("Failed to load devices");
     } finally {
       setIsLoading(false);
@@ -66,7 +70,6 @@ export default function YocoDevicesPage() {
     setEditingDevice(null);
     setFormData({
       name: "",
-      device_id: "",
       location_id: "",
       is_active: true,
     });
@@ -77,7 +80,6 @@ export default function YocoDevicesPage() {
     setEditingDevice(device);
     setFormData({
       name: device.name,
-      device_id: device.device_id,
       location_id: device.location_id || "",
       is_active: device.is_active,
     });
@@ -85,16 +87,30 @@ export default function YocoDevicesPage() {
   };
 
   const handleSave = async () => {
+    const name = formData.name.trim();
+    if (!name) {
+      toast.error("Device name is required");
+      return;
+    }
+    const locationId: string | null = formData.location_id ? formData.location_id : null;
     try {
       if (editingDevice) {
-        await providerApi.updateYocoDevice(editingDevice.id, formData);
+        await providerApi.updateYocoDevice(editingDevice.id, {
+          name,
+          location_id: locationId,
+          is_active: formData.is_active,
+        });
         toast.success("Device updated successfully");
       } else {
-        await providerApi.createYocoDevice(formData);
+        await providerApi.createYocoDevice({
+          name,
+          location_id: locationId,
+          is_active: formData.is_active,
+        });
         toast.success("Device added successfully");
       }
       setIsDialogOpen(false);
-      loadDevices();
+      loadPageData();
     } catch (error) {
       console.error("Failed to save device:", error);
       toast.error("Failed to save device");
@@ -105,7 +121,7 @@ export default function YocoDevicesPage() {
     try {
       await providerApi.updateYocoDevice(device.id, { is_active: !device.is_active });
       toast.success(`Device ${!device.is_active ? "activated" : "deactivated"}`);
-      loadDevices();
+      loadPageData();
     } catch (error) {
       console.error("Failed to update device:", error);
       toast.error("Failed to update device");
@@ -118,7 +134,7 @@ export default function YocoDevicesPage() {
     try {
       await providerApi.deleteYocoDevice(device.id);
       toast.success("Device deleted successfully");
-      loadDevices();
+      loadPageData();
     } catch (error) {
       console.error("Failed to delete device:", error);
       toast.error("Failed to delete device");
@@ -156,52 +172,59 @@ export default function YocoDevicesPage() {
                   {editingDevice ? "Edit Device" : "Add New Device"}
                 </DialogTitle>
                 <DialogDescription>
-                  Connect a Yoco Web POS device to accept card payments
+                  {editingDevice
+                    ? "Update this Web POS device. The Yoco device ID is assigned by Yoco and cannot be changed here."
+                    : "Register a Web POS device: Beautonomi calls Yoco's create-device API with the name you enter; Yoco returns the device ID used for charges."}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div>
-                  <Label htmlFor="name">Device Name</Label>
+                  <Label htmlFor="name">Device name</Label>
                   <Input
                     id="name"
-                    placeholder="e.g., Main Counter Terminal"
+                    placeholder="e.g., Main counter terminal"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="mt-1"
                   />
                 </div>
+                {editingDevice ? (
+                  <div>
+                    <Label htmlFor="yoco_device_id_readonly">Yoco device ID</Label>
+                    <Input
+                      id="yoco_device_id_readonly"
+                      readOnly
+                      value={editingDevice.device_id}
+                      className="mt-1 bg-muted"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Assigned by Yoco when the device was created</p>
+                  </div>
+                ) : null}
                 <div>
-                  <Label htmlFor="device_id">Yoco Device ID</Label>
-                  <Input
-                    id="device_id"
-                    placeholder="webpos-device-abc123"
-                    value={formData.device_id}
-                    onChange={(e) => setFormData({ ...formData, device_id: e.target.value })}
-                    className="mt-1"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Get this from your Yoco dashboard after creating a Web POS device
-                  </p>
-                </div>
-                <div>
-                  <Label htmlFor="location_id">Location (Optional)</Label>
+                  <Label htmlFor="location_id">Location (optional)</Label>
                   <Select
                     value={formData.location_id || "none"}
-                    onValueChange={(value) => setFormData({ ...formData, location_id: value === "none" ? "" : value })}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, location_id: value === "none" ? "" : value })
+                    }
                   >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select location" />
+                    <SelectTrigger id="location_id" className="mt-1">
+                      <SelectValue placeholder="All locations" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No location</SelectItem>
-                      <SelectItem value="location-1">Main Branch</SelectItem>
-                      <SelectItem value="location-2">Sandton Branch</SelectItem>
+                      <SelectItem value="none">All locations</SelectItem>
+                      {salons.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="flex items-center justify-between">
                   <Label htmlFor="is_active">Active</Label>
                   <Switch
+                    id="is_active"
                     checked={formData.is_active}
                     onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
                   />
@@ -211,8 +234,8 @@ export default function YocoDevicesPage() {
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleSave} disabled={!formData.name || !formData.device_id}>
-                  {editingDevice ? "Update" : "Add"} Device
+                <Button onClick={handleSave} disabled={!formData.name.trim()}>
+                  {editingDevice ? "Update" : "Add"} device
                 </Button>
               </DialogFooter>
             </DialogContent>

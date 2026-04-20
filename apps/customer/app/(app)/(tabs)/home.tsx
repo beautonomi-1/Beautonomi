@@ -31,7 +31,6 @@ import { InstallAppBanner } from "@/components/InstallAppBanner";
 import { SaveAddressModal, type SaveAddressPayload } from "@/components/SaveAddressModal";
 import type { AddressPickerSelection } from "@/components/AddressPicker";
 import { api } from "@/lib/api-client";
-import { InlineSearch } from "@/components/InlineSearch";
 import { FadeIn } from "@/components/FadeIn";
 import type { PublicProviderCard } from "@/types/api";
 import {
@@ -116,9 +115,9 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   navLogo: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
   },
   // Centered in the row; horizontal insets reserve space for logo (left) and toolbar
   // (right) so labels never render under the icon column on narrow phones.
@@ -431,14 +430,12 @@ export default function HomeScreen() {
       ? undefined
       : globalCategories.find((c) => c.name === activeCategory)?.slug ?? activeCategory.toLowerCase();
 
-  const searchContextCategorySlug = activeCategorySlug;
-
-  /** Keeps Home / Explore centred while reserving fixed bands for logo + 3 toolbar icons (no overlap on small screens). */
+  /** Keeps Home / Explore centred: logo (left), wishlist + notifications (right). Search is in the bottom tab bar. */
   const navCenterInset = useMemo(() => {
     const TOOLBAR_BTN = 40;
     const TOOLBAR_GAP = 8;
-    const logoReserve = 48;
-    const rightReserve = 3 * TOOLBAR_BTN + 2 * TOOLBAR_GAP;
+    const logoReserve = 58;
+    const rightReserve = 2 * TOOLBAR_BTN + 1 * TOOLBAR_GAP;
     return {
       left: contentPadding + logoReserve,
       right: contentPadding + rightReserve,
@@ -575,7 +572,7 @@ export default function HomeScreen() {
               onPress={() => router.push("/(app)/(tabs)/home")}
               accessibilityRole="image"
               accessibilityLabel="Beautonomi logo"
-              style={{ padding: 8, marginLeft: -4, borderRadius: 12 }}
+              style={{ padding: 6, marginLeft: -6, borderRadius: 12 }}
             >
               <Image source={require("../../../assets/favicon.png")} style={styles.navLogo} />
             </TouchableOpacity>
@@ -607,11 +604,8 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Right: search · wishlist · notifications — uniform toolbar chips */}
+          {/* Right: wishlist · notifications (search is in the bottom tab bar) */}
           <View style={styles.navRightGroup}>
-            <View style={styles.navIconBtn}>
-              <InlineSearch fillParent contextCategorySlug={searchContextCategorySlug} />
-            </View>
             <TouchableOpacity
               onPress={() => {
                 haptic.selection();

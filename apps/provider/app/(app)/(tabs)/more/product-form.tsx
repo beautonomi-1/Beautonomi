@@ -23,7 +23,24 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { twStyle } from "@/lib/twStyle";
+
+interface ProductVariantRow {
+  id?: string;
+  option_values?: Record<string, string>;
+  retail_price: number;
+  quantity?: number;
+  supply_price?: number;
+  sku?: string | null;
+  barcode?: string | null;
+  low_stock_level?: number;
+  reorder_quantity?: number;
+  markup?: number | null;
+  image_url?: string | null;
+  measure?: string | null;
+  amount?: number | null;
+}
 
 interface Product {
   id: string;
@@ -50,6 +67,9 @@ interface Product {
   receive_low_stock_notifications?: boolean;
   image_urls?: string[];
   is_active?: boolean;
+  has_variants?: boolean;
+  variant_option_types?: { name: string; values: string[] }[];
+  variants?: ProductVariantRow[];
 }
 
 function FormField({
@@ -94,6 +114,37 @@ const MEASURE_OPTIONS = [
   { value: "unit", label: "Unit" },
 ];
 
+type VariantOptionTypeForm = { name: string; values: string[] };
+
+type VariantFormRow = {
+  option_values: Record<string, string>;
+  sku: string;
+  barcode: string;
+  quantity: number;
+  supply_price: number;
+  retail_price: number;
+  low_stock_level: number;
+  reorder_quantity: number;
+  markup: number;
+  image_url: string;
+  measure: string;
+  amount: number;
+};
+
+function optionValuesKey(ov: Record<string, string> | undefined): string {
+  if (!ov || Object.keys(ov).length === 0) return "";
+  const sorted = Object.keys(ov)
+    .sort()
+    .reduce(
+      (acc, k) => {
+        acc[k] = ov[k];
+        return acc;
+      },
+      {} as Record<string, string>
+    );
+  return JSON.stringify(sorted);
+}
+
 const defaultForm = {
   name: "",
   barcode: "",
@@ -106,6 +157,7 @@ const defaultForm = {
   supplier: "",
   sku: "",
   image_url: "",
+  extra_image_urls: "",
   quantity: "0",
   low_stock_level: "5",
   reorder_quantity: "0",
@@ -118,6 +170,10 @@ const defaultForm = {
   track_stock_quantity: true,
   receive_low_stock_notifications: false,
   is_active: true,
+  hasVariants: false,
+  /** One or more option dimensions (e.g. Size + Colour); values combine in a full matrix. */
+  variantOptionTypes: [] as VariantOptionTypeForm[],
+  variantRows: [] as VariantFormRow[],
 };
 
 export default function ProductFormScreen() {
@@ -249,6 +305,61 @@ export default function ProductFormScreen() {
     []
   );
 
+  const uploadVariantImageAtIndex = useCallback(
+    async (rowIndex: number, asset: { uri: string; mimeType?: string | null; fileName?: string | null }) => {
+      setUploadingImage(true);
+      try {
+        const formData = new FormData();
+        const name = asset.fileName || `variant-${rowIndex}-${Date.now()}.jpg`;
+        const type = asset.mimeType || "image/jpeg";
+        formData.append("file", { uri: asset.uri, type, name } as unknown as Blob);
+        formData.append("folder", "products");
+        const res = await api.fetch<{ url?: string }>("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const url = res.data?.url;
+        if (res.error) {
+          Alert.alert("Upload failed", res.error.message ?? "Could not upload image.");
+          return;
+        }
+        if (url) {
+          setForm((p) => {
+            const next = [...p.variantRows];
+            if (!next[rowIndex]) return p;
+            next[rowIndex] = { ...next[rowIndex], image_url: url };
+            return { ...p, variantRows: next };
+          });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      } catch (e) {
+        Alert.alert("Upload failed", e instanceof Error ? e.message : "Failed to upload image.");
+      } finally {
+        setUploadingImage(false);
+      }
+    },
+    []
+  );
+
+  const pickVariantImageFromLibrary = useCallback(
+    async (rowIndex: number) => {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Allow access to your photo library to add a variant image.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      await uploadVariantImageAtIndex(rowIndex, result.assets[0]);
+    },
+    [uploadVariantImageAtIndex]
+  );
+
   const pickImageFromLibrary = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -288,6 +399,17 @@ export default function ProductFormScreen() {
 
   useEffect(() => {
     if (product) {
+      const hasV = Boolean(product.has_variants && (product.variants?.length ?? 0) > 0);
+      const optTypes = product.variant_option_types ?? [];
+      const variantOptionTypes: VariantOptionTypeForm[] =
+        Array.isArray(optTypes) && optTypes.length > 0
+          ? optTypes.map((t: { name?: string; values?: string[] }) => ({
+              name: String(t?.name ?? ""),
+              values: Array.isArray(t?.values) ? [...t.values] : [],
+            }))
+          : [{ name: "Size", values: [] }];
+      const vars = product.variants ?? [];
+      const urls = product.image_urls ?? [];
       setForm({
         ...defaultForm,
         name: product.name ?? "",
@@ -300,7 +422,8 @@ export default function ProductFormScreen() {
         category: product.category ?? "",
         supplier: product.supplier ?? "",
         sku: product.sku ?? "",
-        image_url: product.image_urls?.[0] ?? "",
+        image_url: urls[0] ?? "",
+        extra_image_urls: urls.length > 1 ? urls.slice(1).join("\n") : "",
         quantity: String(product.quantity ?? 0),
         low_stock_level: String(product.low_stock_level ?? 5),
         reorder_quantity: String(product.reorder_quantity ?? 0),
@@ -313,6 +436,24 @@ export default function ProductFormScreen() {
         track_stock_quantity: product.track_stock_quantity ?? true,
         receive_low_stock_notifications: product.receive_low_stock_notifications ?? false,
         is_active: product.is_active ?? true,
+        hasVariants: hasV,
+        variantOptionTypes,
+        variantRows: hasV
+          ? vars.map((v) => ({
+              option_values: v.option_values ?? {},
+              sku: v.sku ?? "",
+              barcode: v.barcode ?? "",
+              quantity: v.quantity ?? 0,
+              supply_price: v.supply_price ?? 0,
+              retail_price: v.retail_price ?? 0,
+              low_stock_level: v.low_stock_level ?? 5,
+              reorder_quantity: v.reorder_quantity ?? 0,
+              markup: v.markup != null ? Number(v.markup) : 0,
+              image_url: v.image_url ?? "",
+              measure: v.measure ?? product.measure ?? "ml",
+              amount: v.amount != null ? Number(v.amount) : 0,
+            }))
+          : [],
       });
     } else if (!productId) {
       setForm({ ...defaultForm });
@@ -324,41 +465,91 @@ export default function ProductFormScreen() {
 
   const handleSave = async () => {
     const name = form.name.trim();
-    const retailPrice = parseFloat(form.retail_price);
     if (!name) {
       Alert.alert("Validation", "Product name is required.");
       return;
     }
-    if (isNaN(retailPrice) || retailPrice < 0) {
-      Alert.alert("Validation", "Retail price must be a valid number.");
-      return;
+
+    const primary = form.image_url.trim();
+    const extras = form.extra_image_urls.split(/\n/).map((s) => s.trim()).filter(Boolean);
+    const image_urls = [...new Set([primary, ...extras].filter(Boolean))];
+
+    const withVariants = Boolean(form.hasVariants && form.variantRows.length > 0);
+    if (!withVariants) {
+      const retailPrice = parseFloat(form.retail_price);
+      if (Number.isNaN(retailPrice) || retailPrice < 0) {
+        Alert.alert("Validation", "Retail price must be a valid number.");
+        return;
+      }
+    } else {
+      const bad = form.variantRows.some((r) => r.retail_price === undefined || Number(r.retail_price) < 0);
+      if (bad) {
+        Alert.alert("Validation", "Each variant needs a valid retail price (≥ 0).");
+        return;
+      }
     }
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       name,
       barcode: form.barcode || undefined,
       brand: form.brand || undefined,
-      measure: form.measure || undefined,
-      amount: form.amount ? parseFloat(form.amount) : undefined,
+      measure: withVariants ? undefined : form.measure || undefined,
+      amount: withVariants ? undefined : form.amount ? parseFloat(form.amount) : undefined,
       short_description: form.short_description || undefined,
       description: form.description || undefined,
       category: form.category || undefined,
       supplier: form.supplier || undefined,
-      sku: form.sku || undefined,
-      quantity: parseInt(form.quantity, 10) || 0,
-      low_stock_level: parseInt(form.low_stock_level, 10) ?? 5,
+      sku: withVariants ? undefined : form.sku || undefined,
+      quantity: withVariants ? 0 : parseInt(form.quantity, 10) || 0,
+      low_stock_level: withVariants ? 5 : parseInt(form.low_stock_level, 10) || 5,
       reorder_quantity: parseInt(form.reorder_quantity, 10) || 0,
-      supply_price: parseFloat(form.supply_price) || 0,
-      retail_price: retailPrice,
+      supply_price: withVariants ? 0 : parseFloat(form.supply_price) || 0,
+      retail_price: withVariants ? 0 : parseFloat(form.retail_price),
       retail_sales_enabled: form.retail_sales_enabled,
-      markup: form.markup ? parseFloat(form.markup) : undefined,
+      markup: withVariants ? undefined : form.markup ? parseFloat(form.markup) : undefined,
       tax_rate: parseFloat(form.tax_rate) || 0,
       team_member_commission_enabled: form.team_member_commission_enabled,
       track_stock_quantity: form.track_stock_quantity,
       receive_low_stock_notifications: form.receive_low_stock_notifications,
-      image_urls: form.image_url?.trim() ? [form.image_url.trim()] : [],
+      image_urls,
       is_active: form.is_active,
+      has_variants: withVariants,
     };
+
+    if (withVariants) {
+      const validTypes = form.variantOptionTypes
+        .map((t) => ({
+          name: t.name.trim(),
+          values: [...new Set(t.values.map((x) => x.trim()).filter(Boolean))],
+        }))
+        .filter((t) => t.name.length > 0 && t.values.length > 0);
+      if (validTypes.length === 0) {
+        Alert.alert(
+          "Validation",
+          "Add at least one option (e.g. Size) with a name and values. Use Generate variant matrix after editing options."
+        );
+        return;
+      }
+      payload.variant_option_types = validTypes;
+      payload.variants = form.variantRows.map((r) => ({
+        option_values: r.option_values,
+        sku: r.sku.trim() || undefined,
+        barcode: r.barcode.trim() || undefined,
+        measure: r.measure.trim() || undefined,
+        amount: r.amount > 0 ? r.amount : undefined,
+        quantity: r.quantity ?? 0,
+        low_stock_level: r.low_stock_level ?? 5,
+        reorder_quantity: r.reorder_quantity ?? 0,
+        supply_price: r.supply_price ?? 0,
+        retail_price: Number(r.retail_price),
+        markup: r.markup > 0 ? r.markup : undefined,
+        image_url: r.image_url.trim() || undefined,
+      }));
+    }
+
+    if (isEdit && productId && !withVariants) {
+      payload.variants = [];
+    }
 
     if (isEdit && productId) {
       const { error } = await updateProduct(`/api/provider/products/${productId}`, payload);
@@ -611,6 +802,297 @@ export default function ProductFormScreen() {
               )}
             </View>
 
+            <FormField
+              label="More image URLs (optional, one per line)"
+              value={form.extra_image_urls}
+              onChangeText={(t) => setForm((p) => ({ ...p, extra_image_urls: t }))}
+              placeholder="https://..."
+              multiline
+            />
+
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Has variants (sizes, volumes…)</Text>
+              <Switch
+                value={form.hasVariants}
+                onValueChange={(v) =>
+                  setForm((p) => ({
+                    ...p,
+                    hasVariants: v,
+                    variantRows: v ? p.variantRows : [],
+                    variantOptionTypes: v
+                      ? p.variantOptionTypes.length > 0
+                        ? p.variantOptionTypes
+                        : [{ name: "Size", values: [] }]
+                      : [],
+                  }))
+                }
+                trackColor={{ false: "#d1d5db", true: "#6366f1" }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            {form.hasVariants && (
+              <View style={twStyle("mb-4 rounded-xl border border-violet-200 bg-violet-50 p-3")}>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-800")}>Variant options</Text>
+                <Text style={twStyle("mb-3 text-xs text-gray-600")}>
+                  Add one or more option types (e.g. Size, Colour). Values combine into every combination (e.g. S × Red, S ×
+                  Blue). Then generate rows and set SKU, photo, price and stock per variant — same as provider web.
+                </Text>
+                {form.variantOptionTypes.map((opt, oi) => (
+                  <View key={oi} style={twStyle("mb-3 rounded-lg border border-violet-100 bg-white p-3")}>
+                    <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+                      <Text style={twStyle("text-xs font-medium text-gray-700")}>Option {oi + 1}</Text>
+                      {form.variantOptionTypes.length > 1 ? (
+                        <TouchableOpacity
+                          onPress={() =>
+                            setForm((p) => ({
+                              ...p,
+                              variantOptionTypes: p.variantOptionTypes.filter((_, i) => i !== oi),
+                            }))
+                          }
+                          accessibilityLabel={`Remove option ${oi + 1}`}
+                          accessibilityRole="button"
+                        >
+                          <Text style={twStyle("text-xs font-medium text-red-600")}>Remove</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    <Text style={twStyle("mb-1 text-xs text-gray-600")}>Name (e.g. Size)</Text>
+                    <TextInput
+                      style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-base text-gray-900")}
+                      value={opt.name}
+                      onChangeText={(t) =>
+                        setForm((p) => {
+                          const next = [...p.variantOptionTypes];
+                          next[oi] = { ...next[oi], name: t };
+                          return { ...p, variantOptionTypes: next };
+                        })
+                      }
+                      placeholder="Size"
+                    />
+                    <Text style={twStyle("mb-1 text-xs text-gray-600")}>Values</Text>
+                    <ChipCombobox
+                      value={opt.values}
+                      onChange={(arr) =>
+                        setForm((p) => {
+                          const next = [...p.variantOptionTypes];
+                          next[oi] = { ...next[oi], values: arr };
+                          return { ...p, variantOptionTypes: next };
+                        })
+                      }
+                      staticSuggestions={[
+                        { value: "250ml", label: "250ml" },
+                        { value: "500ml", label: "500ml" },
+                        { value: "S", label: "S" },
+                        { value: "M", label: "M" },
+                        { value: "L", label: "L" },
+                        { value: "Red", label: "Red" },
+                        { value: "Blue", label: "Blue" },
+                      ]}
+                      placeholder="Pick or type values"
+                      accessibilityLabel={`Option ${oi + 1} values`}
+                    />
+                  </View>
+                ))}
+                <TouchableOpacity
+                  onPress={() =>
+                    setForm((p) => ({
+                      ...p,
+                      variantOptionTypes: [...p.variantOptionTypes, { name: "", values: [] }],
+                    }))
+                  }
+                  style={twStyle("mb-2 flex-row items-center justify-center rounded-xl border border-dashed border-violet-300 py-2")}
+                  accessibilityLabel="Add another option type"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="add-circle-outline" size={18} color="#7c3aed" />
+                  <Text style={twStyle("ml-1 text-sm font-medium text-violet-700")}>Add option (e.g. Colour)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    const validTypes = form.variantOptionTypes
+                      .map((t) => ({
+                        name: t.name.trim(),
+                        values: [...new Set(t.values.map((x) => x.trim()).filter(Boolean))],
+                      }))
+                      .filter((t) => t.name.length > 0 && t.values.length > 0);
+                    if (validTypes.length === 0) {
+                      Alert.alert("Variants", "Add at least one option with a name and one value.");
+                      return;
+                    }
+                    let combos: Record<string, string>[] = [{}];
+                    for (const dim of validTypes) {
+                      const next: Record<string, string>[] = [];
+                      for (const combo of combos) {
+                        for (const val of dim.values) {
+                          next.push({ ...combo, [dim.name]: val });
+                        }
+                      }
+                      combos = next;
+                    }
+                    const baseMeasure = form.measure || "ml";
+                    const merged: VariantFormRow[] = combos.map((option_values) => {
+                      const existing = form.variantRows.find(
+                        (r) => optionValuesKey(r.option_values) === optionValuesKey(option_values)
+                      );
+                      if (existing) return { ...existing, option_values };
+                      return {
+                        option_values,
+                        sku: "",
+                        barcode: "",
+                        quantity: 0,
+                        supply_price: 0,
+                        retail_price: 0,
+                        low_stock_level: 5,
+                        reorder_quantity: 0,
+                        markup: 0,
+                        image_url: "",
+                        measure: baseMeasure,
+                        amount: 0,
+                      };
+                    });
+                    setForm((f) => ({ ...f, variantRows: merged }));
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={twStyle("items-center rounded-xl border border-violet-300 bg-white py-3")}
+                >
+                  <Text style={twStyle("font-medium text-violet-700")}>Generate variant matrix</Text>
+                </TouchableOpacity>
+                {form.variantRows.length > 0 && (
+                  <View style={twStyle("mt-3 border-t border-violet-200 pt-3")}>
+                    {form.variantRows.map((row, idx) => (
+                      <View key={`variant-row-${idx}`} style={twStyle("mb-4 border-b border-violet-100 pb-4")}>
+                        <Text style={twStyle("mb-2 text-xs font-medium text-gray-800")}>
+                          {Object.entries(row.option_values)
+                            .map(([k, v]) => `${k}: ${v}`)
+                            .join(" · ")}
+                        </Text>
+                        <View style={twStyle("mb-2 flex-row flex-wrap items-center")}>
+                          {row.image_url ? (
+                            <Image
+                              source={{ uri: row.image_url }}
+                              style={{ marginRight: 8, width: 56, height: 56, borderRadius: 8, borderWidth: 1, borderColor: "#ddd6fe", backgroundColor: "#fff" }}
+                              contentFit="contain"
+                            />
+                          ) : (
+                            <View
+                              style={twStyle("mr-2 h-14 w-14 items-center justify-center rounded-lg border border-dashed border-violet-200 bg-white")}
+                            >
+                              <Ionicons name="image-outline" size={22} color="#9ca3af" />
+                            </View>
+                          )}
+                          <TouchableOpacity
+                            onPress={() => pickVariantImageFromLibrary(idx)}
+                            disabled={uploadingImage}
+                            style={twStyle("rounded-lg border border-violet-200 bg-white px-3 py-2")}
+                            accessibilityLabel="Add variant photo"
+                            accessibilityRole="button"
+                          >
+                            <Text style={twStyle("text-xs font-medium text-violet-700")}>
+                              {row.image_url ? "Replace photo" : "Add photo"}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                        <View style={twStyle("flex-row flex-wrap")}>
+                          <View style={twStyle("mb-2 mr-2 min-w-[44%] flex-1")}>
+                            <Text style={twStyle("text-xs text-gray-500")}>SKU</Text>
+                            <TextInput
+                              style={twStyle("rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm")}
+                              value={row.sku}
+                              onChangeText={(t) => {
+                                const next = [...form.variantRows];
+                                next[idx] = { ...next[idx], sku: t };
+                                setForm((f) => ({ ...f, variantRows: next }));
+                              }}
+                            />
+                          </View>
+                          <View style={twStyle("mb-2 mr-2 min-w-[44%] flex-1")}>
+                            <Text style={twStyle("text-xs text-gray-500")}>Barcode</Text>
+                            <TextInput
+                              style={twStyle("rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm")}
+                              value={row.barcode}
+                              onChangeText={(t) => {
+                                const next = [...form.variantRows];
+                                next[idx] = { ...next[idx], barcode: t };
+                                setForm((f) => ({ ...f, variantRows: next }));
+                              }}
+                            />
+                          </View>
+                          <View style={twStyle("mb-2 w-16")}>
+                            <Text style={twStyle("text-xs text-gray-500")}>Qty</Text>
+                            <TextInput
+                              style={twStyle("rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm")}
+                              value={String(row.quantity)}
+                              keyboardType="number-pad"
+                              onChangeText={(t) => {
+                                const next = [...form.variantRows];
+                                next[idx] = { ...next[idx], quantity: parseInt(t, 10) || 0 };
+                                setForm((f) => ({ ...f, variantRows: next }));
+                              }}
+                            />
+                          </View>
+                          <View style={twStyle("mb-2 w-16")}>
+                            <Text style={twStyle("text-xs text-gray-500")}>Reorder</Text>
+                            <TextInput
+                              style={twStyle("rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm")}
+                              value={String(row.reorder_quantity)}
+                              keyboardType="number-pad"
+                              onChangeText={(t) => {
+                                const next = [...form.variantRows];
+                                next[idx] = { ...next[idx], reorder_quantity: parseInt(t, 10) || 0 };
+                                setForm((f) => ({ ...f, variantRows: next }));
+                              }}
+                            />
+                          </View>
+                          <View style={twStyle("mb-2 w-20")}>
+                            <Text style={twStyle("text-xs text-gray-500")}>Supply</Text>
+                            <TextInput
+                              style={twStyle("rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm")}
+                              value={row.supply_price ? String(row.supply_price) : ""}
+                              keyboardType="decimal-pad"
+                              onChangeText={(t) => {
+                                const next = [...form.variantRows];
+                                next[idx] = { ...next[idx], supply_price: parseFloat(t) || 0 };
+                                setForm((f) => ({ ...f, variantRows: next }));
+                              }}
+                            />
+                          </View>
+                          <View style={twStyle("mb-2 w-20")}>
+                            <Text style={twStyle("text-xs text-gray-500")}>Retail *</Text>
+                            <TextInput
+                              style={twStyle("rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm")}
+                              value={row.retail_price ? String(row.retail_price) : ""}
+                              keyboardType="decimal-pad"
+                              onChangeText={(t) => {
+                                const next = [...form.variantRows];
+                                next[idx] = { ...next[idx], retail_price: parseFloat(t) || 0 };
+                                setForm((f) => ({ ...f, variantRows: next }));
+                              }}
+                            />
+                          </View>
+                          <View style={twStyle("mb-2 w-16")}>
+                            <Text style={twStyle("text-xs text-gray-500")}>Markup %</Text>
+                            <TextInput
+                              style={twStyle("rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm")}
+                              value={row.markup ? String(row.markup) : ""}
+                              keyboardType="decimal-pad"
+                              onChangeText={(t) => {
+                                const next = [...form.variantRows];
+                                next[idx] = { ...next[idx], markup: parseFloat(t) || 0 };
+                                setForm((f) => ({ ...f, variantRows: next }));
+                              }}
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {!form.hasVariants && (
+              <>
             <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Pricing</Text>
             <View style={twStyle("mb-2 flex-row")}>
               <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
@@ -681,6 +1163,8 @@ export default function ProductFormScreen() {
                 />
               </View>
             </View>
+              </>
+            )}
 
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>Track stock</Text>

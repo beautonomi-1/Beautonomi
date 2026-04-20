@@ -6,9 +6,7 @@ import { useCallback, useState } from "react";
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
-  RefreshControl,
   Alert,
   Share,
   Platform,
@@ -208,40 +206,33 @@ export default function VATReportsScreen() {
   const reports = payload.reports ?? [];
 
   return (
-    <ScreenContainer>
+    <ScreenContainer refreshing={refreshing} onRefresh={onRefresh}>
       <ScreenHeader
         title="VAT Reports"
         subtitle={payload.provider?.vat_number ? `VAT No. ${payload.provider.vat_number}` : "Bi-monthly SARS submission"}
         onBack={() => router.back()}
       />
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={twStyle("pb-24 px-4")}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Year picker */}
-        <View style={twStyle("flex-row items-center justify-between mb-4")}>
-          <Text style={twStyle("text-sm font-medium text-gray-700")}>Year</Text>
-          <View style={twStyle("flex-row rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden")}>
-            {YEAR_OPTIONS.map((y, i) => (
-              <TouchableOpacity
-                key={y}
-                onPress={() => setSelectedYear(y)}
-                style={[
-                  twStyle("flex-1 py-2.5 px-4 items-center justify-center"),
-                  i === 0 && twStyle("rounded-l-2xl"),
-                  i === YEAR_OPTIONS.length - 1 && twStyle("rounded-r-2xl"),
-                  selectedYear === y ? twStyle("bg-gray-900") : twStyle("bg-transparent"),
-                ]}
-              >
-                <Text style={twStyle(selectedYear === y ? "text-white font-semibold" : "text-gray-600")}>{y}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+      <View style={twStyle("mb-4")}>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Year</Text>
+        <View style={twStyle("flex-row rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden")}>
+          {YEAR_OPTIONS.map((y, i) => (
+            <TouchableOpacity
+              key={y}
+              onPress={() => setSelectedYear(y)}
+              style={[
+                twStyle("flex-1 py-3 min-h-[48px] items-center justify-center"),
+                i === 0 && twStyle("rounded-l-2xl"),
+                i === YEAR_OPTIONS.length - 1 && twStyle("rounded-r-2xl"),
+                selectedYear === y ? twStyle("bg-gray-900") : twStyle("bg-transparent"),
+              ]}
+            >
+              <Text style={twStyle(selectedYear === y ? "text-white font-semibold" : "text-gray-600")}>{y}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
+      </View>
 
-        {reports.length === 0 ? (
+      {reports.length === 0 ? (
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-8 items-center")}>
             <Ionicons name="document-text-outline" size={48} color="#9ca3af" />
             <Text style={twStyle("mt-4 text-base font-semibold text-gray-900 text-center")}>
@@ -281,11 +272,11 @@ export default function VATReportsScreen() {
                 key={`${report.period_start}-${report.period_end}`}
                 style={[twStyle("rounded-2xl border p-4 mb-4"), twStyle(borderAccent)]}
               >
-                <View style={twStyle("flex-row items-start justify-between mb-2")}>
-                  <View style={{ flex: 1 }}>
-                    <View style={twStyle("flex-row items-center gap-2 flex-wrap")}>
+                <View style={twStyle("mb-2 flex-row items-start justify-between")}>
+                  <View style={twStyle("min-w-0 flex-1 pr-3")}>
+                    <View style={twStyle("flex-row flex-wrap items-center")}>
                       <Text style={twStyle("text-lg font-semibold text-gray-900")}>{report.period_label}</Text>
-                      <View style={[twStyle("rounded-full px-2.5 py-0.5"), twStyle(statusBg)]}>
+                      <View style={[twStyle("ml-2 rounded-full px-2.5 py-0.5"), twStyle(statusBg)]}>
                         <Text style={[twStyle("text-xs font-medium"), twStyle(statusColor)]}>
                           {report.remitted_to_sars ? "Remitted" : report.is_overdue ? "Overdue" : report.status === "due_soon" ? "Due soon" : "Upcoming"}
                         </Text>
@@ -302,8 +293,10 @@ export default function VATReportsScreen() {
                       )}
                     </Text>
                   </View>
-                  <View style={twStyle("items-end")}>
-                    <Text style={twStyle("text-xl font-bold text-primary")}>{report.vat_collected_formatted}</Text>
+                  <View style={twStyle("max-w-[42%] shrink-0 items-end")}>
+                    <Text style={twStyle("text-right text-xl font-bold text-primary")} numberOfLines={2}>
+                      {report.vat_collected_formatted}
+                    </Text>
                     <Text style={twStyle("text-xs text-gray-500")}>
                       {report.transaction_count} transaction{report.transaction_count !== 1 ? "s" : ""}
                     </Text>
@@ -322,11 +315,26 @@ export default function VATReportsScreen() {
                     {isExpanded && (
                       <View style={twStyle("mt-2 border-t border-gray-100 pt-2")}>
                         {report.transactions.slice(0, 20).map((t) => (
-                          <View key={t.id} style={twStyle("flex-row justify-between py-1.5")}>
-                            <Text style={twStyle("text-sm text-gray-600")} numberOfLines={1}>
-                              {t.booking_number} · {formatDateSafe(t.booking_date, getTenantLocaleTag())}
+                          <View
+                            key={t.id}
+                            style={twStyle("flex-row items-start justify-between border-b border-gray-100 py-2.5")}
+                          >
+                            <View style={twStyle("min-w-0 flex-1 pr-3")}>
+                              <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>
+                                {t.booking_number}
+                              </Text>
+                              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                                {formatDateSafe(t.booking_date, getTenantLocaleTag())}
+                              </Text>
+                              {t.description ? (
+                                <Text style={twStyle("mt-0.5 text-xs text-gray-400")} numberOfLines={2}>
+                                  {t.description}
+                                </Text>
+                              ) : null}
+                            </View>
+                            <Text style={twStyle("shrink-0 text-sm font-semibold text-gray-900")}>
+                              {formatCurrency(t.amount)}
                             </Text>
-                            <Text style={twStyle("text-sm font-medium text-gray-900")}>R{t.amount.toFixed(2)}</Text>
                           </View>
                         ))}
                         {report.transactions.length > 20 && (
@@ -376,8 +384,7 @@ export default function VATReportsScreen() {
               </View>
             );
           })
-        )}
-      </ScrollView>
+      )}
     </ScreenContainer>
   );
 }

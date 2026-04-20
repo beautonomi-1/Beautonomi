@@ -28,7 +28,8 @@ export async function GET(request: NextRequest) {
       label: `${y} Annual Tax Summary`,
       // Primary URL field (null until document is generated)
       document_url: null,
-      // Alias for mobile app which reads download_url
+      // Customer app enables "Download" when either field is a non-empty string:
+      // absolute https URL or path starting with / (e.g. /api/me/tax-documents/.../file).
       download_url: null,
       issued_at: null,
       status: "not_issued" as const,

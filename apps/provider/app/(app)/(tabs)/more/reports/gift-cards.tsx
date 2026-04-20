@@ -19,6 +19,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
 interface GiftCardReport {
   id: string;
@@ -101,8 +102,8 @@ export default function GiftCardReportScreen() {
         }
       />
 
-      <View style={twStyle("mb-3 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+      <View style={twStyle("mb-3")}>
+        <ReportResponsiveStatRow>
           <StatCard
             title="Total Sold"
             value={String(stats?.total_sold ?? 0)}
@@ -111,8 +112,6 @@ export default function GiftCardReportScreen() {
             iconBg="bg-purple-50"
             compact
           />
-        </View>
-        <View style={twStyle("flex-1")}>
           <StatCard
             title="Revenue"
             value={formatCurrency(stats?.total_revenue ?? 0)}
@@ -121,8 +120,6 @@ export default function GiftCardReportScreen() {
             iconBg="bg-green-50"
             compact
           />
-        </View>
-        <View style={twStyle("flex-1")}>
           <StatCard
             title="Outstanding"
             value={formatCurrency(stats?.total_outstanding ?? 0)}
@@ -131,11 +128,11 @@ export default function GiftCardReportScreen() {
             iconBg="bg-amber-50"
             compact
           />
-        </View>
+        </ReportResponsiveStatRow>
       </View>
 
-      <View style={twStyle("mb-3 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+      <View style={twStyle("mb-3")}>
+        <ReportResponsiveStatRow>
           <StatCard
             title="Redeemed"
             value={formatCurrency(stats?.total_redeemed ?? 0)}
@@ -144,8 +141,6 @@ export default function GiftCardReportScreen() {
             iconBg="bg-indigo-50"
             compact
           />
-        </View>
-        <View style={twStyle("flex-1")}>
           <StatCard
             title="Avg Value"
             value={formatCurrency(stats?.avg_value ?? 0)}
@@ -154,8 +149,6 @@ export default function GiftCardReportScreen() {
             iconBg="bg-blue-50"
             compact
           />
-        </View>
-        <View style={twStyle("flex-1")}>
           <StatCard
             title="Active"
             value={String(stats?.active_count ?? 0)}
@@ -164,7 +157,7 @@ export default function GiftCardReportScreen() {
             iconBg="bg-emerald-50"
             compact
           />
-        </View>
+        </ReportResponsiveStatRow>
       </View>
 
       <View style={twStyle("mb-3")}>

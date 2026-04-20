@@ -11,6 +11,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -30,6 +32,10 @@ interface Review {
   rating: number;
   comment: string | null;
   provider_response: string | null;
+  provider_response_at?: string | null;
+  /** Stars you gave the customer on this booking review row */
+  customer_rating?: number | null;
+  customer_comment?: string | null;
   created_at: string;
   customer?: { id: string; full_name: string | null; email: string | null };
   booking?: { id: string; booking_number: string | null; scheduled_at: string | null };
@@ -60,6 +66,7 @@ export default function ReviewsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [respondReview, setRespondReview] = useState<Review | null>(null);
   const [responseText, setResponseText] = useState("");
+  const [savingReply, setSavingReply] = useState(false);
   const url = `/api/provider/reviews?status=${status}&limit=50${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
   const { data, loading, error, refresh } = useApi<ReviewsResponse>(url);
   const { execute: postRespond, loading: responding } = useApiMutation("post");
@@ -73,9 +80,9 @@ export default function ReviewsScreen() {
     }
   }, [refresh]);
 
-  const openRespond = (review: Review) => {
+  const openRespond = (review: Review, options?: { edit?: boolean }) => {
     setRespondReview(review);
-    setResponseText("");
+    setResponseText(options?.edit && review.provider_response ? review.provider_response : "");
   };
 
   const handleSubmitResponse = async () => {
@@ -90,18 +97,30 @@ export default function ReviewsScreen() {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const { error: err } = await postRespond(
-      `/api/provider/reviews/${respondReview.id}/respond`,
-      { response: trimmed }
-    );
-    if (err) {
-      Alert.alert("Error", err);
-      return;
+    const path = `/api/provider/reviews/${respondReview.id}/respond`;
+    const isEdit = Boolean(respondReview.provider_response);
+    setSavingReply(true);
+    try {
+      if (isEdit) {
+        const res = await api.patch<{ review?: Review; message?: string }>(path, { response: trimmed });
+        if (res.error) {
+          Alert.alert("Error", getApiErrorMessage(res.error, "Could not update reply."));
+          return;
+        }
+      } else {
+        const { error: err } = await postRespond(path, { response: trimmed });
+        if (err) {
+          Alert.alert("Error", err);
+          return;
+        }
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setRespondReview(null);
+      setResponseText("");
+      refresh();
+    } finally {
+      setSavingReply(false);
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setRespondReview(null);
-    setResponseText("");
-    refresh();
   };
 
   const reviews: Review[] = data?.reviews ?? [];
@@ -200,16 +219,48 @@ export default function ReviewsScreen() {
                   : formatDateSafe(review.created_at)}
               </Text>
               {review.comment ? (
-                <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[700] }} numberOfLines={3}>
-                  {review.comment}
-                </Text>
+                <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[700] }}>{review.comment}</Text>
               ) : null}
+
+              {review.customer_rating != null && review.customer_rating > 0 ? (
+                <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.gray[100] }}>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: Colors.gray[500], letterSpacing: 0.4 }}>YOUR RATING OF CUSTOMER</Text>
+                  <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center" }}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Ionicons
+                        key={star}
+                        name={star <= (review.customer_rating ?? 0) ? "star" : "star-outline"}
+                        size={15}
+                        color="#6366f1"
+                        style={{ marginRight: 2 }}
+                      />
+                    ))}
+                    <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[800] }}>{review.customer_rating}/5</Text>
+                  </View>
+                  {review.customer_comment ? (
+                    <Text style={{ marginTop: 6, fontSize: 13, color: Colors.gray[600] }}>{review.customer_comment}</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
               {review.provider_response ? (
-                <View style={{ marginTop: 8, borderRadius: 8, backgroundColor: Colors.gray[50], padding: 8 }}>
-                  <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Your response</Text>
-                  <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[700] }} numberOfLines={2}>
-                    {review.provider_response}
-                  </Text>
+                <View style={{ marginTop: 10 }}>
+                  <View style={{ borderRadius: 8, backgroundColor: Colors.gray[50], padding: 10 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Your public reply</Text>
+                    <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[800] }}>{review.provider_response}</Text>
+                    {review.provider_response_at ? (
+                      <Text style={{ marginTop: 6, fontSize: 11, color: Colors.gray[400] }}>{formatDateSafe(review.provider_response_at)}</Text>
+                    ) : null}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => openRespond(review, { edit: true })}
+                    style={{ marginTop: 8, flexDirection: "row", alignItems: "center", alignSelf: "flex-start" }}
+                    accessibilityLabel="Edit your reply to this review"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="create-outline" size={16} color="#b45309" />
+                    <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "600", color: "#b45309" }}>Edit reply</Text>
+                  </TouchableOpacity>
                 </View>
               ) : (
                 <TouchableOpacity
@@ -230,7 +281,7 @@ export default function ReviewsScreen() {
       <BottomSheet
         visible={respondReview !== null}
         onClose={() => { setRespondReview(null); setResponseText(""); }}
-        title="Respond to review"
+        title={respondReview?.provider_response ? "Edit your reply" : "Respond to review"}
         subtitle={respondReview ? (respondReview.customer?.full_name || "Customer") : ""}
       >
         {respondReview?.comment ? (
@@ -251,9 +302,9 @@ export default function ReviewsScreen() {
         />
         <Text style={{ marginBottom: 16, fontSize: 12, color: Colors.gray[500] }}>{responseText.length}/1000</Text>
         <ActionButton
-          label={responding ? "Sending…" : "Send response"}
+          label={responding || savingReply ? "Saving…" : respondReview?.provider_response ? "Save changes" : "Send response"}
           onPress={handleSubmitResponse}
-          loading={responding}
+          loading={responding || savingReply}
           fullWidth
         />
       </BottomSheet>

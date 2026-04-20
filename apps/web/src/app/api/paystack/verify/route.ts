@@ -20,6 +20,7 @@ import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-tea
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
+import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 
 /**
  * GET /api/paystack/verify
@@ -155,6 +156,40 @@ export async function GET(request: NextRequest) {
           orderNumber: po?.order_number,
           type: "product_order",
           message: "Payment verified successfully",
+        });
+      }
+
+      // Wallet top-up (metadata has wallet_topup_id, not booking_id — must run before booking branch)
+      const walletTopupId = metadata.wallet_topup_id;
+      if (walletTopupId) {
+        const admin = getSupabaseAdmin();
+        const { data: topupLookup } = await admin
+          .from("wallet_topups")
+          .select("user_id")
+          .eq("id", walletTopupId)
+          .maybeSingle();
+        if (!topupLookup) {
+          return notFoundResponse("Wallet top-up not found");
+        }
+        if ((topupLookup as { user_id?: string }).user_id !== user.id) {
+          return errorResponse(
+            "You can only confirm wallet top-ups from your own account.",
+            "FORBIDDEN",
+            403,
+          );
+        }
+        await applyWalletTopupFromSuccessfulPaystackCharge(
+          {
+            reference: String(reference),
+            metadata,
+            amount: data.data.amount,
+          },
+          admin as any,
+        );
+        return successResponse({
+          status: "success",
+          type: "wallet_topup",
+          message: "Wallet top-up confirmed",
         });
       }
 

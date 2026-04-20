@@ -141,7 +141,13 @@ function formatWeekScheduleFromHoursData(hoursData: Record<string, unknown>): { 
 }
 
 function openingTimeSectionsForAbout(locations: ProviderLocation[]): { placeLabel: string; schedule: { day: string; hours: string }[] }[] {
+  // §Customer-audit 2026-04: exclude `base` locations — those are
+  // mobile-only freelancer home-bases used for distance/travel only
+  // and don't represent a place customers can visit. Their stored
+  // hours are typically either empty or all-closed, which showed up
+  // as a misleading "All days: Closed" section in the About tab.
   const withParsed = locations
+    .filter((loc) => (loc.location_type || "salon") !== "base")
     .map((loc) => ({ loc, data: parseHoursSource(loc.working_hours) }))
     .filter((x): x is { loc: ProviderLocation; data: Record<string, unknown> } => hasNonEmptyHours(x.data));
 

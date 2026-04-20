@@ -47,6 +47,9 @@ export async function GET(request: NextRequest) {
 
     const u = userData as UserRow;
     const { data: { user: authUser } } = await supabase.auth.getUser();
+    const emailChangePending = Boolean(
+      authUser && typeof (authUser as { new_email?: string | null }).new_email === "string" && (authUser as { new_email?: string | null }).new_email,
+    );
     if (authUser?.email && u.email !== authUser.email) {
       await supabase
         .from("users")
@@ -130,6 +133,7 @@ export async function GET(request: NextRequest) {
       privacy_settings: profileData?.privacy_settings || { services_booked_visible: false },
       business_preferences: profileData?.business_preferences || { email: null, enabled: false },
       password_changed_at: u.password_changed_at ?? null,
+      email_change_pending: emailChangePending,
     };
 
     const res = successResponse(formattedData);

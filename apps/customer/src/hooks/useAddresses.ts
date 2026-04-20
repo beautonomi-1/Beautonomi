@@ -9,8 +9,22 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api-client";
-import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
+import { getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
+
+/** Same origin resolution as `api` client — required when EXPO_PUBLIC_APP_URL is empty (native dev → localhost:3000). */
+function mapboxApiOrigin(): string {
+  return getBackendUrl().trim().replace(/\/$/, "");
+}
+
+function mapboxFetchInit(init?: RequestInit): RequestInit {
+  const merged = withWebApiTenantHeaders(init);
+  const h = new Headers(merged.headers as HeadersInit | undefined);
+  if (!h.has("X-Active-Market-Country")) {
+    h.set("X-Active-Market-Country", getDeviceRegionCountryIso());
+  }
+  return { ...merged, headers: h };
+}
 
 export interface SavedAddress {
   id: string;
@@ -35,9 +49,16 @@ export interface GeocodeSuggestion {
 }
 
 function normalizeGeocodeFeature(f: any): GeocodeSuggestion {
-  const center = Array.isArray(f?.center) && f.center.length >= 2
-    ? [Number(f.center[0]), Number(f.center[1])] as [number, number]
-    : [0, 0] as [number, number];
+  let center: [number, number] = [0, 0];
+  if (Array.isArray(f?.center) && f.center.length >= 2) {
+    center = [Number(f.center[0]), Number(f.center[1])];
+  } else if (
+    f?.geometry?.type === "Point" &&
+    Array.isArray(f.geometry?.coordinates) &&
+    f.geometry.coordinates.length >= 2
+  ) {
+    center = [Number(f.geometry.coordinates[0]), Number(f.geometry.coordinates[1])];
+  }
   return {
     place_name: typeof f?.place_name === "string" ? f.place_name : "",
     center,
@@ -125,7 +146,8 @@ export async function searchAddress(
   options?: SearchAddressOptions
 ): Promise<GeocodeSuggestion[]> {
   if (!query || query.length < 3) return [];
-  if (!APP_URL?.trim()) return [];
+  const origin = mapboxApiOrigin();
+  if (!origin) return [];
   try {
     const body: Record<string, unknown> = {
       query: query.trim(),
@@ -140,16 +162,17 @@ export async function searchAddress(
       };
     }
     const res = await fetch(
-      `${APP_URL}/api/mapbox/geocode`,
-      withWebApiTenantHeaders({
+      `${origin}/api/mapbox/geocode`,
+      mapboxFetchInit({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
     );
     const json = await res.json().catch(() => ({}));
-    const data = json.data ?? json;
-    const list = Array.isArray(data) ? data : [];
+    if (!res.ok) return [];
+    const payload = json?.data;
+    const list = Array.isArray(payload) ? payload : [];
     return list.map(normalizeGeocodeFeature).filter((s) => s.place_name && s.center[0] !== 0 && s.center[1] !== 0);
   } catch {
     return [];
@@ -161,17 +184,19 @@ export async function reverseGeocode(
   latitude: number,
   longitude: number
 ): Promise<GeocodeSuggestion | null> {
-  if (!APP_URL?.trim()) return null;
+  const origin = mapboxApiOrigin();
+  if (!origin) return null;
   try {
     const res = await fetch(
-      `${APP_URL}/api/mapbox/reverse-geocode`,
-      withWebApiTenantHeaders({
+      `${origin}/api/mapbox/reverse-geocode`,
+      mapboxFetchInit({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ longitude, latitude }),
       }),
     );
     const json = await res.json().catch(() => ({}));
+    if (!res.ok) return null;
     const feature = json?.data ?? null;
     if (!feature?.place_name || !Array.isArray(feature?.center) || feature.center.length < 2) return null;
     return normalizeGeocodeFeature(feature);

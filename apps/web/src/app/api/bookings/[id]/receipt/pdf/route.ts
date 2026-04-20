@@ -23,9 +23,14 @@ export const maxDuration = 60;
  *   2. Short-lived `?token=<hmac>` minted by
  *      POST /api/bookings/[id]/receipt/signed-url (native customer app).
  *
- * When a valid token is present we synthesize a service-role Bearer
- * header so the sibling JSON route's auth check passes; the token
- * itself already binds the booking id + minting user.
+ * §Customer-audit 2026-04 follow-up: historically we synthesised a
+ * service-role Bearer + `x-receipt-download-user-id` header here so the
+ * sibling JSON route's `requireRoleInApi` check would pass. That was
+ * broken (service-role JWTs aren't user tokens and `getUser()` rejects
+ * them) — the JSON route now reads the `?token=` query directly.
+ * We still validate the token here so we can fail fast with 401 before
+ * generating any PDF, but we no longer attach a service-role Bearer
+ * to the forwarded request.
  */
 
 type ReceiptPayload = {
@@ -79,7 +84,6 @@ export async function GET(
     const id = resolvedParams.id;
 
     const token = new URL(request.url).searchParams.get("token");
-    let effectiveRequest: NextRequest = request;
     if (token) {
       const parsed = parseReceiptDownloadToken(token, {
         kind: "customer_booking_receipt",
@@ -91,28 +95,9 @@ export async function GET(
           { status: 401 },
         );
       }
-      const serviceKey =
-        process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-        process.env.SERVICE_ROLE_KEY?.trim() ||
-        "";
-      if (!serviceKey) {
-        return NextResponse.json(
-          { error: "Server misconfigured: service role key missing" },
-          { status: 500 },
-        );
-      }
-      const rebuiltHeaders = new Headers(request.headers);
-      rebuiltHeaders.set("authorization", `Bearer ${serviceKey}`);
-      rebuiltHeaders.set("x-receipt-download-user-id", parsed.userId);
-      effectiveRequest = new NextRequest(request.url, {
-        method: request.method,
-        headers: rebuiltHeaders,
-      });
     }
 
-    // Call the JSON receipt handler directly (same process) to avoid
-    // internal HTTP fetch issues with auth/cookie forwarding in production.
-    const upstream = await getReceiptJson(effectiveRequest, { params: Promise.resolve(resolvedParams) });
+    const upstream = await getReceiptJson(request, { params: Promise.resolve(resolvedParams) });
 
     if (!upstream.ok) {
       const text = await upstream.text();

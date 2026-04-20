@@ -170,7 +170,7 @@ Orchestration: `tooling/screenshots/scripts/capture.mjs` (invokes `maestro test 
 | `screenshot/more/booking-detail` | Booking detail (`id` from env or query) |
 | `screenshot/more/service-form` | Service form |
 | `screenshot/more/my-earnings` | My earnings |
-| `screenshot/more/finance-hub` | Finance hub |
+| `screenshot/more/finance-hub` | Earnings (`more/finance`; legacy path name kept for Maestro) |
 | `screenshot/more/reports` | Reports |
 | `screenshot/more/profile` | Profile |
 | `screenshot/more/catalogue` | Catalogue |

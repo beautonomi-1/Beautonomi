@@ -17,20 +17,18 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { Colors } from "@/constants/colors";
 import { twStyle } from "@/lib/twStyle";
-
-const CATEGORIES = [
-  { value: "billing", label: "Billing & subscription" },
-  { value: "technical", label: "Technical issue" },
-  { value: "bookings", label: "Bookings & scheduling" },
-  { value: "account", label: "Account & access" },
-  { value: "other", label: "Other" },
-];
+import {
+  SUPPORT_TICKET_DEFAULT_CATEGORY,
+  SUPPORT_TICKET_PRIORITIES,
+} from "@/lib/supportTicketCategoryPresets";
+import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 
 export default function NewSupportTicketScreen() {
   const router = useRouter();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
-  const [category, setCategory] = useState("other");
+  const [category, setCategory] = useState(SUPPORT_TICKET_DEFAULT_CATEGORY);
+  const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [submitting, setSubmitting] = useState(false);
 
   const canSubmit = subject.trim().length >= 4 && message.trim().length >= 10;
@@ -44,6 +42,7 @@ export default function NewSupportTicketScreen() {
         subject: subject.trim(),
         message: message.trim(),
         category,
+        priority,
       }) as { error?: { message?: string } };
       if (res.error) {
         Alert.alert("Could not submit", typeof res.error === "string" ? res.error : (res.error?.message ?? "Please try again"));
@@ -76,26 +75,29 @@ export default function NewSupportTicketScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Category */}
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Category</Text>
+          <View style={{ marginBottom: 16 }}>
+            <SupportTicketCategoryPicker value={category} onChange={setCategory} />
+          </View>
+
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Priority</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
-            {CATEGORIES.map((c) => (
+            {SUPPORT_TICKET_PRIORITIES.map((p) => (
               <TouchableOpacity
-                key={c.value}
-                onPress={() => setCategory(c.value)}
+                key={p.value}
+                onPress={() => setPriority(p.value)}
                 accessibilityRole="button"
-                accessibilityState={{ selected: category === c.value }}
+                accessibilityState={{ selected: priority === p.value }}
                 style={{
                   borderRadius: 20,
                   paddingHorizontal: 14,
                   paddingVertical: 10,
                   borderWidth: 1.5,
-                  borderColor: category === c.value ? Colors.primary : Colors.gray[200],
-                  backgroundColor: category === c.value ? `${Colors.primary}12` : "#fff",
+                  borderColor: priority === p.value ? Colors.primary : Colors.gray[200],
+                  backgroundColor: priority === p.value ? `${Colors.primary}12` : "#fff",
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: "600", color: category === c.value ? Colors.primary : Colors.gray[600] }}>
-                  {c.label}
+                <Text style={{ fontSize: 13, fontWeight: "600", color: priority === p.value ? Colors.primary : Colors.gray[600] }}>
+                  {p.label}
                 </Text>
               </TouchableOpacity>
             ))}

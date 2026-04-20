@@ -44,13 +44,21 @@ export class YocoApi {
   /**
    * Create Yoco device
    */
-  async createDevice(data: Partial<YocoDevice>): Promise<YocoDevice> {
+  /**
+   * Registers a Web POS device via our API, which calls Yoco
+   * {@link https://developer.yoco.com/api-reference/yoco-api/web-pos/create-web-pos-device-v-1-webpos-post Create Web POS device}
+   * with `{ name }`. Do not send a device UUID — Yoco returns the id.
+   */
+  async createDevice(data: {
+    name?: string;
+    location_id?: string | null;
+    is_active?: boolean;
+  }): Promise<YocoDevice> {
     const response = await fetcher.post<{ data: YocoDevice }>(
       "/api/provider/yoco/devices",
       {
         name: data.name,
-        device_id: data.device_id,
-        location_id: data.location_id,
+        location_id: data.location_id ?? null,
         is_active: data.is_active ?? true,
       }
     );
@@ -70,14 +78,18 @@ export class YocoApi {
   /**
    * Update Yoco device
    */
-  async updateDevice(id: string, data: Partial<YocoDevice>): Promise<YocoDevice> {
+  async updateDevice(id: string, data: {
+    name?: string;
+    location_id?: string | null;
+    is_active?: boolean;
+  }): Promise<YocoDevice> {
+    const payload: Record<string, unknown> = {};
+    if (data.name !== undefined) payload.name = data.name;
+    if (data.location_id !== undefined) payload.location_id = data.location_id;
+    if (data.is_active !== undefined) payload.is_active = data.is_active;
     const response = await fetcher.put<{ data: YocoDevice }>(
       `/api/provider/yoco/devices/${id}`,
-      {
-        name: data.name,
-        location_id: data.location_id,
-        is_active: data.is_active,
-      }
+      payload
     );
     return response.data;
   }

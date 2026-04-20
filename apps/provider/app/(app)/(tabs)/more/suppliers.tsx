@@ -23,6 +23,8 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Colors } from "@/constants/colors";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
+import { useRouter } from "expo-router";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 
 interface Supplier {
   id: string;
@@ -90,6 +92,7 @@ function categoryColor(cat: string): { bg: string; text: string } {
 }
 
 export default function SuppliersScreen() {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -243,9 +246,7 @@ export default function SuppliersScreen() {
 
   function handleWebsite(website: string) {
     const url = website.startsWith("http") ? website : `https://${website}`;
-    Linking.openURL(url).catch(() =>
-      Alert.alert("Error", "Could not open website")
-    );
+    pushInAppBrowser(router, url, "Website");
   }
 
   const renderSupplierItem = (item: Supplier) => {

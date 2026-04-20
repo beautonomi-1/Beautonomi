@@ -5,6 +5,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 
 type BookingServiceRow = {
   price?: number | null;
@@ -84,10 +85,57 @@ export async function GET(
 ) {
   try {
     const { id: bookingId } = await params;
-    const { user } = await requireRoleInApi(
-      ["customer", "provider_owner", "provider_staff", "superadmin"],
-      request
-    );
+
+    // §Customer-audit 2026-04: support the short-lived HMAC `?token=` the
+    // mobile app mints via /api/bookings/[id]/receipt/signed-url.
+    // Previously the PDF sibling route tried to satisfy `requireRoleInApi`
+    // by setting a service-role Bearer, but `supabase.auth.getUser()` is
+    // not valid for a service-role JWT, so every authenticated mobile
+    // receipt download failed. Validate the token here directly and
+    // derive the caller's user id from it — `parseReceiptDownloadToken`
+    // already binds kind + booking id + userId + expiry via HMAC.
+    const url = new URL(request.url);
+    const downloadToken = url.searchParams.get("token");
+    let tokenUserId: string | null = null;
+    if (downloadToken) {
+      const parsed = parseReceiptDownloadToken(downloadToken, {
+        kind: "customer_booking_receipt",
+        subjectId: bookingId,
+      });
+      if (!parsed) {
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 },
+        );
+      }
+      tokenUserId = parsed.userId;
+    }
+
+    let user: { id: string; role: string };
+    if (tokenUserId) {
+      const { data: userRow } = await getSupabaseAdmin()
+        .from("users")
+        .select("id, role")
+        .eq("id", tokenUserId)
+        .maybeSingle();
+      if (!userRow) {
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 },
+        );
+      }
+      user = {
+        id: userRow.id as string,
+        role: (userRow.role as string) || "customer",
+      };
+    } else {
+      const authed = await requireRoleInApi(
+        ["customer", "provider_owner", "provider_staff", "superadmin"],
+        request,
+      );
+      user = { id: authed.user.id, role: authed.user.role as string };
+    }
+
     // Use admin client so RLS doesn't block access — ownership is verified below
     const supabase = getSupabaseAdmin();
     // Still need a scoped client for getProviderIdForUser (which uses RLS-aware client)

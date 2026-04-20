@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { View, Text, Linking, Pressable, Platform } from "react-native";
+import { useRouter } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 
 type WrongAppScreenProps = {
   /** "customer" | "admin" | any string */
@@ -53,6 +55,7 @@ function copyForPortal(portal: string): {
 }
 
 export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
+  const router = useRouter();
   const { heading, body, action } = copyForPortal(portal);
   const [canOpenCustomer, setCanOpenCustomer] = useState(false);
 
@@ -83,12 +86,12 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
 
   const openWebCustomer = () => {
     if (!APP_URL) return;
-    Linking.openURL(APP_URL.replace(/\/$/, "") + "/portal").catch(() => {});
+    pushInAppBrowser(router, `${APP_URL.replace(/\/$/, "")}/portal`, "Customer portal");
   };
 
   const openAdminWeb = () => {
     if (!APP_URL) return;
-    Linking.openURL(APP_URL.replace(/\/$/, "") + "/admin/dashboard").catch(() => {});
+    pushInAppBrowser(router, `${APP_URL.replace(/\/$/, "")}/admin/dashboard`, "Admin");
   };
 
   return (

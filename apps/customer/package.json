@@ -1,6 +1,6 @@
 {
   "name": "customer",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8081 8083",
@@ -21,7 +21,8 @@
     "lint": "expo lint",
     "screenshots:android:public": "node ../../tooling/screenshots/scripts/capture.mjs customer public",
     "screenshots:android:auth": "node ../../tooling/screenshots/scripts/capture.mjs customer auth",
-    "clean": "npx rimraf node_modules"
+    "clean": "npx rimraf node_modules",
+    "eas-build-post-install": "node ../../tooling/eas-prefetch-gradle.mjs"
   },
   "dependencies": {
     "@beautonomi/analytics": "workspace:*",

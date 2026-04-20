@@ -25,7 +25,7 @@ export async function GET() {
   }
 
   const [ledgerResult, legacyResult, configResult] = await Promise.all([
-    supabase.rpc("get_customer_available_points", { p_customer_id: user.id }),
+    supabase.rpc("get_customer_available_points", { customer_uuid: user.id }),
     supabase.rpc("get_user_loyalty_balance", { p_user_id: user.id }),
     supabase
       .from("loyalty_point_config")

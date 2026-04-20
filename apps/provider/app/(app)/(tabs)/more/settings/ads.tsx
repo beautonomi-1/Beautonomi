@@ -15,7 +15,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
-import * as Linking from "expo-linking";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -201,7 +201,7 @@ export default function AdsSettingsScreen() {
       setCreateForm({ budget: "", daily_budget: "", bid_cpc: "", global_category_ids: [] });
       if (data?.requires_payment && data?.payment_url) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await Linking.openURL(data.payment_url);
+        pushInAppBrowser(router, data.payment_url, "Ad payment");
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -212,7 +212,7 @@ export default function AdsSettingsScreen() {
     } finally {
       setCreating(false);
     }
-  }, [createForm, loadAll, tenantCurrency]);
+  }, [createForm, loadAll, tenantCurrency, router]);
 
   const handleBuyPack = useCallback(
     async (pack: ImpressionPack) => {
@@ -233,7 +233,7 @@ export default function AdsSettingsScreen() {
         if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
         if (data?.requires_payment && data?.payment_url) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          await Linking.openURL(data.payment_url);
+          pushInAppBrowser(router, data.payment_url, "Ad payment");
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -245,7 +245,7 @@ export default function AdsSettingsScreen() {
         setCreatingPackId(null);
       }
     },
-    [loadAll]
+    [loadAll, router]
   );
 
   const handleUpdateCampaign = useCallback(async () => {
@@ -389,7 +389,7 @@ export default function AdsSettingsScreen() {
                           targeting,
                         });
                         if (res.data?.payment_url) {
-                          await Linking.openURL(res.data.payment_url);
+                          pushInAppBrowser(router, res.data.payment_url, "Ad payment");
                           return;
                         }
                         Alert.alert("Success", "Campaign created.");

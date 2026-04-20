@@ -44,7 +44,7 @@ function resolveScreenshotHref(path: string, query: Record<string, string>): Hre
     case "more/my-earnings":
       return "/(app)/(tabs)/more/my-earnings";
     case "more/finance-hub":
-      return "/(app)/(tabs)/more/finance-hub";
+      return "/(app)/(tabs)/more/finance";
     case "more/reports":
       return "/(app)/(tabs)/more/reports";
     case "more/profile":

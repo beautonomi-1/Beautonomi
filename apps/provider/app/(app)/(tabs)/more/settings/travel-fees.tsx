@@ -11,6 +11,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
+import { roundCurrency } from "@beautonomi/utils";
 
 interface TravelFeeTier {
   max_km: number;
@@ -27,6 +28,7 @@ interface TravelFeeSettings {
   use_platform_default: boolean;
   pricing_model?: "per_km" | "tiered" | null;
   tiers?: TravelFeeTier[] | null;
+  allow_provider_customization?: boolean;
   stats?: {
     total_travel_fees_month: number;
     avg_fee: number;
@@ -34,8 +36,19 @@ interface TravelFeeSettings {
   };
 }
 
+interface PlatformLimits {
+  provider_min_rate_per_km: number;
+  provider_max_rate_per_km: number;
+  provider_min_minimum_fee: number;
+  provider_max_minimum_fee: number;
+  allow_provider_customization: boolean;
+  allow_provider_tiered: boolean;
+  default_free_within_km?: number;
+}
+
 export default function TravelFeesScreen() {
   const { data: settings, loading, refresh } = useApi<TravelFeeSettings>("/api/provider/travel-fees");
+  const { data: platformLimits } = useApi<PlatformLimits>("/api/provider/travel-fees/platform-limits");
   const { execute: saveSettings, loading: saving } = useApiMutation("patch");
 
   const [enabled, setEnabled] = useState(true);
@@ -62,6 +75,22 @@ export default function TravelFeesScreen() {
     }
   }, [settings]);
 
+  const allowCustomization =
+    platformLimits?.allow_provider_customization !== false && settings?.allow_provider_customization !== false;
+  const allowTiered = platformLimits?.allow_provider_tiered !== false;
+
+  useEffect(() => {
+    if (!allowCustomization) {
+      setUsePlatformDefault(true);
+    }
+  }, [allowCustomization]);
+
+  useEffect(() => {
+    if (!allowTiered && pricingModel === "tiered") {
+      setPricingModel("per_km");
+    }
+  }, [allowTiered, pricingModel]);
+
   function update(fn: () => void) {
     fn();
     setDirty(true);
@@ -77,29 +106,54 @@ export default function TravelFeesScreen() {
     }
     if (!ratePerKm) return null;
     const freeKm = parseFloat(freeWithin) || 0;
-    const chargeableKm = Math.max(0, km - freeKm);
+    if (freeKm > 0 && km <= freeKm) return 0;
     const rate = parseFloat(ratePerKm) || 0;
     const minFee = parseFloat(minimumFee) || 0;
-    const maxFee = parseFloat(maximumFee) || Infinity;
-    let fee = chargeableKm * rate;
-    fee = Math.max(fee, minFee);
-    if (maxFee < Infinity) fee = Math.min(fee, maxFee);
-    return fee;
+    const maxFee = maximumFee.trim() ? parseFloat(maximumFee) : Infinity;
+    let totalFee = minFee + Math.max(0, km - freeKm) * rate;
+    if (Number.isFinite(maxFee)) totalFee = Math.min(totalFee, maxFee);
+    return roundCurrency(totalFee);
   }, [ratePerKm, minimumFee, maximumFee, freeWithin, previewKm, usePlatformDefault, pricingModel, tiers]);
 
   async function handleSave() {
+    if (!usePlatformDefault && platformLimits) {
+      const r = Number(ratePerKm) || 0;
+      const m = Number(minimumFee) || 0;
+      if (pricingModel === "per_km") {
+        if (r < platformLimits.provider_min_rate_per_km || r > platformLimits.provider_max_rate_per_km) {
+          Alert.alert(
+            "Error",
+            `Rate per km must be between ${platformLimits.provider_min_rate_per_km} and ${platformLimits.provider_max_rate_per_km}`
+          );
+          return;
+        }
+        if (m < platformLimits.provider_min_minimum_fee || m > platformLimits.provider_max_minimum_fee) {
+          Alert.alert(
+            "Error",
+            `Minimum fee must be between ${platformLimits.provider_min_minimum_fee} and ${platformLimits.provider_max_minimum_fee}`
+          );
+          return;
+        }
+      }
+    }
+
     const payload: Record<string, unknown> = {
       enabled,
       use_platform_default: usePlatformDefault,
+      currency: settings?.currency ?? getTenantDefaultCurrency(),
     };
     if (!usePlatformDefault) {
       payload.pricing_model = pricingModel;
       if (pricingModel === "per_km") {
         payload.rate_per_km = Number(ratePerKm) || 0;
         payload.minimum_fee = Number(minimumFee) || 0;
-        payload.maximum_fee = maximumFee ? Number(maximumFee) : null;
-        payload.free_within_km = freeWithin ? Number(freeWithin) : null;
+        payload.maximum_fee = maximumFee.trim() ? Number(maximumFee) : null;
+        payload.free_within_km = freeWithin.trim() ? Number(freeWithin) : null;
       } else {
+        if (!allowTiered) {
+          Alert.alert("Error", "Tiered pricing is not enabled for your platform.");
+          return;
+        }
         if (tiers.length === 0) {
           Alert.alert("Error", "Add at least one distance tier");
           return;
@@ -166,6 +220,14 @@ export default function TravelFeesScreen() {
         </View>
       )}
 
+      {allowCustomization === false && (
+        <View style={twStyle("mb-4 rounded-2xl border border-amber-100 bg-amber-50 p-3")}>
+          <Text style={twStyle("text-sm text-amber-900")}>
+            Travel rates are set by your platform. You can turn travel fees on or off; per-km and tier customization is disabled.
+          </Text>
+        </View>
+      )}
+
       <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
         <View style={twStyle("mb-3 flex-row items-center justify-between")}>
           <View style={twStyle("flex-1")}>
@@ -190,13 +252,17 @@ export default function TravelFeesScreen() {
               </View>
               <Switch
                 value={usePlatformDefault}
-                onValueChange={(v) => update(() => setUsePlatformDefault(v))}
+                disabled={!allowCustomization}
+                onValueChange={(v) => {
+                  if (!allowCustomization) return;
+                  update(() => setUsePlatformDefault(v));
+                }}
                 trackColor={{ false: "#d1d5db", true: "#818cf8" }}
                 thumbColor={usePlatformDefault ? "#6366f1" : "#f4f4f5"}
               />
             </View>
 
-            {!usePlatformDefault && (
+            {!usePlatformDefault && allowCustomization && (
               <>
                 <View style={twStyle("my-2 border-t border-gray-100")} />
                 <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Pricing model</Text>
@@ -214,8 +280,13 @@ export default function TravelFeesScreen() {
                     style={[
                       twStyle("flex-1 rounded-xl border px-4 py-3"),
                       pricingModel === "tiered" ? twStyle("border-indigo-500 bg-indigo-50") : twStyle("border-gray-200 bg-gray-50"),
+                      !allowTiered ? twStyle("opacity-40") : undefined,
                     ]}
-                    onPress={() => update(() => setPricingModel("tiered"))}
+                    disabled={!allowTiered}
+                    onPress={() => {
+                      if (!allowTiered) return;
+                      update(() => setPricingModel("tiered"));
+                    }}
                   >
                     <Text style={twStyle("text-center text-sm font-medium text-gray-900")}>Tiers</Text>
                   </TouchableOpacity>

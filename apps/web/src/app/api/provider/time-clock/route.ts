@@ -49,7 +49,11 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    // Transform response
+    // §Provider-audit 2026-04 (round 7): return raw ISO alongside the
+    // locale-formatted string. The mobile "Edit time card" sheet prefilled
+    // fields with the US-locale string ("02:45 PM") and then POSTed that
+    // straight back, guaranteeing a 400. Expose the unformatted timestamps
+    // so clients can parse them into the device's local HH:MM for editing.
     const transformed = (timeCards || []).map((card: any) => ({
       id: card.id,
       team_member_id: card.staff_id,
@@ -57,6 +61,9 @@ export async function GET(request: NextRequest) {
       date: card.date,
       clock_in_time: card.clock_in_time ? new Date(card.clock_in_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null,
       clock_out_time: card.clock_out_time ? new Date(card.clock_out_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null,
+      clock_in_at: card.clock_in_time ?? null,
+      clock_out_at: card.clock_out_time ?? null,
+      notes: card.notes ?? null,
       total_hours: card.total_hours || null,
       status: card.clock_out_time ? "clocked_out" : "clocked_in",
     }));

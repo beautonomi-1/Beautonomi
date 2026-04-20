@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
@@ -19,13 +20,14 @@ function formatDateSafe(value: unknown): string {
 }
 
 export default function PaymentsScreen() {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCur =
     bundle?.meta?.tenant_region?.default_currency?.trim() ?? getTenantDefaultCurrency();
   const saveCardInfo = useMemo(() => {
     const example = formatMoney(1, tenantCur);
-    return `We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. ${example}) may be placed and reversed—this confirms your card for future use.`;
-  }, [tenantCur]);
+    return t("customer.paymentsScreen.saveCardExplainer", { example });
+  }, [tenantCur, t]);
 
   const [methods, setMethods] = useState<any[]>([]);
   const [giftCards, setGiftCards] = useState<any[]>([]);
@@ -37,22 +39,17 @@ export default function PaymentsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [addingCard, setAddingCard] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     setGiftCardsError(null);
     try {
-      // §Customer-launch (audit 2026-04): web payments page fetches coupon
-      // count + supports redemption via /api/me/coupons/{count,redeem}.
-      // Mobile previously shipped without any coupon surface at all, so
-      // customers could never redeem a coupon code from the app. Pull
-      // coupon count in parallel with cards + gift cards and surface
-      // redeem UI below.
+      // Customer payments: coupon count + redeem parity with web (cards, gift cards, coupons in parallel).
       const [methodsRes, giftRes, couponsRes] = await Promise.all([
         api.get<any>("/api/me/payment-methods"),
         api.get<any>("/api/me/gift-cards").catch((err) => {
           console.warn("Failed to load gift cards:", err);
-          return { data: null, error: { message: "Couldn't load gift cards" } };
+          return { data: null, error: { message: t("customer.paymentsScreen.loadGiftCardsFailed") } };
         }),
         api.get<any>("/api/me/coupons/count").catch((err) => {
           console.warn("Failed to load coupon count:", err);
@@ -60,13 +57,13 @@ export default function PaymentsScreen() {
         }),
       ]);
       if (methodsRes.error) {
-        setError(methodsRes.error.message || "Failed to load");
+        setError(methodsRes.error.message || t("common.error"));
       } else {
         const m = methodsRes.data;
         setMethods(Array.isArray(m) ? m : m?.data ?? []);
       }
       if (giftRes?.error) {
-        setGiftCardsError(giftRes.error.message || "Couldn't load gift cards");
+        setGiftCardsError(giftRes.error.message || t("customer.paymentsScreen.loadGiftCardsFailed"));
         setGiftCards([]);
       } else {
         const g = giftRes.data;
@@ -76,16 +73,16 @@ export default function PaymentsScreen() {
       const rawCount = cData?.count ?? cData?.data?.count ?? 0;
       setCouponCount(Number.isFinite(rawCount) ? Number(rawCount) : 0);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : t("common.error"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   const redeemCoupon = async () => {
     const code = couponCode.trim();
     if (!code) {
-      Alert.alert("Coupon", "Enter a coupon code to redeem.");
+      Alert.alert(t("customer.paymentsScreen.couponTitle"), t("customer.paymentsScreen.enterCouponBody"));
       return;
     }
     setCouponSubmitting(true);
@@ -95,7 +92,7 @@ export default function PaymentsScreen() {
         { code }
       );
       if (res.error) {
-        Alert.alert("Coupon", res.error.message ?? "Could not redeem this coupon.");
+        Alert.alert(t("customer.paymentsScreen.couponTitle"), res.error.message ?? t("customer.paymentsScreen.couponRedeemFailed"));
         return;
       }
       setCouponCode("");
@@ -103,29 +100,29 @@ export default function PaymentsScreen() {
       const successMsg =
         (res.data as { message?: string; data?: { message?: string } } | undefined)?.message ??
         (res.data as { data?: { message?: string } } | undefined)?.data?.message ??
-        "Coupon redeemed successfully.";
-      Alert.alert("Coupon redeemed", successMsg);
+        t("customer.paymentsScreen.couponRedeemedDefault");
+      Alert.alert(t("customer.paymentsScreen.couponRedeemedTitle"), successMsg);
     } catch (e) {
-      Alert.alert("Coupon", e instanceof Error ? e.message : "Could not redeem this coupon.");
+      Alert.alert(t("customer.paymentsScreen.couponTitle"), e instanceof Error ? e.message : t("customer.paymentsScreen.couponRedeemFailed"));
     } finally {
       setCouponSubmitting(false);
     }
   };
 
   useEffect(() => {
-    load();
-  }, []);
+    void load();
+  }, [load]);
 
   const removeMethod = async (id: string) => {
-    Alert.alert("Remove card", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(t("customer.paymentsScreen.removeCardTitle"), t("customer.paymentsScreen.removeCardConfirm"), [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: "Remove",
+        text: t("customer.paymentsScreen.remove"),
         style: "destructive",
         onPress: async () => {
           const res = await api.fetch<any>("/api/me/payment-methods", { method: "DELETE", body: { id } });
           if (res.error) {
-            Alert.alert("Error", res.error.message ?? "Could not remove card. Please try again.");
+            Alert.alert(t("common.error"), res.error.message ?? t("customer.paymentsScreen.couldNotRemoveCard"));
           } else {
             load();
           }
@@ -143,7 +140,7 @@ export default function PaymentsScreen() {
       const data = res?.data as { authorization_url?: string } | undefined;
       const url = data?.authorization_url;
       if (!url) {
-        Alert.alert("Error", res?.error?.message ?? "Could not start card verification.");
+        Alert.alert(t("common.error"), res?.error?.message ?? t("customer.paymentsScreen.couldNotStartVerification"));
         return;
       }
       await WebBrowser.openBrowserAsync(url, {
@@ -151,21 +148,24 @@ export default function PaymentsScreen() {
       });
       await load();
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Could not add card.");
+      Alert.alert(t("common.error"), e instanceof Error ? e.message : t("customer.paymentsScreen.couldNotAddCard"));
     } finally {
       setAddingCard(false);
     }
   };
+
+  const couponCountLabel =
+    couponCount === 1 ? t("customer.paymentsScreen.oneActiveCoupon") : t("customer.paymentsScreen.nActiveCoupons", { count: couponCount });
 
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
       <View>
         <View>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Payment methods</Text>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{t("customer.paymentsScreen.methodsHeading")}</Text>
             <TouchableOpacity
-              onPress={() => Alert.alert("Save card", saveCardInfo)}
-              accessibilityLabel="Info about saving card"
+              onPress={() => Alert.alert(t("customer.paymentsScreen.saveCardInfoTitle"), saveCardInfo)}
+              accessibilityLabel={t("customer.paymentsScreen.infoAboutSavingCard")}
               style={{ padding: 4 }}
             >
               <Ionicons name="information-circle-outline" size={22} color={Colors.primary} />
@@ -175,13 +175,13 @@ export default function PaymentsScreen() {
             <Text style={{ fontSize: 12, color: Colors.gray[600] }}>{saveCardInfo}</Text>
           </View>
           {methods.length === 0 ? (
-            <Text style={{ color: Colors.gray[500], paddingVertical: 16 }}>No payment methods saved</Text>
+            <Text style={{ color: Colors.gray[500], paddingVertical: 16 }}>{t("customer.paymentsScreen.noMethods")}</Text>
           ) : (
             methods.map((m) => (
               <View key={m.id} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{m.last4 ? `•••• ${m.last4}` : m.type || "Card"}</Text>
+                <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{m.last4 ? `•••• ${m.last4}` : m.type || t("customer.paymentsScreen.card")}</Text>
                 <TouchableOpacity onPress={() => removeMethod(m.id)}>
-                  <Text style={{ color: "#B91C1C", fontSize: 14 }}>Remove</Text>
+                  <Text style={{ color: "#B91C1C", fontSize: 14 }}>{t("customer.paymentsScreen.remove")}</Text>
                 </TouchableOpacity>
               </View>
             ))
@@ -196,71 +196,61 @@ export default function PaymentsScreen() {
             ) : (
               <>
                 <Ionicons name="add-circle-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
-                <Text style={{ fontWeight: "500", color: Colors.primary }}>Add card</Text>
+                <Text style={{ fontWeight: "500", color: Colors.primary }}>{t("customer.paymentsScreen.addCard")}</Text>
               </>
             )}
           </TouchableOpacity>
         </View>
         <View style={{ marginTop: 24 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Gift cards</Text>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{t("customer.paymentsScreen.giftCards")}</Text>
             <TouchableOpacity onPress={() => router.push("/(app)/gift-card-purchase")}>
-              <Text style={{ color: Colors.primary, fontWeight: "500" }}>Buy gift card</Text>
+              <Text style={{ color: Colors.primary, fontWeight: "500" }}>{t("customer.paymentsScreen.buyGiftCard")}</Text>
             </TouchableOpacity>
           </View>
-          {/*
-            §Customer-launch (audit 2026-04): gift-card fetch failures
-            previously only logged to console, so a failed API silently
-            showed "No gift cards yet" with no way to retry. Surface the
-            failure inline alongside the list.
-          */}
+          {/* Gift-card fetch failures: show inline error + retry instead of silent empty state. */}
           {giftCardsError && (
             <View style={{ backgroundColor: "#FEF2F2", borderRadius: 12, padding: 12, marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <Text style={{ color: "#B91C1C", flex: 1 }} numberOfLines={2}>{giftCardsError}</Text>
-              <TouchableOpacity onPress={load} style={{ paddingHorizontal: 12, paddingVertical: 6 }} accessibilityRole="button" accessibilityLabel="Retry loading gift cards">
-                <Text style={{ color: Colors.primary, fontWeight: "600" }}>Retry</Text>
+              <TouchableOpacity onPress={load} style={{ paddingHorizontal: 12, paddingVertical: 6 }} accessibilityRole="button" accessibilityLabel={t("customer.paymentsScreen.retryGiftCardsA11y")}>
+                <Text style={{ color: Colors.primary, fontWeight: "600" }}>{t("common.retry")}</Text>
               </TouchableOpacity>
             </View>
           )}
           {giftCards.length === 0 ? (
-            !giftCardsError && <Text style={{ color: Colors.gray[500], paddingVertical: 16 }}>No gift cards yet</Text>
+            !giftCardsError && <Text style={{ color: Colors.gray[500], paddingVertical: 16 }}>{t("customer.paymentsScreen.noGiftCards")}</Text>
           ) : (
-            giftCards.map((g) => (
-              <View key={g.id} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 8 }}>
-                <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
-                  {g.code ? `•••• ${String(g.code).slice(-6)}` : "Gift card"}
-                </Text>
-                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-                  Balance: {g.currency} {(g.balance ?? 0).toFixed(2)}
-                  {g.expires_at ? ` · Expires ${formatDateSafe(g.expires_at)}` : ""}
-                </Text>
-              </View>
-            ))
+            giftCards.map((g) => {
+              const gc = String(g.currency ?? tenantCur);
+              const bal = formatMoney(Number(g.balance ?? 0), gc);
+              const exp = g.expires_at ? t("customer.paymentsScreen.expiresSuffix", { date: formatDateSafe(g.expires_at) }) : "";
+              return (
+                <View key={g.id} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 8 }}>
+                  <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
+                    {g.code ? `•••• ${String(g.code).slice(-6)}` : t("customer.paymentsScreen.giftCard")}
+                  </Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+                    {t("customer.paymentsScreen.giftBalanceExpires", { balance: bal, expires: exp })}
+                  </Text>
+                </View>
+              );
+            })
           )}
         </View>
 
-        {/*
-          §Customer-launch (audit 2026-04): coupon redemption parity with
-          web payments page. Customers can type a promo / coupon code,
-          see how many active coupons they have, and redeem new ones
-          without leaving the app.
-        */}
+        {/* Coupon redemption (parity with web payments). */}
         <View style={{ marginTop: 24 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Coupons</Text>
-            <Text style={{ color: Colors.gray[500], fontSize: 12 }}>
-              {couponCount === 1 ? "1 active coupon" : `${couponCount} active coupons`}
-            </Text>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{t("customer.paymentsScreen.coupons")}</Text>
+            <Text style={{ color: Colors.gray[500], fontSize: 12 }}>{couponCountLabel}</Text>
           </View>
           <View style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 12 }}>
-            <Text style={{ fontSize: 12, color: Colors.gray[600], marginBottom: 8 }}>
-              Have a promo or referral code? Redeem it here and we&apos;ll apply it to your next eligible order.
-            </Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[600], marginBottom: 8 }}>{t("customer.paymentsScreen.couponHelp")}</Text>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <TextInput
                 value={couponCode}
                 onChangeText={setCouponCode}
-                placeholder="Enter coupon code"
+                placeholder={t("customer.paymentsScreen.couponPlaceholder")}
                 placeholderTextColor={Colors.gray[400]}
                 autoCapitalize="characters"
                 autoCorrect={false}
@@ -276,7 +266,7 @@ export default function PaymentsScreen() {
                   color: Colors.gray[900],
                   marginRight: 8,
                 }}
-                accessibilityLabel="Coupon code"
+                accessibilityLabel={t("customer.paymentsScreen.couponCodeA11y")}
                 returnKeyType="done"
                 onSubmitEditing={redeemCoupon}
               />
@@ -292,13 +282,13 @@ export default function PaymentsScreen() {
                   alignItems: "center",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Redeem coupon"
+                accessibilityLabel={t("customer.paymentsScreen.redeemA11y")}
                 accessibilityState={{ disabled: couponSubmitting || !couponCode.trim() }}
               >
                 {couponSubmitting ? (
                   <ActivityIndicator size="small" color={Colors.white} />
                 ) : (
-                  <Text style={{ color: Colors.white, fontWeight: "600" }}>Redeem</Text>
+                  <Text style={{ color: Colors.white, fontWeight: "600" }}>{t("customer.paymentsScreen.redeem")}</Text>
                 )}
               </TouchableOpacity>
             </View>

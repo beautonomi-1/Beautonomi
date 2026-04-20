@@ -1,6 +1,6 @@
 /**
  * Yoco Device Management Screen
- * List, add, edit, and delete Yoco Web POS and card machine devices.
+ * List, add, edit, and delete Yoco Web POS devices (created via Yoco's API).
  */
 import { useState, useCallback } from "react";
 import {
@@ -30,8 +30,6 @@ interface Location {
   name: string;
 }
 
-type DeviceType = "web_pos" | "card_machine";
-
 export default function YocoDevicesScreen() {
   const {
     devices,
@@ -57,8 +55,6 @@ export default function YocoDevicesScreen() {
   const [showConnectSheet, setShowConnectSheet] = useState(false);
 
   const [formName, setFormName] = useState("");
-  const [formSerial, setFormSerial] = useState("");
-  const [formType, setFormType] = useState<DeviceType>("web_pos");
   const [formLocationId, setFormLocationId] = useState<string | null>(null);
   const [formActive, setFormActive] = useState(true);
 
@@ -69,8 +65,6 @@ export default function YocoDevicesScreen() {
 
   const resetForm = useCallback(() => {
     setFormName("");
-    setFormSerial("");
-    setFormType("web_pos");
     setFormLocationId(null);
     setFormActive(true);
   }, []);
@@ -83,9 +77,7 @@ export default function YocoDevicesScreen() {
 
   function openEdit(device: YocoDevice) {
     setFormName(device.name);
-    setFormSerial(device.serial_number);
-    setFormType(device.device_type);
-    setFormLocationId(device.location_id);
+    setFormLocationId(device.location_id ?? null);
     setFormActive(device.is_active);
     setEditDevice(device);
     setShowAddSheet(true);
@@ -102,8 +94,6 @@ export default function YocoDevicesScreen() {
     if (editDevice) {
       const ok = await updateDevice(editDevice.id, {
         name: formName.trim(),
-        serial_number: formSerial.trim(),
-        device_type: formType,
         location_id: formLocationId,
         is_active: formActive,
       });
@@ -115,8 +105,6 @@ export default function YocoDevicesScreen() {
     } else {
       const result = await addDevice({
         name: formName.trim(),
-        serial_number: formSerial.trim(),
-        device_type: formType,
         location_id: formLocationId,
         is_active: formActive,
       });
@@ -176,7 +164,9 @@ export default function YocoDevicesScreen() {
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
             const ok = await disconnect();
-            if (ok) reloadIntegration();
+            if (ok) {
+              reloadDevices();
+            }
           },
         },
       ],
@@ -284,7 +274,7 @@ export default function YocoDevicesScreen() {
         <EmptyState
           icon="phone-portrait-outline"
           title="No devices yet"
-          description="Add a Yoco Web POS or card machine device"
+          description="Add a Web POS device; Yoco assigns the device ID"
           actionLabel="Add Device"
           onAction={openAdd}
         />
@@ -303,16 +293,12 @@ export default function YocoDevicesScreen() {
                       device.is_active ? "bg-indigo-50" : "bg-gray-100"
                     }`)}
                   >
-                    <Ionicons
-                      name={device.device_type === "web_pos" ? "phone-portrait-outline" : "card-outline"}
-                      size={20}
-                      color={device.is_active ? "#6366f1" : "#9ca3af"}
-                    />
+                    <Ionicons name="phone-portrait-outline" size={20} color={device.is_active ? "#6366f1" : "#9ca3af"} />
                   </View>
                   <View style={twStyle("ml-3 flex-1")}>
                     <Text style={twStyle("text-sm font-semibold text-gray-900")}>{device.name}</Text>
                     <Text style={twStyle("text-xs text-gray-500")}>
-                      {device.device_type === "web_pos" ? "Web POS" : "Card Machine"}
+                      Web POS
                       {device.serial_number ? ` · ${device.serial_number}` : ""}
                     </Text>
                     {device.location_name && (
@@ -373,48 +359,23 @@ export default function YocoDevicesScreen() {
           />
         </View>
 
-        <View style={twStyle("mb-4")}>
-          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Serial Number</Text>
-          <TextInput
-            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
-            value={formSerial}
-            onChangeText={setFormSerial}
-            placeholder="e.g. YC123456"
-            placeholderTextColor="#9ca3af"
-            accessibilityLabel="Serial number"
-          />
-        </View>
-
-        <View style={twStyle("mb-4")}>
-          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Device Type</Text>
-          <View style={twStyle("flex-row")}>
-            {(["web_pos", "card_machine"] as const).map((type) => {
-              const sel = formType === type;
-              return (
-                <TouchableOpacity
-                  key={type}
-                  onPress={() => setFormType(type)}
-                  style={[twStyle(`flex-1 items-center rounded-xl border py-3 ${
-                    sel ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-gray-50"
-                  }`), { marginRight: 8 }]}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: sel }}
-                >
-                  <Ionicons
-                    name={type === "web_pos" ? "phone-portrait-outline" : "card-outline"}
-                    size={20}
-                    color={sel ? "#6366f1" : "#6b7280"}
-                  />
-                  <Text
-                    style={twStyle(`mt-1 text-xs font-medium ${sel ? "text-indigo-700" : "text-gray-600"}`)}
-                  >
-                    {type === "web_pos" ? "Web POS" : "Card Machine"}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+        {!editDevice && (
+          <View style={twStyle("mb-4 rounded-xl bg-violet-50 px-3 py-2")}>
+            <Text style={twStyle("text-xs text-violet-900")}>
+              Beautonomi calls Yoco&apos;s Create Web POS device API with this name. Yoco assigns the device ID used for
+              card charges.
+            </Text>
           </View>
-        </View>
+        )}
+
+        {editDevice && editDevice.serial_number ? (
+          <View style={twStyle("mb-4")}>
+            <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Yoco device ID</Text>
+            <Text style={twStyle("rounded-xl border border-gray-200 bg-gray-100 px-4 py-3 text-xs text-gray-600")} selectable>
+              {editDevice.serial_number}
+            </Text>
+          </View>
+        ) : null}
 
         {Array.isArray(locations) && locations.length > 0 && (
           <View style={twStyle("mb-4")}>
@@ -458,17 +419,15 @@ export default function YocoDevicesScreen() {
           </View>
         )}
 
-        {editDevice && (
-          <View style={twStyle("mb-4 flex-row items-center justify-between")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
-            <Switch
-              value={formActive}
-              onValueChange={setFormActive}
-              trackColor={{ false: "#d1d5db", true: "#818cf8" }}
-              thumbColor={formActive ? "#6366f1" : "#f3f4f6"}
-            />
-          </View>
-        )}
+        <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
+          <Switch
+            value={formActive}
+            onValueChange={setFormActive}
+            trackColor={{ false: "#d1d5db", true: "#818cf8" }}
+            thumbColor={formActive ? "#6366f1" : "#f3f4f6"}
+          />
+        </View>
 
         <ActionButton
           label={editDevice ? "Save Changes" : "Add Device"}

@@ -18,17 +18,23 @@ export async function GET(request: NextRequest) {
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    // Get user profile to find referral code (handle or id) – select id first in case handle column is missing
+    // Canonical code lives on users.referral_code (unique random; not handle / name-based).
     let referralCode = user.id?.slice(0, 8).toUpperCase() || "BEAUTY";
     try {
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select("id, handle")
+        .select("id, referral_code, handle")
         .eq("id", user.id)
         .single();
 
       if (!userError && userData) {
-        referralCode = (userData as { handle?: string })?.handle || userData.id?.slice(0, 8).toUpperCase() || referralCode;
+        const row = userData as { referral_code?: string | null; handle?: string | null; id: string };
+        const rc = row.referral_code?.trim();
+        referralCode =
+          rc ||
+          row.handle ||
+          row.id?.slice(0, 8).toUpperCase() ||
+          referralCode;
       }
     } catch {
       // use fallback referralCode from user.id

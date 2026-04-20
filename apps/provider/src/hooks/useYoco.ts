@@ -27,6 +27,8 @@ export interface YocoIntegration {
   api_key_set: boolean;
   webhook_configured: boolean;
   created_at: string;
+  /** Present on GET when plan does not include Yoco (UI can prompt upgrade). */
+  subscription_required?: boolean;
 }
 
 export interface YocoPaymentRequest {
@@ -48,6 +50,25 @@ export interface YocoPaymentResult {
 
 /* ─── Integration Status ─── */
 
+function normalizeIntegrationPayload(raw: Record<string, unknown> | null | undefined): YocoIntegration | null {
+  if (!raw || typeof raw !== "object") return null;
+  const pub = raw.public_key;
+  /** GET /api/provider/yoco/integration sets this when both public + secret are stored (required for Web POS Bearer calls). */
+  const hasKey =
+    typeof raw.api_key_set === "boolean"
+      ? raw.api_key_set
+      : (typeof pub === "string" && pub.length > 0);
+  return {
+    id: typeof raw.id === "string" ? raw.id : "",
+    provider_id: typeof raw.provider_id === "string" ? raw.provider_id : "",
+    is_enabled: raw.is_enabled === true,
+    api_key_set: hasKey,
+    webhook_configured: raw.webhook_configured === true,
+    created_at: typeof raw.created_at === "string" ? raw.created_at : new Date().toISOString(),
+    subscription_required: raw.subscription_required === true,
+  };
+}
+
 export function useYocoIntegration() {
   const [integration, setIntegration] = useState<YocoIntegration | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,24 +78,16 @@ export function useYocoIntegration() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<YocoIntegration | { data: YocoIntegration }>(
-        "/api/provider/yoco/integration"
-      );
-      const raw = (res as any)?.data ?? (res as any);
-      if ((res as any)?.error) {
-        setError((res as any).error.message);
-      } else if (raw && typeof raw === "object") {
-        setIntegration({
-          id: (raw as any).id ?? "",
-          provider_id: (raw as any).provider_id ?? "",
-          is_enabled: !!(raw as any).is_enabled,
-          api_key_set: !!((raw as any).api_key_set ?? (raw as any).public_key),
-          webhook_configured: !!(raw as any).webhook_configured,
-          created_at: (raw as any).created_at ?? new Date().toISOString(),
-        });
+      const res = await api.get<Record<string, unknown>>("/api/provider/yoco/integration");
+      if (res.error) {
+        setError(res.error.message ?? "Failed to load Yoco status");
+        setIntegration(null);
+        return;
       }
+      setIntegration(normalizeIntegrationPayload(res.data as Record<string, unknown>));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load Yoco status");
+      setIntegration(null);
     } finally {
       setLoading(false);
     }
@@ -87,22 +100,23 @@ export function useYocoIntegration() {
   const connect = useCallback(
     async (apiKey: string, secretKey: string) => {
       try {
-        const res = await api.post<YocoIntegration>(
-          "/api/provider/yoco/integration",
-          { api_key: apiKey, secret_key: secretKey },
-        );
+        const res = await api.post<Record<string, unknown>>("/api/provider/yoco/integration", {
+          api_key: apiKey,
+          secret_key: secretKey,
+        });
         if (res.error) {
           Alert.alert("Error", res.error.message || "Failed to connect Yoco");
           return false;
         }
-        if (res.data) setIntegration(res.data);
+        // POST body omits api_key_set; always re-fetch so state matches GET (payments sheet + Settings).
+        await load();
         return true;
       } catch {
         Alert.alert("Error", "Failed to connect Yoco");
         return false;
       }
     },
-    [],
+    [load],
   );
 
   const disconnect = useCallback(async () => {
@@ -112,13 +126,13 @@ export function useYocoIntegration() {
         Alert.alert("Error", res.error.message || "Failed to disconnect");
         return false;
       }
-      setIntegration(null);
+      await load();
       return true;
     } catch {
       Alert.alert("Error", "Failed to disconnect Yoco");
       return false;
     }
-  }, []);
+  }, [load]);
 
   return { integration, loading, error, reload: load, connect, disconnect };
 }
@@ -158,44 +172,51 @@ export function useYocoDevices() {
   }, [load]);
 
   const addDevice = useCallback(
-    async (device: Omit<YocoDevice, "id" | "created_at" | "last_used_at">) => {
+    async (input: {
+      name: string;
+      location_id?: string | null;
+      is_active?: boolean;
+    }) => {
       try {
-        const res = await api.post<YocoDevice>("/api/provider/yoco/devices", device);
+        const res = await api.post<YocoDevice>("/api/provider/yoco/devices", {
+          name: input.name,
+          location_id: input.location_id ?? undefined,
+          is_active: input.is_active ?? true,
+        });
         if (res.error) {
           Alert.alert("Error", res.error.message || "Failed to add device");
           return null;
         }
-        if (res.data) {
-          setDevices((prev) => [...prev, res.data!]);
-        }
+        await load();
         return res.data;
       } catch {
         Alert.alert("Error", "Failed to add device");
         return null;
       }
     },
-    [],
+    [load],
   );
 
   const updateDevice = useCallback(
-    async (id: string, updates: Partial<YocoDevice>) => {
+    async (id: string, updates: Partial<Pick<YocoDevice, "name" | "location_id" | "is_active">>) => {
       try {
-        const res = await api.put<YocoDevice>(
-          `/api/provider/yoco/devices/${id}`,
-          updates,
-        );
+        const body: Record<string, unknown> = {};
+        if (updates.name !== undefined) body.name = updates.name;
+        if (updates.location_id !== undefined) body.location_id = updates.location_id;
+        if (updates.is_active !== undefined) body.is_active = updates.is_active;
+        const res = await api.put<YocoDevice>(`/api/provider/yoco/devices/${id}`, body);
         if (res.error) {
           Alert.alert("Error", res.error.message || "Failed to update");
           return false;
         }
-        setDevices((prev) => prev.map((d) => (d.id === id ? { ...d, ...updates } : d)));
+        await load();
         return true;
       } catch {
         Alert.alert("Error", "Failed to update device");
         return false;
       }
     },
-    [],
+    [load],
   );
 
   const deleteDevice = useCallback(async (id: string) => {
@@ -221,6 +242,39 @@ export function useYocoDevices() {
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
+/** Map Yoco / API status strings to a stable union (Yoco may return different casings). */
+function normalizePaymentStatus(raw: string | undefined | null): YocoPaymentResult["status"] {
+  const s = (raw ?? "").toLowerCase();
+  if (s === "successful" || s === "completed" || s === "paid" || s === "success") return "successful";
+  if (s === "failed" || s === "declined" || s === "cancelled" || s === "canceled" || s === "voided") {
+    return "failed";
+  }
+  return "pending";
+}
+
+function toPaymentResult(row: Record<string, unknown>): YocoPaymentResult {
+  const ref =
+    (typeof row.reference === "string" && row.reference) ||
+    (typeof row.yoco_payment_id === "string" && row.yoco_payment_id) ||
+    String(row.id ?? "");
+  const amountCents =
+    typeof row.amount_cents === "number"
+      ? row.amount_cents
+      : typeof row.amount === "number"
+        ? row.amount
+        : 0;
+  return {
+    id: String(row.id ?? ""),
+    status: normalizePaymentStatus(typeof row.status === "string" ? row.status : undefined),
+    reference: ref,
+    amount_cents: amountCents,
+    receipt_url:
+      typeof row.receipt_url === "string"
+        ? row.receipt_url
+        : undefined,
+  };
+}
+
 export function useYocoPayment() {
   const [processing, setProcessing] = useState(false);
 
@@ -228,22 +282,22 @@ export function useYocoPayment() {
     async (request: YocoPaymentRequest): Promise<YocoPaymentResult | null> => {
       setProcessing(true);
       try {
-        const res = await api.post<YocoPaymentResult>(
+        const res = await api.post<Record<string, unknown>>(
           "/api/provider/yoco/payments",
           request as unknown as Record<string, unknown>,
         );
-        const err = (res as { error?: { message?: string; code?: string } })?.error;
-        if (err) {
-          const code = err.code;
+        if (res.error) {
+          const code = res.error.code;
           const msg =
             code === "SUBSCRIPTION_REQUIRED"
               ? "Upgrade your plan to use Yoco card payments."
-              : err.message || "Card payment could not be processed";
+              : res.error.message || "Card payment could not be processed";
           Alert.alert(code === "SUBSCRIPTION_REQUIRED" ? "Yoco not available" : "Payment Failed", msg);
           return null;
         }
-        const data = (res as { data?: YocoPaymentResult })?.data ?? null;
-        if (!data) return null;
+        const raw = res.data;
+        if (!raw || typeof raw !== "object") return null;
+        const data = toPaymentResult(raw as Record<string, unknown>);
 
         // If still pending, poll until success/fail or timeout (avoids "check the device" without follow-up)
         if (data.status === "pending" && data.id) {
@@ -251,13 +305,15 @@ export function useYocoPayment() {
           while (Date.now() < deadline) {
             await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
             try {
-              const pollRes = await api.get<YocoPaymentResult>(
+              const pollRes = await api.get<Record<string, unknown>>(
                 `/api/provider/yoco/payments/${data.id}`,
               );
-              const pollData = (pollRes as { data?: YocoPaymentResult })?.data ?? (pollRes as unknown as YocoPaymentResult);
-              const status = pollData?.status;
-              if (status === "successful" || status === "failed") {
-                return { ...data, ...pollData, status } as YocoPaymentResult;
+              if (pollRes.error) continue;
+              const pr = pollRes.data;
+              if (!pr || typeof pr !== "object") continue;
+              const merged = toPaymentResult({ ...(raw as Record<string, unknown>), ...pr });
+              if (merged.status === "successful" || merged.status === "failed") {
+                return merged;
               }
             } catch {
               // continue polling

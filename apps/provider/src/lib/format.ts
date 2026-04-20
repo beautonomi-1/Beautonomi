@@ -39,6 +39,45 @@ export function formatTime(dateStr: string | null | undefined): string {
   }
 }
 
+/**
+ * §Provider-audit 2026-04: format an instant as `HH:mm` in an explicit IANA
+ * timezone (e.g. the provider's business zone). Falls back to device-local
+ * formatting when no `timeZone` is supplied, preserving legacy behaviour.
+ *
+ * This is the companion to `getHourMinuteForInstantInZone` used for
+ * calendar block positioning — when they both consult the provider
+ * timezone, the label text and the vertical slot position stay aligned
+ * even when the provider's phone is in a different zone (travel, DST).
+ */
+export function formatTimeInZone(
+  dateStr: string | Date | null | undefined,
+  timeZone: string | null | undefined,
+): string {
+  if (!dateStr) return "";
+  const d = dateStr instanceof Date ? dateStr : parseIsoSafe(dateStr);
+  if (!d) return typeof dateStr === "string" ? dateStr : "";
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(d);
+      const hour = parts.find((p) => p.type === "hour")?.value ?? "";
+      const minute = parts.find((p) => p.type === "minute")?.value ?? "";
+      if (hour && minute) return `${hour === "24" ? "00" : hour}:${minute}`;
+    } catch {
+      // fall through to device-local format
+    }
+  }
+  try {
+    return format(d, "HH:mm");
+  } catch {
+    return typeof dateStr === "string" ? dateStr : "";
+  }
+}
+
 export function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
   try {

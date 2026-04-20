@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    return createPaginatedResponse(campaigns || [], count || 0, page, limit);
+    return successResponse(createPaginatedResponse(campaigns || [], count || 0, page, limit));
   } catch (error: any) {
     console.error("Error fetching campaigns:", error);
     return handleApiError(error, "Failed to fetch campaigns");

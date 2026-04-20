@@ -368,13 +368,22 @@ export default function CartScreen() {
                             </View>
                           )}
                         </View>
+                        {/* §Customer-audit 2026-04: restructured so the line
+                             total has its own right-aligned column and the
+                             unit price is a compact subtitle, instead of
+                             wedging "R199.99 each · R599.97 total" onto a
+                             single line that overflowed the trash icon on
+                             small phones. */}
                         <View style={{ flex: 1, marginLeft: 12 }}>
                           <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }} numberOfLines={2}>
                             {item.product?.name}
                             {label ? ` · ${label}` : ""}
                           </Text>
-                          <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-                            {fmt(item.effective_price ?? item.product?.retail_price ?? 0)} each · {fmt(linePrice(item))} total
+                          <Text
+                            style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}
+                            numberOfLines={1}
+                          >
+                            {item.quantity} × {fmt(item.effective_price ?? item.product?.retail_price ?? 0)}
                           </Text>
                           {!item.in_stock ? (
                             <Text style={{ fontSize: 11, color: "#EF4444", fontWeight: "600", marginTop: 2 }}>Out of stock — remove before checkout</Text>
@@ -403,18 +412,29 @@ export default function CartScreen() {
                             </View>
                           </View>
                         </View>
-                        <TouchableOpacity
-                          onPress={() => removeItem(item.id)}
-                          disabled={removing}
-                          style={{ padding: 8 }}
-                          hitSlop={12}
-                        >
-                          {removing ? (
-                            <ActivityIndicator size="small" color="#6B7280" />
-                          ) : (
-                            <Ionicons name="trash-outline" size={22} color="#6B7280" />
-                          )}
-                        </TouchableOpacity>
+                        <View style={{ alignItems: "flex-end", marginLeft: 8, justifyContent: "space-between", alignSelf: "stretch" }}>
+                          <TouchableOpacity
+                            onPress={() => removeItem(item.id)}
+                            disabled={removing}
+                            style={{ padding: 8 }}
+                            hitSlop={12}
+                            accessibilityLabel="Remove item"
+                          >
+                            {removing ? (
+                              <ActivityIndicator size="small" color="#6B7280" />
+                            ) : (
+                              <Ionicons name="trash-outline" size={22} color="#6B7280" />
+                            )}
+                          </TouchableOpacity>
+                          <Text
+                            style={{ fontSize: 14, fontWeight: "700", color: "#111827", marginTop: 8 }}
+                            numberOfLines={1}
+                            minimumFontScale={0.8}
+                            adjustsFontSizeToFit
+                          >
+                            {fmt(linePrice(item))}
+                          </Text>
+                        </View>
                       </View>
                     );
                   })}

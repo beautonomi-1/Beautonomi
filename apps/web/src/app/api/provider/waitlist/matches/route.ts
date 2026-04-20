@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { findWaitlistMatches } from "@/lib/waitlist/matching";
 
@@ -34,26 +34,11 @@ export async function GET(request: NextRequest) {
 
     const supabase = await getSupabaseServer(request);
 
-    // Verify user owns the provider
-    const { data: provider, error: providerError } = await supabase
-      .from('providers')
-      .select('id, user_id')
-      .eq('id', providerId)
-      .single();
-
-    if (providerError || !provider) {
-      return handleApiError(
-        new Error("Provider not found"),
-        "Provider not found",
-        "NOT_FOUND",
-        404
-      );
-    }
-
-    if (provider.user_id !== user.id) {
+    const userProviderId = await getProviderIdForUser(user.id, supabase);
+    if (!userProviderId || userProviderId !== providerId) {
       return handleApiError(
         new Error("Unauthorized"),
-        "You can only view matches for your own provider",
+        "You can only view matches for your provider",
         "UNAUTHORIZED",
         403
       );

@@ -31,21 +31,37 @@ export async function GET(request: NextRequest) {
     const { data: bookings } = await bookingsQuery;
 
     const all = bookings || [];
-    const customerIds = new Set(all.map((b: any) => b.customer_id).filter(Boolean));
-    const firstBookingMap = new Map<string, string>();
-    all.forEach((b: any) => {
-      if (!b.customer_id) return;
-      const existing = firstBookingMap.get(b.customer_id);
-      if (!existing || new Date(b.created_at) < new Date(existing)) {
-        firstBookingMap.set(b.customer_id, b.created_at);
-      }
-    });
+    const customerIds = new Set(
+      all.map((b: any) => b.customer_id).filter(Boolean) as string[],
+    );
+
+    // §Provider-audit 2026-04 (round 8): previously "new vs returning" was
+    // derived from the earliest booking *within the filter window*. Since
+    // every booking in that set by definition has created_at >= fromDate,
+    // virtually every customer was classified as "new", even those who'd
+    // booked with the provider for years. Look up each customer's true
+    // first booking with this provider and compare against fromDate.
+    const firstEverMap = new Map<string, string>();
+    if (customerIds.size > 0) {
+      const { data: firstEverRows } = await supabaseAdmin
+        .from("bookings")
+        .select("customer_id, created_at")
+        .eq("provider_id", providerId)
+        .in("customer_id", Array.from(customerIds))
+        .order("created_at", { ascending: true });
+      (firstEverRows || []).forEach((r: any) => {
+        if (!r.customer_id) return;
+        if (!firstEverMap.has(r.customer_id)) {
+          firstEverMap.set(r.customer_id, r.created_at);
+        }
+      });
+    }
 
     let newClients = 0;
     let returningClients = 0;
     customerIds.forEach((cid) => {
-      const firstDate = firstBookingMap.get(cid);
-      if (firstDate && new Date(firstDate) >= fromDate) newClients++;
+      const firstEver = firstEverMap.get(cid);
+      if (firstEver && new Date(firstEver) >= fromDate) newClients++;
       else returningClients++;
     });
 

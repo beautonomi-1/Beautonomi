@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, Share, Alert, Platform } from "react-native";
 import * as Clipboard from "expo-clipboard";
+import { useTranslation } from "@beautonomi/i18n";
+import { formatMoney } from "@beautonomi/utils";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
@@ -22,6 +24,7 @@ interface ReferralSettings {
 }
 
 export default function ReferralsScreen() {
+  const { t } = useTranslation();
   const [data, setData] = useState<{
     referral_code: string;
     referral_link: string;
@@ -32,23 +35,23 @@ export default function ReferralsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await api.get<any>("/api/me/referrals");
-      if (res.error) setError(res.error.message || "Failed to load");
+      if (res.error) setError(res.error.message || t("common.error"));
       else setData(res.data ?? null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : t("common.error"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
-    load();
-  }, []);
+    void load();
+  }, [load]);
 
   const code = data?.referral_code ?? "";
   const link = data?.referral_link ?? "";
@@ -57,6 +60,7 @@ export default function ReferralsScreen() {
   const isEnabled = settings?.is_enabled !== false;
   const amount = settings?.referral_amount ?? 50;
   const currency = settings?.referral_currency ?? getTenantDefaultCurrency();
+  const rewardFormatted = useMemo(() => formatMoney(amount, currency), [amount, currency]);
 
   const handleCopy = async () => {
     if (!link) return;
@@ -66,7 +70,7 @@ export default function ReferralsScreen() {
       setTimeout(() => setCopied(false), 2000);
       trackReferralShared("referrals_copy");
     } catch {
-      Alert.alert("Error", "Could not copy link");
+      Alert.alert(t("common.error"), t("customer.referral.copyLinkFailed"));
     }
   };
 
@@ -74,9 +78,9 @@ export default function ReferralsScreen() {
     if (!link) return;
     try {
       await Share.share({
-        message: `Join me on Beautonomi and we both earn rewards! Use my link: ${link}`,
-        url: link,
-        title: "Join Beautonomi",
+        message: t("customer.referral.shareMessage", { link }),
+        title: t("customer.referral.shareTitle"),
+        ...(Platform.OS === "ios" ? { url: link } : {}),
       });
       trackReferralShared("referrals_screen");
     } catch {
@@ -89,19 +93,17 @@ export default function ReferralsScreen() {
       <View style={{ paddingHorizontal: 16 }}>
         {!isEnabled && (
           <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#FCD34D", backgroundColor: "#FFFBEB", padding: 12 }}>
-            <Text style={{ fontSize: 14, color: "#92400E" }}>
-              Referrals are currently disabled. You can still see your code; rewards will apply when the program is enabled again.
-            </Text>
+            <Text style={{ fontSize: 14, color: "#92400E" }}>{t("customer.referral.disabledBanner")}</Text>
           </View>
         )}
 
         <View style={{ backgroundColor: "#FDF2F8", borderRadius: 16, padding: 16, marginTop: 16 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Your referral code</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{t("customer.referral.yourCode")}</Text>
           <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], marginTop: 4, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }}>{code || "—"}</Text>
         </View>
 
         <View style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], padding: 16, marginTop: 16 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 4 }}>Your referral link</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 4 }}>{t("customer.referral.yourLink")}</Text>
           <Text style={{ fontSize: 16, color: Colors.gray[900], fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }} numberOfLines={2} selectable>
             {link || "—"}
           </Text>
@@ -111,37 +113,41 @@ export default function ReferralsScreen() {
               style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[100], paddingVertical: 12, borderRadius: 12, marginRight: 8 }}
             >
               <Ionicons name={copied ? "checkmark-circle" : "copy-outline"} size={20} color={Colors.gray[700]} style={{ marginRight: 8 }} />
-              <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>{copied ? "Copied" : "Copy link"}</Text>
+              <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>
+                {copied ? t("customer.referral.copied") : t("customer.referral.copyLink")}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleShare}
               style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: Colors.primary, paddingVertical: 12, borderRadius: 12 }}
             >
               <Ionicons name="share-outline" size={20} color={Colors.white} style={{ marginRight: 8 }} />
-              <Text style={{ color: Colors.white, fontWeight: "500" }}>Share</Text>
+              <Text style={{ color: Colors.white, fontWeight: "500" }}>{t("customer.referral.share")}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <Text style={{ color: Colors.gray[600], fontSize: 14 }}>
-          Share your code or link. When a friend signs up and completes their first booking, you earn {amount} {currency}.
+        <Text style={{ color: Colors.gray[600], fontSize: 14, marginTop: 16 }}>
+          {t("customer.referral.earnExplainer", { amount: rewardFormatted })}
         </Text>
 
         {stats && (stats.total_referrals > 0 || stats.successful_referrals > 0 || stats.total_earnings > 0) && (
           <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16, marginTop: 16 }}>
-            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Your stats</Text>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{t("customer.referral.statsTitle")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
               <View style={{ marginRight: 16, marginBottom: 8 }}>
                 <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{stats.total_referrals}</Text>
-                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Total referrals</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{t("customer.referral.totalReferrals")}</Text>
               </View>
               <View style={{ marginRight: 16, marginBottom: 8 }}>
                 <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{stats.successful_referrals}</Text>
-                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Successful</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{t("customer.referral.successful")}</Text>
               </View>
               <View>
-                <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{stats.total_earnings}</Text>
-                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{currency} earned</Text>
+                <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>
+                  {formatMoney(stats.total_earnings, currency)}
+                </Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{t("customer.referral.earned")}</Text>
               </View>
             </View>
           </View>

@@ -147,6 +147,11 @@ function canCancelRequest(item: CustomRequest): boolean {
   return item.status === "pending" || item.status === "offered";
 }
 
+/** Parent request must be open — offer-level checks alone are not enough (e.g. cancelled request can still list stale offers). */
+function requestAllowsOfferActions(item: CustomRequest): boolean {
+  return item.status === "pending" || item.status === "offered";
+}
+
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
@@ -171,8 +176,10 @@ function RequestCard({
   const locationLabel = formatLocationLabel(item.location_type);
   const budget = formatBudget(item.budget_min, item.budget_max);
   const hasPaidOffer = item.offers?.some((o) => o.status === "paid");
-  const hasPendingOffer = item.offers?.some(canAcceptOffer);
-  const hasPendingPayment = !hasPaidOffer && item.offers?.some(canContinuePayment);
+  const actionsAllowed = requestAllowsOfferActions(item);
+  const hasPendingOffer = actionsAllowed && item.offers?.some(canAcceptOffer);
+  const hasPendingPayment =
+    actionsAllowed && !hasPaidOffer && item.offers?.some(canContinuePayment);
   const isCancelled = item.status === "cancelled";
   const statusLabel = isCancelled
     ? "Cancelled"
@@ -261,7 +268,8 @@ function RequestCard({
         <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 12 }}>
           {item.offers.map((o) => {
             const expired = o.expiration_at && new Date(o.expiration_at).getTime() < Date.now();
-            const canAccept = canAcceptOffer(o);
+            const canAccept = actionsAllowed && canAcceptOffer(o);
+            const canPayContinue = actionsAllowed && canContinuePayment(o);
             const isRefreshing = refreshingOfferId === o.id;
             return (
               <View
@@ -294,7 +302,7 @@ function RequestCard({
                     <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Expired</Text>
                   ) : o.status === "withdrawn" ? (
                     <Text style={{ fontSize: 14, color: Colors.gray[400] }}>Withdrawn</Text>
-                  ) : canContinuePayment(o) ? (
+                  ) : canPayContinue ? (
                     <TouchableOpacity
                       onPress={() => onContinuePayment(o.payment_url!)}
                       disabled={isRefreshing}
@@ -310,6 +318,8 @@ function RequestCard({
                     <TouchableOpacity onPress={() => onAcceptPay(o.id)} disabled={isRefreshing} style={{ backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
                       {isRefreshing ? <ActivityIndicator size="small" color={Colors.white} /> : <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Accept & Pay</Text>}
                     </TouchableOpacity>
+                  ) : !actionsAllowed && o.status !== "paid" ? (
+                    <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[500] }}>Closed</Text>
                   ) : null}
                 </View>
                 {o.notes ? <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 8 }}>{o.notes}</Text> : null}

@@ -6,12 +6,12 @@ import {
   RefreshControl,
   Alert,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Redirect } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
-import { ScreenContainer } from "@/components/ui/ScreenContainer";
-import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -25,7 +25,7 @@ interface Milestone {
 }
 
 interface ProgressToNext {
-  badge: { name: string; tier: number; requirements?: { points?: number } };
+  badge: { name: string; tier: number; description?: string | null; requirements?: { points?: number } };
   current_points: number;
   required_points: number;
   points_needed: number;
@@ -41,6 +41,8 @@ interface GamificationResponse {
     tier: number;
     color?: string | null;
     icon_url?: string | null;
+    earned_at?: string | null;
+    expires_at?: string | null;
   } | null;
   milestones?: Milestone[];
   progress_to_next_badge?: ProgressToNext | null;
@@ -74,7 +76,7 @@ export function GamificationBadgesContent() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const { error: err } = await recalculate("/api/provider/gamification", {});
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert("Could not recalculate", err);
       return;
     }
     await refresh();
@@ -117,8 +119,17 @@ export function GamificationBadgesContent() {
             </View>
             {badge && (
               <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: badge.color ? `${badge.color}25` : "#d1fae5" }}>
-                <Ionicons name="ribbon" size={20} color={badge.color ?? "#059669"} />
-                <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.gray[800] }}>{badge.name}</Text>
+                {badge.icon_url ? (
+                  <Image source={{ uri: badge.icon_url }} style={{ width: 28, height: 28, borderRadius: 6 }} contentFit="contain" accessibilityIgnoresInvertColors />
+                ) : (
+                  <Ionicons name="ribbon" size={20} color={badge.color ?? "#059669"} />
+                )}
+                <View style={{ marginLeft: 8, flexShrink: 1 }}>
+                  <Text style={{ fontWeight: "600", color: Colors.gray[800] }} numberOfLines={2}>{badge.name}</Text>
+                  {badge.expires_at ? (
+                    <Text style={{ marginTop: 2, fontSize: 11, color: Colors.gray[500] }}>Until {formatDateSafe(badge.expires_at)}</Text>
+                  ) : null}
+                </View>
               </View>
             )}
           </View>
@@ -130,6 +141,9 @@ export function GamificationBadgesContent() {
             <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
               {progress.badge.name} — {progress.current_points} / {progress.required_points} pts
             </Text>
+            {progress.badge.description ? (
+              <Text style={{ marginTop: 6, fontSize: 13, color: Colors.gray[500] }}>{progress.badge.description}</Text>
+            ) : null}
             <View style={{ marginTop: 8, height: 8, overflow: "hidden", borderRadius: 9999, backgroundColor: Colors.gray[100] }}>
               <View style={{ height: "100%", borderRadius: 9999, backgroundColor: "#10b981", width: `${Math.min(100, progress.progress_percentage)}%` }} />
             </View>
@@ -190,15 +204,7 @@ export function GamificationBadgesContent() {
   );
 }
 
+/** Legacy route: opens Rewards hub on the Badges tab. */
 export default function GamificationScreen() {
-  return (
-    <ScreenContainer scrollable={false}>
-      <ScreenHeader
-        title="Badges & Gamification"
-        showBack
-        subtitle="Points, badges & milestones"
-      />
-      <GamificationBadgesContent />
-    </ScreenContainer>
-  );
+  return <Redirect href="/(app)/(tabs)/more/rewards-hub?tab=badges" />;
 }

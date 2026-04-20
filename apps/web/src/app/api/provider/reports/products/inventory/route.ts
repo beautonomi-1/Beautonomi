@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
         id: p.id,
         name: p.name,
         category: p.category,
-        has_variants: p.has_variants,
+        has_variants: Boolean(p.has_variants),
         is_active: p.is_active,
         track_stock_quantity: p.track_stock_quantity,
         low_stock_level: p.low_stock_level,

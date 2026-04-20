@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
-import { computeTravelFee, type TravelFeeRules } from "@/lib/travel/travelFeeEngine";
+import { computeTravelFee } from "@/lib/travel/travelFeeEngine";
+import { buildAtHomeTravelFeeRules } from "@/lib/travel/buildAtHomeTravelFeeRules";
 import { matchPlatformZoneForHouseCall } from "@/lib/travel/matchPlatformZoneForHouseCall";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import { z } from "zod";
@@ -347,53 +348,11 @@ export async function POST(request: NextRequest) {
       default_currency: HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_FEE.CURRENCY,
     };
 
-    const usePlatformDefault = !travelFeeSettings || travelFeeSettings.use_platform_default;
-    const platformModel = platformTravelFees.pricing_model ?? "per_km";
-    const providerModel = travelFeeSettings?.pricing_model ?? platformModel;
-    const effectiveModel = usePlatformDefault ? platformModel : providerModel;
-
-    const platformTiers = Array.isArray(platformTravelFees.default_tiers) ? platformTravelFees.default_tiers : [];
-    const providerTiers = Array.isArray(travelFeeSettings?.tiers) ? travelFeeSettings.tiers : [];
-    const effectiveTiers =
-      effectiveModel === "tiered"
-        ? usePlatformDefault
-          ? platformTiers
-          : providerTiers.length > 0
-            ? providerTiers
-            : platformTiers
-        : [];
-
-    let travelFeeRules: TravelFeeRules;
-
-    if (effectiveModel === "tiered" && effectiveTiers.length > 0) {
-      travelFeeRules = {
-        strategy: "tiered",
-        tiers: effectiveTiers.map((t: { max_km: number; fee: number }) => ({
-          maxDistanceKm: t.max_km,
-          fee: t.fee,
-          minutesPerKm: 2,
-        })),
-        maxRadiusKm: maxRadiusKmForFeeEngine,
-        baseTravelTimeMinutes: HOUSE_CALL_CONFIG.BASE_TRAVEL_TIME_MINUTES,
-        defaultMinutesPerKm: HOUSE_CALL_CONFIG.DEFAULT_MINUTES_PER_KM,
-      };
-    } else {
-      travelFeeRules = {
-        strategy: "distance",
-        perKmRate: usePlatformDefault
-          ? platformTravelFees.default_rate_per_km
-          : (travelFeeSettings?.rate_per_km ?? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_FEE.RATE_PER_KM),
-        minimumFee: usePlatformDefault
-          ? platformTravelFees.default_minimum_fee
-          : (travelFeeSettings?.minimum_fee ?? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_FEE.MINIMUM_FEE),
-        maximumFee: usePlatformDefault
-          ? platformTravelFees.default_maximum_fee
-          : (travelFeeSettings?.maximum_fee ?? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_FEE.MAXIMUM_FEE),
-        maxRadiusKm: maxRadiusKmForFeeEngine,
-        baseTravelTimeMinutes: HOUSE_CALL_CONFIG.BASE_TRAVEL_TIME_MINUTES,
-        defaultMinutesPerKm: HOUSE_CALL_CONFIG.DEFAULT_MINUTES_PER_KM,
-      };
-    }
+    const travelFeeRules = buildAtHomeTravelFeeRules(
+      platformTravelFees as Record<string, unknown>,
+      travelFeeSettings as Record<string, unknown> | null,
+      maxRadiusKmForFeeEngine
+    );
 
     // Calculate travel fee (serviceAddress already defined above; use driving distance when available)
     const travelFeeResult = computeTravelFee(baseLocation, serviceAddress, travelFeeRules, {

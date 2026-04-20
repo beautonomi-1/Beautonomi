@@ -50,7 +50,8 @@
 - Recurring appointments, group-bookings, waitlist, etc.
 
 **More – hubs / info**  
-- index, schedule-hub, finance-hub, products-hub, team-hub, marketing-hub, rewards-hub, settings-hub, settings-account-hub  
+- index, schedule-hub, products-hub, marketing-hub, rewards-hub, settings-hub, settings-account-hub  
+- **Legacy route files (redirect):** `finance-hub` → `more/finance`, `bookings-calendar-hub` → `more/bookings`, `team-hub` → `more/team`, `catalogue-offerings-hub` / `catalogue-overview` → `more/catalogue`  
 - profile, contact-support, **finance-billing-hub** (VAT reports, team totals, my earnings native); **reports** (native entry points); **settings** (calendar links, receipt sequencing, ads, marketing-integrations native); **Forms create** and **Automations create** native. **Settings-account-hub** “Paid ads” → native `(app)/(tabs)/more/settings/ads` (not marketing). **Safety panic:** SafetyPanicButton on booking detail (web and mobile; `bookings/[id]`). Portal (in-app browser) only for package create/edit, subscription payment, onboarding, setup links, invoices, express-booking. **Verification (Sumsub):** app gets token via Bearer, then opens token-only embed (`/provider/verification/embed#token=...&refresh_token=...`) in WebView—no web login required.
 
 ---
@@ -118,7 +119,7 @@ All provider API calls go through `api` from `@/lib/api-client` (baseUrl = APP_U
 
 | Endpoint | Used in | Purpose |
 |----------|---------|---------|
-| `GET /api/provider/services` | catalogue, sales, staff-schedule, group-appointments, catalogue-offerings-hub, etc. | List services |
+| `GET /api/provider/services` | catalogue, sales, staff-schedule, group-appointments, etc. | List services |
 | `GET /api/provider/services/[id]` | catalogue/[id], service-form | Service detail |
 | `GET /api/provider/categories` | catalogue/index, service-form | Categories |
 | `POST/PATCH/DELETE /api/provider/categories`, services | catalogue, service-form | CRUD |

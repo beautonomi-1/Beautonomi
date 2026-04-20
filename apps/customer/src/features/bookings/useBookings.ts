@@ -3,7 +3,7 @@
  * Contract: /api/me/bookings
  * Offline: caches last successful list in AsyncStorage; on request failure shows cache if available.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -36,64 +36,102 @@ export function useBookings(status?: BookingsStatus) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fromCache, setFromCache] = useState(false);
+  /** Bumps on each load; responses from older generations are ignored (fixes tab-switch races). */
+  const requestGeneration = useRef(0);
 
   const host = getRuntimeMarketHost().trim().toLowerCase() || "default";
   const cacheKey = user?.id
     ? `${BOOKINGS_CACHE_KEY_PREFIX}:${host}:${user.id}:${status ?? "all"}`
     : `${LEGACY_BOOKINGS_CACHE_KEY_PREFIX}${status ?? "all"}`;
 
-  const load = useCallback(async (isRefresh = false) => {
-    if (!user?.id) {
-      setData([]);
-      setLoading(false);
-      setRefreshing(false);
-      setError(null);
-      setFromCache(false);
-      return;
-    }
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
-    setFromCache(false);
-    const params = new URLSearchParams();
-    if (status) params.set("status", status);
-    // Default API limit is 20; tabs need enough rows for active customers.
-    params.set("limit", "100");
-    params.set("page", "1");
-    try {
-      const res = await api.get<BookingsResponse | Booking[]>(
-        `/api/me/bookings?${params.toString()}`
-      );
-      if (res.error) {
-        const msg = getApiErrorMessage(res.error, "Failed to load bookings");
-        setError(msg);
+  const load = useCallback(
+    async (isRefresh = false) => {
+      if (!user?.id) {
+        setData([]);
+        setLoading(false);
+        setRefreshing(false);
+        setError(null);
+        setFromCache(false);
+        return;
+      }
+
+      const gen = ++requestGeneration.current;
+
+      if (isRefresh) {
+        setRefreshing(true);
+        setError(null);
+        setFromCache(false);
+      } else {
+        setLoading(true);
+        setError(null);
+        setFromCache(false);
+        // Show this tab's cache immediately; never keep rows from another filter while the new request flies.
         try {
           const raw = await AsyncStorage.getItem(cacheKey);
+          if (gen !== requestGeneration.current) return;
           if (raw) {
             const parsed = JSON.parse(raw) as Booking[];
-            if (Array.isArray(parsed)) {
-              setData(parsed);
-              setFromCache(true);
-            } else setData(null);
-          } else setData(null);
+            setData(Array.isArray(parsed) ? parsed : []);
+          } else {
+            setData([]);
+          }
         } catch {
-          setData(null);
+          if (gen !== requestGeneration.current) return;
+          setData([]);
         }
-      } else {
-        const list = extractBookingsList(res.data as BookingsResponse | Booking[] | undefined);
-        setData(list);
-        try {
-          await AsyncStorage.setItem(cacheKey, JSON.stringify(list));
-        } catch {}
       }
-    } catch (e) {
-      setError(getApiErrorMessage(e, "Failed to load bookings"));
-      setData(null);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [status, cacheKey, user?.id]);
+
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      // Default API limit is 20; tabs need enough rows for active customers.
+      params.set("limit", "100");
+      params.set("page", "1");
+
+      try {
+        const res = await api.get<BookingsResponse | Booking[]>(
+          `/api/me/bookings?${params.toString()}`,
+        );
+        if (gen !== requestGeneration.current) return;
+
+        if (res.error) {
+          const msg = getApiErrorMessage(res.error, "Failed to load bookings");
+          setError(msg);
+          try {
+            const raw = await AsyncStorage.getItem(cacheKey);
+            if (gen !== requestGeneration.current) return;
+            if (raw) {
+              const parsed = JSON.parse(raw) as Booking[];
+              if (Array.isArray(parsed)) {
+                setData(parsed);
+                setFromCache(true);
+              } else setData(null);
+            } else setData(null);
+          } catch {
+            if (gen !== requestGeneration.current) return;
+            setData(null);
+          }
+        } else {
+          const list = extractBookingsList(res.data as BookingsResponse | Booking[] | undefined);
+          setData(list);
+          try {
+            await AsyncStorage.setItem(cacheKey, JSON.stringify(list));
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch (e) {
+        if (gen !== requestGeneration.current) return;
+        setError(getApiErrorMessage(e, "Failed to load bookings"));
+        setData(null);
+      } finally {
+        if (gen === requestGeneration.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    },
+    [status, cacheKey, user?.id],
+  );
 
   useEffect(() => {
     if (!user?.id) {
@@ -104,17 +142,8 @@ export function useBookings(status?: BookingsStatus) {
       setFromCache(false);
       return;
     }
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(cacheKey);
-        if (raw) {
-          const parsed = JSON.parse(raw) as Booking[];
-          if (Array.isArray(parsed)) setData(parsed);
-        }
-      } catch {}
-    })();
-    load();
-  }, [load, cacheKey, user?.id]);
+    void load(false);
+  }, [load, user?.id]);
 
   return { data: data ?? [], loading, refreshing, error, fromCache, refetch: () => load(true) };
 }

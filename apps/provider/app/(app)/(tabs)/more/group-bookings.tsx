@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   FlatList,
   TextInput,
   Alert,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -27,6 +28,8 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
+import { useProvider } from "@/providers/ProviderContext";
+import { buildZonedIsoForWallClock } from "@/lib/tz";
 
 // The list endpoint (GET /api/provider/group-bookings) maps participants to
 // { client_name, client_email, client_phone, service_name, checked_in,
@@ -58,10 +61,12 @@ interface Participant {
   checked_out_time?: string | null;
   checked_out_at?: string | null;
   service_name?: string | null;
+  price?: number;
 }
 
 interface GroupBooking {
   id: string;
+  title?: string | null;
   scheduled_date: string;
   scheduled_time: string;
   duration_minutes: number;
@@ -91,14 +96,20 @@ interface GroupBookingsResponse {
 
 const STATUS_FILTERS = [
   { label: "All", value: "all" },
-  { label: "Upcoming", value: "confirmed" },
-  { label: "In Progress", value: "started" },
+  { label: "Confirmed", value: "confirmed" },
+  { label: "Booked", value: "booked" },
+  { label: "In progress", value: "started" },
   { label: "Completed", value: "completed" },
   { label: "Cancelled", value: "cancelled" },
 ];
 
+type ServiceRow = { id: string; title: string; duration_minutes?: number; price?: number };
+type TeamRow = { id: string; name?: string };
+
 function statusStyle(s: string) {
   if (s === "confirmed") return { bg: "bg-blue-50", text: "text-blue-700" };
+  if (s === "booked") return { bg: "bg-indigo-50", text: "text-indigo-700" };
+  if (s === "pending") return { bg: "bg-slate-50", text: "text-slate-600" };
   if (s === "started") return { bg: "bg-amber-50", text: "text-amber-700" };
   if (s === "completed") return { bg: "bg-green-50", text: "text-green-700" };
   if (s === "cancelled") return { bg: "bg-red-50", text: "text-red-700" };
@@ -108,9 +119,50 @@ function statusStyle(s: string) {
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM_RE = /^\d{2}:\d{2}$/;
 
+function SelectChip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[
+        twStyle("rounded-full border px-3 py-2"),
+        selected ? twStyle("border-indigo-600 bg-indigo-50") : twStyle("border-gray-200 bg-gray-50"),
+        { marginRight: 8, maxWidth: 220 },
+      ]}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+    >
+      <Text
+        style={twStyle(`text-xs font-medium ${selected ? "text-indigo-800" : "text-gray-700"}`)}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function GroupBookingsScreen() {
   useResponsive();
   const router = useRouter();
+  const { provider, selectedLocationId } = useProvider();
+  const providerTz = provider?.timezone ?? null;
+  const locations = provider?.locations ?? [];
+
+  const { data: servicesRaw } = useApi<ServiceRow[]>("/api/provider/services");
+  const teamUrl = selectedLocationId
+    ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
+    : "/api/provider/team";
+  const { data: teamRaw } = useApi<TeamRow[]>(teamUrl);
+  const services = useMemo(() => (Array.isArray(servicesRaw) ? servicesRaw : []), [servicesRaw]);
+  const teamMembers = useMemo(() => (Array.isArray(teamRaw) ? teamRaw : []), [teamRaw]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
@@ -136,6 +188,9 @@ export default function GroupBookingsScreen() {
     duration: "60",
     maxParticipants: "10",
     notes: "",
+    serviceId: "" as string,
+    staffId: "" as string,
+    locationId: "" as string,
   });
 
   const statusParam = filter !== "all" ? `&status=${filter}` : "";
@@ -156,6 +211,18 @@ export default function GroupBookingsScreen() {
   const { execute: checkOutParticipant } = useApiMutation("post");
 
   const groups = useMemo(() => groupData?.data ?? [], [groupData?.data]);
+
+  // §Provider-audit 2026-04 (round 6): keep `selectedGroup` in sync with
+  // the refreshed list. Previously the detail sheet stored a snapshot, so
+  // after a check-in / add-participant / cancel the sheet still rendered
+  // the stale participant list until the user closed & reopened it.
+  useEffect(() => {
+    if (!selectedGroup) return;
+    const fresh = groups.find((g) => g.id === selectedGroup.id);
+    if (fresh && fresh !== selectedGroup) {
+      setSelectedGroup(fresh);
+    }
+  }, [groups, selectedGroup]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -179,9 +246,12 @@ export default function GroupBookingsScreen() {
   }, [groups, search]);
 
   const stats = useMemo(() => {
-    const upcoming = groups.filter((g) => g.status === "confirmed").length;
+    const activeStatuses = new Set(["pending", "confirmed", "booked", "started"]);
+    const upcoming = groups.filter((g) => activeStatuses.has(g.status)).length;
     const totalParticipants = groups.reduce((s, g) => s + (g.current_participants ?? 0), 0);
-    const revenue = groups.filter((g) => g.status === "completed").reduce((s, g) => s + g.total_price, 0);
+    const revenue = groups
+      .filter((g) => g.status === "completed")
+      .reduce((s, g) => s + (Number(g.total_price) || 0), 0);
     return { total: groupData?.total ?? groups.length, upcoming, totalParticipants, revenue };
   }, [groups, groupData]);
 
@@ -270,6 +340,7 @@ export default function GroupBookingsScreen() {
   function openCreate() {
     const now = new Date();
     const hh = String(Math.min(23, now.getHours() + 1)).padStart(2, "0");
+    const defaultLoc = selectedLocationId ?? locations[0]?.id ?? "";
     setCreateForm({
       title: "",
       date: now.toISOString().slice(0, 10),
@@ -277,6 +348,9 @@ export default function GroupBookingsScreen() {
       duration: "60",
       maxParticipants: "10",
       notes: "",
+      serviceId: "",
+      staffId: "",
+      locationId: defaultLoc,
     });
     setShowCreate(true);
   }
@@ -301,22 +375,32 @@ export default function GroupBookingsScreen() {
       return;
     }
 
-    // Provider-local datetime → ISO. Device tz is acceptable here; the server
-    // stores the scheduled_at as the wall-clock the provider entered (same
-    // contract as the desktop dialog).
-    const iso = new Date(`${createForm.date}T${createForm.time}:00`).toISOString();
-    if (!Number.isFinite(new Date(iso).getTime())) {
+    const scheduledAt = buildZonedIsoForWallClock(
+      createForm.date,
+      createForm.time.substring(0, 5),
+      providerTz,
+    );
+    if (!Number.isFinite(Date.parse(scheduledAt))) {
       Alert.alert("Invalid date/time", "Please enter a valid date and time.");
       return;
     }
 
-    const { error } = await createGroup("/api/provider/group-bookings", {
-      title: createForm.title.trim() || "Group Session",
-      scheduled_at: iso,
+    const svc = createForm.serviceId ? services.find((s) => s.id === createForm.serviceId) : undefined;
+    const payload: Record<string, unknown> = {
+      title: createForm.title.trim() || svc?.title || "Group Session",
+      scheduled_at: scheduledAt,
       duration_minutes: duration,
       max_participants: maxParticipants,
       notes: createForm.notes.trim() || undefined,
-    });
+    };
+    if (createForm.serviceId) {
+      payload.service_id = createForm.serviceId;
+      payload.service_name = svc?.title;
+    }
+    if (createForm.staffId) payload.staff_id = createForm.staffId;
+    if (createForm.locationId) payload.location_id = createForm.locationId;
+
+    const { error } = await createGroup("/api/provider/group-bookings", payload);
     if (error) { Alert.alert("Error", error); return; }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowCreate(false);
@@ -341,6 +425,9 @@ export default function GroupBookingsScreen() {
     const { error } = await addParticipant(
       `/api/provider/group-bookings/${selectedGroup.id}/participants`,
       {
+        participant_name: participantForm.name.trim(),
+        participant_phone: participantForm.phone.trim() || undefined,
+        participant_email: participantForm.email.trim() || undefined,
         customer_name: participantForm.name.trim(),
         customer_phone: participantForm.phone.trim() || undefined,
         customer_email: participantForm.email.trim() || undefined,
@@ -408,7 +495,7 @@ export default function GroupBookingsScreen() {
       <ScreenHeader
         title="Group Bookings"
         showBack
-        subtitle={`${stats.total} sessions`}
+        subtitle={`${stats.total} groups · ${stats.upcoming} upcoming`}
         rightAction={
           <TouchableOpacity
             onPress={openCreate}
@@ -429,7 +516,7 @@ export default function GroupBookingsScreen() {
           <StatCard title="Total" value={String(stats.total)} icon="people-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
         <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
-          <StatCard title="Upcoming" value={String(stats.upcoming)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
+          <StatCard title="People" value={String(stats.totalParticipants)} icon="person-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
         </View>
         <View style={twStyle("flex-1")}>
           <StatCard title="Revenue" value={formatCurrency(stats.revenue)} icon="cash-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
@@ -470,7 +557,7 @@ export default function GroupBookingsScreen() {
                   <View style={twStyle("flex-1")}>
                     <View style={twStyle("flex-row items-center")}>
                       <Text style={[twStyle("text-base font-semibold text-gray-900"), { marginRight: 8 }]}>
-                        {group.service_name ?? group.ref_number ?? "Group Session"}
+                        {group.title?.trim() || group.service_name || group.ref_number || "Group Session"}
                       </Text>
                       <View style={twStyle(`rounded-full px-2 py-0.5 ${ss.bg}`)}>
                         <Text style={twStyle(`text-[10px] font-medium capitalize ${ss.text}`)}>
@@ -498,7 +585,7 @@ export default function GroupBookingsScreen() {
                     </View>
                   </View>
                   <Text style={twStyle("text-base font-bold text-gray-900")}>
-                    {formatCurrency(group.total_price)}
+                    {formatCurrency(Number(group.total_price) || 0)}
                   </Text>
                 </View>
 
@@ -517,7 +604,12 @@ export default function GroupBookingsScreen() {
       <BottomSheet
         visible={!!selectedGroup && !showEdit && !showAddParticipant}
         onClose={() => setSelectedGroup(null)}
-        title={selectedGroup?.service_name ?? selectedGroup?.ref_number ?? "Group Session"}
+        title={
+          selectedGroup?.title?.trim() ||
+          selectedGroup?.service_name ||
+          selectedGroup?.ref_number ||
+          "Group Session"
+        }
       >
         {selectedGroup && (
           <View>
@@ -558,7 +650,9 @@ export default function GroupBookingsScreen() {
               </View>
               <View style={twStyle("mt-1 border-t border-gray-200 pt-2 flex-row justify-between")}>
                 <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
-                <Text style={twStyle("text-base font-bold text-gray-900")}>{formatCurrency(selectedGroup.total_price)}</Text>
+                <Text style={twStyle("text-base font-bold text-gray-900")}>
+                  {formatCurrency(Number(selectedGroup.total_price) || 0)}
+                </Text>
               </View>
             </View>
 
@@ -623,9 +717,11 @@ export default function GroupBookingsScreen() {
                           )}
                         </View>
                         <View style={twStyle("flex-row items-center")}>
-                          <View style={[twStyle(`rounded-full px-2 py-0.5 ${p.paid ? "bg-green-50" : "bg-amber-50"}`), { marginRight: 8 }]}>
-                            <Text style={twStyle(`text-[10px] font-medium ${p.paid ? "text-green-700" : "text-amber-700"}`)}>
-                              {p.paid ? "Paid" : "Unpaid"}
+                          <View style={[twStyle(`rounded-full px-2 py-0.5 ${(Number((p as Participant & { price?: number }).price) || 0) > 0 ? "bg-green-50" : "bg-amber-50"}`), { marginRight: 8 }]}>
+                            <Text style={twStyle(`text-[10px] font-medium ${(Number((p as Participant & { price?: number }).price) || 0) > 0 ? "text-green-700" : "text-amber-700"}`)}>
+                              {(Number((p as Participant & { price?: number }).price) || 0) > 0
+                                ? formatCurrency(Number((p as Participant & { price?: number }).price) || 0)
+                                : "No price"}
                             </Text>
                           </View>
                           {canCheckInOut && (
@@ -864,15 +960,87 @@ export default function GroupBookingsScreen() {
         onClose={() => setShowCreate(false)}
         title="New Group Booking"
       >
-        <View>
+        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Title</Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={createForm.title}
             onChangeText={(t) => setCreateForm((p) => ({ ...p, title: t }))}
-            placeholder="e.g. Bridal Party"
+            placeholder="e.g. Bridal Party (defaults to service name if empty)"
             placeholderTextColor="#9ca3af"
           />
+
+          {locations.length > 0 ? (
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Location</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <SelectChip
+                  label="Not set"
+                  selected={!createForm.locationId}
+                  onPress={() => setCreateForm((p) => ({ ...p, locationId: "" }))}
+                />
+                {locations.map((loc) => (
+                  <SelectChip
+                    key={loc.id}
+                    label={loc.name}
+                    selected={createForm.locationId === loc.id}
+                    onPress={() => setCreateForm((p) => ({ ...p, locationId: loc.id }))}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {services.length > 0 ? (
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Service</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <SelectChip
+                  label="None"
+                  selected={!createForm.serviceId}
+                  onPress={() => setCreateForm((p) => ({ ...p, serviceId: "" }))}
+                />
+                {services.map((svc) => (
+                  <SelectChip
+                    key={svc.id}
+                    label={svc.title}
+                    selected={createForm.serviceId === svc.id}
+                    onPress={() => {
+                      setCreateForm((p) => {
+                        const next = { ...p, serviceId: svc.id };
+                        if (svc.duration_minutes && svc.duration_minutes > 0) {
+                          next.duration = String(svc.duration_minutes);
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {teamMembers.length > 0 ? (
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Staff</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <SelectChip
+                  label="None"
+                  selected={!createForm.staffId}
+                  onPress={() => setCreateForm((p) => ({ ...p, staffId: "" }))}
+                />
+                {teamMembers.map((m) => (
+                  <SelectChip
+                    key={m.id}
+                    label={m.name?.trim() || "Team member"}
+                    selected={createForm.staffId === m.id}
+                    onPress={() => setCreateForm((p) => ({ ...p, staffId: m.id }))}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
           <View style={twStyle("mb-3 flex-row")}>
             <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date *</Text>
@@ -929,11 +1097,11 @@ export default function GroupBookingsScreen() {
             multiline
           />
           <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-            Participants, service, and staff can be assigned after creation
-            from the group detail sheet.
+            Add participants after creation from the group detail sheet. Service and staff are sent to the
+            server with the same fields as the web portal.
           </Text>
           <ActionButton label="Create Group" onPress={handleCreate} loading={creatingGroup} fullWidth />
-        </View>
+        </ScrollView>
       </BottomSheet>
     </ScreenContainer>
   );

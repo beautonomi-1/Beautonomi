@@ -37,6 +37,8 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
   ARRIVAL_PIN_CUSTOMER_SUBTITLE,
+  ARRIVAL_PIN_CUSTOMER_SUBTITLE_WITH_QR,
+  ARRIVAL_QR_CUSTOMER_SUBTITLE_WITH_PIN,
   ARRIVAL_PIN_FALLBACK_LABEL,
   ARRIVAL_PIN_LENGTH_HINT,
   ARRIVAL_PIN_PLACEHOLDER,
@@ -196,11 +198,17 @@ export default function BookingDetailScreen() {
   useEffect(() => {
     if (!id || !booking) return;
     if (referralPostedBookingIds.current.has(id)) return;
-    referralPostedBookingIds.current.add(id);
     void api.post("/api/me/referrals/track", { booking_id: id }).then((res) => {
-      if (!res.error) return;
+      if (!res.error) {
+        referralPostedBookingIds.current.add(id);
+        return;
+      }
       const st = (res.error as { status?: number }).status;
+      // Expected when no referrer, program off, booking not paid yet, or already converted — do not
+      // mark posted so we can retry after payment or when rules apply.
       if (st === 400 || st === 404) return;
+      // Transient wallet failure — row rolled back; safe to retry on next open
+      if (st === 503) return;
     });
   }, [id, booking]);
 
@@ -220,6 +228,23 @@ export default function BookingDetailScreen() {
     const arrived = stage === "provider_arrived" || !!(booking as { provider_arrived_at?: string }).provider_arrived_at;
     const terminal = booking.status === "cancelled" || booking.status === "completed";
     if (locType !== "at_home" || !enRoute || arrived || terminal) return;
+    const interval = setInterval(() => {
+      load({ silent: true });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [id, load, booking]);
+
+  // After arrival, provider confirms via OTP (their app) or QR scan; poll until verified so we
+  // are not solely dependent on Realtime for clearing PIN/QR UI when verification completes.
+  useEffect(() => {
+    if (!id || !booking) return;
+    const locType = booking.location_type;
+    const stage = booking.current_stage;
+    const arrived =
+      stage === "provider_arrived" || !!(booking as { provider_arrived_at?: string }).provider_arrived_at;
+    const terminal = booking.status === "cancelled" || booking.status === "completed";
+    const verified = Boolean((booking as { arrival_otp_verified?: boolean }).arrival_otp_verified);
+    if (locType !== "at_home" || !arrived || verified || terminal) return;
     const interval = setInterval(() => {
       load({ silent: true });
     }, 15000);
@@ -282,7 +307,11 @@ export default function BookingDetailScreen() {
     booking.location_type === "at_home" &&
     (booking.current_stage === "provider_arrived" || !!(booking as any).provider_arrived_at) &&
     !booking.arrival_otp_verified &&
+    !(booking as { qr_code_verified?: boolean }).qr_code_verified &&
     !!qrPayloadForDisplay;
+
+  /** Default platform mode: OTP + QR both enabled — customer may use either; provider confirms once. */
+  const bothArrivalMethodsVisible = Boolean(needsPinDisplay && needsQrDisplay);
 
   const qrExpiresAt = (booking as { qr_code_expires_at?: string })?.qr_code_expires_at;
   const qrVerificationCode = (() => {
@@ -878,7 +907,9 @@ export default function BookingDetailScreen() {
             {needsPinDisplay && (
               <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", padding: 20 }} accessibilityLabel={ARRIVAL_PIN_CUSTOMER_HEADING}>
                 <Text style={{ fontSize: 16, fontWeight: "600", color: "#1E3A8A", marginBottom: 4 }}>{ARRIVAL_PIN_CUSTOMER_HEADING}</Text>
-                <Text style={{ fontSize: 14, color: "#1E40AF", marginBottom: 12 }}>{ARRIVAL_PIN_CUSTOMER_SUBTITLE}</Text>
+                <Text style={{ fontSize: 14, color: "#1E40AF", marginBottom: 12 }}>
+                  {bothArrivalMethodsVisible ? ARRIVAL_PIN_CUSTOMER_SUBTITLE_WITH_QR : ARRIVAL_PIN_CUSTOMER_SUBTITLE}
+                </Text>
                 <View style={{ alignItems: "center", marginVertical: 12 }}>
                   <Text style={{ fontSize: 32, fontWeight: "700", letterSpacing: 6, color: "#1E3A8A" }}>
                     {(booking.arrival_otp?.length === 4
@@ -948,7 +979,9 @@ export default function BookingDetailScreen() {
               >
                 <Text style={{ fontSize: 16, fontWeight: "600", color: "#581C87", marginBottom: 4 }}>Show this QR to your provider</Text>
                 <Text style={{ fontSize: 14, color: "#6B21A8", marginBottom: 16 }}>
-                  They will scan it or enter the code on their device to confirm they&apos;ve arrived.
+                  {bothArrivalMethodsVisible
+                    ? ARRIVAL_QR_CUSTOMER_SUBTITLE_WITH_PIN
+                    : "They will scan it or enter the code on their device to confirm they&apos;ve arrived."}
                 </Text>
                 <View style={{ alignItems: "center", backgroundColor: "#fff", borderRadius: 16, padding: 16, alignSelf: "center" }}>
                   <QRCode value={qrPayloadForDisplay} size={200} backgroundColor="#FFFFFF" color="#000000" />
@@ -1133,9 +1166,15 @@ export default function BookingDetailScreen() {
                   <Text style={{ fontSize: 13, fontWeight: "600", color: "#059669" }}>-{booking.currency} {Number((booking as any).wallet_amount).toFixed(2)}</Text>
                 </View>
               )}
-              {Number((booking as any).wallet_amount || 0) > 0 && Number((booking as any).total_paid || 0) > 0 && (
+              {/* §Customer-audit 2026-04: previously only shown when wallet
+                 credit was applied, so card-only bookings showed no
+                 "Amount paid" row. Always show paid amount when > 0 and
+                 disambiguate from wallet credit via the label. */}
+              {Number((booking as any).total_paid || 0) > 0 && (
                 <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Paid via card</Text>
+                  <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
+                    {Number((booking as any).wallet_amount || 0) > 0 ? "Paid via card" : "Amount paid"}
+                  </Text>
                   <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).total_paid).toFixed(2)}</Text>
                 </View>
               )}

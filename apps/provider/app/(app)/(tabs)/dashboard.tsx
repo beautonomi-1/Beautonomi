@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { InteractionManager, View, Text, TouchableOpacity } from "react-native";
+import { InteractionManager, View, Text, TouchableOpacity, Platform } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -27,6 +27,7 @@ import {
   formatTimeAgo,
 } from "@/lib/format";
 import { trackDashboardView } from "@/lib/analytics";
+import { newBookingScreenHref } from "@/lib/new-booking-nav-defaults";
 import { Colors } from "@/constants/colors";
 
 interface DashboardMetrics {
@@ -470,6 +471,9 @@ export default function DashboardScreen() {
 
   const m = metrics;
   const statColumns = isTablet ? (columns >= 3 ? 4 : 2) : 2;
+  /** Inline dashboard figures: keep compact on narrow phones (four-up row). */
+  const dashMetricLg = isTablet ? 22 : 17;
+  const dashMetricMd = isTablet ? 19 : 15;
 
   const displayRevenue = useMemo(() => {
     if (!m) return formatCurrency(0);
@@ -556,23 +560,7 @@ export default function DashboardScreen() {
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
-      <ScreenHeader
-        title="Dashboard"
-        subtitle={`${m?.appointments_today ?? 0} appointments today`}
-        rightAction={
-          <TouchableOpacity
-            style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[100] }}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push("/(app)/(tabs)/more/notifications" as any);
-            }}
-            accessibilityLabel="View notifications"
-            accessibilityRole="button"
-          >
-            <Ionicons name="notifications-outline" size={20} color="#111" />
-          </TouchableOpacity>
-        }
-      />
+      <ScreenHeader title="Dashboard" subtitle={`${m?.appointments_today ?? 0} appointments today`} />
 
       {bookingEligibility &&
         !bookingEligibility.can_accept_online_bookings &&
@@ -637,7 +625,7 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginRight: 12 }}
               activeOpacity={0.8}
-              onPress={() => router.push("/(app)/(tabs)/more/rewards" as any)}
+              onPress={() => router.push("/(app)/(tabs)/more/rewards-hub" as any)}
               accessibilityLabel={gam?.current_badge?.name ? `Level ${gam.current_badge.name}` : "View rewards"}
             >
               <Ionicons name="trophy" size={16} color="#92400e" style={{ marginRight: 4 }} />
@@ -705,7 +693,11 @@ export default function DashboardScreen() {
           style={{ minHeight: 48, flex: 1, marginRight: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: Colors.gray[900] }}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            router.push("/(app)/(tabs)/more/bookings/new" as any);
+            router.push(
+              newBookingScreenHref({
+                ...(selectedLocationId ? { locationId: selectedLocationId } : {}),
+              }) as any,
+            );
           }}
           activeOpacity={0.7}
           accessibilityLabel="Create new booking"
@@ -718,9 +710,12 @@ export default function DashboardScreen() {
           style={{ minHeight: 48, flex: 1, marginRight: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            const today = new Date();
-            const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-            router.push(`/(app)/(tabs)/more/bookings/new?date=${dateStr}&walk_in=true` as any);
+            router.push(
+              newBookingScreenHref({
+                walkIn: true,
+                ...(selectedLocationId ? { locationId: selectedLocationId } : {}),
+              }) as any,
+            );
           }}
           activeOpacity={0.7}
           accessibilityLabel="Record a walk-in booking"
@@ -827,7 +822,12 @@ export default function DashboardScreen() {
           style={{ flex: 1, marginRight: 12, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
           accessibilityLabel={`${displayAppointments} bookings ${periodLabel.toLowerCase()}`}
         >
-          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>
+          <Text
+            style={{ fontSize: dashMetricLg, fontWeight: "700", color: Colors.gray[900] }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.7}
+          >
             {displayAppointments}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Scheduled</Text>
@@ -836,7 +836,12 @@ export default function DashboardScreen() {
           style={{ flex: 1, marginRight: 12, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
           accessibilityLabel={`${m?.pending_bookings ?? 0} pending`}
         >
-          <Text style={{ fontSize: 24, fontWeight: "700", color: "#d97706" }}>
+          <Text
+            style={{ fontSize: dashMetricLg, fontWeight: "700", color: "#d97706" }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.7}
+          >
             {m?.pending_bookings ?? 0}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Pending</Text>
@@ -845,7 +850,12 @@ export default function DashboardScreen() {
           style={{ flex: 1, marginRight: 12, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
           accessibilityLabel={`${m?.confirmed_bookings ?? 0} confirmed`}
         >
-          <Text style={{ fontSize: 24, fontWeight: "700", color: "#4f46e5" }}>
+          <Text
+            style={{ fontSize: dashMetricLg, fontWeight: "700", color: "#4f46e5" }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.7}
+          >
             {m?.confirmed_bookings ?? 0}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Confirmed</Text>
@@ -854,7 +864,12 @@ export default function DashboardScreen() {
           style={{ flex: 1, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
           accessibilityLabel={`${m?.completed_bookings ?? 0} completed`}
         >
-          <Text style={{ fontSize: 24, fontWeight: "700", color: "#16a34a" }}>
+          <Text
+            style={{ fontSize: dashMetricLg, fontWeight: "700", color: "#16a34a" }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.7}
+          >
             {m?.completed_bookings ?? 0}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Completed</Text>
@@ -926,7 +941,12 @@ export default function DashboardScreen() {
         >
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Ionicons name="star" size={18} color="#f59e0b" style={{ marginRight: 6 }} />
-            <Text style={{ marginLeft: 6, fontSize: 20, fontWeight: "700", color: Colors.gray[900] }}>
+            <Text
+              style={{ marginLeft: 6, fontSize: dashMetricMd, fontWeight: "700", color: Colors.gray[900] }}
+              numberOfLines={1}
+              adjustsFontSizeToFit={Platform.OS !== "web"}
+              minimumFontScale={0.75}
+            >
               {m?.average_rating?.toFixed(1) ?? "0.0"}
             </Text>
           </View>
@@ -938,7 +958,12 @@ export default function DashboardScreen() {
           style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
           accessibilityLabel={`No show rate: ${formatPercentage(m?.no_show_rate ?? 0)}`}
         >
-          <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900] }}>
+          <Text
+            style={{ fontSize: dashMetricMd, fontWeight: "700", color: Colors.gray[900] }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.75}
+          >
             {formatPercentage(m?.no_show_rate ?? 0)}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>No-show rate</Text>
@@ -947,7 +972,12 @@ export default function DashboardScreen() {
           style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
           accessibilityLabel={`${m?.completed_bookings ?? 0} completed bookings`}
         >
-          <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900] }}>
+          <Text
+            style={{ fontSize: dashMetricMd, fontWeight: "700", color: Colors.gray[900] }}
+            numberOfLines={1}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.75}
+          >
             {m?.completed_bookings ?? 0}
           </Text>
           <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Completed</Text>
@@ -960,12 +990,12 @@ export default function DashboardScreen() {
         actionLabel="View All"
         onAction={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          router.push("/(app)/(tabs)/more/rewards" as any);
+          router.push("/(app)/(tabs)/more/rewards-hub" as any);
         }}
       />
       <TouchableOpacity
         style={{ borderRadius: 16, borderWidth: 1, borderColor: "#c7d2fe", backgroundColor: "#eef2ff", padding: 16 }}
-        onPress={() => router.push("/(app)/(tabs)/more/rewards" as any)}
+        onPress={() => router.push("/(app)/(tabs)/more/rewards-hub" as any)}
         activeOpacity={0.7}
         accessibilityLabel={`Rewards: ${gam?.total_points ?? 0} points`}
       >

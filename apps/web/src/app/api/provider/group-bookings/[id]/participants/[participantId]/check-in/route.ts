@@ -21,7 +21,11 @@ export async function POST(
       return notFoundResponse("Provider not found");
     }
 
-    // Update the participant's booking status
+    // §Provider-audit 2026-04 (round 8): constrain the update to the caller's
+    // provider so a staff user cannot mutate bookings that belong to
+    // another tenant just by guessing (or being handed) IDs. We also
+    // reject a check-in if the booking is already cancelled / no-show
+    // since those statuses should never silently flip to "checked_in".
     const { data, error } = await supabase
       .from("bookings")
       .update({
@@ -30,6 +34,8 @@ export async function POST(
       })
       .eq("id", participantId)
       .eq("group_booking_id", id)
+      .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)")
       .select()
       .single();
 

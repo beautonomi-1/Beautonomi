@@ -18,6 +18,19 @@ export const ARRIVAL_PIN_CUSTOMER_HEADING = "Your verification code";
 /** Customer: explainer under title */
 export const ARRIVAL_PIN_CUSTOMER_SUBTITLE = "Give this code to your provider when they arrive.";
 
+/**
+ * Customer: when both numeric PIN and QR are active (default platform settings:
+ * OTP + QR enabled). Either method completes a single verification on the booking.
+ */
+export const ARRIVAL_PIN_CUSTOMER_SUBTITLE_WITH_QR =
+  "Give this code to your provider, or show the QR below — either one confirms arrival.";
+
+/**
+ * Customer: QR card body when the numeric PIN card is also visible (avoid duplicate instructions).
+ */
+export const ARRIVAL_QR_CUSTOMER_SUBTITLE_WITH_PIN =
+  "Your provider can scan this QR or enter the code on their device — same confirmation as the numbers above.";
+
 /** Provider: main card title (mirrors customer wording) */
 export const ARRIVAL_PIN_PROVIDER_HEADING = "Enter the customer's verification code";
 
