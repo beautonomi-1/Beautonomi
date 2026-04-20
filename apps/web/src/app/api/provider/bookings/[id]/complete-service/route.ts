@@ -195,6 +195,51 @@ export async function POST(
           console.error('Failed to award customer loyalty points on completion:', err);
         }
       }
+
+      // §Provider-audit 2026-04 (round 2): deduct retail stock for any
+      // products attached to this booking. Mirrors the logic in
+      // PATCH /api/provider/bookings/[id] so `complete-service` (called
+      // from the booking detail "Mark complete" button) and the generic
+      // PATCH status flow produce identical inventory effects. Idempotent
+      // via the `stock_deducted_at` timestamp (migration 519).
+      try {
+        const supabaseAdmin = getSupabaseAdmin();
+        const { data: pendingProducts } = await supabaseAdmin
+          .from("booking_products")
+          .select("id, product_id, quantity")
+          .eq("booking_id", id)
+          .is("stock_deducted_at", null);
+        if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
+          const deductTs = new Date().toISOString();
+          for (const row of pendingProducts as Array<{
+            id: string;
+            product_id: string | null;
+            quantity: number | null;
+          }>) {
+            if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
+            const { error: decErr } = await supabaseAdmin.rpc(
+              "decrement_product_stock",
+              {
+                p_product_id: row.product_id,
+                p_quantity: row.quantity,
+              },
+            );
+            if (decErr) {
+              console.error(
+                `[complete-service] decrement_product_stock failed for booking ${id}, row ${row.id}:`,
+                decErr,
+              );
+              continue;
+            }
+            await supabaseAdmin
+              .from("booking_products")
+              .update({ stock_deducted_at: deductTs })
+              .eq("id", row.id);
+          }
+        }
+      } catch (stockErr) {
+        console.error("[complete-service] failed to deduct retail stock:", stockErr);
+      }
     }
 
     return successResponse({

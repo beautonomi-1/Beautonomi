@@ -31,6 +31,32 @@ export interface ReceiptTokenPayload {
 
 const DEFAULT_TTL_SECONDS = 5 * 60;
 
+/**
+ * True when `mintReceiptDownloadToken` will succeed (secret present in env).
+ * Use in API routes to return a structured error instead of throwing through `handleApiError`.
+ */
+export function hasReceiptDownloadSigningSecret(): boolean {
+  return Boolean(
+    process.env.RECEIPT_DOWNLOAD_TOKEN_SECRET?.trim() ||
+      process.env.RETENTION_LINK_SECRET?.trim(),
+  );
+}
+
+/**
+ * Absolute origin (no trailing slash) for links returned to native apps.
+ * Prefer `NEXT_PUBLIC_APP_URL`; on Vercel previews `VERCEL_URL` is often set when the public URL env is missing.
+ */
+export function resolveReceiptDownloadOrigin(): string {
+  const fromEnv = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) {
+    const host = vercel.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    return `https://${host}`;
+  }
+  return "";
+}
+
 function getSecret(): string {
   const s =
     process.env.RECEIPT_DOWNLOAD_TOKEN_SECRET?.trim() ||

@@ -2,13 +2,16 @@ import { Stack, router } from "expo-router";
 import { TouchableOpacity, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function AccountSettingsLayout() {
+  const { t } = useTranslation();
+
   return (
     <Stack
       screenOptions={{
         headerShown: true,
-        headerBackTitle: "Back",
+        headerBackTitle: t("common.back"),
         headerTintColor: Colors.primary,
         headerTitleStyle: { fontWeight: "600" },
         headerLeft: () => (
@@ -21,7 +24,7 @@ export default function AccountSettingsLayout() {
               }
             }}
             style={{ marginLeft: Platform.OS === "ios" ? 8 : 0, padding: 8 }}
-            accessibilityLabel="Back"
+            accessibilityLabel={t("common.back")}
             accessibilityRole="button"
           >
             <Ionicons name="arrow-back" size={24} color={Colors.primary} />
@@ -29,31 +32,31 @@ export default function AccountSettingsLayout() {
         ),
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Account" }} />
-      <Stack.Screen name="personal-info" options={{ title: "Personal Info" }} />
-      <Stack.Screen name="profile-details" options={{ title: "Profile Details" }} />
-      <Stack.Screen name="login-and-security" options={{ title: "Login & Security" }} />
-      <Stack.Screen name="identity-verification" options={{ title: "Identity Verification" }} />
-      <Stack.Screen name="payments" options={{ title: "Payments" }} />
-      <Stack.Screen name="wallet" options={{ title: "Wallet" }} />
-      <Stack.Screen name="taxes" options={{ title: "Tax Documents" }} />
-      <Stack.Screen name="addresses" options={{ title: "Saved Addresses" }} />
-      <Stack.Screen name="bookings" options={{ title: "Bookings" }} />
-      <Stack.Screen name="notifications" options={{ title: "Notifications" }} />
-      <Stack.Screen name="preferences" options={{ title: "Language & Region" }} />
-      <Stack.Screen name="privacy-and-sharing" options={{ title: "Privacy & Sharing" }} />
-      <Stack.Screen name="deactivate-account" options={{ title: "Deactivate account" }} />
-      <Stack.Screen name="delete-account" options={{ title: "Delete account" }} />
-      <Stack.Screen name="referrals" options={{ title: "Referrals" }} />
-      <Stack.Screen name="loyalty" options={{ title: "Loyalty Points" }} />
-      <Stack.Screen name="reviews" options={{ title: "My Reviews" }} />
-      <Stack.Screen name="wishlists" options={{ title: "Saved & Wishlists" }} />
-      <Stack.Screen name="messages" options={{ title: "Messages" }} />
-      <Stack.Screen name="waitlist" options={{ title: "Waitlist" }} />
-      <Stack.Screen name="recurring-bookings" options={{ title: "Recurring Bookings" }} />
-      <Stack.Screen name="custom-requests" options={{ title: "Custom Requests" }} />
-      <Stack.Screen name="membership" options={{ title: "Membership" }} />
-      <Stack.Screen name="language" options={{ title: "Language" }} />
+      <Stack.Screen name="index" options={{ title: t("customer.account") }} />
+      <Stack.Screen name="personal-info" options={{ title: t("customer.accountSettings.personalInfoTitle") }} />
+      <Stack.Screen name="profile-details" options={{ title: t("customer.accountSettings.profileDetailsTitle") }} />
+      <Stack.Screen name="login-and-security" options={{ title: t("customer.accountSettings.loginSecurityTitle") }} />
+      <Stack.Screen name="identity-verification" options={{ title: t("customer.accountSettings.identityVerificationTitle") }} />
+      <Stack.Screen name="payments" options={{ title: t("customer.accountSettings.stackPayments") }} />
+      <Stack.Screen name="wallet" options={{ title: t("customer.wallet") }} />
+      <Stack.Screen name="taxes" options={{ title: t("customer.accountSettings.taxDocumentsTitle") }} />
+      <Stack.Screen name="addresses" options={{ title: t("customer.accountSettings.savedAddressesTitle") }} />
+      <Stack.Screen name="bookings" options={{ title: t("customer.accountSettings.bookingsMenuTitle") }} />
+      <Stack.Screen name="notifications" options={{ title: t("customer.notifications") }} />
+      <Stack.Screen name="preferences" options={{ title: t("customer.accountSettings.languageRegionTitle") }} />
+      <Stack.Screen name="privacy-and-sharing" options={{ title: t("customer.accountSettings.privacySharingTitle") }} />
+      <Stack.Screen name="deactivate-account" options={{ title: t("customer.accountSettings.stackDeactivateAccount") }} />
+      <Stack.Screen name="delete-account" options={{ title: t("customer.accountSettings.stackDeleteAccount") }} />
+      <Stack.Screen name="referrals" options={{ title: t("customer.referrals") }} />
+      <Stack.Screen name="loyalty" options={{ title: t("customer.accountSettings.stackLoyaltyPoints") }} />
+      <Stack.Screen name="reviews" options={{ title: t("customer.accountSettings.reviewsTitle") }} />
+      <Stack.Screen name="wishlists" options={{ title: t("customer.accountSettings.savedWishlistsTitle") }} />
+      <Stack.Screen name="messages" options={{ title: t("customer.messages") }} />
+      <Stack.Screen name="waitlist" options={{ title: t("customer.accountSettings.waitlistTitle") }} />
+      <Stack.Screen name="recurring-bookings" options={{ title: t("customer.accountSettings.recurringBookingsTitle") }} />
+      <Stack.Screen name="custom-requests" options={{ title: t("customer.customRequests") }} />
+      <Stack.Screen name="membership" options={{ title: t("customer.accountSettings.membershipTitle") }} />
+      <Stack.Screen name="language" options={{ title: t("customer.accountSettings.stackLanguage") }} />
     </Stack>
   );
 }

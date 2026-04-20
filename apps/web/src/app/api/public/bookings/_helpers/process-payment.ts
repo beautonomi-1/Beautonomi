@@ -20,6 +20,7 @@ import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-aft
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
 import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
+import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -264,13 +265,14 @@ export async function processPayment(
         })
         .eq("id", booking.id);
       try {
-        await (supabase.from("loyalty_point_transactions") as any).insert({
-          user_id: v.customerId,
+        // §Customer-audit 2026-04: write to BOTH ledger and legacy so
+        // `get_customer_available_points` reflects the deduction on the next
+        // booking. Previously only the legacy table was updated.
+        await recordLoyaltyRedemption(supabase, {
+          customerId: v.customerId,
           points: loyaltyPointsRedeemed,
-          transaction_type: "redeemed",
           description: `Redeemed for booking ${booking.booking_number}`,
-          reference_id: booking.id,
-          reference_type: "booking",
+          bookingId: booking.id,
         });
       } catch (e: any) {
         console.error("Loyalty points deduction (no-gateway path):", e?.message || e);

@@ -79,21 +79,33 @@ export async function GET(request: NextRequest) {
           webhook_secret: null,
           connected_date: null,
           last_sync: null,
+          subscription_required: !yocoAccess.enabled,
         },
         error: null,
       });
     }
 
+    const integ = integration as {
+      is_enabled?: boolean;
+      public_key?: string | null;
+      secret_key?: string | null;
+      webhook_secret?: string | null;
+      connected_date?: string | null;
+      last_sync?: string | null;
+    };
+    /** Web POS calls use Bearer secret; dashboard also lists a public key — both should be stored for a working integration. */
+    const credentialsComplete = Boolean(integ.public_key?.trim()) && Boolean(integ.secret_key?.trim());
+
     return NextResponse.json({
       data: {
-        is_enabled: (integration as any).is_enabled || false,
-        api_key_set: !!(integration as any).public_key,
-        webhook_configured: !!(integration as any).webhook_secret,
-        secret_key: (integration as any).secret_key ? "***" : null, // Don't expose full key
-        public_key: (integration as any).public_key || null,
-        webhook_secret: (integration as any).webhook_secret ? "***" : null,
-        connected_date: (integration as any).connected_date,
-        last_sync: (integration as any).last_sync,
+        is_enabled: integ.is_enabled || false,
+        api_key_set: credentialsComplete,
+        webhook_configured: !!integ.webhook_secret,
+        secret_key: integ.secret_key ? "***" : null,
+        public_key: integ.public_key || null,
+        webhook_secret: integ.webhook_secret ? "***" : null,
+        connected_date: integ.connected_date,
+        last_sync: integ.last_sync,
         subscription_required: !yocoAccess.enabled,
       },
       error: null,

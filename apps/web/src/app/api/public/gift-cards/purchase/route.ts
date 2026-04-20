@@ -53,7 +53,8 @@ export async function POST(request: NextRequest) {
       return errorResponse("Online payment for gift cards is currently unavailable.", "FEATURE_DISABLED", 403);
     }
 
-    const supabase = await getSupabaseServer();
+    // Pass request so mobile/Expo Bearer tokens resolve the session (cookie-only fails in the app).
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const parsed = purchaseSchema.safeParse(body);
     if (!parsed.success) {

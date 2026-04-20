@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from "react-native";
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -8,21 +9,32 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { formatLocalYmd } from "@/lib/reportDateRanges";
 
-function todayISO(): string {
-  const d = new Date();
-  return d.toISOString().split("T")[0];
-}
+type BookingRef = {
+  ref_number?: string;
+  scheduled_at?: string;
+  customer?: { full_name?: string } | { full_name?: string }[] | null;
+} | null;
 
 type Segment = {
   id: string;
   segment_order?: number;
-  to_booking?: {
-    ref_number?: string;
-    scheduled_at?: string;
-    customer?: { full_name?: string } | null;
-  } | null;
+  order?: number;
+  booking?: BookingRef;
+  to_booking?: BookingRef;
 };
+
+function segmentBooking(seg: Segment): BookingRef {
+  return seg.booking ?? seg.to_booking ?? null;
+}
+
+function customerNameFromBooking(b: BookingRef): string {
+  if (!b?.customer) return "Stop";
+  const c = b.customer;
+  if (Array.isArray(c)) return c[0]?.full_name ?? "Stop";
+  return c.full_name ?? "Stop";
+}
 
 type RoutesResponse = {
   route?: { id: string } | null;
@@ -46,7 +58,7 @@ function formatTimeSafe(value: unknown): string {
 export default function RoutesScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const date = todayISO();
+  const date = formatLocalYmd(new Date());
   const { data, loading, error, refresh } = useApi<RoutesResponse>(
     `/api/provider/routes?date=${date}`
   );
@@ -67,6 +79,7 @@ export default function RoutesScreen() {
       Alert.alert("Could not optimize", optimizeError);
       return;
     }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     refresh();
   }, [date, optimizeRoute, refresh]);
 
@@ -139,7 +152,9 @@ export default function RoutesScreen() {
           </View>
         ) : (
           <View style={{ paddingBottom: 16 }}>
-            {segments.map((seg, i) => (
+            {segments.map((seg, i) => {
+              const b = segmentBooking(seg);
+              return (
               <View
                 key={seg.id}
                 style={{ marginBottom: 12, flexDirection: "row", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
@@ -149,19 +164,20 @@ export default function RoutesScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
-                    {seg.to_booking?.customer?.full_name ?? "Stop"}
+                    {customerNameFromBooking(b)}
                   </Text>
-                  {seg.to_booking?.ref_number && (
-                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{seg.to_booking.ref_number}</Text>
+                  {b?.ref_number && (
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{b.ref_number}</Text>
                   )}
-                  {seg.to_booking?.scheduled_at && (
+                  {b?.scheduled_at && (
                     <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[600] }}>
-                      {formatTimeSafe(seg.to_booking.scheduled_at)}
+                      {formatTimeSafe(b.scheduled_at)}
                     </Text>
                   )}
                 </View>
               </View>
-            ))}
+              );
+            })}
           </View>
         )}
       </ScrollView>

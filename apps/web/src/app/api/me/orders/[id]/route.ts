@@ -27,6 +27,14 @@ export async function GET(
 
     const supabaseAdmin = getSupabaseAdmin();
 
+    // §Customer-audit 2026-04: the admin client is used to bypass RLS on
+    // the deeply-embedded `product_variants` (deactivated variants were
+    // breaking the whole query). Because the row is fetched without a
+    // `customer_id` filter first, we still enforce ownership below and
+    // return a distinct error when the order exists but belongs to
+    // another account (prevents the opaque "Order not found" that users
+    // got when their session silently changed account, e.g. after a
+    // forced re-login from a different device).
     const { data: order, error } = await (supabaseAdmin.from("product_orders") as any)
       .select(
         `
@@ -36,7 +44,7 @@ export async function GET(
           product_variant:product_variants (id, option_values)
         ),
         provider:providers (
-          id, business_name, slug, logo_url
+          id, business_name, slug, thumbnail_url
         ),
         delivery_address:user_addresses (
           id, label, address_line1, address_line2, city, state, postal_code, country
@@ -47,13 +55,9 @@ export async function GET(
       `,
       )
       .eq("id", id)
-      .eq("customer_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      if (error.code === "PGRST116") {
-        return notFoundResponse("Order not found");
-      }
       console.error("[me/orders/[id]] Supabase error:", error.message, error.code);
       return NextResponse.json(
         { error: "Failed to load order details. Please try again." },
@@ -65,7 +69,33 @@ export async function GET(
       return notFoundResponse("Order not found");
     }
 
-    return successResponse({ order });
+    const orderOwnerId = (order as { customer_id?: string }).customer_id;
+    if (orderOwnerId !== user.id && user.role !== "superadmin") {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "This order is not associated with your account.",
+            code: "ORDER_OWNERSHIP_MISMATCH",
+          },
+        },
+        { status: 403 },
+      );
+    }
+
+    // DB column is `thumbnail_url`; web clients historically expect `logo_url` on provider.
+    const rawProvider = (order as { provider?: { thumbnail_url?: string | null } | null }).provider;
+    const orderOut = {
+      ...order,
+      provider: rawProvider
+        ? {
+            ...rawProvider,
+            logo_url: rawProvider.thumbnail_url ?? null,
+          }
+        : null,
+    };
+
+    return successResponse({ order: orderOut });
   } catch (err) {
     return handleApiError(err, "Failed to fetch order");
   }

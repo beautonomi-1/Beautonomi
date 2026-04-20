@@ -203,11 +203,56 @@ async function handleGetProviderBookings(request: NextRequest) {
       query = query.eq("location_id", locationId);
     }
 
+    // §Provider-audit 2026-04 (round 6): server-side search by
+    // booking_number / customer name / customer phone. Previously the
+    // mobile bookings list filtered the whole fetched page in JS, which
+    // silently missed matches outside the limit and got slow for
+    // providers with thousands of bookings. Name/phone requires a
+    // pre-lookup on `users` (same pattern used by /api/provider/clients).
+    const searchRaw = searchParams.get("search");
+    if (searchRaw && searchRaw.trim().length > 0) {
+      const trimmed = searchRaw.trim();
+      const safe = trimmed.replace(/[%_,()]/g, "");
+      const digitsOnly = trimmed.replace(/\D+/g, "");
+
+      const { data: matchedUsers } = await supabaseAdmin
+        .from("users")
+        .select("id")
+        .or(
+          [
+            `full_name.ilike.%${safe}%`,
+            `email.ilike.%${safe}%`,
+            ...(digitsOnly.length > 0 ? [`phone.ilike.%${digitsOnly}%`] : []),
+          ].join(","),
+        )
+        .limit(500);
+
+      const customerIds = (matchedUsers ?? [])
+        .map((u: { id?: string | null }) => u?.id)
+        .filter((v): v is string => typeof v === "string");
+
+      const orClauses: string[] = [`booking_number.ilike.%${safe}%`];
+      if (customerIds.length > 0) {
+        orClauses.push(`customer_id.in.(${customerIds.join(",")})`);
+      }
+      query = query.or(orClauses.join(","));
+    }
+
     const limitParam = searchParams.get("limit");
+    const offsetParam = searchParams.get("offset");
     if (limitParam) {
       const parsedLimit = Number(limitParam);
       if (Number.isFinite(parsedLimit) && parsedLimit > 0) {
-        query = query.limit(Math.min(parsedLimit, 1000));
+        const capped = Math.min(parsedLimit, 1000);
+        const parsedOffset = Number(offsetParam ?? NaN);
+        if (Number.isFinite(parsedOffset) && parsedOffset >= 0) {
+          query = query.range(
+            Math.floor(parsedOffset),
+            Math.floor(parsedOffset) + capped - 1,
+          );
+        } else {
+          query = query.limit(capped);
+        }
       }
     }
 
@@ -958,6 +1003,36 @@ async function handleCreateProviderBooking(request: NextRequest) {
       }
       booking = createdBooking;
       console.log("Booking created successfully via RPC:", booking.id);
+
+      // §Provider-audit 2026-04: RPC `create_booking_with_locking` does not
+      // carry per-service customization through its jsonb payload; patch it
+      // in after creation for any services that had a non-empty value.
+      if (body.services && Array.isArray(body.services)) {
+        const customizationByOffering = new Map<string, string>();
+        for (const s of body.services as any[]) {
+          const offeringId = s?.serviceId || s?.service_id || s?.offering_id;
+          const cust = typeof s?.customization === "string" ? s.customization.trim() : "";
+          if (offeringId && cust.length > 0) {
+            customizationByOffering.set(String(offeringId), cust);
+          }
+        }
+        if (customizationByOffering.size > 0) {
+          for (const [offeringId, cust] of customizationByOffering) {
+            const { error: custErr } = await supabaseAdmin
+              .from("booking_services")
+              .update({ customization: cust })
+              .eq("booking_id", booking.id)
+              .eq("offering_id", offeringId);
+            if (custErr) {
+              // Non-fatal — booking is still usable; surface in logs for debugging.
+              console.warn(
+                `[provider/bookings] customization patch failed for booking ${booking.id}, offering ${offeringId}:`,
+                custErr,
+              );
+            }
+          }
+        }
+      }
     } else {
       // Direct insert: still enforce booking conflicts unless double-booking override (holds already checked).
       if (!allowOverride) {
@@ -1033,13 +1108,23 @@ async function handleCreateProviderBooking(request: NextRequest) {
       booking = insertedBooking;
       console.log("Booking created successfully:", booking.id);
 
-      // Create booking_services records when not using RPC
+      // Create booking_services records when not using RPC.
+      // §Provider-audit 2026-04: previously a failed booking_services insert
+      // only logged; the booking row would exist with no line items (orphan).
+      // Now: on failure we compensate by deleting the booking and surface a
+      // real error so the client can retry cleanly. We also persist the
+      // per-service `customization` string (DB column exists — see
+      // migration 464_booking_services_customization.sql).
       if (body.services && Array.isArray(body.services) && body.services.length > 0) {
         const bookingServicesData = body.services.map((service: any) => {
           const startAtS = service.scheduled_start_at || booking.scheduled_at;
           const duration = service.duration || service.duration_minutes || 60;
           const start = new Date(startAtS);
           const end = new Date(start.getTime() + duration * 60 * 1000);
+          const customization =
+            typeof service.customization === "string" && service.customization.trim().length > 0
+              ? service.customization.trim()
+              : null;
           return {
             booking_id: booking.id,
             offering_id: service.serviceId || service.service_id || service.offering_id,
@@ -1049,14 +1134,16 @@ async function handleCreateProviderBooking(request: NextRequest) {
             currency: service.currency || lastResortCurrency,
             scheduled_start_at: start.toISOString(),
             scheduled_end_at: end.toISOString(),
+            ...(customization ? { customization } : {}),
           };
         });
         const { error: bsError } = await supabaseAdmin.from("booking_services").insert(bookingServicesData);
         if (bsError) {
-          console.error("Error creating booking_services:", bsError);
-        } else {
-          console.log("Booking services created:", bookingServicesData.length);
+          console.error("Error creating booking_services — rolling back booking:", bsError);
+          await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
+          throw new Error(`Failed to create booking line items: ${bsError.message ?? "unknown error"}`);
         }
+        console.log("Booking services created:", bookingServicesData.length);
       } else if (body.service_id || body.offering_id) {
         const offeringId = body.offering_id || body.service_id;
         const duration = body.duration_minutes || 60;
@@ -1073,7 +1160,11 @@ async function handleCreateProviderBooking(request: NextRequest) {
           scheduled_end_at: end.toISOString(),
         };
         const { error: bsError } = await supabaseAdmin.from("booking_services").insert(bookingServiceData);
-        if (bsError) console.error("Error creating booking_services:", bsError);
+        if (bsError) {
+          console.error("Error creating booking_services — rolling back booking:", bsError);
+          await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
+          throw new Error(`Failed to create booking line item: ${bsError.message ?? "unknown error"}`);
+        }
       }
     }
 
@@ -1128,6 +1219,53 @@ async function handleCreateProviderBooking(request: NextRequest) {
         // Don't fail the booking creation, just log the error
       } else {
         console.log("Booking products created:", bookingProductsData.length);
+      }
+
+      // §Provider-audit 2026-04 (round 3): if this booking is being
+      // created directly in `completed` status (e.g. a retroactive
+      // entry, walk-in finalised at checkout), deduct retail stock
+      // immediately. The PATCH path in `[id]/route.ts` handles the
+      // normal pending→completed transition. Without this branch,
+      // bookings that skip the transition would never deduct.
+      const initialStatus = (booking as { status?: string } | null)?.status;
+      if (initialStatus === "completed") {
+        try {
+          const { data: pendingProducts } = await supabaseAdmin
+            .from("booking_products")
+            .select("id, product_id, quantity")
+            .eq("booking_id", booking.id)
+            .is("stock_deducted_at", null);
+          if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
+            const deductTs = new Date().toISOString();
+            for (const row of pendingProducts as Array<{
+              id: string;
+              product_id: string | null;
+              quantity: number | null;
+            }>) {
+              if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
+              const { error: decErr } = await supabaseAdmin.rpc(
+                "decrement_product_stock",
+                { p_product_id: row.product_id, p_quantity: row.quantity },
+              );
+              if (decErr) {
+                console.error(
+                  `[provider/bookings create] decrement_product_stock failed for booking ${booking.id}, row ${row.id}:`,
+                  decErr,
+                );
+                continue;
+              }
+              await supabaseAdmin
+                .from("booking_products")
+                .update({ stock_deducted_at: deductTs })
+                .eq("id", row.id);
+            }
+          }
+        } catch (stockErr) {
+          console.error(
+            "[provider/bookings create] failed to deduct retail stock:",
+            stockErr,
+          );
+        }
       }
     }
 

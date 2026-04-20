@@ -453,6 +453,9 @@ export async function POST(
           : new URL(request.url).origin;
 
     const cookieHeader = request.headers.get("cookie") || "";
+    /** Mobile apps authenticate with Bearer tokens only (no session cookies). Inner fetch must forward them or /api/public/bookings sees no user → 401 and checkout fails. */
+    const authorizationHeader = request.headers.get("authorization")?.trim();
+    const activeMarketCountry = request.headers.get("x-active-market-country")?.trim();
 
     const forwardHost =
       request.headers.get("x-forwarded-host")?.trim() ||
@@ -467,8 +470,10 @@ export async function POST(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Cookie: cookieHeader,
+          ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+          ...(authorizationHeader ? { Authorization: authorizationHeader } : {}),
           ...(forwardHost ? { "x-forwarded-host": forwardHost } : {}),
+          ...(activeMarketCountry ? { "x-active-market-country": activeMarketCountry } : {}),
         },
         body: JSON.stringify(draft),
         signal: paymentForwardAbort.signal,

@@ -4,8 +4,11 @@ import {
   Text,
   ScrollView,
   RefreshControl,
+  TouchableOpacity,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -53,6 +56,7 @@ function formatDateTimeSafe(value: unknown): string {
 const formatCurrency = formatCurrencyShort;
 
 export default function ActivityScreen() {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { screenPadding } = useResponsive();
   const { selectedLocationId } = useProvider();
@@ -165,9 +169,18 @@ export default function ActivityScreen() {
           </View>
         </View>
 
-        {/* Points & recent activity */}
+        {/* Points & recent activity — tap opens full Rewards hub */}
         {stats.gamification && (
-          <View style={{ marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/(app)/(tabs)/more/rewards-hub" as never);
+            }}
+            style={{ marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
+            accessibilityRole="button"
+            accessibilityLabel="Open rewards and badges"
+          >
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
                 Reward points
@@ -184,7 +197,11 @@ export default function ActivityScreen() {
                 Badge: {stats.gamification.current_badge.name}
               </Text>
             )}
-          </View>
+            <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center" }}>
+              <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: Colors.primary }}>View rewards & badges</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+            </View>
+          </TouchableOpacity>
         )}
 
         <View style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>

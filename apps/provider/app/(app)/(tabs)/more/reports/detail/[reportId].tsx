@@ -27,10 +27,14 @@ import {
 } from "@/features/reports/reportDetailRegistry";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
+import { format } from "date-fns";
+import {
+  getReportDateRange,
+  formatReportRangeCaption,
+  type ReportDateRangeKey,
+} from "@/lib/reportDateRanges";
 
-type DateRange = "today" | "week" | "month" | "last_month" | "3months";
-
-const DATE_RANGES: { label: string; value: DateRange }[] = [
+const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
   { label: "This Week", value: "week" },
   { label: "This Month", value: "month" },
@@ -50,31 +54,6 @@ const PERIOD_DMWY = [
   { label: "Month", value: "month" },
   { label: "Year", value: "year" },
 ];
-
-function getDateParams(range: DateRange): { from: string; to: string } {
-  const now = new Date();
-  const to = now.toISOString().split("T")[0];
-  let from = to;
-  if (range === "week") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 7);
-    from = d.toISOString().split("T")[0];
-  } else if (range === "month") {
-    const d = new Date(now);
-    d.setMonth(d.getMonth() - 1);
-    from = d.toISOString().split("T")[0];
-  } else if (range === "last_month") {
-    const d = new Date(now);
-    d.setMonth(d.getMonth() - 1);
-    from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
-    return { from, to: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split("T")[0] };
-  } else if (range === "3months") {
-    const d = new Date(now);
-    d.setMonth(d.getMonth() - 3);
-    from = d.toISOString().split("T")[0];
-  }
-  return { from, to };
-}
 
 function buildReportUrl(
   def: Pick<ReportDetailDefinition, "apiPath" | "query" | "extraSearch">,
@@ -121,12 +100,13 @@ export default function ReportDetailScreen() {
   const def = reportId ? REPORT_DETAIL_REGISTRY[reportId] : undefined;
 
   const { selectedLocationId } = useProvider();
-  const [dateRange, setDateRange] = useState<DateRange>("month");
+  const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
   const [periodMQY, setPeriodMQY] = useState("month");
   const [periodDMWY, setPeriodDMWY] = useState("month");
-  const [eodDate, setEodDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [eodDate, setEodDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
 
-  const { from, to } = useMemo(() => getDateParams(dateRange), [dateRange]);
+  const { from, to } = useMemo(() => getReportDateRange(dateRange), [dateRange]);
+  const rangeCaption = useMemo(() => formatReportRangeCaption(from, to), [from, to]);
 
   const path = useMemo(() => {
     if (!def) return "";
@@ -183,20 +163,23 @@ export default function ReportDetailScreen() {
       />
 
       {def.query === "fromTo" && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4")} contentContainerStyle={{ flexDirection: "row" }}>
-          {DATE_RANGES.map((r) => (
-            <TouchableOpacity
-              key={r.value}
-              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setDateRange(r.value);
-              }}
-            >
-              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <View style={twStyle("mb-2")}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
+            {DATE_RANGES.map((r) => (
+              <TouchableOpacity
+                key={r.value}
+                style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setDateRange(r.value);
+                }}
+              >
+                <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <Text style={twStyle("text-xs text-gray-500")}>{rangeCaption}</Text>
+        </View>
       )}
 
       {def.query === "periodMQY" && (
@@ -220,7 +203,7 @@ export default function ReportDetailScreen() {
                 key={r.value}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  const d = getDateParams(r.value);
+                  const d = getReportDateRange(r.value);
                   setEodDate(d.to);
                 }}
                 style={[twStyle("mr-2 rounded-full border border-gray-200 bg-white px-3 py-1.5")]}
@@ -235,11 +218,7 @@ export default function ReportDetailScreen() {
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color={Colors.primary} />}
       {error && !data && <ErrorState message={error} onRetry={refresh} />}
 
-      {data != null && !loading && (
-        <ScrollView style={twStyle("flex-1")} showsVerticalScrollIndicator={false}>
-          <ReportPayloadView data={data} />
-        </ScrollView>
-      )}
+      {data != null && !loading && <ReportPayloadView data={data} />}
     </ScreenContainer>
   );
 }

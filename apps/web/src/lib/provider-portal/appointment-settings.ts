@@ -180,31 +180,42 @@ export async function determineAppointmentStatusFromDB(
   providerId: string,
   explicitStatus?: string
 ): Promise<string> {
-  // If explicit status is provided, use it (allows manual override)
+  // §Provider-audit 2026-04: previously any non-empty `explicitStatus` from
+  // the client body unconditionally short-circuited DB settings, so a stray
+  // `defaultNewAppointmentStatus: "confirmed"` from the mobile calendar FAB
+  // could bypass `require_confirmation_for_bookings` and auto-confirm a
+  // booking the provider explicitly wanted to review.
+  //
+  // Loads settings first, then applies the client override only when the
+  // provider's own settings allow it.
+  let settings: AppointmentSettings;
+  try {
+    settings = await getAppointmentSettingsFromDB(supabaseAdmin, providerId);
+  } catch (error) {
+    console.warn("Failed to load appointment settings, using defaults:", error);
+    settings = {
+      defaultAppointmentStatus: DEFAULT_APPOINTMENT_STATUS,
+      autoConfirmAppointments: false,
+      requireConfirmationForBookings: true,
+      updatedAt: null,
+    };
+  }
+
+  // Hard rule: when require_confirmation is on, the initial status is
+  // always pending. Client-supplied status is ignored (provider has asked
+  // the platform to funnel everything through a manual approval step).
+  if (settings.requireConfirmationForBookings) {
+    return mapToBookingStatusEnum(APPOINTMENT_STATUS.PENDING);
+  }
+
+  // Otherwise, honour the client override when present.
   if (explicitStatus) {
     return mapToBookingStatusEnum(explicitStatus);
   }
 
-  try {
-    const settings = await getAppointmentSettingsFromDB(supabaseAdmin, providerId);
-    let status = settings.defaultAppointmentStatus || DEFAULT_APPOINTMENT_STATUS;
-
-    // If require confirmation is enabled, force status to "pending"
-    if (settings.requireConfirmationForBookings) {
-      status = APPOINTMENT_STATUS.PENDING;
-    } else {
-      // Use default status
-      status = settings.defaultAppointmentStatus || DEFAULT_APPOINTMENT_STATUS;
-
-      // If auto-confirm is enabled and status would be pending, change to confirmed
-      if (settings.autoConfirmAppointments && status === APPOINTMENT_STATUS.PENDING) {
-        status = APPOINTMENT_STATUS.BOOKED;
-      }
-    }
-
-    return mapToBookingStatusEnum(status);
-  } catch (error) {
-    console.warn("Failed to determine appointment status, using default:", error);
-    return mapToBookingStatusEnum(DEFAULT_APPOINTMENT_STATUS);
+  let status = settings.defaultAppointmentStatus || DEFAULT_APPOINTMENT_STATUS;
+  if (settings.autoConfirmAppointments && status === APPOINTMENT_STATUS.PENDING) {
+    status = APPOINTMENT_STATUS.BOOKED;
   }
+  return mapToBookingStatusEnum(status);
 }

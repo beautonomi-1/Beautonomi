@@ -20,6 +20,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -47,6 +48,8 @@ import {
 } from "@/lib/supabase-sms-otp";
 import { resolvePostLoginHref } from "@/lib/post-login-href";
 import { consumePostOnboardingHref } from "@/lib/post-onboarding-redirect";
+import { AddressPicker, type AddressPickerSelection } from "@/components/AddressPicker";
+import { StaticMapImage } from "@/components/StaticMapImage";
 
 /* ── Constants ── */
 export const ONBOARDING_DONE_KEY = "customer_onboarding_done_v1";
@@ -129,6 +132,7 @@ function SectionLabel({ children, required }: { children: ReactNode; required?: 
 ──────────────────────────────────────────────────────────── */
 export default function CustomerOnboarding() {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { refreshSession, user } = useAuth();
   const { pickWithOptions, pickFromCamera, loading: pickLoading } = useImagePicker();
 
@@ -169,6 +173,10 @@ export default function CustomerOnboarding() {
   const [postalCode, setPostalCode] = useState("");
   const [country, setCountry] = useState("South Africa");
   const [alreadyHasAddress, setAlreadyHasAddress] = useState(false);
+  const [addressPickerOpen, setAddressPickerOpen] = useState(false);
+  /** Set when user picks from Mapbox search, map result, or current location */
+  const [addressLatitude, setAddressLatitude] = useState<number | null>(null);
+  const [addressLongitude, setAddressLongitude] = useState<number | null>(null);
 
   /* Step 6 */
   const [hairTypes, setHairTypes] = useState<string[]>([]);
@@ -318,6 +326,20 @@ export default function CustomerOnboarding() {
   };
 
   /* ── Photo picker ── */
+  const applyAddressSelection = useCallback((sel: AddressPickerSelection) => {
+    const s = sel.structured;
+    if (s) {
+      setAddressLine1(s.address_line1);
+      setCity(s.city && s.city !== "—" ? s.city : "");
+      setProvince(s.state ?? "");
+      setPostalCode(s.postal_code ?? "");
+      if (s.country?.trim()) setCountry(s.country.trim());
+    }
+    setAddressLatitude(sel.latitude);
+    setAddressLongitude(sel.longitude);
+    setAddressPickerOpen(false);
+  }, []);
+
   const handlePickPhoto = () => {
     Alert.alert("Profile photo", "Choose an option", [
       { text: "Camera", onPress: async () => {
@@ -367,7 +389,7 @@ export default function CustomerOnboarding() {
           break;
         case 5:
           if (!alreadyHasAddress && addressLine1.trim() && city.trim()) {
-            const res = await api.post("/api/me/addresses", {
+            const payload: Record<string, unknown> = {
               label: "Home",
               is_default: true,
               address_line1: addressLine1.trim(),
@@ -375,7 +397,12 @@ export default function CustomerOnboarding() {
               state: province.trim() || null,
               postal_code: postalCode.trim() || null,
               country: country.trim() || "South Africa",
-            });
+            };
+            if (addressLatitude != null && addressLongitude != null) {
+              payload.latitude = addressLatitude;
+              payload.longitude = addressLongitude;
+            }
+            const res = await api.post("/api/me/addresses", payload);
             if (res.error) throw new Error(getApiErrorMessage(res.error, "Could not save address"));
             setAlreadyHasAddress(true);
           }
@@ -700,6 +727,14 @@ export default function CustomerOnboarding() {
               <StepIcon name="location" />
               <StepTitle title="Where are you based?" subtitle="Used for house-call bookings and finding services near you" />
 
+              <AddressPicker
+                visible={addressPickerOpen}
+                onClose={() => setAddressPickerOpen(false)}
+                onSelect={applyAddressSelection}
+                onUseCurrentLocation={() => {}}
+                initialQuery={addressLine1.trim() || undefined}
+              />
+
               {alreadyHasAddress && (
                 <View style={{ flexDirection: "row", gap: 8, backgroundColor: "#F0FDF4", borderRadius: RADIUS_CARD, padding: 12, marginBottom: 16 }}>
                   <Ionicons name="checkmark-circle" size={16} color="#16A34A" style={{ marginTop: 1 }} />
@@ -709,11 +744,66 @@ export default function CustomerOnboarding() {
                 </View>
               )}
 
+              {!alreadyHasAddress && (
+                <>
+                  <TouchableOpacity
+                    onPress={() => setAddressPickerOpen(true)}
+                    activeOpacity={0.85}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 10,
+                      backgroundColor: PRIMARY + "12",
+                      borderWidth: 1.5,
+                      borderColor: PRIMARY + "55",
+                      borderRadius: RADIUS_BUTTON,
+                      paddingVertical: 14,
+                      paddingHorizontal: 16,
+                      marginBottom: 16,
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Search address with Mapbox, map pin, or current location"
+                  >
+                    <Ionicons name="map-outline" size={22} color={PRIMARY} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A" }}>Find on map</Text>
+                      <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+                        Mapbox search, drop a pin, or use current location
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={PRIMARY} />
+                  </TouchableOpacity>
+
+                  {addressLatitude != null && addressLongitude != null && Number.isFinite(addressLatitude) && Number.isFinite(addressLongitude) && (
+                    <View style={{ marginBottom: 14 }}>
+                      <SectionLabel>Map preview</SectionLabel>
+                      <StaticMapImage
+                        latitude={addressLatitude}
+                        longitude={addressLongitude}
+                        width={Math.max(280, windowWidth - SCREEN_PADDING * 2)}
+                        height={152}
+                        borderRadius={12}
+                      />
+                      <Text style={[hintStyle, { marginTop: 6 }]}>
+                        Pin shows the saved location for distances and directions. Edit the fields below if needed.
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
+
               <SectionLabel required={!alreadyHasAddress}>Street address</SectionLabel>
               <TextInput
                 value={addressLine1}
-                onChangeText={setAddressLine1}
-                placeholder="e.g. 12 Main Street"
+                onChangeText={(t) => {
+                  setAddressLine1(t);
+                  if (!t.trim()) {
+                    setAddressLatitude(null);
+                    setAddressLongitude(null);
+                  }
+                }}
+                placeholder="e.g. 12 Main Street — or use Find on map above"
                 style={inputStyle}
                 placeholderTextColor="#94A3B8"
               />

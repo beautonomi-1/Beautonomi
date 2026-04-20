@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, Modal, Pressable } from "react-native";
+import { View, Text, TouchableOpacity, Modal, Pressable, ScrollView, useWindowDimensions } from "react-native";
 import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -8,6 +8,9 @@ import { twStyle } from "@/lib/twStyle";
 export function LocationSwitcher() {
   const { provider, selectedLocationId, setSelectedLocationId } = useProvider();
   const [visible, setVisible] = useState(false);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const sheetWidth = Math.min(420, windowWidth * 0.92);
+  const listMaxHeight = Math.min(windowHeight * 0.55, 420);
 
   const locations = provider?.locations ?? [];
   if (locations.length === 0) return null;
@@ -29,7 +32,7 @@ export function LocationSwitcher() {
   return (
     <>
       <TouchableOpacity
-        style={twStyle("flex-row items-center rounded-lg bg-gray-50 px-3 py-2")}
+        style={[twStyle("flex-row items-center rounded-lg bg-gray-50 px-3 py-2"), { maxWidth: 200, flexShrink: 0 }]}
         onPress={() => {
           Haptics.selectionAsync();
           setVisible(true);
@@ -55,8 +58,13 @@ export function LocationSwitcher() {
           onPress={() => setVisible(false)}
         >
           <Pressable
-            style={twStyle("mx-8 w-80 overflow-hidden rounded-2xl bg-white")}
-            onPress={() => {}}
+            style={[
+              twStyle("overflow-hidden rounded-2xl bg-white"),
+              { width: sheetWidth, alignSelf: "center" },
+            ]}
+            onPress={(e) => {
+              e.stopPropagation?.();
+            }}
           >
             {/* Header */}
             <View style={twStyle("border-b border-gray-100 px-5 py-4")}>
@@ -70,6 +78,7 @@ export function LocationSwitcher() {
               </Text>
             </View>
 
+            <ScrollView style={{ maxHeight: listMaxHeight }} keyboardShouldPersistTaps="handled" bounces={false}>
             {/* All locations (org-wide lists) */}
             <TouchableOpacity
               style={twStyle(
@@ -155,6 +164,7 @@ export function LocationSwitcher() {
                 </TouchableOpacity>
               );
             })}
+            </ScrollView>
 
             {/* Close */}
             <View style={twStyle("border-t border-gray-100 px-5 py-3")}>

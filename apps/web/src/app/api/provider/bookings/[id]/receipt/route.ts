@@ -1,7 +1,7 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
@@ -12,6 +12,7 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
+import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 
 /**
  * GET /api/provider/bookings/[id]/receipt
@@ -25,10 +26,53 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const { id } = await params;
+
+    // §Provider-audit 2026-04: same auth issue as the customer-facing
+    // receipt — the PDF sibling route sends a service-role Bearer which
+    // `requireRoleInApi` cannot translate into a user. Accept the signed
+    // `?token=` directly so mobile receipt downloads actually work.
+    const url = new URL(request.url);
+    const downloadToken = url.searchParams.get("token");
+    let tokenUserId: string | null = null;
+    if (downloadToken) {
+      const parsed = parseReceiptDownloadToken(downloadToken, {
+        kind: "provider_booking_receipt",
+        subjectId: id,
+      });
+      if (!parsed) {
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 },
+        );
+      }
+      tokenUserId = parsed.userId;
+    }
+
     const supabaseAdmin = getSupabaseAdmin();
     const scopedSupabase = await getSupabaseServer(request);
-    const { id } = await params;
+
+    let user: { id: string; role: string };
+    if (tokenUserId) {
+      const { data: userRow } = await supabaseAdmin
+        .from("users")
+        .select("id, role")
+        .eq("id", tokenUserId)
+        .maybeSingle();
+      if (!userRow) {
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 },
+        );
+      }
+      user = {
+        id: userRow.id as string,
+        role: (userRow.role as string) || "provider_owner",
+      };
+    } else {
+      const authed = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+      user = { id: authed.user.id, role: authed.user.role as string };
+    }
 
     const providerId = await getProviderIdForUser(user.id, scopedSupabase);
     if (!providerId && user.role !== "superadmin") {

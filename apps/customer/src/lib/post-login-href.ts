@@ -8,8 +8,14 @@ export function resolvePostLoginHref(returnTo: string | string[] | undefined): H
   if (!t.startsWith("/(app)/") && !t.startsWith("/(auth)/")) return "/(app)/(tabs)/home";
   if (t.startsWith("/(app)/book/continue")) {
     const q = t.includes("?") ? t.split("?")[1] : "";
-    const hid = new URLSearchParams(q).get("hold_id");
-    if (hid) return { pathname: "/(app)/book/continue", params: { hold_id: hid } };
+    const sp = new URLSearchParams(q);
+    const hid = sp.get("hold_id");
+    if (hid) {
+      const p: Record<string, string> = { hold_id: hid };
+      const rid = sp.get("reschedule_booking_id");
+      if (rid) p.reschedule_booking_id = rid;
+      return { pathname: "/(app)/book/continue", params: p };
+    }
     return "/(app)/(tabs)/home";
   }
   if (t.startsWith("/(app)/book-checkout")) {

@@ -1,5 +1,16 @@
 /**
  * Layout constants for provider app — aligned with bottom tab bar in `(tabs)/_layout.tsx`.
+ *
+ * UX / journey rules (tab shell):
+ * - Main tab content sits below `AppHeader` (status bar inset is already applied there).
+ *   Do not add `SafeAreaView` `edges={['top']}` on tab screens — it double-reserves space.
+ * - Prefer `ScreenContainer` for tab routes: it applies horizontal padding from `useResponsive`,
+ *   max-width centering on tablet, and `tabScreenScrollBottomPadding` so scroll content clears
+ *   the tab bar + home indicator.
+ * - Stack routes without `AppHeader` (`notifications`, `search`, `chat/[id]`, etc.) should use
+ *   `ScreenContainer` with `edges={['top']}` where the screen implements its own header.
+ * - Replace ad-hoc `paddingBottom: 120` on manual `ScrollView`s with `tabScreenScrollBottomPadding`
+ *   (or migrate the screen to `ScreenContainer`).
  */
 
 /** Minimum bottom inset inside tab bar (home indicator / gesture bar when OS reports 0). */

@@ -1,52 +1,43 @@
 /**
- * External link launcher (legacy route compatibility).
- * Opens target URLs in the device browser instead of in-app WebView.
- * Route: (app)/(tabs)/more/in-app-browser?url=<encoded>&title=...
+ * In-app WebView for provider dashboard / payment / receipt URLs.
+ * Route: (app)/(tabs)/more/in-app-browser?url=<encoded>&title=<encoded>
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   View,
   Text,
   ActivityIndicator,
   TouchableOpacity,
   StyleSheet,
+  Platform,
+  Linking,
 } from "react-native";
-import * as Linking from "expo-linking";
+import { WebView } from "react-native-webview";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 
 export default function InAppBrowserScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; title?: string }>();
   const rawUrl = params.url ? decodeURIComponent(params.url) : "";
-  const displayTitle = params.title ? decodeURIComponent(params.title) : "Link";
-  const [openError, setOpenError] = useState<string | null>(null);
-  const [opening, setOpening] = useState(true);
-  const hasOpened = useRef(false);
+  const displayTitle = params.title ? decodeURIComponent(params.title) : "Web";
+
+  const [error, setError] = useState<string | null>(null);
 
   const isValid =
     rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
 
-  useEffect(() => {
-    if (!isValid || !rawUrl || hasOpened.current) {
-      setOpening(false);
-      return;
-    }
-    hasOpened.current = true;
-    Linking.openURL(rawUrl)
-      .catch((error) => {
-        setOpenError(error instanceof Error ? error.message : "Failed to open link");
-      })
-      .finally(() => {
-        setOpening(false);
-      });
-  }, [isValid, rawUrl]);
+  const openExternally = useCallback(() => {
+    if (!rawUrl || !isValid) return;
+    Linking.openURL(rawUrl).catch(() => {});
+  }, [rawUrl, isValid]);
 
   if (!rawUrl || !isValid) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => {
@@ -75,12 +66,50 @@ export default function InAppBrowserScreen() {
             <Text style={styles.backLinkText}>Go back</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Expo web: no native WebView parity for all flows; open system browser.
+  if (Platform.OS === "web") {
+    return (
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.back();
+            }}
+            style={styles.backBtn}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
+            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {displayTitle}
+          </Text>
+        </View>
+        <View style={styles.centered}>
+          <Text style={styles.errorText}>
+            Opening in browser (web preview). Use the iOS or Android app for an in-app view.
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              openExternally();
+            }}
+            style={styles.backLink}
+          >
+            <Text style={styles.backLinkText}>Open link</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => {
@@ -96,52 +125,80 @@ export default function InAppBrowserScreen() {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {displayTitle}
         </Text>
+        <TouchableOpacity
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            openExternally();
+          }}
+          style={styles.openExternalBtn}
+          accessibilityLabel="Open in external browser"
+          accessibilityRole="button"
+        >
+          <Ionicons name="open-outline" size={22} color={Colors.gray[600]} />
+        </TouchableOpacity>
       </View>
-      <View style={styles.centered}>
-        {opening ? (
-          <>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Opening in browser…</Text>
-          </>
-        ) : (
-          <>
-            <Text style={styles.errorText}>
-              {openError ?? "Opened in your browser. Return to continue in the app."}
-            </Text>
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                Linking.openURL(rawUrl).catch(() => {});
-              }}
-              style={styles.backLink}
-            >
-              <Text style={styles.backLinkText}>Open again</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-    </View>
+
+      {error ? (
+        <View style={styles.centered}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity
+            onPress={() => {
+              setError(null);
+            }}
+            style={styles.backLink}
+          >
+            <Text style={styles.backLinkText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <WebView
+          source={{ uri: rawUrl }}
+          style={styles.webview}
+          onError={() => {
+            setError("Could not load this page.");
+          }}
+          onHttpError={() => {
+            setError("This page returned an error.");
+          }}
+          startInLoadingState
+          setSupportMultipleWindows={false}
+          allowsBackForwardNavigationGestures
+          renderLoading={() => (
+            <View style={styles.webviewLoading}>
+              <ActivityIndicator size="large" color={Colors.primary} />
+            </View>
+          )}
+        />
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.white },
+  webview: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 8,
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Colors.gray[200],
   },
-  backBtn: { padding: 8, marginRight: 8 },
+  backBtn: { padding: 8, marginRight: 4 },
+  openExternalBtn: { padding: 8, marginLeft: 4 },
   headerTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
     color: Colors.gray[900],
   },
-  loadingText: { marginTop: 12, color: Colors.gray[500] },
+  webviewLoading: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.white,
+  },
   centered: {
     flex: 1,
     alignItems: "center",

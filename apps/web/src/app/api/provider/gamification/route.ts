@@ -134,14 +134,15 @@ export async function GET(request: NextRequest) {
     let progressToNextBadge = null;
     
     const badge = Array.isArray(pointsData?.provider_badges) ? pointsData?.provider_badges?.[0] : pointsData?.provider_badges;
-    if (allBadges && pointsData) {
+    // Progress must work when provider_points row is missing (treat as 0 points until first sync).
+    if (allBadges) {
       const currentTier = badge?.tier || 0;
       const nextBadgeCandidate = allBadges.find(b => b.tier > currentTier);
       
       if (nextBadgeCandidate) {
         const _nextBadge = nextBadgeCandidate;
         const requiredPoints = (nextBadgeCandidate.requirements as any)?.points || 0;
-        const currentPoints = pointsData.total_points || 0;
+        const currentPoints = pointsData?.total_points || 0;
         const progress = requiredPoints > 0 
           ? Math.min(100, Math.round((currentPoints / requiredPoints) * 100))
           : 0;

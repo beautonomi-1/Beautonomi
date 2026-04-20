@@ -142,6 +142,18 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="search"
+        options={{
+          title: t("customer.search"),
+          tabBarLabel: t("customer.searchShort"),
+          tabBarIcon: ({ focused, color }) => (
+            <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name={focused ? "search" : "search-outline"} size={24} color={color} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="bookings"
         options={{
           title: t("customer.bookings"),
@@ -186,18 +198,6 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="shop"
-        options={{
-          title: t("customer.shop", "Shop"),
-          headerShown: false,
-          tabBarIcon: ({ focused, color }) => (
-            <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name={focused ? "storefront" : "storefront-outline"} size={24} color={color} />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="chats"
         options={{
           title: t("customer.messages"),
@@ -221,8 +221,8 @@ export default function TabsLayout() {
       />
 
       {/* Hidden tabs (reachable from home top nav / deep links) */}
+      <Tabs.Screen name="shop" options={{ href: null }} />
       <Tabs.Screen name="explore" options={{ href: null }} />
-      <Tabs.Screen name="search" options={{ href: null }} />
       <Tabs.Screen name="saved" options={{ href: null }} />
       </Tabs>
     </View>

@@ -1,4 +1,4 @@
-import { View, Text } from "react-native";
+import { View, Text, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 
@@ -30,7 +30,15 @@ export function StatCard({
           <Text style={{ fontSize: 12, fontWeight: "500", letterSpacing: 0.5, color: Colors.gray[500] }} numberOfLines={1}>
             {title}
           </Text>
-          <Text style={[ compact ? { marginTop: 4, fontSize: 20 } : { marginTop: 8, fontSize: 24 }, { fontWeight: "700", color: Colors.gray[900] } ]}>
+          <Text
+            style={[
+              compact ? { marginTop: 4, fontSize: 17 } : { marginTop: 8, fontSize: 20 },
+              { fontWeight: "700", color: Colors.gray[900] },
+            ]}
+            numberOfLines={2}
+            adjustsFontSizeToFit={Platform.OS !== "web"}
+            minimumFontScale={0.65}
+          >
             {value}
           </Text>
           {subtitle && (
@@ -59,8 +67,13 @@ export function StatCard({
           )}
         </View>
         {icon && (
-          <View style={{ backgroundColor: iconBg, marginLeft: 8, height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>
-            <Ionicons name={icon} size={20} color={iconColor} />
+          <View
+            style={[
+              { backgroundColor: iconBg, marginLeft: 8, alignItems: "center", justifyContent: "center", borderRadius: 12 },
+              compact ? { height: 36, width: 36 } : { height: 40, width: 40 },
+            ]}
+          >
+            <Ionicons name={icon} size={compact ? 18 : 20} color={iconColor} />
           </View>
         )}
       </View>

@@ -65,7 +65,8 @@ function getTimelineIndex(status: string, fulfillmentType?: string): number {
 
 export default function ProductOrderDetailScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const rawId = useLocalSearchParams<{ id?: string | string[] }>().id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
   const { fetchOrderDetail } = useProductOrders();
   const [order, setOrder] = useState<ProductOrder | null>(null);

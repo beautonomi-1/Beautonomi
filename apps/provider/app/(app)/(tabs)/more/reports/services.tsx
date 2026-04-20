@@ -19,10 +19,14 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import {
+  getReportDateRange,
+  formatReportRangeCaption,
+  type ReportDateRangeKey,
+} from "@/lib/reportDateRanges";
+import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
-type DateRange = "today" | "week" | "month" | "last_month" | "3months";
-
-const DATE_RANGES: { label: string; value: DateRange }[] = [
+const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
   { label: "This Week", value: "week" },
   { label: "This Month", value: "month" },
@@ -38,25 +42,11 @@ interface ServicesData {
   avg_service_price?: number;
 }
 
-function getDateParams(range: DateRange) {
-  const now = new Date();
-  const to = now.toISOString().split("T")[0];
-  let from = to;
-  if (range === "week") { const d = new Date(now); d.setDate(d.getDate() - 7); from = d.toISOString().split("T")[0]; }
-  else if (range === "month") { const d = new Date(now); d.setMonth(d.getMonth() - 1); from = d.toISOString().split("T")[0]; }
-  else if (range === "last_month") {
-    const d = new Date(now); d.setMonth(d.getMonth() - 1);
-    from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
-    return { from, to: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split("T")[0] };
-  }
-  else if (range === "3months") { const d = new Date(now); d.setMonth(d.getMonth() - 3); from = d.toISOString().split("T")[0]; }
-  return { from, to };
-}
-
 export default function ServicesReport() {
   const { selectedLocationId } = useProvider();
-  const [dateRange, setDateRange] = useState<DateRange>("month");
-  const { from, to } = getDateParams(dateRange);
+  const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
+  const { from, to } = getReportDateRange(dateRange);
+  const rangeCaption = formatReportRangeCaption(from, to);
   const servicesReportUrl = `/api/provider/reports/services?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
   const { data, loading, error: dataError, refresh } = useApi<ServicesData>(servicesReportUrl);
 
@@ -79,17 +69,20 @@ export default function ServicesReport() {
     <ScreenContainer>
       <ScreenHeader title="Sales by Service" showBack subtitle="Popularity, revenue & duration" />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4")} contentContainerStyle={{ flexDirection: "row" }}>
-        {DATE_RANGES.map((r) => (
-          <TouchableOpacity
-            key={r.value}
-            style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
-          >
-            <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={twStyle("mb-3")}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
+          {DATE_RANGES.map((r) => (
+            <TouchableOpacity
+              key={r.value}
+              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
+            >
+              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <Text style={twStyle("text-xs text-gray-500")}>{rangeCaption}</Text>
+      </View>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#f59e0b" />}
       {!loading && dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
@@ -97,38 +90,52 @@ export default function ServicesReport() {
 
       {data && (
         <View>
-          <View style={[twStyle("flex-row"), { marginBottom: 16 }]}>
-            {data.total_service_revenue != null && (
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                <StatCard title="Service Revenue" value={formatCurrency(data.total_service_revenue)} icon="cash-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
-              </View>
-            )}
-            {data.avg_service_price != null && (
-              <View style={twStyle("flex-1")}>
-                <StatCard title="Avg Price" value={formatCurrency(data.avg_service_price)} icon="pricetag-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-              </View>
-            )}
-          </View>
+          {(data.total_service_revenue != null || data.avg_service_price != null) && (
+            <View style={twStyle("mb-4")}>
+              <ReportResponsiveStatRow>
+                {data.total_service_revenue != null ? (
+                  <StatCard title="Service Revenue" value={formatCurrency(data.total_service_revenue)} icon="cash-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+                ) : null}
+                {data.avg_service_price != null ? (
+                  <StatCard title="Avg Price" value={formatCurrency(data.avg_service_price)} icon="pricetag-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+                ) : null}
+              </ReportResponsiveStatRow>
+            </View>
+          )}
 
           {data.most_popular.length > 0 && (
             <View>
               <SectionHeader title="Most Popular Services" />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
-                <View style={[twStyle("flex-row items-end justify-between"), { height: 160 }]}>
-                  {data.most_popular.slice(0, 8).map((item, i) => {
-                    const maxVal = Math.max(...data.most_popular.map((d) => d.bookings), 1);
-                    const pct = Math.max((item.bookings / maxVal) * 100, 4);
-                    return (
-                      <View key={i} style={[twStyle("flex-1 items-center"), { height: "100%", justifyContent: "flex-end" }]}>
-                        <Text style={twStyle("mb-1 text-[10px] font-medium text-gray-700")}>{item.bookings}</Text>
-                        <View style={[{ height: `${pct}%`, backgroundColor: "#f59e0b", minHeight: 4 }, twStyle("w-full rounded-t-md")]} />
-                        <Text style={[twStyle("mt-1 text-[8px] text-gray-400"), { textAlign: "center" }]} numberOfLines={2}>
-                          {item.service.slice(0, 10)}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
+                <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator keyboardShouldPersistTaps="handled">
+                  <View style={{ flexDirection: "row", alignItems: "flex-end", height: 168, minWidth: Math.max(data.most_popular.length * 48, 280) }}>
+                    {(() => {
+                      const slice = data.most_popular.slice(0, 24);
+                      const maxVal = Math.max(...slice.map((d) => d.bookings), 1);
+                      return slice.map((item, i) => {
+                        const pct = Math.max((item.bookings / maxVal) * 100, 4);
+                        return (
+                          <View
+                            key={i}
+                            style={{
+                              width: 40,
+                              marginRight: i < slice.length - 1 ? 8 : 0,
+                              height: "100%",
+                              justifyContent: "flex-end",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Text style={twStyle("mb-1 text-[10px] font-medium text-gray-700")}>{item.bookings}</Text>
+                            <View style={[{ height: `${pct}%`, backgroundColor: "#f59e0b", minHeight: 4, width: "100%" }, twStyle("rounded-t-md")]} />
+                            <Text style={[twStyle("mt-1 text-[8px] text-gray-400"), { textAlign: "center", maxWidth: 40 }]} numberOfLines={3}>
+                              {item.service}
+                            </Text>
+                          </View>
+                        );
+                      });
+                    })()}
+                  </View>
+                </ScrollView>
               </View>
             </View>
           )}
@@ -138,13 +145,15 @@ export default function ServicesReport() {
               <SectionHeader title="Revenue by Service" />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-2")}>
                 {data.revenue_by_service.map((s, i) => {
-                  const maxVal = data.revenue_by_service[0]?.revenue || 1;
+                  const maxVal = Math.max(...data.revenue_by_service.map((x) => x.revenue), 1);
                   const pct = maxVal > 0 ? (s.revenue / maxVal) * 100 : 0;
                   return (
                     <View key={i} style={twStyle("py-2 border-b border-gray-50")}>
-                      <View style={twStyle("flex-row justify-between mb-1")}>
-                        <Text style={twStyle("text-sm text-gray-600")} numberOfLines={1}>{s.service}</Text>
-                        <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(s.revenue)}</Text>
+                      <View style={twStyle("mb-1 flex-row justify-between")}>
+                        <Text style={twStyle("min-w-0 flex-1 text-sm text-gray-600")} numberOfLines={2}>
+                          {s.service}
+                        </Text>
+                        <Text style={twStyle("shrink-0 text-sm font-semibold text-gray-900")}>{formatCurrency(s.revenue)}</Text>
                       </View>
                       <View style={twStyle("h-2 rounded-full bg-gray-100")}>
                         <View style={[{ width: `${Math.max(pct, 1)}%` }, twStyle("h-full rounded-full bg-amber-500")]} />

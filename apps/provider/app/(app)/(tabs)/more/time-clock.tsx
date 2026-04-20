@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatDate } from "@/lib/format";
+import { formatLocalYmd } from "@/lib/reportDateRanges";
 import { twStyle } from "@/lib/twStyle";
 
 interface StaffMember {
@@ -38,9 +39,44 @@ interface TimeCard {
   date: string;
   clock_in_time: string | null;
   clock_out_time: string | null;
+  /**
+   * §Provider-audit 2026-04 (round 7): raw ISO timestamps from server.
+   * The legacy `_time` fields are pre-formatted for display only
+   * ("02:45 PM") and cannot round-trip through an edit; use these for
+   * parsing into local HH:MM and for building the PUT payload.
+   */
+  clock_in_at?: string | null;
+  clock_out_at?: string | null;
   total_hours: number | null;
   status: "clocked_in" | "clocked_out";
   notes?: string | null;
+}
+
+function isoToLocalHhMm(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function localHhMmToIso(hhmm: string, dateYmd: string): string | null {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm.trim());
+  if (!m) return null;
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateYmd);
+  if (!dm) return null;
+  const d = new Date(
+    Number(dm[1]),
+    Number(dm[2]) - 1,
+    Number(dm[3]),
+    Number(m[1]),
+    Number(m[2]),
+    0,
+    0,
+  );
+  if (!Number.isFinite(d.getTime())) return null;
+  return d.toISOString();
 }
 
 const TAB_OPTIONS = [
@@ -67,7 +103,11 @@ export default function TimeClockScreen() {
   const { data: staff, loading: staffLoading, error: staffLoadError, refresh: refreshStaff } = useApi<StaffMember[]>("/api/provider/staff");
   const { data: timeCards, loading: timeCardsLoading, error: timeCardsLoadError, refresh: refreshTimeCards } = useApi<TimeCard[]>("/api/provider/time-clock");
   const { execute: clockAction, loading: clocking } = useApiMutation("post");
-  const { execute: updateCard, loading: updatingCard } = useApiMutation("patch");
+  // §Provider-audit 2026-04 (round 7): the canonical time-card edit endpoint
+  // is `PUT /api/provider/staff/[id]/time-clock/[cardId]` (no top-level
+  // PATCH exists), so we bind this mutation to PUT. Previously it was PATCH
+  // and silently 404'd whenever a provider tried to adjust a time card.
+  const { execute: updateCard, loading: updatingCard } = useApiMutation("put");
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -85,11 +125,6 @@ export default function TimeClockScreen() {
       setRefreshing(false);
     }
   }, [refreshStaff, refreshTimeCards]);
-
-  useMemo(() => {
-    if (!timeCards) return [];
-    return timeCards.filter((t) => t.status === "clocked_in");
-  }, [timeCards]);
 
   const allStaffWithStatus = useMemo(() => {
     if (!staff) return [];
@@ -116,12 +151,17 @@ export default function TimeClockScreen() {
 
   const stats = useMemo(() => {
     if (!timeCards) return { active: 0, totalStaff: 0, today: 0, totalHours: 0 };
-    const today = new Date().toISOString().split("T")[0];
+    const today = formatLocalYmd(new Date());
+    // §Provider-audit 2026-04 (round 7): "Hours Today" previously summed
+    // `total_hours` across every card the API returned (often multi-week),
+    // so the stat card was effectively meaningless. Filter to today's
+    // cards before summing so the label matches the number.
+    const todaysCards = timeCards.filter((t) => t.date === today);
     return {
       active: timeCards.filter((t) => t.status === "clocked_in").length,
       totalStaff: staff?.length ?? 0,
-      today: timeCards.filter((t) => t.date === today).length,
-      totalHours: timeCards.reduce((s, t) => s + (t.total_hours ?? 0), 0),
+      today: todaysCards.length,
+      totalHours: todaysCards.reduce((s, t) => s + (t.total_hours ?? 0), 0),
     };
   }, [timeCards, staff]);
 
@@ -152,19 +192,49 @@ export default function TimeClockScreen() {
   function openEditCard(card: TimeCard) {
     setEditingCard(card);
     setEditForm({
-      clockIn: card.clock_in_time ?? "",
-      clockOut: card.clock_out_time ?? "",
+      clockIn: isoToLocalHhMm(card.clock_in_at),
+      clockOut: isoToLocalHhMm(card.clock_out_at),
       notes: card.notes ?? "",
     });
   }
 
   async function handleSaveCard() {
     if (!editingCard) return;
-    const { error } = await updateCard(`/api/provider/time-clock/${editingCard.id}`, {
-      clock_in_time: editForm.clockIn || undefined,
-      clock_out_time: editForm.clockOut || undefined,
-      notes: editForm.notes.trim() || undefined,
-    });
+    // §Provider-audit 2026-04 (round 7): the previous implementation PATCHed
+    // `/api/provider/time-clock/:id` (no such route exists — 404) and sent
+    // the already-formatted display string back as the value. Route to the
+    // canonical PUT endpoint and serialise local HH:MM → ISO using the
+    // card's date so the edit actually persists.
+    const trimmedIn = editForm.clockIn.trim();
+    const trimmedOut = editForm.clockOut.trim();
+
+    const body: Record<string, unknown> = {};
+    if (trimmedIn) {
+      const iso = localHhMmToIso(trimmedIn, editingCard.date);
+      if (!iso) {
+        Alert.alert("Invalid clock-in", "Enter a time as HH:MM (24-hour, e.g. 09:30).");
+        return;
+      }
+      body.clock_in_time = iso;
+    }
+    if (trimmedOut) {
+      const iso = localHhMmToIso(trimmedOut, editingCard.date);
+      if (!iso) {
+        Alert.alert("Invalid clock-out", "Enter a time as HH:MM (24-hour, e.g. 17:15).");
+        return;
+      }
+      body.clock_out_time = iso;
+    } else if (editingCard.clock_out_at) {
+      body.clock_out_time = null;
+    }
+    if (editForm.notes.trim()) body.notes = editForm.notes.trim();
+
+    if (!editingCard.team_member_id) {
+      Alert.alert("Error", "Missing staff reference for this card.");
+      return;
+    }
+    const url = `/api/provider/staff/${editingCard.team_member_id}/time-clock/${editingCard.id}`;
+    const { error } = await updateCard(url, body);
     if (error) { Alert.alert("Error", error); return; }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setEditingCard(null);

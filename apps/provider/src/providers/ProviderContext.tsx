@@ -43,6 +43,14 @@ interface ProviderProfile {
    * persisted on the booking.
    */
   timezone?: string | null;
+  /**
+   * §Provider-audit 2026-04: whether this provider offers house-call /
+   * mobile service. Surfaced from the `providers.offers_mobile_services`
+   * column so native screens can gate UI (e.g. the "At Home" chip in the
+   * new-booking creator) and avoid producing bookings that the public
+   * flow would reject.
+   */
+  offers_mobile_services?: boolean;
 }
 
 interface ProviderContextType {

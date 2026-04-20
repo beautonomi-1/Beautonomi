@@ -1,17 +1,14 @@
-import { useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, RefreshControl } from "react-native";
+import { useState, useCallback, useMemo } from "react";
+import { View, Text, TouchableOpacity, Alert, Platform } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useAuth } from "@/providers/AuthProvider";
-import { useNotificationsCount } from "@/providers/NotificationsCountContext";
-import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { Colors } from "@/constants/colors";
-import { NotificationsDropdown } from "./_components/NotificationsDropdown";
-
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
 /** Profile completion API response (GET /api/provider/profile-completion) */
 type ProfileCompletionItem = {
   id: string;
@@ -29,13 +26,16 @@ type ProfileCompletionData = {
 
 /**
  * Map API routes to app routes. Use dedicated screens when they exist so the card deep-links
- * straight to business, locations, or operating hours. Catalogue and gallery map to existing hubs.
+ * straight to business, locations, or operating hours. Gallery maps to its hub; catalogue uses `/(app)/…/catalogue` directly from the API when present.
  */
 const PROFILE_COMPLETION_ROUTE_MAP: Record<string, string> = {
   "/(app)/(tabs)/more/settings/business": "/(app)/(tabs)/more/settings/business",
   "/(app)/(tabs)/more/settings/locations": "/(app)/(tabs)/more/locations",
-  "/(app)/(tabs)/more/settings/hours": "/(app)/(tabs)/more/settings-operating-hours",
-  "/(app)/(tabs)/more/catalogue": "/(app)/(tabs)/more/catalogue-offerings-hub",
+  // §Provider-audit 2026-04: canonicalised on `settings/hours` (full
+  // break-editor). `settings-operating-hours` is kept as a redirect stub
+  // so no external surface breaks, but routing now points at the richer
+  // editor.
+  "/(app)/(tabs)/more/settings/hours": "/(app)/(tabs)/more/settings/hours",
   "/(app)/(tabs)/more/gallery": "/(app)/(tabs)/more/gallery",
 };
 /**
@@ -70,7 +70,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
   {
     title: "Operations",
     items: [
-      { icon: "book-outline", label: "Bookings & calendar", subtitle: "Appointments, waitlist & schedule", route: "/(app)/(tabs)/more/bookings-calendar-hub", color: "#6366f1", bg: "#eef2ff" },
+      { icon: "book-outline", label: "Bookings & calendar", subtitle: "Appointments, waitlist & schedule", route: "/(app)/(tabs)/more/bookings", color: "#6366f1", bg: "#eef2ff" },
       { icon: "people-outline", label: "Group Bookings", subtitle: "Manage group appointments", route: "/(app)/(tabs)/more/group-bookings", color: "#8b5cf6", bg: "#ede9fe" },
       { icon: "construct-outline", label: "Resources & forms", subtitle: "Resources, intake & consent forms", route: "/(app)/(tabs)/more/resources-forms-hub", color: "#0d9488", bg: "#ccfbf1" },
       { icon: "chatbox-ellipses-outline", label: "Custom Requests", subtitle: "Client quotes & offers", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316", bg: "#fff7ed" },
@@ -86,7 +86,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
   {
     title: "Business",
     items: [
-      { icon: "layers-outline", label: "Catalogue & offerings", subtitle: "Services, products & packages", route: "/(app)/(tabs)/more/catalogue-offerings-hub", color: "#ec4899", bg: "#fdf2f8" },
+      { icon: "layers-outline", label: "Catalogue & offerings", subtitle: "Services, products & packages", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899", bg: "#fdf2f8" },
       { icon: "people-circle-outline", label: "Team & scheduling", subtitle: "Staff, shifts & time clock", route: "/(app)/(tabs)/more/team", color: "#14b8a6", bg: "#ccfbf1" },
       { icon: "cash-outline", label: "Finance & billing", subtitle: "Earnings, payroll, invoices & gift cards", route: "/(app)/(tabs)/more/finance-billing-hub", color: "#22c55e", bg: "#f0fdf4" },
       { icon: "swap-horizontal-outline", label: "Transactions & history", subtitle: "Payments, fees & sales", route: "/(app)/(tabs)/more/transactions-hub", color: "#0d9488", bg: "#ccfbf1" },
@@ -103,37 +103,42 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
   {
     title: "Settings",
     items: [
-      { icon: "settings-outline", label: "Settings & account", subtitle: "Business settings & rewards", route: "/(app)/(tabs)/more/settings-account-hub", color: "#6b7280", bg: Colors.gray[100] },
-      { icon: "help-buoy-outline", label: "Help & support", subtitle: "Contact support & my tickets", route: "/(app)/(tabs)/more/contact-support", color: "#0ea5e9", bg: "#e0f2fe" },
+      { icon: "ribbon-outline", label: "Rewards & badges", subtitle: "Points, milestones & badge progress", route: "/(app)/(tabs)/more/rewards-hub", color: "#059669", bg: "#d1fae5" },
+      { icon: "ticket-outline", label: "Support tickets", subtitle: "All tickets, replies & status", route: "/(app)/(tabs)/more/support-tickets", color: "#0ea5e9", bg: "#e0f2fe" },
+      { icon: "settings-outline", label: "Settings & account", subtitle: "Business, team & account", route: "/(app)/(tabs)/more/settings-account-hub", color: "#6b7280", bg: Colors.gray[100] },
+      { icon: "help-buoy-outline", label: "Help & support", subtitle: "Contact support & new ticket", route: "/(app)/(tabs)/more/contact-support", color: "#0284c7", bg: "#e0f2fe" },
     ],
   },
 ];
 
 /** Top shortcuts (customer app pattern: 2x2 quick actions above the fold) */
 const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; route: string; color: string }[] = [
-  { icon: "book-outline", label: "Bookings", route: "/(app)/(tabs)/more/bookings-calendar-hub", color: "#6366f1" },
-  { icon: "people-outline", label: "Waitlist", route: "/(app)/(tabs)/more/waitlist", color: "#06b6d4" },
-  { icon: "cash-outline", label: "Finance", route: "/(app)/(tabs)/more/finance-hub", color: "#22c55e" },
-  { icon: "settings-outline", label: "Settings", route: "/(app)/(tabs)/more/settings-account-hub", color: "#6b7280" },
+  { icon: "book-outline", label: "Bookings", route: "/(app)/(tabs)/more/bookings", color: "#6366f1" },
+  { icon: "layers-outline", label: "Catalogue", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899" },
+  { icon: "cash-outline", label: "Finance", route: "/(app)/(tabs)/more/finance-billing-hub", color: "#22c55e" },
+  { icon: "ribbon-outline", label: "Rewards & badges", route: "/(app)/(tabs)/more/rewards-hub", color: "#059669" },
 ];
 
 export default function MoreScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const { user, signOut } = useAuth();
-  const { totalUnread } = useNotificationsCount();
-  const { isTablet } = useResponsive();
-  const pad = isTablet ? 24 : 16;
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     Operations: true,
     "E-Commerce & Products": true,
   });
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: completionData, loading: completionLoading, error: completionError, refresh: refreshCompletion } = useApi<ProfileCompletionData>(
     "/api/provider/profile-completion"
   );
+  type MeProfileLite = {
+    full_name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    avatar_url?: string | null;
+  };
+  const { data: meProfile, refresh: refreshMeProfile } = useApi<MeProfileLite>("/api/me/profile", { staleTimeMs: 45_000 });
   const completion = completionData ?? null;
   const completionItems = completion?.items ?? [];
   const completionPct = completion?.percentage ?? 0;
@@ -141,20 +146,43 @@ export default function MoreScreen() {
   const firstIncompleteRoute = completionItems.find((i) => !i.completed)?.route;
   const showCompletionError = !completionLoading && !!completionError && !completionData;
 
+  function completionItemLabel(item: ProfileCompletionItem) {
+    return t(`provider.profileCompletionItems.${item.id}` as never);
+  }
+
   useFocusEffect(
     useCallback(() => {
-      refreshCompletion();
-    }, [refreshCompletion])
+      void refreshCompletion();
+      void refreshMeProfile();
+    }, [refreshCompletion, refreshMeProfile])
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refreshCompletion();
+      await Promise.all([refreshCompletion(), refreshMeProfile()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshCompletion]);
+  }, [refreshCompletion, refreshMeProfile]);
+
+  const headerInitials = useMemo(() => {
+    const n = (meProfile?.full_name || user?.email || "").trim();
+    if (!n) return "?";
+    const parts = n.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return n.slice(0, 2).toUpperCase();
+  }, [meProfile?.full_name, user?.email]);
+
+  const headerSubtitle = useMemo(() => {
+    const parts: string[] = [];
+    if (meProfile?.phone?.trim()) parts.push(meProfile.phone.trim());
+    const em =
+      meProfile?.email?.trim() ||
+      (typeof (user as { email?: string } | null)?.email === "string" ? (user as { email: string }).email.trim() : "");
+    if (em) parts.push(em);
+    return parts.join(" · ");
+  }, [meProfile?.phone, meProfile?.email, user]);
 
   const toggleSection = useCallback((title: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -181,15 +209,11 @@ export default function MoreScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top"]}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: pad, paddingBottom: 120 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366f1" />
-        }
-      >
+    <ScreenContainer
+      scrollable
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+    >
         {/* Profile header - tappable to My Profile */}
         <TouchableOpacity
           style={{ marginBottom: 20, flexDirection: "row", alignItems: "center", paddingTop: 16 }}
@@ -201,37 +225,36 @@ export default function MoreScreen() {
           accessibilityLabel="My profile"
           accessibilityRole="button"
         >
-          <View style={{ width: 56, height: 56, alignItems: "center", justifyContent: "center", borderRadius: 28, backgroundColor: Colors.gray[900] }}>
-            <Ionicons name="person" size={24} color="#fff" />
-          </View>
+          {meProfile?.avatar_url ? (
+            <Image
+              source={{ uri: meProfile.avatar_url }}
+              style={{ width: 56, height: 56, borderRadius: 28 }}
+              contentFit="cover"
+              accessibilityIgnoresInvertColors
+            />
+          ) : (
+            <View
+              style={{
+                width: 56,
+                height: 56,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 28,
+                backgroundColor: Colors.gray[900],
+              }}
+            >
+              <Text style={{ fontSize: 18, fontWeight: "700", color: "#fff" }}>{headerInitials}</Text>
+            </View>
+          )}
           <View style={{ marginLeft: 14, flex: 1 }}>
             <Text style={{ fontSize: 20, fontWeight: "700", letterSpacing: -0.5, color: Colors.gray[900] }}>
               My profile
             </Text>
-            <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }}>
-              {user?.phone ?? user?.email ?? ""}
+            <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }} numberOfLines={2}>
+              {headerSubtitle}
             </Text>
           </View>
-          <TouchableOpacity
-            style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[50] }}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setNotificationsOpen(true);
-            }}
-            accessibilityLabel={totalUnread > 0 ? `Notifications (${totalUnread} unread)` : "Notifications"}
-            accessibilityRole="button"
-          >
-            <View>
-              <Ionicons name="notifications-outline" size={20} color="#374151" />
-              {totalUnread > 0 && (
-                <View style={{ position: "absolute", right: -4, top: -4, height: 16, minWidth: 16, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.primary, paddingHorizontal: 4 }}>
-                  <Text style={{ fontSize: 10, fontWeight: "600", color: Colors.white }} numberOfLines={1}>
-                    {totalUnread > 99 ? "99+" : totalUnread}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
+          <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
         </TouchableOpacity>
 
         {/* Quick actions - customer-style 2x2 grid (shortens perceived page length) */}
@@ -250,7 +273,9 @@ export default function MoreScreen() {
               >
                 <Ionicons name={action.icon} size={20} color={action.color} />
               </View>
-              <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700] }}>{action.label}</Text>
+              <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700], textAlign: "center" }} numberOfLines={2}>
+                {action.label}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -337,7 +362,7 @@ export default function MoreScreen() {
                             }}
                             style={{ flexDirection: "row", alignItems: "center", marginTop: idx === 0 ? 0 : 8 }}
                             accessibilityRole="button"
-                            accessibilityLabel={`${item.label}${item.required ? ", required" : ""}`}
+                            accessibilityLabel={`${completionItemLabel(item)}${item.required ? ", required" : ""}`}
                           >
                             <Ionicons
                               name={iconName as keyof typeof Ionicons.glyphMap}
@@ -348,7 +373,7 @@ export default function MoreScreen() {
                             <Text
                               style={{ flex: 1, fontSize: 14, color: done ? "#16A34A" : mandatoryMissing ? "#b91c1c" : "#6b7280" }}
                             >
-                              {item.label}
+                              {completionItemLabel(item)}
                             </Text>
                           </TouchableOpacity>
                         );
@@ -440,12 +465,6 @@ export default function MoreScreen() {
           );
         })}
 
-        <NotificationsDropdown
-          visible={notificationsOpen}
-          onClose={() => setNotificationsOpen(false)}
-          onSeeAll={() => router.push("/(app)/notifications" as never)}
-        />
-
         {/* Sign Out - Revolut minimal style */}
         <TouchableOpacity
           style={{ marginBottom: 32, minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
@@ -458,7 +477,6 @@ export default function MoreScreen() {
             {t("auth.logout")}
           </Text>
         </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }

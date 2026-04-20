@@ -73,8 +73,8 @@ export async function POST(
       return errorResponse("This endpoint is only for at-home bookings", "INVALID_REQUEST", 400);
     }
 
-    // Check if booking is confirmed
-    if (bookingData.status !== "confirmed") {
+    // Confirmed or provider-confirmed ("booked") — matches provider app Confirm action
+    if (bookingData.status !== "confirmed" && bookingData.status !== "booked") {
       return errorResponse("Booking must be confirmed before starting journey", "INVALID_STATUS", 400);
     }
 

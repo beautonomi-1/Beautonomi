@@ -216,13 +216,18 @@ export async function GET(request: NextRequest) {
       .filter((r: any) => r.transaction_type === "provider_earnings" && !r.booking_id)
       .filter((r: any) => { const d = new Date(r.created_at); return d >= startDate && d <= now; })
       .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
-    const platformFeesDeducted = rows
-      .filter((r: any) => r.transaction_type === "platform_fee")
-      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
-    const platformFeesDeductedThisPeriod = rows
-      .filter((r: any) => r.transaction_type === "platform_fee")
-      .filter((r: any) => { const d = new Date(r.created_at); return d >= startDate && d <= now; })
-      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+    /** Booking ledger uses `service_fee`; ecommerce uses `platform_fee` — both are platform-retained customer fees. */
+    const sumPlatformRetainedFees = (within?: { start: Date; end: Date }) =>
+      rows
+        .filter((r: any) => r.transaction_type === "platform_fee" || r.transaction_type === "service_fee")
+        .filter((r: any) => {
+          if (!within) return true;
+          const d = new Date(r.created_at);
+          return d >= within.start && d <= within.end;
+        })
+        .reduce((s: number, r: any) => s + Math.abs(Number(r.net ?? r.amount ?? 0)), 0);
+    const platformFeesDeducted = sumPlatformRetainedFees();
+    const platformFeesDeductedThisPeriod = sumPlatformRetainedFees({ start: startDate, end: now });
 
     // Walk-in additional charges (audit/reporting only; not included in payout balance)
     const walkInAdditionalChargesTotal = sumNet(["walk_in_additional_charge"]);
@@ -295,6 +300,7 @@ export async function GET(request: NextRequest) {
       "payout",
       "tip",
       "travel_fee",
+      "platform_fee",
       "service_fee",
       "tax",
       "membership_sale",
@@ -317,6 +323,8 @@ export async function GET(request: NextRequest) {
             ? ("refund" as const)
             : r.transaction_type === "payout"
             ? ("payout" as const)
+            : r.transaction_type === "service_fee" || r.transaction_type === "platform_fee"
+            ? ("platform_fee" as const)
             : ("booking" as const),
         date: r.created_at,
         amount: Number(r.amount || 0),
@@ -325,7 +333,12 @@ export async function GET(request: NextRequest) {
         commission: Number(r.commission || 0),
         currency: lastResortCurrency,
         status: "completed" as const,
-        description: r.description || r.transaction_type,
+        description:
+          r.transaction_type === "service_fee"
+            ? (typeof r.description === "string"
+                ? r.description.replace(/^Service fee/i, "Platform fee")
+                : "Platform fee")
+            : r.description || r.transaction_type,
       }));
 
     return successResponse({
@@ -365,7 +378,8 @@ export async function GET(request: NextRequest) {
           available_balance: "Amount currently available for payout after hold period and prior payouts.",
           pending_payouts: "Payout requests created but not yet completed.",
           refunds_total: "Total refund-related deductions affecting your earnings in the selected range.",
-          platform_fees_deducted: "Fees retained by platform according to configuration for this market.",
+          platform_fees_deducted:
+            "Customer-paid platform fees retained by Beautonomi (includes booking platform fee and ecommerce platform fee lines in the ledger).",
         },
       },
     });

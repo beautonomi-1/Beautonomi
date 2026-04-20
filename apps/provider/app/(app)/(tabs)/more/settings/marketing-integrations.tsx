@@ -13,8 +13,8 @@
 import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -61,9 +61,7 @@ export default function MarketingIntegrationsScreen() {
       return;
     }
     try {
-      await WebBrowser.openBrowserAsync(`${APP_URL}${item.path}`, {
-        presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-      });
+      pushInAppBrowser(router, `${APP_URL.replace(/\/$/, "")}${item.path}`, item.title);
     } catch (e) {
       Alert.alert(
         "Couldn't open",

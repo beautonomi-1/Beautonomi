@@ -16,7 +16,12 @@ type Review = {
   comment?: string | null;
   created_at: string;
   provider_response?: string | null;
+  provider_response_at?: string | null;
+  /** Provider’s rating of the customer (same row as the customer’s review of you). */
+  customer_rating?: number | null;
+  customer_comment?: string | null;
   customer?: { full_name?: string | null } | null;
+  booking?: { booking_number?: string | null; scheduled_at?: string | null } | null;
 };
 
 type ReviewsResponse = { reviews?: Review[] };
@@ -113,12 +118,48 @@ export default function EngagementHubScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/support-tickets" as never)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: Colors.gray[200],
+              backgroundColor: Colors.white,
+              padding: 14,
+            }}
+            accessibilityLabel="Support tickets"
+            accessibilityRole="button"
+          >
+            <Ionicons name="ticket-outline" size={20} color="#0284c7" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Support tickets</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>View all tickets and replies</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+          </TouchableOpacity>
+        </View>
+
         {/* Reviews section header */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }}>
-          <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>Reviews</Text>
-          <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>
-            {reviews.length > 0 ? `${reviews.length} review${reviews.length !== 1 ? "s" : ""}` : "No reviews yet"}
-          </Text>
+        <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>Reviews</Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>
+              {reviews.length > 0 ? `${reviews.length} review${reviews.length !== 1 ? "s" : ""}` : "No reviews yet"}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/reviews" as never)}
+            style={{ flexDirection: "row", alignItems: "center", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 9999, backgroundColor: Colors.gray[100] }}
+            accessibilityLabel="Open full reviews list"
+            accessibilityRole="button"
+          >
+            <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[800] }}>Manage</Text>
+            <Ionicons name="chevron-forward" size={16} color={Colors.gray[500]} style={{ marginLeft: 2 }} />
+          </TouchableOpacity>
         </View>
 
         {reviews.length === 0 ? (
@@ -130,28 +171,78 @@ export default function EngagementHubScreen() {
             </Text>
           </View>
         ) : (
-          <View style={{ paddingBottom: 16 }}>
+          <View style={{ paddingBottom: 16, paddingHorizontal: 16 }}>
             {reviews.map((r) => (
               <View
                 key={r.id}
                 style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               >
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>
+                  <Text style={{ fontWeight: "600", color: Colors.gray[900], flex: 1 }} numberOfLines={1}>
                     {r.customer?.full_name ?? "Customer"}
                   </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Ionicons name="star" size={14} color="#eab308" style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{r.rating}</Text>
-                  </View>
+                  {!r.provider_response ? (
+                    <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#fef3c2", paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: "#92400e" }}>Reply pending</Text>
+                    </View>
+                  ) : null}
+                </View>
+                {r.booking?.booking_number ? (
+                  <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Booking #{r.booking.booking_number}</Text>
+                ) : null}
+
+                <Text style={{ marginTop: 10, fontSize: 11, fontWeight: "700", color: Colors.gray[500], letterSpacing: 0.4 }}>CUSTOMER RATED YOU</Text>
+                <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center" }}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Ionicons
+                      key={star}
+                      name={star <= (r.rating ?? 0) ? "star" : "star-outline"}
+                      size={16}
+                      color="#f59e0b"
+                      style={{ marginRight: 2 }}
+                    />
+                  ))}
+                  <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "600", color: Colors.gray[800] }}>{r.rating}/5</Text>
                 </View>
                 {r.comment ? (
-                  <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }} numberOfLines={3}>
-                    {r.comment}
-                  </Text>
+                  <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[700] }}>{r.comment}</Text>
+                ) : (
+                  <Text style={{ marginTop: 6, fontSize: 13, color: Colors.gray[400], fontStyle: "italic" }}>No written comment</Text>
+                )}
+
+                {r.customer_rating != null && r.customer_rating > 0 ? (
+                  <View style={{ marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.gray[100] }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: Colors.gray[500], letterSpacing: 0.4 }}>YOUR RATING OF CUSTOMER</Text>
+                    <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center" }}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Ionicons
+                          key={star}
+                          name={star <= (r.customer_rating ?? 0) ? "star" : "star-outline"}
+                          size={15}
+                          color="#6366f1"
+                          style={{ marginRight: 2 }}
+                        />
+                      ))}
+                      <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[800] }}>{r.customer_rating}/5</Text>
+                    </View>
+                    {r.customer_comment ? (
+                      <Text style={{ marginTop: 6, fontSize: 13, color: Colors.gray[600] }}>{r.customer_comment}</Text>
+                    ) : null}
+                  </View>
                 ) : null}
-                <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[400] }}>
-                  {formatDateSafe(r.created_at)}
+
+                {r.provider_response ? (
+                  <View style={{ marginTop: 12, borderRadius: 10, backgroundColor: Colors.gray[50], padding: 12, borderLeftWidth: 3, borderLeftColor: Colors.primary }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: Colors.gray[500], letterSpacing: 0.4 }}>YOUR PUBLIC REPLY</Text>
+                    <Text style={{ marginTop: 6, fontSize: 14, color: Colors.gray[800] }}>{r.provider_response}</Text>
+                    {r.provider_response_at ? (
+                      <Text style={{ marginTop: 6, fontSize: 11, color: Colors.gray[400] }}>{formatDateSafe(r.provider_response_at)}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                <Text style={{ marginTop: 10, fontSize: 12, color: Colors.gray[400] }}>
+                  Review · {formatDateSafe(r.created_at)}
                 </Text>
               </View>
             ))}

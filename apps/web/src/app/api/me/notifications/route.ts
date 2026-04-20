@@ -14,7 +14,10 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const rawLimit = parseInt(searchParams.get("limit") || "30", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 30;
+    const rawOffset = parseInt(searchParams.get("offset") || "0", 10);
+    const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
     const unreadOnly = searchParams.get("unread_only") === "true";
 
     let query = supabase
@@ -22,7 +25,7 @@ export async function GET(request: NextRequest) {
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
 
     if (unreadOnly) {
       query = query.eq("is_read", false);

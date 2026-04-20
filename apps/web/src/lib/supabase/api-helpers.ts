@@ -199,11 +199,41 @@ export async function requireAuthInApi(request?: NextRequest | Request) {
  * Routes must handle superadmin explicitly (e.g. accept provider_id query param for
  * cross-provider access). getProviderIdForUser returns null for superadmin.
  */
+// §Customer-audit 2026-04: aggregator endpoints like /api/me/profile-summary
+// invoke up to 5 child route handlers in parallel, and each child called
+// `supabase.auth.getUser()` independently — causing 5 parallel round-trips to
+// Supabase Auth per profile load. Cache the resolved `{ user }` per Request
+// object so reuse inside a single HTTP request is free. WeakMap ensures no
+// cross-request leakage and no manual invalidation.
+type RequireRoleResult = Awaited<ReturnType<typeof requireRoleInApiImpl>>;
+const REQUIRE_ROLE_CACHE = new WeakMap<object, RequireRoleResult>();
+
 export async function requireRoleInApi(
   role: UserRole | UserRole[],
   request?: NextRequest | Request
 ) {
   const roles = Array.isArray(role) ? role : [role];
+
+  if (request) {
+    const cached = REQUIRE_ROLE_CACHE.get(request);
+    if (cached) {
+      const userRole = cached.user?.role as UserRole | undefined;
+      const cacheMatches = userRole && roles.includes(userRole);
+      // Only reuse when the role authorized the first caller is also in the
+      // role list for this caller — guarantees we never widen permissions.
+      if (cacheMatches) return cached;
+    }
+  }
+
+  const result = await requireRoleInApiImpl(roles, request);
+  if (request) REQUIRE_ROLE_CACHE.set(request, result);
+  return result;
+}
+
+async function requireRoleInApiImpl(
+  roles: UserRole[],
+  request?: NextRequest | Request,
+) {
 
   // Mobile/Expo: try Bearer token first
   if (request) {

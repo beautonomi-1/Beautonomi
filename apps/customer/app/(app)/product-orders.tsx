@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
@@ -147,6 +147,24 @@ export default function ProductOrdersScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
+  // §Customer-audit 2026-04: after product-checkout -> Paystack -> in-app
+  // browser dismiss, the user lands back here. Previously the list was
+  // frozen at its mount-time snapshot, so the order they just paid for
+  // still showed as "pending" and appeared to have no status update.
+  // Refetch whenever the screen regains focus so the newly paid order
+  // reflects the latest webhook state. Skip the very first focus (we
+  // already fetch on mount) to avoid a duplicate in-flight request.
+  const hasHandledInitialFocus = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasHandledInitialFocus.current) {
+        hasHandledInitialFocus.current = true;
+        return;
+      }
+      fetchOrders(statusFilter ?? undefined);
+    }, [fetchOrders, statusFilter]),
+  );
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -270,7 +288,9 @@ export default function ProductOrdersScreen() {
           renderItem={({ item: order }) => (
             <OrderCard
               order={order}
-              onPress={() => router.push(`/product-order-detail?id=${order.id}` as any)}
+              onPress={() =>
+                router.push({ pathname: "/(app)/product-order-detail", params: { id: order.id } } as never)
+              }
             />
           )}
           refreshControl={

@@ -13,6 +13,11 @@ import {
   type ProviderBookingStatus,
 } from "@/lib/utils/booking-status";
 import { checkBookingConflict } from "@/lib/bookings/conflict-check";
+import {
+  computeSequentialServiceWindow,
+  rescheduleBookingServicesSequential,
+  updateAllBookingServicesStaff,
+} from "@/lib/bookings/reschedule-booking-services";
 import { isProviderCalendarWindowBlocked } from "@/lib/public-booking/provider-calendar-block-overlap";
 import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
 import { awardPointsForBooking } from "@/lib/services/provider-gamification";
@@ -687,10 +692,16 @@ export async function PATCH(
         const firstOffering = firstBsAlt?.offerings != null ? (Array.isArray(firstBsAlt.offerings) ? firstBsAlt.offerings[0] : firstBsAlt.offerings) : undefined;
         if (firstOffering?.buffer_minutes != null) bufferMinutes = Number(firstOffering.buffer_minutes);
       } else {
-        newStart = new Date(scheduled_at);
         const servicesList = (currentServices ?? []) as BookingServiceConflictRow[];
-        const duration = servicesList.reduce((sum: number, bs: BookingServiceConflictRow) => sum + (Number(bs.duration_minutes) || 0), 0) || 60;
-        newEnd = new Date(newStart.getTime() + duration * 60 * 1000);
+        const durationList = servicesList.map((bs) => Number(bs.duration_minutes) || 60);
+        if (durationList.length === 0) {
+          newStart = new Date(scheduled_at);
+          newEnd = new Date(newStart.getTime() + 60 * 60 * 1000);
+        } else {
+          const win = computeSequentialServiceWindow(scheduled_at, durationList);
+          newStart = win.start;
+          newEnd = win.end;
+        }
         if (staff_id === undefined && servicesList[0]) {
           staffId = servicesList[0].staff_id ?? null;
         }
@@ -1093,33 +1104,7 @@ export async function PATCH(
     // Use admin client for booking_services - bypasses RLS until migration 203 is applied
     const supabaseAdmin = getSupabaseAdmin();
 
-    // Update booking_services if staff_id is changed (for reschedule to different staff)
-    // Allow null to unassign staff, so check for undefined instead of truthy
-    if (staff_id !== undefined) {
-      const bsUpdate: Record<string, unknown> = { staff_id };
-      if (scheduled_at) {
-        bsUpdate.scheduled_start_at = scheduled_at;
-        // Preserve duration: fetch first service's duration and set scheduled_end_at
-        const { data: firstBs } = await supabaseAdmin
-          .from("booking_services")
-          .select("duration_minutes")
-          .eq("booking_id", id)
-          .limit(1)
-          .maybeSingle();
-        const duration = firstBs?.duration_minutes ?? 60;
-        const start = new Date(scheduled_at);
-        bsUpdate.scheduled_end_at = new Date(start.getTime() + duration * 60 * 1000).toISOString();
-      }
-      const { error: bsError } = await supabaseAdmin
-        .from("booking_services")
-        .update(bsUpdate)
-        .eq("booking_id", id);
-
-      if (bsError) {
-        console.error("Error updating booking_services staff:", bsError);
-        throw bsError; // Surface error so user sees it instead of false success
-      }
-      // Refetch so response includes updated staff
+    const refetchBookingAfterBookingServicesMutation = async () => {
       const { data: refetched } = await supabase
         .from("bookings")
         .select(
@@ -1141,19 +1126,21 @@ export async function PATCH(
           booking_products(
             id,
             product_id,
+            product_variant_id,
             quantity,
             unit_price,
             total_price,
-            products:products!booking_products_product_id_fkey(id, name, retail_price)
+            products:products!booking_products_product_id_fkey(id, name, retail_price),
+            product_variant:product_variants(id, option_values)
           )
         `
         )
         .eq("id", id)
         .single();
       if (refetched) updatedBooking = refetched;
-    }
+    };
 
-    // Update services if provided
+    // Replace entire service line (explicit array from client)
     if (services !== undefined && Array.isArray(services)) {
       // Delete existing services
       await supabaseAdmin
@@ -1223,6 +1210,16 @@ export async function PATCH(
         .eq("id", id)
         .single();
       if (refetchedServices) updatedBooking = refetchedServices;
+    } else if (scheduled_at) {
+      // Pure reschedule (or staff + time): chain booking_services from new anchor so rows stay
+      // consistent with bookings.scheduled_at and conflict detection.
+      await rescheduleBookingServicesSequential(supabaseAdmin, id, scheduled_at, {
+        ...(staff_id !== undefined ? { staffId: staff_id } : {}),
+      });
+      await refetchBookingAfterBookingServicesMutation();
+    } else if (staff_id !== undefined) {
+      await updateAllBookingServicesStaff(supabaseAdmin, id, staff_id);
+      await refetchBookingAfterBookingServicesMutation();
     }
 
     // Update products if provided
@@ -1351,6 +1348,51 @@ export async function PATCH(
           } catch (waitlistErr) {
             console.error("[provider PATCH cancel] waitlist matching failed:", waitlistErr);
           }
+
+          // §Provider-audit 2026-04 (round 2): if this booking had retail
+          // products that were stock-deducted at completion, re-increment
+          // them and clear the deduction timestamp so inventory is correct
+          // after a late cancel. Safe to run unconditionally — it only acts
+          // on rows that were previously deducted (see migration 519).
+          try {
+            const { data: deductedProducts } = await supabaseAdmin
+              .from("booking_products")
+              .select("id, product_id, quantity")
+              .eq("booking_id", id)
+              .not("stock_deducted_at", "is", null);
+            if (Array.isArray(deductedProducts) && deductedProducts.length > 0) {
+              for (const row of deductedProducts as Array<{
+                id: string;
+                product_id: string | null;
+                quantity: number | null;
+              }>) {
+                if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
+                const { error: incErr } = await supabaseAdmin.rpc(
+                  "increment_product_stock",
+                  {
+                    p_product_id: row.product_id,
+                    p_quantity: row.quantity,
+                  },
+                );
+                if (incErr) {
+                  console.error(
+                    `[provider PATCH cancel] increment_product_stock failed for booking ${id}, row ${row.id}:`,
+                    incErr,
+                  );
+                  continue;
+                }
+                await supabaseAdmin
+                  .from("booking_products")
+                  .update({ stock_deducted_at: null })
+                  .eq("id", row.id);
+              }
+            }
+          } catch (stockErr) {
+            console.error(
+              "[provider PATCH cancel] failed to re-increment retail stock:",
+              stockErr,
+            );
+          }
         } else if (dbStatus === "no_show") {
           await sendCancellationNotification(id, {
             cancelledBy: 'provider',
@@ -1423,7 +1465,55 @@ export async function PATCH(
               console.error("Failed to award provider points on completion:", err)
             );
           }
-          
+
+          // §Provider-audit 2026-04 (round 2): deduct retail inventory for
+          // any products attached to this booking. Previously `booking_products`
+          // never touched `products.quantity`, so providers selling retail
+          // at checkout saw stock counts drift. Idempotent via the
+          // `stock_deducted_at` column (migration 519): rows with a non-null
+          // timestamp are skipped, preventing double-deduct on repeated
+          // status transitions.
+          try {
+            const { data: pendingProducts } = await supabaseAdmin
+              .from("booking_products")
+              .select("id, product_id, quantity")
+              .eq("booking_id", id)
+              .is("stock_deducted_at", null);
+            if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
+              const deductTs = new Date().toISOString();
+              for (const row of pendingProducts as Array<{
+                id: string;
+                product_id: string | null;
+                quantity: number | null;
+              }>) {
+                if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
+                const { error: decErr } = await supabaseAdmin.rpc(
+                  "decrement_product_stock",
+                  {
+                    p_product_id: row.product_id,
+                    p_quantity: row.quantity,
+                  },
+                );
+                if (decErr) {
+                  console.error(
+                    `[provider PATCH complete] decrement_product_stock failed for booking ${id}, row ${row.id}:`,
+                    decErr,
+                  );
+                  continue;
+                }
+                await supabaseAdmin
+                  .from("booking_products")
+                  .update({ stock_deducted_at: deductTs })
+                  .eq("id", row.id);
+              }
+            }
+          } catch (stockErr) {
+            console.error(
+              "[provider PATCH complete] failed to deduct retail stock:",
+              stockErr,
+            );
+          }
+
           // Completion notification is handled by the database notification system below
           // No additional action needed here
         }

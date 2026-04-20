@@ -294,8 +294,16 @@ function handleNotificationRoute(data: Record<string, unknown>) {
         router.push("/(app)/notifications");
         break;
     }
-  } catch {
-    // Silently fail on routing errors
+  } catch (err) {
+    // §Provider-audit 2026-04: route errors previously disappeared with no
+    // trace. Capture them so we can observe bad payloads / broken routes
+    // coming from push, then fall back to the notifications hub.
+    captureError(err, { scope: "push_notifications:route", payload: data });
+    try {
+      router.push("/(app)/notifications");
+    } catch {
+      // best-effort fallback; do not re-throw from the push handler.
+    }
   }
 }
 
@@ -350,11 +358,16 @@ function usePushRegistration() {
             app_type: "provider",
           },
         );
-        if (!res.error) {
+        if (res.error) {
+          captureError(new Error(`Device registration rejected: ${res.error.message}`), {
+            scope: "push_notifications:device_register",
+            code: res.error.code,
+          });
+        } else {
           registeredRef.current = true;
         }
-      } catch {
-        // Silent fail – device registration is best-effort
+      } catch (err) {
+        captureError(err, { scope: "push_notifications:device_register" });
       }
     };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api-client";
 
@@ -142,5 +142,11 @@ export function useCalendarPreferences() {
     setPreferences(DEFAULT_PREFERENCES);
   }, []);
 
-  return { preferences, updatePreference, resetToDefaults, loaded };
+  /** Always merge with defaults so API/local partial payloads never leave required keys undefined (avoids runtime errors in consumers). */
+  const preferencesResolved = useMemo(
+    () => ({ ...DEFAULT_PREFERENCES, ...preferences }),
+    [preferences],
+  );
+
+  return { preferences: preferencesResolved, updatePreference, resetToDefaults, loaded };
 }

@@ -18,6 +18,7 @@ import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_PAYMENT_SUCCESS, EVENT_PAYMENT_FAILED } from "@/lib/analytics/amplitude/types";
 import type { PaystackEvent, SupabaseClient } from "./shared";
 import { savePaystackAuthorization, generateGiftCardCode } from "./shared";
+import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -30,6 +31,7 @@ import {
   restockProductOrderLineItems,
 } from "@/lib/orders/product-order-lifecycle";
 import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
+import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -154,7 +156,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
       return;
     }
     if (metadata?.wallet_topup_id) {
-      await handleWalletTopupSuccess({ reference, metadata, amount }, supabase);
+      await applyWalletTopupFromSuccessfulPaystackCharge({ reference, metadata, amount }, supabase);
       return;
     }
     if (metadata?.gift_card_order_id) {
@@ -381,29 +383,24 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
   }
 
   // Loyalty points: deduct if used (idempotent; same as verify so only one path applies)
+  // §Customer-audit 2026-04: centralised through recordLoyaltyRedemption so both
+  // the canonical `loyalty_points_ledger` and the legacy
+  // `loyalty_point_transactions` table are kept in sync. Previously only the
+  // legacy table was written to, so the ledger balance never reflected the
+  // deduction and the customer could redeem the same points again.
   const loyaltyPointsUsed = Number(
     metadata?.loyalty_points_used ?? bookingData?.loyalty_points_used ?? 0
   );
   if (loyaltyPointsUsed > 0 && (metadata?.customer_id || bookingData?.customer_id)) {
-    const customerId = metadata?.customer_id || bookingData?.customer_id;
+    const customerId = (metadata?.customer_id || bookingData?.customer_id) as string;
     try {
-      const { data: existingRedeem } = await supabase
-        .from("loyalty_point_transactions")
-        .select("id")
-        .eq("user_id", customerId)
-        .eq("reference_id", metadata.booking_id)
-        .eq("reference_type", "booking")
-        .eq("transaction_type", "redeemed")
-        .maybeSingle();
-      if (!existingRedeem) {
-        await supabase.from("loyalty_point_transactions").insert({
-          user_id: customerId,
-          points: loyaltyPointsUsed,
-          transaction_type: "redeemed",
-          description: `Redeemed for booking ${bookingData?.booking_number ?? metadata.booking_id}`,
-          reference_id: metadata.booking_id,
-          reference_type: "booking",
-        });
+      const result = await recordLoyaltyRedemption(supabase, {
+        customerId,
+        points: loyaltyPointsUsed,
+        description: `Redeemed for booking ${bookingData?.booking_number ?? metadata.booking_id}`,
+        bookingId: metadata.booking_id,
+      });
+      if (result.recorded) {
         await supabase
           .from("bookings")
           .update({ loyalty_points_used: loyaltyPointsUsed })
@@ -1771,76 +1768,6 @@ async function handleCustomOfferFailed(
 }
 
 // ─── Wallet Top-up ───────────────────────────────────────────────────────────
-
-async function handleWalletTopupSuccess(
-  payload: { reference: string; metadata: any; amount: any },
-  supabase: SupabaseClient,
-) {
-  const topupId = payload.metadata.wallet_topup_id as string;
-  if (!topupId) return;
-
-  const { data: topup } = await supabase
-    .from("wallet_topups")
-    .select("*")
-    .eq("id", topupId)
-    .single();
-  if (!topup) return;
-
-  type TopupRow = { status?: string; currency?: string; user_id?: string; tenant_id?: string | null };
-  const topupRow = topup as TopupRow;
-  if (topupRow.status === "paid") return;
-
-  let resolvedTenantId = topupRow.tenant_id ?? null;
-  const metaTenant = payload.metadata?.tenant_id as string | undefined;
-  if (!resolvedTenantId && metaTenant) resolvedTenantId = metaTenant;
-  if (!resolvedTenantId && topupRow.user_id) {
-    const { data: urow } = await supabase
-      .from("users")
-      .select("preferred_home_tenant_id")
-      .eq("id", topupRow.user_id)
-      .maybeSingle();
-    resolvedTenantId = (urow as { preferred_home_tenant_id?: string | null } | null)?.preferred_home_tenant_id ?? null;
-  }
-
-  const amountInCurrency = convertFromSmallestUnit(payload.amount || 0);
-  const currency = topupRow.currency ?? (await lastResortCurrencyFromTenantId(resolvedTenantId));
-
-  const topupWalletTenantId = await resolveTenantIdForFinanceLedger(supabase, {
-    tenant_id: resolvedTenantId,
-    provider_id: null,
-  });
-
-  // Mark paid FIRST with atomic WHERE status='pending' guard to prevent double-credit
-  const { data: markedPaid, error: markError } = await supabase
-    .from("wallet_topups")
-    .update({
-      status: "paid",
-      paid_at: new Date().toISOString(),
-      paystack_reference: payload.reference,
-      updated_at: new Date().toISOString(),
-      tenant_id: topupWalletTenantId,
-    })
-    .eq("id", topupId)
-    .eq("status", "pending")
-    .select("id")
-    .maybeSingle();
-
-  if (markError || !markedPaid) {
-    console.log(`Wallet topup ${topupId} already processed or update failed, skipping credit`);
-    return;
-  }
-
-  // Credit wallet only after status is atomically flipped to 'paid'
-  await supabase.rpc("wallet_credit_admin", {
-    p_user_id: topupRow.user_id,
-    p_amount: amountInCurrency,
-    p_currency: currency,
-    p_description: `Wallet top up (${currency} ${amountInCurrency})`,
-    p_reference_id: topupId,
-    p_reference_type: "wallet_topup",
-    p_tenant_id: topupWalletTenantId,
-  });
-}
 
 async function handleWalletTopupFailed(
   payload: { reference: string; metadata: any; message?: string; gateway_response?: string },

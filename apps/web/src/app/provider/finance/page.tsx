@@ -60,7 +60,7 @@ interface Transaction {
   id: string;
   booking_id?: string | null;
   transaction_type?: string;
-  type: "booking" | "payout" | "refund";
+  type: "booking" | "payout" | "refund" | "platform_fee";
   amount: number;
   net?: number;
   fees?: number;
@@ -829,7 +829,13 @@ export default function ProviderFinance() {
 }
 
 function TransactionRow({ transaction, onClick }: { transaction: Transaction; onClick: () => void }) {
+  const isPlatformRetained =
+    transaction.type === "platform_fee" ||
+    transaction.transaction_type === "service_fee" ||
+    transaction.transaction_type === "platform_fee";
+
   const getTypeColor = () => {
+    if (isPlatformRetained) return "text-amber-600";
     switch (transaction.type) {
       case "booking":
         return "text-green-600";
@@ -874,6 +880,8 @@ function TransactionRow({ transaction, onClick }: { transaction: Transaction; on
         <p className={`font-semibold ${getTypeColor()}`}>
           {transaction.type === "payout" ||
           transaction.type === "refund" ||
+          transaction.type === "platform_fee" ||
+          isPlatformRetained ||
           transaction.amount < 0 ||
           (transaction.net !== undefined && transaction.net < 0)
             ? "-"

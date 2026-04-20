@@ -36,6 +36,11 @@ export async function GET(request: NextRequest) {
       user.role === "superadmin" || isOwner || (await hasPermission(user.id, "manage_team"));
     const canViewTeamFullRoster =
       rosterDetailLevel === "full" || canManageTeam;
+    /** Aligns with POST /api/provider/payouts (`requirePermission("process_payments")`). */
+    const can_process_payments =
+      user.role === "superadmin" ||
+      isOwner ||
+      (await hasPermission(user.id, "process_payments"));
 
     return successResponse({
       staff_id: staffId,
@@ -43,6 +48,7 @@ export async function GET(request: NextRequest) {
       roster_detail_level: rosterDetailLevel,
       can_manage_team: canManageTeam,
       can_view_team_roster_pii: canViewTeamFullRoster,
+      can_process_payments,
     });
   } catch (error) {
     return handleApiError(error, "Failed to load team access");

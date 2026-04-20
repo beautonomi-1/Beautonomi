@@ -141,7 +141,16 @@ export function getCachedConfigBundle(): PublicConfigBundle | null {
   return cached;
 }
 
-/** Default ISO 4217 code for the active tenant (from config bundle, then `EXPO_PUBLIC_DEFAULT_REGION_CURRENCY`, then ZAR). */
+/**
+ * Default ISO 4217 code for the active **tenant / market** (remote config bundle, then
+ * `EXPO_PUBLIC_DEFAULT_REGION_CURRENCY`, then ZAR).
+ *
+ * **Product expectation (not a wiring bug):** Most price labels and fallbacks use this value because they reflect
+ * the active market’s catalog and checkout rules. Saving **Currency** under Account → Language & region persists
+ * `preferred_currency` on the user profile for APIs and future UX, but individual screens do **not** automatically
+ * switch every amount to that preference unless they opt in — e.g. via `useCustomerDisplayCurrency()` in
+ * `@/hooks/useCustomerDisplayCurrency` (or by reading `preferred_currency` from `/api/me/profile`).
+ */
 export function getTenantDefaultCurrency(): string {
   const fromBundle = getCachedConfigBundle()?.meta?.tenant_region?.default_currency?.trim();
   if (fromBundle) return fromBundle;

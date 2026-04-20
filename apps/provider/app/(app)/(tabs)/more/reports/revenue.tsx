@@ -19,10 +19,14 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import {
+  getReportDateRange,
+  formatReportRangeCaption,
+  type ReportDateRangeKey,
+} from "@/lib/reportDateRanges";
+import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
-type DateRange = "today" | "week" | "month" | "last_month" | "3months";
-
-const DATE_RANGES: { label: string; value: DateRange }[] = [
+const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
   { label: "This Week", value: "week" },
   { label: "This Month", value: "month" },
@@ -42,32 +46,6 @@ interface RevenueData {
   transaction_count?: number;
 }
 
-function getDateParams(range: DateRange) {
-  const now = new Date();
-  const to = now.toISOString().split("T")[0];
-  let from = to;
-  if (range === "week") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 7);
-    from = d.toISOString().split("T")[0];
-  } else if (range === "month") {
-    const d = new Date(now);
-    d.setMonth(d.getMonth() - 1);
-    from = d.toISOString().split("T")[0];
-  } else if (range === "last_month") {
-    const d = new Date(now);
-    d.setMonth(d.getMonth() - 1);
-    from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-    return { from, to: endOfMonth.toISOString().split("T")[0] };
-  } else if (range === "3months") {
-    const d = new Date(now);
-    d.setMonth(d.getMonth() - 3);
-    from = d.toISOString().split("T")[0];
-  }
-  return { from, to };
-}
-
 function BarChart({
   data,
   labelKey,
@@ -81,25 +59,41 @@ function BarChart({
   color?: string;
   formatValue?: (v: number) => string;
 }) {
-  const maxVal = Math.max(...data.map((d) => d[valueKey] ?? 0), 1);
+  const series = data.slice(-31);
+  const maxVal = Math.max(...series.map((d) => d[valueKey] ?? 0), 1);
+  const barSlot = 26;
+  const gap = 6;
+  const chartMinWidth = Math.max(series.length * (barSlot + gap), 280);
+
   return (
-    <View style={[twStyle("flex-row items-end justify-between pt-2"), { height: 160 }]}>
-      {data.slice(-14).map((item, i) => {
-        const val = item[valueKey] ?? 0;
-        const pct = Math.max((val / maxVal) * 100, 2);
-        return (
-          <View key={i} style={[twStyle("flex-1 items-center"), { height: "100%", justifyContent: "flex-end", marginRight: i < data.slice(-14).length - 1 ? 4 : 0 }]}>
-            <Text style={twStyle("mb-1 text-[9px] text-gray-500")} numberOfLines={1}>
-              {formatValue ? formatValue(val) : val}
-            </Text>
-            <View style={[{ height: `${pct}%`, backgroundColor: color, minHeight: 4 }, twStyle("w-full rounded-t-md")]} />
-            <Text style={twStyle("mt-1 text-[9px] text-gray-400")} numberOfLines={1}>
-              {String(item[labelKey]).slice(-5)}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled keyboardShouldPersistTaps="handled">
+      <View style={{ minWidth: chartMinWidth, height: 172, paddingTop: 8, flexDirection: "row", alignItems: "flex-end" }}>
+        {series.map((item, i) => {
+          const val = item[valueKey] ?? 0;
+          const pct = Math.max((val / maxVal) * 100, 3);
+          return (
+            <View
+              key={i}
+              style={{
+                width: barSlot,
+                marginRight: i < series.length - 1 ? gap : 0,
+                height: "100%",
+                justifyContent: "flex-end",
+                alignItems: "center",
+              }}
+            >
+              <Text style={twStyle("mb-1 text-[9px] text-gray-500")} numberOfLines={1}>
+                {formatValue ? formatValue(val) : val}
+              </Text>
+              <View style={[{ height: `${pct}%`, backgroundColor: color, minHeight: 4, width: "100%" }, twStyle("rounded-t-md")]} />
+              <Text style={twStyle("mt-1 text-[9px] text-gray-400")} numberOfLines={1}>
+                {String(item[labelKey]).slice(-5)}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -107,9 +101,11 @@ function HorizontalBar({ label, value, maxValue, color }: { label: string; value
   const pct = maxValue > 0 ? (value / maxValue) * 100 : 0;
   return (
     <View style={twStyle("py-2 border-b border-gray-50")}>
-      <View style={twStyle("flex-row justify-between mb-1")}>
-        <Text style={twStyle("text-sm text-gray-600")} numberOfLines={1}>{label}</Text>
-        <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(value)}</Text>
+      <View style={twStyle("mb-1 flex-row justify-between")}>
+        <Text style={twStyle("min-w-0 flex-1 text-sm text-gray-600")} numberOfLines={2}>
+          {label}
+        </Text>
+        <Text style={twStyle("shrink-0 text-sm font-semibold text-gray-900")}>{formatCurrency(value)}</Text>
       </View>
       <View style={twStyle("h-2 rounded-full bg-gray-100")}>
         <View style={[{ width: `${Math.max(pct, 1)}%`, backgroundColor: color }, twStyle("h-full rounded-full")]} />
@@ -120,8 +116,9 @@ function HorizontalBar({ label, value, maxValue, color }: { label: string; value
 
 export default function RevenueReport() {
   const { selectedLocationId } = useProvider();
-  const [dateRange, setDateRange] = useState<DateRange>("month");
-  const { from, to } = getDateParams(dateRange);
+  const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
+  const { from, to } = getReportDateRange(dateRange);
+  const rangeCaption = formatReportRangeCaption(from, to);
   const revenueReportUrl = `/api/provider/reports/revenue?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
   const { data, loading, error: dataError, timedOut, refresh } = useApi<RevenueData>(
     revenueReportUrl,
@@ -149,17 +146,20 @@ export default function RevenueReport() {
     <ScreenContainer>
       <ScreenHeader title="Revenue" showBack subtitle="Income trends & breakdowns" />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4")} contentContainerStyle={{ flexDirection: "row" }}>
-        {DATE_RANGES.map((r) => (
-          <TouchableOpacity
-            key={r.value}
-            style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
-          >
-            <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={twStyle("mb-3")}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
+          {DATE_RANGES.map((r) => (
+            <TouchableOpacity
+              key={r.value}
+              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
+            >
+              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <Text style={twStyle("text-xs text-gray-500")}>{rangeCaption}</Text>
+      </View>
 
       {timedOut && !data && (
         <ErrorState
@@ -190,27 +190,21 @@ export default function RevenueReport() {
             )}
           </View>
 
-          <View style={twStyle("flex-row")}>
-            {data.transaction_count != null && (
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                <StatCard title="Transactions" value={String(data.transaction_count)} icon="receipt-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
-              </View>
-            )}
-            {data.avg_per_booking != null && (
-              <View style={twStyle("flex-1")}>
-                <StatCard title="Avg / Booking" value={formatCurrency(data.avg_per_booking)} icon="trending-up-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-              </View>
-            )}
-          </View>
+          <ReportResponsiveStatRow>
+            {data.transaction_count != null ? (
+              <StatCard title="Transactions" value={String(data.transaction_count)} icon="receipt-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
+            ) : null}
+            {data.avg_per_booking != null ? (
+              <StatCard title="Avg / Booking" value={formatCurrency(data.avg_per_booking)} icon="trending-up-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+            ) : null}
+          </ReportResponsiveStatRow>
 
           {((data.cancellation_fees ?? 0) > 0 || (data.total_revenue_inclusive ?? 0) > data.total_revenue) && (
-            <View style={twStyle("mt-4 flex-row")}>
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+            <View style={twStyle("mt-2")}>
+              <ReportResponsiveStatRow>
                 <StatCard title="Cancellation Fees" value={formatCurrency(data.cancellation_fees ?? 0)} icon="close-circle-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
-              </View>
-              <View style={twStyle("flex-1")}>
                 <StatCard title="Total (incl. fees)" value={formatCurrency(data.total_revenue_inclusive ?? data.total_revenue)} icon="wallet-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
-              </View>
+              </ReportResponsiveStatRow>
             </View>
           )}
 
@@ -228,7 +222,13 @@ export default function RevenueReport() {
               <SectionHeader title="Revenue by Service" />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-2")}>
                 {data.revenue_by_service.map((s, i) => (
-                  <HorizontalBar key={i} label={s.service} value={s.revenue} maxValue={data.revenue_by_service[0]?.revenue || 1} color="#22c55e" />
+                  <HorizontalBar
+                    key={i}
+                    label={s.service}
+                    value={s.revenue}
+                    maxValue={Math.max(...data.revenue_by_service.map((x) => x.revenue), 1)}
+                    color="#22c55e"
+                  />
                 ))}
               </View>
             </View>
@@ -239,7 +239,13 @@ export default function RevenueReport() {
               <SectionHeader title="Revenue by Staff" />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-2")}>
                 {data.revenue_by_staff.map((s, i) => (
-                  <HorizontalBar key={i} label={s.staff} value={s.revenue} maxValue={data.revenue_by_staff[0]?.revenue || 1} color="#6366f1" />
+                  <HorizontalBar
+                    key={i}
+                    label={s.staff}
+                    value={s.revenue}
+                    maxValue={Math.max(...data.revenue_by_staff.map((x) => x.revenue), 1)}
+                    color="#6366f1"
+                  />
                 ))}
               </View>
             </View>

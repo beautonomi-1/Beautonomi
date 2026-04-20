@@ -34,6 +34,7 @@ interface RequestRow {
   provider_id?: string;
   preferred_start_at?: string;
   location_type?: string;
+  status?: string;
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -55,7 +56,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Load offer + request and validate ownership
     const { data: offerRow, error: offerError } = await supabase
       .from("custom_offers")
-      .select("*, request:custom_requests(id, customer_id, provider_id, preferred_start_at, location_type)")
+      .select(
+        "*, request:custom_requests(id, customer_id, provider_id, preferred_start_at, location_type, status)",
+      )
       .eq("id", id)
       .single();
     if (offerError || !offerRow) return notFoundResponse("Offer not found");
@@ -63,6 +66,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const offer = offerRow as OfferRow;
     const req = offer.request as RequestRow | undefined;
     if (req?.customer_id !== user.id) return notFoundResponse("Offer not found");
+
+    const requestStatus = req?.status;
+    if (
+      requestStatus === "cancelled" ||
+      requestStatus === "fulfilled" ||
+      requestStatus === "expired"
+    ) {
+      return errorResponse(
+        "This request is closed. You can no longer pay for this offer.",
+        "REQUEST_CLOSED",
+        400,
+      );
+    }
 
     if (req?.provider_id) {
       const { data: provRow } = await supabase

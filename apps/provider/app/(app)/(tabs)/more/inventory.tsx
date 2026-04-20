@@ -30,6 +30,8 @@ interface InventoryProduct {
   low_stock_level?: number;
   track_stock_quantity?: boolean;
   is_active?: boolean;
+  /** When true, quantity is per variant — use full product editor */
+  has_variants?: boolean;
 }
 
 interface InventoryResponse {
@@ -66,11 +68,29 @@ export function InventoryContent() {
     }
   }, [refresh]);
 
-  const openAdjust = useCallback((p: InventoryProduct) => {
-    setAdjustProduct(p);
-    setAdjustQuantity(String(p.quantity ?? 0));
-    setAdjustLowStock(String(p.low_stock_level ?? 5));
-  }, []);
+  const openAdjust = useCallback(
+    (p: InventoryProduct) => {
+      if (p.has_variants) {
+        Alert.alert(
+          "Variants product",
+          "Stock is tracked per variant. Open the full product editor to change quantities and prices for each variant.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Open editor",
+              onPress: () =>
+                router.push({ pathname: "/(app)/(tabs)/more/product-form", params: { id: p.id } } as never),
+            },
+          ]
+        );
+        return;
+      }
+      setAdjustProduct(p);
+      setAdjustQuantity(String(p.quantity ?? 0));
+      setAdjustLowStock(String(p.low_stock_level ?? 5));
+    },
+    [router]
+  );
 
   const closeAdjust = useCallback(() => {
     setAdjustProduct(null);

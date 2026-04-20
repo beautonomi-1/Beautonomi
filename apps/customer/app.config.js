@@ -40,7 +40,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.14",
+  version: "1.0.15",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -54,7 +54,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "207",
+    buildNumber: "208",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -86,7 +86,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 207,
+    versionCode: 208,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -212,6 +212,10 @@ module.exports = () => {
       process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID,
     EXPO_PUBLIC_SENTRY_DSN:
       envFromFile.EXPO_PUBLIC_SENTRY_DSN ?? process.env.EXPO_PUBLIC_SENTRY_DSN,
+    /** When "1" or "true", send Sentry events in __DEV__ (see src/lib/sentry.ts). */
+    EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV:
+      envFromFile.EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV ??
+      process.env.EXPO_PUBLIC_SENTRY_ENABLE_IN_DEV,
     EXPO_PUBLIC_IOS_APP_STORE_ID: iosStoreId,
     /** App Store numeric ID for in-app review / feedback links. */
     iosAppId: iosStoreId,

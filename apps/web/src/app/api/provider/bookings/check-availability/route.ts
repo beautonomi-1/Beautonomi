@@ -6,6 +6,21 @@ import { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } from "@/lib/provi
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
 import { expandRecurringPattern } from "@/lib/availability/time-utils";
 
+/**
+ * GET /api/provider/bookings/check-availability
+ *
+ * Clients must send `duration_minutes` equal to the total wall-clock span of all
+ * `booking_services` segments (sum of durations — aligned with
+ * `computeSequentialServiceWindow` in `reschedule-booking-services.ts` and PATCH
+ * `/api/provider/bookings/[id]` reschedule, which chains rows via
+ * `rescheduleBookingServicesSequential`).
+ *
+ * This route performs more pre-flight checks than PATCH `checkBookingConflict`
+ * (active holds, recurring time_blocks, availability_blocks, staff days off, optional
+ * working hours, etc.). PATCH still enforces staff overlap via `checkBookingConflict`
+ * plus `isProviderCalendarWindowBlocked` — that narrower vs broader split is intentional.
+ */
+
 const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 function dayKeyFromDate(dateStr: string): (typeof DAY_KEYS)[number] {
   const d = new Date(dateStr + "T12:00:00").getDay();
@@ -47,12 +62,28 @@ export async function GET(request: NextRequest) {
     const locationId = sp.get("location_id");
     /** When rescheduling, ignore the booking being edited so the slot does not conflict with itself. */
     const excludeBookingId = sp.get("exclude_booking_id");
+    /**
+     * §Provider-audit 2026-04: pre-flight the resources (rooms / chairs /
+     * equipment) that the chosen offerings require, matching the logic the
+     * final `POST /api/provider/bookings` runs at commit time. Before this
+     * change the provider only discovered resource conflicts at the end of
+     * the confirmation flow (409 `RESOURCE_CONFLICT`), which felt like a
+     * flaky back-end from the UI. Consumers pass `offering_ids` (comma-
+     * separated) for the offering catalogue and (optionally) the
+     * `exclude_booking_id` already in use above.
+     */
+    const offeringIdsParam = sp.get("offering_ids");
+    const offeringIds = offeringIdsParam
+      ? offeringIdsParam.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
 
     if (!scheduledAt) {
       return handleApiError(new Error("scheduled_at is required"), "scheduled_at is required", "VALIDATION_ERROR", 400);
     }
 
     const startTime = new Date(scheduledAt);
+    // Total span must match multi-service bookings: sum of `booking_services.duration_minutes`,
+    // same window as `computeSequentialServiceWindow` + PATCH /api/provider/bookings/[id].
     const endTime = addMinutes(startTime, durationMinutes);
     const dateStr = scheduledAt.slice(0, 10);
 
@@ -155,8 +186,8 @@ export async function GET(request: NextRequest) {
     // Optional: working hours – if we have staff or location hours for this day, check slot is within and not in a break
     const startMin = startTime.getHours() * 60 + startTime.getMinutes();
     const endMin = endTime.getHours() * 60 + endTime.getMinutes();
+    const dayKey = dayKeyFromDate(dateStr);
     if (staffIds.length === 1) {
-      const dayKey = dayKeyFromDate(dateStr);
       const wh = await resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
         supabaseAdmin,
         providerId,
@@ -179,6 +210,44 @@ export async function GET(request: NextRequest) {
           }
         }
       }
+    } else if (staffIds.length > 1) {
+      // §Provider-audit 2026-04: multi-staff bookings previously fell through
+      // to the location-hours branch, which meant a tight schedule (one staff
+      // ends at 14:00 on that weekday) could be silently booked over. Check
+      // each assigned staff member's own working hours; any one of them being
+      // outside hours or in a break fails the slot.
+      const checkedStaff = new Set<string>();
+      for (const sid of staffIds) {
+        if (!sid || checkedStaff.has(sid)) continue;
+        checkedStaff.add(sid);
+        const wh = await resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
+          supabaseAdmin,
+          providerId,
+          sid,
+          dayKey,
+        );
+        if (!wh) continue;
+        if (wh.is_open === false) {
+          conflicts.push("Staff is not scheduled to work on this day");
+          continue;
+        }
+        if (!wh.open_time || !wh.close_time) continue;
+        const openMin = parseTimeToMinutes(wh.open_time);
+        const closeMin = parseTimeToMinutes(wh.close_time);
+        if (openMin === null || closeMin === null || closeMin <= openMin) continue;
+        if (startMin < openMin || endMin > closeMin) {
+          conflicts.push("Outside staff working hours");
+          continue;
+        }
+        for (const br of wh.breaks ?? []) {
+          const bs = parseTimeToMinutes(br.start);
+          const be = parseTimeToMinutes(br.end);
+          if (bs !== null && be !== null && be > bs && startMin < be && endMin > bs) {
+            conflicts.push("Overlaps staff break");
+            break;
+          }
+        }
+      }
     } else {
       // Fallback: check primary location hours when no specific staff/location given
       const locIdToCheck = locationId;
@@ -194,7 +263,7 @@ export async function GET(request: NextRequest) {
       }
       const { data: locs } = await locQuery;
       const loc = locs?.[0];
-      const wh = (loc?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKeyFromDate(dateStr)];
+      const wh = (loc?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKey];
       if (wh) {
         const isClosed = wh.is_open === false || (wh as Record<string, unknown>).closed === true;
         if (isClosed) {
@@ -269,9 +338,55 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // §Provider-audit 2026-04: resource pre-flight — mirror the commit-
+    // time guard in POST /api/provider/bookings so providers see
+    // "Room A at capacity" BEFORE pressing Confirm, not after.
+    if (offeringIds.length > 0) {
+      try {
+        const [{ getRequiredResourcesForOffering, checkResourceAvailability }] =
+          await Promise.all([import("@/lib/resources/assignment")]);
+        const resourceIdSet = new Set<string>();
+        for (const offId of offeringIds) {
+          const rids = await getRequiredResourcesForOffering(supabaseAdmin as any, offId);
+          for (const rid of rids) resourceIdSet.add(rid);
+        }
+        const resourceIds = Array.from(resourceIdSet);
+        if (resourceIds.length > 0) {
+          const resourceCheck = await checkResourceAvailability(
+            supabaseAdmin as any,
+            resourceIds,
+            startTime,
+            endTime,
+            excludeBookingId || undefined,
+          );
+          if (!resourceCheck.available) {
+            // Fetch display names so the provider sees which resource clashed.
+            const { data: resourceRows } = await supabaseAdmin
+              .from("resources")
+              .select("id, name")
+              .in("id", resourceCheck.conflicts.map((c) => c.resource_id));
+            const nameById = new Map<string, string>();
+            for (const row of resourceRows || []) {
+              if (row?.id) nameById.set(row.id, row.name || "Resource");
+            }
+            for (const c of resourceCheck.conflicts) {
+              const nm = nameById.get(c.resource_id) || "Resource";
+              conflicts.push(`${nm}: ${c.reason}`);
+            }
+          }
+        }
+      } catch (resErr) {
+        // Non-fatal: if the lookup fails, fall through to commit-time guard.
+        console.warn("[check-availability] resource pre-flight failed:", resErr);
+      }
+    }
+
+    // §Provider-audit 2026-04: dedupe — multi-staff checks may append the
+    // same reason multiple times; the client only shows the first one.
+    const dedupedConflicts = Array.from(new Set(conflicts));
     return successResponse({
-      available: conflicts.length === 0,
-      conflicts,
+      available: dedupedConflicts.length === 0,
+      conflicts: dedupedConflicts,
     });
   } catch (error) {
     return handleApiError(error, "Failed to check availability");

@@ -27,3 +27,7 @@ export const PROVIDER_ON_PLATFORM_PAYMENT_NUDGE =
 
 export const PROVIDER_SALON_CHECKIN_EXCELLENCE_NUDGE =
   "Timely check-ins keep your day accurate and reviews tied to the right visit—small habits that lift your tier over time.";
+
+/** Provider booking detail (mobile/web): at-salon flow summary next to house-call card */
+export const PROVIDER_SALON_VISIT_FLOW_EXPLAINER =
+  "In-salon visit: confirm the booking if needed, optionally tap Client arrived when they are here, then start and complete the service.";

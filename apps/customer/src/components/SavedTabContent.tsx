@@ -18,7 +18,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, isAuthError } from "@/lib/api-client";
 import { useAuth } from "@/providers/AuthProvider";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors, Shadows } from "@/constants/colors";
@@ -27,12 +27,30 @@ import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 type Tab = "providers" | "products" | "posts";
 
 const COLUMN_GAP = 8;
-const COL_COUNT = 2;
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: Colors.gray[50],
+  },
+  tabletShell: {
+    flex: 1,
+    width: "100%" as const,
+  },
+  headerBlock: {
     backgroundColor: Colors.white,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.gray[200],
+  },
+  screenTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: Colors.gray[900],
+  },
+  screenSubtitle: {
+    fontSize: 14,
+    color: Colors.gray[500],
+    marginTop: 4,
   },
   errorBanner: {
     paddingHorizontal: 16,
@@ -64,10 +82,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 8,
-    backgroundColor: Colors.gray[50],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.gray[200],
+    paddingVertical: 10,
+    paddingTop: 4,
+    backgroundColor: Colors.white,
   },
   loadingPane: {
     flex: 1,
@@ -157,7 +174,7 @@ export function SavedTabContent({
   useScreenTracking(screenName);
   const { user } = useAuth();
   const params = useLocalSearchParams<{ tab?: string }>();
-  const { width, contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const { width, contentPadding, contentMaxWidth, isTablet, columns: gridColumns } = useResponsive();
   const insets = useSafeAreaInsets();
   const tabBarScrollPadding = useTabContentPaddingBottom(8);
   const stackScrollPadding = Math.max(insets.bottom, 8) + 28;
@@ -167,7 +184,17 @@ export function SavedTabContent({
       ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
       : {};
   const contentWidth = Math.min(width, contentMaxWidth) - contentPadding * 2;
-  const TILE_WIDTH = (contentWidth - COLUMN_GAP * (COL_COUNT - 1)) / COL_COUNT;
+  const TILE_WIDTH = (contentWidth - COLUMN_GAP * (gridColumns - 1)) / gridColumns;
+  // §Customer-audit 2026-04: provider list rows are horizontal (avatar | name |
+  // chevron) so a 3-/4-column grid would squash them. Use a 2-column layout on
+  // tablet to make better use of horizontal space while keeping each row
+  // comfortable; phones stay single-column.
+  const providerColumns = isTablet ? 2 : 1;
+  const PROVIDER_GAP = 12;
+  const PROVIDER_TILE_WIDTH =
+    providerColumns === 1
+      ? contentWidth
+      : (contentWidth - PROVIDER_GAP * (providerColumns - 1)) / providerColumns;
   const [activeTab, setActiveTab] = useState<Tab>(
     initialTab ?? (params.tab === "posts" ? "posts" : "providers")
   );
@@ -448,10 +475,57 @@ export function SavedTabContent({
 
   const compactTabs = width < 400;
 
+  const rowGapStyle = (index: number) =>
+    (index + 1) % gridColumns !== 0 ? { marginRight: COLUMN_GAP } : undefined;
+
+  const showHeroHeader = layoutVariant === "tabs";
+
   return (
     <View style={styles.root}>
+      {showHeroHeader ? (
+        <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
+      ) : null}
+      <View style={[styles.tabletShell, constraint]}>
+        <View style={styles.headerBlock}>
+          {showHeroHeader ? (
+            <View style={{ paddingHorizontal: contentPadding, paddingTop: contentPadding, paddingBottom: 4 }}>
+              <Text style={styles.screenTitle}>Saved</Text>
+              <Text style={styles.screenSubtitle}>Providers, posts, and products you love</Text>
+            </View>
+          ) : null}
+          <View
+            style={[
+              styles.tabBar,
+              {
+                paddingHorizontal: contentPadding,
+                paddingBottom: 12,
+                paddingTop: showHeroHeader ? 4 : 10,
+              },
+            ]}
+          >
+            <TabButton
+              label="Providers"
+              icon="heart-outline"
+              active={activeTab === "providers"}
+              onPress={() => setActiveTab("providers")}
+            />
+            <TabButton
+              label={compactTabs ? "Posts" : "Saved posts"}
+              icon="bookmark-outline"
+              active={activeTab === "posts"}
+              onPress={() => setActiveTab("posts")}
+            />
+            <TabButton
+              label="Products"
+              icon="bag-outline"
+              active={activeTab === "products"}
+              onPress={() => setActiveTab("products")}
+            />
+          </View>
+        </View>
+
       {error ? (
-        <View style={styles.errorBanner}>
+        <View style={[styles.errorBanner, { paddingHorizontal: contentPadding }]}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity onPress={handleRefresh} style={styles.retryBtn} accessibilityRole="button" accessibilityLabel="Retry">
             <Text style={styles.retryBtnText}>Retry</Text>
@@ -459,35 +533,14 @@ export function SavedTabContent({
         </View>
       ) : null}
 
-      <View style={[styles.tabBar, { paddingHorizontal: contentPadding }]}>
-        <TabButton
-          label="Providers"
-          icon="heart-outline"
-          active={activeTab === "providers"}
-          onPress={() => setActiveTab("providers")}
-        />
-        <TabButton
-          label={compactTabs ? "Posts" : "Saved posts"}
-          icon="bookmark-outline"
-          active={activeTab === "posts"}
-          onPress={() => setActiveTab("posts")}
-        />
-        <TabButton
-          label="Products"
-          icon="bag-outline"
-          active={activeTab === "products"}
-          onPress={() => setActiveTab("products")}
-        />
-      </View>
-
       {showLoadingContent ? (
-        <View style={styles.loadingPane}>
+        <View style={[styles.loadingPane, { backgroundColor: Colors.gray[50] }]}>
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.loadingLabel}>Loading…</Text>
         </View>
       ) : activeTab === "providers" ? (
         <ScrollView
-          style={{ flex: 1 }}
+          style={{ flex: 1, backgroundColor: Colors.gray[50] }}
           contentContainerStyle={{
             flexGrow: 1,
             paddingHorizontal: contentPadding,
@@ -531,8 +584,14 @@ export function SavedTabContent({
               >
                 Saved providers
               </Text>
-              <View>
-                {saved.map((p: any, index: number) => (
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: PROVIDER_GAP,
+                }}
+              >
+                {saved.map((p: any) => (
                   <TouchableOpacity
                     key={p.id}
                     onPress={() =>
@@ -543,12 +602,14 @@ export function SavedTabContent({
                       })
                     }
                     style={{
+                      width: PROVIDER_TILE_WIDTH,
                       flexDirection: "row",
                       alignItems: "center",
-                      backgroundColor: Colors.gray[50],
+                      backgroundColor: Colors.white,
                       borderRadius: 12,
                       padding: 16,
-                      marginTop: index === 0 ? 0 : 12,
+                      borderWidth: 1,
+                      borderColor: Colors.gray[100],
                     }}
                   >
                     {(p.avatar_url || p.thumbnail_url) ? (
@@ -597,8 +658,14 @@ export function SavedTabContent({
               >
                 Recently viewed
               </Text>
-              <View>
-                {recentlyViewed.map((p: any, idx: number) => (
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: PROVIDER_GAP,
+                }}
+              >
+                {recentlyViewed.map((p: any) => (
                   <TouchableOpacity
                     key={p.id}
                     onPress={() =>
@@ -608,16 +675,16 @@ export function SavedTabContent({
                         params: { slug: p.slug },
                       })
                     }
-                    style={[
-                      {
-                        flexDirection: "row",
-                        alignItems: "center",
-                        backgroundColor: Colors.gray[50],
-                        borderRadius: 12,
-                        padding: 16,
-                      },
-                      idx > 0 && { marginTop: 12 },
-                    ]}
+                    style={{
+                      width: PROVIDER_TILE_WIDTH,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      backgroundColor: Colors.white,
+                      borderRadius: 12,
+                      padding: 16,
+                      borderWidth: 1,
+                      borderColor: Colors.gray[100],
+                    }}
                   >
                     {(p.avatar_url || p.thumbnail_url) ? (
                       <Image
@@ -656,16 +723,19 @@ export function SavedTabContent({
         </ScrollView>
       ) : activeTab === "products" ? (
         <FlatList
+          key={`saved-products-${gridColumns}`}
           data={savedProducts}
           keyExtractor={(item) => item.id}
-          numColumns={COL_COUNT}
-          style={{ flex: 1 }}
+          numColumns={gridColumns}
+          style={{ flex: 1, backgroundColor: Colors.gray[50] }}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[
             { padding: contentPadding, paddingBottom: scrollBottomPadding, ...constraint },
             savedProducts.length === 0 ? { flexGrow: 1 } : null,
           ]}
-          columnWrapperStyle={savedProducts.length > 0 ? { marginBottom: COLUMN_GAP } : undefined}
+          columnWrapperStyle={
+            savedProducts.length > 0 && gridColumns > 1 ? { marginBottom: COLUMN_GAP } : undefined
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -689,23 +759,26 @@ export function SavedTabContent({
             </View>
           }
           renderItem={({ item, index }) => (
-            <View style={{ marginRight: index % 2 === 0 ? COLUMN_GAP : 0 }}>
+            <View style={rowGapStyle(index)}>
               <SavedProductTile product={item} tileWidth={TILE_WIDTH} />
             </View>
           )}
         />
       ) : (
         <FlatList
+          key={`saved-posts-${gridColumns}`}
           data={savedPosts}
           keyExtractor={(item) => item.id}
-          numColumns={COL_COUNT}
-          style={{ flex: 1 }}
+          numColumns={gridColumns}
+          style={{ flex: 1, backgroundColor: Colors.gray[50] }}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[
             { padding: contentPadding, paddingBottom: scrollBottomPadding, ...constraint },
             savedPosts.length === 0 ? { flexGrow: 1 } : null,
           ]}
-          columnWrapperStyle={savedPosts.length > 0 ? { marginBottom: COLUMN_GAP } : undefined}
+          columnWrapperStyle={
+            savedPosts.length > 0 && gridColumns > 1 ? { marginBottom: COLUMN_GAP } : undefined
+          }
           ListHeaderComponent={
             <View style={{ marginBottom: 16 }}>
               <View
@@ -812,7 +885,7 @@ export function SavedTabContent({
             </View>
           }
           renderItem={({ item, index }) => (
-            <View style={{ marginRight: index % 2 === 0 ? COLUMN_GAP : 0 }}>
+            <View style={rowGapStyle(index)}>
               <SavedPostTile
                 post={item}
                 onUnsave={handleUnsave}
@@ -972,6 +1045,7 @@ export function SavedTabContent({
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      </View>
     </View>
   );
 }

@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Share,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
@@ -19,6 +20,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
 interface BusinessReport {
   revenue: {
@@ -126,6 +128,7 @@ function mapOverviewToBusinessReport(overview: OverviewResponse | null): Busines
 }
 
 export default function BusinessReportScreen() {
+  const router = useRouter();
   const { selectedLocationId } = useProvider();
   const [period, setPeriod] = useState("month");
 
@@ -145,12 +148,8 @@ export default function BusinessReportScreen() {
       `Revenue: ${formatCurrency(report.revenue.total)}`,
       `Growth: ${report.revenue.growth_percentage >= 0 ? "+" : ""}${report.revenue.growth_percentage.toFixed(1)}%`,
       `Bookings: ${report.bookings.total} (${report.bookings.completion_rate.toFixed(0)}% completion)`,
-      `Clients: ${report.clients.total} (${report.clients.new_this_period} new)`,
-      `Retention: ${report.clients.retention_rate.toFixed(0)}%`,
+      `Unique Clients: ${report.clients.total}`,
       `Avg Booking Value: ${formatCurrency(report.clients.avg_booking_value)}`,
-      `Staff Hours: ${report.staff.total_hours.toFixed(0)}h`,
-      `Products Sold: ${report.products.total_sold}`,
-      `Product Revenue: ${formatCurrency(report.products.product_revenue)}`,
     ];
     try {
       await Share.share({ message: lines.join("\n"), title: "Business Report" });
@@ -215,8 +214,8 @@ export default function BusinessReportScreen() {
 
       {/* Revenue */}
       <SectionHeader title="Revenue" />
-      <View style={twStyle("mb-4 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+      <View style={twStyle("mb-4")}>
+        <ReportResponsiveStatRow>
           <StatCard
             title="Total Revenue"
             value={formatCurrency(r?.revenue.total ?? 0)}
@@ -225,8 +224,6 @@ export default function BusinessReportScreen() {
             iconBg="bg-green-50"
             compact
           />
-        </View>
-        <View style={twStyle("flex-1")}>
           <StatCard
             title="Growth"
             value={`${(r?.revenue.growth_percentage ?? 0) >= 0 ? "+" : ""}${(r?.revenue.growth_percentage ?? 0).toFixed(1)}%`}
@@ -235,7 +232,7 @@ export default function BusinessReportScreen() {
             iconBg={(r?.revenue.growth_percentage ?? 0) >= 0 ? "bg-green-50" : "bg-red-50"}
             compact
           />
-        </View>
+        </ReportResponsiveStatRow>
       </View>
 
       {((overview?.cancellationFees ?? 0) > 0 || (overview?.totalRefunded ?? 0) > 0 || (overview?.netRevenue ?? 0) !== (overview?.totalRevenue ?? 0)) && (
@@ -305,16 +302,12 @@ export default function BusinessReportScreen() {
 
       {/* Bookings */}
       <SectionHeader title="Bookings" />
-      <View style={twStyle("mb-4 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+      <View style={twStyle("mb-4")}>
+        <ReportResponsiveStatRow>
           <StatCard title="Total" value={String(r?.bookings.total ?? 0)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
-        </View>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard title="Completed" value={String(r?.bookings.completed ?? 0)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-        </View>
-        <View style={twStyle("flex-1")}>
           <StatCard title="Rate" value={`${(r?.bookings.completion_rate ?? 0).toFixed(0)}%`} icon="analytics-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
-        </View>
+        </ReportResponsiveStatRow>
       </View>
 
       <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
@@ -332,43 +325,57 @@ export default function BusinessReportScreen() {
         </View>
       </View>
 
-      {/* Clients */}
+      {/*
+        §Provider-audit 2026-04 (round 8): Clients / Staff / Products
+        sections previously rendered hard-coded zeros because the
+        /business/overview endpoint does not return new-vs-returning,
+        retention, hours-worked, or product-sold breakdowns — those live
+        on the dedicated per-report endpoints. Rendering a "New: 0" /
+        "Retention: 0%" / "Staff Hours: 0h" card that never updates is
+        actively misleading, so we only show the stat that IS computed
+        (total unique clients, avg booking value) and redirect deeper
+        questions to the specialised report screens.
+      */}
       <SectionHeader title="Clients" />
-      <View style={twStyle("mb-4 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-          <StatCard title="Total" value={String(r?.clients.total ?? 0)} icon="people-outline" iconColor="#ec4899" iconBg="bg-pink-50" compact />
-        </View>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-          <StatCard title="New" value={String(r?.clients.new_this_period ?? 0)} icon="person-add-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
-        </View>
-        <View style={twStyle("flex-1")}>
-          <StatCard title="Retention" value={`${(r?.clients.retention_rate ?? 0).toFixed(0)}%`} icon="repeat-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-        </View>
+      <View style={twStyle("mb-4")}>
+        <ReportResponsiveStatRow>
+          <StatCard title="Unique Clients" value={String(r?.clients.total ?? 0)} icon="people-outline" iconColor="#ec4899" iconBg="bg-pink-50" compact />
+          <StatCard title="Avg Booking" value={formatCurrency(r?.clients.avg_booking_value ?? 0)} icon="cash-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
+        </ReportResponsiveStatRow>
       </View>
 
-      <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
-        <View style={twStyle("flex-row justify-between mb-2")}>
-          <Text style={twStyle("text-sm text-gray-500")}>Returning Clients</Text>
-          <Text style={twStyle("text-sm font-medium text-gray-700")}>{r?.clients.returning ?? 0}</Text>
-        </View>
-        <View style={twStyle("flex-row justify-between")}>
-          <Text style={twStyle("text-sm text-gray-500")}>Avg Booking Value</Text>
-          <Text style={twStyle("text-sm font-bold text-indigo-600")}>{formatCurrency(r?.clients.avg_booking_value ?? 0)}</Text>
-        </View>
+      <View style={twStyle("mb-4 flex-row")}>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(tabs)/more/reports/clients")}
+          style={twStyle("flex-1 mr-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
+        >
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>Client retention</Text>
+          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(tabs)/more/reports/staff")}
+          style={twStyle("flex-1 ml-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
+        >
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>Staff & hours</Text>
+          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+        </TouchableOpacity>
       </View>
 
-      {/* Staff & Products */}
-      <SectionHeader title="Staff & Products" />
       <View style={twStyle("mb-4 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-          <StatCard title="Staff Hours" value={`${(r?.staff.total_hours ?? 0).toFixed(0)}h`} icon="time-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
-        </View>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-          <StatCard title="Products Sold" value={String(r?.products.total_sold ?? 0)} icon="cube-outline" iconColor="#8b5cf6" iconBg="bg-violet-50" compact />
-        </View>
-        <View style={twStyle("flex-1")}>
-          <StatCard title="Product Rev" value={formatCurrency(r?.products.product_revenue ?? 0)} icon="pricetag-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
-        </View>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(tabs)/more/reports/products")}
+          style={twStyle("flex-1 mr-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
+        >
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>Products & inventory</Text>
+          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(tabs)/more/reports/services")}
+          style={twStyle("flex-1 ml-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
+        >
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>Services breakdown</Text>
+          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+        </TouchableOpacity>
       </View>
 
       <View style={twStyle("h-8")} />

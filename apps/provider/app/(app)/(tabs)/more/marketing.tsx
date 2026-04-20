@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -25,7 +26,9 @@ interface Campaign {
   id: string;
   name: string;
   type: string;
+  subject?: string | null;
   status: string;
+  recipient_type?: string;
   total_recipients: number;
   sent_count?: number;
   scheduled_at?: string | null;
@@ -33,11 +36,34 @@ interface Campaign {
   created_at: string;
 }
 
-interface CampaignsResponse {
+/** Paginated list from GET /api/provider/campaigns (wrapped in successResponse for mobile client). */
+interface CampaignsListPayload {
   items: Campaign[];
   total: number;
-  page: number;
-  limit: number;
+  page?: number;
+  limit?: number;
+  has_more?: boolean;
+}
+
+function normalizeCampaignsList(raw: unknown): CampaignsListPayload {
+  if (raw == null) return { items: [], total: 0 };
+  if (Array.isArray(raw)) {
+    const arr = raw as Campaign[];
+    return { items: arr, total: arr.length };
+  }
+  if (typeof raw !== "object") return { items: [], total: 0 };
+  const o = raw as Record<string, unknown>;
+  if (Array.isArray(o.items)) {
+    const items = o.items as Campaign[];
+    return {
+      items,
+      total: typeof o.total === "number" ? o.total : items.length,
+      page: typeof o.page === "number" ? o.page : undefined,
+      limit: typeof o.limit === "number" ? o.limit : undefined,
+      has_more: typeof o.has_more === "boolean" ? o.has_more : undefined,
+    };
+  }
+  return { items: [], total: 0 };
 }
 
 function formatDateSafe(value: unknown): string {
@@ -45,6 +71,23 @@ function formatDateSafe(value: unknown): string {
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
   return parsed.toLocaleDateString();
+}
+
+function campaignStatusStyles(status: string): { wrap: string; text: string } {
+  switch (status) {
+    case "sent":
+      return { wrap: "bg-green-100", text: "text-green-800" };
+    case "draft":
+      return { wrap: "bg-gray-100", text: "text-gray-700" };
+    case "scheduled":
+      return { wrap: "bg-sky-100", text: "text-sky-900" };
+    case "sending":
+      return { wrap: "bg-amber-100", text: "text-amber-900" };
+    case "cancelled":
+      return { wrap: "bg-red-50", text: "text-red-800" };
+    default:
+      return { wrap: "bg-amber-100", text: "text-amber-800" };
+  }
 }
 
 /** Content-only for use in Marketing hub (Campaigns tab). */
@@ -59,8 +102,10 @@ export function MarketingCampaignsContent() {
     type: "email" as "email" | "sms" | "whatsapp",
     subject: "",
     content: "",
+    /** Optional ISO-8601 datetime string (e.g. 2026-05-01T09:00:00) — saves as scheduled draft */
+    scheduledAt: "",
   });
-  const { data, loading, error, refresh } = useApi<CampaignsResponse>(
+  const { data, loading, error, refresh } = useApi<CampaignsListPayload | Record<string, unknown>>(
     "/api/provider/campaigns?limit=50"
   );
   const onRefresh = useCallback(async () => {
@@ -72,8 +117,7 @@ export function MarketingCampaignsContent() {
     }
   }, [refresh]);
 
-  const campaigns: Campaign[] = data?.items ?? [];
-  const total = data?.total ?? campaigns.length;
+  const { items: campaigns, total } = normalizeCampaignsList(data);
 
   const createCampaign = useCallback(async () => {
     if (!form.name.trim() || !form.content.trim()) {
@@ -84,6 +128,16 @@ export function MarketingCampaignsContent() {
       Alert.alert("Missing subject", "Email campaigns require a subject.");
       return;
     }
+    let scheduled_at: string | undefined;
+    const rawSchedule = form.scheduledAt.trim();
+    if (rawSchedule) {
+      const parsed = Date.parse(rawSchedule);
+      if (!Number.isFinite(parsed)) {
+        Alert.alert("Invalid schedule", "Use a valid date/time (e.g. 2026-05-01T09:00:00 or your device locale format).");
+        return;
+      }
+      scheduled_at = new Date(parsed).toISOString();
+    }
     setCreating(true);
     try {
       const res = await api.post<Campaign>("/api/provider/campaigns", {
@@ -92,17 +146,18 @@ export function MarketingCampaignsContent() {
         subject: form.type === "email" ? form.subject.trim() : undefined,
         content: form.content.trim(),
         recipient_type: "all_clients",
+        ...(scheduled_at ? { scheduled_at } : {}),
       });
-      if (res.error || !res.data?.id) {
-        Alert.alert("Could not create campaign", res.error?.message ?? "Try again.");
+      if (res.error || !res.data || typeof res.data !== "object" || !("id" in res.data)) {
+        Alert.alert("Could not create campaign", getApiErrorMessage(res.error, "Try again."));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setCreateOpen(false);
-      setForm({ name: "", type: "email", subject: "", content: "" });
+      setForm({ name: "", type: "email", subject: "", content: "", scheduledAt: "" });
       refresh();
-    } catch (e: any) {
-      Alert.alert("Could not create campaign", e?.message ?? "Try again.");
+    } catch (e: unknown) {
+      Alert.alert("Could not create campaign", getApiErrorMessage(e, "Try again."));
     } finally {
       setCreating(false);
     }
@@ -113,13 +168,13 @@ export function MarketingCampaignsContent() {
     try {
       const res = await api.post<{ message?: string; sent_count?: number }>(`/api/provider/campaigns/${id}/send`, {});
       if (res.error) {
-        Alert.alert("Could not send campaign", res.error.message ?? "Try again.");
+        Alert.alert("Could not send campaign", getApiErrorMessage(res.error, "Try again."));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       refresh();
-    } catch (e: any) {
-      Alert.alert("Could not send campaign", e?.message ?? "Try again.");
+    } catch (e: unknown) {
+      Alert.alert("Could not send campaign", getApiErrorMessage(e, "Try again."));
     } finally {
       setSendingId(null);
     }
@@ -174,7 +229,11 @@ export function MarketingCampaignsContent() {
             <Text style={twStyle("mb-3 text-sm text-gray-500")}>
               {total} campaign{total !== 1 ? "s" : ""}
             </Text>
-            {campaigns.map((c) => (
+            {campaigns.map((c) => {
+              const st = campaignStatusStyles(c.status);
+              const canSendNow =
+                (c.status === "draft" || c.status === "scheduled") && (c.total_recipients ?? 0) > 0;
+              return (
               <View
                 key={c.id}
                 style={twStyle("mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4")}
@@ -191,30 +250,33 @@ export function MarketingCampaignsContent() {
                     {c.name}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
-                    {c.type} · {c.status}
+                    {c.type}
+                    {c.recipient_type ? ` · ${String(c.recipient_type).replace(/_/g, " ")}` : ""}
                   </Text>
+                  {c.type === "email" && c.subject ? (
+                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")} numberOfLines={1}>
+                      Subject: {c.subject}
+                    </Text>
+                  ) : null}
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                     {c.sent_at
-                      ? `Sent ${formatDateSafe(c.sent_at)}`
+                      ? `Sent ${formatDateSafe(c.sent_at)} · ${c.sent_count ?? 0}/${Math.max(c.total_recipients ?? 0, 1)} delivered`
                       : c.scheduled_at
-                        ? `Scheduled ${formatDateSafe(c.scheduled_at)}`
-                        : `${c.total_recipients} recipients`}
+                        ? `Scheduled ${formatDateSafe(c.scheduled_at)} · ${c.total_recipients ?? 0} recipients`
+                        : `${c.total_recipients ?? 0} recipient${(c.total_recipients ?? 0) !== 1 ? "s" : ""}`}
                   </Text>
+                  {(c.total_recipients ?? 0) === 0 && (c.status === "draft" || c.status === "scheduled") ? (
+                    <Text style={twStyle("mt-1 text-xs text-amber-700")}>
+                      No clients match this campaign yet — add clients or pick a different audience on the web portal.
+                    </Text>
+                  ) : null}
                 </View>
-                <View
-                  style={twStyle(`rounded-full px-2.5 py-1 ${
-                    c.status === "sent" ? "bg-green-100" : c.status === "draft" ? "bg-gray-100" : "bg-amber-100"
-                  }`)}
-                >
-                  <Text
-                    style={twStyle(`text-xs font-medium ${
-                      c.status === "sent" ? "text-green-800" : c.status === "draft" ? "text-gray-700" : "text-amber-800"
-                    }`)}
-                  >
+                <View style={twStyle(`rounded-full px-2.5 py-1 ${st.wrap}`)}>
+                  <Text style={twStyle(`text-xs font-medium ${st.text}`)}>
                     {c.status}
                   </Text>
                 </View>
-                {(c.status === "draft" || c.status === "scheduled") && (
+                {canSendNow ? (
                   <TouchableOpacity
                     onPress={() => sendCampaign(c.id)}
                     disabled={sendingId === c.id}
@@ -224,9 +286,10 @@ export function MarketingCampaignsContent() {
                       {sendingId === c.id ? "Sending..." : "Send"}
                     </Text>
                   </TouchableOpacity>
-                )}
+                ) : null}
               </View>
-            ))}
+            );
+            })}
           </>
         )}
         <BottomSheet
@@ -286,8 +349,29 @@ export function MarketingCampaignsContent() {
                 style={twStyle("min-h-[110px] rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               />
             </View>
+            <View>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Schedule send (optional)</Text>
+              <TextInput
+                value={form.scheduledAt}
+                onChangeText={(t) => setForm((p) => ({ ...p, scheduledAt: t }))}
+                placeholder="e.g. 2026-05-01T09:00:00 — leave empty for draft now"
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+              />
+              <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+                When set, the campaign is saved as scheduled; tap Send on the list to deliver (same as web).
+              </Text>
+            </View>
             <ActionButton
-              label={creating ? "Creating..." : "Create draft"}
+              label={
+                creating
+                  ? "Creating..."
+                  : form.scheduledAt.trim()
+                    ? "Create scheduled campaign"
+                    : "Create draft"
+              }
               onPress={createCampaign}
               loading={creating}
               disabled={creating}

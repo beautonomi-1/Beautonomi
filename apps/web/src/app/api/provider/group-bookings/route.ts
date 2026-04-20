@@ -4,6 +4,12 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 
 /**
+ * List/detail queries use the service-role client so provider_staff and
+ * embedded `booking_participants` rows are visible consistently (RLS on
+ * `group_bookings` is owner-centric; participant inserts often use admin).
+ */
+
+/**
  * GET /api/provider/group-bookings
  * 
  * Get provider's group bookings with optional filters.
@@ -27,11 +33,13 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
+    const admin = getSupabaseAdmin();
+
     let groupBookings: any[] = [];
     let total = 0;
     
     try {
-      let query = supabase
+      let query = admin
         .from('group_bookings')
         .select('*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, checked_in_at, checked_out_at)', { count: 'exact' })
         .eq('provider_id', providerId)
@@ -70,28 +78,50 @@ export async function GET(request: NextRequest) {
       }
 
       const raw = data || [];
+      const serviceIds = [...new Set(raw.map((r: any) => r.service_id).filter(Boolean))];
+      const staffIds = [...new Set(raw.map((r: any) => r.staff_id).filter(Boolean))];
+      const [offeringsRes, staffRes] = await Promise.all([
+        serviceIds.length > 0
+          ? admin.from("offerings").select("id, title").in("id", serviceIds)
+          : Promise.resolve({ data: [] as { id: string; title: string }[], error: null }),
+        staffIds.length > 0
+          ? admin.from("provider_staff").select("id, name").in("id", staffIds)
+          : Promise.resolve({ data: [] as { id: string; name: string | null }[], error: null }),
+      ]);
+      const offeringTitle = new Map((offeringsRes.data || []).map((o: any) => [o.id, o.title]));
+      const staffName = new Map((staffRes.data || []).map((s: any) => [s.id, s.name]));
+
       groupBookings = raw.map((row: any) => {
         const at = row.scheduled_at ? new Date(row.scheduled_at) : null;
+        const participants = (row.booking_participants || []).map((p: any) => ({
+          id: p.id,
+          group_booking_id: row.id,
+          client_name: p.participant_name || '—',
+          client_email: p.participant_email,
+          client_phone: p.participant_phone,
+          service_id: p.service_id || '',
+          service_name: p.service_name || '—',
+          price: Number(p.price) || 0,
+          duration_minutes: p.duration_minutes,
+          addons: p.addons || [],
+          checked_in: !!p.checked_in_at,
+          checked_in_time: p.checked_in_at,
+          checked_out: !!p.checked_out_at,
+          checked_out_time: p.checked_out_at,
+        }));
+        const totalPrice = participants.reduce((sum: number, p: any) => sum + (Number(p.price) || 0), 0);
+        const sid = row.service_id as string | null | undefined;
+        const tid = row.staff_id as string | null | undefined;
         return {
           ...row,
+          service_name: row.service_name || (sid ? offeringTitle.get(sid) : null) || null,
+          team_member_id: tid ?? null,
+          team_member_name: tid ? staffName.get(tid) ?? null : null,
+          current_participants: participants.length,
+          total_price: totalPrice,
           scheduled_date: at ? at.toISOString().split('T')[0] : '',
           scheduled_time: at ? at.toTimeString().slice(0, 5) : '',
-          participants: (row.booking_participants || []).map((p: any) => ({
-            id: p.id,
-            group_booking_id: row.id,
-            client_name: p.participant_name || '—',
-            client_email: p.participant_email,
-            client_phone: p.participant_phone,
-            service_id: p.service_id || '',
-            service_name: p.service_name || '—',
-            price: p.price || 0,
-            duration_minutes: p.duration_minutes,
-            addons: p.addons || [],
-            checked_in: !!p.checked_in_at,
-            checked_in_time: p.checked_in_at,
-            checked_out: !!p.checked_out_at,
-            checked_out_time: p.checked_out_at,
-          })),
+          participants,
         };
       });
       total = count || 0;

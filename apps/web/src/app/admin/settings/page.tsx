@@ -140,6 +140,7 @@ interface PlatformSettings {
     default_minimum_fee: number;
     default_maximum_fee: number | null;
     default_currency: string;
+    default_free_within_km?: number | null;
     allow_provider_customization: boolean;
     provider_min_rate_per_km: number;
     provider_max_rate_per_km: number;
@@ -238,6 +239,7 @@ export default function AdminSettings() {
           default_minimum_fee: 20.00,
           default_maximum_fee: null,
           default_currency: tenantCurrency,
+          default_free_within_km: 0,
           allow_provider_customization: true,
           provider_min_rate_per_km: 0.00,
           provider_max_rate_per_km: 50.00,
@@ -2440,6 +2442,8 @@ function TravelFeesSettings({
     default_minimum_fee: settings?.default_minimum_fee ?? 20.00,
     default_maximum_fee: settings?.default_maximum_fee ?? null,
     default_currency: settings?.default_currency ?? tenantCurrency,
+    default_free_within_km:
+      settings?.default_free_within_km != null ? Number(settings.default_free_within_km) : 0,
     allow_provider_customization: settings?.allow_provider_customization ?? true,
     provider_min_rate_per_km: settings?.provider_min_rate_per_km ?? 0.00,
     provider_max_rate_per_km: settings?.provider_max_rate_per_km ?? 50.00,
@@ -2563,6 +2567,25 @@ function TravelFeesSettings({
                 placeholder="No maximum"
               />
               <p className="text-xs text-gray-500 mt-1">Maximum travel fee cap (leave empty for no limit)</p>
+            </div>
+            <div>
+              <Label htmlFor="default_free_within_km">Default free travel within (km)</Label>
+              <Input
+                id="default_free_within_km"
+                type="number"
+                min="0"
+                step="0.1"
+                value={safeSettings.default_free_within_km}
+                onChange={(e) =>
+                  onChange({ default_free_within_km: parseFloat(e.target.value) || 0 })
+                }
+                className="mt-1"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Platform default: no travel fee for customers within this distance when the provider uses
+                platform per-km travel settings. Providers can override with their own free radius when
+                customization is allowed.
+              </p>
             </div>
           </div>
         )}

@@ -69,6 +69,24 @@ export async function PATCH(
       if (key in body) sanitized[key] = body[key];
     }
 
+    // Mobile / portal sometimes send split date+time instead of ISO `scheduled_at`.
+    const scheduledDate =
+      typeof body.scheduled_date === "string" ? body.scheduled_date.trim() : "";
+    const scheduledTime =
+      typeof body.scheduled_time === "string" ? body.scheduled_time.trim() : "";
+    if (scheduledDate && scheduledTime && /^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) {
+      const hm = scheduledTime.match(/^(\d{1,2}):(\d{2})/);
+      if (hm) {
+        const isoLocal = `${scheduledDate}T${String(hm[1]).padStart(2, "0")}:${hm[2]}:00`;
+        const parsed = new Date(isoLocal);
+        if (!Number.isNaN(parsed.getTime())) {
+          sanitized.scheduled_at = parsed.toISOString();
+        }
+      }
+    }
+    delete (sanitized as Record<string, unknown>).scheduled_date;
+    delete (sanitized as Record<string, unknown>).scheduled_time;
+
     const { data, error } = await supabase
       .from("group_bookings")
       .update(sanitized)

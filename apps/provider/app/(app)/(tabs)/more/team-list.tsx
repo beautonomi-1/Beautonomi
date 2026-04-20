@@ -150,10 +150,13 @@ export default function TeamListScreen() {
   // --- Summary stats ---
   const totalCount = staff?.length ?? 0;
   const activeCount = staff?.filter((s) => s.is_active).length ?? 0;
-  const avgRating = useMemo(() => {
-    if (!staff || staff.length === 0) return 0;
+  // §Provider-audit 2026-04 (round 8): return null when no staff have been
+  // rated yet so the summary card can show "—" instead of a misleading 0.0
+  // stars (which looked like the whole team was rated 0/5).
+  const avgRating = useMemo<number | null>(() => {
+    if (!staff || staff.length === 0) return null;
     const rated = staff.filter((s) => s.average_rating != null);
-    if (rated.length === 0) return 0;
+    if (rated.length === 0) return null;
     return rated.reduce((sum, s) => sum + (s.average_rating ?? 0), 0) / rated.length;
   }, [staff]);
 
@@ -379,7 +382,7 @@ export default function TeamListScreen() {
         <View style={twStyle("flex-1")}>
           <StatCard
             title="Avg Rating"
-            value={avgRating.toFixed(1)}
+            value={avgRating == null ? "—" : avgRating.toFixed(1)}
             icon="star-outline"
             iconColor="#f59e0b"
             iconBg="bg-amber-50"

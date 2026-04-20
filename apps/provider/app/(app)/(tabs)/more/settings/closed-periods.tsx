@@ -20,6 +20,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { formatDate } from "@/lib/format";
+import { formatLocalYmd } from "@/lib/reportDateRanges";
 import { twStyle } from "@/lib/twStyle";
 
 interface AvailabilityBlock {
@@ -153,9 +154,9 @@ export default function ClosedPeriodsScreen() {
     const end = new Date(block.end_at);
     setForm({
       block_type: block.block_type,
-      start_date: start.toISOString().split("T")[0],
+      start_date: formatLocalYmd(start),
       start_time: start.toTimeString().slice(0, 5),
-      end_date: end.toISOString().split("T")[0],
+      end_date: formatLocalYmd(end),
       end_time: end.toTimeString().slice(0, 5),
       reason: block.reason ?? "",
       is_recurring: block.is_recurring ?? false,

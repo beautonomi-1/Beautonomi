@@ -10,7 +10,8 @@ import {
   ActivityIndicator,
   Alert,
   ActionSheetIOS,
- Linking } from "react-native";
+  Linking,
+} from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -30,6 +31,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { api } from "@/lib/api-client";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 
 interface CustomOfferAttachment {
   type: "custom_offer";
@@ -132,11 +134,15 @@ export default function ChatScreen() {
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
 
-  // Mark conversation as read when opened
+  // §Provider-audit 2026-04 (round 6): mark-read dependencies previously
+  // included the whole `conversation` object, which re-references on every
+  // refresh (realtime update, manual refresh). That caused a mark-read
+  // POST storm — one per refresh — and a race with realtime inserts. We
+  // now fire exactly once per thread open (per conversationId).
   useEffect(() => {
-    if (!conversationId || !conversation) return;
+    if (!conversationId) return;
     markRead(`/api/provider/conversations/${conversationId}/mark-read`, {});
-  }, [conversationId, conversation?.id, conversation, markRead]);
+  }, [conversationId, markRead]);
 
   // Reset the "first scroll" flag whenever we switch threads so the
   // initial scroll-to-bottom runs again for the new conversation even
@@ -187,6 +193,16 @@ export default function ChatScreen() {
               },
             ];
           });
+          // §Provider-audit 2026-04 (round 6): if a customer message
+          // arrives while the thread is open, immediately mark it read
+          // server-side. Without this the conversations list kept the
+          // unread badge until the user closed & reopened the thread.
+          if (m.sender_role === "customer") {
+            markRead(
+              `/api/provider/conversations/${conversationId}/mark-read`,
+              {},
+            );
+          }
         }
       )
       .on(
@@ -216,7 +232,7 @@ export default function ChatScreen() {
         // Ignore
       }
     };
-  }, [conversationId, refresh]);
+  }, [conversationId, refresh, markRead]);
 
   const handleSend = useCallback(async () => {
     const text = message.trim();
@@ -519,7 +535,11 @@ export default function ChatScreen() {
                   }
                   if (isImageMime(att.type)) {
                     return (
-                      <TouchableOpacity key={key} activeOpacity={0.9} onPress={() => Linking.openURL(att.url!)}>
+                      <TouchableOpacity
+                        key={key}
+                        activeOpacity={0.9}
+                        onPress={() => pushInAppBrowser(router, att.url!, att.name || "Image")}
+                      >
                         <Image
                           source={{ uri: att.url }}
                           style={{ width: 220, height: 220, borderRadius: 12 }}
@@ -533,7 +553,7 @@ export default function ChatScreen() {
                     return (
                       <TouchableOpacity
                         key={key}
-                        onPress={() => Linking.openURL(att.url!)}
+                        onPress={() => pushInAppBrowser(router, att.url!, att.name || "Video")}
                         style={twStyle(
                           `max-w-[85%] rounded-xl px-3 py-3 flex-row items-center border ${isMe ? "border-primary/30 bg-primary/5" : "border-gray-200 bg-white"}`
                         )}
@@ -548,7 +568,7 @@ export default function ChatScreen() {
                   return (
                     <TouchableOpacity
                       key={key}
-                      onPress={() => Linking.openURL(att.url!)}
+                      onPress={() => pushInAppBrowser(router, att.url!, att.name || "Document")}
                       style={twStyle(
                         `max-w-[85%] rounded-xl px-3 py-3 flex-row items-center border ${isMe ? "border-primary/30 bg-primary/5" : "border-gray-200 bg-white"}`
                       )}

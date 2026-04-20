@@ -9,6 +9,7 @@ import {
   Switch,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation, useApiPost } from "@/hooks/useApi";
@@ -24,6 +25,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { formatCurrency, formatDuration } from "@/lib/format";
 import { Colors } from "@/constants/colors";
+import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 
@@ -83,6 +85,8 @@ const EMPTY_FORM = {
 
 export default function CatalogueScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const listBottomPadding = tabScreenScrollBottomPadding(insets.bottom, 16);
   const { isTablet } = useResponsive();
 
   // --- Data ---
@@ -321,8 +325,25 @@ export default function CatalogueScreen() {
       Alert.alert("Validation", "Service name is required.");
       return;
     }
-    if (!form.price || isNaN(parseFloat(form.price))) {
-      Alert.alert("Validation", "A valid price is required.");
+    const priceNum = parseFloat(form.price);
+    if (!form.price || isNaN(priceNum) || priceNum <= 0) {
+      Alert.alert("Validation", "Enter a valid price greater than 0.");
+      return;
+    }
+    // §Provider-audit 2026-04 (round 8): previously a provider could create
+    // a service with duration 0 or with both location types off, which
+    // passes server validation but produces a service that cannot be
+    // booked by any customer (no slots / no location). Block it up-front.
+    const durationNum = parseInt(form.duration_minutes, 10);
+    if (!Number.isFinite(durationNum) || durationNum <= 0) {
+      Alert.alert("Validation", "Duration must be greater than 0 minutes.");
+      return;
+    }
+    if (!form.supports_at_home && !form.supports_at_salon) {
+      Alert.alert(
+        "Validation",
+        "Select at least one location type — in salon or at the client's location.",
+      );
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -365,6 +386,55 @@ export default function CatalogueScreen() {
           </TouchableOpacity>
         }
       />
+
+      <View style={{ marginBottom: 12, flexDirection: "row", gap: 10 }}>
+        <TouchableOpacity
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push("/(app)/(tabs)/more/products" as never);
+          }}
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            paddingVertical: 12,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+            backgroundColor: Colors.white,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Open products and variants"
+        >
+          <Ionicons name="cube-outline" size={18} color="#8b5cf6" />
+          <Text style={{ fontWeight: "600", fontSize: 14, color: Colors.gray[800] }}>Products</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push("/(app)/(tabs)/more/packages-list" as never);
+          }}
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            paddingVertical: 12,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+            backgroundColor: Colors.white,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Open packages"
+        >
+          <Ionicons name="layers-outline" size={18} color="#4f46e5" />
+          <Text style={{ fontWeight: "600", fontSize: 14, color: Colors.gray[800] }}>Packages</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={{ marginBottom: 12 }}>
         <SearchBar placeholder="Search services..." value={search} onChangeText={setSearch} />
@@ -502,7 +572,7 @@ export default function CatalogueScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120 }}
+          contentContainerStyle={{ paddingBottom: listBottomPadding }}
           renderItem={({ item: [category, items] }: { item: [string, ServiceItem[]] }) => {
             const isCollapsed = collapsedCategories.has(category);
             return (

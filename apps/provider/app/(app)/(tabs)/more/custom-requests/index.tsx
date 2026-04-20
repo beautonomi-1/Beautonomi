@@ -9,12 +9,14 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { formatCurrency } from "@/lib/format";
 
 type CustomRequest = {
   id: string;
   description?: string | null;
   status?: string | null;
   created_at: string;
+  currency?: string | null;
   location_type?: string | null;
   duration_minutes?: number | null;
   preferred_start_at?: string | null;
@@ -42,7 +44,11 @@ export default function CustomRequestsListScreen() {
     customRequestsUrl
   );
 
-  const requests: CustomRequest[] = Array.isArray(data) ? data : (data as { data?: CustomRequest[] })?.data ?? [];
+  const requests: CustomRequest[] = Array.isArray(data)
+    ? data
+    : (data as { data?: CustomRequest[] })?.data && Array.isArray((data as { data?: CustomRequest[] }).data)
+      ? (data as { data: CustomRequest[] }).data
+      : [];
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -109,7 +115,24 @@ export default function CustomRequestsListScreen() {
                   <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                     {r.customer?.full_name ?? r.customer?.email ?? "Customer"}
                   </Text>
-                  <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    {r.status ? (
+                      <View
+                        style={{
+                          marginRight: 8,
+                          borderRadius: 9999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                          backgroundColor: Colors.gray[100],
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[700], textTransform: "capitalize" }}>
+                          {String(r.status)}
+                        </Text>
+                      </View>
+                    ) : null}
+                    <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                  </View>
                 </View>
                 {r.description ? (
                   <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[600] }} numberOfLines={2}>
@@ -119,6 +142,14 @@ export default function CustomRequestsListScreen() {
                 <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[500] }}>
                   {formatDateSafe(r.created_at)}
                   {r.location_type === "at_home" ? " · At home" : " · At salon"}
+                  {(r.budget_min != null || r.budget_max != null) && (
+                    <>
+                      {" · Budget "}
+                      {formatCurrency(Number(r.budget_min ?? 0), r.currency ?? undefined)}
+                      {" – "}
+                      {formatCurrency(Number(r.budget_max ?? 0), r.currency ?? undefined)}
+                    </>
+                  )}
                   {r.offers?.length ? ` · ${r.offers.length} offer(s)` : " · No offer yet"}
                 </Text>
               </TouchableOpacity>

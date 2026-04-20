@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { View, Text, TextInput, Alert, Switch, TouchableOpacity } from "react-native";
+import { View, Text, Alert, Switch } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -11,11 +11,19 @@ import { StatCard } from "@/components/ui/StatCard";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 
+/**
+ * §Provider-audit 2026-04: previously this screen collected a
+ * `distribution_method` (equal / by_service / custom) and `pool_percentage`,
+ * but neither field is stored server-side: the PATCH handler only reads
+ * `keep_all_tips` / `distribute_to_staff`, and `provider_tip_settings` has
+ * no columns for the other two. Providers would toggle a radio, see a happy
+ * toast, and the choice would silently evaporate. The UI has been trimmed to
+ * match reality; a banner explains what's currently supported.
+ */
+
 interface TipDistribution {
   keep_all_tips: boolean;
   distribute_to_staff: boolean;
-  distribution_method: "equal" | "by_service" | "custom";
-  pool_percentage: number;
   tip_stats?: {
     total_tips_this_month: number;
     total_distributed: number;
@@ -23,42 +31,25 @@ interface TipDistribution {
   };
 }
 
-const DISTRIBUTION_METHODS = [
-  { value: "equal", label: "Equal Split", desc: "Tips split equally among all staff" },
-  { value: "by_service", label: "By Service", desc: "Tips go to staff who performed the service" },
-  { value: "custom", label: "Custom Pool", desc: "Set a pool percentage, rest goes to service provider" },
-];
-
 export default function TipDistributionScreen() {
   const { data: settings, loading, refresh } = useApi<TipDistribution>("/api/provider/tips/distribution");
   const { execute: saveSettings, loading: saving } = useApiMutation("patch");
 
   const [keepAll, setKeepAll] = useState(true);
   const [distribute, setDistribute] = useState(false);
-  const [method, setMethod] = useState<"equal" | "by_service" | "custom">("by_service");
-  const [poolPct, setPoolPct] = useState("0");
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     if (settings) {
       setKeepAll(settings.keep_all_tips);
       setDistribute(settings.distribute_to_staff);
-      setMethod(settings.distribution_method ?? "by_service");
-      setPoolPct(String(settings.pool_percentage ?? 0));
     }
   }, [settings]);
 
   async function handleSave() {
-    const pct = Number(poolPct);
-    if (method === "custom" && (isNaN(pct) || pct < 0 || pct > 100)) {
-      Alert.alert("Invalid", "Pool percentage must be between 0 and 100");
-      return;
-    }
     const { error } = await saveSettings("/api/provider/tips/distribution", {
       keep_all_tips: keepAll,
       distribute_to_staff: distribute,
-      distribution_method: method,
-      pool_percentage: method === "custom" ? pct : 0,
     });
     if (error) Alert.alert("Error", error);
     else {
@@ -145,66 +136,14 @@ export default function TipDistributionScreen() {
         </View>
       </View>
 
-      {distribute && !keepAll && (
-        <>
-          <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
-            Distribution Method
-          </Text>
-          <View style={twStyle("mb-4")}>
-            {DISTRIBUTION_METHODS.map((m, idx) => (
-              <TouchableOpacity
-                key={m.value}
-                style={[twStyle(`flex-row items-center rounded-xl border p-4 ${
-                  method === m.value ? "border-indigo-300 bg-indigo-50" : "border-gray-100 bg-white"
-                }`), idx > 0 ? { marginTop: 8 } : undefined]}
-                onPress={() => update(() => setMethod(m.value as typeof method))}
-              >
-                <View
-                  style={twStyle(`h-5 w-5 items-center justify-center rounded-full border-2 ${
-                    method === m.value ? "border-indigo-600 bg-indigo-600" : "border-gray-300"
-                  }`)}
-                >
-                  {method === m.value && <Ionicons name="checkmark" size={12} color="#fff" />}
-                </View>
-                <View style={twStyle("ml-3 flex-1")}>
-                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{m.label}</Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>{m.desc}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {method === "custom" && (
-            <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Pool Percentage (%)</Text>
-              <TextInput
-                style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                value={poolPct}
-                onChangeText={(t) => { setPoolPct(t); setDirty(true); }}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                placeholderTextColor="#9ca3af"
-              />
-              <Text style={twStyle("text-xs text-gray-400")}>
-                {poolPct && !isNaN(Number(poolPct))
-                  ? `${poolPct}% goes to tip pool, ${100 - Number(poolPct)}% to service provider`
-                  : "Enter a percentage between 0 and 100"}
-              </Text>
-            </View>
-          )}
-        </>
-      )}
-
       {!keepAll && distribute && (
         <View style={twStyle("mb-4 rounded-xl bg-indigo-50 p-3")}>
-          <View style={twStyle("flex-row items-center")}>
-            <Ionicons name="information-circle" size={16} color="#6366f1" style={{ marginRight: 8 }} />
+          <View style={twStyle("flex-row items-start")}>
+            <Ionicons name="information-circle" size={16} color="#6366f1" style={{ marginTop: 2, marginRight: 8 }} />
             <Text style={twStyle("flex-1 text-xs text-indigo-700")}>
-              {method === "equal"
-                ? "All tips will be split equally among on-duty staff at the time of payment."
-                : method === "by_service"
-                ? "Tips will go directly to the staff member who provided the service."
-                : `${poolPct}% of tips go to a shared pool, the remainder goes to the service provider.`}
+              Tips will be allocated to the staff member who performed the service. Advanced
+              split methods (equal split, custom pool) can be configured per-team in the
+              provider portal.
             </Text>
           </View>
         </View>

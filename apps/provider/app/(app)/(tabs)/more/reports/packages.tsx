@@ -19,6 +19,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
 interface PackageReport {
   id: string;
@@ -96,16 +97,12 @@ export default function PackageReportScreen() {
         }
       />
 
-      <View style={twStyle("mb-3 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+      <View style={twStyle("mb-3")}>
+        <ReportResponsiveStatRow>
           <StatCard title="Total Sold" value={String(stats?.total_sold ?? 0)} icon="layers-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
-        </View>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
           <StatCard title="Revenue" value={formatCurrency(stats?.total_revenue ?? 0)} icon="cash-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-        </View>
-        <View style={twStyle("flex-1")}>
           <StatCard title="Active" value={String(stats?.active_subscriptions ?? 0)} icon="radio-button-on" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
-        </View>
+        </ReportResponsiveStatRow>
       </View>
 
       <View style={twStyle("mb-3")}>

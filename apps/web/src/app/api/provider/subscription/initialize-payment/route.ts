@@ -171,9 +171,11 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", order.id);
 
-    return successResponse({ 
-      order_id: order.id, 
+    return successResponse({
+      order_id: order.id,
       payment_url: paymentUrl,
+      /** Same URL as `payment_url` — Paystack calls it `authorization_url` in their API response. */
+      authorization_url: paymentUrl,
       customer_code: customerCode,
     });
   } catch (error) {

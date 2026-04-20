@@ -10,6 +10,8 @@ import { useRouter, useLocalSearchParams, useNavigation, useFocusEffect } from "
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
+import { supabase } from "@/lib/supabase/client";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
@@ -46,11 +48,52 @@ export default function MessagingListScreen() {
   const navigation = useNavigation();
   const canGoBack = navigation.canGoBack();
   const { screenPadding } = useResponsive();
+  const { provider } = useProvider();
   const params = useLocalSearchParams<{ customerId?: string }>();
   const customerId = typeof params.customerId === "string" ? params.customerId : undefined;
   const hasRedirected = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<Conversation[]>("/api/provider/conversations");
+
+  // §Provider-audit 2026-04 (round 9): subscribe to conversation row updates
+  // so an incoming customer message bumps the list preview / unread counter
+  // immediately. Without this, providers on the conversations list had to
+  // pull-to-refresh (or leave and re-enter) before new messages surfaced,
+  // which contradicted the unread badge on the tab bar.
+  useEffect(() => {
+    if (!provider?.id) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void refresh();
+      }, 400);
+    };
+
+    const channel = supabase
+      .channel(`provider-conversations:${provider.id}`)
+      .on(
+        "postgres_changes" as never,
+        {
+          event: "*",
+          schema: "public",
+          table: "conversations",
+          filter: `provider_id=eq.${provider.id}`,
+        },
+        () => scheduleRefresh(),
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // Ignore
+      }
+    };
+  }, [provider?.id, refresh]);
 
   const conversations = useMemo(
     () => (Array.isArray(data) ? data : []) as Conversation[],

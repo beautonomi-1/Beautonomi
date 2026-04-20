@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Redirect } from "expo-router";
-import { View, Text, ActivityIndicator, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/providers/AuthProvider";
+import { useTranslation } from "@beautonomi/i18n";
+import { GateLoadingScreen } from "@/components/GateLoadingScreen";
+import { Colors } from "@/constants/colors";
+import { onboardingDoneKey } from "./(app)/onboarding/index";
 import { api } from "@/lib/api-client";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { APP_URL, isScreenshotMode } from "@/config/public-env";
@@ -96,6 +101,7 @@ function computeGatePhase(args: {
 }
 
 export default function Index() {
+  const { t } = useTranslation();
   const { session, loading, signOut } = useAuth();
   const [portalState, setPortalState] = useState<PortalState>("idle");
   const [wrongPortal, setWrongPortal] = useState<string | null>(null);
@@ -373,10 +379,17 @@ export default function Index() {
       authFlowBreadcrumb(`${IDX}.onboarding_fetch_start`, {});
     }
 
+    const uid = session.user.id;
+
+    const resolveOnboardingAfterFailure = async () => {
+      const stored = await AsyncStorage.getItem(onboardingDoneKey(uid));
+      if (!cancelled) setCustomerOnboardingDone(stored === "1");
+    };
+
     const fetchOnboarding = (attempt: number) => {
       api
         .get<{ completed?: boolean }>("/api/me/onboarding/complete")
-        .then((res) => {
+        .then(async (res) => {
           if (cancelled) return;
           if (isSentryEnabled()) {
             if (res.error) {
@@ -395,23 +408,26 @@ export default function Index() {
               retryTimer = setTimeout(() => fetchOnboarding(attempt + 1), 2000 * (attempt + 1));
               return;
             }
-            // §Release-audit 2026-04: retries exhausted. Previously we just
-            // returned, which left `customerOnboardingDone` at `null` forever and
-            // held the whole app on a Loading… spinner until the user force-
-            // closed or signed out. Pick a terminal value so the gate advances:
-            // route to the onboarding screen (idempotent — returning users will
-            // be skipped past it by server guards on that screen).
             if (isSentryEnabled()) {
               captureAuthMessage(`${IDX}_onboarding_fetch_exhausted`, "warning", {
                 attempts: attempt + 1,
               });
             }
-            setCustomerOnboardingDone(false);
+            await resolveOnboardingAfterFailure();
             return;
           }
-          setCustomerOnboardingDone(res.data?.completed === true);
+          const completed = res.data?.completed === true;
+          if (completed) {
+            await AsyncStorage.setItem(onboardingDoneKey(uid), "1");
+            if (!cancelled) setCustomerOnboardingDone(true);
+            return;
+          }
+          const key = onboardingDoneKey(uid);
+          const stored = await AsyncStorage.getItem(key);
+          if (stored === "1") await AsyncStorage.removeItem(key);
+          if (!cancelled) setCustomerOnboardingDone(false);
         })
-        .catch((e) => {
+        .catch(async (e) => {
           if (isSentryEnabled()) {
             authFlowBreadcrumb(`${IDX}.onboarding_fetch_error`, {
               kind: "throw",
@@ -423,14 +439,13 @@ export default function Index() {
             retryTimer = setTimeout(() => fetchOnboarding(attempt + 1), 2000 * (attempt + 1));
             return;
           }
-          // §Release-audit 2026-04: terminal fallback for network errors too.
           if (isSentryEnabled()) {
             captureAuthMessage(`${IDX}_onboarding_fetch_threw_exhausted`, "warning", {
               attempts: attempt + 1,
               message: e instanceof Error ? e.message : String(e),
             });
           }
-          if (!cancelled) setCustomerOnboardingDone(false);
+          await resolveOnboardingAfterFailure();
         });
     };
 
@@ -515,18 +530,11 @@ export default function Index() {
 
   if (loading || (session && portalState === "idle") || portalState === "loading") {
     return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: "#fff",
-          minHeight: 400,
-        }}
-      >
-        <ActivityIndicator size="large" color="#4B5563" />
-        <Text style={{ marginTop: 16, fontSize: 16, color: "#4B5563" }}>Loading…</Text>
-      </View>
+      <GateLoadingScreen
+        message={t("authGate.checkingAccess")}
+        primaryColor={Colors.primary}
+        backgroundColor="#fff"
+      />
     );
   }
 
@@ -651,18 +659,11 @@ export default function Index() {
   // Onboarding status loading
   if (portalState === "customer" && session && customerOnboardingDone === null && !isScreenshotMode()) {
     return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: "#fff",
-          minHeight: 400,
-        }}
-      >
-        <ActivityIndicator size="large" color="#4B5563" />
-        <Text style={{ marginTop: 16, fontSize: 16, color: "#4B5563" }}>Loading…</Text>
-      </View>
+      <GateLoadingScreen
+        message={t("authGate.checkingSetup")}
+        primaryColor={Colors.primary}
+        backgroundColor="#fff"
+      />
     );
   }
 
@@ -670,18 +671,11 @@ export default function Index() {
   // returns early and profileState stays "idle" — skip the spinner to avoid stuck loading).
   if (portalState === "customer" && APP_URL?.trim() && (profileState === "idle" || profileState === "loading")) {
     return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: "#fff",
-          minHeight: 400,
-        }}
-      >
-        <ActivityIndicator size="large" color="#4B5563" />
-        <Text style={{ marginTop: 16, fontSize: 16, color: "#4B5563" }}>Loading…</Text>
-      </View>
+      <GateLoadingScreen
+        message={t("authGate.preparingProfile")}
+        primaryColor={Colors.primary}
+        backgroundColor="#fff"
+      />
     );
   }
 

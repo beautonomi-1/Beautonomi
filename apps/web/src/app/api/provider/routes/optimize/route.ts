@@ -41,6 +41,33 @@ export async function POST(request: NextRequest) {
       throw new Error("Failed to get or create route");
     }
 
+    // Re-running optimization must replace prior segments; otherwise UNIQUE(route_id, segment_order) fails.
+    const { error: deleteSegError } = await supabase.from("route_segments").delete().eq("route_id", routeId);
+    if (deleteSegError) {
+      throw deleteSegError;
+    }
+
+    const dayStart = `${date}T00:00:00.000Z`;
+    const dayEndExclusive = new Date(`${date}T12:00:00.000Z`);
+    dayEndExclusive.setUTCDate(dayEndExclusive.getUTCDate() + 1);
+    const dayEndIso = dayEndExclusive.toISOString();
+
+    const { error: clearChainError } = await supabase
+      .from("bookings")
+      .update({
+        previous_booking_id: null,
+        next_booking_id: null,
+        route_segment_id: null,
+      })
+      .eq("provider_id", providerId)
+      .eq("location_type", "at_home")
+      .gte("scheduled_at", dayStart)
+      .lt("scheduled_at", dayEndIso);
+
+    if (clearChainError) {
+      throw clearChainError;
+    }
+
     // Get all at-home bookings for the day (bookings table uses address_latitude, address_longitude per 005_bookings)
     const { data: bookings, error: bookingsError } = await supabase
       .from("bookings")
@@ -62,8 +89,8 @@ export async function POST(request: NextRequest) {
       `)
       .eq("provider_id", providerId)
       .eq("location_type", "at_home")
-      .gte("scheduled_at", `${date}T00:00:00Z`)
-      .lt("scheduled_at", `${date}T23:59:59Z`)
+      .gte("scheduled_at", dayStart)
+      .lt("scheduled_at", dayEndIso)
       .not("status", "in", '(cancelled,no_show)')
       .order("scheduled_at", { ascending: true });
 
@@ -72,6 +99,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (!bookings || bookings.length === 0) {
+      await supabase
+        .from("travel_routes")
+        .update({
+          total_distance_km: 0,
+          total_duration_minutes: 0,
+          optimization_status: "optimized",
+          optimized_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", routeId);
+
       return successResponse({
         route_id: routeId,
         bookings_count: 0,
@@ -168,37 +206,44 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (segmentError) {
-        console.error("Error creating segment:", segmentError);
-      } else {
-        segments.push({
-          from: previousBookingId ? `Booking ${previousBookingId}` : "Starting Location",
-          to: booking.id,
-          distance_km: distance,
-          duration_minutes: duration,
+        throw segmentError;
+      }
+
+      segments.push({
+        from: previousBookingId ? `Booking ${previousBookingId}` : "Starting Location",
+        to: booking.id,
+        distance_km: distance,
+        duration_minutes: duration,
+        travel_fee: travelFee,
+        customer: Array.isArray(booking.customer) ? booking.customer?.[0]?.full_name : (booking.customer as { full_name?: string })?.full_name,
+        scheduled_at: booking.scheduled_at,
+      });
+
+      // Update booking with route information
+      const { error: bookingUpdateError } = await supabase
+        .from("bookings")
+        .update({
+          route_segment_id: segment.id,
+          travel_distance_km: distance,
+          travel_duration_minutes: duration,
+          previous_booking_id: previousBookingId,
+          travel_fee_method: "route_chained",
           travel_fee: travelFee,
-          customer: Array.isArray(booking.customer) ? booking.customer?.[0]?.full_name : (booking.customer as { full_name?: string })?.full_name,
-          scheduled_at: booking.scheduled_at,
-        });
+        })
+        .eq("id", booking.id);
 
-        // Update booking with route information
-        await supabase
+      if (bookingUpdateError) {
+        throw bookingUpdateError;
+      }
+
+      // Update previous booking's next_booking_id
+      if (previousBookingId) {
+        const { error: nextErr } = await supabase
           .from("bookings")
-          .update({
-            route_segment_id: segment.id,
-            travel_distance_km: distance,
-            travel_duration_minutes: duration,
-            previous_booking_id: previousBookingId,
-            travel_fee_method: 'route_chained',
-            travel_fee: travelFee,
-          })
-          .eq("id", booking.id);
-
-        // Update previous booking's next_booking_id
-        if (previousBookingId) {
-          await supabase
-            .from("bookings")
-            .update({ next_booking_id: booking.id })
-            .eq("id", previousBookingId);
+          .update({ next_booking_id: booking.id })
+          .eq("id", previousBookingId);
+        if (nextErr) {
+          throw nextErr;
         }
       }
 

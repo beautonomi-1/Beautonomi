@@ -6,6 +6,7 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { resolveReferrerUserId } from "@/lib/referrals/resolve-referrer";
 
 /**
  * POST /api/me/referrals/attach
@@ -35,23 +36,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve code to referrer user id
-    const { data: referrer, error: lookupError } = await supabase
-      .from("users")
-      .select("id")
-      .or(`handle.eq.${referral_code},id.eq.${referral_code}`)
-      .limit(1)
-      .maybeSingle();
-
-    if (lookupError || !referrer) {
+    const referrerId = await resolveReferrerUserId(supabase, referral_code);
+    if (!referrerId) {
       return errorResponse(
         "Invalid referral code",
         "NOT_FOUND",
         404
       );
     }
-
-    const referrerId = (referrer as { id: string }).id;
     if (referrerId === user.id) {
       return errorResponse(
         "Cannot attach your own referral code",

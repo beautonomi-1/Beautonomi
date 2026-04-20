@@ -49,8 +49,14 @@ export function DaysOffContent() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  // §Provider-audit 2026-04 (round 8): hide past days off by default so the
+  // list isn't dominated by historical entries for long-running providers.
+  const [showPast, setShowPast] = useState(false);
 
   const { data: staff, loading: loadingStaff, error: staffError, refresh: refreshStaff } = useApi<StaffMember[]>("/api/provider/staff");
   const { execute: postDayOff } = useApiMutation("post");
@@ -72,9 +78,12 @@ export function DaysOffContent() {
       await Promise.all(
         activeStaff.map(async (member) => {
           try {
-            const res = await api.get<unknown>(`/api/provider/staff/${member.id}/days-off`);
-            const raw = (res as any)?.data ?? (res as any);
-            const list = Array.isArray(raw) ? raw : [];
+            const res = await api.get<unknown[]>(`/api/provider/staff/${member.id}/days-off`);
+            if (res.error) {
+              errors.push(member.name ?? member.id);
+              return;
+            }
+            const list = Array.isArray(res.data) ? res.data : [];
             const mapped = list.map((d: any) => ({
               id: d.id,
               staff_id: d.staff_id ?? member.id,
@@ -123,22 +132,67 @@ export function DaysOffContent() {
       Alert.alert("Select staff", "Please select at least one team member.");
       return;
     }
-    const dateStr = format(selectedDate, "yyyy-MM-dd");
-    for (const staffId of selectedStaffIds) {
-      const { error } = await postDayOff(`/api/provider/staff/${staffId}/days-off`, {
-        date: dateStr,
-        reason: reason.trim() || undefined,
-        type: reason.trim() || undefined,
-      });
-      if (error) {
-        Alert.alert("Error", error);
+    if (saving) return;
+
+    // §Provider-audit 2026-04 (round 8): build the full date list from the
+    // optional [start..end] range. Previously providers could only block
+    // one calendar day at a time, forcing 14 clicks to mark a two-week
+    // vacation. We stay single-POST-per-day since the server endpoint
+    // only accepts one date at a time, but fan them out in parallel and
+    // collect partial failures instead of bailing on first error.
+    const start = selectedDate;
+    const end = selectedEndDate && selectedEndDate >= selectedDate ? selectedEndDate : selectedDate;
+    const days: string[] = [];
+    const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const stop = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    while (cursor.getTime() <= stop.getTime()) {
+      days.push(format(cursor, "yyyy-MM-dd"));
+      cursor.setDate(cursor.getDate() + 1);
+      if (days.length > 366) break; // hard cap to avoid runaway loops
+    }
+
+    setSaving(true);
+    try {
+      const reasonTrim = reason.trim();
+      const tasks: Promise<{ ok: boolean; label: string }>[] = [];
+      for (const staffId of selectedStaffIds) {
+        for (const dateStr of days) {
+          tasks.push(
+            postDayOff(`/api/provider/staff/${staffId}/days-off`, {
+              date: dateStr,
+              reason: reasonTrim || undefined,
+              type: reasonTrim || undefined,
+            }).then((res) => ({
+              ok: !res.error,
+              // Include date so duplicate errors are diagnosable.
+              label: `${staffId}:${dateStr}`,
+            })),
+          );
+        }
+      }
+      const results = await Promise.all(tasks);
+      const failures = results.filter((r) => !r.ok);
+      if (failures.length === results.length && results.length > 0) {
+        Alert.alert(
+          "Failed",
+          "None of the selected days off could be created. Please try again.",
+        );
         return;
       }
+      setAddModalOpen(false);
+      setSelectedStaffIds([]);
+      setSelectedEndDate(null);
+      setReason("");
+      await loadDaysOff();
+      if (failures.length > 0) {
+        Alert.alert(
+          "Partial success",
+          `${results.length - failures.length} day(s) off created. ${failures.length} could not be created (possibly duplicates).`,
+        );
+      }
+    } finally {
+      setSaving(false);
     }
-    setAddModalOpen(false);
-    setSelectedStaffIds([]);
-    setReason("");
-    loadDaysOff();
   };
 
   const handleRemoveDayOff = (dayOff: DayOff) => {
@@ -212,7 +266,13 @@ export function DaysOffContent() {
               No days off scheduled. Tap &quot;Set Day Off&quot; to add one.
             </Text>
             <TouchableOpacity
-              onPress={() => setAddModalOpen(true)}
+              onPress={() => {
+                setSelectedStaffIds([]);
+                setSelectedDate(new Date());
+                setSelectedEndDate(null);
+                setReason("");
+                setAddModalOpen(true);
+              }}
               style={twStyle("mt-6 flex-row items-center justify-center rounded-xl bg-amber-500 px-6 py-3")}
             >
               <Ionicons name="add" size={20} color="#fff" />
@@ -225,6 +285,7 @@ export function DaysOffContent() {
               onPress={() => {
                 setSelectedStaffIds([]);
                 setSelectedDate(new Date());
+                setSelectedEndDate(null);
                 setReason("");
                 setAddModalOpen(true);
               }}
@@ -237,8 +298,30 @@ export function DaysOffContent() {
               <Text style={twStyle("text-sm text-gray-500")}>
                 {daysOff.length} day{daysOff.length !== 1 ? "s" : ""} off
               </Text>
+              <TouchableOpacity
+                onPress={() => setShowPast((v) => !v)}
+                style={twStyle("flex-row items-center")}
+                accessibilityRole="button"
+              >
+                <Ionicons
+                  name={showPast ? "eye-off-outline" : "eye-outline"}
+                  size={14}
+                  color="#6366f1"
+                />
+                <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
+                  {showPast ? "Hide past" : "Show past"}
+                </Text>
+              </TouchableOpacity>
             </View>
-            {daysOff.map((dayOff) => {
+            {daysOff
+              .filter((d) => {
+                if (showPast) return true;
+                const day = new Date(d.date);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                return day >= today;
+              })
+              .map((dayOff) => {
               const isPast = new Date(dayOff.date) < new Date();
               return (
                 <View
@@ -293,10 +376,12 @@ export function DaysOffContent() {
               })}
             </ScrollView>
 
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Date</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
+              {selectedEndDate ? "Start date" : "Date"}
+            </Text>
             <TouchableOpacity
               onPress={() => setShowDatePicker(true)}
-              style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+              style={twStyle("mb-3 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
             >
               <Ionicons name="calendar-outline" size={20} color="#6366f1" />
               <Text style={twStyle("ml-2 text-base text-gray-900")}>{format(selectedDate, "PPP")}</Text>
@@ -309,9 +394,64 @@ export function DaysOffContent() {
                 minimumDate={new Date()}
                 onChange={(_, d) => {
                   setShowDatePicker(Platform.OS !== "ios");
-                  if (d) setSelectedDate(d);
+                  if (d) {
+                    setSelectedDate(d);
+                    if (selectedEndDate && d > selectedEndDate) {
+                      setSelectedEndDate(null);
+                    }
+                  }
                 }}
               />
+            )}
+
+            {selectedEndDate ? (
+              <>
+                <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>End date</Text>
+                <View style={twStyle("mb-4 flex-row items-center")}>
+                  <TouchableOpacity
+                    onPress={() => setShowEndDatePicker(true)}
+                    style={twStyle("flex-1 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+                  >
+                    <Ionicons name="calendar-outline" size={20} color="#6366f1" />
+                    <Text style={twStyle("ml-2 text-base text-gray-900")}>{format(selectedEndDate, "PPP")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setSelectedEndDate(null)}
+                    style={[twStyle("h-11 w-11 items-center justify-center rounded-xl bg-gray-100"), { marginLeft: 8 }]}
+                    accessibilityLabel="Remove end date"
+                  >
+                    <Ionicons name="close" size={18} color="#6b7280" />
+                  </TouchableOpacity>
+                </View>
+                {showEndDatePicker && (
+                  <DateTimePicker
+                    value={selectedEndDate}
+                    mode="date"
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    minimumDate={selectedDate}
+                    onChange={(_, d) => {
+                      setShowEndDatePicker(Platform.OS !== "ios");
+                      if (d) setSelectedEndDate(d);
+                    }}
+                  />
+                )}
+              </>
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  const next = new Date(selectedDate);
+                  next.setDate(next.getDate() + 1);
+                  setSelectedEndDate(next);
+                  setShowEndDatePicker(true);
+                }}
+                style={twStyle("mb-4 flex-row items-center self-start")}
+                accessibilityRole="button"
+              >
+                <Ionicons name="add-circle-outline" size={16} color="#6366f1" />
+                <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
+                  Add end date (block a range)
+                </Text>
+              </TouchableOpacity>
             )}
 
             <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Reason (optional)</Text>
@@ -332,9 +472,12 @@ export function DaysOffContent() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSaveDayOff}
-                style={twStyle("flex-1 items-center rounded-xl bg-amber-500 py-3")}
+                disabled={saving}
+                style={twStyle(`flex-1 items-center rounded-xl py-3 ${saving ? "bg-amber-300" : "bg-amber-500"}`)}
               >
-                <Text style={twStyle("font-medium text-white")}>Set Day Off</Text>
+                <Text style={twStyle("font-medium text-white")}>
+                  {saving ? "Saving…" : "Set Day Off"}
+                </Text>
               </TouchableOpacity>
             </View>
           </Pressable>

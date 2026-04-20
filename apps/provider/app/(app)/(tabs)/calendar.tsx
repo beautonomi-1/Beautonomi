@@ -10,6 +10,7 @@ import {
   Alert,
   ActionSheetIOS,
   Platform,
+  Share,
   PanResponder,
   TextInput,
   useWindowDimensions,
@@ -29,6 +30,8 @@ import {
   subDays,
   startOfWeek,
   startOfDay,
+  startOfMonth,
+  endOfMonth,
   isSameDay,
   parseISO,
   getHours,
@@ -36,6 +39,9 @@ import {
   differenceInHours,
   differenceInMinutes,
 } from "date-fns";
+import * as Clipboard from "expo-clipboard";
+import { APP_URL } from "@/config/public-env";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useCalendarPreferences } from "@/hooks/useCalendarPreferences";
@@ -49,6 +55,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import {
   formatTime,
+  formatTimeInZone,
   formatCurrency,
   capitalizeFirst,
 } from "@/lib/format";
@@ -57,10 +64,12 @@ import { trackCalendarView } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
+import { useTranslation, type TFunction } from "@beautonomi/i18n";
 import {
   expandTimeBlocksForCalendarRange,
   resolveTimeBlockRecordId,
 } from "@/lib/expand-time-blocks";
+import { newBookingScreenHrefFromCalendarDay } from "@/lib/new-booking-nav-defaults";
 
 /* ================================================================== */
 /*  Types                                                              */
@@ -309,13 +318,18 @@ const BOOKING_HOLD_OVERLAY_COLORS = {
   icon: "hourglass-outline",
 };
 
-const STATUS_ACTIONS = [
-  { key: "booked", label: "Confirm" },
-  { key: "started", label: "Start Service" },
-  { key: "completed", label: "Complete" },
-  { key: "no_show", label: "No Show" },
-  { key: "cancelled", label: "Cancel" },
-];
+/** Keys for {@link changeBookingStatus}; labels from `provider.calendarScreen.statusActionLabels.*`. */
+const STATUS_ACTION_KEYS = ["booked", "started", "completed", "no_show", "cancelled"] as const;
+
+function translateBookingStatusLabel(t: TFunction, status: string): string {
+  const key = `provider.calendarScreen.bookingStatusLabels.${status}`;
+  const v = t(key);
+  return v === key ? capitalizeFirst(status.replace(/_/g, " ")) : v;
+}
+
+function getStatusActionLabel(t: TFunction, actionKey: string): string {
+  return t(`provider.calendarScreen.statusActionLabels.${actionKey}`);
+}
 
 type LayoutMode = "columns" | "single";
 type ViewMode = "day" | "3day" | "week";
@@ -446,11 +460,43 @@ function parseApiDateTime(value: unknown): Date | null {
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
-function getTopOffset(dateStr: string, startHour: number, slotHeight: number): number {
+/**
+ * Wall-clock hour/minute for an instant in the business IANA zone (matches
+ * {@link CurrentTimeIndicator}). Falls back to the device local clock when
+ * no zone is set.
+ */
+function getHourMinuteForInstantInZone(
+  instant: Date,
+  timeZone: string | null | undefined,
+): { h: number; m: number } {
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(instant);
+      return {
+        h: Number(parts.find((p) => p.type === "hour")?.value ?? getHours(instant)),
+        m: Number(parts.find((p) => p.type === "minute")?.value ?? getMinutes(instant)),
+      };
+    } catch {
+      /* fall through */
+    }
+  }
+  return { h: getHours(instant), m: getMinutes(instant) };
+}
+
+function getTopOffset(
+  dateStr: string,
+  startHour: number,
+  slotHeight: number,
+  timeZone?: string | null,
+): number {
   const d = parseApiDateTime(dateStr);
   if (!d) return 0;
-  const h = getHours(d);
-  const m = getMinutes(d);
+  const { h, m } = getHourMinuteForInstantInZone(d, timeZone);
   return Math.max(0, (h - startHour) * slotHeight + (m / 60) * slotHeight);
 }
 
@@ -467,6 +513,52 @@ function isNewBooking(booking: Booking): boolean {
   const createdAt = parseApiDateTime(booking.created_at);
   if (!createdAt) return false;
   return differenceInHours(new Date(), createdAt) < 24;
+}
+
+function buildScheduleShareBody(
+  viewMode: ViewMode,
+  selectedDate: Date,
+  weekStart: Date,
+  bookings: Booking[],
+  businessName: string,
+  t: TFunction,
+  timeZone?: string | null,
+): string {
+  const displayName = businessName.trim() || t("provider.calendarScreen.share.defaultBusinessName");
+  const header = `${t("provider.calendarScreen.share.header", { businessName: displayName })}\n`;
+  const sorted = [...bookings].sort(
+    (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+  );
+  let days: Date[] = [];
+  if (viewMode === "day") days = [selectedDate];
+  else if (viewMode === "3day") days = Array.from({ length: 3 }, (_, i) => addDays(selectedDate, i));
+  else days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+
+  const parts: string[] = [header];
+  for (const day of days) {
+    const dayBookings = sorted.filter((b) => {
+      const d = parseApiDateTime(b.scheduled_at);
+      return d != null && isSameDay(d, day);
+    });
+    parts.push(`\n${format(day, "EEE, MMM d")}`);
+    if (dayBookings.length === 0) parts.push(t("provider.calendarScreen.share.noAppointments"));
+    else {
+      for (const b of dayBookings) {
+        // §Provider-audit 2026-04: share text must reflect the business
+        // timezone, same as the rendered card labels, to stay coherent.
+        const timeStr = formatTimeInZone(b.scheduled_at, timeZone) || formatTime(b.scheduled_at);
+        const name = b.customers?.full_name?.trim() || t("provider.calendarScreen.walkIn");
+        const svcs =
+          b.services?.map((s) => s.name).filter(Boolean).join(", ") ||
+          t("provider.calendarScreen.share.servicesFallback");
+        parts.push(
+          `  ${timeStr} — ${name} — ${svcs} (${translateBookingStatusLabel(t, b.status)})`,
+        );
+      }
+    }
+  }
+  parts.push(t("provider.calendarScreen.share.footer"));
+  return parts.join("\n");
 }
 
 /* ================================================================== */
@@ -516,40 +608,25 @@ function CurrentTimeIndicator({
     return () => clearInterval(interval);
   }, []);
 
-  // §UI-audit 2026-04: booking positions use ISO instants rendered in
-  // the provider timezone; if the provider's device is in a different
-  // zone, using `getHours(now)` / `getMinutes(now)` placed the red line
-  // on the wrong vertical offset. Derive H:M in the same zone the grid
-  // is rendered in.
-  let h: number;
-  let m: number;
-  if (timeZone) {
-    try {
-      const parts = new Intl.DateTimeFormat("en-GB", {
-        timeZone,
-        hour: "2-digit",
-        minute: "2-digit",
-        hourCycle: "h23",
-      }).formatToParts(now);
-      h = Number(parts.find((p) => p.type === "hour")?.value ?? getHours(now));
-      m = Number(parts.find((p) => p.type === "minute")?.value ?? getMinutes(now));
-    } catch {
-      h = getHours(now);
-      m = getMinutes(now);
-    }
-  } else {
-    h = getHours(now);
-    m = getMinutes(now);
-  }
+  // §UI-audit 2026-04: same wall-clock derivation as booking blocks
+  // ({@link getHourMinuteForInstantInZone}) so the red line aligns with
+  // appointment cards when the device timezone ≠ business timezone.
+  const { h, m } = getHourMinuteForInstantInZone(now, timeZone);
   const rawTop = (h - startHour) * slotHeight + (m / 60) * slotHeight;
   // Always show the line when viewing today: clamp so it stays visible in the grid (offset by grid top padding)
   const GRID_TOP = 8;
   const top = GRID_TOP + Math.max(0, Math.min(rawTop, totalGridHeight - 4));
 
+  // §Provider-audit 2026-04: a11y label must match the visual line position,
+  // which uses business-TZ wall clock. Previously used device-local time and
+  // could disagree with the on-screen line when the phone zone ≠ business.
+  const a11yHour = String(h).padStart(2, "0");
+  const a11yMinute = String(m).padStart(2, "0");
+
   return (
     <View
       style={{ position: "absolute", left: 0, right: 0, top, flexDirection: "row", alignItems: "center", zIndex: 100, pointerEvents: "none" }}
-      accessibilityLabel={`Current time ${format(now, "HH:mm")}`}
+      accessibilityLabel={`Current time ${a11yHour}:${a11yMinute}`}
     >
       <View
         style={{
@@ -666,11 +743,137 @@ function DatePickerModal({
   );
 }
 
+function MonthOverviewModal({
+  visible,
+  monthAnchor,
+  locationParam,
+  onClose,
+  onSelectDate,
+}: {
+  visible: boolean;
+  monthAnchor: Date;
+  locationParam: string;
+  onClose: () => void;
+  onSelectDate: (d: Date) => void;
+}) {
+  const { t } = useTranslation();
+  const [month, setMonth] = useState(monthAnchor);
+  useEffect(() => {
+    if (visible) setMonth(monthAnchor);
+  }, [visible, monthAnchor]);
+
+  const start = format(startOfMonth(month), "yyyy-MM-dd");
+  const end = format(endOfMonth(month), "yyyy-MM-dd");
+  const { data: mbBookings, loading } = useApi<Booking[]>(
+    `/api/provider/bookings?start_date=${start}&end_date=${end}&limit=500${locationParam}`,
+    { enabled: visible, staleTimeMs: 0 },
+  );
+
+  const countByDate = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!mbBookings?.length) return m;
+    for (const b of mbBookings) {
+      const d = parseApiDateTime(b.scheduled_at);
+      if (!d) continue;
+      const key = format(d, "yyyy-MM-dd");
+      m.set(key, (m.get(key) ?? 0) + 1);
+    }
+    return m;
+  }, [mbBookings]);
+
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const firstDayOfWeek = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDayOfWeek; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.4)" }} onPress={onClose}>
+        <Pressable style={{ marginHorizontal: 16, maxWidth: 360, width: "100%", borderRadius: 16, backgroundColor: Colors.white, padding: 16 }} onPress={() => {}}>
+          <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <TouchableOpacity
+              onPress={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+              accessibilityLabel={t("provider.calendarScreen.prevMonthA11y")}
+            >
+              <Ionicons name="chevron-back" size={22} color="#111" />
+            </TouchableOpacity>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{format(month, "MMMM yyyy")}</Text>
+            <TouchableOpacity
+              onPress={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+              accessibilityLabel={t("provider.calendarScreen.nextMonthA11y")}
+            >
+              <Ionicons name="chevron-forward" size={22} color="#111" />
+            </TouchableOpacity>
+          </View>
+          {loading && (
+            <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 8 }}>
+              {t("provider.calendarScreen.monthOverviewLoadingCounts")}
+            </Text>
+          )}
+          <View style={{ marginBottom: 4, flexDirection: "row" }}>
+            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+              <View key={d} style={{ flex: 1, alignItems: "center" }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400] }}>{d}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+            {cells.map((day, i) => {
+              if (day === null) return <View key={`e-${i}`} style={{ width: "14.28%" }} />;
+              const date = new Date(month.getFullYear(), month.getMonth(), day);
+              const key = format(date, "yyyy-MM-dd");
+              const cnt = countByDate.get(key) ?? 0;
+              const isToday = isSameDay(date, new Date());
+              return (
+                <TouchableOpacity
+                  key={day}
+                  style={{
+                    width: "14.28%",
+                    alignItems: "center",
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    backgroundColor: isToday ? Colors.gray[100] : "transparent",
+                  }}
+                  onPress={() => {
+                    onSelectDate(date);
+                    onClose();
+                  }}
+                  accessibilityLabel={t("provider.calendarScreen.monthOverviewDayA11y", {
+                    date: format(date, "MMMM d"),
+                    count: cnt,
+                  })}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{day}</Text>
+                  {cnt > 0 && (
+                    <View style={{ marginTop: 2, minWidth: 18, paddingHorizontal: 4, borderRadius: 8, backgroundColor: TEAL_ACCENT }}>
+                      <Text style={{ fontSize: 10, fontWeight: "700", color: DARK_HEADER, textAlign: "center" }}>{cnt}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TouchableOpacity
+            style={{ marginTop: 12, alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingVertical: 10 }}
+            onPress={onClose}
+          >
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+              {t("provider.calendarScreen.close")}
+            </Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 /* ================================================================== */
 /*  Main component                                                     */
 /* ================================================================== */
 
 export default function CalendarScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // §Provider-launch (audit 2026-04): accept `?date=YYYY-MM-DD` +
@@ -733,6 +936,9 @@ export default function CalendarScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [monthOverviewVisible, setMonthOverviewVisible] = useState(false);
+  /** Android: long-press booking menu (avoids Alert button limits when many status actions exist). */
+  const [androidBookingMenu, setAndroidBookingMenu] = useState<Booking | null>(null);
   const [prefsVisible, setPrefsVisible] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
@@ -776,8 +982,10 @@ export default function CalendarScreen() {
   const weekStartStr = format(weekStart, "yyyy-MM-dd");
   const threeDayEnd = format(addDays(selectedDate, 2), "yyyy-MM-dd");
 
-  const startDate = viewMode === "week" ? weekStartStr : viewMode === "3day" ? dateStr : dateStr;
-  const endDate = viewMode === "week" ? weekEnd : viewMode === "3day" ? threeDayEnd : dateStr;
+  // Day view still shows one day in the grid, but we load the full ISO week so the date strip
+  // booking dots, share/print, and month counts stay accurate without extra fetches.
+  const startDate = viewMode === "week" ? weekStartStr : viewMode === "3day" ? dateStr : weekStartStr;
+  const endDate = viewMode === "week" ? weekEnd : viewMode === "3day" ? threeDayEnd : weekEnd;
   const locationParam = locationFilter !== "all" ? `&location_id=${locationFilter}` : "";
 
   const {
@@ -788,7 +996,8 @@ export default function CalendarScreen() {
     mutate: setBookings,
   } = useApi<Booking[]>(
     `/api/provider/bookings?start_date=${startDate}&end_date=${endDate}&limit=500${locationParam}`,
-    { enabled: isFocused, staleTimeMs: 0 },
+    /** Calendar loads a wide date range; allow slow networks / large datasets before surfacing timeout. */
+    { enabled: isFocused, staleTimeMs: 0, timeoutMs: 60_000 },
   );
 
   const teamUrl = locationFilter !== "all" ? `/api/provider/team?location_id=${encodeURIComponent(locationFilter)}` : "/api/provider/team";
@@ -949,7 +1158,10 @@ export default function CalendarScreen() {
     const loc = locationFilter !== "all"
       ? locations.find((l) => l.id === locationFilter)
       : locations[0];
-    return loc?.operating_hours ?? null;
+    const raw = loc?.operating_hours as unknown;
+    // API mistakes / legacy shapes: arrays or primitives break day-key lookups and can crash downstream.
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
+    return raw as Record<string, DaySchedule>;
   }, [locations, locationFilter]);
 
   function getHoursForDay(day: Date): { startHour: number; endHour: number; isOpen: boolean } {
@@ -1027,11 +1239,11 @@ export default function CalendarScreen() {
   const scrollToCurrentTime = useCallback(() => {
     if (!preferences.scrollToNow || hasScrolledToNow.current) return;
     const now = new Date();
-    const h = getHours(now);
+    const { h } = getHourMinuteForInstantInZone(now, provider?.timezone ?? null);
     const offset = Math.max(0, (h - startHour - 1) * SLOT_HEIGHT);
     scrollRef.current?.scrollTo({ y: offset, animated: false });
     hasScrolledToNow.current = true;
-  }, [preferences.scrollToNow, startHour, SLOT_HEIGHT]);
+  }, [preferences.scrollToNow, startHour, SLOT_HEIGHT, provider?.timezone]);
 
   const gridRows = useMemo(() => {
     const rows: { hour: number; minute: number; label: string }[] = [];
@@ -1099,6 +1311,87 @@ export default function CalendarScreen() {
     return result;
   }, [bookings, selectedDate, viewMode, staffFilter, staffNameToId, preferences.showCanceled]);
 
+  const buildShareText = useCallback(() => {
+    return buildScheduleShareBody(
+      viewMode,
+      selectedDate,
+      weekStart,
+      filteredBookings,
+      provider?.business_name ?? "",
+      t,
+      provider?.timezone ?? null,
+    );
+  }, [viewMode, selectedDate, weekStart, filteredBookings, provider?.business_name, provider?.timezone, t]);
+
+  const handleShareSchedule = useCallback(async () => {
+    try {
+      await Share.share({
+        message: buildShareText(),
+        title: t("provider.calendarScreen.scheduleShareTitle"),
+      });
+    } catch {
+      /* user dismissed */
+    }
+  }, [buildShareText, t]);
+
+  const handleCopySchedule = useCallback(async () => {
+    await Clipboard.setStringAsync(buildShareText());
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [buildShareText]);
+
+  const handleOpenWebCalendar = useCallback(() => {
+    const base = APP_URL?.replace(/\/$/, "");
+    if (!base) {
+      Alert.alert(
+        t("provider.calendarScreen.appUrlNotConfiguredTitle"),
+        t("provider.calendarScreen.appUrlNotConfiguredMessage"),
+      );
+      return;
+    }
+    const d = format(selectedDate, "yyyy-MM-dd");
+    pushInAppBrowser(router, `${base}/provider/calendar?date=${encodeURIComponent(d)}`, "Calendar");
+  }, [router, selectedDate, t]);
+
+  const openCalendarActionsMenu = useCallback(() => {
+    const runShare = () => {
+      void handleShareSchedule();
+    };
+    const runCopy = () => {
+      void handleCopySchedule();
+    };
+    const runMonth = () => setMonthOverviewVisible(true);
+    const runWeb = () => handleOpenWebCalendar();
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [
+            t("provider.calendarScreen.cancel"),
+            t("provider.calendarScreen.shareSchedule"),
+            t("provider.calendarScreen.copySchedule"),
+            t("provider.calendarScreen.monthOverview"),
+            t("provider.calendarScreen.fullCalendarBrowser"),
+          ],
+          cancelButtonIndex: 0,
+          title: t("provider.calendarScreen.calendarActions"),
+        },
+        (idx) => {
+          if (idx === 1) runShare();
+          else if (idx === 2) runCopy();
+          else if (idx === 3) runMonth();
+          else if (idx === 4) runWeb();
+        },
+      );
+    } else {
+      Alert.alert(t("provider.calendarScreen.calendarActions"), undefined, [
+        { text: t("provider.calendarScreen.shareSchedule"), onPress: runShare },
+        { text: t("provider.calendarScreen.copySchedule"), onPress: runCopy },
+        { text: t("provider.calendarScreen.monthOverview"), onPress: runMonth },
+        { text: t("provider.calendarScreen.fullCalendarBrowser"), onPress: runWeb },
+        { text: t("provider.calendarScreen.close"), style: "cancel" },
+      ]);
+    }
+  }, [handleCopySchedule, handleOpenWebCalendar, handleShareSchedule, t]);
+
   const availabilitySegments = useMemo(() => {
     if (!availabilityRaw?.length) return [];
     const normalized = normalizeAvailabilityBlocksToSegments(availabilityRaw);
@@ -1149,7 +1442,7 @@ export default function CalendarScreen() {
         id: seg.id,
         staff_id: seg.team_member_id,
         block_type: "booking_hold",
-        title: seg.reason?.trim() || "Booking hold",
+        title: seg.reason?.trim() || t("provider.calendarScreen.bookingHoldTitle"),
         start_time: seg.start_time,
         end_time: seg.end_time,
         date: seg.date,
@@ -1241,11 +1534,15 @@ export default function CalendarScreen() {
     }));
 
     if (bookingsByStaffId.unassigned.length > 0) {
-      cols.push({ staffId: "unassigned", staffName: "Unassigned", bookings: bookingsByStaffId.unassigned });
+      cols.push({
+        staffId: "unassigned",
+        staffName: t("provider.calendarScreen.staffColumn.unassigned"),
+        bookings: bookingsByStaffId.unassigned,
+      });
     }
 
     return cols.filter((c) => c.bookings.length > 0 || cols.length <= 4);
-  }, [viewMode, staffList, staffFilter, bookingsByStaffId]);
+  }, [viewMode, staffList, staffFilter, bookingsByStaffId, t]);
 
   const todayBookingCount = useMemo(
     () => bookingCountsByDate.get(format(selectedDate, "yyyy-MM-dd")) ?? 0,
@@ -1325,61 +1622,80 @@ export default function CalendarScreen() {
   }
 
   function handleLongPressBooking(booking: Booking) {
-    const availableActions = STATUS_ACTIONS.filter((a) => a.key !== booking.status);
-    const actionLabels = availableActions.map((a) => a.label);
+    const availableActions = STATUS_ACTION_KEYS.filter((key) => key !== booking.status);
+    const actionLabels = availableActions.map((key) => getStatusActionLabel(t, key));
     if (Platform.OS === "ios") {
-      // §UX-audit 2026-04: previously this used
-      // `actionLabels.indexOf("Cancel") + 1`, which silently evaluates to 0
-      // (the sheet's own dismiss row) whenever the "Cancel booking" action is
-      // not present (e.g. when the booking is already cancelled). That styled
-      // the dismiss row as destructive red. Derive the index from the
-      // `cancelled` key and omit the prop entirely if there's no cancel row.
-      const cancelActionIdx = availableActions.findIndex((a) => a.key === "cancelled");
-      const destructiveButtonIndex = cancelActionIdx >= 0 ? cancelActionIdx + 1 : undefined;
+      const sheetOptions = [
+        t("provider.calendarScreen.cancel"),
+        t("provider.calendarScreen.viewDetails"),
+        t("provider.calendarScreen.collectPayment"),
+        ...actionLabels,
+      ];
+      const cancelActionIdx = availableActions.findIndex((key) => key === "cancelled");
+      const destructiveButtonIndex = cancelActionIdx >= 0 ? cancelActionIdx + 3 : undefined;
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options: ["Cancel", ...actionLabels],
+          options: sheetOptions,
           cancelButtonIndex: 0,
           ...(destructiveButtonIndex !== undefined ? { destructiveButtonIndex } : {}),
-          title: `${booking.customers?.full_name ?? "Booking"} — ${capitalizeFirst(booking.status)}`,
-          message: "Change booking status",
+          title: `${booking.customers?.full_name ?? t("provider.calendarScreen.bookingLabelFallback")} — ${translateBookingStatusLabel(t, booking.status)}`,
+          message: t("provider.calendarScreen.bookingActionsMessage"),
         },
         (buttonIndex) => {
           if (buttonIndex === 0) return;
-          const action = availableActions[buttonIndex - 1];
-          if (action) changeBookingStatus(booking.id, action.key);
+          if (buttonIndex === 1) {
+            handleTapBooking(booking.id);
+            return;
+          }
+          if (buttonIndex === 2) {
+            router.push(`/(app)/(tabs)/more/bookings/${booking.id}?focusPayment=1` as never);
+            return;
+          }
+          const actionKey = availableActions[buttonIndex - 3];
+          if (actionKey) changeBookingStatus(booking.id, actionKey);
         },
       );
     } else {
-      Alert.alert(
-        `${booking.customers?.full_name ?? "Booking"}`,
-        `Current status: ${capitalizeFirst(booking.status)}\nChange to:`,
-        [
-          { text: "Cancel", style: "cancel" },
-          ...availableActions.map((a) => ({
-            text: a.label,
-            style: (a.key === "cancelled" ? "destructive" : "default") as "destructive" | "default",
-            onPress: () => changeBookingStatus(booking.id, a.key),
-          })),
-        ],
-      );
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setAndroidBookingMenu(booking);
     }
   }
 
   function handleStaffHeaderPress(staffMember: { staffId: string; staffName: string }) {
     if (staffMember.staffId === "unassigned") return;
     const actions = [
-      { text: "View Week Schedule", onPress: () => { setStaffFilter(staffMember.staffId); setViewMode("week"); } },
-      { text: "View Single", onPress: () => { const idx = staffList.findIndex((s) => s.id === staffMember.staffId); if (idx >= 0) { setSelectedStaffIndex(idx); setLayoutMode("single"); } } },
+      {
+        text: t("provider.calendarScreen.staffColumn.viewWeekSchedule"),
+        onPress: () => {
+          setStaffFilter(staffMember.staffId);
+          setViewMode("week");
+        },
+      },
+      {
+        text: t("provider.calendarScreen.staffColumn.viewSingle"),
+        onPress: () => {
+          const idx = staffList.findIndex((s) => s.id === staffMember.staffId);
+          if (idx >= 0) {
+            setSelectedStaffIndex(idx);
+            setLayoutMode("single");
+          }
+        },
+      },
     ];
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
-        { options: ["Cancel", ...actions.map((a) => a.text)], cancelButtonIndex: 0, title: staffMember.staffName },
-        (idx) => { if (idx > 0) actions[idx - 1]?.onPress(); },
+        {
+          options: [t("provider.calendarScreen.cancel"), ...actions.map((a) => a.text)],
+          cancelButtonIndex: 0,
+          title: staffMember.staffName,
+        },
+        (idx) => {
+          if (idx > 0) actions[idx - 1]?.onPress();
+        },
       );
     } else {
       Alert.alert(staffMember.staffName, undefined, [
-        { text: "Cancel", style: "cancel" },
+        { text: t("provider.calendarScreen.cancel"), style: "cancel" },
         ...actions.map((a) => ({ text: a.text, onPress: a.onPress })),
       ]);
     }
@@ -1701,7 +2017,8 @@ export default function CalendarScreen() {
     day: Date,
     dropContext?: DropContext | null,
   ) {
-    const top = GRID_TOP_PADDING + getTopOffset(booking.scheduled_at, startHour, SLOT_HEIGHT);
+    const walkInLabel = t("provider.calendarScreen.walkIn");
+    const top = GRID_TOP_PADDING + getTopOffset(booking.scheduled_at, startHour, SLOT_HEIGHT, provider?.timezone ?? null);
     const height = getBlockHeight(booking, SLOT_HEIGHT, preferences.compactMode);
     const colors = getBlockColors(booking, preferences.colorBy, staffList);
     const isSmall = height < (preferences.compactMode ? 24 : 40);
@@ -1744,7 +2061,7 @@ export default function CalendarScreen() {
             backgroundColor: preferences.highContrast ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.06)",
           }}
           accessibilityRole="button"
-          accessibilityLabel="Booking actions"
+          accessibilityLabel={t("provider.calendarScreen.bookingActionsMessage")}
         >
           <Ionicons
             name="ellipsis-horizontal"
@@ -1780,7 +2097,7 @@ export default function CalendarScreen() {
             numberOfLines={1}
             allowFontScaling={false}
           >
-            {booking.customers?.full_name ?? "Walk-in"}
+            {booking.customers?.full_name ?? walkInLabel}
           </Text>
         ) : (
           <>
@@ -1790,7 +2107,7 @@ export default function CalendarScreen() {
                 numberOfLines={1}
                 allowFontScaling={false}
               >
-                {booking.customers?.full_name ?? "Walk-in"}
+                {booking.customers?.full_name ?? walkInLabel}
               </Text>
               {preferences.showAppointmentIcons && hasNotes && (
                 <Ionicons name="document-text-outline" size={12} color={preferences.highContrast ? "#fff" : "#6b7280"} />
@@ -1828,7 +2145,7 @@ export default function CalendarScreen() {
                 style={{ marginTop: 2, fontSize: 11, color: subTextColor }}
                 allowFontScaling={false}
               >
-                {formatTime(booking.scheduled_at)}
+                {formatTimeInZone(booking.scheduled_at, provider?.timezone ?? null)}
                 {preferences.showPrices && <> &middot; {formatCurrency(booking.total_amount, booking.currency)}</>}
               </Text>
             )}
@@ -1904,7 +2221,10 @@ export default function CalendarScreen() {
             }}
             delayLongPress={500}
             accessibilityRole="button"
-            accessibilityLabel={`Booking with ${booking.customers?.full_name ?? "Walk-in"} at ${formatTime(booking.scheduled_at)}. Long press to drag.`}
+            accessibilityLabel={t("provider.calendarScreen.bookingA11yLongPress", {
+              name: booking.customers?.full_name?.trim() || walkInLabel,
+              time: formatTimeInZone(booking.scheduled_at, provider?.timezone ?? null),
+            })}
           >
             {blockContent}
           </TouchableOpacity>
@@ -1921,7 +2241,11 @@ export default function CalendarScreen() {
         onLongPress={() => handleLongPressBooking(booking)}
         delayLongPress={400}
         accessibilityRole="button"
-        accessibilityLabel={`Booking with ${booking.customers?.full_name ?? "Walk-in"} at ${formatTime(booking.scheduled_at)}, status ${capitalizeFirst(booking.status)}`}
+        accessibilityLabel={t("provider.calendarScreen.bookingA11yShort", {
+          name: booking.customers?.full_name?.trim() || walkInLabel,
+          time: formatTimeInZone(booking.scheduled_at, provider?.timezone ?? null),
+          status: translateBookingStatusLabel(t, booking.status),
+        })}
       >
         {blockContent}
       </TouchableOpacity>
@@ -2196,6 +2520,14 @@ export default function CalendarScreen() {
           </TouchableOpacity>
 
           <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <TouchableOpacity
+              onPress={openCalendarActionsMenu}
+              hitSlop={8}
+              style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", marginRight: 4 }}
+              accessibilityLabel="Calendar actions: share, copy, month, open in browser"
+            >
+              <Ionicons name="ellipsis-horizontal" size={22} color="rgba(255,255,255,0.85)" />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setPrefsVisible(true)}
               hitSlop={8}
@@ -2705,14 +3037,14 @@ export default function CalendarScreen() {
               }}
             >
               <Text style={{ fontSize: 10, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
-                {draggingBooking.customers?.full_name ?? "Walk-in"}
+                {draggingBooking.customers?.full_name ?? t("provider.calendarScreen.walkIn")}
               </Text>
               {draggingBooking.services?.length > 0 && (
                 <Text style={{ marginTop: 2, fontSize: 9, color: Colors.gray[600] }} numberOfLines={1}>
                   {draggingBooking.services.map((s) => s.name).join(", ")}
                 </Text>
               )}
-              <Text style={{ marginTop: 2, fontSize: 9, color: Colors.gray[500] }}>{formatTime(draggingBooking.scheduled_at)}</Text>
+              <Text style={{ marginTop: 2, fontSize: 9, color: Colors.gray[500] }}>{formatTimeInZone(draggingBooking.scheduled_at, provider?.timezone ?? null)}</Text>
             </View>
           </View>
         </Modal>
@@ -2723,6 +3055,85 @@ export default function CalendarScreen() {
         currentDate={selectedDate}
         onSelect={setSelectedDate}
         onClose={() => setDatePickerVisible(false)}
+      />
+
+      {Platform.OS === "android" && (
+        <BottomSheet
+          visible={androidBookingMenu != null}
+          onClose={() => setAndroidBookingMenu(null)}
+          title={
+            androidBookingMenu
+              ? `${androidBookingMenu.customers?.full_name ?? t("provider.calendarScreen.bookingLabelFallback")} — ${translateBookingStatusLabel(t, androidBookingMenu.status)}`
+              : undefined
+          }
+          subtitle={t("provider.calendarScreen.bookingActionsMessage")}
+          snapHeight="half"
+        >
+          {androidBookingMenu ? (
+            <View>
+              <TouchableOpacity
+                style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
+                onPress={() => {
+                  const b = androidBookingMenu;
+                  setAndroidBookingMenu(null);
+                  handleTapBooking(b.id);
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }}>
+                  {t("provider.calendarScreen.viewDetails")}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
+                onPress={() => {
+                  const b = androidBookingMenu;
+                  setAndroidBookingMenu(null);
+                  router.push(`/(app)/(tabs)/more/bookings/${b.id}?focusPayment=1` as never);
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }}>
+                  {t("provider.calendarScreen.collectPayment")}
+                </Text>
+              </TouchableOpacity>
+              {STATUS_ACTION_KEYS.filter((key) => key !== androidBookingMenu.status).map((key, idx, arr) => (
+                <TouchableOpacity
+                  key={key}
+                  style={{
+                    paddingVertical: 14,
+                    borderBottomWidth: idx < arr.length - 1 ? 1 : 0,
+                    borderBottomColor: Colors.gray[100],
+                  }}
+                  onPress={() => {
+                    const b = androidBookingMenu;
+                    setAndroidBookingMenu(null);
+                    void changeBookingStatus(b.id, key);
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: "500",
+                      color: key === "cancelled" ? "#dc2626" : Colors.gray[900],
+                    }}
+                  >
+                    {getStatusActionLabel(t, key)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+        </BottomSheet>
+      )}
+
+      <MonthOverviewModal
+        visible={monthOverviewVisible}
+        monthAnchor={selectedDate}
+        locationParam={locationParam}
+        onClose={() => setMonthOverviewVisible(false)}
+        onSelectDate={(d) => {
+          setSelectedDate(d);
+          hasScrolledToNow.current = false;
+        }}
       />
 
       <CalendarPreferencesModal
@@ -2743,29 +3154,37 @@ export default function CalendarScreen() {
           <View style={{ marginBottom: 12 }}>
             {[
               {
-                label: "New Booking",
+                labelKey: "newBooking",
+                label: t("provider.calendarScreen.fab.newBooking"),
                 icon: "calendar-outline" as keyof typeof Ionicons.glyphMap,
                 color: "#4f46e5",
                 onPress: () => {
                   setFabOpen(false);
-                  const now = new Date();
-                  const roundedMin = Math.ceil(now.getMinutes() / 15) * 15 % 60;
-                  const roundedHour = now.getHours() + (Math.ceil(now.getMinutes() / 15) >= 4 ? 1 : 0);
-                  const timeParam = `${String(roundedHour).padStart(2, "0")}:${String(roundedMin).padStart(2, "0")}`;
-                  router.push(`/(app)/(tabs)/more/bookings/new?date=${dateStr}&time=${timeParam}&status=${preferences.defaultNewAppointmentStatus}` as never);
+                  const href = newBookingScreenHrefFromCalendarDay(selectedDate, {
+                    status: preferences.defaultNewAppointmentStatus,
+                    ...(locationFilter !== "all" ? { locationId: locationFilter } : {}),
+                  });
+                  router.push(href as never);
                 },
               },
               {
-                label: "Walk-in",
+                labelKey: "walkIn",
+                label: t("provider.calendarScreen.fab.walkIn"),
                 icon: "walk-outline" as keyof typeof Ionicons.glyphMap,
                 color: "#22c55e",
                 onPress: () => {
                   setFabOpen(false);
-                  router.push(`/(app)/(tabs)/more/bookings/new?date=${dateStr}&walk_in=true` as never);
+                  router.push(
+                    newBookingScreenHrefFromCalendarDay(selectedDate, {
+                      walkIn: true,
+                      ...(locationFilter !== "all" ? { locationId: locationFilter } : {}),
+                    }) as never,
+                  );
                 },
               },
               {
-                label: "Express Book",
+                labelKey: "expressBook",
+                label: t("provider.calendarScreen.fab.expressBook"),
                 icon: "flash-outline" as keyof typeof Ionicons.glyphMap,
                 color: "#f59e0b",
                 onPress: () => {
@@ -2774,7 +3193,8 @@ export default function CalendarScreen() {
                 },
               },
               {
-                label: "Time Block",
+                labelKey: "timeBlock",
+                label: t("provider.calendarScreen.fab.timeBlock"),
                 icon: "ban-outline" as keyof typeof Ionicons.glyphMap,
                 color: "#6366f1",
                 onPress: () => {
@@ -2783,7 +3203,8 @@ export default function CalendarScreen() {
                 },
               },
               {
-                label: "Group Booking",
+                labelKey: "groupBooking",
+                label: t("provider.calendarScreen.fab.groupBooking"),
                 icon: "people-outline" as keyof typeof Ionicons.glyphMap,
                 color: "#ec4899",
                 onPress: () => {
@@ -2793,7 +3214,7 @@ export default function CalendarScreen() {
               },
             ].map((action, index) => (
               <Animated.View
-                key={action.label}
+                key={action.labelKey}
                 style={{
                   opacity: fabAnim,
                   transform: [

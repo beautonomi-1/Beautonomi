@@ -22,6 +22,23 @@ export interface Notification {
   action_url?: string;
 }
 
+/** Ionicons name for notification list rows (map by `type`). */
+export function iconNameForNotificationType(type: string): string {
+  const t = (type || "").toLowerCase();
+  if (t.includes("message") || t.includes("chat")) return "chatbubble-ellipses-outline";
+  if (t.includes("booking") || t.includes("appointment") || t.includes("reminder")) return "calendar-outline";
+  if (t.includes("order") || t.includes("product") || t.includes("ship")) return "bag-outline";
+  if (t.includes("payment") || t.includes("refund") || t.includes("wallet")) return "card-outline";
+  if (t.includes("review")) return "star-outline";
+  if (t.includes("loyalty") || t.includes("point") || t.includes("referral") || t.includes("gift")) return "gift-outline";
+  if (t.includes("waitlist")) return "hourglass-outline";
+  if (t.includes("custom") || t.includes("request") || t.includes("offer")) return "briefcase-outline";
+  if (t.includes("return")) return "arrow-undo-outline";
+  if (t.includes("ticket") || t.includes("support") || t.includes("help")) return "help-circle-outline";
+  if (t.includes("on_demand") || t.includes("ondemand")) return "flash-outline";
+  return "notifications-outline";
+}
+
 export function formatNotificationTime(iso: string): string {
   const d = new Date(iso);
   const now = new Date();

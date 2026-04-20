@@ -21,6 +21,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import { trackSupportTicketDetailView, trackSupportTicketReply } from "@/lib/analytics";
+import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
 
 type Message = {
   id: string;
@@ -99,10 +100,10 @@ export default function SupportTicketDetailScreen() {
         setLoadError(typeof res.error === "string" ? res.error : (res.error?.message ?? "Could not load ticket"));
         return;
       }
-      const payload = res.data;
+      const payload = res.data as { ticket?: Ticket; messages?: Message[] } | null | undefined;
       const t = payload?.ticket ?? null;
       setTicket(t);
-      setMessages(payload?.messages ?? []);
+      setMessages(Array.isArray(payload?.messages) ? payload!.messages! : []);
       if (t) trackSupportTicketDetailView(t.id, t.ticket_number);
     } catch (e) {
       setTicket(null);
@@ -226,7 +227,13 @@ export default function SupportTicketDetailScreen() {
                 {formatDateSafe(ticket.created_at)}
               </Text>
             </View>
-            <Text style={twStyle("text-lg font-semibold text-gray-900 mb-4")}>{ticket.subject}</Text>
+            <Text style={twStyle("text-lg font-semibold text-gray-900 mb-2")}>{ticket.subject}</Text>
+            <Text style={twStyle("mb-4 text-xs text-gray-500")}>
+              {ticket.category
+                ? `Category: ${labelForSupportTicketCategory(String(ticket.category))} · `
+                : ""}
+              Priority: {ticket.priority}
+            </Text>
 
             {messages.map((m) => {
               const isOwn = m.is_mine ?? (m.user_id === user?.id);

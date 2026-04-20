@@ -64,7 +64,7 @@ export async function refundRedeemedLoyaltyPoints(
   // Compute new balance for the ledger (`balance_after` is NOT NULL).
   const { data: balanceData } = await adminClient.rpc(
     "get_customer_available_points",
-    { p_customer_id: customerId },
+    { customer_uuid: customerId },
   );
   const currentBalance = Number(balanceData ?? 0) || 0;
   const newBalance = currentBalance + pointsRedeemed;

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost } from "@/hooks/useApi";
@@ -27,6 +28,7 @@ import { formatPhone, formatTimeAgo, formatCurrency } from "@/lib/format";
 import { api } from "@/lib/api-client";
 import { useProvider } from "@/providers/ProviderContext";
 import { Colors } from "@/constants/colors";
+import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
@@ -177,14 +179,43 @@ const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onM
 
 export default function ClientsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const listBottomPadding = tabScreenScrollBottomPadding(insets.bottom, 16);
   useResponsive();
   const defaultPhoneDial = useDefaultPhoneDial();
   const { selectedLocationId } = useProvider();
-  const locQ = selectedLocationId ? `?location_id=${selectedLocationId}` : "";
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [clientFilter, setClientFilter] = useState<ClientFilter>("all");
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // §Provider-audit 2026-04 (round 3): debounce search input so every
+  // keystroke doesn't trigger a fresh `/api/provider/clients?search=…`
+  // request. 300ms feels snappy in testing.
+  useEffect(() => {
+    const trimmed = search.trim();
+    if (trimmed.length === 0) {
+      setDebouncedSearch("");
+      return;
+    }
+    const timer = setTimeout(() => setDebouncedSearch(trimmed), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // §Provider-audit 2026-04 (round 4): paginate the primary clients feed.
+  // API exposes `X-Total-Count` and accepts `limit`/`offset` (see the
+  // `route.ts` change from round 3). First page is 50 rows; we load
+  // additional pages on scroll via `loadMore()` below. Serviced /
+  // conversations feeds remain unpaginated (they're naturally capped).
+  const CLIENT_PAGE_SIZE = 50;
+  const locQ = useMemo(() => {
+    const parts: string[] = [`limit=${CLIENT_PAGE_SIZE}`];
+    if (selectedLocationId) parts.push(`location_id=${encodeURIComponent(selectedLocationId)}`);
+    if (debouncedSearch.length > 0) parts.push(`search=${encodeURIComponent(debouncedSearch)}`);
+    return `?${parts.join("&")}`;
+  }, [selectedLocationId, debouncedSearch]);
+  const secondaryLocQ = selectedLocationId ? `?location_id=${selectedLocationId}` : "";
 
   // Form state - separate first/last name fields
   const [firstName, setFirstName] = useState("");
@@ -198,17 +229,66 @@ export default function ClientsScreen() {
     `/api/provider/clients${locQ}`,
     { enabled: isFocused, staleTimeMs: 20_000 },
   );
-  const { data: servicedClients, refresh: refreshServiced } = useApi<any[]>(
-    `/api/provider/clients/serviced${locQ}`,
+  const { data: servicedClients, loading: loadingServiced, refresh: refreshServiced } = useApi<any[]>(
+    `/api/provider/clients/serviced${secondaryLocQ}`,
     { enabled: isFocused, staleTimeMs: 20_000 },
   );
-  const { data: conversationClients, refresh: refreshConversations } = useApi<any[]>(
-    `/api/provider/clients/conversations${locQ}`,
+  const { data: conversationClients, loading: loadingConversations, refresh: refreshConversations } = useApi<any[]>(
+    `/api/provider/clients/conversations${secondaryLocQ}`,
     { enabled: isFocused, staleTimeMs: 20_000 },
   );
 
+  // §Provider-audit 2026-04 (round 4): infinite scroll state for the
+  // primary feed. `extraPages` holds pages 2..N; reset whenever the
+  // query (location or debounced search) changes so stale results from
+  // a prior filter don't stick around.
+  const [extraPages, setExtraPages] = useState<ApiClient[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  useEffect(() => {
+    // Reset pagination state whenever the first-page query URL changes.
+    setExtraPages([]);
+    setHasMore(Array.isArray(rawClients) && rawClients.length >= CLIENT_PAGE_SIZE);
+  }, [rawClients, selectedLocationId, debouncedSearch]);
+
+  const loadMoreClients = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    const offset = (rawClients?.length ?? 0) + extraPages.length;
+    const parts: string[] = [`limit=${CLIENT_PAGE_SIZE}`, `offset=${offset}`];
+    if (selectedLocationId) parts.push(`location_id=${encodeURIComponent(selectedLocationId)}`);
+    if (debouncedSearch.length > 0) parts.push(`search=${encodeURIComponent(debouncedSearch)}`);
+    const url = `/api/provider/clients?${parts.join("&")}`;
+    setLoadingMore(true);
+    try {
+      const res = await api.get<ApiClient[]>(url);
+      if (res.error) {
+        setHasMore(false);
+        return;
+      }
+      const page = Array.isArray(res.data) ? res.data : [];
+      if (page.length > 0) {
+        setExtraPages((prev) => [...prev, ...page]);
+      }
+      if (page.length < CLIENT_PAGE_SIZE) {
+        setHasMore(false);
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, rawClients, extraPages.length, selectedLocationId, debouncedSearch]);
+
   const clients = useMemo<Client[] | null>(() => {
-    if (!rawClients) return null;
+    if (rawClients === null) return null;
+    // Avoid an empty-state flash: main list may be [] while serviced/conversations
+    // still load clients who only appear in those feeds.
+    if (
+      rawClients.length === 0 &&
+      (loadingServiced || loadingConversations)
+    ) {
+      return null;
+    }
+
     const seen = new Set<string>();
     const result: Client[] = [];
 
@@ -233,11 +313,12 @@ export default function ClientsScreen() {
     };
 
     rawClients.forEach(addClient);
+    extraPages.forEach(addClient);
     servicedClients?.forEach(addClient);
     conversationClients?.forEach(addClient);
 
     return result;
-  }, [rawClients, servicedClients, conversationClients]);
+  }, [rawClients, extraPages, servicedClients, conversationClients, loadingServiced, loadingConversations]);
   const { execute: createClient, loading: creating } = useApiPost<any, Client>(
     "/api/provider/clients/create"
   );
@@ -245,6 +326,8 @@ export default function ClientsScreen() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      setExtraPages([]);
+      setHasMore(false);
       await Promise.all([refresh(), refreshServiced(), refreshConversations()]);
     } finally {
       setRefreshing(false);
@@ -288,15 +371,23 @@ export default function ClientsScreen() {
       );
     }
 
-    // Search
+    // §Provider-audit 2026-04 (round 2): normalise phone search — providers
+    // type "0721234567" expecting to hit "+27721234567" (SA national vs
+    // E.164). Match on the trailing significant digits rather than a raw
+    // substring. Name/email keep the plain includes-check.
     if (search.trim()) {
       const q = search.toLowerCase();
-      result = result.filter(
-        (c) =>
-          c.full_name?.toLowerCase().includes(q) ||
-          c.email?.toLowerCase().includes(q) ||
-          c.phone?.includes(q)
-      );
+      const digitsOnly = q.replace(/\D+/g, "");
+      const digitsSuffix = digitsOnly.length >= 7 ? digitsOnly.slice(-9) : digitsOnly;
+      result = result.filter((c) => {
+        if (c.full_name?.toLowerCase().includes(q)) return true;
+        if (c.email?.toLowerCase().includes(q)) return true;
+        if (!c.phone) return false;
+        const phoneDigits = c.phone.replace(/\D+/g, "");
+        if (digitsOnly.length > 0 && phoneDigits.includes(digitsOnly)) return true;
+        if (digitsSuffix.length > 0 && phoneDigits.endsWith(digitsSuffix)) return true;
+        return false;
+      });
     }
 
     return result;
@@ -386,7 +477,7 @@ export default function ClientsScreen() {
 
     setShowAddSheet(false);
     resetForm();
-    refresh();
+    await Promise.all([refresh(), refreshServiced(), refreshConversations()]);
     Alert.alert("Success", "Client added successfully");
   }
 
@@ -466,7 +557,7 @@ export default function ClientsScreen() {
         <SearchBar placeholder="Search clients..." value={search} onChangeText={setSearch} />
       </View>
 
-      {loading && !clients ? (
+      {(loading || loadingServiced || loadingConversations) && clients === null ? (
         <SkeletonList rows={6} />
       ) : clientsError && !clients ? (
         <ErrorState message={clientsError} onRetry={refresh} />
@@ -497,7 +588,16 @@ export default function ClientsScreen() {
           showsVerticalScrollIndicator={true}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120 }}
+          onEndReached={loadMoreClients}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: 16, alignItems: "center" }}>
+                <Text style={{ fontSize: 12, color: Colors.gray[400] }}>Loading more…</Text>
+              </View>
+            ) : null
+          }
+          contentContainerStyle={{ paddingBottom: listBottomPadding }}
         />
       )}
 

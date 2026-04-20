@@ -1,3 +1,14 @@
+/**
+ * **Language & region** — primary Account entry for language, currency, and timezone.
+ *
+ * Saves `preferred_language`, `preferred_currency`, and `timezone` on the user (via `/api/me/profile` PATCH
+ * and the same DB columns as `POST /api/me/preferences`).
+ *
+ * **Currency display expectation:** Most shop/booking screens still use `getTenantDefaultCurrency()` from the
+ * remote config bundle (tenant/market). The currency saved here is the user’s account preference and is used
+ * where APIs or future UI opt in — see `useCustomerDisplayCurrency()` if a screen should format prices using
+ * `preferred_currency` instead of only the bundle default.
+ */
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
@@ -23,6 +34,7 @@ import {
 } from "@/config/public-env";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { changeLanguage } from "@/lib/i18n";
 import { currencySelectLabel, LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 
 /* ------------------------------------------------------------------ */
@@ -193,7 +205,7 @@ function AppearanceSection() {
 }
 
 export default function PreferencesScreen() {
-  const { bundle } = useConfigBundle();
+  const { bundle, refresh: refreshConfigBundle } = useConfigBundle();
 
   const [languageOptions, setLanguageOptions] = useState<PickerOption[]>(LANGUAGE_OPTIONS);
   const [currencyOptions, setCurrencyOptions] = useState<PickerOption[]>(FALLBACK_CURRENCY_OPTIONS);
@@ -305,6 +317,17 @@ export default function PreferencesScreen() {
     setCurrentMarketHost(normalizeHost(getRuntimeMarketHost()));
   }, []);
 
+  // When profile loads with a saved language, align i18n (same DB field as /api/me/preferences).
+  useEffect(() => {
+    const raw = profile.preferred_language?.trim();
+    if (!raw) return;
+    const code = raw.split(/[-_]/)[0];
+    void import("@beautonomi/i18n").then(({ i18n }) => {
+      const cur = (i18n.language || "en").split(/[-_]/)[0];
+      if (cur !== code) void changeLanguage(code);
+    });
+  }, [profile.preferred_language]);
+
   const selectOption = useCallback(
     async (field: PreferenceField, value: string) => {
       const previous = { ...profile };
@@ -320,6 +343,9 @@ export default function PreferencesScreen() {
         if (res.error) {
           setProfile(previous);
           Alert.alert("Error", res.error.message || "Failed to save preference");
+        } else if (field === "preferred_language") {
+          const code = value.split(/[-_]/)[0];
+          await changeLanguage(code);
         }
       } catch {
         setProfile(previous);
@@ -336,8 +362,13 @@ export default function PreferencesScreen() {
     if (!normalized || normalized === currentMarketHost) return;
     await setRuntimeMarketHost(normalized);
     setCurrentMarketHost(normalized);
+    try {
+      await refreshConfigBundle();
+    } catch {
+      // Non-fatal: tenant metadata may refresh on next app launch.
+    }
     Alert.alert("Market updated", `Your active market is now ${normalized}.`);
-  }, [currentMarketHost]);
+  }, [currentMarketHost, refreshConfigBundle]);
 
   return (
     <>
@@ -441,7 +472,10 @@ export default function PreferencesScreen() {
             </View>
             <ScrollView style={{ padding: 16 }} keyboardShouldPersistTaps="handled">
               {pickerConfig?.options.map((option) => {
-                const isSelected = pickerField !== null && profile[pickerField] === option.value;
+                const stored = pickerField ? profile[pickerField] : null;
+                const resolved =
+                  stored ?? (pickerConfig ? String(pickerConfig.defaultValue ?? "") : "");
+                const isSelected = resolved === option.value;
                 return (
                   <TouchableOpacity
                     key={option.value}

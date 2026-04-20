@@ -61,7 +61,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
       { title: "Gallery & images", description: "Business photos", href: "/provider/settings/gallery", mobileRoute: "/(app)/(tabs)/more/gallery" },
       { title: "Billing & invoices", description: "Billing and invoices", href: "/provider/settings/billing", mobileRoute: "/(app)/(tabs)/more/settings/billing" },
       { title: "Locations", description: "Business locations", href: "/provider/settings/locations", mobileRoute: "/(app)/(tabs)/more/locations" },
-      { title: "Operating hours", description: "Opening and closing times", href: "/provider/settings/operating-hours", mobileRoute: "/(app)/(tabs)/more/settings-operating-hours" },
+      { title: "Operating hours", description: "Opening and closing times", href: "/provider/settings/operating-hours", mobileRoute: "/(app)/(tabs)/more/settings/hours" },
       { title: "Distance settings", description: "House call limits", href: "/provider/settings/distance", mobileRoute: "/(app)/(tabs)/more/settings/distance-settings" },
       { title: "Service zones", description: "Service radius and at-home booking zones", href: "/provider/settings/service-zones", mobileRoute: "/(app)/(tabs)/more/settings/service-zones" },
       { title: "Identity verification", description: "KYC for payouts", href: "/provider/settings/verification", mobileRoute: "/(app)/(tabs)/more/settings/verification" },
@@ -149,6 +149,8 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     description: "Account and notifications",
     items: [
       { title: "My profile", description: "Photo, personal info, address & plan", href: "/provider/account/profile", mobileRoute: "/(app)/(tabs)/more/profile" },
+      { title: "Rewards & badges", description: "Points, tiers, milestones & badge progress", href: "/provider/gamification", mobileRoute: "/(app)/(tabs)/more/rewards-hub" },
+      { title: "Subscription & plan", description: "Upgrade, billing period, cancel or renew", href: "/provider/settings/subscription", mobileRoute: "/(app)/(tabs)/more/settings/subscription" },
       { title: "Notification preferences", description: "How you receive notifications", href: "/provider/settings/notifications", mobileRoute: "/(app)/(tabs)/more/settings/notification-preferences" },
       { title: "My tickets", description: "View and reply to your support tickets", href: "/help/my-tickets", mobileRoute: "/(app)/(tabs)/more/support-tickets" },
       { title: "Contact support", description: "Submit a support ticket or get help", href: "/help/submit-ticket", mobileRoute: "/(app)/(tabs)/more/contact-support" },

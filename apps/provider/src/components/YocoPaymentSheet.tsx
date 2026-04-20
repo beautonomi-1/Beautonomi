@@ -3,7 +3,9 @@
  * Provider selects a device, amount is shown, and payment is processed via API.
  */
 import { useState, useEffect, useCallback } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert, Linking } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import { useRouter } from "expo-router";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -40,12 +42,14 @@ export function YocoPaymentSheet({
   description,
   onPaymentSuccess,
 }: YocoPaymentSheetProps) {
+  const router = useRouter();
   const { integration: yocoIntegration, loading: integrationLoading } = useYocoIntegration();
   const { devices, loading: devicesLoading } = useYocoDevices();
   const { processPayment, processing } = useYocoPayment();
   const [selectedDevice, setSelectedDevice] = useState<YocoDevice | null>(null);
 
-  const isConnected = yocoIntegration?.is_enabled === true;
+  const isConnected =
+    yocoIntegration?.is_enabled === true && yocoIntegration?.api_key_set === true;
   const activeDevices = devices.filter((d) => d.is_active);
   const loading = integrationLoading || devicesLoading;
 
@@ -82,7 +86,7 @@ export function YocoPaymentSheet({
             [
               { text: "Done", onPress: () => { onPaymentSuccess(result); onClose(); } },
               { text: "View receipt", onPress: () => {
-                Linking.openURL(result.receipt_url!);
+                pushInAppBrowser(router, result.receipt_url!, "Receipt");
                 onPaymentSuccess(result);
                 onClose();
               } },
@@ -103,7 +107,7 @@ export function YocoPaymentSheet({
         Alert.alert("Payment Failed", "The card payment was declined. Please try again.");
       }
     }
-  }, [selectedDevice, amountCents, currency, bookingId, saleId, description, processPayment, onPaymentSuccess, onClose]);
+  }, [selectedDevice, amountCents, currency, bookingId, saleId, description, processPayment, onPaymentSuccess, onClose, router]);
 
   const displayAmount = formatCurrency(amountCents / 100, currency);
 

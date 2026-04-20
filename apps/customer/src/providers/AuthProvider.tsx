@@ -21,6 +21,7 @@ import {
   LEGACY_CART_CACHE_KEY,
   BOOKINGS_CACHE_KEY_PREFIX,
   LEGACY_BOOKINGS_CACHE_KEY_PREFIX,
+  PROFILE_SUMMARY_CACHE_KEY_PREFIX,
 } from "@/lib/cache-keys";
 import {
   normalizeSupabaseAuthPhone,
@@ -88,7 +89,13 @@ async function clearCustomerUserCaches(): Promise<void> {
       key === LEGACY_CART_CACHE_KEY ||
       key.startsWith(`${CART_CACHE_KEY_PREFIX}:`) ||
       key.startsWith(LEGACY_BOOKINGS_CACHE_KEY_PREFIX) ||
-      key.startsWith(`${BOOKINGS_CACHE_KEY_PREFIX}:`)
+      key.startsWith(`${BOOKINGS_CACHE_KEY_PREFIX}:`) ||
+      // §Customer-audit 2026-04: Profile tab now caches its summary
+      // (completion %, loyalty, verification, rating) to AsyncStorage
+      // for instant render. Sweep it on sign-out so the next user on
+      // the same device never sees a prior user's badges flash before
+      // their own fetch completes.
+      key.startsWith(`${PROFILE_SUMMARY_CACHE_KEY_PREFIX}.`)
     );
     if (cacheKeys.length > 0) {
       await AsyncStorage.multiRemove(cacheKeys);

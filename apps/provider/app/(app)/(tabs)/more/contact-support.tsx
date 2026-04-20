@@ -1,5 +1,10 @@
 import { useState } from "react";
 import { View, Text, TouchableOpacity, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform } from "react-native";
+import {
+  SUPPORT_TICKET_DEFAULT_CATEGORY,
+  SUPPORT_TICKET_PRIORITIES,
+} from "@/lib/supportTicketCategoryPresets";
+import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -13,6 +18,8 @@ export default function ContactSupportScreen() {
   const router = useRouter();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
+  const [category, setCategory] = useState(SUPPORT_TICKET_DEFAULT_CATEGORY);
+  const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const { execute: createTicket, loading: submitting } = useApiMutation("post");
 
   const handleSubmit = async () => {
@@ -26,17 +33,18 @@ export default function ContactSupportScreen() {
     const res = await createTicket("/api/me/support-tickets", {
       subject: sub,
       message: msg,
-      priority: "medium",
+      priority,
+      category,
     });
     if (!res.error) {
       const ticketNumber = (res as { data?: { ticket?: { ticket_number?: string } } })?.data?.ticket?.ticket_number;
       if (ticketNumber) trackSupportTicketCreated(ticketNumber);
       setSubject("");
       setMessage("");
-      const message = ticketNumber
+      const alertBody = ticketNumber
         ? `Your support ticket has been created. Your ticket number is ${ticketNumber}. We'll get back to you soon.`
         : "Your support ticket has been created. We'll get back to you soon.";
-      Alert.alert("Ticket sent", message, [
+      Alert.alert("Ticket sent", alertBody, [
         { text: "View tickets", onPress: () => router.push("/(app)/(tabs)/more/support-tickets" as never) },
         { text: "OK", onPress: () => router.back() },
       ]);
@@ -82,6 +90,39 @@ export default function ContactSupportScreen() {
           </TouchableOpacity>
 
           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>Submit a new ticket</Text>
+
+          <View style={{ marginBottom: 16 }}>
+            <SupportTicketCategoryPicker value={category} onChange={setCategory} />
+          </View>
+
+          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[600], marginBottom: 8 }}>Priority</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+            {SUPPORT_TICKET_PRIORITIES.map((p) => (
+              <TouchableOpacity
+                key={p.value}
+                onPress={() => setPriority(p.value)}
+                style={{
+                  borderRadius: 20,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderWidth: 1.5,
+                  borderColor: priority === p.value ? Colors.primary : Colors.gray[200],
+                  backgroundColor: priority === p.value ? `${Colors.primary}14` : Colors.white,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "600",
+                    color: priority === p.value ? Colors.primary : Colors.gray[600],
+                  }}
+                >
+                  {p.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <TextInput
             value={subject}
             onChangeText={setSubject}

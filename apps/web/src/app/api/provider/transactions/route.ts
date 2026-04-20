@@ -63,6 +63,8 @@ export async function GET(request: NextRequest) {
       provider_earnings: "payment",
       payout: "payout",
       platform_fee: "fee",
+      /** Customer-paid Beautonomi platform fee on bookings (same economics as platform_fee on orders; not provider revenue). */
+      service_fee: "fee",
       travel_fee: "payment",
       tip: "tip",
       refund: "refund",
@@ -79,8 +81,8 @@ export async function GET(request: NextRequest) {
         amount: Math.abs(net),
         description: t.transaction_type === "payout"
           ? "Payout to bank"
-          : t.transaction_type === "platform_fee"
-            ? "Platform fee"
+          : t.transaction_type === "platform_fee" || t.transaction_type === "service_fee"
+            ? "Platform fee (retained by platform)"
             : net < 0 ? "Refund" : "Service payment",
         status: "completed",
         created_at: t.created_at,

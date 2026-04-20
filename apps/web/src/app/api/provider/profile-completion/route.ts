@@ -1,17 +1,21 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { 
-  requireRoleInApi, getProviderIdForUser,
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
   successResponse,
-  notFoundResponse, handleApiError,
- } from "@/lib/supabase/api-helpers";
+  notFoundResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
+import { locationHasOperatingHours } from "@/lib/provider/location-operating-hours";
 
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(
       ["provider_owner", "provider_staff", "superadmin"],
       request,
-    );    const supabaseAdmin = createClient(
+    );
+    const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { autoRefreshToken: false, persistSession: false } },
@@ -21,13 +25,12 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
     const { data: provider } = await supabaseAdmin
       .from("providers")
       .select(
-        "id, business_name, description, phone, email, website, thumbnail_url, gallery, years_in_business",
+        "id, business_name, description, phone, email, website, thumbnail_url, gallery, years_in_business, avatar_url",
       )
-      .eq("user_id", user.id)
+      .eq("id", providerId)
       .maybeSingle();
 
     if (!provider) {
@@ -39,78 +42,98 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const { data: accountUser } = await supabaseAdmin
+      .from("users")
+      .select("email, phone")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const hasBusinessName =
+      typeof provider.business_name === "string" && provider.business_name.trim().length > 1;
+    const hasDescription =
+      typeof provider.description === "string" && provider.description.trim().length >= 10;
+    const hasContactInfo =
+      (typeof provider.phone === "string" && provider.phone.trim().length > 0) ||
+      (typeof provider.email === "string" && provider.email.trim().length > 0) ||
+      (typeof accountUser?.email === "string" && accountUser.email.trim().length > 0) ||
+      (typeof accountUser?.phone === "string" && accountUser.phone.trim().length > 0);
+
+    const avatarUrl = (provider as { avatar_url?: string | null }).avatar_url;
+    const hasLogoOrPhoto = !!(
+      (provider.thumbnail_url &&
+        typeof provider.thumbnail_url === "string" &&
+        provider.thumbnail_url.trim().length > 0) ||
+      (avatarUrl && typeof avatarUrl === "string" && avatarUrl.trim().length > 0)
+    );
+
     const [
-      { count: locationCount },
-      { count: serviceCount },
-      { count: _staffCount },
-      { data: hoursData },
+      { data: locations },
+      { count: activeOfferingCount },
     ] = await Promise.all([
       supabaseAdmin
         .from("provider_locations")
-        .select("id", { count: "exact", head: true })
+        .select("id, is_active, working_hours")
         .eq("provider_id", providerId),
       supabaseAdmin
-        .from("services")
+        .from("offerings")
         .select("id", { count: "exact", head: true })
-        .eq("provider_id", providerId),
-      supabaseAdmin
-        .from("staff_members")
-        .select("id", { count: "exact", head: true })
-        .eq("provider_id", providerId),
-      supabaseAdmin
-        .from("operating_hours")
-        .select("id")
         .eq("provider_id", providerId)
-        .limit(1),
+        .eq("is_active", true),
     ]);
+
+    const activeLocations = (locations || []).filter((loc) => loc.is_active !== false);
+    const locationCount = activeLocations.length;
+    const hasOperatingHours = activeLocations.some((loc) =>
+      locationHasOperatingHours(loc.working_hours),
+    );
 
     const items = [
       {
         id: "business_name",
         label: "Add business name",
-        completed: !!provider.business_name,
+        completed: hasBusinessName,
         required: true,
         route: "/(app)/(tabs)/more/settings/business",
       },
       {
         id: "description",
-        label: "Add business description",
-        completed: !!provider.description,
+        label: "Add business description (10+ characters)",
+        completed: hasDescription,
         required: true,
         route: "/(app)/(tabs)/more/settings/business",
       },
       {
         id: "thumbnail",
-        label: "Upload a logo or photo",
-        completed: !!provider.thumbnail_url,
+        label: "Upload a logo or profile photo",
+        completed: hasLogoOrPhoto,
         required: true,
         route: "/(app)/(tabs)/more/settings/business",
       },
       {
         id: "contact",
-        label: "Add phone & email",
-        completed: !!provider.phone && !!provider.email,
+        label: "Add a phone or email on your profile",
+        completed: hasContactInfo,
         required: true,
         route: "/(app)/(tabs)/more/settings/business",
       },
       {
         id: "location",
         label: "Add at least one location",
-        completed: (locationCount ?? 0) > 0,
+        completed: locationCount > 0,
         required: true,
         route: "/(app)/(tabs)/more/settings/locations",
       },
       {
         id: "services",
-        label: "Create your first service",
-        completed: (serviceCount ?? 0) > 0,
+        label: "Add at least one active service",
+        completed: (activeOfferingCount ?? 0) > 0,
         required: true,
         route: "/(app)/(tabs)/more/catalogue",
       },
       {
         id: "hours",
         label: "Set operating hours",
-        completed: (hoursData?.length ?? 0) > 0,
+        completed: hasOperatingHours,
         required: true,
         route: "/(app)/(tabs)/more/settings/hours",
       },

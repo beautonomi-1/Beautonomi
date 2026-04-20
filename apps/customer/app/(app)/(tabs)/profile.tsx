@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   View,
   Text,
@@ -22,8 +23,12 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors, shadow } from "@/constants/colors";
 import { APP_URL, IOS_APP_STORE_ID } from "@/config/public-env";
 import { api } from "@/lib/api-client";
+import { PROFILE_SUMMARY_CACHE_KEY_PREFIX } from "@/lib/cache-keys";
 import { haptic } from "@/lib/haptics";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
+import { useTranslation } from "@beautonomi/i18n";
+import { formatMoney } from "@beautonomi/utils";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -37,8 +42,16 @@ function formatMemberSince(value: unknown): string | null {
   });
 }
 
+type ReferralBannerState = {
+  loaded: boolean;
+  enabled: boolean;
+  link: string | null;
+  amountFormatted: string | null;
+};
+
 export default function ProfileScreen() {
   useScreenTracking("Profile");
+  const { t } = useTranslation();
   const { user, signOut } = useAuth();
   const { unreadCount } = useNotifications();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
@@ -63,44 +76,100 @@ export default function ProfileScreen() {
   const [profileLoadError, setProfileLoadError] = useState(false);
   const hasLoadedOnce = useRef(false);
 
+  // §Customer-audit 2026-04: hydrate from AsyncStorage cache so the profile
+  // tab renders its actual completion %, loyalty points, verification badges,
+  // and rating instantly on tab-open instead of flashing from 0/empty while
+  // the network request resolves. Cache is rewritten on every successful
+  // fetch and keyed per-user so switching accounts doesn't leak data.
+  const profileCacheKey = user ? `${PROFILE_SUMMARY_CACHE_KEY_PREFIX}.${user.id}` : null;
+  const [referralBanner, setReferralBanner] = useState<ReferralBannerState>({
+    loaded: false,
+    enabled: true,
+    link: null,
+    amountFormatted: null,
+  });
+
   const fetchProfileData = useCallback(async () => {
     if (!user) return;
     setProfileLoadError(false);
     try {
-      const res = await api.get<{
-        completion?: number;
-        topItems?: { id: string; label: string }[];
-        checklistItems?: ChecklistItem[];
-        loyaltyPoints?: number;
-        verified?: boolean;
-        ratingAverage?: number;
-        reviewCount?: number;
-        avatarUrl?: string | null;
-      }>("/api/me/profile-summary");
+      const [summaryRes, referralsRes] = await Promise.all([
+        api.get<{
+          completion?: number;
+          topItems?: { id: string; label: string }[];
+          checklistItems?: ChecklistItem[];
+          loyaltyPoints?: number;
+          verified?: boolean;
+          ratingAverage?: number;
+          reviewCount?: number;
+          avatarUrl?: string | null;
+        }>("/api/me/profile-summary"),
+        api.get<{
+          referral_link?: string;
+          settings?: {
+            referral_amount?: number;
+            referral_currency?: string;
+            is_enabled?: boolean;
+          };
+        }>("/api/me/referrals"),
+      ]);
 
-      if (res.error || !res.data) {
-        console.warn("[Profile] profile-summary error:", res.error?.message);
+      if (!referralsRes.error && referralsRes.data) {
+        const rd = referralsRes.data;
+        const s = rd.settings;
+        const enabled = s?.is_enabled !== false;
+        const amt = Number(s?.referral_amount);
+        const cur = (s?.referral_currency || getTenantDefaultCurrency()).trim() || getTenantDefaultCurrency();
+        const amountFormatted =
+          enabled && Number.isFinite(amt) && amt > 0 ? formatMoney(amt, cur) : null;
+        setReferralBanner({
+          loaded: true,
+          enabled,
+          link: rd.referral_link?.trim() || null,
+          amountFormatted,
+        });
+      } else {
+        setReferralBanner({
+          loaded: true,
+          enabled: true,
+          link: null,
+          amountFormatted: null,
+        });
+      }
+
+      if (summaryRes.error || !summaryRes.data) {
+        console.warn("[Profile] profile-summary error:", summaryRes.error?.message);
         if (!hasLoadedOnce.current) setProfileLoadError(true);
         return;
       }
 
       hasLoadedOnce.current = true;
       lastProfileSummarySuccessAt.current = Date.now();
-      const d = res.data;
+      const d = summaryRes.data;
       const checklist = Array.isArray(d.checklistItems) ? d.checklistItems : [];
-      setProfileData({
+      const next = {
         completion: d.completion ?? 0,
         topItems: d.topItems ?? [],
-        checklistItems: checklist,
+        checklistItems: checklist as ChecklistItem[],
         loyaltyPoints: Number(d.loyaltyPoints) || 0,
         verified: d.verified ?? false,
         ratingAverage: Number(d.ratingAverage) || 0,
         reviewCount: Number(d.reviewCount) || 0,
         avatarUrl: d.avatarUrl ?? null,
-      });
+      };
+      setProfileData(next);
+      if (profileCacheKey) {
+        AsyncStorage.setItem(profileCacheKey, JSON.stringify(next)).catch(() => {});
+      }
     } catch (err) {
       console.warn("[Profile] fetchProfileData error:", err);
       if (!hasLoadedOnce.current) setProfileLoadError(true);
+      setReferralBanner({
+        loaded: true,
+        enabled: true,
+        link: null,
+        amountFormatted: null,
+      });
     }
   }, [user]);
 
@@ -109,10 +178,24 @@ export default function ProfileScreen() {
       setProfileData(null);
       lastProfileSummarySuccessAt.current = 0;
       hasLoadedOnce.current = false;
+      setReferralBanner({ loaded: false, enabled: true, link: null, amountFormatted: null });
       return;
     }
+    if (profileCacheKey) {
+      AsyncStorage.getItem(profileCacheKey)
+        .then((raw) => {
+          if (!raw) return;
+          try {
+            const cached = JSON.parse(raw);
+            if (cached && typeof cached === "object") {
+              setProfileData((prev) => prev ?? cached);
+            }
+          } catch {}
+        })
+        .catch(() => {});
+    }
     void fetchProfileData();
-  }, [user, fetchProfileData]);
+  }, [user, fetchProfileData, profileCacheKey]);
 
   // Stale-while-revalidate: show cached data; background refresh if tab refocused after 60s
   useFocusEffect(
@@ -158,6 +241,9 @@ export default function ProfileScreen() {
   const isVerified = profileData?.verified ?? false;
   const completionPct = profileData?.completion ?? 0;
   const checklistItems = profileData?.checklistItems ?? [];
+  const hasIncompleteChecklist =
+    (checklistItems.length > 0 && checklistItems.some((item) => !item.completed)) ||
+    (checklistItems.length === 0 && completionPct < 100);
   const loyaltyPoints = profileData?.loyaltyPoints ?? 0;
 
   const memberSince = formatMemberSince(user.created_at);
@@ -327,8 +413,14 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── Profile completion card ── */}
-      {(checklistItems.length > 0 || completionPct < 100) && (
+      {/* ── Profile completion card ──
+          §Customer-audit 2026-04: previously this rendered whenever
+          `checklistItems.length > 0`, but the API always returns all items
+          (with a `completed` flag), so the "Complete your profile" nag card
+          stayed visible even after the user hit 100%. Hide the card once the
+          user has nothing left to complete — the "Account settings" tile
+          below still lets them edit anything they want. */}
+      {hasIncompleteChecklist && (
         <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
           <View style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.gray[100] }}>
             <TouchableOpacity
@@ -558,63 +650,68 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* ── Referral banner ── */}
-      <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
-        <TouchableOpacity
-          onPress={async () => {
-            haptic.light();
-            try {
-              const res = await api.get<{ referral_link?: string }>("/api/me/referrals");
-              const link = res.data?.referral_link;
-              if (link && !res.error) {
+      {/* ── Referral banner (amount + currency from GET /api/me/referrals; hidden when program disabled) ── */}
+      {referralBanner.loaded && referralBanner.enabled ? (
+        <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
+          <TouchableOpacity
+            onPress={async () => {
+              haptic.light();
+              try {
+                let link = referralBanner.link;
+                if (!link) {
+                  const res = await api.get<{ referral_link?: string }>("/api/me/referrals");
+                  if (!res.error && res.data?.referral_link) link = res.data.referral_link.trim();
+                }
+                const shareLink = link || APP_URL;
                 await Share.share({
-                  message: `I love booking beauty services on Beautonomi! Join me and we both earn rewards: ${link}`,
-                  title: "Join Beautonomi",
-                  url: link,
+                  message: t("customer.referral.shareMessage", { link: shareLink }),
+                  title: t("customer.referral.shareTitle"),
+                  ...(Platform.OS === "ios" && link ? { url: link } : {}),
                 });
-              } else {
+              } catch {
                 await Share.share({
-                  message: `I love booking beauty services on Beautonomi! Join me: ${APP_URL}`,
-                  title: "Join Beautonomi",
+                  message: t("customer.referral.shareMessage", { link: APP_URL }),
+                  title: t("customer.referral.shareTitle"),
                 });
               }
-            } catch {
-              await Share.share({
-                message: `I love booking beauty services on Beautonomi! Join me: ${APP_URL}`,
-                title: "Join Beautonomi",
-              });
+            }}
+            activeOpacity={0.8}
+            style={{ borderRadius: 16, overflow: "hidden", backgroundColor: "#FDF2F8" }}
+            accessibilityLabel={
+              referralBanner.amountFormatted
+                ? `${t("customer.referral.title")}. ${t("customer.referral.subtitleWithReward", { amount: referralBanner.amountFormatted })}`
+                : `${t("customer.referral.title")}. ${t("customer.referral.subtitleGeneric")}`
             }
-          }}
-          activeOpacity={0.8}
-          style={{ borderRadius: 16, overflow: "hidden", backgroundColor: "#FDF2F8" }}
-          accessibilityLabel="Invite friends and earn credits"
-          accessibilityRole="button"
-        >
-          <View style={{ padding: 16, flexDirection: "row", alignItems: "center" }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
-                Invite friends
-              </Text>
-              <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 4 }}>
-                Share Beautonomi and earn credits when friends book
-              </Text>
+            accessibilityRole="button"
+          >
+            <View style={{ padding: 16, flexDirection: "row", alignItems: "center" }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
+                  {t("customer.referral.title")}
+                </Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 4 }}>
+                  {referralBanner.amountFormatted
+                    ? t("customer.referral.subtitleWithReward", { amount: referralBanner.amountFormatted })
+                    : t("customer.referral.subtitleGeneric")}
+                </Text>
+              </View>
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: "rgba(255, 0, 119, 0.1)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginLeft: 12,
+                }}
+              >
+                <Ionicons name="gift" size={22} color={Colors.primary} />
+              </View>
             </View>
-            <View
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                backgroundColor: "rgba(255, 0, 119, 0.1)",
-                alignItems: "center",
-                justifyContent: "center",
-                marginLeft: 12,
-              }}
-            >
-              <Ionicons name="gift" size={22} color={Colors.primary} />
-            </View>
-          </View>
-        </TouchableOpacity>
-      </View>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {/* ── Support ── */}
       <View style={{ paddingHorizontal: 16, marginTop: 20 }}>

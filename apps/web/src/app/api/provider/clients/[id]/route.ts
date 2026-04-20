@@ -15,6 +15,79 @@ import {
   upsertCustomerDefaultAddress,
   CustomerHomeAddressLockedError,
 } from "@/lib/provider-portal/user-default-address";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * PATCH accepts `provider_clients.id` or `customer_id` (same as GET). If the
+ * customer is known to this provider via bookings or conversations but has
+ * no `provider_clients` row yet, we create one so notes/tags/address edits work
+ * from mobile (serviced-only clients).
+ */
+async function resolveProviderClientRowForPatch(
+  supabase: SupabaseClient,
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  providerId: string,
+  idOrCustomerId: string,
+): Promise<{ id: string; customer_id: string } | null> {
+  const { data: byRowId } = await supabase
+    .from("provider_clients")
+    .select("id, customer_id")
+    .eq("id", idOrCustomerId)
+    .eq("provider_id", providerId)
+    .maybeSingle();
+  if (byRowId) return byRowId;
+
+  const { data: byCustomerId } = await supabase
+    .from("provider_clients")
+    .select("id, customer_id")
+    .eq("customer_id", idOrCustomerId)
+    .eq("provider_id", providerId)
+    .maybeSingle();
+  if (byCustomerId) return byCustomerId;
+
+  const [{ count: bookingCount }, { count: convCount }] = await Promise.all([
+    admin
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("customer_id", idOrCustomerId),
+    admin
+      .from("conversations")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("customer_id", idOrCustomerId),
+  ]);
+
+  if (!(bookingCount || convCount)) {
+    return null;
+  }
+
+  const { data: inserted, error: insErr } = await admin
+    .from("provider_clients")
+    .insert({
+      provider_id: providerId,
+      customer_id: idOrCustomerId,
+      notes: null,
+      tags: null,
+    })
+    .select("id, customer_id")
+    .single();
+
+  if (inserted) return inserted;
+
+  if (insErr?.code === "23505") {
+    const { data: race } = await supabase
+      .from("provider_clients")
+      .select("id, customer_id")
+      .eq("customer_id", idOrCustomerId)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    if (race) return race;
+  }
+
+  console.error("resolveProviderClientRowForPatch: insert failed", insErr);
+  return null;
+}
 
 /**
  * GET /api/provider/clients/[id]
@@ -426,17 +499,14 @@ export async function PATCH(
     const { id: clientId } = await params;
     const body = await request.json();
 
-    // Verify client belongs to provider
-    const { data: client, error: clientError } = await supabase
-      .from("provider_clients")
-      .select("id, provider_id, customer_id")
-      .eq("id", clientId)
-      .eq("provider_id", providerId)
-      .single();
+    const admin = getSupabaseAdmin();
+    const client = await resolveProviderClientRowForPatch(supabase, admin, providerId, clientId);
 
-    if (clientError || !client) {
+    if (!client) {
       return notFoundResponse("Client not found");
     }
+
+    const resolvedRowId = client.id;
 
     // Update provider_clients fields
     const updateData: any = {};
@@ -449,7 +519,7 @@ export async function PATCH(
       const { data: updated, error } = await supabase
         .from("provider_clients")
         .update(updateData)
-        .eq("id", clientId)
+        .eq("id", resolvedRowId)
         .select()
         .single();
 
@@ -459,7 +529,7 @@ export async function PATCH(
       const { data: existing } = await supabase
         .from("provider_clients")
         .select()
-        .eq("id", clientId)
+        .eq("id", resolvedRowId)
         .single();
       data = existing;
     }
@@ -475,8 +545,7 @@ export async function PATCH(
       if (body.email_opt_in !== undefined) userUpdates.email_notifications_enabled = body.email_opt_in;
 
       if (Object.keys(userUpdates).length > 0) {
-        const supabaseAdmin = await getSupabaseAdmin();
-        await supabaseAdmin
+        await admin
           .from("users")
           .update(userUpdates)
           .eq("id", client.customer_id);
@@ -485,9 +554,8 @@ export async function PATCH(
 
     const addressPayload = parseAddressFromBody(body);
     if (addressPayload && client.customer_id) {
-      const supabaseAdmin = await getSupabaseAdmin();
       try {
-        await upsertCustomerDefaultAddress(supabaseAdmin, client.customer_id, addressPayload);
+        await upsertCustomerDefaultAddress(admin, client.customer_id, addressPayload);
       } catch (e) {
         if (e instanceof CustomerHomeAddressLockedError) {
           return errorResponse(e.message, e.code, 403);

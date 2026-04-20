@@ -1,9 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { View, Text, Switch, ScrollView, RefreshControl, ActivityIndicator, Alert } from "react-native";
+import { View, Text, Switch, ScrollView, RefreshControl, ActivityIndicator, Alert, Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
+import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { useResponsive } from "@/hooks/useResponsive";
 
 interface NotificationPrefs {
   // Flat keys (synthesized by API)
@@ -100,6 +103,12 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
 }
 
 export default function NotificationsScreen() {
+  const insets = useSafeAreaInsets();
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const scrollConstraint =
+    isTablet || Platform.OS === "web"
+      ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
+      : {};
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -173,10 +182,18 @@ export default function NotificationsScreen() {
   const isSaving = (key: string) => savingKey === key;
 
   return (
-    <ScreenFrame loading={loading} error={error} onRetry={() => load()}>
+    <ScreenFrame loading={loading} error={error} onRetry={() => load()} scrollable={false}>
       <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} colors={[Colors.primary]} />
+        }
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingHorizontal: contentPadding,
+          paddingTop: 8,
+          paddingBottom: STACK_CONTENT_PADDING_BOTTOM + Math.max(insets.bottom, 8),
+          ...scrollConstraint,
+        }}
       >
         {/* ── Offers & Updates ── */}
         <View style={{ marginBottom: 8 }}>

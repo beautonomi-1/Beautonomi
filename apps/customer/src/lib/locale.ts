@@ -1,3 +1,4 @@
+import { i18n } from "@beautonomi/i18n";
 import { getCachedConfigBundle } from "@/lib/config-bundle";
 
 function baseLanguageTag(lang: string | undefined): string {
@@ -7,13 +8,19 @@ function baseLanguageTag(lang: string | undefined): string {
   return /^[a-z]{2}$/.test(base) ? base : "en";
 }
 
+function activeUiLanguageBase(): string | undefined {
+  const lng = i18n?.language;
+  if (lng) return baseLanguageTag(lng);
+  return undefined;
+}
+
 /**
- * BCP 47 tag for `Intl` date/time formatting from tenant region (public config bundle).
- * Falls back to `en-ZA` when the bundle is missing or incomplete.
+ * BCP 47 tag for `Intl` date/time formatting.
+ * Uses the in-app UI language when i18n is loaded, else tenant default from the config bundle.
  */
 export function getTenantLocaleTag(): string {
   const meta = getCachedConfigBundle()?.meta?.tenant_region;
-  const lang = baseLanguageTag(meta?.default_language);
+  const lang = baseLanguageTag(activeUiLanguageBase() ?? meta?.default_language);
   const region = (meta?.code ?? "ZA").trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(region)) return "en-ZA";
   return `${lang}-${region}`;

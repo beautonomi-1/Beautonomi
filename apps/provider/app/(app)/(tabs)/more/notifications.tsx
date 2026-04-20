@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   Animated,
   Alert,
+  PanResponder,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
@@ -235,9 +236,68 @@ function SwipeableNotificationItem({
   const iconInfo = getNotificationIcon(notif.type);
   const isUnread = isUnreadProp ?? !(notif.read_at || (notif as any).read === true || (notif as any).is_read === true);
 
+  // §Provider-audit 2026-04 (round 3): real swipe-to-reveal gesture.
+  // Previously the delete slot was only exposed via long-press, which
+  // iOS/Android users don't discover. Now a horizontal pan past -40px
+  // snaps to the exposed state; a gentler drag snaps closed. Tapping
+  // anywhere while exposed closes the row (see outer TouchableWithoutFeedback
+  // below is avoided because nested TouchableOpacity already handles the
+  // press gesture — we just reset on onPress).
+  const SWIPE_THRESHOLD = -40;
+  const OPEN_POSITION = -80;
+  const lastOffset = useRef(0);
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderGrant: () => {
+        translateX.stopAnimation((v: number) => {
+          lastOffset.current = v;
+        });
+      },
+      onPanResponderMove: (_, g) => {
+        const next = Math.min(0, lastOffset.current + g.dx);
+        translateX.setValue(Math.max(next, OPEN_POSITION * 1.25));
+      },
+      onPanResponderRelease: (_, g) => {
+        const projected = lastOffset.current + g.dx;
+        const shouldOpen = projected < SWIPE_THRESHOLD || g.vx < -0.5;
+        const target = shouldOpen ? OPEN_POSITION : 0;
+        lastOffset.current = target;
+        Animated.spring(translateX, {
+          toValue: target,
+          useNativeDriver: true,
+          bounciness: 4,
+        }).start();
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+        lastOffset.current = 0;
+      },
+    }),
+  ).current;
+
+  function handlePressRow() {
+    if (lastOffset.current !== 0) {
+      // If swipe was open, a tap should close it rather than navigate.
+      Animated.spring(translateX, {
+        toValue: 0,
+        useNativeDriver: true,
+      }).start();
+      lastOffset.current = 0;
+      return;
+    }
+    onPress();
+  }
+
   function handleSwipeRelease() {
+    lastOffset.current = OPEN_POSITION;
     Animated.spring(translateX, {
-      toValue: -80,
+      toValue: OPEN_POSITION,
       useNativeDriver: true,
     }).start();
   }
@@ -256,17 +316,20 @@ function SwipeableNotificationItem({
         </TouchableOpacity>
       </View>
 
-      <Animated.View style={{ transform: [{ translateX }], backgroundColor: Colors.white }}>
+      <Animated.View
+        style={{ transform: [{ translateX }], backgroundColor: Colors.white }}
+        {...panResponder.panHandlers}
+      >
         <TouchableOpacity
           style={[
             { flexDirection: "row", alignItems: "flex-start", borderBottomWidth: 1, borderBottomColor: Colors.gray[50], paddingHorizontal: 4, paddingVertical: 14 },
             isUnread ? { backgroundColor: "rgba(238,242,255,0.5)" } : { backgroundColor: Colors.white },
           ]}
-          onPress={onPress}
+          onPress={handlePressRow}
           onLongPress={handleSwipeRelease}
           accessibilityLabel={`${isUnread ? "Unread notification: " : ""}${notif.title}. ${notif.message}`}
           accessibilityRole="button"
-          accessibilityHint="Tap to view details, long press to reveal delete"
+          accessibilityHint="Tap to view, swipe left or long press to reveal delete"
         >
           <View style={{ backgroundColor: iconInfo.bg, height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>
             <Ionicons name={iconInfo.name} size={18} color={iconInfo.color} />
@@ -354,19 +417,25 @@ export default function NotificationsScreen() {
 
   async function handleMarkAllRead() {
     if (!notifications || unreadCount === 0) return;
+    // §Provider-audit 2026-04 (round 2): optimistically mark-all-read so
+    // the badge and row styling update immediately; if the server call
+    // fails we surface the error and roll back.
+    const previous = notifications;
+    const nowIso = new Date().toISOString();
+    const updated = notifications.map((n) => ({
+      ...n,
+      read_at: n.read_at ?? nowIso,
+      is_read: true,
+    }));
+    mutate(updated);
     const { error } = await postAction(
       "/api/provider/notifications/mark-all-read",
-      {}
+      {},
     );
     if (error) {
+      mutate(previous);
       Alert.alert("Error", error);
     } else {
-      const updated = notifications.map((n) => ({
-        ...n,
-        read_at: n.read_at ?? new Date().toISOString(),
-        is_read: true,
-      }));
-      mutate(updated);
       await refreshCount();
     }
   }
@@ -383,22 +452,34 @@ export default function NotificationsScreen() {
 
   const handleMarkRead = useCallback(
     async (notif: Notification) => {
-      if (notif.read_at || (notif as any).is_read || (notif as any).read) {
-        navigateToNotification(notif);
-        return;
+      // §Provider-audit 2026-04 (round 2): navigate first, mark read in the
+      // background. Previously we awaited the PATCH before pushing, which
+      // introduced a visible ~300–1500ms hang on spotty networks. The
+      // optimistic mutate handles the badge locally; failures roll back.
+      const alreadyRead =
+        !!notif.read_at || !!(notif as any).is_read || !!(notif as any).read;
+      navigateToNotification(notif);
+      if (alreadyRead) return;
+
+      const readTs = new Date().toISOString();
+      if (notifications) {
+        const updated = notifications.map((n) =>
+          n.id === notif.id ? { ...n, read_at: readTs, is_read: true } : n,
+        );
+        mutate(updated);
       }
       const { error } = await patchNotification(
         `/api/provider/notifications/${notif.id}`,
-        { read_at: new Date().toISOString(), is_read: true }
+        { read_at: readTs, is_read: true },
       );
-      if (!error && notifications) {
-        const updated = notifications.map((n) =>
-          n.id === notif.id ? { ...n, read_at: new Date().toISOString(), is_read: true } : n
-        );
-        mutate(updated);
+      if (error) {
+        // Roll back optimistic update on failure so the badge reflects reality.
+        if (notifications) {
+          mutate(notifications);
+        }
+      } else {
         await refreshCount();
       }
-      navigateToNotification(notif);
     },
     [notifications, patchNotification, mutate, refreshCount, navigateToNotification],
   );

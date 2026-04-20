@@ -5,14 +5,15 @@ import {
   ScrollView,
   RefreshControl,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { Redirect } from "expo-router";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
-import { ScreenContainer } from "@/components/ui/ScreenContainer";
-import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { formatCurrency } from "@/lib/format";
 
 interface PointsTransaction {
   id: string;
@@ -36,14 +37,17 @@ interface GamificationResponse {
     description?: string | null;
     tier: number;
     color?: string | null;
+    icon_url?: string | null;
     earned_at?: string | null;
+    expires_at?: string | null;
   } | null;
   transactions?: PointsTransaction[];
   provider_stats?: {
     total_bookings: number;
     review_count: number;
     rating_average: number;
-    total_earnings: number;
+    /** Net provider earnings from ledger (aligned with GET /api/provider/gamification). */
+    total_earnings?: number;
   };
 }
 
@@ -121,9 +125,13 @@ export function RewardsPointsContent() {
             <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Current badge</Text>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <View
-                style={{ height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: badge.color ? `${badge.color}30` : "#fef3c7" }}
+                style={{ height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: badge.color ? `${badge.color}30` : "#fef3c7", overflow: "hidden" }}
               >
-                <Ionicons name="ribbon-outline" size={24} color={badge.color ?? "#f59e0b"} />
+                {badge.icon_url ? (
+                  <Image source={{ uri: badge.icon_url }} style={{ width: 40, height: 40 }} contentFit="contain" accessibilityIgnoresInvertColors />
+                ) : (
+                  <Ionicons name="ribbon-outline" size={24} color={badge.color ?? "#f59e0b"} />
+                )}
               </View>
               <View style={{ marginLeft: 12, flex: 1 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{badge.name}</Text>
@@ -132,17 +140,24 @@ export function RewardsPointsContent() {
                     {badge.description}
                   </Text>
                 ) : null}
-                {badge.earned_at && (
+                {badge.earned_at ? (
                   <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
                     Earned {formatDateSafe(badge.earned_at)}
+                    {badge.expires_at ? ` · Until ${formatDateSafe(badge.expires_at)}` : ""}
                   </Text>
-                )}
+                ) : badge.expires_at ? (
+                  <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Until {formatDateSafe(badge.expires_at)}</Text>
+                ) : null}
               </View>
             </View>
           </View>
         )}
 
-        {stats && (stats.total_bookings > 0 || stats.review_count > 0) && (
+        {stats &&
+          (stats.total_bookings > 0 ||
+            stats.review_count > 0 ||
+            (typeof stats.rating_average === "number" && stats.rating_average > 0) ||
+            (typeof stats.total_earnings === "number" && stats.total_earnings > 0)) && (
           <View style={{ marginBottom: 24, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
             <Text style={{ marginBottom: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Activity</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
@@ -160,6 +175,14 @@ export function RewardsPointsContent() {
                     {stats.rating_average.toFixed(1)}
                   </Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Avg rating</Text>
+                </View>
+              )}
+              {typeof stats.total_earnings === "number" && stats.total_earnings > 0 && (
+                <View style={{ marginRight: 16, marginBottom: 16 }}>
+                  <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
+                    {formatCurrency(stats.total_earnings)}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Net earnings</Text>
                 </View>
               )}
             </View>
@@ -210,11 +233,7 @@ export function RewardsPointsContent() {
   );
 }
 
+/** Legacy route: same experience as More → Rewards & badges (points + badges tabs). */
 export default function RewardsScreen() {
-  return (
-    <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Rewards" showBack subtitle="Points & achievements" />
-      <RewardsPointsContent />
-    </ScreenContainer>
-  );
+  return <Redirect href="/(app)/(tabs)/more/rewards-hub" />;
 }

@@ -9,7 +9,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const schema = z.object({
-  amount: z.number().min(1, "Minimum top up amount is 1"),
+  amount: z.coerce.number().min(1, "Minimum top up amount is 1"),
 });
 
 export async function POST(request: NextRequest) {
@@ -79,6 +79,8 @@ export async function POST(request: NextRequest) {
     return successResponse({
       topup_id: (topup as any).id,
       payment_url: paymentUrl,
+      /** Client can call GET /api/paystack/verify?reference=… with Bearer (system browser has no session). */
+      paystack_reference: reference,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

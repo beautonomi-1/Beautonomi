@@ -62,8 +62,12 @@ export async function POST(
       }
     }
 
-    // Check if booking is in correct state
-    if (bookingData.status !== "confirmed" && bookingData.current_stage !== "provider_arrived") {
+    // Ready status (confirmed or provider-confirmed "booked") or at-home arrived stage
+    if (
+      bookingData.status !== "confirmed" &&
+      bookingData.status !== "booked" &&
+      bookingData.current_stage !== "provider_arrived"
+    ) {
       return errorResponse("Booking must be confirmed and provider must have arrived", "INVALID_STATUS", 400);
     }
 

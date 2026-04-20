@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   useWindowDimensions,
+  Switch,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,6 +27,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { formatDuration, formatCurrency } from "@/lib/format";
+import { normalizeProductsList } from "@/lib/unpack-provider-api";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
@@ -133,6 +135,44 @@ interface Package {
   items: PackageItem[];
 }
 
+/** Intake / consent / waiver forms (`GET /api/provider/forms`) — answers map to `bookings.provider_form_responses`. */
+interface ProviderFormField {
+  id: string;
+  name: string;
+  field_type: string;
+  is_required: boolean;
+  sort_order: number;
+}
+
+interface ProviderForm {
+  id: string;
+  title: string;
+  description: string | null;
+  form_type: string;
+  is_required: boolean;
+  is_active: boolean;
+  fields: ProviderFormField[];
+}
+
+type ProviderFormResponsesState = Record<string, Record<string, string | number | boolean | null>>;
+
+/** Same nesting as checkout / `POST /api/provider/bookings` (`form_id` → `field_id` → value). */
+function sanitizeProviderFormResponsesForApi(
+  responses: ProviderFormResponsesState,
+): Record<string, Record<string, unknown>> | null {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [formId, fields] of Object.entries(responses)) {
+    const inner: Record<string, unknown> = {};
+    for (const [fieldId, v] of Object.entries(fields)) {
+      if (v === undefined || v === null) continue;
+      if (typeof v === "string" && v.trim() === "") continue;
+      inner[fieldId] = v;
+    }
+    if (Object.keys(inner).length > 0) out[formId] = inner;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 type DiscountType = "percentage" | "fixed";
 type PaymentMethod = "cash" | "card" | "online";
 
@@ -168,8 +208,8 @@ const TIME_SLOTS = (() => {
 const DATE_RANGE_DAYS = 90;
 const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: "Cash", value: "cash", icon: "cash-outline" },
-  { label: "Card", value: "card", icon: "card-outline" },
-  { label: "Online", value: "online", icon: "globe-outline" },
+  { label: "Card (Yoco)", value: "card", icon: "card-outline" },
+  { label: "Pay later / link", value: "online", icon: "globe-outline" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -230,6 +270,11 @@ export default function NewBookingScreen() {
     () => (Array.isArray(referralSourcesRaw) ? referralSourcesRaw.filter((s) => s.is_active !== false) : []),
     [referralSourcesRaw]
   );
+  const { data: providerFormsRaw, loading: formsLoading, error: formsError } = useApi<ProviderForm[]>("/api/provider/forms");
+  const activeProviderForms = useMemo(
+    () => (Array.isArray(providerFormsRaw) ? providerFormsRaw.filter((f) => f.is_active !== false) : []),
+    [providerFormsRaw],
+  );
   const { execute: createBooking, loading: creating } = useApiPost<any, any>("/api/provider/bookings");
 
   // --- Client search ---
@@ -277,8 +322,16 @@ export default function NewBookingScreen() {
   const [addOnPickerService, setAddOnPickerService] = useState<string | null>(null);
 
   // --- Products ---
-  const { data: productsRaw } = useApi<Product[]>("/api/provider/products?limit=100");
-  const productsList = useMemo(() => (Array.isArray(productsRaw) ? productsRaw : []), [productsRaw]);
+  // §Provider-audit 2026-04 (round 4): /api/provider/products returns
+  // `{ products, total, page, limit, total_pages }`, not a bare array,
+  // so the previous `Array.isArray(productsRaw)` check always failed
+  // and the product picker on the new-booking screen was permanently
+  // empty. Unwrap via the shared helper used by packages.tsx.
+  const { data: productsRaw } = useApi<unknown>("/api/provider/products?limit=200");
+  const productsList = useMemo(
+    () => normalizeProductsList(productsRaw) as Product[],
+    [productsRaw],
+  );
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
   const [showProductPicker, setShowProductPicker] = useState(false);
 
@@ -334,6 +387,31 @@ export default function NewBookingScreen() {
   const [travelFee, setTravelFee] = useState("");
   const [tipAmount, setTipAmount] = useState("");
   const [notes, setNotes] = useState("");
+  // §Provider-audit 2026-04: allow providers to suppress customer
+  // notifications for silent/internal bookings (walk-ins, reception-entered
+  // same-day bookings). Default is still true so existing workflows are
+  // unchanged; the API has always honoured `send_notification` but the app
+  // was hard-coding it to `true`.
+  const [sendNotification, setSendNotification] = useState(true);
+  const [providerFormResponses, setProviderFormResponses] = useState<ProviderFormResponsesState>({});
+  const intakeConfirmationBlocks = useMemo(() => {
+    const sanitized = sanitizeProviderFormResponsesForApi(providerFormResponses);
+    if (!sanitized) return [] as { formId: string; title: string; lines: string[] }[];
+    const blocks: { formId: string; title: string; lines: string[] }[] = [];
+    for (const form of activeProviderForms) {
+      const inner = sanitized[form.id];
+      if (!inner || Object.keys(inner).length === 0) continue;
+      const fieldById = new Map((form.fields || []).map((f) => [f.id, f.name]));
+      const lines = Object.entries(inner).map(([fid, val]) => {
+        const label = fieldById.get(fid) ?? fid;
+        const display = typeof val === "boolean" ? (val ? "Yes" : "No") : String(val);
+        const shortened = display.length > 120 ? `${display.slice(0, 117)}…` : display;
+        return `• ${label}: ${shortened}`;
+      });
+      blocks.push({ formId: form.id, title: form.title, lines });
+    }
+    return blocks;
+  }, [activeProviderForms, providerFormResponses]);
   const [discountValue, setDiscountValue] = useState("");
   const [discountType, setDiscountType] = useState<DiscountType>("percentage");
   const [promoCode, setPromoCode] = useState("");
@@ -348,44 +426,124 @@ export default function NewBookingScreen() {
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [, setCheckingAvailability] = useState(false);
 
-  // Auto-save draft to AsyncStorage
+  // §Provider-audit 2026-04 (round 2): draft persistence reworked to
+  // surface an explicit "Resume draft" banner instead of silently
+  // repopulating the form. Providers were reporting "ghost" services
+  // appearing when they tapped + New booking after a previous aborted
+  // attempt. We also expire drafts older than 24h.
   const DRAFT_KEY = "beautonomi_mobile_booking_draft";
+  const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+  type DraftPayload = {
+    notes?: string;
+    selectedServices?: SelectedService[];
+    selectedProducts?: SelectedProduct[];
+    discountValue?: string;
+    discountType?: DiscountType;
+    tipAmount?: string;
+    selectedPackageId?: string | null;
+    promoCode?: string;
+    providerFormResponses?: ProviderFormResponsesState;
+    savedAt?: number;
+  };
+
+  const [pendingDraft, setPendingDraft] = useState<DraftPayload | null>(null);
+
+  // Auto-save draft to AsyncStorage (debounced). Skipped once the user
+  // has dismissed a pending-draft banner but not yet made any changes.
   useEffect(() => {
+    const hasAnything =
+      selectedServices.length > 0 ||
+      selectedProducts.length > 0 ||
+      notes.trim().length > 0 ||
+      !!selectedPackageId ||
+      promoCode.trim().length > 0 ||
+      Object.keys(providerFormResponses || {}).length > 0;
+    if (!hasAnything) return;
     const timer = setTimeout(() => {
-      const draft = { notes, selectedServices, selectedProducts, discountValue, discountType, tipAmount, selectedPackageId, promoCode };
+      const draft: DraftPayload = {
+        notes,
+        selectedServices,
+        selectedProducts,
+        discountValue,
+        discountType,
+        tipAmount,
+        selectedPackageId,
+        promoCode,
+        providerFormResponses,
+        savedAt: Date.now(),
+      };
       AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft)).catch(() => {});
     }, 1500);
     return () => clearTimeout(timer);
-  }, [notes, selectedServices, selectedProducts, discountValue, discountType, tipAmount, selectedPackageId, promoCode]);
+  }, [notes, selectedServices, selectedProducts, discountValue, discountType, tipAmount, selectedPackageId, promoCode, providerFormResponses]);
 
-  // Restore draft on mount if no prefilled params
+  // Peek for a saved draft on mount. Do NOT auto-apply — surface a
+  // banner instead (see `renderDraftBanner()` in the JSX below).
   useEffect(() => {
     if (preselectedClientId) return;
-    AsyncStorage.getItem(DRAFT_KEY).then((saved) => {
-      if (!saved) return;
-      try {
-        const draft = JSON.parse(saved);
-        if (draft.notes) setNotes(draft.notes);
-        if (Array.isArray(draft.selectedServices) && draft.selectedServices.length > 0) {
-          // Only restore services whose IDs still exist in the catalogue
-          const validServices = services
-            ? draft.selectedServices.filter((s: SelectedService) =>
-                services.some((cat) => cat.id === s.serviceId)
-              )
-            : draft.selectedServices;
-          if (validServices.length > 0) setSelectedServices(validServices);
+    if (params.date || params.time || params.walk_in) return;
+    AsyncStorage.getItem(DRAFT_KEY)
+      .then((saved) => {
+        if (!saved) return;
+        try {
+          const draft = JSON.parse(saved) as DraftPayload;
+          const savedAt = typeof draft.savedAt === "number" ? draft.savedAt : 0;
+          if (savedAt && Date.now() - savedAt > DRAFT_MAX_AGE_MS) {
+            AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
+            return;
+          }
+          const hasContent =
+            (Array.isArray(draft.selectedServices) && draft.selectedServices.length > 0) ||
+            (Array.isArray(draft.selectedProducts) && draft.selectedProducts.length > 0) ||
+            (typeof draft.notes === "string" && draft.notes.trim().length > 0);
+          if (!hasContent) {
+            AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
+            return;
+          }
+          setPendingDraft(draft);
+        } catch {
+          AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
         }
-        if (Array.isArray(draft.selectedProducts) && draft.selectedProducts.length > 0) {
-          setSelectedProducts(draft.selectedProducts);
-        }
-        if (draft.discountValue) setDiscountValue(draft.discountValue);
-        if (draft.discountType) setDiscountType(draft.discountType);
-        if (draft.promoCode) setPromoCode(draft.promoCode);
-        if (draft.tipAmount) setTipAmount(draft.tipAmount);
-        if (draft.selectedPackageId) setSelectedPackageId(draft.selectedPackageId);
-      } catch { /* ignore */ }
-    }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; services may load after
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, []);
+
+  const applyPendingDraft = useCallback(() => {
+    if (!pendingDraft) return;
+    const draft = pendingDraft;
+    if (draft.notes) setNotes(draft.notes);
+    if (Array.isArray(draft.selectedServices) && draft.selectedServices.length > 0) {
+      // Only restore services whose IDs still exist in the catalogue.
+      const validServices = services
+        ? draft.selectedServices.filter((s) =>
+            services.some((cat) => cat.id === s.serviceId),
+          )
+        : draft.selectedServices;
+      if (validServices.length > 0) setSelectedServices(validServices);
+    }
+    if (Array.isArray(draft.selectedProducts) && draft.selectedProducts.length > 0) {
+      setSelectedProducts(draft.selectedProducts);
+    }
+    if (draft.discountValue) setDiscountValue(draft.discountValue);
+    if (draft.discountType) setDiscountType(draft.discountType);
+    if (draft.promoCode) setPromoCode(draft.promoCode);
+    if (draft.tipAmount) setTipAmount(draft.tipAmount);
+    if (draft.selectedPackageId) setSelectedPackageId(draft.selectedPackageId);
+    if (
+      draft.providerFormResponses &&
+      typeof draft.providerFormResponses === "object"
+    ) {
+      setProviderFormResponses(draft.providerFormResponses);
+    }
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setPendingDraft(null);
+  }, [pendingDraft, services]);
+
+  const discardPendingDraft = useCallback(() => {
+    AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
+    setPendingDraft(null);
   }, []);
 
   // Summary (must be before slotParams which uses summary.totalMinutes)
@@ -472,6 +630,41 @@ export default function NewBookingScreen() {
     typeof params.staff_id === "string" && params.staff_id.length > 0
       ? params.staff_id
       : undefined;
+  const defaultStaffForNewLines =
+    preselectedStaffId ?? (staffList?.length === 1 ? staffList[0]?.id : undefined);
+
+  // When the engine returns concrete slots, keep the selected time inside that set
+  // so check-availability and create payloads match blocks/staff hours.
+  const apiSlots = availableSlotsData?.slots;
+  useEffect(() => {
+    if (!apiSlots?.length) return;
+    setSelectedTime((cur) => {
+      if (cur && apiSlots.includes(cur)) return cur;
+      if (cur) {
+        const idx = apiSlots.findIndex((s) => s >= cur);
+        return idx >= 0 ? apiSlots[idx]! : apiSlots[0]!;
+      }
+      return apiSlots[0] ?? "";
+    });
+  }, [apiSlots, selectedDate]);
+
+  // Solo team member: every service line should carry staff_id for slot filtering + create payload.
+  useEffect(() => {
+    const sole = staffList?.length === 1 ? staffList[0]!.id : null;
+    if (!sole) return;
+    setSelectedServices((prev) => {
+      if (prev.length === 0) return prev;
+      let changed = false;
+      const next = prev.map((row) => {
+        if (!row.staffId) {
+          changed = true;
+          return { ...row, staffId: sole };
+        }
+        return row;
+      });
+      return changed ? next : prev;
+    });
+  }, [staffList]);
 
   // --- Helpers ---
   function toggleService(serviceId: string) {
@@ -480,7 +673,7 @@ export default function NewBookingScreen() {
       if (exists) return prev.filter((s) => s.serviceId !== serviceId);
       return [
         ...prev,
-        { serviceId, addOnIds: [], ...(preselectedStaffId ? { staffId: preselectedStaffId } : {}) },
+        { serviceId, addOnIds: [], ...(defaultStaffForNewLines ? { staffId: defaultStaffForNewLines } : {}) },
       ];
     });
   }
@@ -515,7 +708,14 @@ export default function NewBookingScreen() {
         const offering = item.offering;
         const catalogueService = services?.find((s) => s.id === item.offering_id);
         if (catalogueService) {
-          setSelectedServices((prev) => [...prev, { serviceId: catalogueService.id, addOnIds: [] }]);
+          setSelectedServices((prev) => [
+            ...prev,
+            {
+              serviceId: catalogueService.id,
+              addOnIds: [],
+              ...(defaultStaffForNewLines ? { staffId: defaultStaffForNewLines } : {}),
+            },
+          ]);
         } else if (offering.id) {
           Alert.alert("Notice", `Service "${offering.title || offering.name || "Unknown"}" from this package is not in your active catalogue. It was skipped.`);
         }
@@ -574,6 +774,13 @@ export default function NewBookingScreen() {
     setPromoError("");
   }
 
+  function setProviderFormField(formId: string, fieldId: string, value: string | number | boolean | null) {
+    setProviderFormResponses((prev) => ({
+      ...prev,
+      [formId]: { ...(prev[formId] ?? {}), [fieldId]: value },
+    }));
+  }
+
   // --- Validation ---
   function validate(): string | null {
     if (clientMode === "search" && !selectedClient) return "Please select a client";
@@ -585,6 +792,25 @@ export default function NewBookingScreen() {
     if (!selectedDate) return "Please select a date";
     if (!selectedTime) return "Please select a time";
     if (selectedServices.length === 0 && selectedProducts.length === 0) return "Please select at least one service or product";
+    if ((staffList?.length ?? 0) > 0 && selectedServices.length > 0) {
+      const missingStaff = selectedServices.some((s) => !s.staffId);
+      if (missingStaff) return "Please assign staff for each service";
+    }
+    for (const form of activeProviderForms) {
+      for (const field of form.fields || []) {
+        if (!field.is_required) continue;
+        const val = providerFormResponses[form.id]?.[field.id];
+        if (field.field_type === "checkbox") {
+          if (val !== true) {
+            return `Please complete "${field.name}" (${form.title})`;
+          }
+          continue;
+        }
+        if (val === undefined || val === null || String(val).trim() === "") {
+          return `Please complete "${field.name}" (${form.title})`;
+        }
+      }
+    }
     if (locationType === "at_home") {
       if (!addressLine1.trim()) return "Search and select the client's address";
       if (addressLatitude == null || addressLongitude == null) {
@@ -612,6 +838,13 @@ export default function NewBookingScreen() {
       });
       if (staffIds.length > 0) params.set("staff_ids", staffIds.join(","));
       if (selectedLocationId) params.set("location_id", selectedLocationId);
+      // §Provider-audit 2026-04: include offerings so the server can
+      // pre-flight required resources (rooms, chairs, equipment) and warn
+      // before we open the review modal.
+      const offeringIds = Array.from(
+        new Set(selectedServices.map((s) => s.serviceId).filter(Boolean)),
+      );
+      if (offeringIds.length > 0) params.set("offering_ids", offeringIds.join(","));
 
       const res = await api.get<{ available?: boolean; conflicts?: string[] }>(
         `/api/provider/bookings/check-availability?${params}`,
@@ -623,11 +856,22 @@ export default function NewBookingScreen() {
         setConflictWarning(msg);
         return { ok: false, warning: msg };
       }
+      // §Provider-audit 2026-04: API error (e.g. 4xx/5xx) was previously
+      // swallowed into "ok: true" which meant the review modal opened without
+      // a verified slot — providers could create 409-conflicted bookings
+      // without warning. Surface the problem as a soft conflict instead.
+      if (res.error) {
+        const msg = res.error.message || "Could not verify availability — please double-check the calendar before confirming.";
+        setConflictWarning(msg);
+        return { ok: false, warning: msg };
+      }
       return { ok: true };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not verify availability. You may proceed, but double-check the calendar.";
+      const msg = err instanceof Error
+        ? err.message
+        : "Could not verify availability — please double-check the calendar before confirming.";
       setConflictWarning(msg);
-      return { ok: true, warning: msg };
+      return { ok: false, warning: msg };
     } finally {
       setCheckingAvailability(false);
     }
@@ -721,9 +965,11 @@ export default function NewBookingScreen() {
         deposit_percentage: depositPercentage,
         deposit_amount: Math.ceil((summary.total * depositPercentage) / 100),
       } : {}),
-      send_notification: true,
+      send_notification: sendNotification,
       ...(selectedPackageId ? { package_id: selectedPackageId } : {}),
     };
+    const providerFormPayload = sanitizeProviderFormResponsesForApi(providerFormResponses);
+    if (providerFormPayload) payload.provider_form_responses = providerFormPayload;
     if (summary.tipNum > 0) payload.tip_amount = summary.tipNum;
     if (locationType === "at_home") {
       if (summary.travelFeeNum > 0) payload.travel_fee = summary.travelFeeNum;
@@ -739,8 +985,24 @@ export default function NewBookingScreen() {
       }
     }
 
-    const { data: responseData, error } = await createBooking(payload);
+    const { data: responseData, error, errorCode } = await createBooking(payload);
     if (error) {
+      // §Provider-audit 2026-04: branch on typed server error codes rather
+      // than scanning the translated message. Slot-conflict / calendar-block
+      // paths kick the provider back into the time picker to re-verify
+      // availability (common when two devices try to claim the same slot).
+      if (errorCode === "CONFLICT" || errorCode === "CALENDAR_BLOCK" || errorCode === "RESOURCE_CONFLICT") {
+        setConflictWarning(error);
+        Alert.alert("Slot unavailable", error, [
+          {
+            text: "Pick another time",
+            onPress: () => {
+              setShowConfirmation(false);
+            },
+          },
+        ]);
+        return;
+      }
       const isLimitError =
         typeof error === "string" &&
         (error.toLowerCase().includes("booking limit") ||
@@ -766,12 +1028,38 @@ export default function NewBookingScreen() {
     }
     AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
     const warnings = (responseData as any)?._warnings as string[] | undefined;
-    if (warnings?.length) {
-      Alert.alert("Booking Created", warnings.join("\n"));
+    const newBookingId =
+      responseData && typeof responseData === "object" && responseData !== null && "id" in responseData
+        ? String((responseData as { id: unknown }).id)
+        : "";
+    const cardChargeTotal =
+      paymentMethod === "card"
+        ? paymentOption === "deposit"
+          ? Math.ceil((summary.total * depositPercentage) / 100)
+          : summary.total
+        : 0;
+    const goYoco =
+      paymentMethod === "card" && cardChargeTotal > 0 && newBookingId.length > 0;
+
+    const navigateYoco = () => {
+      router.replace(`/(app)/(tabs)/more/bookings/${newBookingId}?collectYoco=1` as any);
+    };
+
+    if (goYoco) {
+      const extra = warnings?.length ? `\n\n${warnings.join("\n")}` : "";
+      Alert.alert(
+        "Booking created",
+        `Use your Yoco terminal to complete card payment.${extra}`,
+        [{ text: "Continue", onPress: navigateYoco }],
+      );
     } else {
-      Alert.alert("Success", "Booking created successfully");
+      if (warnings?.length) {
+        Alert.alert("Booking Created", warnings.join("\n"));
+      } else {
+        Alert.alert("Success", "Booking created successfully");
+      }
+      router.back();
     }
-    router.back();
   }
 
   /* ---------------------------------------------------------------- */
@@ -795,6 +1083,70 @@ export default function NewBookingScreen() {
           </View>
         ) : null}
 
+        {/* §Provider-audit 2026-04 (round 2): resumable draft banner so
+            providers explicitly opt in to re-using a previous in-progress
+            booking instead of having it silently repopulate. */}
+        {pendingDraft && !showConfirmation ? (
+          <View
+            style={twStyle(
+              "mx-4 mb-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3",
+            )}
+          >
+            <View style={twStyle("flex-row items-start")}>
+              <Ionicons
+                name="document-text-outline"
+                size={18}
+                color="#4f46e5"
+                style={{ marginTop: 2, marginRight: 8 }}
+              />
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("text-sm font-semibold text-indigo-900")}>
+                  Resume previous draft?
+                </Text>
+                <Text style={twStyle("mt-0.5 text-xs text-indigo-700")}>
+                  {(() => {
+                    const count = (pendingDraft.selectedServices ?? []).length;
+                    const parts: string[] = [];
+                    if (count > 0) parts.push(`${count} service${count === 1 ? "" : "s"}`);
+                    const pCount = (pendingDraft.selectedProducts ?? []).length;
+                    if (pCount > 0) parts.push(`${pCount} product${pCount === 1 ? "" : "s"}`);
+                    if (pendingDraft.notes && pendingDraft.notes.trim().length > 0) {
+                      parts.push("notes");
+                    }
+                    return parts.length > 0
+                      ? `Contains ${parts.join(" · ")}.`
+                      : "Previous selections saved.";
+                  })()}
+                </Text>
+              </View>
+            </View>
+            <View style={twStyle("mt-3 flex-row")}>
+              <TouchableOpacity
+                onPress={applyPendingDraft}
+                style={twStyle(
+                  "mr-2 flex-1 flex-row items-center justify-center rounded-lg bg-indigo-600 py-2",
+                )}
+                accessibilityRole="button"
+                accessibilityLabel="Resume draft"
+              >
+                <Ionicons name="refresh" size={14} color="#fff" />
+                <Text style={twStyle("ml-1.5 text-xs font-semibold text-white")}>Resume</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={discardPendingDraft}
+                style={twStyle(
+                  "flex-1 flex-row items-center justify-center rounded-lg border border-indigo-200 bg-white py-2",
+                )}
+                accessibilityRole="button"
+                accessibilityLabel="Discard draft"
+              >
+                <Ionicons name="trash-outline" size={14} color="#4338ca" />
+                <Text style={twStyle("ml-1.5 text-xs font-semibold text-indigo-700")}>Discard</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
         {showConfirmation ? (
           <ConfirmationView
             summary={summary}
@@ -814,6 +1166,8 @@ export default function NewBookingScreen() {
                     .join(", ")
                 : undefined
             }
+            specialRequests={notes.trim() || undefined}
+            intakeConfirmationBlocks={intakeConfirmationBlocks}
             paymentMethod={paymentMethod}
             paymentOption={paymentOption}
             depositPercentage={depositPercentage}
@@ -1049,7 +1403,11 @@ export default function NewBookingScreen() {
                 <Ionicons name="chevron-down" size={18} color="#9ca3af" />
               </TouchableOpacity>
 
-              {/* -------- LOCATION -------- */}
+              {/* -------- LOCATION --------
+                  §Provider-audit 2026-04: hide the "At Home" chip when the
+                  provider hasn't enabled mobile services. Falls back to
+                  `true` when the capability flag is missing (older profile
+                  payloads) so we don't regress existing providers. */}
               <SectionLabel label="Booking Type" />
               <View style={twStyle("mb-4 flex-row")}>
                 {(
@@ -1058,8 +1416,17 @@ export default function NewBookingScreen() {
                     { val: "walk_in", label: "Walk-in", icon: "walk-outline" as const },
                     { val: "at_home", label: "At Home", icon: "home-outline" as const },
                   ] as const
-                ).map((loc, idx) => {
+                )
+                  .filter((loc) => {
+                    if (loc.val !== "at_home") return true;
+                    const mobileEnabled =
+                      (providerProfile as { offers_mobile_services?: boolean } | null)
+                        ?.offers_mobile_services ?? true;
+                    return mobileEnabled;
+                  })
+                  .map((loc, idx, arr) => {
                   const isActive = loc.val === "walk_in" ? isWalkIn : (!isWalkIn && locationType === loc.val);
+                  const notLast = idx < arr.length - 1;
                   return (
                   <TouchableOpacity
                     key={loc.val}
@@ -1067,7 +1434,7 @@ export default function NewBookingScreen() {
                       isActive
                         ? "border-gray-900 bg-gray-900"
                         : "border-gray-200 bg-white"
-                    }`), idx < 2 ? { marginRight: 8 } : undefined]}
+                    }`), notLast ? { marginRight: 8 } : undefined]}
                     onPress={() => {
                       if (loc.val === "walk_in") {
                         setIsWalkIn(true);
@@ -1642,6 +2009,78 @@ export default function NewBookingScreen() {
                 </>
               )}
 
+              {/* -------- PROVIDER INTAKE / CONSENT FORMS -------- */}
+              {(formsLoading || formsError || activeProviderForms.length > 0) && (
+                <View style={twStyle("mb-4")}>
+                  <SectionLabel label="Client forms" />
+                  {formsError && !providerFormsRaw ? (
+                    <Text style={twStyle("mb-2 text-sm text-red-600")}>{formsError}</Text>
+                  ) : null}
+                  {formsLoading && activeProviderForms.length === 0 ? (
+                    <Text style={twStyle("text-sm text-gray-500")}>Loading forms…</Text>
+                  ) : null}
+                  {activeProviderForms.map((form) => (
+                    <View
+                      key={form.id}
+                      style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white p-3")}
+                    >
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                        {form.title}
+                        {form.is_required ? <Text style={twStyle("text-red-500")}> *</Text> : null}
+                      </Text>
+                      {form.description ? (
+                        <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{form.description}</Text>
+                      ) : null}
+                      {(form.fields || []).map((field) => {
+                        const val = providerFormResponses[form.id]?.[field.id];
+                        const isCheckbox = field.field_type === "checkbox";
+                        const isDate = field.field_type === "date";
+                        const isNumber = field.field_type === "number";
+                        const isMultiline = field.field_type === "textarea" || field.field_type === "long_text";
+                        return (
+                          <View key={field.id} style={twStyle("mt-3")}>
+                            <Text style={twStyle("mb-1 text-xs font-medium text-gray-700")}>
+                              {field.name}
+                              {field.is_required ? <Text style={twStyle("text-red-500")}> *</Text> : null}
+                            </Text>
+                            {isCheckbox ? (
+                              <View style={twStyle("flex-row items-center justify-between")}>
+                                <Text style={twStyle("text-sm text-gray-600")}>Yes</Text>
+                                <Switch
+                                  value={val === true}
+                                  onValueChange={(on) => setProviderFormField(form.id, field.id, on)}
+                                  accessibilityLabel={field.name}
+                                />
+                              </View>
+                            ) : (
+                              <TextInput
+                                style={twStyle(
+                                  `rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-base text-gray-900 ${isMultiline ? "min-h-[72px]" : ""}`,
+                                )}
+                                placeholder={
+                                  field.field_type === "signature"
+                                    ? "Type name to sign"
+                                    : isDate
+                                      ? "YYYY-MM-DD"
+                                      : undefined
+                                }
+                                placeholderTextColor="#9ca3af"
+                                value={val === undefined || val === null ? "" : String(val)}
+                                onChangeText={(t) => setProviderFormField(form.id, field.id, t)}
+                                keyboardType={isNumber ? "decimal-pad" : isDate ? "numbers-and-punctuation" : "default"}
+                                multiline={isMultiline}
+                                textAlignVertical={isMultiline ? "top" : "center"}
+                                accessibilityLabel={field.name}
+                              />
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              )}
+
               {/* -------- NOTES -------- */}
               <SectionLabel label="Special Requests" />
               <TextInput
@@ -1654,6 +2093,29 @@ export default function NewBookingScreen() {
                 textAlignVertical="top"
                 accessibilityLabel="Special requests"
               />
+
+              {/* -------- NOTIFY CUSTOMER -------- */}
+              <View
+                style={twStyle(
+                  "mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3",
+                )}
+              >
+                <View style={twStyle("flex-1 pr-3")}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                    Notify customer
+                  </Text>
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                    Send confirmation & reminders. Turn off for silent front-desk bookings.
+                  </Text>
+                </View>
+                <Switch
+                  value={sendNotification}
+                  onValueChange={setSendNotification}
+                  trackColor={{ false: "#d1d5db", true: "#818cf8" }}
+                  thumbColor={sendNotification ? "#6366f1" : "#f4f4f5"}
+                  accessibilityLabel="Notify customer"
+                />
+              </View>
             </View>
           </View>
         )}
@@ -1953,6 +2415,19 @@ export default function NewBookingScreen() {
 /*  Confirmation step                                                  */
 /* ------------------------------------------------------------------ */
 
+function formatNewBookingPaymentLabel(method: string): string {
+  switch (method) {
+    case "cash":
+      return "Cash";
+    case "card":
+      return "Card (Yoco)";
+    case "online":
+      return "Pay later / link";
+    default:
+      return method ? method.charAt(0).toUpperCase() + method.slice(1) : "—";
+  }
+}
+
 function ConfirmationView({
   summary,
   currency,
@@ -1962,6 +2437,8 @@ function ConfirmationView({
   locationType,
   isWalkIn,
   serviceAddressSummary,
+  specialRequests,
+  intakeConfirmationBlocks,
   paymentMethod,
   paymentOption,
   depositPercentage,
@@ -1988,6 +2465,8 @@ function ConfirmationView({
   locationType: string;
   isWalkIn?: boolean;
   serviceAddressSummary?: string;
+  specialRequests?: string;
+  intakeConfirmationBlocks?: { formId: string; title: string; lines: string[] }[];
   paymentMethod: string;
   paymentOption?: "full" | "deposit";
   depositPercentage?: number;
@@ -2017,7 +2496,7 @@ function ConfirmationView({
             <Text style={twStyle("mt-1 text-sm font-medium text-gray-900")}>{serviceAddressSummary}</Text>
           </View>
         ) : null}
-        <ConfirmRow label="Payment" value={paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1)} />
+        <ConfirmRow label="Payment" value={formatNewBookingPaymentLabel(paymentMethod)} />
         {paymentOption === "deposit" && depositPercentage ? (
           <ConfirmRow
             label="Deposit"
@@ -2026,7 +2505,31 @@ function ConfirmationView({
         ) : null}
         {packageName ? <ConfirmRow label="Package" value={packageName} /> : null}
         <ConfirmRow label="Duration" value={formatDuration(summary.totalMinutes)} />
+        {specialRequests ? (
+          <View style={twStyle("border-b border-gray-50 py-2")}>
+            <Text style={twStyle("text-sm text-gray-500")}>Special requests</Text>
+            <Text style={twStyle("mt-1 text-sm font-medium text-gray-900")}>{specialRequests}</Text>
+          </View>
+        ) : null}
       </View>
+
+      {intakeConfirmationBlocks && intakeConfirmationBlocks.length > 0 ? (
+        <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4")}>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-indigo-900")}>Client forms</Text>
+          {intakeConfirmationBlocks.map((block) => (
+            <View key={block.formId} style={twStyle("mb-3")}>
+              <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-indigo-800")}>
+                {block.title}
+              </Text>
+              {block.lines.map((line, i) => (
+                <Text key={i} style={twStyle("mt-1 pl-1 text-sm text-gray-800")}>
+                  {line}
+                </Text>
+              ))}
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-gray-50 p-4")}>
         {summary.items.map((item, i) => (

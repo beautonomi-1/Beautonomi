@@ -38,6 +38,11 @@ interface PayoutAccount {
   account_number?: string;
 }
 
+/** GET /api/provider/team-access — `can_process_payments` matches POST /api/provider/payouts */
+interface TeamAccessPayload {
+  can_process_payments?: boolean;
+}
+
 function formatDateSafe(value: unknown): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
@@ -56,6 +61,7 @@ export function PayoutsContent() {
 
   const { data: payoutsList, loading, error, refresh } = useApi<Payout[]>("/api/provider/payouts");
   const { data: accountsList } = useApi<PayoutAccount[]>("/api/provider/payout-accounts");
+  const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access");
   const { data: financeData, refresh: refreshFinance } = useApi<{
     earnings?: {
       available_balance?: number;
@@ -72,6 +78,8 @@ export function PayoutsContent() {
   const minimumPayout = financeData?.earnings?.minimum_payout_amount ?? 100;
   const defaultCurrency = getTenantDefaultCurrency();
 
+  const canRequestPayouts = teamAccess?.can_process_payments === true;
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -85,6 +93,24 @@ export function PayoutsContent() {
     const num = parseFloat(amount.replace(/,/g, "."));
     if (Number.isNaN(num) || num <= 0) {
       Alert.alert("Invalid amount", "Enter a valid amount greater than 0.");
+      return;
+    }
+    // §Provider-audit 2026-04 (round 5): pre-validate against minimum and
+    // available balance so providers get immediate feedback instead of a
+    // round-trip 400. Server-side checks in POST /api/provider/payouts
+    // remain authoritative (guards against stale UI balance).
+    if (num < minimumPayout) {
+      Alert.alert(
+        "Below minimum",
+        `Minimum payout is ${defaultCurrency} ${Number(minimumPayout).toFixed(2)}.`,
+      );
+      return;
+    }
+    if (num > availableBalance + 0.005) {
+      Alert.alert(
+        "Insufficient balance",
+        `Available: ${defaultCurrency} ${Number(availableBalance).toFixed(2)}. You requested ${defaultCurrency} ${num.toFixed(2)}.`,
+      );
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -105,7 +131,17 @@ export function PayoutsContent() {
     setBankAccountId(null);
     refresh();
     refreshFinance();
-  }, [amount, notes, bankAccountId, postPayout, refresh, refreshFinance]);
+  }, [
+    amount,
+    notes,
+    bankAccountId,
+    postPayout,
+    refresh,
+    refreshFinance,
+    minimumPayout,
+    availableBalance,
+    defaultCurrency,
+  ]);
 
   if (loading && !payoutsList) {
     return (
@@ -133,6 +169,14 @@ export function PayoutsContent() {
         showsVerticalScrollIndicator={false}
       >
 
+        {!canRequestPayouts && teamAccess != null && (
+          <View style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3")}>
+            <Text style={twStyle("text-sm text-amber-900")}>
+              Payout requests require the &quot;Process payments&quot; permission. Ask a business owner or manager if you
+              need access.
+            </Text>
+          </View>
+        )}
         <View style={twStyle("mb-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-4")}>
           <Text style={twStyle("text-sm text-emerald-700 mb-1")}>Available balance</Text>
           <Text style={twStyle("text-2xl font-bold text-emerald-900")}>
@@ -157,13 +201,15 @@ export function PayoutsContent() {
             <Text style={twStyle("mt-1 text-center text-sm text-gray-500")}>
               Request a payout to withdraw your available balance to your bank account.
             </Text>
-            <TouchableOpacity
-              onPress={() => setRequestOpen(true)}
-              style={twStyle("mt-6 flex-row items-center justify-center rounded-xl bg-emerald-600 px-6 py-3")}
-            >
-              <Ionicons name="cash-outline" size={20} color="#fff" />
-              <Text style={twStyle("ml-2 font-medium text-white")}>Request payout</Text>
-            </TouchableOpacity>
+            {canRequestPayouts ? (
+              <TouchableOpacity
+                onPress={() => setRequestOpen(true)}
+                style={twStyle("mt-6 flex-row items-center justify-center rounded-xl bg-emerald-600 px-6 py-3")}
+              >
+                <Ionicons name="cash-outline" size={20} color="#fff" />
+                <Text style={twStyle("ml-2 font-medium text-white")}>Request payout</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : (
           <>
@@ -216,7 +262,7 @@ export function PayoutsContent() {
       </ScrollView>
 
       <BottomSheet
-        visible={requestOpen}
+        visible={requestOpen && canRequestPayouts}
         onClose={() => setRequestOpen(false)}
         title="Request payout"
         subtitle="Withdraw to your bank account"
@@ -224,17 +270,30 @@ export function PayoutsContent() {
         <Text style={twStyle("mb-1 text-sm text-emerald-700")}>
           Available: {defaultCurrency} {Number(availableBalance).toFixed(2)}
         </Text>
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-          Amount ({defaultCurrency}) *
-        </Text>
+        <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>
+            Amount ({defaultCurrency}) *
+          </Text>
+          {availableBalance > 0 && (
+            <TouchableOpacity
+              onPress={() => setAmount(availableBalance.toFixed(2))}
+              style={twStyle("rounded-full bg-emerald-50 px-3 py-1 border border-emerald-200")}
+            >
+              <Text style={twStyle("text-xs font-semibold text-emerald-700")}>Max</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <TextInput
-          style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+          style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           placeholder="0.00"
           placeholderTextColor="#9ca3af"
           value={amount}
           onChangeText={setAmount}
           keyboardType="decimal-pad"
         />
+        <Text style={twStyle("mb-4 text-xs text-gray-500")}>
+          {`Min ${defaultCurrency} ${Number(minimumPayout).toFixed(2)} · Available ${defaultCurrency} ${Number(availableBalance).toFixed(2)}`}
+        </Text>
         {accounts.length > 0 && (
           <>
             <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Bank account</Text>

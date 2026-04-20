@@ -9,6 +9,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
 import { trackSupportTicketsView } from "@/lib/analytics";
+import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
 
 type Ticket = {
   id: string;
@@ -28,6 +29,11 @@ function formatDateSafe(value: unknown): string {
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
   return parsed.toLocaleDateString();
+}
+
+function categoryLabel(value: string | null | undefined): string {
+  if (!value) return "";
+  return labelForSupportTicketCategory(value);
 }
 
 function statusBgColor(status: string): string {
@@ -59,7 +65,10 @@ export default function SupportTicketsListScreen() {
     }
   }, [refresh]);
 
-  const tickets: Ticket[] = data?.tickets ?? [];
+  const tickets: Ticket[] =
+    data && typeof data === "object" && Array.isArray((data as TicketsResponse).tickets)
+      ? (data as TicketsResponse).tickets ?? []
+      : [];
 
   useEffect(() => {
     if (!loading && data !== undefined) {
@@ -152,8 +161,10 @@ export default function SupportTicketsListScreen() {
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={2}>
                   {t.subject}
                 </Text>
-                <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
-                  Updated {formatDateSafe(t.updated_at)}
+                <Text style={{ marginTop: 6, fontSize: 12, color: Colors.gray[500] }}>
+                  {t.category ? `${categoryLabel(t.category)} · ` : ""}
+                  Priority: {t.priority}
+                  {" · "}Updated {formatDateSafe(t.updated_at)}
                 </Text>
               </TouchableOpacity>
             ))}

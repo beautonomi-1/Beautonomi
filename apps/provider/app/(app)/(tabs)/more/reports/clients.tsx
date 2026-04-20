@@ -19,10 +19,14 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency, formatPercentage } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import {
+  getReportDateRange,
+  formatReportRangeCaption,
+  type ReportDateRangeKey,
+} from "@/lib/reportDateRanges";
+import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
-type DateRange = "today" | "week" | "month" | "last_month" | "3months";
-
-const DATE_RANGES: { label: string; value: DateRange }[] = [
+const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
   { label: "This Week", value: "week" },
   { label: "This Month", value: "month" },
@@ -40,25 +44,11 @@ interface ClientsData {
   growth: { month: string; count: number }[];
 }
 
-function getDateParams(range: DateRange) {
-  const now = new Date();
-  const to = now.toISOString().split("T")[0];
-  let from = to;
-  if (range === "week") { const d = new Date(now); d.setDate(d.getDate() - 7); from = d.toISOString().split("T")[0]; }
-  else if (range === "month") { const d = new Date(now); d.setMonth(d.getMonth() - 1); from = d.toISOString().split("T")[0]; }
-  else if (range === "last_month") {
-    const d = new Date(now); d.setMonth(d.getMonth() - 1);
-    from = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
-    return { from, to: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split("T")[0] };
-  }
-  else if (range === "3months") { const d = new Date(now); d.setMonth(d.getMonth() - 3); from = d.toISOString().split("T")[0]; }
-  return { from, to };
-}
-
 export default function ClientsReport() {
   const { selectedLocationId } = useProvider();
-  const [dateRange, setDateRange] = useState<DateRange>("month");
-  const { from, to } = getDateParams(dateRange);
+  const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
+  const { from, to } = getReportDateRange(dateRange);
+  const rangeCaption = formatReportRangeCaption(from, to);
   const clientsReportUrl = `/api/provider/reports/clients?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
   const { data, loading, error: dataError, refresh } = useApi<ClientsData>(clientsReportUrl);
 
@@ -81,17 +71,20 @@ export default function ClientsReport() {
     <ScreenContainer>
       <ScreenHeader title="Clients" showBack subtitle="New, returning & top spenders" />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4")} contentContainerStyle={{ flexDirection: "row" }}>
-        {DATE_RANGES.map((r) => (
-          <TouchableOpacity
-            key={r.value}
-            style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
-          >
-            <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={twStyle("mb-3")}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
+          {DATE_RANGES.map((r) => (
+            <TouchableOpacity
+              key={r.value}
+              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
+            >
+              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <Text style={twStyle("text-xs text-gray-500")}>{rangeCaption}</Text>
+      </View>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#ec4899" />}
       {!loading && dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
@@ -99,27 +92,25 @@ export default function ClientsReport() {
 
       {data && (
         <View>
-          <View style={[twStyle("flex-row"), { marginBottom: 16 }]}>
-            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+          <View style={twStyle("mb-3")}>
+            <ReportResponsiveStatRow>
               <StatCard title="New Clients" value={String(data.new_clients)} icon="person-add-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-            </View>
-            <View style={twStyle("flex-1")}>
               <StatCard title="Returning" value={String(data.returning_clients)} icon="refresh-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
-            </View>
+            </ReportResponsiveStatRow>
           </View>
 
-          <View style={twStyle("flex-row")}>
-            {data.retention_rate != null && (
-              <View style={twStyle("flex-1")}>
-                <StatCard title="Retention Rate" value={formatPercentage(data.retention_rate)} icon="heart-outline" iconColor="#ec4899" iconBg="bg-pink-50" compact />
-              </View>
-            )}
-            {data.avg_lifetime_value != null && (
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                <StatCard title="Avg LTV" value={formatCurrency(data.avg_lifetime_value)} icon="diamond-outline" iconColor="#8b5cf6" iconBg="bg-violet-50" compact />
-              </View>
-            )}
-          </View>
+          {(data.retention_rate != null || data.avg_lifetime_value != null) && (
+            <View style={twStyle("mb-3")}>
+              <ReportResponsiveStatRow>
+                {data.retention_rate != null ? (
+                  <StatCard title="Retention Rate" value={formatPercentage(data.retention_rate)} icon="heart-outline" iconColor="#ec4899" iconBg="bg-pink-50" compact />
+                ) : null}
+                {data.avg_lifetime_value != null ? (
+                  <StatCard title="Avg LTV" value={formatCurrency(data.avg_lifetime_value)} icon="diamond-outline" iconColor="#8b5cf6" iconBg="bg-violet-50" compact />
+                ) : null}
+              </ReportResponsiveStatRow>
+            </View>
+          )}
 
           {/* New vs Returning visual */}
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
@@ -174,19 +165,34 @@ export default function ClientsReport() {
             <View>
               <SectionHeader title="Client Growth" />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
-                <View style={[twStyle("flex-row items-end justify-between"), { height: 140 }]}>
-                  {data.growth.map((item, i) => {
-                    const maxVal = Math.max(...data.growth.map((d) => d.count), 1);
-                    const pct = Math.max((item.count / maxVal) * 100, 4);
-                    return (
-                      <View key={i} style={[twStyle("flex-1 items-center"), { height: "100%", justifyContent: "flex-end" }]}>
-                        <Text style={twStyle("mb-1 text-[10px] font-medium text-gray-700")}>{item.count}</Text>
-                        <View style={[{ height: `${pct}%`, backgroundColor: "#ec4899", minHeight: 4 }, twStyle("w-full rounded-t-md")]} />
-                        <Text style={twStyle("mt-1 text-[10px] text-gray-400")}>{item.month.slice(-3)}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
+                <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator keyboardShouldPersistTaps="handled">
+                  <View style={{ flexDirection: "row", alignItems: "flex-end", height: 148, minWidth: Math.max(data.growth.length * 40, 280) }}>
+                    {(() => {
+                      const maxVal = Math.max(...data.growth.map((d) => d.count), 1);
+                      return data.growth.map((item, i) => {
+                      const pct = Math.max((item.count / maxVal) * 100, 4);
+                      return (
+                        <View
+                          key={i}
+                          style={{
+                            width: 36,
+                            marginRight: i < data.growth.length - 1 ? 6 : 0,
+                            height: "100%",
+                            justifyContent: "flex-end",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Text style={twStyle("mb-1 text-[10px] font-medium text-gray-700")}>{item.count}</Text>
+                          <View style={[{ height: `${pct}%`, backgroundColor: "#ec4899", minHeight: 4, width: "100%" }, twStyle("rounded-t-md")]} />
+                          <Text style={twStyle("mt-1 max-w-[36px] text-center text-[10px] text-gray-400")} numberOfLines={1}>
+                            {item.month.slice(-3)}
+                          </Text>
+                        </View>
+                      );
+                    });
+                    })()}
+                  </View>
+                </ScrollView>
               </View>
             </View>
           )}

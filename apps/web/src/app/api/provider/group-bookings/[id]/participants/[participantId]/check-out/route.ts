@@ -21,7 +21,10 @@ export async function POST(
       return notFoundResponse("Provider not found");
     }
 
-    // Update the participant's booking status
+    // §Provider-audit 2026-04 (round 8): scope the update to the caller's
+    // provider to prevent cross-tenant writes. We also refuse to "complete"
+    // a booking that's already cancelled / no-show — those are terminal
+    // states and should not silently flip back.
     const { data, error } = await supabase
       .from("bookings")
       .update({
@@ -30,6 +33,8 @@ export async function POST(
       })
       .eq("id", participantId)
       .eq("group_booking_id", id)
+      .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)")
       .select()
       .single();
 

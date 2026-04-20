@@ -1,22 +1,31 @@
 /**
- * Static Mapbox map image – displays a pin at the given coordinates.
- * Uses Mapbox Static Images API. Token and optional style from superadmin (same as web).
+ * Static Mapbox map image — pin(s) at coordinates (shared with booking detail).
  */
 import { useEffect, useState } from "react";
-import { Image, View, ActivityIndicator, Text } from "react-native";
+import {
+  View,
+  ActivityIndicator,
+  Text,
+  type ImageStyle,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
+import { Image } from "expo-image";
 import { Colors } from "@/constants/colors";
 import { getMapboxConfig } from "@/lib/third-party-config";
 
 interface StaticMapImageProps {
   latitude: number;
   longitude: number;
-  /** Optional second pin (e.g. customer address) — map uses Mapbox `auto` framing when set. */
+  /** Optional second pin — Mapbox `auto` framing when set (e.g. provider + customer). */
   secondaryLatitude?: number;
   secondaryLongitude?: number;
   width?: number;
   height?: number;
   zoom?: number;
-  style?: object;
+  borderRadius?: number;
+  /** Merged into map image / placeholders (e.g. `{ borderRadius: 12 }`). */
+  style?: StyleProp<ImageStyle | ViewStyle>;
 }
 
 export function StaticMapImage({
@@ -27,6 +36,7 @@ export function StaticMapImage({
   width = 400,
   height = 200,
   zoom = 14,
+  borderRadius = 16,
   style,
 }: StaticMapImageProps) {
   const [uri, setUri] = useState<string | null>(null);
@@ -43,7 +53,6 @@ export function StaticMapImage({
           setLoading(false);
           return;
         }
-        // Style path: mapbox://styles/mapbox/streets-v12 -> mapbox/streets-v12
         const stylePath = config.style_url
           ? (config.style_url.match(/mapbox:\/\/styles\/(.+)/)?.[1] ?? "mapbox/streets-v12")
           : "mapbox/streets-v12";
@@ -76,9 +85,17 @@ export function StaticMapImage({
     };
   }, [latitude, longitude, secondaryLatitude, secondaryLongitude, width, height, zoom]);
 
+  const baseSize = { width, height, borderRadius };
+
   if (loading) {
     return (
-      <View style={[{ width, height, justifyContent: "center", alignItems: "center" }, style]}>
+      <View
+        style={[
+          baseSize,
+          { justifyContent: "center", alignItems: "center", backgroundColor: "#f3f4f6" },
+          style,
+        ]}
+      >
         <ActivityIndicator size="small" color={Colors.primary} />
       </View>
     );
@@ -88,18 +105,12 @@ export function StaticMapImage({
     return (
       <View
         style={[
-          {
-            width,
-            height,
-            backgroundColor: "#f3f4f6",
-            justifyContent: "center",
-            alignItems: "center",
-            borderRadius: 12,
-          },
+          baseSize,
+          { backgroundColor: "#f3f4f6", justifyContent: "center", alignItems: "center" },
           style,
         ]}
       >
-        <Text style={{ fontSize: 12, color: "#9CA3AF" }}>Map unavailable</Text>
+        <Text style={{ fontSize: 11, color: "#9ca3af" }}>Map unavailable</Text>
       </View>
     );
   }
@@ -107,9 +118,9 @@ export function StaticMapImage({
   return (
     <Image
       source={{ uri }}
-      style={[{ width, height }, style]}
-      resizeMode="cover"
-      onError={() => setUri(null)}
+      style={[{ width, height, borderRadius }, style as ImageStyle]}
+      contentFit="cover"
+      transition={200}
     />
   );
 }

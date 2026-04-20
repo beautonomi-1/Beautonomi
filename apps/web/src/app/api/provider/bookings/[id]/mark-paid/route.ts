@@ -82,8 +82,16 @@ export async function POST(
         400
       );
     }
-    // Guard: only allow marking paid on confirmed/in_progress/completed bookings
-    const validPaymentStatuses = ["confirmed", "in_progress", "completed"];
+    // Guard: allow front-desk / walk-in collection while appointment is still scheduled
+    // (pending / booked / confirmed), in service, or completed — but not cancelled flows.
+    const validPaymentStatuses = [
+      "pending",
+      "booked",
+      "confirmed",
+      "started",
+      "in_progress",
+      "completed",
+    ];
     if (bookingStatus && !validPaymentStatuses.includes(bookingStatus)) {
       return errorResponse(
         `Cannot record payment for a booking with status "${bookingStatus}"`,

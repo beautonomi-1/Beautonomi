@@ -14,12 +14,15 @@ import { formatOTP } from "@/lib/otp/generator";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
   ARRIVAL_PIN_CUSTOMER_SUBTITLE,
+  ARRIVAL_PIN_CUSTOMER_SUBTITLE_WITH_QR,
+  ARRIVAL_QR_CUSTOMER_SUBTITLE_WITH_PIN,
   ARRIVAL_PIN_FALLBACK_LABEL,
   ARRIVAL_PIN_LENGTH_HINT,
   ARRIVAL_PIN_PLACEHOLDER,
   ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE,
   getCustomerEtaUiParts,
 } from "@beautonomi/utils";
+import { generateQRCodeDataURL, isQRCodeExpired, type QRCodeData } from "@/lib/qr/generator";
 
 function isCompleteArrivalOtpInput(raw: string): boolean {
   const c = raw.replace(/\D/g, "");
@@ -51,6 +54,7 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
   const [resendCooldownUntil, setResendCooldownUntil] = useState<number | null>(null);
   const [isResending, setIsResending] = useState(false);
   const [pinSecondsLeft, setPinSecondsLeft] = useState<number | null>(null);
+  const [arrivalQrUrl, setArrivalQrUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!initialBooking) {
@@ -170,6 +174,37 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
     }
   }, [booking?.arrival_otp_verified, pinExpiresAt]);
 
+  const qrPayloadLive = (() => {
+    if (!booking) return null;
+    const row = booking as {
+      qr_code_data?: unknown;
+      qr_code_expires_at?: string | null;
+      qr_code_verified?: boolean;
+    };
+    if (row.qr_code_data == null) return null;
+    if (row.qr_code_verified) return null;
+    if (row.qr_code_expires_at && isQRCodeExpired(row.qr_code_expires_at)) return null;
+    return row.qr_code_data as QRCodeData;
+  })();
+
+  useEffect(() => {
+    if (!qrPayloadLive?.verification_code) {
+      setArrivalQrUrl(null);
+      return;
+    }
+    let cancelled = false;
+    generateQRCodeDataURL(qrPayloadLive)
+      .then((url) => {
+        if (!cancelled) setArrivalQrUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setArrivalQrUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [qrPayloadLive]);
+
   const getSteps = (): BookingStep[] => {
     if (!booking) return [];
 
@@ -274,6 +309,8 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
   const needsOTPVerification = booking.location_type === "at_home" && 
                                booking.current_stage === "provider_arrived" && 
                                !booking.arrival_otp_verified;
+  const bothArrivalMethodsVisible =
+    Boolean(needsOTPVerification && booking.arrival_otp && qrPayloadLive);
   const pendingCharges = additionalCharges.filter(c => c.status === "pending" || c.status === "approved");
   const showETA = booking.location_type === "at_home" && 
     (booking.current_stage === "provider_on_way" || booking.provider_en_route_at) && 
@@ -332,14 +369,16 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
         </div>
       </div>
 
-      {/* Customer-holds-PIN: show code for provider to enter */}
+      {/* Customer-holds-PIN (+ optional QR): same verification as mobile; default platform has both enabled */}
       {needsOTPVerification && (
         <div className="border-t pt-4 mt-4 bg-blue-50 p-4 rounded-lg">
           <div className="flex items-start gap-3 mb-3">
             <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
             <div className="flex-1">
               <h3 className="font-semibold text-blue-900 mb-1">{ARRIVAL_PIN_CUSTOMER_HEADING}</h3>
-              <p className="text-sm text-blue-700">{ARRIVAL_PIN_CUSTOMER_SUBTITLE}</p>
+              <p className="text-sm text-blue-700">
+                {bothArrivalMethodsVisible ? ARRIVAL_PIN_CUSTOMER_SUBTITLE_WITH_QR : ARRIVAL_PIN_CUSTOMER_SUBTITLE}
+              </p>
             </div>
           </div>
           {booking.arrival_otp ? (
@@ -423,6 +462,38 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {needsOTPVerification && qrPayloadLive && (
+        <div className="border-t pt-4 mt-4 rounded-lg border border-purple-200 bg-purple-50/80 p-4">
+          <h3 className="font-semibold text-purple-900 mb-1">Show this QR to your provider</h3>
+          <p className="text-sm text-purple-800 mb-4">
+            {bothArrivalMethodsVisible
+              ? ARRIVAL_QR_CUSTOMER_SUBTITLE_WITH_PIN
+              : "They will scan it or enter the code on their device to confirm they've arrived."}
+          </p>
+          {arrivalQrUrl ? (
+            <div className="flex flex-col items-center rounded-xl bg-white p-4 border border-purple-100">
+              <img src={arrivalQrUrl} alt="Arrival verification QR code" className="h-[200px] w-[200px]" />
+            </div>
+          ) : (
+            <p className="text-sm text-purple-700">Generating QR…</p>
+          )}
+          {qrPayloadLive.verification_code ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4 w-full border-purple-200 text-purple-900"
+              onClick={() => {
+                void navigator.clipboard.writeText(qrPayloadLive.verification_code);
+                toast.success("Verification code copied");
+              }}
+            >
+              Copy code:{" "}
+              <span className="font-mono font-semibold">{qrPayloadLive.verification_code}</span>
+            </Button>
+          ) : null}
         </div>
       )}
 

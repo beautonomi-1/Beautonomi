@@ -7,6 +7,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import * as Haptics from "expo-haptics";
 import { BeautonomiLogo } from "@/components/ui/BeautonomiLogo";
 import { LocationSwitcher } from "@/components/ui/LocationSwitcher";
+import { ProviderNotificationsDropdown } from "@/components/ProviderNotificationsDropdown";
 import { useProvider } from "@/providers/ProviderContext";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 
@@ -26,6 +27,7 @@ export function AppHeader() {
   const { provider } = useProvider();
   const showLocationSwitcher = (provider?.locations?.length ?? 0) > 0;
   const [quickActionsVisible, setQuickActionsVisible] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { totalUnread: unreadCount } = useNotificationsCount();
 
   // §UI-audit 2026-04: hide the global brand chrome on focus flows
@@ -115,7 +117,7 @@ export function AppHeader() {
           <TouchableOpacity
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push("/(app)/notifications" as never);
+              setNotificationsOpen(true);
             }}
             hitSlop={hitSlop}
             accessibilityLabel={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
@@ -157,7 +159,7 @@ export function AppHeader() {
             <Ionicons name="add-circle-outline" size={iconSize} color={iconColor} />
           </TouchableOpacity>
           {showLocationSwitcher && (
-            <View style={{ marginLeft: 4 }}>
+            <View style={{ marginLeft: 4, flexShrink: 0, maxWidth: "42%" }}>
               <LocationSwitcher />
             </View>
           )}
@@ -165,6 +167,12 @@ export function AppHeader() {
       </View>
 
       {/* Quick actions dropdown (web + iPad where ActionSheet may not show) */}
+      <ProviderNotificationsDropdown
+        visible={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        onSeeAll={() => router.push("/(app)/(tabs)/more/notifications" as never)}
+      />
+
       <Modal
         visible={quickActionsVisible}
         transparent

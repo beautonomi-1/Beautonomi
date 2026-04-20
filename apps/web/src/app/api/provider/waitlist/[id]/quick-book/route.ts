@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
 
 const quickBookSchema = z.object({
   date: z.string().date(),
@@ -46,11 +47,11 @@ export async function POST(
     const supabase = await getSupabaseServer(request);
     const adminSupabase = getSupabaseAdmin();
 
-    // Load waitlist entry
+    // Load waitlist entry (provider owner and linked staff must both be allowed)
     const { data: entry, error: entryError } = await supabase
-      .from('waitlist_entries')
-      .select('*, providers!inner(id, user_id)')
-      .eq('id', waitlistEntryId)
+      .from("waitlist_entries")
+      .select("*")
+      .eq("id", waitlistEntryId)
       .single();
 
     if (entryError || !entry) {
@@ -62,11 +63,11 @@ export async function POST(
       );
     }
 
-    // Verify user owns the provider
-    if (entry.providers.user_id !== user.id) {
+    const providerId = await getProviderIdForUser(user.id, supabase);
+    if (!providerId || providerId !== (entry as { provider_id: string }).provider_id) {
       return handleApiError(
         new Error("Unauthorized"),
-        "You can only book waitlist entries for your own provider",
+        "You can only book waitlist entries for your provider",
         "UNAUTHORIZED",
         403
       );
@@ -109,9 +110,25 @@ export async function POST(
       }
     }
 
-    // `date` is "YYYY-MM-DD" and `time` is "HH:MM" — both in UTC.
-    // Construct the timestamp explicitly to avoid timezone drift.
-    const bookingDatetime = new Date(`${date}T${time}:00Z`);
+    // §Provider-audit 2026-04 (round 7): `date` / `time` are the provider's
+    // wall-clock selection from the waitlist sheet, NOT UTC. The previous
+    // `new Date(\`${date}T${time}:00Z\`)` forced UTC interpretation, so a
+    // provider in Africa/Johannesburg who quick-booked a waitlist entry for
+    // 09:00 was silently creating a booking at 11:00 local. Resolve the
+    // provider's business timezone and convert using the shared helper that
+    // already handles `GMT±N` legacy values and malformed IANA strings.
+    const { data: providerTzRow } = await adminSupabase
+      .from("providers")
+      .select("timezone")
+      .eq("id", entry.provider_id)
+      .maybeSingle();
+    const providerTz = (providerTzRow as { timezone?: string | null } | null)
+      ?.timezone;
+    const bookingDatetime = parseSelectedDatetimeInProviderTz(
+      date,
+      time,
+      providerTz,
+    );
 
     const bookingEnd = new Date(bookingDatetime.getTime() + serviceDuration * 60000);
 

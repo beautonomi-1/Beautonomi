@@ -293,7 +293,7 @@ export default function ClientDetailScreen() {
           {/* ── Client info card ── */}
           <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
             <View style={twStyle("flex-row items-center")}>
-              <Avatar name={name} size="lg" />
+              <Avatar name={name} imageUrl={customer.avatar_url ?? undefined} size="lg" />
               <View style={twStyle("ml-4 flex-1")}>
                 <Text style={twStyle("text-lg font-bold text-gray-900")}>{name}</Text>
                 {customer.phone ? (
@@ -321,6 +321,30 @@ export default function ClientDetailScreen() {
                 </Text>
               </View>
             </View>
+
+            {/* §Provider-audit 2026-04: quick-book entry point from the client
+                profile — saves several taps vs. going back to the clients tab
+                then hitting the row action. */}
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                const customerId = client.customer_id || client.customer?.id;
+                if (!customerId) return;
+                router.push(
+                  `/(app)/(tabs)/more/bookings/new?clientId=${customerId}` as never,
+                );
+              }}
+              style={twStyle(
+                "mt-3 flex-row items-center justify-center rounded-xl bg-indigo-600 py-3",
+              )}
+              accessibilityLabel="Book appointment for this client"
+              accessibilityRole="button"
+            >
+              <Ionicons name="calendar-outline" size={18} color="#fff" />
+              <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>
+                Book appointment
+              </Text>
+            </TouchableOpacity>
 
             {/* Tags */}
             <View style={twStyle("mt-3 border-t border-gray-100 pt-3")}>
