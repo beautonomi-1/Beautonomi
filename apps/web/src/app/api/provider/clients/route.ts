@@ -155,12 +155,24 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Combine data - include all clients even if customer data is missing
+    // Combine data - include all clients even if customer data is missing.
+    // §Provider-audit 2026-04: tag each customer with `is_registered` so the
+    // mobile app can disable messaging / custom offer CTAs for walk-in
+    // placeholders (walkin+xxx@beautonomi.invalid or @beautonomi.local).
+    // Previously the mobile Message button blindly POSTed to
+    // /api/provider/conversations/create and we surfaced the raw
+    // 404 "Customer not found" alert.
     const _foundCustomerIds = new Set(customers?.map((c: { id: string }) => c.id) || []);
+    const computeIsRegistered = (email: string | null | undefined): boolean => {
+      if (!email) return false;
+      if (email.includes("beautonomi.invalid")) return false;
+      if (email.includes("beautonomi.local")) return false;
+      return true;
+    };
     let clientsWithCustomers = clients.map((client) => {
       const customer = customers?.find((c) => c.id === client.customer_id);
-      
-      // If customer not found, create minimal customer object
+
+      // If customer not found, create minimal customer object.
       if (!customer) {
         return {
           ...client,
@@ -176,13 +188,17 @@ export async function GET(request: NextRequest) {
             customer_review_rating_count: null,
             customer_booking_rating_avg: null,
             customer_booking_rating_count: null,
+            is_registered: false,
           },
         };
       }
-      
+
       return {
         ...client,
-        customer,
+        customer: {
+          ...customer,
+          is_registered: computeIsRegistered(customer.email),
+        },
       };
     });
 

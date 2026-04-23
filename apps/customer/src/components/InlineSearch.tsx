@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface Suggestion {
   type: "service" | "provider" | "category";
@@ -251,6 +252,7 @@ export function InlineSearch({ onSearch, contextCategorySlug, fillParent }: Inli
                 }}
               >
                 <FlatList
+                  {...verticalFlatListPerf}
                   data={suggestions}
                   keyExtractor={(item) => `${item.type}-${item.id}`}
                   keyboardShouldPersistTaps="handled"

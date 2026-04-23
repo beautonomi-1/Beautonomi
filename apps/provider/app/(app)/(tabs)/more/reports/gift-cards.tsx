@@ -19,6 +19,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
 interface GiftCardReport {
@@ -172,6 +173,7 @@ export default function GiftCardReportScreen() {
         <EmptyState icon="gift-outline" title="No gift card data" description="Gift card transactions will appear here" />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={cards}
           keyExtractor={(c: GiftCardReport) => c.id}
           showsVerticalScrollIndicator={false}

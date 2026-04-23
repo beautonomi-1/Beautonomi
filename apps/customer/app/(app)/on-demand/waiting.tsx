@@ -22,6 +22,7 @@ interface OnDemandRequest {
   status: string;
   expires_at: string;
   booking_id?: string | null;
+  provider_id?: string | null;
   provider_name?: string | null;
 }
 
@@ -155,16 +156,31 @@ export default function OnDemandWaitingScreen() {
         {
           text: "Cancel",
           style: "destructive",
-            onPress: async () => {
+          onPress: async () => {
             setCancelling(true);
             try {
               const res = await api.post<OnDemandRequest>(`/api/me/on-demand/requests/${requestId}/cancel`, {});
               if (res.error) {
                 Alert.alert("Error", getApiErrorMessage(res.error, "Failed to cancel"));
+                return;
+              }
+              // §Customer-audit 2026-04: previously `setRequest(updated)` left
+              // the user stranded on the waiting screen until the status
+              // useEffect pushed them to the generic "result" screen. That
+              // made Cancel feel like a no-op. Instead mark navigated
+              // immediately and send the user back to the provider profile
+              // (where they started picking a time) so they can try again
+              // without losing context. Fall back to the bookings tab if we
+              // don't know the provider id.
+              hasNavigatedRef.current = true;
+              const providerId = request?.provider_id ?? null;
+              if (providerId) {
+                router.replace({
+                  pathname: "/(app)/partner-profile",
+                  params: { provider_id: providerId },
+                });
               } else {
-                const updated = res.data;
-                if (updated) setRequest(updated);
-                else load();
+                router.replace("/(app)/(tabs)/bookings" as never);
               }
             } catch {
               Alert.alert("Error", "Something went wrong. Please check your connection and try again.");

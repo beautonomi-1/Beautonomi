@@ -239,34 +239,70 @@ export async function validateBooking(
     );
   }
 
-  // ── Minimum notice (lead time) from provider_online_booking_settings ─────
-  // Applies to scheduled online bookings (at_salon and at_home). Not separate per location type in DB today.
+  // ── Online-booking windows from provider_online_booking_settings ─────────
+  // §Release-audit 2026-04: also enforce `max_advance_days` as a ceiling —
+  // previously only `min_notice_minutes` was checked server-side at commit
+  // time, so a buggy / compromised client could submit a slot N months
+  // out even when the provider caps advance bookings at e.g. 30 days.
+  // Applies to scheduled online bookings (at_salon and at_home). Not
+  // separate per location type in DB today.
   if (!options?.skipMinNoticeCheck) {
     const { data: obSettings } = await supabaseAdmin
       .from("provider_online_booking_settings")
-      .select("min_notice_minutes")
+      .select("min_notice_minutes, max_advance_days")
       .eq("provider_id", draft.provider_id)
       .maybeSingle();
-    const raw = obSettings?.min_notice_minutes;
+    const rawNotice = obSettings?.min_notice_minutes;
     const minNotice =
-      typeof raw === "number" ? raw : typeof raw === "string" ? parseInt(raw, 10) : 60;
+      typeof rawNotice === "number"
+        ? rawNotice
+        : typeof rawNotice === "string"
+          ? parseInt(rawNotice, 10)
+          : 60;
     const effectiveMinNotice = Number.isFinite(minNotice) && minNotice >= 0 ? minNotice : 60;
+
+    const rawAdvance = (obSettings as { max_advance_days?: number | string | null } | null)
+      ?.max_advance_days;
+    const maxAdvance =
+      typeof rawAdvance === "number"
+        ? rawAdvance
+        : typeof rawAdvance === "string"
+          ? parseInt(rawAdvance, 10)
+          : null;
+    const effectiveMaxAdvance =
+      typeof maxAdvance === "number" && Number.isFinite(maxAdvance) && maxAdvance >= 1
+        ? Math.floor(maxAdvance)
+        : null;
+
+    const selected = new Date(draft.selected_datetime);
+    if (!Number.isFinite(selected.getTime())) {
+      return handleApiError(
+        new Error("Invalid selected_datetime"),
+        "Invalid appointment time.",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+
     if (effectiveMinNotice > 0) {
-      const selected = new Date(draft.selected_datetime);
-      if (!Number.isFinite(selected.getTime())) {
-        return handleApiError(
-          new Error("Invalid selected_datetime"),
-          "Invalid appointment time.",
-          "VALIDATION_ERROR",
-          400
-        );
-      }
       const cutoffMs = Date.now() + effectiveMinNotice * 60 * 1000;
       if (selected.getTime() < cutoffMs) {
         return handleApiError(
           new Error("Minimum notice not met for booking time"),
           `This provider requires at least ${effectiveMinNotice} minutes' notice. Please choose a later time.`,
           "MIN_NOTICE_NOT_MET",
+          400
+        );
+      }
+    }
+
+    if (effectiveMaxAdvance != null) {
+      const ceilingMs = Date.now() + effectiveMaxAdvance * 24 * 60 * 60 * 1000;
+      if (selected.getTime() > ceilingMs) {
+        return handleApiError(
+          new Error("Selected slot exceeds provider's max advance booking window"),
+          `This provider only accepts online bookings up to ${effectiveMaxAdvance} days in advance. Please choose a closer date.`,
+          "MAX_ADVANCE_EXCEEDED",
           400
         );
       }
@@ -306,7 +342,7 @@ export async function validateBooking(
   const { data: offerings, error: offeringsError } = await supabase
     .from("offerings")
     .select(
-      "id, provider_id, title, duration_minutes, buffer_minutes, price, currency, supports_at_home, at_home_price_adjustment, is_active"
+      "id, provider_id, title, duration_minutes, buffer_minutes, price, currency, supports_at_home, at_home_price_adjustment, is_active, online_booking_enabled, service_type, service_id"
     )
     .in("id", offeringIds);
 
@@ -320,6 +356,34 @@ export async function validateBooking(
     if (!off || off.provider_id !== draft.provider_id || !off.is_active) {
       return handleApiError(
         new Error("Invalid service selection"),
+        "Invalid service selection",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+    // §Release-audit 2026-04: the customer-facing services list
+    // (`/api/public/providers/[slug]/services`) already filters
+    // `online_booking_enabled = true`, but validate-booking previously
+    // ignored the flag. A service id that leaks (cache, direct API
+    // call, deep link) could bypass the provider's "offline booking
+    // only" preference. Enforce it here so the commit path matches
+    // what the discovery surface is willing to expose.
+    if (off.online_booking_enabled === false) {
+      return handleApiError(
+        new Error("Service is not available for online booking"),
+        "This service can only be booked by contacting the provider directly.",
+        "ONLINE_BOOKING_DISABLED",
+        400
+      );
+    }
+    // Reject addon / variant offerings from being submitted as a main
+    // service line — they must flow through `draft.addons` /
+    // variant-selection on their parent, respectively. Without this the
+    // customer could hide an addon as a "service" and bypass addon
+    // scoping rules (applicable_service_ids, addon_locations).
+    if (off.service_type === "addon" || off.service_type === "variant") {
+      return handleApiError(
+        new Error("Non-service offering submitted as service"),
         "Invalid service selection",
         "VALIDATION_ERROR",
         400
@@ -344,6 +408,22 @@ export async function validateBooking(
         if (!off || off.provider_id !== draft.provider_id || !off.is_active) {
           return handleApiError(
             new Error("Invalid service selection for group participant"),
+            "Invalid service selection",
+            "VALIDATION_ERROR",
+            400
+          );
+        }
+        if (off.online_booking_enabled === false) {
+          return handleApiError(
+            new Error("Service is not available for online booking (group participant)"),
+            "One of the selected services can only be booked by contacting the provider directly.",
+            "ONLINE_BOOKING_DISABLED",
+            400
+          );
+        }
+        if (off.service_type === "addon" || off.service_type === "variant") {
+          return handleApiError(
+            new Error("Non-service offering submitted for group participant"),
             "Invalid service selection",
             "VALIDATION_ERROR",
             400
@@ -484,24 +564,75 @@ export async function validateBooking(
   }
 
   // ── Addons ───────────────────────────────────────────────────────────────
+  // §Release-audit 2026-04: `service_addons` is a VIEW over `offerings`
+  // where `service_type='addon' AND is_active=true` (see migration 081).
+  // The customer-visible GET
+  // `/api/public/providers/[slug]/services/[serviceId]/addons` queries
+  // `offerings` directly and filters `online_booking_enabled=true`,
+  // `service_type='addon'`, `is_active=true`, and respects
+  // `applicable_service_ids`. Previously validate-booking went through
+  // the VIEW with only `is_active` — allowing addons the provider
+  // disabled for online booking or that aren't applicable to the chosen
+  // services to sneak through at commit. Hit the underlying `offerings`
+  // table with the same filter shape as discovery, then verify
+  // applicability against the actual services in the draft.
   const addonIds = draft.addons || [];
   const addonById = new Map<string, any>();
   if (addonIds.length > 0) {
     const { data: addons, error: addonsError } = await supabase
-      .from("service_addons")
-      .select("id, provider_id, price, currency, is_active")
+      .from("offerings")
+      .select(
+        "id, provider_id, price, currency, duration_minutes, is_active, online_booking_enabled, service_type, applicable_service_ids, service_id"
+      )
       .in("id", addonIds);
     if (addonsError) throw addonsError;
     for (const a of addons || []) addonById.set(a.id, a);
     for (const id of addonIds) {
       const a = addonById.get(id);
-      if (!a || a.provider_id !== draft.provider_id || !a.is_active) {
+      if (
+        !a ||
+        a.provider_id !== draft.provider_id ||
+        !a.is_active ||
+        a.service_type !== "addon"
+      ) {
         return handleApiError(
           new Error("Invalid add-on selection"),
           "Invalid add-on selection",
           "VALIDATION_ERROR",
           400
         );
+      }
+      if (a.online_booking_enabled === false) {
+        return handleApiError(
+          new Error("Add-on is not available for online booking"),
+          "One of the selected add-ons can only be booked by contacting the provider directly.",
+          "ONLINE_BOOKING_DISABLED",
+          400
+        );
+      }
+      // Applicability: `applicable_service_ids` (nullable) may reference
+      // `offerings.id` OR `offerings.service_id`. Mirror the OR-clause
+      // used in the public addons GET so a scoped addon cannot be
+      // attached to a service it wasn't offered for.
+      const scope = (a.applicable_service_ids as string[] | null | undefined) ?? null;
+      if (scope && scope.length > 0) {
+        const selectedServiceIds = new Set<string>();
+        for (const s of draft.services) {
+          selectedServiceIds.add(s.offering_id);
+          const masterId = offeringById.get(s.offering_id)?.service_id;
+          if (typeof masterId === "string" && masterId.length > 0) {
+            selectedServiceIds.add(masterId);
+          }
+        }
+        const matches = scope.some((x) => selectedServiceIds.has(x));
+        if (!matches) {
+          return handleApiError(
+            new Error("Add-on not applicable to selected services"),
+            "One of the selected add-ons does not apply to the chosen services.",
+            "ADDON_NOT_APPLICABLE",
+            400
+          );
+        }
       }
     }
     // Branch: at_salon with location_id — addon must be available at that location
@@ -626,15 +757,38 @@ export async function validateBooking(
             400
           );
         }
-        unitPrice = Number(vrow.retail_price);
-        const vQty = Number(vrow.quantity ?? 0);
-        if (qty > vQty) {
-          return handleApiError(
-            new Error(`Insufficient stock for ${productData.name}`),
-            `Only ${vQty} units available`,
-            "INSUFFICIENT_STOCK",
-            400
-          );
+        // §Release-audit 2026-04: variant pricing must not silently fall
+        // through to zero when a provider left `product_variants.retail_price`
+        // at the table default (0 — the column is NOT NULL DEFAULT 0).
+        // Fall back to the parent product's retail_price before treating
+        // the line as free, so a provider who only set the parent price
+        // but used variant rows for size/colour labels still charges
+        // correctly. Customer PDP reads the same variant row, so UI /
+        // server stay in sync via the same fallback.
+        const rawVariantPrice = Number(vrow.retail_price);
+        if (Number.isFinite(rawVariantPrice) && rawVariantPrice > 0) {
+          unitPrice = rawVariantPrice;
+        } else {
+          unitPrice = Number(productData.retail_price ?? 0);
+        }
+        // §Release-audit 2026-04: stock check must honour the parent
+        // product's `track_stock_quantity` flag, exactly like the
+        // non-variant branch below. Previously variant products were
+        // always gated by `vrow.quantity`, so a provider who
+        // intentionally leaves stock tracking OFF (print-on-demand,
+        // dropshipping, digital goods, configurable services) had
+        // their variant orders rejected with "Only 0 units available"
+        // once the default zero was left in. Now both branches agree.
+        if (productData.track_stock_quantity) {
+          const vQty = Number(vrow.quantity ?? 0);
+          if (qty > vQty) {
+            return handleApiError(
+              new Error(`Insufficient stock for ${productData.name}`),
+              `Only ${vQty} units available`,
+              "INSUFFICIENT_STOCK",
+              400
+            );
+          }
         }
         row.productVariantId = variantId;
       } else {
@@ -682,7 +836,41 @@ export async function validateBooking(
     0
   );
 
-  const travelFee = draft.location_type === "at_home" ? (draft.travel_fee || 0) : 0;
+  // §Release-audit 2026-04: the server must not trust the client-submitted
+  // travel_fee when a booking_hold exists — the hold already carries the
+  // server-recomputed fee (see calculateTravelFeeForHold). Previously a
+  // malicious / stale client could submit travel_fee=0 and skip the charge.
+  // When no hold is present we fall back to the draft value; the holdless
+  // path (direct booking creation, mobile, on-demand) stays unchanged so
+  // existing journeys keep working.
+  let travelFee = draft.location_type === "at_home" ? (draft.travel_fee || 0) : 0;
+  if (draft.location_type === "at_home" && validatedDraft.hold_id) {
+    try {
+      const { data: holdMetaRow } = await supabaseAdmin
+        .from("booking_holds")
+        .select("metadata")
+        .eq("id", validatedDraft.hold_id)
+        .maybeSingle();
+      const holdMeta =
+        holdMetaRow && typeof holdMetaRow === "object"
+          ? (holdMetaRow as { metadata?: unknown }).metadata
+          : null;
+      if (holdMeta && typeof holdMeta === "object" && !Array.isArray(holdMeta)) {
+        const holdTravelFeeRaw = (holdMeta as { travel_fee?: unknown }).travel_fee;
+        const holdTravelFee =
+          typeof holdTravelFeeRaw === "number"
+            ? holdTravelFeeRaw
+            : typeof holdTravelFeeRaw === "string"
+              ? Number(holdTravelFeeRaw)
+              : null;
+        if (holdTravelFee != null && Number.isFinite(holdTravelFee) && holdTravelFee >= 0) {
+          travelFee = holdTravelFee;
+        }
+      }
+    } catch (err) {
+      console.error("[validate-booking] failed to read hold travel_fee override:", err);
+    }
+  }
 
   if (validatedDraft.customer_package_entitlement_id && !draft.package_id) {
     return handleApiError(

@@ -19,6 +19,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
 interface PackageReport {
@@ -117,6 +118,7 @@ export default function PackageReportScreen() {
         <EmptyState icon="layers-outline" title="No package data" description="Package sales will appear here" />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={packages}
           keyExtractor={(p: PackageReport) => p.id}
           showsVerticalScrollIndicator={false}

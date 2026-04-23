@@ -59,6 +59,16 @@ const ACTIVITY_COLOR_MAP: Record<string, { bg: string; text: string }> = {
   default: { bg: "bg-gray-100", text: "text-gray-500" },
 };
 
+/** Activities API returns `{ data: Activity[], meta }` after envelope unwrap — never assume a bare array. */
+function normalizeActivityRows(raw: unknown): Activity[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw as Activity[];
+  if (typeof raw === "object" && raw !== null && "data" in raw && Array.isArray((raw as { data: unknown }).data)) {
+    return (raw as { data: Activity[] }).data;
+  }
+  return [];
+}
+
 interface Activity {
   id?: string;
   activity_type: string;
@@ -250,9 +260,27 @@ export function ProviderOpsLeadDetailPage() {
 
   const name = String(lead.business_name || lead.contact_person_name || lead.lead_name || "Unnamed Lead");
   const stage = String(lead.commercial_stage || "new");
-  const activities = (activitiesQ.data?.data ?? []) as Activity[];
-  const categories = (Array.isArray(lead.provider_lead_categories) ? lead.provider_lead_categories : []) as { global_category_id: string; global_service_categories: { id: string; name: string; slug: string; icon: string | null } | null }[];
-  const tags = (Array.isArray(lead.tags) ? lead.tags : []) as string[];
+  const activities = normalizeActivityRows(activitiesQ.data?.data ?? activitiesQ.data);
+  const categories = (Array.isArray(lead.provider_lead_categories)
+    ? lead.provider_lead_categories
+    : lead.provider_lead_categories && typeof lead.provider_lead_categories === "object"
+      ? [lead.provider_lead_categories as { global_category_id: string; global_service_categories: { id: string; name: string; slug: string; icon: string | null } | null }]
+      : []) as { global_category_id: string; global_service_categories: { id: string; name: string; slug: string; icon: string | null } | null }[];
+  const tags: string[] = Array.isArray(lead.tags)
+    ? (lead.tags as string[])
+    : typeof lead.tags === "string"
+      ? (() => {
+          const t = lead.tags.trim();
+          if (!t) return [];
+          try {
+            const p = JSON.parse(t) as unknown;
+            if (Array.isArray(p)) return p.map(String);
+          } catch {
+            /* use split below */
+          }
+          return t.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+        })()
+      : [];
   const currentStageIdx = STAGES.indexOf(stage as typeof STAGES[number]);
   const onboardingData = lead.onboarding_data as Record<string, unknown> | null;
   const hasOnboardingData = onboardingData && Object.keys(onboardingData).filter((k) => k !== "invite_token").length > 0;

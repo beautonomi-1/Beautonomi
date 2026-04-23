@@ -23,6 +23,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface NoteTemplate {
   id: string;
@@ -301,6 +302,7 @@ export default function NoteTemplatesScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(t: NoteTemplate) => t.id}
           showsVerticalScrollIndicator={false}

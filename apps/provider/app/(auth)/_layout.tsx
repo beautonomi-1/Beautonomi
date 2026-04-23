@@ -1,19 +1,16 @@
 import { Redirect, Stack } from "expo-router";
-import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
+import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 
 export default function AuthLayout() {
   const { session, loading } = useAuth();
 
-  // Show a neutral loading screen while auth state resolves.
-  // Returning null here causes a blank white flash — the splash screen hides this
-  // on first boot, but it becomes visible on hot-reload and background-to-foreground transitions.
+  // §Provider-audit 2026-04 (loading-polish): use the shared branded gate
+  // loader instead of a bare ActivityIndicator. This keeps the experience
+  // consistent across auth/portal/profile-completion gates and removes the
+  // "blank white splash + spinner" flash on hot-reload and cold-start.
   if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#ffffff" }}>
-        <ActivityIndicator size="large" color="#FF0077" />
-      </View>
-    );
+    return <GateLoadingScreen />;
   }
 
   // Already authenticated — let the root index route the user to the right screen.

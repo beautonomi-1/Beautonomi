@@ -13,7 +13,6 @@ import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
-import { supabase } from "@/lib/supabase/client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -204,11 +203,9 @@ export default function SettingsAccountHubScreen() {
           Alert.alert("Error", res.error.message ?? "Could not sign out everywhere. Please try again.");
           return;
         }
-        try {
-          await supabase.auth.signOut();
-        } catch {
-          // non-fatal - server already revoked refresh tokens
-        }
+        // Use AuthProvider `signOut` (bounded remote + local fallback + cache
+        // + biometrics) — raw `supabase.auth.signOut()` can hang on network.
+        await signOut();
         goToLogin();
       } catch (e) {
         Alert.alert("Error", getApiErrorMessage(e, "Could not sign out everywhere"));
@@ -223,7 +220,7 @@ export default function SettingsAccountHubScreen() {
         { text: "Sign out everywhere", style: "destructive", onPress: () => void perform() },
       ],
     );
-  }, [router]);
+  }, [router, signOut]);
 
   const handleItemPress = useCallback(
     (item: SettingsItem) => {

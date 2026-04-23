@@ -63,8 +63,8 @@ export async function GET(
       );
     }
 
-    const effectiveMinNotice = Number.isNaN(minNoticeMinutes) || minNoticeMinutes < 0 ? 0 : minNoticeMinutes;
-    const effectiveMaxAdvance = Number.isNaN(maxAdvanceDays) || maxAdvanceDays < 1 ? 365 : maxAdvanceDays;
+    const clientMinNotice = Number.isNaN(minNoticeMinutes) || minNoticeMinutes < 0 ? 0 : minNoticeMinutes;
+    const clientMaxAdvance = Number.isNaN(maxAdvanceDays) || maxAdvanceDays < 1 ? 365 : maxAdvanceDays;
 
     // Get provider
     const { data: provider, error: providerError } = await supabase
@@ -87,6 +87,46 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    // §Release-audit 2026-04: the public slot grid previously trusted
+    // `min_notice_minutes` / `max_advance_days` purely from the client
+    // query params (defaulting to 0 / 365). Providers configure a real
+    // policy in `provider_online_booking_settings` and expect the booking
+    // flow to honour it — a buggy / compromised customer client could
+    // otherwise request "slots today" with `min_notice_minutes=0` and
+    // book 5 minutes before a service starts. Enforce the provider's
+    // values as floor / ceiling so parity with the provider portal holds
+    // (the portal intentionally bypasses these because providers manage
+    // their own exceptions; public customers cannot).
+    let providerMinNotice: number | null = null;
+    let providerMaxAdvance: number | null = null;
+    try {
+      const { data: onlineSettings } = await supabase
+        .from("provider_online_booking_settings")
+        .select("min_notice_minutes, max_advance_days")
+        .eq("provider_id", provider.id)
+        .maybeSingle();
+      if (onlineSettings) {
+        const rawNotice = (onlineSettings as { min_notice_minutes?: number | null }).min_notice_minutes;
+        const rawAdvance = (onlineSettings as { max_advance_days?: number | null }).max_advance_days;
+        if (typeof rawNotice === "number" && Number.isFinite(rawNotice) && rawNotice >= 0) {
+          providerMinNotice = Math.floor(rawNotice);
+        }
+        if (typeof rawAdvance === "number" && Number.isFinite(rawAdvance) && rawAdvance >= 1) {
+          providerMaxAdvance = Math.floor(rawAdvance);
+        }
+      }
+    } catch (err) {
+      console.warn(
+        "[public-availability] provider_online_booking_settings lookup failed; falling back to client params",
+        err,
+      );
+    }
+
+    const effectiveMinNotice =
+      providerMinNotice != null ? Math.max(clientMinNotice, providerMinNotice) : clientMinNotice;
+    const effectiveMaxAdvance =
+      providerMaxAdvance != null ? Math.min(clientMaxAdvance, providerMaxAdvance) : clientMaxAdvance;
 
     // Duration and buffer: prefer authoritative chain from `service_ids` + DB; else query params; else single offering.
     let durationMinutes = paramDuration != null ? parseInt(paramDuration, 10) : NaN;

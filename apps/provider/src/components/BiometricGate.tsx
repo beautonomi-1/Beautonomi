@@ -31,6 +31,7 @@ import * as SecureStore from "expo-secure-store";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
+import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 
 const BIOMETRIC_ENABLED_KEY = "provider_biometric_auth_enabled";
 const BACKGROUND_GRACE_MS = 60_000; // 60 seconds
@@ -124,11 +125,9 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
   }, [promptUnlock]);
 
   if (status === "checking") {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
+    // §Provider-audit 2026-04 (loading-polish): use the branded gate so the
+    // biometric check frame doesn't fall back to a bare spinner.
+    return <GateLoadingScreen />;
   }
 
   if (status === "unlocked") {

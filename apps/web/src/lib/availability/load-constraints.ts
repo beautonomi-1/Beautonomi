@@ -842,6 +842,82 @@ async function loadActiveBookingHoldsAsSyntheticBookings(
 }
 
 /**
+ * Load provider group bookings (`group_bookings`) that overlap the date window.
+ *
+ * Group bookings are first-class calendar items created by the provider portal.
+ * They do **not** always have matching rows in `bookings` / `booking_services`
+ * (the provider flow creates `group_bookings` + `booking_participants` directly),
+ * so {@link loadExistingBookings} can't see them. Without this loader a provider
+ * could create another booking (single or group) on top of an existing group
+ * session with the same staff — a real calendar conflict.
+ *
+ * Mirrors the treatment of `availability_blocks` in {@link loadBusinessClosedPeriods}:
+ * rows with `staff_id IS NULL` block every staff (the group is "owned" by the
+ * provider, not a single team member), and rows with a specific `staff_id` only
+ * block that staff.
+ */
+async function loadExistingGroupBookingsAsSyntheticBookings(
+  db: SupabaseClient,
+  providerId: string,
+  date: string,
+  staffId: string | null,
+  excludeGroupBookingId?: string,
+): Promise<BookingService[]> {
+  const dayStart = `${date}T00:00:00`;
+  const dayEnd = `${date}T23:59:59`;
+
+  let query = db
+    .from('group_bookings')
+    .select('id, scheduled_at, duration_minutes, staff_id, status')
+    .eq('provider_id', providerId)
+    .gt('scheduled_at', dayStart)
+    .lt('scheduled_at', dayEnd)
+    .not('status', 'in', '(cancelled,no_show)');
+
+  if (excludeGroupBookingId) {
+    query = query.neq('id', excludeGroupBookingId);
+  }
+
+  const { data: rows, error } = await query;
+  if (error) {
+    // group_bookings may not exist in very old envs — swallow and return none.
+    if (error.code === '42P01') return [];
+    console.error('Error loading group bookings:', error);
+    return [];
+  }
+  if (!rows?.length) return [];
+
+  return rows
+    .filter((r) => {
+      const rowStaff = r.staff_id as string | null;
+      if (!rowStaff) return true; // provider-level group blocks everyone
+      return staffId ? rowStaff === staffId : true;
+    })
+    .map((r) => {
+      const startIso = r.scheduled_at as string;
+      const durMin = typeof r.duration_minutes === 'number' && r.duration_minutes > 0
+        ? r.duration_minutes
+        : 60;
+      const startMs = new Date(startIso).getTime();
+      const endIso = Number.isFinite(startMs)
+        ? new Date(startMs + durMin * 60 * 1000).toISOString()
+        : startIso;
+      return {
+        id: `group:${r.id}`,
+        booking_id: `group:${r.id}`,
+        offering_id: HOLD_SYNTHETIC_OFFERING_ID,
+        staff_id: staffId,
+        scheduled_start_at: startIso,
+        scheduled_end_at: endIso,
+        duration_minutes: durMin,
+        buffer_minutes: 0,
+        processing_minutes: 0,
+        finishing_minutes: 0,
+      };
+    }) as BookingService[];
+}
+
+/**
  * Load business closed periods (availability_blocks with block_type='unavailable')
  * and convert them to synthetic booking segments so the slot calculator blocks them.
  */
@@ -918,6 +994,11 @@ export type LoadAvailabilityConstraintsOptions = {
    */
   excludeBookingId?: string;
   /**
+   * When set, the `group_bookings` row with this id is excluded from the synthetic
+   * conflict source below (group being rescheduled should not block itself).
+   */
+  excludeGroupBookingId?: string;
+  /**
    * Merge availability_blocks + staff time off / day off (same rules as public slug availability).
    */
   publicCalendarParity?: {
@@ -982,7 +1063,15 @@ export async function loadAvailabilityConstraints(
 
   const excludeBookingId = options?.excludeBookingId;
 
-  const [shiftsRaw, timeBlocks, existingBookings, providerSettings, holdBlocks, closedPeriodBlocks] = await Promise.all([
+  const [
+    shiftsRaw,
+    timeBlocks,
+    existingBookings,
+    providerSettings,
+    holdBlocks,
+    closedPeriodBlocks,
+    groupBookingBlocks,
+  ] = await Promise.all([
     loadStaffShifts(db, effectiveStaffId, date),
     loadTimeBlocks(db, effectiveStaffId, date, resolvedProviderId),
     syntheticProviderId
@@ -998,6 +1087,15 @@ export async function loadAvailabilityConstraints(
     }),
     resolvedProviderId
       ? loadBusinessClosedPeriods(db, resolvedProviderId, date, effectiveStaffId)
+      : Promise.resolve([]),
+    resolvedProviderId
+      ? loadExistingGroupBookingsAsSyntheticBookings(
+          db,
+          resolvedProviderId,
+          date,
+          effectiveStaffId,
+          options?.excludeGroupBookingId,
+        )
       : Promise.resolve([]),
   ]);
 
@@ -1082,7 +1180,13 @@ export async function loadAvailabilityConstraints(
   return {
     staffShifts,
     timeBlocks,
-    existingBookings: [...existingBookings, ...holdBlocks, ...parityBookings, ...closedPeriodBlocks],
+    existingBookings: [
+      ...existingBookings,
+      ...holdBlocks,
+      ...parityBookings,
+      ...closedPeriodBlocks,
+      ...groupBookingBlocks,
+    ],
     providerSettings,
     workHoursEnabled: effectiveWorkHoursEnabled,
   } as AvailabilityConstraints & {

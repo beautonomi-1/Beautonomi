@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
+import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import type { UserRole } from "@beautonomi/types";
 import {
   authFlowBreadcrumb,
@@ -116,22 +117,11 @@ export function RoleGate({ children }: RoleGateProps) {
     };
   }, [user?.id, runFetch]);
 
-  if (!user) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 16, color: Colors.gray[600] }}>Loading…</Text>
-      </View>
-    );
-  }
-  if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 16, color: Colors.gray[600] }}>Checking access…</Text>
-      </View>
-    );
-  }
+  // §Customer-audit 2026-04 (loading-polish): branded gate for both the
+  // "no user yet" and "checking role" phases so the whole auth chain shares
+  // one animation instead of a mix of bare spinners.
+  if (!user) return <GateLoadingScreen />;
+  if (loading) return <GateLoadingScreen message="Checking access…" />;
   if (errorType) {
     const isNetwork = errorType === "network";
     return (

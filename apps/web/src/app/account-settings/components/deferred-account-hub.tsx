@@ -19,9 +19,18 @@ type DeferredAccountHubProps = {
  */
 export default function DeferredAccountHub({ embeddedInProfile }: DeferredAccountHubProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [shouldLoad, setShouldLoad] = useState(false);
+  const [shouldLoad, setShouldLoad] = useState(() => Boolean(embeddedInProfile));
 
   useEffect(() => {
+    // On the main Account hub (`embeddedInProfile`), loading the grid only
+    // after IntersectionObserver meant users could tap "Bookings" while the
+    // chunk was still cold — navigation felt sluggish vs provider profile.
+    // Eager-load the hub on that path; keep lazy + IO for any other embeds.
+    if (embeddedInProfile) {
+      queueMicrotask(() => setShouldLoad(true));
+      return;
+    }
+
     // Deep link /account-settings#account-management — load hub ASAP (defer setState to avoid cascading-render lint).
     if (
       typeof window !== "undefined" &&
@@ -52,7 +61,7 @@ export default function DeferredAccountHub({ embeddedInProfile }: DeferredAccoun
 
     io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [embeddedInProfile]);
 
   return (
     <div

@@ -181,10 +181,16 @@ export default function TeamMemberDetailScreen() {
     }
     const { error: err } = await updateStaff(`/api/provider/staff/${id}`, payload);
     if (err) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert("Error", err);
     } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditOpen(false);
       refresh();
+      // §Provider-audit 2026-04: surface an explicit confirmation after a
+      // team-member save so the user sees Save landed (haptic alone wasn't
+      // enough for owners managing multiple members).
+      Alert.alert("Team member updated", "Changes saved successfully.");
     }
   }, [editForm, id, updateStaff, refresh, canManageTeam]);
 
@@ -380,11 +386,11 @@ export default function TeamMemberDetailScreen() {
                 )}
                 onPress={() => {
                   if (item.useId && id) {
-                    router.push(`${item.route}/${id}` as any);
+                    router.push(`${item.route}/${id}` as never);
                   } else if (item.passStaffId && id) {
-                    router.push(`${item.route}?${item.passStaffId}=${id}` as any);
+                    router.push(`${item.route}?${item.passStaffId}=${id}` as never);
                   } else {
-                    router.push(item.route as any);
+                    router.push(item.route as never);
                   }
                 }}
                 accessibilityLabel={item.label}

@@ -11,14 +11,9 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 import { mapStatusToProvider } from "@/lib/utils/booking-status";
-import {
-  checkBookingConflict,
-  checkBookingConflictForProvider,
-  checkActiveHoldOverlap,
-  canOverrideDoubleBooking,
-} from "@/lib/bookings/conflict-check";
+import { checkActiveHoldOverlap, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
+import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { isProviderCalendarWindowBlocked } from "@/lib/public-booking/provider-calendar-block-overlap";
 import {
   createBookingsReadCacheKey,
   getCachedProviderBookingsList,
@@ -259,10 +254,33 @@ async function handleGetProviderBookings(request: NextRequest) {
     // Note: team_member_id filtering is done client-side in the API client
     // because staff_id is stored in booking_services (child table), not directly in bookings
 
-    const sortParam = searchParams.get("sort");
-    const ascending = sortParam === "scheduled_at" || sortParam === "scheduled_at:asc";
-    const { data: bookings, error } = await query
-      .order("scheduled_at", { ascending });
+    const sortParam = (searchParams.get("sort") ?? "").trim();
+    const orderParam = (searchParams.get("order") ?? "").trim().toLowerCase();
+
+    let orderColumn: "scheduled_at" | "created_at" = "scheduled_at";
+    let ascending = false;
+
+    if (sortParam.toLowerCase().startsWith("created_at")) {
+      orderColumn = "created_at";
+      if (sortParam.endsWith(":asc") || orderParam === "asc") ascending = true;
+      else if (sortParam.endsWith(":desc") || orderParam === "desc") ascending = false;
+      else ascending = false; // newest first
+    } else {
+      orderColumn = "scheduled_at";
+      // Legacy: `sort=scheduled_at` alone meant chronological (ascending),
+      // matching the provider mobile list default.
+      if (sortParam === "scheduled_at" || sortParam === "scheduled_at:asc" || orderParam === "asc") {
+        ascending = true;
+      } else if (sortParam === "scheduled_at:desc" || orderParam === "desc") {
+        ascending = false;
+      } else if (!sortParam && !orderParam) {
+        ascending = false;
+      } else {
+        ascending = false;
+      }
+    }
+
+    const { data: bookings, error } = await query.order(orderColumn, { ascending });
 
     if (error) {
       throw error;
@@ -838,6 +856,65 @@ async function handleCreateProviderBooking(request: NextRequest) {
       );
     }
 
+    // Same shared engine as GET /available-slots + GET /check-availability — single source of truth
+    // at commit time (unless provider allows intentional double-booking override).
+    if (!allowOverride) {
+      const gridDur = Math.max(
+        15,
+        Math.min(480, Math.round((endAt.getTime() - startAt.getTime()) / 60000)),
+      );
+      const staffSet =
+        body.services && Array.isArray(body.services) && body.services.length > 0
+          ? [
+              ...new Set(
+                (body.services as { staffId?: string; staff_id?: string }[])
+                  .map((s) => s.staffId || s.staff_id)
+                  .filter((x): x is string => !!x),
+              ),
+            ]
+          : staffId
+            ? [staffId]
+            : [];
+      const staffIdsCsvForGrid = staffSet.length > 0 ? staffSet.join(",") : null;
+
+      const offeringIdsForGrid: string[] =
+        body.services && Array.isArray(body.services) && body.services.length > 0
+          ? [
+              ...new Set(
+                (body.services as { serviceId?: string; service_id?: string; offering_id?: string }[])
+                  .map((s) => s.serviceId || s.service_id || s.offering_id)
+                  .filter((x): x is string => !!x),
+              ),
+            ]
+          : [body.offering_id, body.service_id].filter((x): x is string => !!x);
+
+      const locType = (bookingData.location_type as string) || "at_salon";
+      const mode = locType === "at_home" ? "mobile" : "salon";
+      const travelBufferRaw = mode === "mobile" ? null : "0";
+
+      const slotEval = await evaluateProviderSlotAgainstGrid(supabaseAdmin as any, {
+        providerId,
+        scheduledAt: startAt,
+        durationMinutes: gridDur,
+        staffIdsCsv: staffIdsCsvForGrid,
+        locationId,
+        excludeBookingId: undefined,
+        mode,
+        travelBufferRaw,
+        minNoticeMinutes: 0,
+        maxAdvanceDays: 365,
+        resourceOfferingIds: offeringIdsForGrid,
+      });
+      if (!slotEval.ok) {
+        return errorResponse(
+          slotEval.conflicts[0] ??
+            "This time slot is not available for this provider calendar.",
+          "SLOT_NOT_AVAILABLE",
+          409,
+        );
+      }
+    }
+
     // Pre-compute required resource IDs for atomic allocation inside the RPC
     let requiredResourceIds: string[] = [];
     if (body.services && Array.isArray(body.services) && body.services.length > 0) {
@@ -859,38 +936,6 @@ async function handleCreateProviderBooking(request: NextRequest) {
     let booking: any;
 
     if (useRpcPath) {
-      // Conflict check before RPC (same slot as client/portal booking).
-      // endAt already includes trailing bufferMinutes above; checkBookingConflict() adds buffer again — pass 0.
-      const conflictResult = await checkBookingConflict(
-        supabaseAdmin as any,
-        staffId,
-        startAt,
-        endAt,
-        0
-      );
-      if (conflictResult.hasConflict) {
-        return errorResponse(
-          "This time slot is no longer available. Please select another time.",
-          "CONFLICT",
-          409
-        );
-      }
-
-      const calBlock = await isProviderCalendarWindowBlocked(supabaseAdmin as any, {
-        providerId,
-        locationId: body.location_id ?? undefined,
-        staffId: staffId ?? null,
-        startAt,
-        endAt,
-      });
-      if (calBlock.blocked) {
-        return errorResponse(
-          calBlock.reason || "This time slot conflicts with a time block, day off, or is outside working hours.",
-          "CALENDAR_BLOCK",
-          409,
-        );
-      }
-
       // Build RPC payload (booking_services shape for create_booking_with_locking)
       const pBookingServices =
         body.services && Array.isArray(body.services) && body.services.length > 0
@@ -1034,56 +1079,6 @@ async function handleCreateProviderBooking(request: NextRequest) {
         }
       }
     } else {
-      // Direct insert: still enforce booking conflicts unless double-booking override (holds already checked).
-      if (!allowOverride) {
-        if (staffId) {
-          const directConflict = await checkBookingConflict(
-            supabaseAdmin as any,
-            staffId,
-            startAt,
-            endAt,
-            0
-          );
-          if (directConflict.hasConflict) {
-            return errorResponse(
-              "This time slot is no longer available. Please select another time.",
-              "CONFLICT",
-              409
-            );
-          }
-        } else {
-          const provConflict = await checkBookingConflictForProvider(
-            supabaseAdmin as any,
-            providerId,
-            startAt,
-            endAt,
-            0
-          );
-          if (provConflict.hasConflict) {
-            return errorResponse(
-              "This time slot is no longer available. Please select another time.",
-              "CONFLICT",
-              409
-            );
-          }
-        }
-
-        const directCalBlock = await isProviderCalendarWindowBlocked(supabaseAdmin as any, {
-          providerId,
-          locationId: body.location_id ?? undefined,
-          staffId: staffId ?? null,
-          startAt,
-          endAt,
-        });
-        if (directCalBlock.blocked) {
-          return errorResponse(
-            directCalBlock.reason || "This time slot conflicts with a time block, day off, or is outside working hours.",
-            "CALENDAR_BLOCK",
-            409,
-          );
-        }
-      }
-
       // Direct insert (no staff, or provider allows double-booking override)
       console.log("Inserting booking with data:", JSON.stringify(bookingData, null, 2));
       const { data: insertedBooking, error } = await supabaseAdmin

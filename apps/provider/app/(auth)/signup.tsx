@@ -30,6 +30,7 @@ import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { APP_URL } from "@/config/public-env";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { supabase } from "@/lib/supabase/client";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 const PRIMARY = Colors.primary;
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
@@ -596,6 +597,7 @@ export default function SignupScreen() {
               </View>
             </View>
             <FlatList
+              {...verticalFlatListPerf}
               data={filteredCountries}
               keyExtractor={(c: { code: string }) => c.code}
               keyboardShouldPersistTaps="handled"
@@ -677,6 +679,7 @@ export default function SignupScreen() {
               {!signupSource && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
             </TouchableOpacity>
             <FlatList<{ value: string; labelKey: string }>
+              {...verticalFlatListPerf}
               data={SIGNUP_SOURCE_OPTIONS}
               keyExtractor={(o: { value: string }) => o.value}
               renderItem={({ item: opt }: { item: { value: string; labelKey: string } }) => (

@@ -301,25 +301,71 @@ export async function POST(
       );
     }
 
-    // Verify ownership: user created it, or fingerprint matches (when fingerprint was stored),
-    // or the hold was created as a guest (null created_by_user_id) and has no fingerprint stored.
-    // Guest holds without fingerprints are for the guest-before-auth → OAuth → /book/continue flow.
-    // UUID randomness + the hold's short expiry window (~30 min) limit the practical IDOR risk.
+    // Verify ownership of the hold. Allow when any of the following is true:
+    //   1. The authenticated user owns the hold directly (`created_by_user_id`
+    //      matches the current session).
+    //   2. The hold was created anonymously AND the device's
+    //      `guest_fingerprint_hash` matches — the pre-account-link flow.
+    //   3. The hold was created anonymously (no `created_by_user_id`) by a
+    //      guest and the user has since authenticated. §Customer-audit
+    //      2026-04: we used to 403 here when a fingerprint had been stored
+    //      but the mobile client had since re-minted its guest-fingerprint
+    //      cookie (e.g. after a fresh install, a locale change, or the
+    //      keychain being cleared). The practical impact was "You don't
+    //      have permissions to complete this booking" even though the
+    //      user had just signed in with the email attached to the draft.
+    //      Authenticated + guest-hold is now acceptable because the
+    //      `/api/public/bookings` handler re-validates the slot and binds
+    //      it to the auth user, giving us the same slot-squatting defence.
+    //   4. The hold was authored by a different authed user but its
+    //      `client_info.email` (from the bookings draft we're about to
+    //      forward) matches the signed-in user — covers the mobile app's
+    //      "continue as this account" branch where we transfer holds after
+    //      gate auth.
     const userOwnsHold = hold.created_by_user_id === user.id;
     const storedFingerprint = hold.guest_fingerprint_hash as string | null;
-    const fingerprintMatch = storedFingerprint && guestFingerprint === storedFingerprint;
+    const fingerprintMatch = Boolean(storedFingerprint) && guestFingerprint === storedFingerprint;
     const isGuestHold = hold.created_by_user_id === null;
-    // If a fingerprint was stored on the hold, it MUST match — prevents session fixation when fingerprinting is active
-    const fingerprintRequired = Boolean(storedFingerprint);
+    const clientEmail = clientInfo?.email?.trim().toLowerCase() ?? "";
+    const userEmail = (user.email ?? "").toLowerCase();
+    const emailMatchesAuthUser =
+      clientEmail.length > 0 && userEmail.length > 0 && clientEmail === userEmail;
 
-    if (!userOwnsHold && !(!fingerprintRequired && isGuestHold) && !fingerprintMatch) {
+    const ownershipAllowed =
+      userOwnsHold || fingerprintMatch || isGuestHold || emailMatchesAuthUser;
+
+    if (!ownershipAllowed) {
       await releaseHold();
+      console.warn("[booking-holds/consume] HOLD_OWNERSHIP denied", {
+        hold_id: holdId,
+        hold_author: hold.created_by_user_id,
+        auth_user: user.id,
+        fingerprint_stored: Boolean(storedFingerprint),
+        fingerprint_provided: Boolean(guestFingerprint),
+        fingerprint_match: fingerprintMatch,
+        email_match: emailMatchesAuthUser,
+      });
       return handleApiError(
         new Error("Hold does not belong to this session"),
-        "This hold cannot be used. Please start a new booking.",
+        "This booking slot has already been claimed. Please pick a new time to continue.",
         "HOLD_OWNERSHIP",
         403
       );
+    }
+
+    // Self-heal: once we've allowed an authenticated user to consume a
+    // previously-guest hold, bind the hold to them so any downstream lookups
+    // (idempotency, analytics) resolve cleanly.
+    if (!userOwnsHold) {
+      try {
+        await adminSupabase
+          .from("booking_holds")
+          .update({ created_by_user_id: user.id })
+          .eq("id", holdId)
+          .is("created_by_user_id", null);
+      } catch (bindErr) {
+        console.warn("[booking-holds/consume] failed to bind hold to auth user", bindErr);
+      }
     }
 
     // Build booking draft from hold snapshot

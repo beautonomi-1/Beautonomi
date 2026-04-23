@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
@@ -8,6 +8,7 @@ import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { cn } from "@/lib/cn";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -493,6 +494,16 @@ export function NotificationTemplatesListPage() {
         <strong>Note:</strong> Email and SMS are edited per template here (<code className="rounded bg-amber-100/80 px-1">email_subject</code>,{" "}
         <code className="rounded bg-amber-100/80 px-1">email_body</code>, <code className="rounded bg-amber-100/80 px-1">sms_body</code>).
         Enable the channel below to reveal those fields.
+      </div>
+
+      <div className="rounded-xl border border-blue-100 bg-blue-50/90 px-4 py-3 text-sm text-blue-950">
+        <strong>Which app (customer vs provider)?</strong> Rows in this list are <em>shared</em> message definitions (same keys for everyone). At send time,
+        the platform picks the right channel; for <strong>push</strong>, devices use the OneSignal app that matches their build (customer Expo app vs provider Expo app).
+        Configure both OneSignal App IDs and REST keys under{" "}
+        <Link to={adminSpaTo("/admin/notifications")} className="font-medium text-blue-900 underline">
+          Notifications
+        </Link>
+        {" "}so broadcasts and automated sends work.
       </div>
 
       <AdminPanel>

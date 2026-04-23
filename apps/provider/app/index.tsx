@@ -5,6 +5,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
+import { getHttpErrorStatus } from "@/lib/api-error";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { Colors } from "@/constants/colors";
 import { APP_URL, isScreenshotMode } from "@/config/public-env";
@@ -17,8 +18,11 @@ import {
   setAuthGateContext,
 } from "@/lib/sentry";
 
-const PROFILE_CHECK_DELAY_MS = 400;
-const AUTH_RETRY_DELAY_MS = 600;
+// §Provider-perf parity 2026-04: match customer — these were 400ms / 600ms before
+// `/api/me/portal` and profile check; cold start paid that cost every time after
+// auth resolved with no user-visible benefit (token is resolved locally).
+const PROFILE_CHECK_DELAY_MS = 0;
+const AUTH_RETRY_DELAY_MS = 0;
 const PORTAL_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
 const PROFILE_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
 
@@ -187,7 +191,7 @@ export default function Index() {
         .then((res) => {
           if (cancelled || portalTimedOut) return;
           if (res.error || !res.data?.role) {
-            const status = (res.error as { status?: number } | undefined)?.status;
+            const status = getHttpErrorStatus(res.error);
             if (status === 401 || status === 403) {
               enterError("unauthorized");
               return;
@@ -221,7 +225,7 @@ export default function Index() {
           // Critical: on 401/empty data, do NOT default to "customer" — iOS often fires this
           // before the Bearer session is ready, which falsely showed Wrong app for providers.
           if (res.error) {
-            const status = (res.error as { status?: number }).status;
+            const status = getHttpErrorStatus(res.error);
             if ((status === 401 || status === 403) && attempt < 4) {
               setTimeout(() => fetchPortal(attempt + 1), 350 * (attempt + 1));
               return;
@@ -273,8 +277,8 @@ export default function Index() {
       }
 
       const err = (res as { error?: { status?: number; code?: string } }).error;
-      const status = err?.status;
-      const code = err?.code;
+      const status = getHttpErrorStatus(err);
+      const code = err && typeof err === "object" ? (err as { code?: string }).code : undefined;
       const isNotFound = status === 404 || code === "NOT_FOUND";
       const isAuthError = status === 401 || status === 403;
 

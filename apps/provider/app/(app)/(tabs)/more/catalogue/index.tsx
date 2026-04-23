@@ -28,6 +28,7 @@ import { Colors } from "@/constants/colors";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -48,7 +49,14 @@ interface ServiceItem {
   is_active: boolean;
   supports_at_home: boolean;
   supports_at_salon: boolean;
-  sort_order: number;
+  /**
+   * §Provider-audit 2026-04 (catalogue round 2): the underlying `offerings`
+   * table column is `display_order` — the mobile type previously called it
+   * `sort_order` so `items.sort((a,b) => a.sort_order - b.sort_order)` always
+   * returned 0 and the ordering was inadvertently dependent on server response
+   * order. Renamed to match the API payload.
+   */
+  display_order?: number | null;
   service_type?: string;
   parent_service_id?: string | null;
   provider_categories?: CategoryInfo[];
@@ -93,13 +101,13 @@ export default function CatalogueScreen() {
   const { data: services, loading, error: servicesError, refresh } = useApi<ServiceItem[]>(
     "/api/provider/services",
   );
-  const { data: categoriesResponse, refresh: refreshCategories } = useApi<CategoriesResponse>(
-    "/api/provider/categories",
-  );
+  const { data: categoriesResponse, refresh: refreshCategories } = useApi<
+    CategoriesResponse | CategoryOption[]
+  >("/api/provider/categories");
   const categories = useMemo<CategoryOption[]>(() => {
     if (!categoriesResponse) return [];
-    const raw = categoriesResponse as any;
-    const own = raw.own_categories ?? raw ?? [];
+    if (Array.isArray(categoriesResponse)) return categoriesResponse;
+    const own = categoriesResponse.own_categories;
     return Array.isArray(own) ? own : [];
   }, [categoriesResponse]);
 
@@ -218,7 +226,9 @@ export default function CatalogueScreen() {
           (s.description ?? "").toLowerCase().includes(q),
       );
     }
-    return items.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    return items.sort(
+      (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0),
+    );
   }, [services, filter, search]);
 
   // --- Grouped by category, respecting category display_order ---
@@ -249,18 +259,21 @@ export default function CatalogueScreen() {
   }
 
   async function handleReorder(serviceId: string, direction: "up" | "down") {
-    const all = services ?? [];
-    const idx = all.findIndex((s) => s.id === serviceId);
-    if (idx < 0) return;
-    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= all.length) return;
-
+    // §Provider-audit 2026-04 (catalogue round 2): the server endpoint
+    // previously did not exist so this button was silently a no-op. The
+    // route at /api/provider/services/[id]/reorder now swaps display_order
+    // with the neighbour; give the provider immediate tactile feedback.
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const { error } = await reorderService(
       `/api/provider/services/${serviceId}/reorder`,
       { direction },
     );
-    if (error) Alert.alert("Error", error);
-    else refresh();
+    if (error) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Could not reorder", error);
+    } else {
+      refresh();
+    }
   }
 
   function toggleCollapse(category: string) {
@@ -358,7 +371,7 @@ export default function CatalogueScreen() {
       supports_at_salon: form.supports_at_salon,
       is_active: form.is_active,
     };
-    const { error } = await createService(payload as any);
+    const { error } = await createService(payload);
     if (error) {
       Alert.alert("Error", error);
     } else {
@@ -567,6 +580,7 @@ export default function CatalogueScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={grouped}
           keyExtractor={([cat]: [string, ServiceItem[]]) => cat}
           showsVerticalScrollIndicator={false}
@@ -603,7 +617,7 @@ export default function CatalogueScreen() {
                           style={{ flexDirection: "row", alignItems: "flex-start" }}
                           onPress={() => {
                             if (bulkMode) toggleSelected(service.id);
-                            else router.push(`/(app)/(tabs)/more/catalogue/${service.id}` as any);
+                            else router.push(`/(app)/(tabs)/more/catalogue/${service.id}` as never);
                           }}
                           accessibilityLabel={`${bulkMode ? "Select" : "View"} ${service.title}`}
                         >

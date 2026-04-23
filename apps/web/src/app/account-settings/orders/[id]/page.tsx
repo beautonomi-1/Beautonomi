@@ -18,6 +18,8 @@ interface ProductOrder {
   delivery_fee: number;
   total_amount: number;
   tracking_number: string | null;
+  carrier?: string | null;
+  tracking_url?: string | null;
   estimated_delivery_date: string | null;
   created_at: string;
   confirmed_at: string | null;
@@ -166,9 +168,28 @@ export default function OrderDetailPage() {
               })}
             </div>
           )}
-          {order.tracking_number && (
+          {(order.tracking_number || order.tracking_url) && (
             <div className="mt-4 rounded-lg bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-600">
-              Tracking: {order.tracking_number}
+              {/* §Customer-audit 2026-04 (follow-up): if the provider pasted
+                  a tracking_url, render the whole block as a tappable link so
+                  customers can jump straight to the carrier page. */}
+              {order.tracking_url ? (
+                <a
+                  href={order.tracking_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 hover:underline"
+                >
+                  Tracking:{" "}
+                  {[order.carrier, order.tracking_number].filter(Boolean).join(" · ") || "Open carrier"}
+                  <span aria-hidden>↗</span>
+                </a>
+              ) : (
+                <>
+                  Tracking:{" "}
+                  {[order.carrier, order.tracking_number].filter(Boolean).join(" · ")}
+                </>
+              )}
             </div>
           )}
         </div>

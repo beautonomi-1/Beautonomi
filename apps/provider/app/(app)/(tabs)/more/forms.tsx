@@ -21,6 +21,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Colors } from "@/constants/colors";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -343,6 +344,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
         </View>
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={forms}
           keyExtractor={(f: FormTemplate) => f.id}
           showsVerticalScrollIndicator={false}

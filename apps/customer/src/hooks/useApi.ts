@@ -18,7 +18,8 @@ import { useAuth } from "@/providers/AuthProvider";
 export { clearApiCache };
 
 const DEFAULT_LOADING_TIMEOUT_MS = 15000;
-const DEFAULT_STALE_TIME_MS = 20000;
+/** In-memory reuse window — longer = snappier revisits / remounts, still refreshable via `refresh()`. */
+const DEFAULT_STALE_TIME_MS = 60_000;
 
 interface UseApiOptions {
   enabled?: boolean;
@@ -44,15 +45,33 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   } = options;
   const { session } = useAuth();
   const cacheScope = session?.user?.id ?? "_anon";
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(enabled);
-  const [error, setError] = useState<string | null>(null);
+  const runtimeMarketHost = getRuntimeMarketHost().trim().toLowerCase() || "default";
+  const cacheKey = `${cacheScope}::${runtimeMarketHost}::${path}`;
+
+  const [data, setData] = useState<T | null>(() => {
+    if (!enabled) return null;
+    const c = responseCache.get(cacheKey) as
+      | { data: T | null; error: string | null; expiresAt: number }
+      | undefined;
+    return c && c.expiresAt > Date.now() ? c.data : null;
+  });
+  const [error, setError] = useState<string | null>(() => {
+    if (!enabled) return null;
+    const c = responseCache.get(cacheKey) as
+      | { data: T | null; error: string | null; expiresAt: number }
+      | undefined;
+    return c && c.expiresAt > Date.now() ? c.error : null;
+  });
+  const [loading, setLoading] = useState(() => {
+    if (!enabled) return false;
+    const c = responseCache.get(cacheKey) as
+      | { data: T | null; error: string | null; expiresAt: number }
+      | undefined;
+    return !(c && c.expiresAt > Date.now());
+  });
   const [timedOut, setTimedOut] = useState(false);
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
-
-  const runtimeMarketHost = getRuntimeMarketHost().trim().toLowerCase() || "default";
-  const cacheKey = `${cacheScope}::${runtimeMarketHost}::${path}`;
 
   const fetchData = useCallback(async () => {
     if (!enabled) {
@@ -61,7 +80,6 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     }
     const id = ++requestIdRef.current;
     try {
-      setLoading(true);
       setError(null);
       setTimedOut(false);
 
@@ -69,6 +87,8 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       const cached = responseCache.get(cacheKey) as
         | { data: T | null; error: string | null; expiresAt: number }
         | undefined;
+      // §Customer-perf 2026-04: check cache *before* `setLoading(true)` so a
+      // warm in-memory entry never flashes the loading state for one frame.
       if (cached && cached.expiresAt > now) {
         if (!mountedRef.current || id !== requestIdRef.current) return;
         setData(cached.data);
@@ -76,6 +96,8 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
         setLoading(false);
         return;
       }
+
+      setLoading(true);
 
       const inflight = inflightRequests.get(cacheKey) as
         | Promise<{ data: T | null; error: string | null }>

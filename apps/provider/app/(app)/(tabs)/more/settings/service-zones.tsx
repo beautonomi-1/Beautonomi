@@ -24,6 +24,7 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface PlatformZone {
   id: string;
@@ -305,6 +306,7 @@ export default function ServiceZonesScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(z: ZoneWithSelection) => z.platform_zone.id}
           showsVerticalScrollIndicator={false}

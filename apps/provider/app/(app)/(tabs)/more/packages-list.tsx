@@ -18,6 +18,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { Colors } from "@/constants/colors";
 import { normalizePackagesList } from "@/lib/unpack-provider-api";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface PackageItem {
   id: string;
@@ -174,6 +175,7 @@ export default function PackagesListScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={packagesList}
           keyExtractor={(p: ServicePackage) => p.id}
           refreshControl={

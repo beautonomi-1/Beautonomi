@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, RefreshControl } from "react-native";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -9,6 +9,48 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+
+/**
+ * §Provider-audit 2026-04 (B1): when we replaced the "Transaction history"
+ * bottom tab with the new Bookings tab we needed a first-class home for
+ * sales inside More. This hub now leads with quick links to the rich
+ * sales tabs before showing the generic finance transaction feed.
+ */
+type ShortcutRow = {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  subtitle: string;
+  route: string;
+  color: string;
+  bg: string;
+};
+
+const SHORTCUTS: ShortcutRow[] = [
+  {
+    icon: "card-outline",
+    label: "Transaction history",
+    subtitle: "Appointments, products & add-ons",
+    route: "/(app)/(tabs)/sales",
+    color: "#0d9488",
+    bg: "#ccfbf1",
+  },
+  {
+    icon: "bar-chart-outline",
+    label: "Sales by date range",
+    subtitle: "Breakdown with CSV export",
+    route: "/(app)/(tabs)/more/sales-history",
+    color: "#6366f1",
+    bg: "#e0e7ff",
+  },
+  {
+    icon: "cash-outline",
+    label: "Payouts",
+    subtitle: "Withdrawals & pending balance",
+    route: "/(app)/(tabs)/more/payouts",
+    color: "#d97706",
+    bg: "#fef3c7",
+  },
+];
 
 type Transaction = {
   id: string;
@@ -84,6 +126,31 @@ export default function TransactionsHubScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
+        <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, gap: 10 }}>
+          {SHORTCUTS.map((s) => (
+            <TouchableOpacity
+              key={s.route}
+              onPress={() => router.push(s.route as never)}
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 14, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 14 }}
+              accessibilityRole="button"
+              accessibilityLabel={s.label}
+            >
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: s.bg, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                <Ionicons name={s.icon} size={20} color={s.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{s.label}</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>{s.subtitle}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 }}>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], letterSpacing: 0.5 }}>
+            RECENT TRANSACTIONS
+          </Text>
+        </View>
         {transactions.length === 0 ? (
           <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="swap-horizontal-outline" size={48} color="#9ca3af" />
@@ -93,7 +160,7 @@ export default function TransactionsHubScreen() {
             </Text>
           </View>
         ) : (
-          <View style={{ paddingBottom: 16 }}>
+          <View style={{ paddingBottom: 16, paddingHorizontal: 16 }}>
             {transactions.map((t) => {
               const net = t.net ?? t.amount ?? 0;
               const isNegative = net < 0;

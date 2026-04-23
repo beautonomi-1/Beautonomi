@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BarChart3, Package } from "lucide-react";
+import { BarChart3, Clock, Package } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
@@ -690,6 +690,41 @@ export function CpModuleAiPage() {
 
 type Pack = { id: string; impressions: number; price_zar: number; display_order: number; is_active: boolean };
 
+type TimePack = {
+  id: string;
+  duration_days: number;
+  label: string;
+  price_zar: number;
+  display_order: number;
+  is_active: boolean;
+};
+
+const AD_MODEL_IDS = ["cpc_budget", "impression_pack", "time_based"] as const;
+type AdModelId = (typeof AD_MODEL_IDS)[number];
+
+const AD_MODEL_LABELS: Record<AdModelId, string> = {
+  cpc_budget: "CPC budget",
+  impression_pack: "Impression pack",
+  time_based: "Time-based boost",
+};
+
+const AD_MODEL_HELP: Record<AdModelId, string> = {
+  cpc_budget: "Pay per impression from a bid budget.",
+  impression_pack: "Prepaid fixed impression bundles.",
+  time_based: "Flat rate for guaranteed placement over N days.",
+};
+
+const DISCLOSURE_PRESETS = ["Sponsored", "Ad", "Promoted"] as const;
+
+const CPI_PRESETS = [
+  { value: "0.01", label: "1%" },
+  { value: "0.02", label: "2%" },
+  { value: "0.05", label: "5%" },
+  { value: "0.1", label: "10%" },
+] as const;
+
+const SLOT_OPTIONS = Array.from({ length: 21 }, (_, i) => i);
+
 type AdsOverview = {
   campaigns_by_status: Record<string, number>;
   events_7d: { impressions: number; clicks: number; books: number };
@@ -725,15 +760,25 @@ export function CpModuleAdsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [packsSaving, setPacksSaving] = useState(false);
+  const [timePacksSaving, setTimePacksSaving] = useState(false);
   const [packs, setPacks] = useState<Pack[]>([]);
+  const [timePacks, setTimePacks] = useState<TimePack[]>([]);
   const [form, setForm] = useState({
     enabled: false,
-    model: "",
-    disclosure_label: "",
+    disclosure_mode: "Sponsored" as (typeof DISCLOSURE_PRESETS)[number] | "custom",
+    disclosure_custom: "",
     max_sponsored_slots: "",
     cost_per_impression_ratio: "",
+    cost_ratio_mode: "preset" as "preset" | "custom",
+    cost_ratio_preset: "",
+    available_models: [...AD_MODEL_IDS] as AdModelId[],
+    default_model: "time_based" as AdModelId,
   });
   const [msg, setMsg] = useState<string | null>(null);
+
+  const defaultModelOptions = useMemo(() => {
+    return form.available_models.filter((m) => AD_MODEL_IDS.includes(m));
+  }, [form.available_models]);
 
   const [overview, setOverview] = useState<AdsOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -814,23 +859,58 @@ export function CpModuleAdsPage() {
     (async () => {
       setLoading(true);
       try {
-        const [d, packsRes] = await Promise.all([
+        const [d, packsRes, timePacksRes] = await Promise.all([
           adminApi.getJson<Record<string, unknown> | null>(
             `/api/admin/control-plane/modules/ads?environment=${encodeURIComponent(env)}`
           ),
           adminApi.getJson<Pack[]>("/api/admin/control-plane/modules/ads/packs"),
+          adminApi.getJson<TimePack[]>("/api/admin/control-plane/modules/ads/time-packs"),
         ]);
         if (c) return;
         if (d) {
+          const rawLabel = String(d.disclosure_label ?? "").trim();
+          const presetHit = DISCLOSURE_PRESETS.find((p) => p === rawLabel);
+          let disclosure_mode: (typeof DISCLOSURE_PRESETS)[number] | "custom";
+          let disclosure_custom: string;
+          if (!rawLabel) {
+            disclosure_mode = "Sponsored";
+            disclosure_custom = "";
+          } else if (presetHit) {
+            disclosure_mode = presetHit;
+            disclosure_custom = "";
+          } else {
+            disclosure_mode = "custom";
+            disclosure_custom = rawLabel;
+          }
+          const am = Array.isArray(d.available_models)
+            ? (d.available_models as string[]).filter((x): x is AdModelId =>
+                AD_MODEL_IDS.includes(x as AdModelId)
+              )
+            : [];
+          const available_models = am.length > 0 ? am : [...AD_MODEL_IDS];
+          let default_model = (String(d.default_model ?? "time_based") as AdModelId) || "time_based";
+          if (!AD_MODEL_IDS.includes(default_model) || !available_models.includes(default_model)) {
+            default_model = available_models.includes("time_based") ? "time_based" : available_models[0];
+          }
+          const cpi =
+            d.cost_per_impression_ratio != null && d.cost_per_impression_ratio !== ""
+              ? String(Number(d.cost_per_impression_ratio))
+              : "";
+          const presetMatch = cpi ? CPI_PRESETS.find((p) => p.value === cpi) : undefined;
           setForm({
             enabled: Boolean(d.enabled),
-            model: String(d.model ?? ""),
-            disclosure_label: String(d.disclosure_label ?? ""),
+            disclosure_mode,
+            disclosure_custom,
             max_sponsored_slots: d.max_sponsored_slots != null ? String(d.max_sponsored_slots) : "",
-            cost_per_impression_ratio: d.cost_per_impression_ratio != null ? String(d.cost_per_impression_ratio) : "",
+            cost_per_impression_ratio: cpi,
+            cost_ratio_mode: presetMatch ? "preset" : cpi ? "custom" : "preset",
+            cost_ratio_preset: presetMatch?.value ?? "",
+            available_models,
+            default_model,
           });
         }
         setPacks(Array.isArray(packsRes) ? packsRes : []);
+        setTimePacks(Array.isArray(timePacksRes) ? timePacksRes : []);
       } catch (e) {
         if (!c) setMsg(e instanceof Error ? e.message : "Load failed");
       } finally {
@@ -846,15 +926,30 @@ export function CpModuleAdsPage() {
     setSaving(true);
     setMsg(null);
     try {
+      const disclosure_label =
+        form.disclosure_mode === "custom" ? form.disclosure_custom.trim() || null : form.disclosure_mode;
+      let cost_per_impression_ratio: number | null = null;
+      if (form.cost_ratio_mode === "preset") {
+        const pr = form.cost_ratio_preset.trim();
+        if (pr) cost_per_impression_ratio = parseFloat(pr);
+      } else {
+        const cr = form.cost_per_impression_ratio.trim();
+        if (cr) cost_per_impression_ratio = parseFloat(cr);
+      }
+      let default_model = form.default_model;
+      if (!form.available_models.includes(default_model)) {
+        default_model = form.available_models.includes("time_based")
+          ? "time_based"
+          : form.available_models[0];
+      }
       await adminApi.putJson("/api/admin/control-plane/modules/ads", {
         environment: env,
         enabled: form.enabled,
-        model: form.model || null,
-        disclosure_label: form.disclosure_label || null,
-        max_sponsored_slots: form.max_sponsored_slots ? parseInt(form.max_sponsored_slots, 10) : null,
-        cost_per_impression_ratio: form.cost_per_impression_ratio
-          ? parseFloat(form.cost_per_impression_ratio)
-          : null,
+        disclosure_label,
+        max_sponsored_slots: form.max_sponsored_slots !== "" ? parseInt(form.max_sponsored_slots, 10) : null,
+        cost_per_impression_ratio,
+        available_models: form.available_models,
+        default_model,
       });
       setMsg("Saved.");
     } catch (e) {
@@ -878,6 +973,39 @@ export function CpModuleAdsPage() {
     } finally {
       setPacksSaving(false);
     }
+  };
+
+  const saveTimePacks = async () => {
+    setTimePacksSaving(true);
+    setMsg(null);
+    try {
+      const updated = await adminApi.patchJson<TimePack[]>("/api/admin/control-plane/modules/ads/time-packs", {
+        packs: timePacks.map((p) => ({
+          id: p.id,
+          price_zar: p.price_zar,
+          is_active: p.is_active,
+          label: p.label,
+        })),
+      });
+      setTimePacks(Array.isArray(updated) ? updated : timePacks);
+      setMsg("Time packs updated.");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Time packs save failed");
+    } finally {
+      setTimePacksSaving(false);
+    }
+  };
+
+  const toggleModel = (m: AdModelId, on: boolean) => {
+    setForm((prev) => {
+      let next = on ? [...new Set([...prev.available_models, m])] : prev.available_models.filter((x) => x !== m);
+      if (next.length === 0) next = [...AD_MODEL_IDS];
+      let default_model = prev.default_model;
+      if (!next.includes(default_model)) {
+        default_model = next.includes("time_based") ? "time_based" : next[0];
+      }
+      return { ...prev, available_models: next as AdModelId[], default_model };
+    });
   };
 
   const moderateCampaign = async (id: string, next: "paused" | "ended") => {
@@ -1099,49 +1227,146 @@ export function CpModuleAdsPage() {
               <Package className="h-5 w-5" />
               Config
             </h2>
+            <p className="text-sm text-gray-600">
+              Use the selects and toggles below to avoid typos. At least one billing model must stay enabled; the API
+              enforces a valid default.
+            </p>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={form.enabled}
                 onChange={(e) => setForm((p) => ({ ...p, enabled: e.target.checked }))}
               />
-              Enabled
+              Ads module enabled
             </label>
-            <CpField label="Model">
-              <input
-                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
-                value={form.model}
-                onChange={(e) => setForm((p) => ({ ...p, model: e.target.value }))}
-              />
+            <CpField label="Disclosure label (public)">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <select
+                  className="w-full max-w-xs rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                  value={form.disclosure_mode}
+                  onChange={(e) => {
+                    const v = e.target.value as (typeof DISCLOSURE_PRESETS)[number] | "custom";
+                    setForm((p) => ({ ...p, disclosure_mode: v }));
+                  }}
+                >
+                  {DISCLOSURE_PRESETS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                  <option value="custom">Custom…</option>
+                </select>
+                {form.disclosure_mode === "custom" ? (
+                  <input
+                    className="w-full min-w-[8rem] flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                    placeholder="e.g. Partner content"
+                    value={form.disclosure_custom}
+                    onChange={(e) => setForm((p) => ({ ...p, disclosure_custom: e.target.value }))}
+                  />
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">Shown on sponsored listings in search and Explore.</p>
             </CpField>
-            <CpField label="Disclosure label">
-              <input
-                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
-                value={form.disclosure_label}
-                onChange={(e) => setForm((p) => ({ ...p, disclosure_label: e.target.value }))}
-              />
-            </CpField>
-            <CpField label="Max sponsored slots">
-              <input
-                type="number"
-                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+            <CpField label="Max sponsored slots (per search page)">
+              <select
+                className="w-full max-w-xs rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
                 value={form.max_sponsored_slots}
                 onChange={(e) => setForm((p) => ({ ...p, max_sponsored_slots: e.target.value }))}
-              />
+              >
+                <option value="">Not set</option>
+                {SLOT_OPTIONS.map((n) => (
+                  <option key={n} value={String(n)}>
+                    {n}
+                  </option>
+                ))}
+              </select>
             </CpField>
-            <CpField label="Cost per impression ratio">
-              <input
-                type="number"
-                step={0.01}
-                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
-                value={form.cost_per_impression_ratio}
-                onChange={(e) => setForm((p) => ({ ...p, cost_per_impression_ratio: e.target.value }))}
-              />
+            <CpField label="Cost per impression ratio (CPC model)">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <select
+                  className="w-full max-w-xs rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                  value={form.cost_ratio_mode}
+                  onChange={(e) => setForm((p) => ({ ...p, cost_ratio_mode: e.target.value as "preset" | "custom" }))}
+                >
+                  <option value="preset">Preset</option>
+                  <option value="custom">Custom value (0–1)</option>
+                </select>
+                {form.cost_ratio_mode === "preset" ? (
+                  <select
+                    className="w-full max-w-xs rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                    value={form.cost_ratio_preset}
+                    onChange={(e) => setForm((p) => ({ ...p, cost_ratio_preset: e.target.value }))}
+                  >
+                    <option value="">Not set (use platform default)</option>
+                    {CPI_PRESETS.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label} ({p.value})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    className="w-full max-w-[10rem] rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                    value={form.cost_per_impression_ratio}
+                    onChange={(e) => setForm((p) => ({ ...p, cost_per_impression_ratio: e.target.value }))}
+                    placeholder="0.05"
+                  />
+                )}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">Charge per impression = bid CPC × this ratio. Used only for CPC campaigns.</p>
             </CpField>
+
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-semibold text-gray-900">Billing models providers can use</h3>
+              <p className="mt-0.5 text-xs text-gray-500">Turn off models you do not want to offer. At least one must stay on.</p>
+              <ul className="mt-3 space-y-2">
+                {AD_MODEL_IDS.map((m) => (
+                  <li
+                    key={m}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{AD_MODEL_LABELS[m]}</p>
+                      <p className="text-xs text-gray-500">{AD_MODEL_HELP[m]}</p>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={form.available_models.includes(m)}
+                        onChange={(e) => toggleModel(m, e.target.checked)}
+                      />
+                      Available
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <CpField label="Default billing model (new campaigns)">
+              <select
+                className="w-full max-w-md rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                value={defaultModelOptions.includes(form.default_model) ? form.default_model : defaultModelOptions[0]}
+                onChange={(e) => setForm((p) => ({ ...p, default_model: e.target.value as AdModelId }))}
+              >
+                {defaultModelOptions.map((m) => (
+                  <option key={m} value={m}>
+                    {AD_MODEL_LABELS[m]}
+                  </option>
+                ))}
+              </select>
+              {defaultModelOptions.length === 0 ? (
+                <p className="mt-1 text-xs text-amber-800">Enable at least one model above.</p>
+              ) : null}
+            </CpField>
+
             <button
               type="button"
               className="rounded-lg bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-              disabled={saving}
+              disabled={saving || form.available_models.length === 0}
               onClick={() => void save()}
             >
               {saving ? "Saving…" : "Save config"}
@@ -1195,6 +1420,80 @@ export function CpModuleAdsPage() {
                   onClick={() => void savePacks()}
                 >
                   {packsSaving ? "Saving…" : "Save packs"}
+                </button>
+              </>
+            )}
+          </AdminPanel>
+
+          <AdminPanel className="space-y-4">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+              <Clock className="h-5 w-5" />
+              Time-based boost packs (ZAR)
+            </h2>
+            <p className="text-sm text-gray-600">
+              Durations are fixed; adjust public labels and prices. Inactive packs are hidden from providers.
+            </p>
+            {timePacks.length === 0 ? (
+              <p className="text-sm text-gray-500">No time packs (run migration 459 / seed if missing).</p>
+            ) : (
+              <>
+                <ul className="space-y-3">
+                  {timePacks.map((tp) => (
+                    <li key={tp.id} className="flex flex-wrap items-center gap-4 rounded-lg border border-gray-100 p-3">
+                      <span className="font-medium tabular-nums">
+                        {tp.duration_days} day{tp.duration_days !== 1 ? "s" : ""}
+                      </span>
+                      <label className="flex min-w-[10rem] flex-1 flex-col text-xs font-medium text-gray-600">
+                        Label
+                        <input
+                          className="mt-0.5 rounded border border-gray-200 px-2 py-1 text-sm font-normal text-gray-900"
+                          value={tp.label}
+                          onChange={(e) =>
+                            setTimePacks((prev) =>
+                              prev.map((p) => (p.id === tp.id ? { ...p, label: e.target.value } : p))
+                            )
+                          }
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        Price
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          className="w-28 rounded border border-gray-200 px-2 py-1 text-sm"
+                          value={tp.price_zar}
+                          onChange={(e) =>
+                            setTimePacks((prev) =>
+                              prev.map((p) =>
+                                p.id === tp.id ? { ...p, price_zar: parseFloat(e.target.value) || 0 } : p
+                              )
+                            )
+                          }
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={tp.is_active}
+                          onChange={(e) =>
+                            setTimePacks((prev) =>
+                              prev.map((p) => (p.id === tp.id ? { ...p, is_active: e.target.checked } : p))
+                            )
+                          }
+                        />
+                        Active
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm disabled:opacity-50"
+                  disabled={timePacksSaving}
+                  onClick={() => void saveTimePacks()}
+                >
+                  {timePacksSaving ? "Saving…" : "Save time packs"}
                 </button>
               </>
             )}

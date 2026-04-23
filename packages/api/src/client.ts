@@ -20,6 +20,9 @@ export type ApiClientExtraOptions = Omit<
   "body" | "method" | "baseUrl" | "getAccessToken"
 >;
 
+/** JSON or multipart bodies for POST/PUT/PATCH (matches `RequestOptions["body"]` without `undefined`). */
+export type ApiClientRequestBody = NonNullable<RequestOptions["body"]>;
+
 function responseBodyLooksLikeHtml(raw: string): boolean {
   const t = raw.trim();
   return (
@@ -275,11 +278,11 @@ export function createApiClient(config: ApiClientConfig) {
   return {
     get: <T>(path: string, init?: ApiClientExtraOptions) =>
       request<T>(path, { ...init, method: "GET" }),
-    post: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
+    post: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
       request<T>(path, { ...init, method: "POST", body }),
-    put: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
+    put: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
       request<T>(path, { ...init, method: "PUT", body }),
-    patch: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
+    patch: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
       request<T>(path, { ...init, method: "PATCH", body }),
     delete: <T>(path: string, init?: ApiClientExtraOptions) =>
       request<T>(path, { ...init, method: "DELETE" }),

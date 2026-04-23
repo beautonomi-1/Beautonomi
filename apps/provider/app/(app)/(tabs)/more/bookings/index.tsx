@@ -8,7 +8,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -22,6 +22,7 @@ import {
 } from "date-fns";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
+import { supabase } from "@/lib/supabase/client";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -31,6 +32,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
+import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import { Colors } from "@/constants/colors";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
 
@@ -70,6 +72,9 @@ interface Booking {
 /* ------------------------------------------------------------------ */
 
 type DateRange = "today" | "week" | "month" | "upcoming" | "all";
+
+/** List ordering: by appointment time (chronological) or by when the booking was created. */
+type BookingsListSort = "appointment" | "booked_at";
 
 const DATE_RANGE_OPTIONS: { label: string; value: DateRange }[] = [
   { label: "Today", value: "today" },
@@ -180,7 +185,7 @@ export default function BookingsListScreen() {
   const insets = useSafeAreaInsets();
   const listBottomPadding = tabScreenScrollBottomPadding(insets.bottom, 16);
   const { screenPadding } = useResponsive();
-  const { selectedLocationId } = useProvider();
+  const { provider, selectedLocationId } = useProvider();
   const currency = getTenantDefaultCurrency();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -188,6 +193,7 @@ export default function BookingsListScreen() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>("month");
+  const [listSort, setListSort] = useState<BookingsListSort>("appointment");
 
   // §Provider-audit 2026-04 (round 6): debounce search input so every
   // keystroke doesn't refetch. Matches the clients screen pattern.
@@ -209,12 +215,16 @@ export default function BookingsListScreen() {
   if (statusFilter) queryParts.push(`status=${encodeURIComponent(statusFilter)}`);
   if (selectedLocationId) queryParts.push(`location_id=${encodeURIComponent(selectedLocationId)}`);
   if (debouncedSearch.length > 0) queryParts.push(`search=${encodeURIComponent(debouncedSearch)}`);
-  // §UX-audit 2026-04: list order previously relied on the API default,
-  // which flipped between newest-first and oldest-first depending on
-  // query variant. Owners expect chronological upcoming-first so they
-  // can triage the next booking on top of the list.
-  queryParts.push("sort=scheduled_at");
-  queryParts.push("order=asc");
+  // §Launch-audit 2026-04: default remains appointment order (soonest
+  // first). Optional "Booked" switches to `created_at` desc so recent
+  // intake appears on top — matches GET /api/me/bookings sort_by.
+  if (listSort === "booked_at") {
+    queryParts.push("sort=created_at");
+    queryParts.push("order=desc");
+  } else {
+    queryParts.push("sort=scheduled_at");
+    queryParts.push("order=asc");
+  }
   const url = `/api/provider/bookings?${queryParts.join("&")}`;
 
   const { data, loading, error, refresh } = useApi<Booking[]>(url);
@@ -227,6 +237,58 @@ export default function BookingsListScreen() {
       setRefreshing(false);
     }
   }, [refresh]);
+
+  // §Cross-app audit 2026-04 (bookings list freshness): previously the
+  // calendar screen subscribed to `postgres_changes` on `bookings`, so a
+  // new online booking appeared automatically there — but this list only
+  // refreshed on mount / pull-to-refresh, meaning a provider staring at
+  // the tab wouldn't see a just-booked appointment until they swiped
+  // down. Mirror the calendar pattern with two small additions:
+  //
+  //  1. `useFocusEffect` — refresh when the list regains focus (e.g. the
+  //     provider returns from tapping a booking detail). Cheap, covers
+  //     most real-world staleness.
+  //  2. Supabase realtime channel on `bookings` filtered by provider_id
+  //     — debounced 400ms refresh when any booking row changes, matching
+  //     calendar.tsx behaviour so both surfaces converge.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
+
+  useEffect(() => {
+    if (!provider?.id) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        refresh();
+      }, 400);
+    };
+
+    const channel = supabase
+      .channel(`bookings-list:${provider.id}`)
+      .on(
+        "postgres_changes" as never,
+        {
+          event: "*",
+          schema: "public",
+          table: "bookings",
+          filter: `provider_id=eq.${provider.id}`,
+        },
+        () => {
+          scheduleRefresh();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [provider?.id, refresh]);
 
   const filtered = useMemo(() => {
     const allBookings: Booking[] = Array.isArray(data) ? data : [];
@@ -408,6 +470,7 @@ export default function BookingsListScreen() {
       {/* ── Date range chips ── */}
       <View style={{ marginBottom: 6 }}>
         <FlatList<{ label: string; value: DateRange }>
+          {...horizontalFlatListPerf}
           horizontal
           data={DATE_RANGE_OPTIONS}
           keyExtractor={(o: { label: string; value: DateRange }) => o.value}
@@ -438,9 +501,52 @@ export default function BookingsListScreen() {
         />
       </View>
 
+      {/* ── Sort: appointment time vs date booked ── */}
+      <View style={{ marginBottom: 6 }}>
+        <View
+          style={[
+            twStyle("flex-row gap-2"),
+            { paddingHorizontal: screenPadding },
+          ]}
+        >
+          {(
+            [
+              { key: "appointment" as const, label: "By appointment" },
+              { key: "booked_at" as const, label: "By date booked" },
+            ] as const
+          ).map((opt) => {
+            const active = listSort === opt.key;
+            return (
+              <TouchableOpacity
+                key={opt.key}
+                onPress={() => setListSort(opt.key)}
+                style={[
+                  twStyle(
+                    `rounded-full px-3.5 py-2 ${active ? "bg-indigo-600" : "border border-gray-200 bg-white"}`,
+                  ),
+                  { minHeight: 44, justifyContent: "center" },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Sort bookings ${opt.label}`}
+                accessibilityState={{ selected: active }}
+              >
+                <Text
+                  style={twStyle(
+                    `text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`,
+                  )}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
       {/* ── Status filter chips ── */}
       <View style={{ marginBottom: 10 }}>
         <FlatList<(typeof STATUS_OPTIONS)[number]>
+          {...horizontalFlatListPerf}
           horizontal
           data={STATUS_OPTIONS}
           keyExtractor={(o: (typeof STATUS_OPTIONS)[number]) => o.value || "all"}

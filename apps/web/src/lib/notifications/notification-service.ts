@@ -7,10 +7,48 @@
 
 import { sendTemplateNotification, type NotificationChannel } from "./onesignal";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getProviderTeamUserIds } from "@/lib/notifications/notify-provider-team";
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { formatInTimeZone } from "date-fns-tz";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
+
+/**
+ * §Cross-app audit 2026-04 (multi-staff push): historically every
+ * `notifyProvider*` helper fanned push + in-app notifications to
+ * `providers.user_id` (the owner) only. On multi-staff teams, a front-
+ * desk or co-owner logged in to the provider mobile app would never
+ * receive a push for a new online booking, a cancellation, a dispute
+ * opened, etc. — they'd only see it on next pull-to-refresh.
+ *
+ * This helper resolves the FULL set of authenticated team members for a
+ * provider (owner + active linked `provider_staff.user_id`) so every
+ * booking-lifecycle notification targets the whole team. Owner remains
+ * first in the list, and duplicates are de-duped inside
+ * `getProviderTeamUserIds`. If the resolver fails or returns empty (e.g.
+ * transient DB hiccup, or a provider with no linked staff and a null
+ * `user_id`), we fall back to the original owner id so we never silently
+ * drop the notification entirely.
+ */
+async function resolveProviderRecipients(
+  providerId: string | null | undefined,
+  ownerUserId: string | null | undefined,
+): Promise<string[]> {
+  if (!providerId) {
+    return ownerUserId ? [ownerUserId] : [];
+  }
+  try {
+    const team = await getProviderTeamUserIds(providerId);
+    if (team.length > 0) return team;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[notification-service] getProviderTeamUserIds(${providerId}) failed — falling back to owner only`,
+      err,
+    );
+  }
+  return ownerUserId ? [ownerUserId] : [];
+}
 
 /**
  * B13: IANA timezone used when a booking row doesn't carry its provider's
@@ -324,11 +362,15 @@ export async function notifyBookingCancelled(
   // Notify customer
   await sendTemplateNotification(templateKey, [booking.customer_id], variables, channels, { appType: "customer" });
 
-  // If cancelled by customer, notify provider
+  // If cancelled by customer, notify provider team (owner + active staff).
   if (cancelledBy === "customer" && booking.provider?.user_id) {
+    const recipients = await resolveProviderRecipients(
+      booking.provider_id,
+      booking.provider.user_id,
+    );
     await sendTemplateNotification(
       "provider_booking_cancelled",
-      [booking.provider.user_id],
+      recipients,
       {
         customer_name: booking.customer?.full_name || "Customer",
         booking_date: variables.booking_date,
@@ -369,11 +411,15 @@ export async function notifyBookingRescheduled(
   // Notify customer
   await sendTemplateNotification("booking_rescheduled", [booking.customer_id], variables, channels, { appType: "customer" });
 
-  // Notify provider
+  // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
+    const recipients = await resolveProviderRecipients(
+      booking.provider_id,
+      booking.provider.user_id,
+    );
     await sendTemplateNotification(
       "provider_booking_rescheduled",
-      [booking.provider.user_id],
+      recipients,
       {
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
@@ -1215,9 +1261,18 @@ export async function notifyProviderNewBooking(bookingId: string, channels?: Not
     booking_id: bookingId,
   };
 
+  // §Cross-app audit 2026-04 (multi-staff push): fan out to the whole
+  // provider team (owner + active linked `provider_staff.user_id`) so a
+  // co-owner, manager, or front-desk logged into the provider app
+  // doesn't miss the push on non-owner logins.
+  const recipients = await resolveProviderRecipients(
+    booking.provider_id,
+    booking.provider.user_id,
+  );
+
   return await sendTemplateNotification(
     "provider_booking_request",
-    [booking.provider.user_id],
+    recipients,
     variables,
     channels,
     { appType: "provider" }
@@ -1255,9 +1310,14 @@ export async function notifyProviderNewCustomer(bookingId: string, channels?: No
     booking_id: bookingId,
   };
 
+  const recipients = await resolveProviderRecipients(
+    booking.provider_id,
+    booking.provider.user_id,
+  );
+
   return await sendTemplateNotification(
     "provider_new_customer",
-    [booking.provider.user_id],
+    recipients,
     variables,
     channels,
     { appType: "provider" }
@@ -1282,9 +1342,14 @@ export async function notifyProviderReturningCustomer(bookingId: string, visitNu
     booking_id: bookingId,
   };
 
+  const recipients = await resolveProviderRecipients(
+    booking.provider_id,
+    booking.provider.user_id,
+  );
+
   return await sendTemplateNotification(
     "provider_recurring_customer",
-    [booking.provider.user_id],
+    recipients,
     variables,
     channels,
     { appType: "provider" }
@@ -1309,9 +1374,14 @@ export async function notifyProviderPreferredCustomer(bookingId: string, totalBo
     booking_id: bookingId,
   };
 
+  const recipients = await resolveProviderRecipients(
+    booking.provider_id,
+    booking.provider.user_id,
+  );
+
   return await sendTemplateNotification(
     "provider_preferred_customer",
-    [booking.provider.user_id],
+    recipients,
     variables,
     channels,
     { appType: "provider" }
@@ -1857,11 +1927,15 @@ export async function notifyBookingTimeChanged(
   // Notify customer
   await sendTemplateNotification("booking_time_changed", [booking.customer_id], variables, channels, { appType: "customer" });
 
-  // Notify provider
+  // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
+    const recipients = await resolveProviderRecipients(
+      booking.provider_id,
+      booking.provider.user_id,
+    );
     await sendTemplateNotification(
       "provider_booking_time_changed",
-      [booking.provider.user_id],
+      recipients,
       {
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
@@ -1898,11 +1972,15 @@ export async function notifyBookingDateChanged(
   // Notify customer
   await sendTemplateNotification("booking_date_changed", [booking.customer_id], variables, channels, { appType: "customer" });
 
-  // Notify provider
+  // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
+    const recipients = await resolveProviderRecipients(
+      booking.provider_id,
+      booking.provider.user_id,
+    );
     await sendTemplateNotification(
       "provider_booking_date_changed",
-      [booking.provider.user_id],
+      recipients,
       {
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
@@ -2547,11 +2625,15 @@ export async function notifyDisputeOpened(
   // Notify customer
   await sendTemplateNotification("dispute_opened", [booking.customer_id], variables, channels, { appType: "customer" });
 
-  // Notify provider
+  // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
+    const recipients = await resolveProviderRecipients(
+      booking.provider_id,
+      booking.provider.user_id,
+    );
     await sendTemplateNotification(
       "provider_dispute_opened",
-      [booking.provider.user_id],
+      recipients,
       {
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
@@ -2588,11 +2670,15 @@ export async function notifyDisputeResolved(
   // Notify customer
   await sendTemplateNotification("dispute_resolved", [booking.customer_id], variables, channels, { appType: "customer" });
 
-  // Notify provider
+  // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
+    const recipients = await resolveProviderRecipients(
+      booking.provider_id,
+      booking.provider.user_id,
+    );
     await sendTemplateNotification(
       "provider_dispute_resolved",
-      [booking.provider.user_id],
+      recipients,
       {
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
@@ -2729,11 +2815,15 @@ export async function notifySpecialInstructionsAdded(
   // Notify customer
   await sendTemplateNotification("special_instructions_added", [booking.customer_id], variables, channels, { appType: "customer" });
 
-  // Notify provider
+  // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
+    const recipients = await resolveProviderRecipients(
+      booking.provider_id,
+      booking.provider.user_id,
+    );
     await sendTemplateNotification(
       "provider_special_instructions",
-      [booking.provider.user_id],
+      recipients,
       {
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
@@ -2768,9 +2858,14 @@ export async function notifyAllergyAlert(
     booking_id: bookingId,
   };
 
+  const recipients = await resolveProviderRecipients(
+    booking.provider_id,
+    booking.provider.user_id,
+  );
+
   return await sendTemplateNotification(
     "allergy_alert_provider",
-    [booking.provider.user_id],
+    recipients,
     variables,
     channels,
     { appType: "provider" }
@@ -2803,11 +2898,15 @@ export async function notifyWeatherAlert(
   // Notify customer
   await sendTemplateNotification("weather_alert", [booking.customer_id], variables, channels, { appType: "customer" });
 
-  // Notify provider
+  // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
+    const recipients = await resolveProviderRecipients(
+      booking.provider_id,
+      booking.provider.user_id,
+    );
     await sendTemplateNotification(
       "provider_weather_alert",
-      [booking.provider.user_id],
+      recipients,
       {
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,

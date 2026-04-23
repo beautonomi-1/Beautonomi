@@ -1,5 +1,28 @@
 import { getSupabaseBrowserClient } from "./supabase";
 
+const REMOTE_SIGNOUT_MS = 2800;
+
+/** Clear Supabase browser session without hanging on GoTrue when the network is slow. */
+async function clearSupabaseSessionBounded(): Promise<void> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return;
+  try {
+    await Promise.race([
+      supabase.auth.signOut(),
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, REMOTE_SIGNOUT_MS);
+      }),
+    ]);
+  } catch {
+    // non-fatal
+  }
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch {
+    // non-fatal
+  }
+}
+
 export interface SignInCredentials {
   email: string;
   password: string;
@@ -53,8 +76,5 @@ export async function signOut() {
   } catch {
     // ignore network errors — local Supabase sign-out is the fallback
   }
-  const supabase = getSupabaseBrowserClient();
-  if (supabase) {
-    await supabase.auth.signOut();
-  }
+  await clearSupabaseSessionBounded();
 }

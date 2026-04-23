@@ -171,7 +171,7 @@ export default function ProfileScreen() {
         amountFormatted: null,
       });
     }
-  }, [user]);
+  }, [user, profileCacheKey]);
 
   useEffect(() => {
     if (!user) {
@@ -796,7 +796,7 @@ export default function ProfileScreen() {
           onPress={() =>
             Alert.alert("Log out", "Are you sure you want to log out?", [
               { text: "Cancel", style: "cancel" },
-              { text: "Log out", style: "destructive", onPress: () => signOut() },
+              { text: "Log out", style: "destructive", onPress: () => void signOut() },
             ])
           }
           style={{ paddingVertical: 16, alignItems: "center" }}

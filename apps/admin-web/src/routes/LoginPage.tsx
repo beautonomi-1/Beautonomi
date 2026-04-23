@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Shield } from "lucide-react";
 import { ALL_ADMIN_ROLES } from "@beautonomi/admin-access";
 import type { UserRole } from "@beautonomi/types";
-import { signInWithPassword } from "@/lib/authSignIn";
+import { signInWithPassword, signOut } from "@/lib/authSignIn";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -85,8 +85,7 @@ export function LoginPage() {
       const role = b.role as UserRole;
       if (!ALL_ADMIN_ROLES.includes(role)) {
         setFormError("Access denied. This area is for administrators only.");
-        const supabase = getSupabaseBrowserClient();
-        if (supabase) await supabase.auth.signOut();
+        await signOut();
         setLoading(false);
         return;
       }
@@ -94,8 +93,7 @@ export function LoginPage() {
       navigate(adminSpaTo(`/admin/${safeNext}`), { replace: true });
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Could not load admin session.");
-      const supabase = getSupabaseBrowserClient();
-      if (supabase) await supabase.auth.signOut();
+      await signOut();
       setLoading(false);
     }
   }
@@ -110,7 +108,7 @@ export function LoginPage() {
       };
       const hasVerifiedTotp = (lf.data?.totp ?? []).some((f) => f.status === "verified");
       if (!hasVerifiedTotp) {
-        await supabase.auth.signOut();
+        await signOut();
         setFormError(
           "This organization requires two-factor authentication for administrators. Enroll a TOTP authenticator on your account, then sign in again."
         );
@@ -121,7 +119,7 @@ export function LoginPage() {
 
     const step = await prepareMfaStepAfterPassword(supabase);
     if (step.kind === "enrollment_required") {
-      await supabase.auth.signOut();
+      await signOut();
       setFormError(step.message);
       setLoading(false);
       return;
@@ -318,8 +316,7 @@ export function LoginPage() {
               type="button"
               className="w-full text-center text-sm text-gray-500 hover:text-gray-700"
               onClick={async () => {
-                const supabase = getSupabaseBrowserClient();
-                if (supabase) await supabase.auth.signOut();
+                await signOut();
                 setMfaStep("password");
                 setFactorId(null);
                 setChallengeId(null);

@@ -10,6 +10,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Colors } from "@/constants/colors";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface SearchSuggestion {
   type: "client" | "appointment" | "service";
@@ -138,6 +139,7 @@ export default function SearchScreen() {
 
       {suggestions.length > 0 && (
         <FlatList
+          {...verticalFlatListPerf}
           data={suggestions}
           keyExtractor={(item: SearchSuggestion) => `${item.type}-${item.id}`}
           contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}

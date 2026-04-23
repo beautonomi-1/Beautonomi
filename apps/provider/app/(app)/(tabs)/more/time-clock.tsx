@@ -24,6 +24,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatDate } from "@/lib/format";
 import { formatLocalYmd } from "@/lib/reportDateRanges";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface StaffMember {
   id: string;
@@ -289,6 +290,7 @@ export default function TimeClockScreen() {
             <EmptyState icon="people-outline" title="No staff" description="Add team members to use the time clock" />
           ) : (
             <FlatList
+              {...verticalFlatListPerf}
               data={allStaffWithStatus}
               keyExtractor={(s: StaffMember) => s.id}
               showsVerticalScrollIndicator={false}
@@ -354,6 +356,7 @@ export default function TimeClockScreen() {
             <EmptyState icon="time-outline" title="No time cards" description="Time entries will appear here" />
           ) : (
             <FlatList
+              {...verticalFlatListPerf}
               data={filteredCards}
               keyExtractor={(t: TimeCard) => t.id}
               showsVerticalScrollIndicator={false}

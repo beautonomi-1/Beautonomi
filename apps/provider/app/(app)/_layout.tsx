@@ -8,10 +8,10 @@
  *   NOT on transient network failures or web API config issues (which would cause a login loop).
  */
 import { Fragment, useEffect, useMemo, useRef } from "react";
-import { View, Text, ActivityIndicator, Linking, Platform } from "react-native";
+import { View, Linking, Platform } from "react-native";
 import { Redirect, Stack, useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
-import { Colors } from "@/constants/colors";
+import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import { RoleGate } from "@/components/RoleGate";
 import { ProviderProvider } from "@/providers/ProviderContext";
 import { NotificationsCountProvider } from "@/providers/NotificationsCountContext";
@@ -79,12 +79,9 @@ export default function AppLayout() {
   }, [loading, session?.user?.id]);
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 12, fontSize: 16, color: Colors.gray[600] }}>Checking authentication…</Text>
-      </View>
-    );
+    // §Provider-audit 2026-04 (loading-polish): reuse the branded gate so the
+    // auth-check frame matches /index.tsx and the (auth) layout.
+    return <GateLoadingScreen message="Checking authentication…" />;
   }
   if (!session) return <Redirect href="/(auth)/login" />;
 

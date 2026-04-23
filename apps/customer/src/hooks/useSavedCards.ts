@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import type { SavedPaymentMethod } from "@/types/api";
 
 interface UseSavedCardsReturn {
@@ -27,7 +28,7 @@ export function useSavedCards(enabled = true): UseSavedCardsReturn {
     try {
       const res = await api.get<SavedPaymentMethod[] | { data: SavedPaymentMethod[] }>("/api/me/payment-methods");
       if (res.error) {
-        setError((res.error as any)?.message || "Failed to load payment methods");
+        setError(getApiErrorMessage(res.error, "Failed to load payment methods"));
         return;
       }
       const raw = res.data;

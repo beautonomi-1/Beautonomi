@@ -194,6 +194,30 @@ function variantSubtitle(s: BookingServiceRow): string | null {
   return null;
 }
 
+const MONEY_TOL = 0.02;
+
+function sumAdditionalChargesForDisplay(charges: AdditionalChargeRow[] | undefined): number {
+  if (!charges?.length) return 0;
+  return charges.reduce((s, c) => {
+    const st = (c.status || "").toLowerCase();
+    if (st === "rejected" || st === "cancelled") return s;
+    return s + (Number(c.amount) || 0);
+  }, 0);
+}
+
+/**
+ * DB trigger expects: total = subtotal - discount + tax + service_fee + travel_fee + tip - cancellation_fee.
+ * Some legacy rows store subtotal as (services + travel) while travel_fee is also set — avoid showing travel twice in UI.
+ */
+function travelFeeDoubleListed(
+  dbSubtotal: number,
+  servicesAndBundledSubtotal: number,
+  travelFee: number
+): boolean {
+  if (!(travelFee > 0)) return false;
+  return Math.abs(dbSubtotal - servicesAndBundledSubtotal - travelFee) < MONEY_TOL;
+}
+
 function formatVariantOptions(raw: unknown): string {
   if (raw == null) return "";
   if (typeof raw === "string") {
@@ -332,12 +356,25 @@ export function BookingDetailPage() {
 
   const edit = isEditing ? { ...booking, ...editData } : booking;
   const lineServicesSubtotal = booking.booking_services?.reduce((s, x) => s + (x.price || 0), 0) || 0;
-  const subtotal =
-    booking.subtotal != null && !Number.isNaN(Number(booking.subtotal))
-      ? Number(booking.subtotal)
-      : lineServicesSubtotal;
   const productTotal = booking.booking_products?.reduce((s, x) => s + (x.total_price || 0), 0) || 0;
   const addonTotal = booking.booking_addons?.reduce((s, x) => s + (Number(x.price) || 0) * (x.quantity || 1), 0) || 0;
+  const additionalChargesTotal = sumAdditionalChargesForDisplay(booking.additional_charges);
+  const goodsBeforeTravel =
+    lineServicesSubtotal + addonTotal + productTotal + additionalChargesTotal;
+  const dbSubtotal =
+    booking.subtotal != null && !Number.isNaN(Number(booking.subtotal)) ? Number(booking.subtotal) : goodsBeforeTravel;
+  const travelFeeAmt = Number(booking.travel_fee ?? 0) || 0;
+  const travelListedSeparately = !travelFeeDoubleListed(dbSubtotal, lineServicesSubtotal + addonTotal + productTotal, travelFeeAmt);
+  const discountAmt = Number(booking.discount_amount ?? 0) || 0;
+  const taxAmt = Number(booking.tax_amount ?? 0) || 0;
+  const svcFeeAmt = Number(booking.service_fee_amount ?? 0) || 0;
+  const tipAmt = Number(booking.tip_amount ?? 0) || 0;
+  const cancelAmt = Number(booking.cancellation_fee ?? 0) || 0;
+  const expectedTotalFromColumns =
+    dbSubtotal - discountAmt + taxAmt + svcFeeAmt + travelFeeAmt + tipAmt - cancelAmt;
+  const totalMismatch =
+    booking.total_amount != null &&
+    Math.abs(expectedTotalFromColumns - Number(booking.total_amount)) > MONEY_TOL;
   const pkg = firstRel(booking.service_packages ?? undefined);
   const grp = firstRel(booking.group_bookings ?? undefined);
 
@@ -795,10 +832,15 @@ export function BookingDetailPage() {
           </AdminPanel>
           <AdminPanel>
             <h2 className="mb-3 text-lg font-semibold">Pricing &amp; fees</h2>
+            <p className="mb-3 text-xs text-gray-500">
+              Line items below reconcile the stored <code className="font-mono">bookings.subtotal</code> with services,
+              add-ons, products, and additional charges. Travel is usually added on top of subtotal in the DB total formula
+              — if subtotal already includes travel, we only show travel once.
+            </p>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-2">
-                <dt className="text-gray-600">Subtotal (services)</dt>
-                <dd className="tabular-nums font-medium">{money(booking.currency, subtotal)}</dd>
+                <dt className="text-gray-600">Services (line items)</dt>
+                <dd className="tabular-nums font-medium">{money(booking.currency, lineServicesSubtotal)}</dd>
               </div>
               {addonTotal > 0 ? (
                 <div className="flex justify-between gap-2">
@@ -812,10 +854,27 @@ export function BookingDetailPage() {
                   <dd className="tabular-nums font-medium">{money(booking.currency, productTotal)}</dd>
                 </div>
               ) : null}
-              {(booking.travel_fee ?? 0) > 0 ? (
+              {additionalChargesTotal > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Additional charges (approved / pending)</dt>
+                  <dd className="tabular-nums font-medium">{money(booking.currency, additionalChargesTotal)}</dd>
+                </div>
+              ) : null}
+              <div className="flex justify-between gap-2 border-t border-dashed border-gray-200 pt-2">
+                <dt className="text-gray-700">Recorded subtotal (`bookings.subtotal`)</dt>
+                <dd className="tabular-nums font-medium">{money(booking.currency, dbSubtotal)}</dd>
+              </div>
+              {travelFeeAmt > 0 && !travelListedSeparately ? (
+                <p className="text-xs text-gray-500">
+                  Travel {money(booking.currency, travelFeeAmt)} is included in the recorded subtotal above (line items +
+                  travel match subtotal). <code className="font-mono">travel_fee</code> is still stored separately for
+                  routing and reporting.
+                </p>
+              ) : null}
+              {travelListedSeparately ? (
                 <div className="flex justify-between gap-2">
                   <dt className="text-gray-600">Travel fee</dt>
-                  <dd className="tabular-nums font-medium">{money(booking.currency, booking.travel_fee)}</dd>
+                  <dd className="tabular-nums font-medium">{money(booking.currency, travelFeeAmt)}</dd>
                 </div>
               ) : null}
               {(booking.service_fee_amount ?? 0) > 0 || booking.service_fee_percentage != null ? (
@@ -894,6 +953,24 @@ export function BookingDetailPage() {
                 </div>
               ) : null}
             </dl>
+            {Math.abs(goodsBeforeTravel - dbSubtotal) > MONEY_TOL ? (
+              <p className="mt-3 rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-950">
+                <strong className="font-medium">Subtotal check:</strong> Sum of services, add-ons, products, and
+                additional charges ({money(booking.currency, goodsBeforeTravel)}) does not match recorded{" "}
+                <code className="font-mono">subtotal</code> ({money(booking.currency, dbSubtotal)}). Additional charges
+                may be invoiced separately, or the row may need a data fix.
+              </p>
+            ) : null}
+            {totalMismatch ? (
+              <p className="mt-3 rounded-md border border-red-200 bg-red-50/80 px-3 py-2 text-xs text-red-950">
+                <strong className="font-medium">Total reconciliation:</strong> Using{" "}
+                <code className="font-mono">subtotal − discount + tax + service_fee + travel_fee + tip − cancellation</code>{" "}
+                gives {money(booking.currency, expectedTotalFromColumns)}, but <code className="font-mono">total_amount</code>{" "}
+                is {money(booking.currency, booking.total_amount)}. If travel is double-counted (included in both{" "}
+                <code className="font-mono">subtotal</code> and <code className="font-mono">travel_fee</code>), the stored
+                columns may be inconsistent with the payment total.
+              </p>
+            ) : null}
             <div className="mt-4 border-t border-gray-200 pt-3">
               <div className="flex justify-between gap-2 text-base font-semibold">
                 <span>Total</span>

@@ -28,6 +28,7 @@ import { capitalizeFirst } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -327,7 +328,7 @@ export default function TeamListScreen() {
       location_ids: form.location_ids,
       service_ids: form.service_ids,
     };
-    const { error } = await createMember(payload as any);
+    const { error } = await createMember(payload);
     if (error) {
       Alert.alert("Error", error);
     } else {
@@ -433,6 +434,7 @@ export default function TeamListScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(s: StaffMember) => s.id}
           style={{ flex: 1, minHeight: 0 }}
@@ -451,7 +453,7 @@ export default function TeamListScreen() {
                   : "flex-row items-center border-b border-gray-50 py-3.5"
               }`)}
               onPress={() =>
-                router.push(`/(app)/(tabs)/more/team-member/${member.id}` as any)
+                router.push(`/(app)/(tabs)/more/team-member/${member.id}` as never)
               }
               onLongPress={() => handleLongPress(member)}
               delayLongPress={400}

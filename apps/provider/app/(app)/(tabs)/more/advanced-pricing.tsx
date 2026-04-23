@@ -37,6 +37,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface AdvancedPricingRule {
   id: string;
@@ -350,6 +351,7 @@ export default function AdvancedPricingScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={servicesList}
           keyExtractor={(s: ServiceItem) => s.id}
           renderItem={renderService}

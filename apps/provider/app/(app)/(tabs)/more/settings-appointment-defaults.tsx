@@ -40,9 +40,12 @@ export default function SettingsAppointmentDefaultsScreen() {
   );
   const { execute: patchSettings, loading: saving } = useApiMutation("patch");
 
-  const raw = (data as AppointmentSettings)?.defaultAppointmentStatus !== undefined
-    ? (data as AppointmentSettings)
-    : (data as any)?.data;
+  const raw =
+    data && typeof data === "object" && "defaultAppointmentStatus" in data
+      ? (data as AppointmentSettings)
+      : data && typeof data === "object" && "data" in data
+        ? (data as { data?: AppointmentSettings }).data
+        : undefined;
   const [settings, setSettings] = useState<AppointmentSettings>({
     defaultAppointmentStatus: "booked",
     autoConfirmAppointments: false,

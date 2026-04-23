@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 
 /**
  * List/detail queries use the service-role client so provider_staff and
@@ -180,13 +181,50 @@ export async function POST(request: NextRequest) {
       duration_minutes,
       notes,
       participants,
+      // §Provider-audit 2026-04 (packages round 2): persist the link to the
+      // catalog service_package so reporting/discount math can be applied.
+      package_id,
     } = body;
 
     if (!scheduled_at) {
       return errorResponse("scheduled_at is required", "VALIDATION_ERROR", 400);
     }
 
-    // Create the group booking row
+    // Commit-time availability check (same engine as single-booking create).
+    // Only run when we have enough inputs to reason about; if staff/location
+    // are missing we fall back to pending-creation (the provider can still
+    // assign staff later and the calendar will show the row).
+    const allowOverride = body?.allow_override === true;
+    const effectiveDuration = Number.isFinite(Number(duration_minutes))
+      ? Number(duration_minutes)
+      : 60;
+    const scheduledAtDate = new Date(scheduled_at);
+    if (Number.isNaN(scheduledAtDate.getTime())) {
+      return errorResponse("Invalid scheduled_at", "VALIDATION_ERROR", 400);
+    }
+    if (!allowOverride) {
+      const check = await evaluateProviderSlotAgainstGrid(admin, {
+        providerId,
+        scheduledAt: scheduledAtDate,
+        durationMinutes: effectiveDuration,
+        staffIdsCsv: staff_id ? String(staff_id) : null,
+        locationId: location_id ? String(location_id) : null,
+        excludeBookingId: undefined,
+        mode: "salon",
+        travelBufferRaw: null,
+        minNoticeMinutes: 0,
+        maxAdvanceDays: 365,
+        resourceOfferingIds: service_id ? [String(service_id)] : [],
+      });
+      if (!check.ok) {
+        return errorResponse(
+          check.conflicts.join("; ") || "Slot is not available",
+          "SLOT_NOT_AVAILABLE",
+          409,
+        );
+      }
+    }
+
     const { data: groupBooking, error: gbError } = await admin
       .from('group_bookings')
       .insert({
@@ -201,6 +239,7 @@ export async function POST(request: NextRequest) {
         notes: notes || null,
         status: 'confirmed',
         created_by: user.id,
+        ...(package_id ? { package_id } : {}),
       })
       .select()
       .single();

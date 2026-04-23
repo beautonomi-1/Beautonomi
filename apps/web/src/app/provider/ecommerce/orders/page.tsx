@@ -80,6 +80,10 @@ export default function ProviderProductOrdersPage() {
 
   const [trackingDialog, setTrackingDialog] = useState<{ orderId: string; status: string } | null>(null);
   const [trackingInput, setTrackingInput] = useState("");
+  // §Customer-audit 2026-04 (follow-up): capture a carrier name + tracking URL
+  // so customers can tap straight through from their order detail page.
+  const [carrierInput, setCarrierInput] = useState("");
+  const [trackingUrlInput, setTrackingUrlInput] = useState("");
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -150,17 +154,25 @@ export default function ProviderProductOrdersPage() {
     if (newStatus === "shipped") {
       setTrackingDialog({ orderId, status: newStatus });
       setTrackingInput("");
+      setCarrierInput("");
+      setTrackingUrlInput("");
       return;
     }
     await submitStatusUpdate(orderId, newStatus);
   };
 
-  const submitStatusUpdate = async (orderId: string, newStatus: string, trackingNumber?: string) => {
+  const submitStatusUpdate = async (
+    orderId: string,
+    newStatus: string,
+    shipping?: { tracking_number?: string; carrier?: string; tracking_url?: string },
+  ) => {
     setUpdating(orderId);
     setError("");
     try {
       const payload: Record<string, any> = { status: newStatus };
-      if (trackingNumber) payload.tracking_number = trackingNumber;
+      if (shipping?.tracking_number) payload.tracking_number = shipping.tracking_number;
+      if (shipping?.carrier) payload.carrier = shipping.carrier;
+      if (shipping?.tracking_url) payload.tracking_url = shipping.tracking_url;
       const res = await fetcher.patch<{ data?: { order?: ProductOrder } }>(`/api/provider/product-orders/${orderId}`, payload);
       const updatedOrder = res?.data?.order;
       if (updatedOrder) {
@@ -308,14 +320,35 @@ export default function ProviderProductOrdersPage() {
       {trackingDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Enter Tracking Number</h3>
-            <p className="text-sm text-gray-500 mb-4">Provide a tracking number for the shipment (optional).</p>
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Shipping details</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              All fields are optional — add what you have and customers will see it on their order.
+            </p>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tracking number</label>
             <Input
               value={trackingInput}
               onChange={(e) => setTrackingInput(e.target.value)}
               placeholder="e.g. TRACK-12345"
-              className="mb-4"
+              className="mb-3"
             />
+            <label className="block text-xs font-medium text-gray-600 mb-1">Carrier / courier</label>
+            <Input
+              value={carrierInput}
+              onChange={(e) => setCarrierInput(e.target.value)}
+              placeholder="e.g. Aramex, DHL, Paxi"
+              className="mb-3"
+            />
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tracking URL</label>
+            <Input
+              value={trackingUrlInput}
+              onChange={(e) => setTrackingUrlInput(e.target.value)}
+              placeholder="https://…"
+              type="url"
+              className="mb-1"
+            />
+            <p className="text-xs text-gray-500 mb-4">
+              Paste the carrier&apos;s tracking page so customers can click through from their order.
+            </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setTrackingDialog(null)}
@@ -324,7 +357,18 @@ export default function ProviderProductOrdersPage() {
                 Cancel
               </button>
               <button
-                onClick={() => submitStatusUpdate(trackingDialog.orderId, trackingDialog.status, trackingInput || undefined)}
+                onClick={() => {
+                  const urlTrim = trackingUrlInput.trim();
+                  if (urlTrim && !/^https?:\/\//i.test(urlTrim)) {
+                    setError("Tracking URL must start with http:// or https://");
+                    return;
+                  }
+                  submitStatusUpdate(trackingDialog.orderId, trackingDialog.status, {
+                    tracking_number: trackingInput.trim() || undefined,
+                    carrier: carrierInput.trim() || undefined,
+                    tracking_url: urlTrim || undefined,
+                  });
+                }}
                 disabled={updating === trackingDialog.orderId}
                 className="px-4 py-2 text-sm font-medium text-white bg-pink-600 rounded-lg hover:bg-pink-700 disabled:opacity-50"
               >

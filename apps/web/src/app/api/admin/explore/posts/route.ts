@@ -29,7 +29,7 @@ const SELECT_WITH_SAVE_COUNT = `
         moderated_at,
         moderated_by,
         created_at,
-        providers:provider_id!inner(business_name, slug, tenant_id)
+        providers:provider_id!inner(id, business_name, slug, tenant_id)
       `;
 const SELECT_WITHOUT_SAVE_COUNT = `
         id,
@@ -45,7 +45,7 @@ const SELECT_WITHOUT_SAVE_COUNT = `
         moderated_at,
         moderated_by,
         created_at,
-        providers:provider_id!inner(business_name, slug, tenant_id)
+        providers:provider_id!inner(id, business_name, slug, tenant_id)
       `;
 
 function isMissingSaveCountColumnError(error: unknown): boolean {

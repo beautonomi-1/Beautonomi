@@ -3,11 +3,10 @@
  * If deactivated or (for providers) suspended, signs out and redirects to login with query params for messaging.
  */
 import { useEffect, useState, useRef } from "react";
-import { View, ActivityIndicator, Text } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
-import { Colors } from "@/constants/colors";
+import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import {
   authFlowBreadcrumb,
   captureAuthMessage,
@@ -213,20 +212,9 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
     return () => clearTimeout(t);
   }, [session?.user?.id, checked]);
 
-  if (!session) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
-  }
-  if (!checked) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 12, fontSize: 14, color: Colors.gray[600] }}>Checking account…</Text>
-      </View>
-    );
-  }
+  // §Customer-audit 2026-04 (loading-polish): branded gate across session /
+  // account-status checks so the flash between login and home is on-brand.
+  if (!session) return <GateLoadingScreen />;
+  if (!checked) return <GateLoadingScreen message="Checking account…" />;
   return <>{children}</>;
 }

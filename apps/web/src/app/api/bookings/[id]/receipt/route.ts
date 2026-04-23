@@ -141,6 +141,32 @@ export async function GET(
     // Still need a scoped client for getProviderIdForUser (which uses RLS-aware client)
     const scopedSupabase = await getSupabaseServer(request);
 
+    // §Launch-audit 2026-04: the deep join below was returning 404 "Booking
+    // not found" for bookings that do exist whenever any embedded relation
+    // had schema drift (e.g. renamed FK). We now do a cheap existence probe
+    // first so we can return 404 *only* when the booking truly doesn't
+    // exist, and a diagnostic 500 when the detail query fails.
+    const { data: existsRow, error: existsErr } = await supabase
+      .from("bookings")
+      .select("id, customer_id, provider_id")
+      .eq("id", bookingId)
+      .maybeSingle();
+
+    if (existsErr) {
+      console.error("[receipt] Booking lookup failed:", existsErr);
+      return NextResponse.json(
+        { error: "Failed to load booking", code: existsErr.code ?? null },
+        { status: 500 },
+      );
+    }
+
+    if (!existsRow) {
+      return NextResponse.json(
+        { error: "Booking not found" },
+        { status: 404 },
+      );
+    }
+
     // Get booking with all related data
     const { data: bookingRaw, error: bookingError } = await supabase
       .from("bookings")
@@ -214,10 +240,29 @@ export async function GET(
       .single();
 
     if (bookingError) {
-      console.error("[receipt] Supabase error:", bookingError.message, bookingError.code);
+      // §Launch-audit 2026-04: the booking existed (we just probed it with
+      // `existsRow` above) but the detail join failed. That's a 500, not a
+      // 404 — mislabelling it as 404 was what made the bug invisible to
+      // support. Surface the Supabase error code so ops can tell whether
+      // it's a schema drift (e.g. PGRST200 / missing FK hint) or a
+      // genuinely transient failure.
+      console.error(
+        "[receipt] Detail query failed:",
+        bookingError.message,
+        bookingError.code,
+        bookingError.details,
+      );
+      return NextResponse.json(
+        {
+          error: "Failed to load receipt details",
+          code: bookingError.code ?? null,
+          message: bookingError.message ?? null,
+        },
+        { status: 500 },
+      );
     }
 
-    if (bookingError || !bookingRaw) {
+    if (!bookingRaw) {
       return NextResponse.json(
         { error: "Booking not found" },
         { status: 404 }

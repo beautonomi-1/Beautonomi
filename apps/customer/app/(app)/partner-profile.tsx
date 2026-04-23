@@ -37,6 +37,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { haptic } from "@/lib/haptics";
+import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import type {
   PublicProviderDetail,
   ProviderServicesResponse,
@@ -779,6 +780,7 @@ function GalleryViewer({ images, initialIndex, visible, onClose }: {
           <Ionicons name="close" size={22} color="#fff" />
         </TouchableOpacity>
         <FlatList
+          {...horizontalFlatListPerf}
           data={images}
           horizontal
           pagingEnabled
@@ -1564,6 +1566,7 @@ export default function PartnerProfileScreen() {
           <View style={{ width: screenWidth, height: heroHeight, backgroundColor: "#E5E7EB" }}>
             {images.length > 0 ? (
               <FlatList
+                {...horizontalFlatListPerf}
                 data={images}
                 horizontal
                 pagingEnabled

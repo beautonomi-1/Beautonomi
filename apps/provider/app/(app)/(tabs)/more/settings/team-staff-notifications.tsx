@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Avatar } from "@/components/ui/Avatar";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface StaffMember {
   id: string;
@@ -77,6 +78,7 @@ export default function TeamStaffNotificationsListScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={staffList}
           keyExtractor={(s: StaffMember) => s.id}
           contentContainerStyle={{ paddingBottom: 120 }}

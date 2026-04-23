@@ -32,6 +32,7 @@ import { useTranslation, supportedLanguages, SIGNUP_SOURCE_OPTIONS } from "@beau
 import { changeLanguage } from "@/lib/i18n";
 import * as Localization from "expo-localization";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 const REFERRAL_REF_KEY = "referral_ref";
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
@@ -840,6 +841,7 @@ export default function SignupScreen() {
               </View>
             </View>
             <FlatList
+              {...verticalFlatListPerf}
               data={filteredCountries}
               keyExtractor={(c) => c.code}
               keyboardShouldPersistTaps="handled"
@@ -900,6 +902,7 @@ export default function SignupScreen() {
               {t("auth.preferredLanguage")}
             </Text>
             <FlatList
+              {...verticalFlatListPerf}
               data={[...supportedLanguages]}
               keyExtractor={(l) => l.code}
               renderItem={({ item: lang }) => (
@@ -976,6 +979,7 @@ export default function SignupScreen() {
               {!signupSource && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
             </TouchableOpacity>
             <FlatList
+              {...verticalFlatListPerf}
               data={SIGNUP_SOURCE_OPTIONS}
               keyExtractor={(o) => o.value}
               renderItem={({ item: opt }) => (

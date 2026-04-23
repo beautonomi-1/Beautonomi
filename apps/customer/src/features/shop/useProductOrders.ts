@@ -15,6 +15,8 @@ export interface ProductOrder {
   currency: string;
   payment_status: string;
   tracking_number: string | null;
+  carrier?: string | null;
+  tracking_url?: string | null;
   estimated_delivery_date: string | null;
   created_at: string;
   confirmed_at: string | null;
@@ -92,7 +94,7 @@ export function useProductOrders() {
       payment_method?: string;
       use_wallet?: boolean;
     }) => {
-      const res = await api.post<{ order: ProductOrder; paid_with_wallet?: boolean; amount_due?: number }>("/api/me/orders", payload as any);
+      const res = await api.post<{ order: ProductOrder; paid_with_wallet?: boolean; amount_due?: number }>("/api/me/orders", payload);
       if (res.error) return { data: null, paid_with_wallet: false, amount_due: undefined, error: getApiErrorMessage(res.error, "Your order could not be placed.") };
       return {
         data: res.data?.order ?? null,

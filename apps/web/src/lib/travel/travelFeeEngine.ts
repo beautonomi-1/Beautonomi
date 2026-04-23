@@ -386,25 +386,61 @@ export function computeTravelFee(
   // Strategy: Distance-based
   if (rules.strategy === "distance") {
     const baseFee = rules.minimumFee || 0;
-    const distanceFee = distanceKm * (rules.perKmRate || 5);
-    let totalFee = baseFee + distanceFee;
-    
-    if (rules.freeRadiusKm) {
-      // Only charge for distance beyond free radius
-      const chargeableDistance = distanceKm - rules.freeRadiusKm;
-      totalFee = baseFee + chargeableDistance * (rules.perKmRate || 5);
+    const perKmRate = rules.perKmRate || 5;
+
+    // §Release-audit 2026-04: the breakdown lines must sum to the same
+    // charged amount that's returned in `fee` — the customer booking UI
+    // renders these rows under the travel-fee total and any mismatch is
+    // immediately visible (and wrong on receipts). Previously we pushed
+    // the gross `distanceKm * perKmRate` even when `freeRadiusKm` capped
+    // the actual charge below it.
+    const freeKm =
+      typeof rules.freeRadiusKm === "number" && rules.freeRadiusKm > 0
+        ? rules.freeRadiusKm
+        : 0;
+    const chargeableDistance = Math.max(0, distanceKm - freeKm);
+    const distanceFee = chargeableDistance * perKmRate;
+    const totalFee = baseFee + distanceFee;
+
+    if (baseFee > 0) {
+      breakdown.push({ label: "Base fee", amount: baseFee });
     }
-    
-    breakdown.push({ label: "Base fee", amount: baseFee });
-    breakdown.push({ label: `Distance fee (${distanceKm.toFixed(1)}km)`, amount: distanceFee });
-    
+    if (freeKm > 0) {
+      breakdown.push({
+        label: `Free within ${freeKm}km of base location`,
+        amount: 0,
+      });
+      if (chargeableDistance > 0) {
+        breakdown.push({
+          label: `Distance fee (${chargeableDistance.toFixed(1)}km @ ${perKmRate}/km)`,
+          amount: roundCurrency(distanceFee),
+        });
+      }
+    } else {
+      breakdown.push({
+        label: `Distance fee (${distanceKm.toFixed(1)}km @ ${perKmRate}/km)`,
+        amount: roundCurrency(distanceFee),
+      });
+    }
+
+    const cappedTotal = Math.min(
+      roundCurrency(totalFee),
+      rules.maximumFee ?? Infinity,
+    );
+    if (rules.maximumFee != null && totalFee > rules.maximumFee) {
+      breakdown.push({
+        label: `Capped at maximum fee`,
+        amount: cappedTotal - baseFee - roundCurrency(distanceFee),
+      });
+    }
+
     const travelTime = Math.max(
       rules.baseTravelTimeMinutes || 15,
       distanceKm * (rules.defaultMinutesPerKm || 2)
     );
-    
+
     return {
-      fee: Math.min(roundCurrency(totalFee), rules.maximumFee || Infinity),
+      fee: cappedTotal,
       travelTimeMinutes: Math.round(travelTime),
       totalTravelTimeMinutes: Math.round(travelTime * 2),
       withinServiceArea: true,

@@ -27,10 +27,12 @@ import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
 import * as Haptics from "expo-haptics";
 import { twStyle } from "@/lib/twStyle";
+import { chatFlatListPerf } from "@/lib/flatListPerformance";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { api } from "@/lib/api-client";
+import { appendFormDataFileNative } from "@beautonomi/utils";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 
 interface CustomOfferAttachment {
@@ -59,6 +61,16 @@ interface Message {
   created_at: string;
   read_at: string | null;
   attachments?: (CustomOfferAttachment | FileLikeAttachment | { type?: string })[];
+}
+
+/** Supabase Realtime `payload.new` for `public.messages` (fields used in this screen). */
+interface RealtimeMessageRow {
+  id?: string;
+  content?: string | null;
+  sender_role?: string | null;
+  created_at?: string;
+  read_at?: string | null;
+  attachments?: unknown;
 }
 
 function isImageMime(t?: string) {
@@ -177,17 +189,20 @@ export default function ChatScreen() {
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          const m = payload.new as any;
+          const m = payload.new as RealtimeMessageRow;
+          if (!m.id || !m.created_at) return;
+          const rowId = m.id;
+          const rowCreatedAt = m.created_at;
           setRealtimeMessages((prev) => {
-            if (prev.some((p) => p.id === m.id)) return prev;
+            if (prev.some((p) => p.id === rowId)) return prev;
             const att = Array.isArray(m.attachments) ? m.attachments : [];
             return [
               ...prev,
               {
-                id: m.id,
+                id: rowId,
                 content: m.content ?? "",
                 sender_type: (m.sender_role === "customer" ? "customer" : "provider") as "provider" | "customer",
-                created_at: m.created_at,
+                created_at: rowCreatedAt,
                 read_at: m.read_at ?? null,
                 attachments: att as Message["attachments"],
               },
@@ -214,10 +229,10 @@ export default function ChatScreen() {
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          const updated = payload.new as any;
+          const updated = payload.new as RealtimeMessageRow;
           setRealtimeMessages((prev) =>
             prev.map((msg) =>
-              msg.id === updated.id ? { ...msg, read_at: updated.read_at ?? null } : msg
+              updated.id && msg.id === updated.id ? { ...msg, read_at: updated.read_at ?? null } : msg
             )
           );
           refresh();
@@ -273,14 +288,11 @@ export default function ChatScreen() {
     try {
       const formData = new FormData();
       formData.append("conversation_id", conversationId);
-      formData.append(
-        "files",
-        {
-          uri: asset.uri,
-          name: asset.fileName || "photo.jpg",
-          type: asset.mimeType || "image/jpeg",
-        } as unknown as Blob
-      );
+      appendFormDataFileNative(formData, "files", {
+        uri: asset.uri,
+        name: asset.fileName || "photo.jpg",
+        type: asset.mimeType || "image/jpeg",
+      });
       const res = await api.fetch<{ attachments?: FileLikeAttachment[] }>("/api/me/messages/upload", {
         method: "POST",
         body: formData,
@@ -480,6 +492,7 @@ export default function ChatScreen() {
         ) : (
           <>
             <FlatList
+              {...chatFlatListPerf}
               ref={flatListRef}
               data={allMessages}
               keyExtractor={(m: Message) => m.id}

@@ -3,13 +3,19 @@
  * Session recovery: on 401, refresh and retry once; sign out only when session is invalid,
  * not on network errors, so the app won't randomly logout.
  */
-import { createApiClient, type ApiClientExtraOptions } from "@beautonomi/api";
+import {
+  createApiClient,
+  type ApiClientExtraOptions,
+  type ApiClientRequestBody,
+  type RequestOptions,
+} from "@beautonomi/api";
 import type { ApiResponse } from "@beautonomi/types";
 import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase/client";
 import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 import { authFlowBreadcrumb, captureError, isSentryEnabled } from "@/lib/sentry";
+import { getHttpErrorStatus } from "@/lib/api-error";
 
 /** Resolve API base URL with strict production safeguards. Never throws — callers expect sync resolution inside apiFetch try/catch. */
 function getApiBaseUrl(): string {
@@ -44,64 +50,104 @@ function getApiBaseUrl(): string {
   return configured;
 }
 
-async function getAccessToken(): Promise<string | null> {
-  // Validate session with auth server and refresh if expired (getSession() alone does not refresh).
-  // Without this, an expired access_token is sent and the API returns "Auth session missing!".
-  if (isSentryEnabled()) {
-    authFlowBreadcrumb("get_access_token", { step: "start" });
-  }
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (isSentryEnabled()) {
-      authFlowBreadcrumb("get_access_token", { step: "getUser_done", hasUser: !!user });
+/**
+ * §Provider-audit 2026-04 (P1 PERF): previously every API call did
+ * `supabase.auth.getUser()` — a NETWORK call to Supabase `/user` — on
+ * top of `getSession()` + possibly `refreshSession()`. That made every
+ * tap / screen transition feel sluggish because each API request paid
+ * 1-2 extra round-trips just to authenticate.
+ *
+ * The new flow is fully local unless the token is actually expired and
+ * dedupes concurrent callers so a screen doing 5 parallel fetches only
+ * hits the auth subsystem once.
+ */
+
+const TOKEN_CACHE_TTL_MS = 30_000;
+const REFRESH_LEEWAY_MS = 60_000;
+
+type CachedToken = { token: string; expiresAtMs: number; fetchedAtMs: number };
+let cachedToken: CachedToken | null = null;
+let inflightToken: Promise<string | null> | null = null;
+
+function clearCachedToken(): void {
+  cachedToken = null;
+}
+
+/** Clear in-memory JWT cache (e.g. user tapped Log out). */
+export function invalidateApiAccessTokenCache(): void {
+  inflightToken = null;
+  clearCachedToken();
+}
+
+async function resolveAccessToken(): Promise<string | null> {
+  const now = Date.now();
+  if (cachedToken && now - cachedToken.fetchedAtMs < TOKEN_CACHE_TTL_MS) {
+    const timeLeft = cachedToken.expiresAtMs - now;
+    if (timeLeft > REFRESH_LEEWAY_MS) {
+      return cachedToken.token;
     }
-    if (!user) {
+  }
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const session = sessionData.session;
+  let token = session?.access_token ?? null;
+  const expiresAtSec = session?.expires_at ?? 0;
+  let expiresAtMs = expiresAtSec * 1000;
+
+  const needsRefresh =
+    !token || (expiresAtMs > 0 && expiresAtMs - now <= REFRESH_LEEWAY_MS);
+
+  if (needsRefresh) {
+    if (isSentryEnabled()) {
+      authFlowBreadcrumb("get_access_token", { step: "refreshSession_start" });
+    }
+    const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+    if (refreshErr) {
       if (isSentryEnabled()) {
-        authFlowBreadcrumb("get_access_token", { step: "complete", tokenPresent: false, reason: "no_user" });
+        authFlowBreadcrumb("get_access_token", {
+          step: "refreshSession_error",
+          message: refreshErr.message,
+        });
       }
       return null;
     }
-    const { data } = await supabase.auth.getSession();
-    let token = data.session?.access_token ?? null;
-    if (isSentryEnabled()) {
-      authFlowBreadcrumb("get_access_token", { step: "getSession_done", hasAccessToken: !!token });
-    }
-    let usedRefresh = false;
-    // Right after login on iOS, getSession() can briefly return null while storage catches up;
-    // refreshSession() usually yields a valid token for /api/me/portal.
-    if (!token) {
+    token = refreshed.session?.access_token ?? null;
+    expiresAtMs = (refreshed.session?.expires_at ?? 0) * 1000;
+  }
+
+  if (token) {
+    cachedToken = { token, expiresAtMs, fetchedAtMs: Date.now() };
+  } else {
+    cachedToken = null;
+  }
+  return token;
+}
+
+async function getAccessToken(): Promise<string | null> {
+  if (inflightToken) return inflightToken;
+  const p = (async () => {
+    try {
+      return await resolveAccessToken();
+    } catch (e) {
       if (isSentryEnabled()) {
-        authFlowBreadcrumb("get_access_token", { step: "refreshSession_start" });
-      }
-      const { data: refreshed } = await supabase.auth.refreshSession();
-      token = refreshed.session?.access_token ?? null;
-      usedRefresh = true;
-      if (isSentryEnabled()) {
+        captureError(e, { area: "api-client.getAccessToken" });
         authFlowBreadcrumb("get_access_token", {
-          step: "refreshSession_done",
-          hasAccessToken: !!token,
+          step: "error",
+          message: e instanceof Error ? e.message : String(e),
         });
       }
+      throw e;
+    } finally {
+      inflightToken = null;
     }
-    if (isSentryEnabled()) {
-      authFlowBreadcrumb("get_access_token", {
-        step: "complete",
-        tokenPresent: !!token,
-        usedRefresh,
-      });
-    }
-    return token;
-  } catch (e) {
-    if (isSentryEnabled()) {
-      captureError(e, { area: "api-client.getAccessToken" });
-      authFlowBreadcrumb("get_access_token", {
-        step: "error",
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-    throw e;
-  }
+  })();
+  inflightToken = p;
+  return p;
 }
+
+supabase.auth.onAuthStateChange(() => {
+  clearCachedToken();
+});
 
 /** Single client; each request resolves base URL via getApiBaseUrl (Expo web + dev localhost parity). */
 const baseApi = createApiClient({
@@ -152,9 +198,10 @@ async function withSessionRecovery<T>(
   fn: () => Promise<ApiResponse<T>>
 ): Promise<ApiResponse<T>> {
   const res = await fn();
-  const status = (res.error as { status?: number } | undefined)?.status;
+  const status = getHttpErrorStatus(res.error);
   if (status !== 401) return res;
 
+  clearCachedToken();
   const { error: refreshError } = await supabase.auth.refreshSession();
   if (refreshError) {
     // Only sign out when Supabase explicitly invalidates the session (expired/revoked),
@@ -163,7 +210,16 @@ async function withSessionRecovery<T>(
       if (isSentryEnabled()) {
         authFlowBreadcrumb("session_recovery", { outcome: "sign_out", reason: refreshError.message });
       }
-      await supabase.auth.signOut();
+      try {
+        await Promise.race([
+          supabase.auth.signOut(),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error("sign_out_timeout")), 2800);
+          }),
+        ]);
+      } catch {
+        await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      }
     }
     return res;
   }
@@ -174,7 +230,7 @@ async function withSessionRecovery<T>(
   // server-side role check, etc.). Do NOT sign out; the user would lose a perfectly valid session
   // and be stuck in a login loop. The caller/UI will surface the error instead.
   if (isSentryEnabled()) {
-    const retryStatus = (retry.error as { status?: number } | undefined)?.status;
+    const retryStatus = getHttpErrorStatus(retry.error);
     authFlowBreadcrumb("session_recovery", {
       outcome: retryStatus === 401 ? "second_401_no_signout" : "retry_ok",
       retryStatus,
@@ -187,14 +243,14 @@ async function withSessionRecovery<T>(
 export const api = {
   get: <T>(path: string, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => baseApi.get<T>(path, init)),
-  post: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
+  post: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => baseApi.post<T>(path, body, init)),
-  put: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
+  put: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => baseApi.put<T>(path, body, init)),
-  patch: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
+  patch: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => baseApi.patch<T>(path, body, init)),
   delete: <T>(path: string, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => baseApi.delete<T>(path, init)),
-  fetch: <T>(path: string, options?: Record<string, unknown>) =>
+  fetch: <T>(path: string, options?: Omit<RequestOptions, "baseUrl" | "getAccessToken">) =>
     withSessionRecovery<T>(() => baseApi.fetch<T>(path, options)),
 };

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
@@ -32,7 +33,7 @@ interface AdminPost {
   moderation_notes?: string | null;
   moderated_at?: string | null;
   created_at: string;
-  providers?: { business_name: string; slug: string };
+  providers?: { id?: string; business_name: string | null; slug: string | null };
 }
 
 const SORT_OPTIONS = [
@@ -377,7 +378,13 @@ export function ExploreModerationTable() {
                       )}
                     </td>
                     <td className="px-4 py-2 text-sm">
-                      {post.providers?.business_name || post.provider_id}
+                      <Link
+                        href={`/admin/providers/${post.provider_id}`}
+                        className="font-medium text-primary hover:underline"
+                        title={post.providers?.business_name || post.providers?.slug || post.provider_id}
+                      >
+                        {post.providers?.business_name?.trim() || post.providers?.slug?.trim() || post.provider_id}
+                      </Link>
                     </td>
                     <td className="px-4 py-2 text-sm max-w-[200px] truncate" title={post.caption || undefined}>
                       {post.caption || "—"}
@@ -401,11 +408,15 @@ export function ExploreModerationTable() {
                       ) : (
                         <span className="text-gray-500">Visible</span>
                       )}
-                      {post.moderation_notes && (
+                      {post.moderation_notes ? (
                         <p className="text-xs text-gray-500 mt-0.5 truncate max-w-[120px]" title={post.moderation_notes}>
                           {post.moderation_notes}
                         </p>
-                      )}
+                      ) : post.moderated_at ? (
+                        <p className="text-xs text-amber-800 mt-0.5" title={new Date(post.moderated_at).toLocaleString()}>
+                          Admin reviewed
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-1">

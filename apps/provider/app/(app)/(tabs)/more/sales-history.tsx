@@ -22,6 +22,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { getReportDateRange, formatReportRangeCaption, type ReportDateRangeKey } from "@/lib/reportDateRanges";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface SaleItem {
   id: string;
@@ -186,6 +187,7 @@ export default function SalesHistoryScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={sales}
           keyExtractor={(s: Sale) => s.id}
           showsVerticalScrollIndicator={false}

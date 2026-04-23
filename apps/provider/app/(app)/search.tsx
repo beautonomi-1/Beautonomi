@@ -77,7 +77,7 @@ export default function SearchScreen() {
     [router]
   );
 
-  const getIcon = (type: SearchSuggestion["type"]) => {
+  const getIcon = (type: SearchSuggestion["type"]): keyof typeof Ionicons.glyphMap => {
     switch (type) {
       case "client":
         return "person-outline";
@@ -178,7 +178,7 @@ export default function SearchScreen() {
                   )}
                 >
                   <Ionicons
-                    name={getIcon(s.type) as any}
+                    name={getIcon(s.type)}
                     size={22}
                     color={
                       s.type === "client"

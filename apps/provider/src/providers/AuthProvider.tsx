@@ -24,6 +24,7 @@ import {
   setSentryUser,
 } from "@/lib/sentry";
 import { clearApiCache } from "@/lib/api-response-cache";
+import { invalidateApiAccessTokenCache } from "@/lib/api-client";
 import { clearPortalCache } from "@/lib/portal-cache";
 import { clearBiometricPreference } from "@/hooks/useBiometricAuth";
 import {
@@ -384,25 +385,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    if (__DEV__) {
-      console.log("[AUTH] signOut start");
-    }
-    // §Release-audit 2026-04: always run local cleanup — even when
-    // supabase.auth.signOut() throws (e.g. network offline) — so the
-    // biometric lock, portal cache, and API cache never survive into a
-    // different user's session on the same device.
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.warn("[AUTH] signOut error", e);
-    }
+    // §Provider-audit 2026-04 (parity with customer): same issue — awaiting
+    // remote `signOut()` before `updateSession(null)` meant the UI stayed on
+    // the authenticated stack until GoTrue responded. Clear session + token
+    // cache first so `(app)/_layout` can `<Redirect>` immediately; then
+    // bounded revoke + local fallback; biometric cleanup off-thread.
+    invalidateApiAccessTokenCache();
+    updateSession(null);
     clearApiCache();
     clearPortalCache();
-    await Promise.allSettled([clearBiometricPreference()]);
-    if (__DEV__) {
-      console.log("[AUTH] signOut cleanup done, calling updateSession(null)");
+
+    const SIGN_OUT_NETWORK_MS = 2800;
+    try {
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("sign_out_timeout")), SIGN_OUT_NETWORK_MS);
+        }),
+      ]);
+    } catch {
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
     }
-    updateSession(null);
+
+    void clearBiometricPreference();
   }, [updateSession]);
 
   const isEmailVerified = !!(session?.user as { email_confirmed_at?: string } | undefined)?.email_confirmed_at;

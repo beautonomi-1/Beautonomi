@@ -105,6 +105,8 @@ export async function computePublicSlugAvailabilitySlots(args: {
   excludeHoldId?: string;
   /** Exclude a booking from conflict checks (reschedule flow) */
   excludeBookingId?: string;
+  /** Exclude a group_booking row from conflict checks (group reschedule flow) */
+  excludeGroupBookingId?: string;
   /**
    * §Release-audit 2026-04: provider's IANA timezone (e.g. `Africa/Johannesburg`).
    * When set, slot HH:MM times are interpreted as provider-local wall-clock times
@@ -125,6 +127,7 @@ export async function computePublicSlugAvailabilitySlots(args: {
     activeStaffRows,
     excludeHoldId,
     excludeBookingId,
+    excludeGroupBookingId,
     providerTimeZone,
   } = args;
 
@@ -152,6 +155,7 @@ export async function computePublicSlugAvailabilitySlots(args: {
       {
         excludeHoldId,
         excludeBookingId,
+        excludeGroupBookingId,
         publicCalendarParity: {
           ...parityBase,
           slotStaffId: staffColumnId,

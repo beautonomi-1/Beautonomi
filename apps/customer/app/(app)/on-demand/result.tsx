@@ -10,6 +10,7 @@ interface OnDemandRequest {
   id: string;
   status: string;
   booking_id?: string | null;
+  provider_id?: string | null;
   provider_name?: string | null;
 }
 
@@ -44,6 +45,12 @@ export default function OnDemandResultScreen() {
 
   const bookingId = request?.booking_id ?? null;
   const providerName = request?.provider_name?.trim();
+  const providerId = request?.provider_id ?? null;
+  // §Customer-audit 2026-04: when a provider declines or the request times
+  // out we want to route users back to the same provider's profile so they
+  // can pick another time, not to a generic "view my bookings" dead-end.
+  const showPickAnotherTime =
+    !isAccepted && (status === "declined" || status === "expired" || status === "cancelled") && !!providerId;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top", "bottom"]}>
@@ -86,18 +93,39 @@ export default function OnDemandResultScreen() {
               <Text style={{ color: Colors.white, fontWeight: "600" }}>View booking</Text>
             </TouchableOpacity>
           )}
+          {showPickAnotherTime && providerId && (
+            <TouchableOpacity
+              onPress={() =>
+                router.replace({
+                  pathname: "/(app)/partner-profile",
+                  params: { provider_id: providerId },
+                })
+              }
+              style={{ backgroundColor: Colors.primary, borderRadius: 16, paddingVertical: 16, alignItems: "center", marginBottom: 12 }}
+            >
+              <Text style={{ color: Colors.white, fontWeight: "600" }}>Pick another time</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={() => router.replace("/(app)/(tabs)/bookings" as never)}
             style={{
-              backgroundColor: isAccepted && bookingId ? undefined : Colors.primary,
-              borderWidth: isAccepted && bookingId ? 1 : 0,
+              backgroundColor: isAccepted && bookingId ? undefined : showPickAnotherTime ? undefined : Colors.primary,
+              borderWidth: isAccepted && bookingId ? 1 : showPickAnotherTime ? 1 : 0,
               borderColor: Colors.gray[300],
               borderRadius: 16,
               paddingVertical: 16,
               alignItems: "center",
             }}
           >
-            <Text style={{ color: isAccepted && bookingId ? Colors.gray[700] : Colors.white, fontWeight: "600" }}>View my bookings</Text>
+            <Text
+              style={{
+                color:
+                  isAccepted && bookingId ? Colors.gray[700] : showPickAnotherTime ? Colors.gray[700] : Colors.white,
+                fontWeight: "600",
+              }}
+            >
+              View my bookings
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.replace("/(app)/(tabs)" as never)}

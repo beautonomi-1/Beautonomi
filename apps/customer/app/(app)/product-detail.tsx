@@ -22,6 +22,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useCart } from "@/features/shop/useCart";
 import { shareMarketplaceProduct } from "@/lib/share-product";
 import { formatMoney } from "@beautonomi/utils";
+import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import type { PublicProductVariant } from "@/types/api";
 
 interface ShippingConfig {
@@ -41,6 +42,20 @@ interface CollectionLocation {
   city: string;
 }
 
+interface ReviewsSummary {
+  average_rating: number;
+  total_count: number;
+  recent: {
+    id: string;
+    rating: number;
+    title?: string | null;
+    comment?: string | null;
+    is_verified_purchase?: boolean;
+    created_at: string;
+    customer?: { id: string; full_name: string | null; avatar_url: string | null } | null;
+  }[];
+}
+
 interface ProductDetailResponse {
   product: {
     id: string;
@@ -53,6 +68,14 @@ interface ProductDetailResponse {
     currency: string;
     image_urls: string[];
     has_variants: boolean;
+    /**
+     * §Customer-audit 2026-04 (C4 CRITICAL): when the provider disables
+     * inventory tracking we must treat the product as always sellable,
+     * otherwise we render "Sold out" for simple SKUs that the web PDP
+     * shows as available. Source: `/api/public/products/[id]`.
+     */
+    track_stock_quantity?: boolean;
+    quantity?: number;
     variant_option_types?: { name: string; values: string[] }[];
     variants: {
       id: string;
@@ -66,6 +89,7 @@ interface ProductDetailResponse {
   };
   shipping?: ShippingConfig;
   collection_locations?: CollectionLocation[];
+  reviews?: ReviewsSummary;
 }
 
 function formatVariantLabel(optionValues?: Record<string, string>): string {
@@ -113,7 +137,14 @@ export default function ProductDetailScreen() {
     : hasVariants && variants.length
       ? variants[0].quantity
       : (product as { quantity?: number } | undefined)?.quantity ?? 0;
-  const inStock = displayStock > 0;
+  /**
+   * §Customer-audit 2026-04 (C4 CRITICAL): non-variant products that the
+   * provider has opted out of inventory tracking for should always be
+   * purchasable — mirror the web PDP behaviour. Variant SKUs still honour
+   * per-variant `quantity` because tracking is per-row once variants exist.
+   */
+  const trackingEnabled = product?.track_stock_quantity !== false;
+  const inStock = hasVariants ? displayStock > 0 : !trackingEnabled || displayStock > 0;
   const selectedVariantId = selectedVariant?.id ?? (hasVariants && variants[0] ? variants[0].id : null);
 
   const load = useCallback(async () => {
@@ -370,14 +401,24 @@ export default function ProductDetailScreen() {
   if (legacyUrl && !allImages.includes(legacyUrl)) allImages.push(legacyUrl);
   if (allImages.length === 0) allImages.push("");
 
-  const stockLabel =
-    displayStock > 10 ? "In stock" :
-    displayStock > 0  ? `Only ${displayStock} left` :
-    "Sold out";
-  const stockColor =
-    displayStock > 10 ? "#16A34A" :
-    displayStock > 0  ? "#D97706" :
-    "#EF4444";
+  // §Customer-audit 2026-04 (C4 CRITICAL): untracked non-variant products
+  // always display as "In stock" — avoid the misleading "Sold out" badge
+  // when the provider simply doesn't track quantities.
+  const showUntrackedInStock = !hasVariants && !trackingEnabled;
+  const stockLabel = showUntrackedInStock
+    ? "In stock"
+    : displayStock > 10
+      ? "In stock"
+      : displayStock > 0
+        ? `Only ${displayStock} left`
+        : "Sold out";
+  const stockColor = showUntrackedInStock
+    ? "#16A34A"
+    : displayStock > 10
+      ? "#16A34A"
+      : displayStock > 0
+        ? "#D97706"
+        : "#EF4444";
 
   return (
     <>
@@ -392,6 +433,7 @@ export default function ProductDetailScreen() {
         {/* ─── Image gallery ─── */}
         <View style={{ position: "relative" }}>
           <FlatList
+            {...horizontalFlatListPerf}
             ref={imageListRef}
             data={allImages}
             horizontal
@@ -654,6 +696,94 @@ export default function ProductDetailScreen() {
                 <Text style={{ fontSize: 14, color: "#374151", lineHeight: 22 }}>
                   {product.description}
                 </Text>
+              ) : null}
+            </View>
+          )}
+
+          {/*
+            §Customer-audit 2026-04 (C4): web PDP surfaces rating summary and
+            recent reviews; mobile was completely silent, hiding social proof.
+            Show average stars + recent snippets when the API returns them.
+          */}
+          {data?.reviews && data.reviews.total_count > 0 && (
+            <View style={{ marginTop: 22 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>
+                  Customer reviews
+                </Text>
+                <View style={{ flex: 1 }} />
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Ionicons name="star" size={14} color="#F59E0B" />
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#111827", marginLeft: 4 }}>
+                    {data.reviews.average_rating.toFixed(1)}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: "#6B7280", marginLeft: 4 }}>
+                    ({data.reviews.total_count})
+                  </Text>
+                </View>
+              </View>
+              {data.reviews.recent.slice(0, 3).map((r) => (
+                <View
+                  key={r.id}
+                  style={{
+                    backgroundColor: "#F9FAFB",
+                    borderRadius: 10,
+                    padding: 12,
+                    marginBottom: 8,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Ionicons
+                        key={n}
+                        name={n <= r.rating ? "star" : "star-outline"}
+                        size={12}
+                        color="#F59E0B"
+                        style={{ marginRight: 2 }}
+                      />
+                    ))}
+                    <Text style={{ fontSize: 12, color: "#6B7280", marginLeft: 6 }}>
+                      {r.customer?.full_name ?? "Customer"}
+                      {r.is_verified_purchase ? " · Verified" : ""}
+                    </Text>
+                  </View>
+                  {r.title ? (
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginBottom: 2 }}>
+                      {r.title}
+                    </Text>
+                  ) : null}
+                  {r.comment ? (
+                    <Text style={{ fontSize: 13, color: "#374151", lineHeight: 19 }} numberOfLines={4}>
+                      {r.comment}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+              {/* §Customer-audit 2026-04 (follow-up): "See all" CTA pushes to
+                  the dedicated product-reviews screen, which paginates the
+                  full list with sort filters (newest / highest / lowest /
+                  helpful). API: GET /api/products/:id/reviews */}
+              {data.reviews.total_count > data.reviews.recent.length ? (
+                <TouchableOpacity
+                  onPress={() => router.push(`/(app)/product-reviews?id=${encodeURIComponent(id as string)}` as never)}
+                  accessibilityRole="button"
+                  accessibilityLabel="See all reviews"
+                  style={{
+                    marginTop: 4,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingVertical: 12,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: "#E5E7EB",
+                  }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
+                    See all {data.reviews.total_count} reviews
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color="#111827" style={{ marginLeft: 4 }} />
+                </TouchableOpacity>
               ) : null}
             </View>
           )}

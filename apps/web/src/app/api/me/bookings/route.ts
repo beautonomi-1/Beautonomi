@@ -34,8 +34,17 @@ export async function GET(request: NextRequest) {
 
     const status = searchParams.get("status");
     const { page, limit, offset } = getPaginationParams(request);
-    
-    console.log("Bookings API called:", { status, page, limit, offset, userId: user.id });
+
+    // §Launch-audit 2026-04: default remains scheduled_at desc (newest
+    // appointment first). `sort_by=created_at` surfaces bookings by when
+    // they were placed — parity with provider lists and ops triage.
+    const sortByRaw = (searchParams.get("sort_by") ?? "scheduled_at").trim().toLowerCase();
+    const sortDirRaw = (searchParams.get("sort_dir") ?? "desc").trim().toLowerCase();
+    const sortBy =
+      sortByRaw === "created_at" || sortByRaw === "scheduled_at" ? sortByRaw : "scheduled_at";
+    const sortAscending = sortDirRaw === "asc";
+
+    console.log("Bookings API called:", { status, page, limit, offset, userId: user.id, sortBy, sortAscending });
 
     // Start with a basic query (include version for conflict detection and booking_services)
     let query = supabase
@@ -117,8 +126,8 @@ export async function GET(request: NextRequest) {
       query = query.eq("status", status);
     }
     
-    // Add ordering
-    query = query.order("scheduled_at", { ascending: false });
+    // Ordering (see sortBy / sortAscending above)
+    query = query.order(sortBy, { ascending: sortAscending });
 
     // For "past" status, fetch all matching records first to get accurate count
     let allBookings: any[] = [];
@@ -163,8 +172,18 @@ export async function GET(request: NextRequest) {
         );
       });
       totalCount = filteredBookings.length;
-      
-      // Apply pagination after filtering
+
+      // Re-sort in memory: the SQL order may not match "past" semantics once
+      // we filter (e.g. created_at vs scheduled_at for completed rows).
+      const sortKey = (b: { created_at?: string | null; scheduled_at?: string | null }) =>
+        sortBy === "created_at" ? b.created_at : b.scheduled_at;
+      filteredBookings = [...filteredBookings].sort((a, b) => {
+        const ta = new Date(sortKey(a) || 0).getTime();
+        const tb = new Date(sortKey(b) || 0).getTime();
+        return sortAscending ? ta - tb : tb - ta;
+      });
+
+      // Apply pagination after filtering + sort
       filteredBookings = filteredBookings.slice(offset, offset + limit);
     }
 

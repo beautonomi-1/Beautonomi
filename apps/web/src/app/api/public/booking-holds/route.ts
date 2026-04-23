@@ -333,7 +333,7 @@ export async function POST(request: NextRequest) {
 
         const { data: obSettings } = await supabase
           .from("provider_online_booking_settings")
-          .select("min_notice_minutes")
+          .select("min_notice_minutes, max_advance_days")
           .eq("provider_id", provider_id)
           .maybeSingle();
         const rawNotice = obSettings?.min_notice_minutes;
@@ -357,6 +357,35 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // §Release-audit 2026-04: mirror validate-booking's max_advance_days
+        // ceiling at hold creation so we fail fast instead of holding a
+        // slot the commit path will reject anyway.
+        const rawAdvance = (obSettings as { max_advance_days?: number | string | null } | null)
+          ?.max_advance_days;
+        const maxAdvanceRaw =
+          typeof rawAdvance === "number"
+            ? rawAdvance
+            : typeof rawAdvance === "string"
+              ? parseInt(rawAdvance, 10)
+              : null;
+        const effectiveMaxAdvance =
+          typeof maxAdvanceRaw === "number" &&
+          Number.isFinite(maxAdvanceRaw) &&
+          maxAdvanceRaw >= 1
+            ? Math.floor(maxAdvanceRaw)
+            : null;
+        if (effectiveMaxAdvance != null) {
+          const ceilingMs = Date.now() + effectiveMaxAdvance * 24 * 60 * 60 * 1000;
+          if (startDate.getTime() > ceilingMs) {
+            return handleApiError(
+              new Error("Hold start exceeds provider's max advance window"),
+              `This provider only accepts online bookings up to ${effectiveMaxAdvance} days in advance. Please choose a closer date.`,
+              "MAX_ADVANCE_EXCEEDED",
+              400
+            );
+          }
+        }
+
         const tenantRegion = await getTenantRegionConfig(tenantId);
         const currency = provider.currency || tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
 
@@ -365,7 +394,7 @@ export async function POST(request: NextRequest) {
         const { data: offerings, error: offeringsError } = await supabase
           .from("offerings")
           .select(
-            "id, provider_id, duration_minutes, buffer_minutes, price, currency, is_active, at_home_price_adjustment, supports_at_home"
+            "id, provider_id, duration_minutes, buffer_minutes, price, currency, is_active, at_home_price_adjustment, supports_at_home, online_booking_enabled, service_type"
           )
           .in("id", offeringIds);
 
@@ -380,6 +409,28 @@ export async function POST(request: NextRequest) {
           if (!off || off.provider_id !== provider_id || !off.is_active) {
             return handleApiError(
               new Error("Invalid service selection"),
+              "Invalid service selection",
+              "VALIDATION_ERROR",
+              400
+            );
+          }
+          // §Release-audit 2026-04: mirror validate-booking so a hold
+          // cannot tie up calendar time for an offline-only service or
+          // a non-service offering (addon / variant). Without this a
+          // client could hold a slot that the commit path will reject
+          // anyway, blocking real bookings in the meantime.
+          if ((off as { online_booking_enabled?: boolean }).online_booking_enabled === false) {
+            return handleApiError(
+              new Error("Service is not available for online booking"),
+              "This service can only be booked by contacting the provider directly.",
+              "ONLINE_BOOKING_DISABLED",
+              400
+            );
+          }
+          const svcType = (off as { service_type?: string | null }).service_type;
+          if (svcType === "addon" || svcType === "variant") {
+            return handleApiError(
+              new Error("Non-service offering submitted as service"),
               "Invalid service selection",
               "VALIDATION_ERROR",
               400

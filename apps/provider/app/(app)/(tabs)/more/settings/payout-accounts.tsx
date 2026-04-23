@@ -21,6 +21,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface PayoutAccount {
   id: string;
@@ -326,6 +327,7 @@ onPress={() => {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={accounts}
           keyExtractor={(a: PayoutAccount) => a.id}
           showsVerticalScrollIndicator={false}

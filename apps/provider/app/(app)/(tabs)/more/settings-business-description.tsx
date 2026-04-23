@@ -26,6 +26,16 @@ interface ProviderProfile {
 
 const MAX_LENGTH = 2000;
 
+function providerProfileFromApi(
+  data: ProviderProfile | { data?: ProviderProfile } | null | undefined
+): ProviderProfile {
+  if (!data) return {};
+  if (typeof data === "object" && "data" in data && data.data && typeof data.data === "object") {
+    return data.data;
+  }
+  return data as ProviderProfile;
+}
+
 export default function SettingsBusinessDescriptionScreen() {
   const router = useRouter();
   const { data, loading, error, refresh } = useApi<ProviderProfile | { data?: ProviderProfile }>(
@@ -33,9 +43,7 @@ export default function SettingsBusinessDescriptionScreen() {
   );
   const { execute: patchProfile, loading: saving } = useApiMutation("patch");
 
-  const profile = (data as ProviderProfile)?.description !== undefined
-    ? (data as ProviderProfile)
-    : (data as any)?.data ?? {};
+  const profile = providerProfileFromApi(data);
   const [description, setDescription] = useState("");
 
   useEffect(() => {
@@ -58,7 +66,7 @@ export default function SettingsBusinessDescriptionScreen() {
     }
   }, [description, patchProfile, router]);
 
-  if (loading && profile.description === undefined && (data as any)?.data === undefined) {
+  if (loading && profile.description === undefined && providerProfileFromApi(data).description === undefined) {
     return (
       <ScreenContainer>
         <ScreenHeader title="Business description" onBack={() => router.back()} />

@@ -23,6 +23,9 @@ import { useImagePicker } from "@/hooks/useImagePicker";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Ionicons } from "@expo/vector-icons";
+import { chatFlatListPerf } from "@/lib/flatListPerformance";
+import { appendFormDataFileNative } from "@beautonomi/utils";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 interface Message {
   id: string;
@@ -33,6 +36,79 @@ interface Message {
   created_at: string;
   is_read?: boolean;
   read_at?: string | null;
+}
+
+type MessagesListEnvelope = {
+  messages?: unknown[];
+  next_cursor?: string;
+  has_more?: boolean;
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === "object";
+}
+
+function parseApiMessage(m: unknown): Message | null {
+  if (!isRecord(m)) return null;
+  if (typeof m.id !== "string" || typeof m.sender_id !== "string" || typeof m.created_at !== "string") return null;
+  return {
+    id: m.id,
+    sender_id: m.sender_id,
+    sender_name: typeof m.sender_name === "string" ? m.sender_name : "",
+    content: typeof m.content === "string" ? m.content : "",
+    attachments: Array.isArray(m.attachments) ? (m.attachments as Message["attachments"]) : [],
+    created_at: m.created_at,
+    is_read: typeof m.is_read === "boolean" ? m.is_read : undefined,
+    read_at: m.read_at === null ? null : typeof m.read_at === "string" ? m.read_at : null,
+  };
+}
+
+function parseMessagesListPayload(data: unknown): { messages: Message[]; next_cursor?: string; has_more: boolean } {
+  const rawList: unknown[] = Array.isArray(data)
+    ? data
+    : isRecord(data) && Array.isArray(data.messages)
+      ? data.messages
+      : [];
+  const messages = rawList.map(parseApiMessage).filter((x): x is Message => x !== null);
+  const env = isRecord(data) && !Array.isArray(data) ? (data as MessagesListEnvelope) : {};
+  return {
+    messages,
+    next_cursor: typeof env.next_cursor === "string" ? env.next_cursor : undefined,
+    has_more: Boolean(env.has_more),
+  };
+}
+
+function parseRealtimeInsert(row: unknown): Message | null {
+  if (!isRecord(row)) return null;
+  if (typeof row.id !== "string" || typeof row.sender_id !== "string" || typeof row.created_at !== "string") return null;
+  return {
+    id: row.id,
+    sender_id: row.sender_id,
+    sender_name: typeof row.sender_name === "string" ? row.sender_name : "Provider",
+    content: typeof row.content === "string" ? row.content : "",
+    attachments: Array.isArray(row.attachments) ? (row.attachments as Message["attachments"]) : [],
+    created_at: row.created_at,
+    is_read: typeof row.is_read === "boolean" ? row.is_read : undefined,
+    read_at: row.read_at === null ? null : typeof row.read_at === "string" ? row.read_at : null,
+  };
+}
+
+function parseRealtimeUpdate(row: unknown): { id: string; is_read?: boolean; read_at?: string | null } | null {
+  if (!isRecord(row) || typeof row.id !== "string") return null;
+  return {
+    id: row.id,
+    is_read: typeof row.is_read === "boolean" ? row.is_read : undefined,
+    read_at: row.read_at === null ? null : typeof row.read_at === "string" ? row.read_at : undefined,
+  };
+}
+
+function normalizeAttachmentForPreview(a: string | Record<string, unknown>): { url: string; expired?: boolean; name?: string } {
+  if (typeof a === "string") return { url: a };
+  return {
+    url: typeof a.url === "string" ? a.url : "",
+    expired: typeof a.expired === "boolean" ? a.expired : undefined,
+    name: typeof a.name === "string" ? a.name : undefined,
+  };
 }
 
 const PAGE_SIZE = 50;
@@ -84,18 +160,13 @@ export default function ChatScreen() {
         });
         if (cursor) queryParams.set("cursor", cursor);
 
-        const res = await api.get<any>(`/api/me/messages?${queryParams}`);
+        const res = await api.get<unknown>(`/api/me/messages?${queryParams}`);
         if (res.error) {
-          if (!cursor) setResolveError(res.error.message || "Could not load messages");
+          if (!cursor) setResolveError(getApiErrorMessage(res.error, "Could not load messages"));
           return;
         }
 
-        const data = res.data;
-        const newMessages: Message[] = (data?.messages ?? (Array.isArray(data) ? data : [])).map((m: any) => ({
-          ...m,
-          is_read: m.is_read,
-          read_at: m.read_at ?? null,
-        }));
+        const { messages: newMessages, next_cursor, has_more } = parseMessagesListPayload(res.data);
 
         if (cursor) {
           setMessages((prev) => [...newMessages, ...prev]);
@@ -103,8 +174,8 @@ export default function ChatScreen() {
           setMessages(newMessages);
         }
 
-        setNextCursor(data?.next_cursor);
-        setHasMore(data?.has_more ?? false);
+        setNextCursor(next_cursor);
+        setHasMore(has_more);
       } catch (err) {
         // §UI-audit 2026-04: previously a thrown exception silently
         // cleared messages with no error UI, so the customer saw an
@@ -208,23 +279,11 @@ export default function ChatScreen() {
           filter: `conversation_id=eq.${id}`,
         },
         (payload) => {
-          const newMsg = payload.new as any;
-          if (newMsg.sender_id === user?.id) return;
+          const newMsg = parseRealtimeInsert(payload.new);
+          if (!newMsg || newMsg.sender_id === user?.id) return;
           setMessages((prev) => {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [
-              ...prev,
-              {
-                id: newMsg.id,
-                sender_id: newMsg.sender_id,
-                sender_name: newMsg.sender_name ?? "Provider",
-                content: newMsg.content ?? "",
-                attachments: newMsg.attachments ?? [],
-                created_at: newMsg.created_at,
-                is_read: newMsg.is_read,
-                read_at: newMsg.read_at ?? null,
-              },
-            ];
+            return [...prev, newMsg];
           });
           requestAnimationFrame(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
@@ -240,7 +299,8 @@ export default function ChatScreen() {
           filter: `conversation_id=eq.${id}`,
         },
         (payload) => {
-          const updated = payload.new as any;
+          const updated = parseRealtimeUpdate(payload.new);
+          if (!updated) return;
           setMessages((prev) =>
             prev.map((m) =>
               m.id === updated.id
@@ -304,7 +364,7 @@ export default function ChatScreen() {
         attachments: attachments || [],
       });
       if (!res.error && res.data) {
-        const msg = res.data as any;
+        const msg = res.data;
         setMessages((prev) =>
           prev.map((m) =>
             m.id === optimisticId
@@ -315,8 +375,7 @@ export default function ChatScreen() {
       } else {
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
         setInput(text);
-        const errMsg = (res.error as { message?: string })?.message || "Your message could not be sent. Please try again.";
-        Alert.alert("Send failed", errMsg);
+        Alert.alert("Send failed", getApiErrorMessage(res.error, "Your message could not be sent. Please try again."));
       }
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
@@ -337,21 +396,21 @@ export default function ChatScreen() {
         return;
       }
       const formData = new FormData();
-      formData.append("files", {
+      appendFormDataFileNative(formData, "files", {
         uri: result.uri,
         name: result.fileName || "image.jpg",
         type: "image/jpeg",
-      } as any);
+      });
       formData.append("conversation_id", id);
-      const res = await api.post<any>(
+      const res = await api.post<{ attachments?: Message["attachments"] }>(
         "/api/me/messages/upload",
-        formData as any
+        formData
       );
       if (res.error) {
         Alert.alert("Upload failed", "Could not upload the image. Please try again.");
         return;
       }
-      const atts = (res.data as any)?.attachments ?? [];
+      const atts = (res.data?.attachments ?? []) as NonNullable<Parameters<typeof send>[0]>;
       if (atts.length > 0) {
         await send(atts);
       } else {
@@ -464,6 +523,7 @@ export default function ChatScreen() {
         ) : (
           <>
             <FlatList
+              {...chatFlatListPerf}
               ref={flatListRef}
               data={listItems}
               keyExtractor={(item) => item.key}
@@ -503,11 +563,12 @@ export default function ChatScreen() {
                 }
                 const msg = item.message;
                 const isMe = msg.sender_id === user.id;
+                type Att = NonNullable<Message["attachments"]>[number];
                 const attachmentItems: { url: string; expired?: boolean; name?: string }[] = Array.isArray(
                   msg.attachments
                 )
-                  ? msg.attachments.map((a: any) =>
-                      typeof a === "string" ? { url: a } : { url: a?.url || "", expired: a?.expired, name: a?.name }
+                  ? msg.attachments.map((a: Att) =>
+                      normalizeAttachmentForPreview(typeof a === "string" ? a : (a as Record<string, unknown>))
                     )
                   : [];
                 const hasRenderableAttachments = attachmentItems.some((a) => a.expired || a.url);

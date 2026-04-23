@@ -21,6 +21,7 @@ import {
   SUPABASE_AUTH_OTP_LENGTH,
   SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
 } from "@/lib/supabase-sms-otp";
+import { appendFormDataFileNative } from "@beautonomi/utils";
 
 export default function PersonalInfoScreen() {
   useScreenTracking("Personal Info");
@@ -187,18 +188,18 @@ export default function PersonalInfoScreen() {
     if (!result) return;
     try {
       const formData = new FormData();
-      formData.append("file", {
+      appendFormDataFileNative(formData, "file", {
         uri: result.uri,
         name: result.fileName || "avatar.jpg",
         type: "image/jpeg",
-      } as any);
-      const res = await api.post<any>("/api/me/avatar", formData as any);
+      });
+      const res = await api.post<{ url?: string }>("/api/me/avatar", formData);
       if (res.error) {
         Alert.alert("Error", getApiErrorMessage(res.error, "Upload failed"));
       } else {
-        const url = (res.data as any)?.url;
+        const url = res.data?.url;
         if (url) {
-          const patchRes = await api.patch<any>("/api/me/profile", { avatar_url: url });
+          const patchRes = await api.patch<{ error?: unknown }>("/api/me/profile", { avatar_url: url });
           if (patchRes.error) {
             Alert.alert("Error", "Photo uploaded but profile could not be updated. Please try again.");
           }

@@ -38,6 +38,7 @@ import { RADIUS_BUTTON, RADIUS_CARD, RADIUS_INPUT, SCREEN_PADDING } from "@/cons
 import { PhoneInputWithCountry } from "@/components/PhoneInputWithCountry";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
+import { appendFormDataFileNative } from "@beautonomi/utils";
 import { parsePhoneToCountryAndNational } from "@/constants/phone";
 import {
   normalizeSupabaseAuthPhone,
@@ -366,8 +367,8 @@ export default function CustomerOnboarding() {
         case 2:
           if (avatarUri && !avatarUri.startsWith("http")) {
             const fd = new FormData();
-            fd.append("file", { uri: avatarUri, name: avatarFileName, type: "image/jpeg" } as any);
-            const res = await api.post<any>("/api/me/avatar", fd as any);
+            appendFormDataFileNative(fd, "file", { uri: avatarUri, name: avatarFileName, type: "image/jpeg" });
+            const res = await api.post<{ url?: string }>("/api/me/avatar", fd);
             if (res.error) throw new Error(getApiErrorMessage(res.error, "Upload failed"));
             const url = res.data?.url;
             if (url) {

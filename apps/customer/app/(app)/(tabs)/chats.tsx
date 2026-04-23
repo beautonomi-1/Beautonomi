@@ -18,6 +18,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { ConversationSkeleton } from "@/components/Skeleton";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface Conversation {
   id: string;
@@ -239,6 +240,7 @@ export default function ChatsScreen() {
         <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Messages</Text>
       </View>
       <FlatList
+        {...verticalFlatListPerf}
         data={conversations}
         keyExtractor={(c) => c.id}
         renderItem={renderItem}

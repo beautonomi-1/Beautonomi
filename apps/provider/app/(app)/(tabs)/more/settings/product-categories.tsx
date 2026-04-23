@@ -20,6 +20,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface ProductCategory {
   id: string;
@@ -229,6 +230,7 @@ export default function ProductCategoriesScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(c: ProductCategory) => c.id}
           showsVerticalScrollIndicator={false}

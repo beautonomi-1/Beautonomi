@@ -97,7 +97,7 @@ export default function UpsellingScreen() {
           <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white")}>
             <TouchableOpacity
               style={twStyle("flex-row items-center justify-between px-4 py-3.5 border-b border-gray-50")}
-              onPress={() => router.push("/(app)/(tabs)/more/settings/service-addons" as any)}
+              onPress={() => router.push("/(app)/(tabs)/more/settings/service-addons" as never)}
             >
               <View style={twStyle("flex-row items-center flex-1")}>
                 <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}>
@@ -112,7 +112,7 @@ export default function UpsellingScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={twStyle("flex-row items-center justify-between px-4 py-3.5")}
-              onPress={() => router.push("/(app)/(tabs)/more/products" as any)}
+              onPress={() => router.push("/(app)/(tabs)/more/products" as never)}
             >
               <View style={twStyle("flex-row items-center flex-1")}>
                 <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}>

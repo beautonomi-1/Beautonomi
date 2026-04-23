@@ -28,6 +28,7 @@ import { useGlobalCategories, getCategoryIcon, getGlobalCategoryImageUri } from 
 import { ProviderCard } from "@/components/ProviderCard";
 import { AddressPicker } from "@/components/AddressPicker";
 import { InstallAppBanner } from "@/components/InstallAppBanner";
+import { BeautonomiWordmark } from "@/components/BeautonomiWordmark";
 import { SaveAddressModal, type SaveAddressPayload } from "@/components/SaveAddressModal";
 import type { AddressPickerSelection } from "@/components/AddressPicker";
 import { api } from "@/lib/api-client";
@@ -113,11 +114,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexShrink: 0,
     zIndex: 1,
-  },
-  navLogo: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
   },
   // Centered in the row; horizontal insets reserve space for logo (left) and toolbar
   // (right) so labels never render under the icon column on narrow phones.
@@ -434,7 +430,8 @@ export default function HomeScreen() {
   const navCenterInset = useMemo(() => {
     const TOOLBAR_BTN = 40;
     const TOOLBAR_GAP = 8;
-    const logoReserve = 58;
+    // Wordmark (B glyph + "beautonomi" text) is wider than the old 40px favicon.
+    const logoReserve = 148;
     const rightReserve = 2 * TOOLBAR_BTN + 1 * TOOLBAR_GAP;
     return {
       left: contentPadding + logoReserve,
@@ -566,15 +563,15 @@ export default function HomeScreen() {
         <InstallAppBanner />
 
         <View style={[styles.navRow, { paddingHorizontal: contentPadding }]}>
-          {/* Left: logo */}
+          {/* Left: wordmark — prominent brand lockup (D1 §Customer-audit 2026-04) */}
           <View style={styles.navLeftGroup}>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/home")}
               accessibilityRole="image"
-              accessibilityLabel="Beautonomi logo"
-              style={{ padding: 6, marginLeft: -6, borderRadius: 12 }}
+              accessibilityLabel="Beautonomi home"
+              style={{ paddingVertical: 6, paddingHorizontal: 4, marginLeft: -4, borderRadius: 12 }}
             >
-              <Image source={require("../../../assets/favicon.png")} style={styles.navLogo} />
+              <BeautonomiWordmark size={28} />
             </TouchableOpacity>
           </View>
 

@@ -28,6 +28,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 type Campaign = {
   id: string;
@@ -44,6 +45,29 @@ type Campaign = {
   targeting?: { global_category_ids?: string[] };
   created_at: string;
 };
+
+/** POST /api/provider/ads/campaigns success body (wrapped or bare campaign). */
+type AdsCampaignCreateData = Campaign | {
+  campaign?: Campaign;
+  requires_payment?: boolean;
+  payment_url?: string | null;
+  order_id?: string;
+};
+
+function pickCampaignFromAdsCreate(data: AdsCampaignCreateData | undefined): Campaign | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  if ("campaign" in data && data.campaign) return data.campaign;
+  if ("id" in data && typeof (data as Campaign).id === "string") return data as Campaign;
+  return undefined;
+}
+
+function adsCreatePaymentUrl(data: AdsCampaignCreateData | undefined): string | null {
+  if (!data || typeof data !== "object" || !("requires_payment" in data) || !data.requires_payment) {
+    return null;
+  }
+  const url = "payment_url" in data ? data.payment_url : null;
+  return typeof url === "string" && url.trim() ? url : null;
+}
 
 type PerformanceSummary = {
   impressions: number;
@@ -136,7 +160,7 @@ export default function AdsSettingsScreen() {
         setTimePacks(Array.isArray(pd.time_packs) ? pd.time_packs : []);
         setAvailableModels(Array.isArray(pd.available_models) ? pd.available_models : []);
       } else {
-        setPacks(Array.isArray(pd) ? (pd as any) : []);
+        setPacks(Array.isArray(pd) ? (pd as ImpressionPack[]) : []);
       }
       setGlobalCategories(Array.isArray(catRes.data) ? catRes.data : []);
     } catch {
@@ -191,24 +215,25 @@ export default function AdsSettingsScreen() {
         }
       );
       if (res.error) {
-        Alert.alert("Error", (res.error as any)?.message ?? "Failed to create campaign");
+        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to create campaign"));
         return;
       }
-      const data = res.data as any;
-      const campaign = data?.campaign ?? data;
+      const data = res.data as AdsCampaignCreateData | undefined;
+      const campaign = pickCampaignFromAdsCreate(data);
       if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
       setCreateOpen(false);
       setCreateForm({ budget: "", daily_budget: "", bid_cpc: "", global_category_ids: [] });
-      if (data?.requires_payment && data?.payment_url) {
+      const payUrl = adsCreatePaymentUrl(data);
+      if (payUrl) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        pushInAppBrowser(router, data.payment_url, "Ad payment");
+        pushInAppBrowser(router, payUrl, "Ad payment");
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       loadAll();
       Alert.alert("Done", "Campaign created (draft). Activate it when ready.");
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to create campaign");
+    } catch (e: unknown) {
+      Alert.alert("Error", getApiErrorMessage(e, "Failed to create campaign"));
     } finally {
       setCreating(false);
     }
@@ -225,22 +250,23 @@ export default function AdsSettingsScreen() {
           { impression_pack_id: pack.id }
         );
         if (res.error) {
-          Alert.alert("Error", (res.error as any)?.message ?? "Failed to create campaign");
+          Alert.alert("Error", getApiErrorMessage(res.error, "Failed to create campaign"));
           return;
         }
-        const data = res.data as any;
-        const campaign = data?.campaign ?? data;
+        const data = res.data as AdsCampaignCreateData | undefined;
+        const campaign = pickCampaignFromAdsCreate(data);
         if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
-        if (data?.requires_payment && data?.payment_url) {
+        const payUrl = adsCreatePaymentUrl(data);
+        if (payUrl) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          pushInAppBrowser(router, data.payment_url, "Ad payment");
+          pushInAppBrowser(router, payUrl, "Ad payment");
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         loadAll();
         Alert.alert("Done", "Campaign created.");
-      } catch (e: any) {
-        Alert.alert("Error", e?.message ?? "Failed to create campaign");
+      } catch (e: unknown) {
+        Alert.alert("Error", getApiErrorMessage(e, "Failed to create campaign"));
       } finally {
         setCreatingPackId(null);
       }
@@ -259,15 +285,15 @@ export default function AdsSettingsScreen() {
         targeting: { global_category_ids: editForm.global_category_ids },
       });
       if (res.error) {
-        Alert.alert("Error", (res.error as any)?.message ?? "Failed to update campaign");
+        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update campaign"));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditCampaign(null);
       loadAll();
       Alert.alert("Done", "Campaign updated.");
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to update campaign");
+    } catch (e: unknown) {
+      Alert.alert("Error", getApiErrorMessage(e, "Failed to update campaign"));
     } finally {
       setUpdating(null);
     }
@@ -279,13 +305,13 @@ export default function AdsSettingsScreen() {
       try {
         const res = await api.patch(`/api/provider/ads/campaigns/${campaignId}`, { status });
         if (res.error) {
-          Alert.alert("Error", (res.error as any)?.message ?? "Failed to update status");
+          Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update status"));
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         loadAll();
-      } catch (e: any) {
-        Alert.alert("Error", e?.message ?? "Failed to update status");
+      } catch (e: unknown) {
+        Alert.alert("Error", getApiErrorMessage(e, "Failed to update status"));
       } finally {
         setUpdating(null);
       }

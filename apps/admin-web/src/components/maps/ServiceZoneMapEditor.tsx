@@ -12,6 +12,7 @@ import {
   parseCentroidLngLat,
   type ZoneBbox,
 } from "./serviceZoneMapGeo";
+import { mapboxStyleAvailable, safeRemoveLayer, safeRemoveSource } from "./mapboxSafe";
 
 const INC_SRC = "sz-inc-src";
 const INC_FILL = "sz-inc-fill";
@@ -253,10 +254,10 @@ export function ServiceZoneMapEditor({
 
     const remove = (ids: string[], srcs: string[]) => {
       for (const id of ids) {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       }
       for (const id of srcs) {
-        if (map.getSource(id)) map.removeSource(id);
+        safeRemoveSource(map, id);
       }
     };
 
@@ -265,7 +266,7 @@ export function ServiceZoneMapEditor({
     let cancelled = false;
 
     const applyLayers = () => {
-      if (cancelled || !map.isStyleLoaded()) return;
+      if (cancelled || !map.isStyleLoaded() || !mapboxStyleAvailable(map)) return;
 
       remove(
         [COV_LINE, COV_FILL, EXC_LINE, EXC_FILL, INC_LINE, INC_FILL],

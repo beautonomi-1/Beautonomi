@@ -450,7 +450,7 @@ export default function DashboardScreen() {
     const channel = supabase
       .channel("dashboard-booking-updates")
       .on(
-        "postgres_changes" as never,
+        "postgres_changes",
         {
           event: "*",
           schema: "public",
@@ -569,7 +569,7 @@ export default function DashboardScreen() {
             activeOpacity={0.85}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push("/(app)/(tabs)/more/settings/subscription" as any);
+              router.push("/(app)/(tabs)/more/settings/subscription" as never);
             }}
             style={{
               marginBottom: 16,
@@ -610,7 +610,7 @@ export default function DashboardScreen() {
               activeOpacity={0.8}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push("/(app)/(tabs)/more/reviews" as any);
+                router.push("/(app)/(tabs)/more/reviews" as never);
               }}
               accessibilityLabel={`Rating ${m.average_rating?.toFixed(1) ?? "0.0"} from ${m.total_reviews ?? 0} reviews`}
             >
@@ -625,7 +625,7 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginRight: 12 }}
               activeOpacity={0.8}
-              onPress={() => router.push("/(app)/(tabs)/more/rewards-hub" as any)}
+              onPress={() => router.push("/(app)/(tabs)/more/rewards-hub" as never)}
               accessibilityLabel={gam?.current_badge?.name ? `Level ${gam.current_badge.name}` : "View rewards"}
             >
               <Ionicons name="trophy" size={16} color="#92400e" style={{ marginRight: 4 }} />
@@ -669,7 +669,7 @@ export default function DashboardScreen() {
                   activeOpacity={0.8}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    router.push("/(app)/(tabs)/more/settings/distance-settings" as any);
+                    router.push("/(app)/(tabs)/more/settings/distance-settings" as never);
                   }}
                   accessibilityLabel={`Within ${m.provider_profile.max_service_distance_km} km. Tap to change distance settings.`}
                 >
@@ -696,7 +696,7 @@ export default function DashboardScreen() {
             router.push(
               newBookingScreenHref({
                 ...(selectedLocationId ? { locationId: selectedLocationId } : {}),
-              }) as any,
+              }) as never,
             );
           }}
           activeOpacity={0.7}
@@ -714,7 +714,7 @@ export default function DashboardScreen() {
               newBookingScreenHref({
                 walkIn: true,
                 ...(selectedLocationId ? { locationId: selectedLocationId } : {}),
-              }) as any,
+              }) as never,
             );
           }}
           activeOpacity={0.7}
@@ -728,7 +728,7 @@ export default function DashboardScreen() {
           style={{ minHeight: 48, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push("/(app)/(tabs)/more/walk-in-sale" as any);
+            router.push("/(app)/(tabs)/more/walk-in-sale" as never);
           }}
           activeOpacity={0.7}
           accessibilityLabel="Start a product sale"
@@ -814,7 +814,7 @@ export default function DashboardScreen() {
         title={`Bookings — ${periodLabel}`}
         actionLabel="View All"
         onAction={() =>
-          router.push("/(app)/(tabs)/more/bookings" as any)
+          router.push("/(app)/(tabs)/more/bookings" as never)
         }
       />
       <View style={{ flexDirection: "row" }}>
@@ -990,12 +990,12 @@ export default function DashboardScreen() {
         actionLabel="View All"
         onAction={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          router.push("/(app)/(tabs)/more/rewards-hub" as any);
+          router.push("/(app)/(tabs)/more/rewards-hub" as never);
         }}
       />
       <TouchableOpacity
         style={{ borderRadius: 16, borderWidth: 1, borderColor: "#c7d2fe", backgroundColor: "#eef2ff", padding: 16 }}
-        onPress={() => router.push("/(app)/(tabs)/more/rewards-hub" as any)}
+        onPress={() => router.push("/(app)/(tabs)/more/rewards-hub" as never)}
         activeOpacity={0.7}
         accessibilityLabel={`Rewards: ${gam?.total_points ?? 0} points`}
       >
@@ -1037,7 +1037,7 @@ export default function DashboardScreen() {
       <SectionHeader
         title="Upcoming (Next 7 Days)"
         actionLabel="See All"
-        onAction={() => router.push("/(app)/(tabs)/calendar" as any)}
+        onAction={() => router.push("/(app)/(tabs)/calendar" as never)}
       />
       {upcomingError && !upcomingBookings ? (
         <TouchableOpacity onPress={refreshFallbackUpcoming} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
@@ -1062,7 +1062,7 @@ export default function DashboardScreen() {
               ]}
               onPress={() =>
                 router.push(
-                  `/(app)/(tabs)/more/bookings/${booking.id}` as any,
+                  `/(app)/(tabs)/more/bookings/${booking.id}` as never,
                 )
               }
               accessibilityLabel={`Upcoming: ${booking.customers?.full_name ?? "Walk-in"} at ${formatRelativeDate(booking.scheduled_at)}`}
@@ -1156,7 +1156,7 @@ export default function DashboardScreen() {
                 onPress={() => {
                   if (item.data?.booking_id) {
                     router.push(
-                      `/(app)/(tabs)/more/bookings/${item.data.booking_id}` as any,
+                      `/(app)/(tabs)/more/bookings/${item.data.booking_id}` as never,
                     );
                   }
                 }}
@@ -1189,7 +1189,7 @@ export default function DashboardScreen() {
       <SectionHeader
         title="Today's Appointments"
         actionLabel="See All"
-        onAction={() => router.push("/(app)/(tabs)/calendar" as any)}
+        onAction={() => router.push("/(app)/(tabs)/calendar" as never)}
       />
       {todayBookingsError && !todayBookings ? (
         <TouchableOpacity onPress={refreshFallbackTodayBookings} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
@@ -1216,7 +1216,7 @@ export default function DashboardScreen() {
                 ]}
                 onPress={() =>
                   router.push(
-                    `/(app)/(tabs)/more/bookings/${booking.id}` as any,
+                    `/(app)/(tabs)/more/bookings/${booking.id}` as never,
                   )
                 }
                 accessibilityLabel={`Today: ${booking.customers?.full_name ?? "Walk-in"}`}

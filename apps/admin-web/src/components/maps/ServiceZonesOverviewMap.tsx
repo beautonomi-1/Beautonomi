@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { fetchMapboxPublicMapConfig } from "@/lib/fetchMapboxPublicMapConfig";
+import { adminSpaTo } from "@/lib/adminSpaPath";
+import { mapboxStyleAvailable, safeRemoveLayer, safeRemoveSource } from "./mapboxSafe";
 import { bboxToPolygonFeature, type ZoneBbox } from "./serviceZoneMapGeo";
 
 const OV_SOURCE = "sz-ov-src";
@@ -136,6 +138,12 @@ export function ServiceZonesOverviewMap({ zones, className = "" }: ServiceZonesO
         };
       }
 
+      if (!mapboxStyleAvailable(map)) {
+        return () => {
+          removeOverview();
+        };
+      }
+
       const fc: GeoJSON.FeatureCollection = { type: "FeatureCollection", features };
       map.addSource(OV_SOURCE, { type: "geojson", data: fc });
       map.addLayer({
@@ -154,7 +162,7 @@ export function ServiceZonesOverviewMap({ zones, className = "" }: ServiceZonesO
       const handleClick = (e: mapboxgl.MapLayerMouseEvent) => {
         const feat = e.features?.[0];
         const id = feat?.properties?.id as string | undefined;
-        if (id) navigate(`/service-zones/${id}`);
+        if (id) navigate(adminSpaTo(`/admin/service-zones/${id}`));
       };
       const handleMouseEnter = () => {
         map.getCanvas().style.cursor = "pointer";

@@ -25,6 +25,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { capitalizeFirst } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -723,6 +724,7 @@ export default function StaffScheduleScreen() {
         </View>
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={DAYS}
           keyExtractor={(day: string) => day}
           showsVerticalScrollIndicator={false}

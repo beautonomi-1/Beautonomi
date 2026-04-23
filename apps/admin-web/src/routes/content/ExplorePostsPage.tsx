@@ -416,8 +416,12 @@ export function ExplorePostsPage() {
               const id = String(row.id ?? "");
               const provRaw = row.providers as ProviderJoin | ProviderJoin[] | undefined;
               const prov = Array.isArray(provRaw) ? provRaw[0] : provRaw;
+              const providerId = String(prov?.id ?? row.provider_id ?? "");
+              const providerLabel = prov?.business_name?.trim() || prov?.slug?.trim() || providerId || "—";
               const media = Array.isArray(row.media_urls) ? (row.media_urls as string[])[0] : undefined;
               const hidden = Boolean(row.is_hidden);
+              const modNotes = typeof row.moderation_notes === "string" ? row.moderation_notes.trim() : "";
+              const moderatedAt = row.moderated_at;
               return (
                 <tr key={id} className={hidden ? "bg-gray-50/90" : undefined}>
                   <AdminTd>
@@ -440,9 +444,9 @@ export function ExplorePostsPage() {
                     )}
                   </AdminTd>
                   <AdminTd className="max-w-[10rem]">
-                    {prov?.id ? (
-                      <Link className="text-sm font-medium text-primary underline" to={adminSpaTo(`/admin/providers/${prov.id}`)}>
-                        {prov.business_name || prov.slug || prov.id}
+                    {providerId ? (
+                      <Link className="text-sm font-medium text-primary underline" to={adminSpaTo(`/admin/providers/${providerId}`)} title={providerLabel}>
+                        {providerLabel}
                       </Link>
                     ) : (
                       <span className="text-xs text-gray-500">—</span>
@@ -458,11 +462,22 @@ export function ExplorePostsPage() {
                     Likes {String(row.like_count ?? 0)} · Cmt {String(row.comment_count ?? 0)} · Saves {String(row.save_count ?? 0)}
                   </AdminTd>
                   <AdminTd>
-                    {hidden ? (
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-900">Hidden</span>
-                    ) : (
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-900">Live</span>
-                    )}
+                    <div className="flex flex-col gap-1">
+                      {hidden ? (
+                        <span className="w-fit rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-900">Hidden</span>
+                      ) : (
+                        <span className="w-fit rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-900">Live</span>
+                      )}
+                      {modNotes ? (
+                        <p className="line-clamp-2 max-w-[14rem] text-[11px] leading-snug text-gray-700" title={modNotes}>
+                          {modNotes}
+                        </p>
+                      ) : moderatedAt ? (
+                        <span className="text-[11px] text-amber-900" title={new Date(String(moderatedAt)).toLocaleString()}>
+                          Admin reviewed
+                        </span>
+                      ) : null}
+                    </div>
                   </AdminTd>
                   <AdminTd className="text-right">
                     <div className="flex flex-wrap items-center justify-end gap-2">

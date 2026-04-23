@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -121,7 +121,25 @@ export default function ProductCheckoutScreen() {
   }>({ type: "percentage", percentage: 5, fixed: 0, show: true });
   const [addressesLoadError, setAddressesLoadError] = useState<string | null>(null);
   const [refetchingAddresses, setRefetchingAddresses] = useState(false);
+  /**
+   * §Customer-audit 2026-04 (C5 CRITICAL — checkout hang): `cart.groupedByProvider`
+   * is recomputed from scratch every render inside `useCart`, so the derived
+   * `providerCartForTracking` was a new object reference on every render.
+   * The data-fetch useEffect below listed it in its dep array and called
+   * `fetchCart()` which triggered `setItems` → new grouping → new reference
+   * → effect re-ran → fetchCart again → infinite loop and the page stuck
+   * on the loading spinner forever.
+   *
+   * We don't need the cart tracking snapshot to be reactive inside the
+   * effect — we just read it once when firing the analytics event. Hold
+   * it in a ref synced on every render and consume the ref inside the
+   * effect, then drop the dependency.
+   */
   const providerCartForTracking = provider_id ? cart.groupedByProvider[provider_id] : null;
+  const providerCartForTrackingRef = useRef(providerCartForTracking);
+  useEffect(() => {
+    providerCartForTrackingRef.current = providerCartForTracking;
+  }, [providerCartForTracking]);
 
   useEffect(() => {
     if (!cashEnabledOnPlatform && paymentMethod === "card_on_delivery") {
@@ -199,10 +217,11 @@ export default function ProductCheckoutScreen() {
 
       // Track checkout started
       if (provider_id) {
+        const snap = providerCartForTrackingRef.current;
         trackProductCheckoutStarted(
           provider_id,
-          providerCartForTracking?.items.length ?? 0,
-          providerCartForTracking?.subtotal ?? 0,
+          snap?.items.length ?? 0,
+          snap?.subtotal ?? 0,
         );
       }
 
@@ -242,7 +261,7 @@ export default function ProductCheckoutScreen() {
     return () => {
       cancelled = true;
     };
-  }, [provider_id, user, fetchCart, providerCartForTracking]);
+  }, [provider_id, user, fetchCart]);
 
   const providerCart = provider_id ? cart.groupedByProvider[provider_id] : null;
   const providerItems = providerCart?.items ?? [];

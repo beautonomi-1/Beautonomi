@@ -34,7 +34,7 @@ import {
 type PhoneStep = "enter_phone" | "enter_otp" | null;
 
 export default function LoginAndSecurityScreen() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const canUseQuietRefresh = useRef(false);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -245,11 +245,7 @@ export default function LoginAndSecurityScreen() {
                 Alert.alert("Error", res.error.message ?? "Could not sign out everywhere. Please try again.");
                 return;
               }
-              try {
-                await supabase.auth.signOut();
-              } catch {
-                // best effort - server-side global signout already revoked tokens
-              }
+              await signOut();
               router.replace("/(auth)/login");
             } catch (e) {
               Alert.alert("Error", getApiErrorMessage(e, "Could not sign out everywhere"));

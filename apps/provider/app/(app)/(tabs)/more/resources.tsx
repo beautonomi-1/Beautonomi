@@ -23,6 +23,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { Colors } from "@/constants/colors";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface ResourceGroup {
   id: string;
@@ -302,6 +303,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
               <EmptyState icon="construct-outline" title="No resources" description="Add rooms, chairs, and equipment" />
             ) : (
               <FlatList
+                {...verticalFlatListPerf}
                 data={filteredResources}
                 keyExtractor={(r: Resource) => r.id}
                 style={{ flex: 1, minHeight: 0 }}
@@ -374,6 +376,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
             <EmptyState icon="layers-outline" title="No groups" description="Create groups to organize resources" />
           ) : (
             <FlatList
+              {...verticalFlatListPerf}
               data={groups}
               keyExtractor={(g: ResourceGroup) => g.id}
               style={{ flex: 1, minHeight: 0 }}

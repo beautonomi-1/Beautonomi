@@ -300,6 +300,21 @@ export function AppointmentSidebar({
         if (formData.kind !== AppointmentKind.AT_HOME && formData.locationId) {
           params.set("location_id", formData.locationId);
         }
+        const offeringIds = [
+          ...new Set(
+            formData.services.length > 0
+              ? formData.services.map((s) => s.serviceId).filter(Boolean)
+              : formData.serviceId
+                ? [formData.serviceId]
+                : [],
+          ),
+        ];
+        if (offeringIds.length > 0) {
+          params.set("offering_ids", offeringIds.join(","));
+        }
+        const atHome = formData.kind === AppointmentKind.AT_HOME;
+        params.set("mode", atHome ? "mobile" : "salon");
+        params.set("travel_buffer", atHome ? "30" : "0");
         if (mode === "edit" && activeBookingId) {
           params.set("exclude_booking_id", activeBookingId);
         }
@@ -350,6 +365,8 @@ export function AppointmentSidebar({
     formData.staffId,
     formData.locationId,
     formData.kind,
+    formData.serviceId,
+    formData.services,
     activeBookingId,
   ]);
 
@@ -493,10 +510,18 @@ export function AppointmentSidebar({
   }, [productsProp]);
   
   // Load packages
-  const loadPackages = useCallback(async () => {
+  // §Provider-audit 2026-04 (packages round 2): honour `location_id` the way
+  // the public (customer) package list and the provider mobile app do. The
+  // /api/provider/packages route already scopes by `package_locations` when a
+  // location_id is supplied; without it, a multi-location provider saw
+  // packages that aren't valid for the salon they were actually booking into.
+  const loadPackages = useCallback(async (locationId?: string) => {
     try {
       setIsLoadingPackages(true);
-      const response = await fetcher.get<{ data?: { packages?: any[] }; packages?: any[] }>("/api/provider/packages");
+      const url = locationId
+        ? `/api/provider/packages?location_id=${encodeURIComponent(locationId)}`
+        : "/api/provider/packages";
+      const response = await fetcher.get<{ data?: { packages?: any[] }; packages?: any[] }>(url);
       const packagesList = response.data?.packages ?? response.packages ?? response.data ?? [];
       setPackages(Array.isArray(packagesList) ? packagesList : []);
     } catch (error) {
@@ -506,15 +531,15 @@ export function AppointmentSidebar({
       setIsLoadingPackages(false);
     }
   }, []);
-  
+
   // Load packages and preload products when sidebar opens in create mode (same as appointments flow)
   useEffect(() => {
     if (isOpen && mode === "create") {
-      loadPackages();
+      loadPackages(formData.locationId || undefined);
       // Preload products so dropdown opens quickly (aligned with appointments page)
       loadProducts();
     }
-  }, [isOpen, mode, loadPackages, loadProducts]);
+  }, [isOpen, mode, formData.locationId, loadPackages, loadProducts]);
 
   // Load referral sources when sidebar is open (create or edit) for "Where did this client come from?"
   useEffect(() => {

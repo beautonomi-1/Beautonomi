@@ -614,6 +614,13 @@ export function GroupBookingDialog({
         address_city: formData.location_type === "at_home" ? formData.address_city : undefined,
         address_postal_code: formData.location_type === "at_home" ? formData.address_postal_code : undefined,
         travel_fee: formData.location_type === "at_home" ? formData.travel_fee : 0,
+        // §Provider-audit 2026-04 (packages round 2): persist the selected
+        // service package on group bookings. Previously the UI expanded the
+        // package contents into participants/products, but never told the
+        // server which package generated those lines — so the booking row
+        // lost the link to `service_packages` and package-level reporting /
+        // discount math was not applied.
+        ...(selectedPackageId ? { package_id: selectedPackageId } : {}),
       };
 
       if (booking) {
@@ -627,7 +634,17 @@ export function GroupBookingDialog({
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save group booking:", error);
-      toast.error("Failed to save group booking");
+      // Surface server-side detail (e.g. SLOT_NOT_AVAILABLE / validation)
+      // instead of the generic label so conflicts from the shared
+      // availability engine are visible to the provider.
+      const detail =
+        typeof error === "object" && error !== null
+          ? ((error as { message?: string; error?: string; details?: string }).message
+              || (error as { error?: string }).error
+              || (error as { details?: string }).details
+              || null)
+          : null;
+      toast.error(detail || "Failed to save group booking");
     } finally {
       setIsLoading(false);
     }

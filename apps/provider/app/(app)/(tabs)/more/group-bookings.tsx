@@ -30,6 +30,7 @@ import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { useProvider } from "@/providers/ProviderContext";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 // The list endpoint (GET /api/provider/group-bookings) maps participants to
 // { client_name, client_email, client_phone, service_name, checked_in,
@@ -85,6 +86,39 @@ interface GroupBooking {
   ref_number: string | null;
   participants?: Participant[];
   created_at: string;
+  // §Provider-audit 2026-04 (packages round 3 — mobile parity): the
+  // group_bookings row already stores `package_id` (migration 520) and
+  // `GET /api/provider/group-bookings` selects `*`, so we get it back from
+  // the list endpoint. Keep it typed so the create / detail sheet can
+  // show the attached package name + pass the id through on edits.
+  package_id?: string | null;
+}
+
+/** Package list item from `GET /api/provider/packages` (shape mirrors
+ *  `apps/provider/app/(app)/(tabs)/more/bookings/new.tsx`). */
+interface PackageItem {
+  id: string;
+  offering_id?: string | null;
+  product_id?: string | null;
+  quantity?: number;
+  offering?: {
+    id: string;
+    title?: string | null;
+    name?: string | null;
+    duration_minutes?: number | null;
+    price?: number | null;
+  } | null;
+  product?: { id: string; name?: string | null; retail_price?: number | null } | null;
+}
+
+interface PackageRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  price?: number | null;
+  discount_percentage?: number | null;
+  is_active?: boolean;
+  items?: PackageItem[];
 }
 
 interface GroupBookingsResponse {
@@ -161,8 +195,26 @@ export default function GroupBookingsScreen() {
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/team";
   const { data: teamRaw } = useApi<TeamRow[]>(teamUrl);
+  // §Provider-audit 2026-04 (packages round 3 — mobile parity): fetch the
+  // provider's catalog packages so the create sheet can attach a
+  // `package_id` to a group booking (parity with `GroupBookingDialog` on
+  // web). Endpoint returns `{ data: { packages: [...] } }` via the
+  // `successResponse` helper, so `useApi` unwraps the outer `data` and we
+  // access `.packages` here. Filtered to active packages with at least one
+  // item to avoid showing broken catalog entries.
+  const packagesUrl = selectedLocationId
+    ? `/api/provider/packages?location_id=${encodeURIComponent(selectedLocationId)}`
+    : "/api/provider/packages";
+  const { data: packagesRaw } = useApi<{ packages?: PackageRow[] }>(packagesUrl);
   const services = useMemo(() => (Array.isArray(servicesRaw) ? servicesRaw : []), [servicesRaw]);
   const teamMembers = useMemo(() => (Array.isArray(teamRaw) ? teamRaw : []), [teamRaw]);
+  const packagesList = useMemo<PackageRow[]>(
+    () =>
+      (packagesRaw?.packages ?? []).filter(
+        (p) => p.is_active !== false && Array.isArray(p.items) && p.items.length > 0,
+      ),
+    [packagesRaw],
+  );
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
@@ -175,7 +227,25 @@ export default function GroupBookingsScreen() {
   // `selectedGroup` (which we do so the detail sheet closes under the edit
   // sheet on iOS).
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ date: "", time: "", duration: "", notes: "", maxParticipants: "" });
+  const [editForm, setEditForm] = useState({
+    date: "",
+    time: "",
+    duration: "",
+    notes: "",
+    maxParticipants: "",
+    // §Provider-audit 2026-04 (packages round 4 — mobile edit parity):
+    // the web `GroupBookingDialog` allows attach/swap of `package_id` when
+    // editing an existing group booking. Mirror that on mobile so providers
+    // no longer need to switch to the web portal just to re-link / detach
+    // a package. `""` = no package, any id = attached, `"__DETACH__"` is a
+    // sentinel we use internally to send `package_id: null` to the server.
+    packageId: "",
+    // Track the original id so we only send `package_id` in the PATCH
+    // payload when it actually changed. Avoids clobbering the server-side
+    // row with a no-op write on edits that didn't touch the package.
+    originalPackageId: "",
+  });
+  const [showEditPackagePicker, setShowEditPackagePicker] = useState(false);
 
   // B10: create path — minimal form. Participants are added from the detail
   // sheet after the group is created, matching the existing "add participant"
@@ -191,7 +261,12 @@ export default function GroupBookingsScreen() {
     serviceId: "" as string,
     staffId: "" as string,
     locationId: "" as string,
+    // §Provider-audit 2026-04 (packages round 3): track the attached
+    // service_package so the POST payload can include `package_id` like
+    // the web `GroupBookingDialog` does.
+    packageId: "" as string,
   });
+  const [showPackagePicker, setShowPackagePicker] = useState(false);
 
   const statusParam = filter !== "all" ? `&status=${filter}` : "";
   const { data: groupData, loading, error: groupError, refresh } = useApi<GroupBookingsResponse>(
@@ -285,18 +360,41 @@ export default function GroupBookingsScreen() {
   }
 
   function openEdit(group: GroupBooking) {
+    const pkgId = group.package_id ?? "";
     setEditForm({
       date: group.scheduled_date,
       time: group.scheduled_time?.substring(0, 5) ?? "",
       duration: String(group.duration_minutes),
       notes: group.notes ?? "",
       maxParticipants: String(group.max_participants ?? ""),
+      packageId: pkgId,
+      originalPackageId: pkgId,
     });
     // B9: capture the id BEFORE clearing selectedGroup so the PATCH has a
     // real target even after the detail sheet closes.
     setEditingGroupId(group.id);
     setSelectedGroup(null);
     setShowEdit(true);
+  }
+
+  /**
+   * §Provider-audit 2026-04 (packages round 4 — mobile edit parity):
+   * apply a selected package (or detach) to the edit form. Unlike the
+   * create path we do NOT auto-rewrite duration / service here — editing
+   * an existing group can have staff & participants already attached,
+   * silently shifting duration would be surprising. Web portal does the
+   * same: changing the package on an existing booking only swaps the
+   * `package_id` link (reporting + discount math); timing changes are
+   * explicit edits by the user.
+   */
+  function applyPackageToEditForm(pkg: PackageRow | null) {
+    if (!pkg) {
+      setEditForm((p) => ({ ...p, packageId: "" }));
+      Haptics.selectionAsync().catch(() => {});
+      return;
+    }
+    setEditForm((p) => ({ ...p, packageId: pkg.id }));
+    Haptics.selectionAsync().catch(() => {});
   }
 
   async function handleSaveEdit() {
@@ -317,6 +415,16 @@ export default function GroupBookingsScreen() {
       return;
     }
 
+    // §Provider-audit 2026-04 (packages round 4 — mobile edit parity):
+    // only include `package_id` when it actually changed. `null` means
+    // explicit detach — `/api/provider/group-bookings/[id]` allows
+    // `package_id` in its allowlist and accepts null via `body.package_id`
+    // to clear the link.
+    const packageChanged = editForm.packageId !== editForm.originalPackageId;
+    const packageIdPayload = packageChanged
+      ? { package_id: editForm.packageId ? editForm.packageId : null }
+      : {};
+
     const { error } = await updateGroup(
       `/api/provider/group-bookings/${encodeURIComponent(editingGroupId)}`,
       {
@@ -325,6 +433,7 @@ export default function GroupBookingsScreen() {
         duration_minutes: editForm.duration ? Number(editForm.duration) : undefined,
         notes: editForm.notes.trim() || undefined,
         max_participants: editForm.maxParticipants ? Number(editForm.maxParticipants) : undefined,
+        ...packageIdPayload,
       }
     );
     if (error) { Alert.alert("Error", error); return; }
@@ -351,8 +460,63 @@ export default function GroupBookingsScreen() {
       serviceId: "",
       staffId: "",
       locationId: defaultLoc,
+      packageId: "",
     });
     setShowCreate(true);
+  }
+
+  /**
+   * §Provider-audit 2026-04 (packages round 3): attach a package to the
+   * create form. Mirrors `GroupBookingDialog.handleAddPackage` on web but
+   * is simpler — the mobile create sheet doesn't expose a per-participant
+   * picker (participants are added from the detail sheet after creation),
+   * so we just adopt the first service item's offering as the group's
+   * default service and sum the package's service durations into the
+   * group duration. Server-side `group_bookings` stores only `package_id`
+   * + `service_id` + `duration_minutes`, which is exactly what we're
+   * writing here.
+   */
+  function applyPackageToCreateForm(pkg: PackageRow | null) {
+    if (!pkg) {
+      setCreateForm((p) => ({ ...p, packageId: "" }));
+      return;
+    }
+    const serviceItems = (pkg.items ?? []).filter(
+      (it) => !!it.offering_id || !!it.offering?.id,
+    );
+    const firstService = serviceItems[0];
+    const firstServiceId =
+      firstService?.offering_id ?? firstService?.offering?.id ?? "";
+
+    // Prefer a service the provider already has in their service list so
+    // downstream UI (service chips) can highlight it.
+    const matchedService =
+      firstServiceId ? services.find((s) => s.id === firstServiceId) : undefined;
+
+    // Package duration = sum of service item durations (weighted by qty),
+    // falling back to whatever is currently in the form.
+    const totalDuration = serviceItems.reduce((acc, it) => {
+      const d = Number(it.offering?.duration_minutes ?? 0);
+      const q = Number(it.quantity ?? 1);
+      return acc + (Number.isFinite(d) && d > 0 ? d * (Number.isFinite(q) && q > 0 ? q : 1) : 0);
+    }, 0);
+
+    setCreateForm((p) => {
+      const next = { ...p, packageId: pkg.id };
+      if (firstServiceId) {
+        next.serviceId = firstServiceId;
+      }
+      if (!p.title.trim()) {
+        next.title = pkg.name;
+      }
+      if (totalDuration > 0) {
+        next.duration = String(totalDuration);
+      } else if (matchedService?.duration_minutes && matchedService.duration_minutes > 0) {
+        next.duration = String(matchedService.duration_minutes);
+      }
+      return next;
+    });
+    Haptics.selectionAsync().catch(() => {});
   }
 
   async function handleCreate() {
@@ -399,6 +563,10 @@ export default function GroupBookingsScreen() {
     }
     if (createForm.staffId) payload.staff_id = createForm.staffId;
     if (createForm.locationId) payload.location_id = createForm.locationId;
+    // §Provider-audit 2026-04 (packages round 3): attach the selected
+    // service_package so downstream reporting + discount math apply,
+    // matching the web `GroupBookingDialog` submit path.
+    if (createForm.packageId) payload.package_id = createForm.packageId;
 
     const { error } = await createGroup("/api/provider/group-bookings", payload);
     if (error) { Alert.alert("Error", error); return; }
@@ -537,6 +705,7 @@ export default function GroupBookingsScreen() {
         <EmptyState icon="people-outline" title="No group bookings" description="Group sessions will appear here" />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(g: GroupBooking) => g.id}
           style={{ flex: 1, minHeight: 0 }}
@@ -635,6 +804,19 @@ export default function GroupBookingsScreen() {
                   <Text style={twStyle("text-sm text-gray-700")}>{selectedGroup.team_member_name}</Text>
                 </View>
               )}
+              {/* §Provider-audit 2026-04 (packages round 3): show the
+                  attached service package name when the row has one, so
+                  providers can visually confirm the package link exists.
+                  Falls back to a neutral label if the package list hasn't
+                  loaded yet or was since deleted from the catalog. */}
+              {selectedGroup.package_id ? (
+                <View style={twStyle("flex-row justify-between mb-1")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Package</Text>
+                  <Text style={twStyle("text-sm text-gray-700")} numberOfLines={1}>
+                    {packagesList.find((p) => p.id === selectedGroup.package_id)?.name ?? "Attached"}
+                  </Text>
+                </View>
+              ) : null}
               {selectedGroup.price_per_person && (
                 <View style={twStyle("flex-row justify-between mb-1")}>
                   <Text style={twStyle("text-sm text-gray-500")}>Per Person</Text>
@@ -856,14 +1038,76 @@ export default function GroupBookingsScreen() {
 
       {/* Edit form */}
       <BottomSheet
-        visible={showEdit}
+        visible={showEdit && !showEditPackagePicker}
         onClose={() => {
           setShowEdit(false);
           setEditingGroupId(null);
         }}
         title="Edit Group Booking"
       >
-        <View>
+        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {/* §Provider-audit 2026-04 (packages round 4 — mobile edit
+              parity): package attach/swap row inside the edit sheet.
+              Tapping opens the dedicated picker sheet, detach writes
+              `package_id: null`, swap writes the new id. All three paths
+              end up in the PATCH payload on Save. */}
+          {packagesList.length > 0 ? (
+            <View style={twStyle("mb-3")}>
+              <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>Package</Text>
+                {editForm.packageId ? (
+                  <TouchableOpacity
+                    onPress={() => applyPackageToEditForm(null)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Detach package"
+                  >
+                    <Text style={twStyle("text-xs font-medium text-red-600")}>Detach</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowEditPackagePicker(true)}
+                activeOpacity={0.7}
+                style={twStyle(
+                  `flex-row items-center justify-between rounded-xl border px-4 py-3 ${
+                    editForm.packageId
+                      ? "border-indigo-300 bg-indigo-50"
+                      : "border-gray-200 bg-gray-50"
+                  }`,
+                )}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  editForm.packageId ? "Change attached package" : "Attach a package"
+                }
+              >
+                <View style={twStyle("flex-1 flex-row items-center")}>
+                  <Ionicons
+                    name="cube-outline"
+                    size={16}
+                    color={editForm.packageId ? "#4338ca" : "#6b7280"}
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text
+                    style={twStyle(
+                      `text-sm ${editForm.packageId ? "text-indigo-800 font-medium" : "text-gray-600"}`,
+                    )}
+                    numberOfLines={1}
+                  >
+                    {editForm.packageId
+                      ? packagesList.find((p) => p.id === editForm.packageId)?.name ?? "Package attached"
+                      : "Tap to attach a service package"}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+              </TouchableOpacity>
+              {editForm.packageId !== editForm.originalPackageId ? (
+                <Text style={twStyle("mt-1 text-[11px] text-amber-600")}>
+                  Package change will save on &quot;Save Changes&quot;. Duration and service stay as shown — update them manually if needed.
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
           <View style={twStyle("mb-3 flex-row")}>
             <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date</Text>
@@ -920,7 +1164,143 @@ export default function GroupBookingsScreen() {
             multiline
           />
           <ActionButton label="Save Changes" onPress={handleSaveEdit} loading={updatingGroup} fullWidth />
-        </View>
+        </ScrollView>
+      </BottomSheet>
+
+      {/* §Provider-audit 2026-04 (packages round 4 — mobile edit parity):
+          picker sheet for the edit flow. Kept separate from the create
+          picker so the currently-attached package is highlighted against
+          the editForm state (not createForm). */}
+      <BottomSheet
+        visible={showEditPackagePicker}
+        onClose={() => setShowEditPackagePicker(false)}
+        title="Change package"
+      >
+        {packagesList.length === 0 ? (
+          <EmptyState
+            icon="cube-outline"
+            title="No packages yet"
+            description="Create a package from the Packages screen or the provider web portal."
+          />
+        ) : (
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            style={{ maxHeight: 480 }}
+          >
+            {editForm.packageId ? (
+              <TouchableOpacity
+                onPress={() => {
+                  applyPackageToEditForm(null);
+                  setShowEditPackagePicker(false);
+                }}
+                activeOpacity={0.7}
+                style={twStyle(
+                  "mb-2 flex-row items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3",
+                )}
+                accessibilityRole="button"
+              >
+                <View style={twStyle("flex-row items-center")}>
+                  <Ionicons name="close-circle-outline" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+                  <Text style={twStyle("text-sm font-medium text-red-700")}>
+                    Detach current package
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
+
+            {packagesList.map((pkg) => {
+              const isSelected = editForm.packageId === pkg.id;
+              const serviceCount = (pkg.items ?? []).filter(
+                (it) => !!it.offering_id || !!it.offering?.id,
+              ).length;
+              const productCount = (pkg.items ?? []).filter(
+                (it) => !!it.product_id || !!it.product?.id,
+              ).length;
+              const priceNum = typeof pkg.price === "number" ? pkg.price : null;
+              const discount =
+                typeof pkg.discount_percentage === "number" && pkg.discount_percentage > 0
+                  ? pkg.discount_percentage
+                  : null;
+
+              return (
+                <TouchableOpacity
+                  key={pkg.id}
+                  onPress={() => {
+                    applyPackageToEditForm(pkg);
+                    setShowEditPackagePicker(false);
+                  }}
+                  activeOpacity={0.7}
+                  style={twStyle(
+                    `mb-2 rounded-xl border px-4 py-3 ${
+                      isSelected
+                        ? "border-indigo-400 bg-indigo-50"
+                        : "border-gray-200 bg-white"
+                    }`,
+                  )}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                >
+                  <View style={twStyle("flex-row items-start justify-between")}>
+                    <View style={twStyle("flex-1")}>
+                      <Text
+                        style={twStyle("text-sm font-semibold text-gray-900")}
+                        numberOfLines={1}
+                      >
+                        {pkg.name}
+                      </Text>
+                      {pkg.description ? (
+                        <Text
+                          style={twStyle("mt-0.5 text-xs text-gray-500")}
+                          numberOfLines={2}
+                        >
+                          {pkg.description}
+                        </Text>
+                      ) : null}
+                      <View style={twStyle("mt-1.5 flex-row items-center")}>
+                        {serviceCount > 0 ? (
+                          <Text
+                            style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}
+                          >
+                            {serviceCount} service{serviceCount === 1 ? "" : "s"}
+                          </Text>
+                        ) : null}
+                        {productCount > 0 ? (
+                          <Text
+                            style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}
+                          >
+                            {productCount} product{productCount === 1 ? "" : "s"}
+                          </Text>
+                        ) : null}
+                        {discount != null ? (
+                          <View
+                            style={twStyle("rounded-full bg-green-50 px-1.5 py-0.5")}
+                          >
+                            <Text style={twStyle("text-[10px] font-medium text-green-700")}>
+                              -{discount}%
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+                    <View style={[twStyle("items-end"), { marginLeft: 12 }]}>
+                      {priceNum != null ? (
+                        <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                          {formatCurrency(priceNum)}
+                        </Text>
+                      ) : null}
+                      {isSelected ? (
+                        <View style={twStyle("mt-1")}>
+                          <Ionicons name="checkmark-circle" size={16} color="#4338ca" />
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
       </BottomSheet>
 
       {/* Add participant */}
@@ -988,6 +1368,64 @@ export default function GroupBookingsScreen() {
                   />
                 ))}
               </ScrollView>
+            </View>
+          ) : null}
+
+          {packagesList.length > 0 ? (
+            <View style={twStyle("mb-3")}>
+              <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>Package (optional)</Text>
+                {createForm.packageId ? (
+                  <TouchableOpacity
+                    onPress={() => applyPackageToCreateForm(null)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Detach package"
+                  >
+                    <Text style={twStyle("text-xs font-medium text-red-600")}>Detach</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowPackagePicker(true)}
+                activeOpacity={0.7}
+                style={twStyle(
+                  `flex-row items-center justify-between rounded-xl border px-4 py-3 ${
+                    createForm.packageId
+                      ? "border-indigo-300 bg-indigo-50"
+                      : "border-gray-200 bg-gray-50"
+                  }`,
+                )}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  createForm.packageId ? "Change selected package" : "Choose a package"
+                }
+              >
+                <View style={twStyle("flex-1 flex-row items-center")}>
+                  <Ionicons
+                    name="cube-outline"
+                    size={16}
+                    color={createForm.packageId ? "#4338ca" : "#6b7280"}
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text
+                    style={twStyle(
+                      `text-sm ${createForm.packageId ? "text-indigo-800 font-medium" : "text-gray-600"}`,
+                    )}
+                    numberOfLines={1}
+                  >
+                    {createForm.packageId
+                      ? packagesList.find((p) => p.id === createForm.packageId)?.name ?? "Package attached"
+                      : "Tap to attach a service package"}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+              </TouchableOpacity>
+              {createForm.packageId ? (
+                <Text style={twStyle("mt-1 text-[11px] text-gray-500")}>
+                  Package sets the default service + duration. You can still override them below.
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -1102,6 +1540,142 @@ export default function GroupBookingsScreen() {
           </Text>
           <ActionButton label="Create Group" onPress={handleCreate} loading={creatingGroup} fullWidth />
         </ScrollView>
+      </BottomSheet>
+
+      {/* §Provider-audit 2026-04 (packages round 3 — mobile parity):
+          dedicated picker sheet, opened from the create sheet's "Package"
+          row. Closes itself on select so the provider lands back on the
+          create sheet with the attached package visible. */}
+      <BottomSheet
+        visible={showPackagePicker}
+        onClose={() => setShowPackagePicker(false)}
+        title="Choose a package"
+      >
+        {packagesList.length === 0 ? (
+          <EmptyState
+            icon="cube-outline"
+            title="No packages yet"
+            description="Create a package from the Packages screen or the provider web portal."
+          />
+        ) : (
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            style={{ maxHeight: 480 }}
+          >
+            {createForm.packageId ? (
+              <TouchableOpacity
+                onPress={() => {
+                  applyPackageToCreateForm(null);
+                  setShowPackagePicker(false);
+                }}
+                activeOpacity={0.7}
+                style={twStyle(
+                  "mb-2 flex-row items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3",
+                )}
+                accessibilityRole="button"
+              >
+                <View style={twStyle("flex-row items-center")}>
+                  <Ionicons name="close-circle-outline" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+                  <Text style={twStyle("text-sm font-medium text-red-700")}>
+                    Detach current package
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
+
+            {packagesList.map((pkg) => {
+              const isSelected = createForm.packageId === pkg.id;
+              const serviceCount = (pkg.items ?? []).filter(
+                (it) => !!it.offering_id || !!it.offering?.id,
+              ).length;
+              const productCount = (pkg.items ?? []).filter(
+                (it) => !!it.product_id || !!it.product?.id,
+              ).length;
+              const priceNum = typeof pkg.price === "number" ? pkg.price : null;
+              const discount =
+                typeof pkg.discount_percentage === "number" && pkg.discount_percentage > 0
+                  ? pkg.discount_percentage
+                  : null;
+
+              return (
+                <TouchableOpacity
+                  key={pkg.id}
+                  onPress={() => {
+                    applyPackageToCreateForm(pkg);
+                    setShowPackagePicker(false);
+                  }}
+                  activeOpacity={0.7}
+                  style={twStyle(
+                    `mb-2 rounded-xl border px-4 py-3 ${
+                      isSelected
+                        ? "border-indigo-400 bg-indigo-50"
+                        : "border-gray-200 bg-white"
+                    }`,
+                  )}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                >
+                  <View style={twStyle("flex-row items-start justify-between")}>
+                    <View style={twStyle("flex-1")}>
+                      <Text
+                        style={twStyle("text-sm font-semibold text-gray-900")}
+                        numberOfLines={1}
+                      >
+                        {pkg.name}
+                      </Text>
+                      {pkg.description ? (
+                        <Text
+                          style={twStyle("mt-0.5 text-xs text-gray-500")}
+                          numberOfLines={2}
+                        >
+                          {pkg.description}
+                        </Text>
+                      ) : null}
+                      <View style={twStyle("mt-1.5 flex-row items-center")}>
+                        {serviceCount > 0 ? (
+                          <Text
+                            style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}
+                          >
+                            {serviceCount} service{serviceCount === 1 ? "" : "s"}
+                          </Text>
+                        ) : null}
+                        {productCount > 0 ? (
+                          <Text
+                            style={[twStyle("text-[11px] text-gray-500"), { marginRight: 10 }]}
+                          >
+                            {productCount} product{productCount === 1 ? "" : "s"}
+                          </Text>
+                        ) : null}
+                        {discount != null ? (
+                          <View
+                            style={twStyle("rounded-full bg-green-50 px-1.5 py-0.5")}
+                          >
+                            <Text style={twStyle("text-[10px] font-medium text-green-700")}>
+                              -{discount}%
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+                    <View style={[twStyle("items-end"), { marginLeft: 12 }]}>
+                      {priceNum != null ? (
+                        <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                          {formatCurrency(priceNum)}
+                        </Text>
+                      ) : null}
+                      {isSelected ? (
+                        <View style={twStyle("mt-1")}>
+                          <Ionicons name="checkmark-circle" size={16} color="#4338ca" />
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
       </BottomSheet>
     </ScreenContainer>
   );

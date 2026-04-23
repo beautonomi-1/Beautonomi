@@ -30,6 +30,7 @@ import {
   SUPABASE_AUTH_OTP_LENGTH,
 } from "@/lib/supabase-sms-otp";
 import { clearApiCache } from "@/lib/api-response-cache";
+import { invalidateApiAccessTokenCache } from "@/lib/api-client";
 import { clearPortalCache } from "@/lib/portal-cache";
 import { clearBiometricPreference } from "@/hooks/useBiometricAuth";
 import {
@@ -82,21 +83,42 @@ function getRedirectUrl(): string {
   return AuthSession.makeRedirectUri({ path: "auth/callback" });
 }
 
-async function clearCustomerUserCaches(): Promise<void> {
+/**
+ * Remove per-user disk caches after sign-out. When `userId` is set we
+ * only delete keys belonging to that user (cart / bookings rows embed
+ * the id in the key) so `getAllKeys()` stays cheap on devices with lots
+ * of unrelated AsyncStorage entries. Legacy non-namespaced keys are
+ * still cleared whenever any customer signs out.
+ */
+async function clearCustomerUserCaches(userId: string | null): Promise<void> {
   try {
     const keys = await AsyncStorage.getAllKeys();
-    const cacheKeys = keys.filter((key) =>
-      key === LEGACY_CART_CACHE_KEY ||
-      key.startsWith(`${CART_CACHE_KEY_PREFIX}:`) ||
-      key.startsWith(LEGACY_BOOKINGS_CACHE_KEY_PREFIX) ||
-      key.startsWith(`${BOOKINGS_CACHE_KEY_PREFIX}:`) ||
-      // §Customer-audit 2026-04: Profile tab now caches its summary
-      // (completion %, loyalty, verification, rating) to AsyncStorage
-      // for instant render. Sweep it on sign-out so the next user on
-      // the same device never sees a prior user's badges flash before
-      // their own fetch completes.
-      key.startsWith(`${PROFILE_SUMMARY_CACHE_KEY_PREFIX}.`)
-    );
+    const id = userId?.trim() || null;
+    const cacheKeys = keys.filter((key) => {
+      // Unknown user id (edge case): fall back to the broader sweep so we
+      // never leave another user's cached PII on disk.
+      if (!id) {
+        return (
+          key === LEGACY_CART_CACHE_KEY ||
+          key.startsWith(`${CART_CACHE_KEY_PREFIX}:`) ||
+          key.startsWith(LEGACY_BOOKINGS_CACHE_KEY_PREFIX) ||
+          key.startsWith(`${BOOKINGS_CACHE_KEY_PREFIX}:`) ||
+          key.startsWith(`${PROFILE_SUMMARY_CACHE_KEY_PREFIX}.`)
+        );
+      }
+      if (key === LEGACY_CART_CACHE_KEY) return true;
+      if (key.startsWith(`${CART_CACHE_KEY_PREFIX}:`)) {
+        return key.split(":").includes(id);
+      }
+      if (key.startsWith(LEGACY_BOOKINGS_CACHE_KEY_PREFIX)) return true;
+      if (key.startsWith(`${BOOKINGS_CACHE_KEY_PREFIX}:`)) {
+        return key.split(":").includes(id);
+      }
+      if (key.startsWith(`${PROFILE_SUMMARY_CACHE_KEY_PREFIX}.`)) {
+        return key === `${PROFILE_SUMMARY_CACHE_KEY_PREFIX}.${id}`;
+      }
+      return false;
+    });
     if (cacheKeys.length > 0) {
       await AsyncStorage.multiRemove(cacheKeys);
     }
@@ -110,10 +132,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const lastUserIdRef = useRef<string | null>(null);
+  /** Always the latest signed-in user id — read inside `signOut` before clearing session. */
+  const currentUserIdRef = useRef<string | null>(null);
 
   const updateSession = useCallback((newSession: Session | null) => {
     setSession(newSession);
     setUser(newSession?.user ?? null);
+    currentUserIdRef.current = newSession?.user?.id ?? null;
   }, []);
 
   const refreshSession = useCallback(async () => {
@@ -204,7 +229,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       if (event === "SIGNED_OUT") {
-        void clearCustomerUserCaches();
+        // `lastUserIdRef` is already cleared to `nextUserId` above — use
+        // `prevUserId` so we still know which user's rows to delete.
+        void clearCustomerUserCaches(prevUserId);
       }
       if (
         newSession?.user &&
@@ -408,24 +435,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    // §Release-audit 2026-04: centralised cleanup that runs whether or not
-    // supabase.signOut() throws, so we never end up in a half-signed-out
-    // state (session gone, preferences kept). Order matters slightly — we
-    // clear auth first so any in-flight API call can short-circuit, then
-    // tear down caches and per-user preferences.
-    try {
-      await supabase.auth.signOut();
-    } catch {
-      // Swallow — even if Supabase fails we still want to proceed with
-      // local cleanup so the UI lands on a fresh login screen.
-    }
+    const signedOutUserId = currentUserIdRef.current;
+    // §Customer-audit 2026-04 (logout UX + perf): the old flow awaited
+    // `supabase.auth.signOut()` (network to GoTrue to revoke the refresh
+    // token) *before* `updateSession(null)`, then awaited
+    // `AsyncStorage.getAllKeys()` for cache cleanup. On slow networks or
+    // large local storage that meant the user tapped "Log out" and
+    // nothing appeared to happen for many seconds — or forever if the
+    // revoke request hung.
+    //
+    // New order: clear React session + API token cache immediately so
+    // `(app)/_layout` can `router.replace` to login on the same tick, then
+    // try a bounded remote revoke, then fall back to local-only sign-out,
+    // then run heavy AsyncStorage work off the critical path.
+    invalidateApiAccessTokenCache();
+    updateSession(null);
     clearApiCache();
     clearPortalCache();
-    await Promise.allSettled([
-      clearCustomerUserCaches(),
+
+    const SIGN_OUT_NETWORK_MS = 2800;
+    try {
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("sign_out_timeout")), SIGN_OUT_NETWORK_MS);
+        }),
+      ]);
+    } catch {
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        // Best-effort — UI is already logged out via updateSession(null).
+      }
+    }
+
+    void Promise.allSettled([
+      clearCustomerUserCaches(signedOutUserId),
       clearBiometricPreference(),
     ]);
-    updateSession(null);
   }, [updateSession]);
 
   return (

@@ -23,6 +23,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors, Shadows } from "@/constants/colors";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 type Tab = "providers" | "products" | "posts";
 
@@ -723,6 +724,7 @@ export function SavedTabContent({
         </ScrollView>
       ) : activeTab === "products" ? (
         <FlatList
+          {...verticalFlatListPerf}
           key={`saved-products-${gridColumns}`}
           data={savedProducts}
           keyExtractor={(item) => item.id}
@@ -766,6 +768,7 @@ export function SavedTabContent({
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           key={`saved-posts-${gridColumns}`}
           data={savedPosts}
           keyExtractor={(item) => item.id}

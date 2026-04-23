@@ -18,10 +18,14 @@ import { adminToast } from "@/lib/adminToast";
 
 interface PaystackConfig {
   configured: boolean;
+  /** True when keys exist on a platform_secrets row (possibly global fallback). */
+  configured_in_db?: boolean;
   masked_secret_key: string | null;
   masked_public_key: string | null;
   has_webhook_secret: boolean;
   updated_at?: string;
+  inherited_from_global?: boolean;
+  secrets_scope?: "global" | "tenant";
   env: { has_env_secret_key: boolean; has_env_public_key: boolean };
 }
 
@@ -102,26 +106,39 @@ export function PaystackConfigPage() {
               {d.configured ? "Paystack configured" : "Paystack not configured"}
             </p>
             <p className="mt-0.5 text-sm text-gray-500">
-              {d.configured
-                ? `Keys are set in the database${d.updated_at ? ` (last updated ${new Date(d.updated_at).toLocaleDateString()})` : ""}.`
-                : "No API keys found in the database. Falling back to environment variables."}
+              {d.configured_in_db === false && (d.env.has_env_secret_key || d.env.has_env_public_key)
+                ? "No Paystack keys on platform_secrets for this admin scope; runtime uses environment variables."
+                : d.configured
+                  ? `Keys are available${d.updated_at ? ` (row last updated ${new Date(d.updated_at).toLocaleString()})` : ""}.`
+                  : "No Paystack credentials found in the database or env for this view."}
             </p>
           </div>
         </div>
+
+        {d.inherited_from_global ? (
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+            <Shield className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-700" />
+            <p className="text-sm text-blue-900">
+              Showing keys from the <strong>global</strong> platform_secrets row. This market does not have its own row
+              yet, or the tenant row has no Paystack keys — runtime still resolves global keys the same way.
+            </p>
+          </div>
+        ) : null}
 
         {/* ENV fallback banner */}
         {(d.env.has_env_secret_key || d.env.has_env_public_key) && (
           <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
             <p className="text-sm text-amber-800">
-              Environment variables <code className="font-mono text-xs">PAYSTACK_SECRET_KEY</code>
-              {" "}/ <code className="font-mono text-xs">PAYSTACK_PUBLIC_KEY</code> are set and will override database keys at runtime.
+              If <code className="font-mono text-xs">PAYSTACK_SECRET_KEY</code> /{" "}
+              <code className="font-mono text-xs">PAYSTACK_PUBLIC_KEY</code> are set in the server environment, Paystack
+              server code may prefer them (see paystack-server resolution order).
             </p>
           </div>
         )}
 
         {/* Current masked keys */}
-        {d.configured && (
+        {d.masked_secret_key || d.masked_public_key || d.has_webhook_secret ? (
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-gray-500">Secret key</dt>
@@ -136,7 +153,7 @@ export function PaystackConfigPage() {
               <dd className="font-mono font-medium">{d.has_webhook_secret ? "Set (hidden)" : "—"}</dd>
             </div>
           </dl>
-        )}
+        ) : null}
       </AdminPanel>
 
       {/* Edit form */}

@@ -2,7 +2,112 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, notFoundResponse, handleApiError, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { getMapboxService } from "@/lib/mapbox/mapbox";
 import type { User } from "@/types/beautonomi";
+
+/**
+ * §Release-audit 2026-04: PATCH /api/me/profile updates the customer's
+ * default `user_addresses` row when `body.address` is present, but it
+ * previously never geocoded. That left the `latitude` / `longitude` cols
+ * stale on updates and null on inserts — which silently corrupts travel
+ * fee calculations in the provider app (see `calculateTravelFeeForHold`
+ * and `computeTravelFee`, both of which key off those exact coords).
+ *
+ * This helper mirrors the geocoding step in /api/me/addresses so the two
+ * profile surfaces agree on coordinates for every persisted address.
+ */
+/**
+ * Shape the customer's default address for /api/me/profile responses.
+ * §Release-audit 2026-04: expose `latitude` / `longitude` too — without
+ * them the customer booking flow can't supply coords to POST
+ * /api/public/booking-holds, which then skips travel-fee computation
+ * entirely and ships `travel_fee: 0` into the booking.
+ */
+function formatDefaultAddress(defaultAddress: unknown): {
+  country: string;
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  street: string;
+  apt: string;
+  zip: string;
+  latitude: number | null;
+  longitude: number | null;
+} | null {
+  if (!defaultAddress || typeof defaultAddress !== "object") return null;
+  const a = defaultAddress as {
+    country?: string | null;
+    address_line1?: string | null;
+    address_line2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postal_code?: string | null;
+    latitude?: number | string | null;
+    longitude?: number | string | null;
+  };
+  const lat =
+    typeof a.latitude === "number"
+      ? a.latitude
+      : a.latitude != null && a.latitude !== ""
+        ? Number(a.latitude)
+        : null;
+  const lng =
+    typeof a.longitude === "number"
+      ? a.longitude
+      : a.longitude != null && a.longitude !== ""
+        ? Number(a.longitude)
+        : null;
+  return {
+    country: a.country || "",
+    line1: a.address_line1 || "",
+    line2: a.address_line2 || "",
+    city: a.city || "",
+    state: a.state || "",
+    postal_code: a.postal_code || "",
+    street: a.address_line1 || "",
+    apt: a.address_line2 || "",
+    zip: a.postal_code || "",
+    latitude: Number.isFinite(lat) ? (lat as number) : null,
+    longitude: Number.isFinite(lng) ? (lng as number) : null,
+  };
+}
+
+async function geocodeCustomerAddress(
+  line1: string,
+  line2: string,
+  city: string,
+  state: string,
+  postalCode: string,
+  country: string,
+): Promise<{ latitude: number | null; longitude: number | null }> {
+  if (!line1.trim() || !city.trim()) {
+    return { latitude: null, longitude: null };
+  }
+  try {
+    const mapbox = await getMapboxService();
+    const q = [line1, line2, city, state, postalCode, country]
+      .map((s) => (typeof s === "string" ? s.trim() : ""))
+      .filter(Boolean)
+      .join(", ");
+    const iso =
+      country && /^[A-Za-z]{2}$/.test(country.trim())
+        ? country.trim().toUpperCase()
+        : undefined;
+    const results = await mapbox.geocode(q, {
+      country: iso,
+      limit: 1,
+    });
+    const first = results[0];
+    if (first?.center) {
+      return { longitude: first.center[0], latitude: first.center[1] };
+    }
+  } catch (err) {
+    console.warn("[/api/me/profile] address geocode failed:", err);
+  }
+  return { latitude: null, longitude: null };
+}
 
 /** User row from users table (select *) with optional profile fields */
 type UserRow = {
@@ -101,17 +206,7 @@ export async function GET(request: NextRequest) {
       handle: u.handle ?? null,
       email_verified: u.email_verified ?? false,
       phone_verified: u.phone_verified ?? false,
-      address: defaultAddress ? {
-        country: defaultAddress.country || "",
-        line1: defaultAddress.address_line1 || "",
-        line2: defaultAddress.address_line2 || "",
-        city: defaultAddress.city || "",
-        state: defaultAddress.state || "",
-        postal_code: defaultAddress.postal_code || "",
-        street: defaultAddress.address_line1 || "",
-        apt: defaultAddress.address_line2 || "",
-        zip: defaultAddress.postal_code || "",
-      } : null,
+      address: formatDefaultAddress(defaultAddress),
       emergency_contact: {
         name: u.emergency_contact_name || "",
         relationship: u.emergency_contact_relationship || "",
@@ -273,23 +368,99 @@ export async function PATCH(request: NextRequest) {
     // Handle address object
     if (body.address !== undefined) {
       const address = body.address;
-      
-      // Check if default address exists
+
+      // Check if default address exists (also fetch current coords so we
+      // only re-geocode when the address text actually changed).
       const { data: existingAddress } = await supabase
         .from("user_addresses")
-        .select("id")
+        .select("id, address_line1, address_line2, city, state, postal_code, country, latitude, longitude")
         .eq("user_id", user.id)
         .eq("is_default", true)
-        .single();
+        .maybeSingle();
+
+      const line1 = (address.line1 || address.street || "").toString();
+      const line2 = (address.line2 || address.apt || "").toString();
+      const city = (address.city || "").toString();
+      const state = (address.state || "").toString();
+      const postalCode = (address.postal_code || address.zip || "").toString();
+      const country = (address.country || "").toString();
+
+      const clientLat =
+        typeof address.latitude === "number"
+          ? address.latitude
+          : address.latitude != null && address.latitude !== ""
+            ? Number(address.latitude)
+            : null;
+      const clientLng =
+        typeof address.longitude === "number"
+          ? address.longitude
+          : address.longitude != null && address.longitude !== ""
+            ? Number(address.longitude)
+            : null;
+
+      // §Release-audit 2026-04: decide whether we need to geocode.
+      // Geocode iff the client didn't provide valid coords AND either:
+      // (a) we're inserting a fresh row, or
+      // (b) any address line changed vs. the stored row, which makes the
+      //     stored lat/lng stale for travel pricing.
+      const hasClientCoords =
+        clientLat != null &&
+        clientLng != null &&
+        Number.isFinite(clientLat) &&
+        Number.isFinite(clientLng) &&
+        !(clientLat === 0 && clientLng === 0);
+
+      let latitude: number | null = hasClientCoords ? clientLat : null;
+      let longitude: number | null = hasClientCoords ? clientLng : null;
+
+      let shouldGeocode = false;
+      if (!existingAddress) {
+        shouldGeocode = !hasClientCoords;
+      } else if (!hasClientCoords) {
+        const existRow = existingAddress as {
+          address_line1?: string | null;
+          address_line2?: string | null;
+          city?: string | null;
+          state?: string | null;
+          postal_code?: string | null;
+          country?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+        };
+        const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
+        const addressTextChanged =
+          norm(existRow.address_line1) !== norm(line1) ||
+          norm(existRow.address_line2) !== norm(line2) ||
+          norm(existRow.city) !== norm(city) ||
+          norm(existRow.state) !== norm(state) ||
+          norm(existRow.postal_code) !== norm(postalCode) ||
+          norm(existRow.country) !== norm(country);
+
+        if (addressTextChanged) {
+          shouldGeocode = true;
+        } else {
+          // Preserve existing coords untouched on a no-op update.
+          latitude = existRow.latitude ?? null;
+          longitude = existRow.longitude ?? null;
+        }
+      }
+
+      if (shouldGeocode) {
+        const geo = await geocodeCustomerAddress(line1, line2, city, state, postalCode, country);
+        latitude = geo.latitude;
+        longitude = geo.longitude;
+      }
 
       const addressData = {
         user_id: user.id,
-        address_line1: address.line1 || address.street || "",
-        address_line2: address.line2 || address.apt || "",
-        city: address.city || "",
-        state: address.state || "",
-        postal_code: address.postal_code || address.zip || "",
-        country: address.country || "",
+        address_line1: line1,
+        address_line2: line2,
+        city,
+        state,
+        postal_code: postalCode,
+        country,
+        latitude,
+        longitude,
         is_default: true,
         customer_managed_home: true,
       };
@@ -299,7 +470,7 @@ export async function PATCH(request: NextRequest) {
         const { error: addressError } = await supabase
           .from("user_addresses")
           .update(addressData)
-          .eq("id", existingAddress.id);
+          .eq("id", (existingAddress as { id: string }).id);
 
         if (addressError) {
           throw new Error(`Failed to update address: ${addressError.message}`);
@@ -400,17 +571,7 @@ export async function PATCH(request: NextRequest) {
           handle: u.handle ?? null,
           email_verified: u.email_verified ?? false,
           phone_verified: u.phone_verified ?? false,
-          address: defaultAddress ? {
-            country: defaultAddress.country || "",
-            line1: defaultAddress.address_line1 || "",
-            line2: defaultAddress.address_line2 || "",
-            city: defaultAddress.city || "",
-            state: defaultAddress.state || "",
-            postal_code: defaultAddress.postal_code || "",
-            street: defaultAddress.address_line1 || "",
-            apt: defaultAddress.address_line2 || "",
-            zip: defaultAddress.postal_code || "",
-          } : null,
+          address: formatDefaultAddress(defaultAddress),
           emergency_contact: {
             name: u.emergency_contact_name || "",
             relationship: u.emergency_contact_relationship || "",
@@ -478,17 +639,7 @@ export async function PATCH(request: NextRequest) {
         handle: u.handle ?? null,
         email_verified: u.email_verified ?? false,
         phone_verified: u.phone_verified ?? false,
-        address: defaultAddress ? {
-          country: defaultAddress.country || "",
-          line1: defaultAddress.address_line1 || "",
-          line2: defaultAddress.address_line2 || "",
-          city: defaultAddress.city || "",
-          state: defaultAddress.state || "",
-          postal_code: defaultAddress.postal_code || "",
-          street: defaultAddress.address_line1 || "",
-          apt: defaultAddress.address_line2 || "",
-          zip: defaultAddress.postal_code || "",
-        } : null,
+        address: formatDefaultAddress(defaultAddress),
         emergency_contact: {
           name: u.emergency_contact_name || "",
           relationship: u.emergency_contact_relationship || "",

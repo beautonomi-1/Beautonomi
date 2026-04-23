@@ -143,11 +143,17 @@ export default function StaffPermissionEditScreen() {
       { permissions: local }
     );
     if (error) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert("Could not save", error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await refresh();
+    // §Provider-audit 2026-04: previously this screen only fired a haptic on
+    // success, so staff owners pressing Save saw no visible confirmation and
+    // repeatedly re-tapped. Surface a short confirmation alert mirroring the
+    // feedback pattern used across the provider app.
+    Alert.alert("Permissions updated", "Changes saved successfully.");
   }, [id, local, updatePerms, refresh, canEdit, readOnlyReason]);
 
   function setPermission(key: string, value: boolean) {

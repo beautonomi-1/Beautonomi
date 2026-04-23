@@ -15,6 +15,7 @@ import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface ReturnItem {
   id: string;
@@ -196,6 +197,7 @@ export default function MyReturnsScreen() {
           </View>
         ) : (
           <FlatList
+            {...verticalFlatListPerf}
             data={returns}
             keyExtractor={(r) => r.id}
             contentContainerStyle={{ padding: contentPadding, paddingBottom: 24 }}

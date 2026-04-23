@@ -23,6 +23,7 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { twStyle } from "@/lib/twStyle";
 import { APP_URL } from "@/config/public-env";
 import { resolveGlobalCategoryIconUri } from "@beautonomi/utils";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface Category {
   id: string;
@@ -263,6 +264,7 @@ export default function ServiceCategoriesScreen() {
         <SkeletonList rows={4} />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={listData}
           keyExtractor={(item: Category | { id: string; type: "header"; title: string }) => item.id}
           showsVerticalScrollIndicator={false}
@@ -423,7 +425,7 @@ export default function ServiceCategoriesScreen() {
                 onPress={() => setForm((p) => ({ ...p, icon }))}
               >
                 <Ionicons
-                  name={icon as any}
+                  name={icon as keyof typeof Ionicons.glyphMap}
                   size={20}
                   color={form.icon === icon ? "#6366f1" : "#6b7280"}
                 />

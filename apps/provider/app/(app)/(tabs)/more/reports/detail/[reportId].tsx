@@ -23,7 +23,6 @@ import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import {
   REPORT_DETAIL_REGISTRY,
   type ReportDetailDefinition,
-  type ReportQueryMode,
 } from "@/features/reports/reportDetailRegistry";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";

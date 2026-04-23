@@ -18,6 +18,7 @@ import { useProductOrders, type ProductOrder } from "@/features/shop/useProductO
 import { getTenantLocaleTag } from "@/lib/locale";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
+import { horizontalFlatListPerf, verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 const PRIMARY = Colors.primary;
 
@@ -215,6 +216,7 @@ export default function ProductOrdersScreen() {
       {/* Filter tabs */}
       <View style={{ backgroundColor: "#fff", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
         <FlatList
+          {...horizontalFlatListPerf}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: contentPadding }}
@@ -277,6 +279,7 @@ export default function ProductOrdersScreen() {
         </View>
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={orders}
           keyExtractor={(o) => o.id}
           contentContainerStyle={{

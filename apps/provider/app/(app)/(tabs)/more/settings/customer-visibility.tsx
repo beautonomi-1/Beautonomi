@@ -84,12 +84,12 @@ export default function CustomerVisibilityScreen() {
       {/* Preview cards */}
       <View style={twStyle("mb-4 flex-row")}>
         <View style={[twStyle("flex-1 items-center rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12 }]}>
-          <Ionicons name={customerVis.icon as any} size={28} color={customerVis.color} />
+          <Ionicons name={customerVis.icon as keyof typeof Ionicons.glyphMap} size={28} color={customerVis.color} />
           <Text style={twStyle("mt-2 text-xs font-semibold text-gray-900")}>Client Visibility</Text>
           <Text style={twStyle("text-[10px] capitalize text-gray-500")}>{customerMode.replace("_", " ")}</Text>
         </View>
         <View style={twStyle("flex-1 items-center rounded-2xl border border-gray-100 bg-white p-4")}>
-          <Ionicons name={salonVis.icon as any} size={28} color={salonVis.color} />
+          <Ionicons name={salonVis.icon as keyof typeof Ionicons.glyphMap} size={28} color={salonVis.color} />
           <Text style={twStyle("mt-2 text-xs font-semibold text-gray-900")}>Salon Visibility</Text>
           <Text style={twStyle("text-[10px] capitalize text-gray-500")}>{salonMode.replace("_", " ")}</Text>
         </View>
@@ -148,7 +148,7 @@ export default function CustomerVisibilityScreen() {
             onPress={() => update(() => setCustomerMode(opt.value))}
           >
             <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-100")}>
-              <Ionicons name={opt.icon as any} size={18} color="#6b7280" />
+              <Ionicons name={opt.icon as keyof typeof Ionicons.glyphMap} size={18} color="#6b7280" />
             </View>
             <View style={twStyle("ml-3 flex-1")}>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>{opt.label}</Text>
@@ -174,7 +174,7 @@ export default function CustomerVisibilityScreen() {
             onPress={() => update(() => setSalonMode(opt.value))}
           >
             <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-100")}>
-              <Ionicons name={opt.icon as any} size={18} color="#6b7280" />
+              <Ionicons name={opt.icon as keyof typeof Ionicons.glyphMap} size={18} color="#6b7280" />
             </View>
             <View style={twStyle("ml-3 flex-1")}>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>{opt.label}</Text>

@@ -52,6 +52,7 @@ export type RescheduleCoreError =
   | { kind: "INTERNAL"; message: string; cause?: unknown };
 
 export interface RescheduleCoreSuccess {
+  ok: true;
   booking: Record<string, unknown>;
   oldScheduledAt: string;
   newScheduledAt: string;
@@ -59,9 +60,44 @@ export interface RescheduleCoreSuccess {
   providerTimezone: string;
 }
 
-export type RescheduleCoreResult =
-  | ({ ok: true } & RescheduleCoreSuccess)
-  | { ok: false; error: RescheduleCoreError };
+export interface RescheduleCoreFailure {
+  ok: false;
+  error: RescheduleCoreError;
+}
+
+export type RescheduleCoreResult = RescheduleCoreSuccess | RescheduleCoreFailure;
+
+/**
+ * §Cross-app audit 2026-04 (reschedule unification): canonical HTTP mapping
+ * for every failure kind `executeReschedule` can return. Route handlers can
+ * call this to keep status codes + error codes consistent across the
+ * customer, provider, and portal surfaces without re-inventing the table.
+ */
+export function httpStatusForRescheduleError(err: RescheduleCoreError): {
+  status: number;
+  code: string;
+} {
+  switch (err.kind) {
+    case "NOT_FOUND":
+      return { status: 404, code: "NOT_FOUND" };
+    case "INVALID_STATUS":
+      return { status: 400, code: "INVALID_STATUS" };
+    case "RESCHEDULE_BLOCKED":
+      return { status: 403, code: "RESCHEDULE_BLOCKED" };
+    case "VALIDATION_ERROR":
+      return { status: 400, code: "VALIDATION_ERROR" };
+    case "SLOT_UNAVAILABLE":
+      return { status: 409, code: "SLOT_UNAVAILABLE" };
+    case "SLOT_CHECK_UNAVAILABLE":
+      return { status: 503, code: "SLOT_CHECK_UNAVAILABLE" };
+    case "SLOT_CONTENDED":
+      return { status: 409, code: "SLOT_CONTENDED" };
+    case "CONFLICT":
+      return { status: 409, code: "CONFLICT" };
+    case "INTERNAL":
+      return { status: 500, code: "INTERNAL" };
+  }
+}
 
 type BookingRow = {
   id: string;
@@ -280,21 +316,91 @@ export async function executeReschedule(
   }
 
   if (conflictErrorOccurred) {
-    // Wave 1.3: fail closed on all three surfaces (was fail-open on portal).
-    // If the conflict RPC is unreachable we cannot safely guarantee the slot
-    // is free, so we refuse the reschedule with a retryable 5xx.
-    // eslint-disable-next-line no-console
-    console.error(
-      `[reschedule-core] check_reschedule_slot_conflict unavailable (actor=${actor}) — FAILING CLOSED`,
-      conflictErrorOccurred,
-    );
-    return {
-      ok: false,
-      error: {
-        kind: "SLOT_CHECK_UNAVAILABLE",
-        message: "We could not confirm that slot is free right now. Please try again in a moment.",
-      },
-    };
+    // §Launch-audit 2026-04: fail-closed was turning "migration 503 not yet
+    // applied" (or any transient PostgREST hiccup) into a global
+    // reschedule outage on provider + portal. Detect "function does not
+    // exist" specifically and degrade to an in-query overlap check instead
+    // of locking up real customers. Any *other* RPC error still fails
+    // closed, keeping the double-book guard intact.
+    const errAsRecord = conflictErrorOccurred as { code?: string; message?: string };
+    const code = errAsRecord?.code ?? "";
+    const msg = (errAsRecord?.message ?? "").toLowerCase();
+    const missingFn =
+      code === "42883" ||
+      code === "PGRST202" ||
+      msg.includes("does not exist") ||
+      msg.includes("could not find the function");
+
+    if (missingFn) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[reschedule-core] check_reschedule_slot_conflict RPC missing (actor=${actor}) — ` +
+          "falling back to overlap check. Apply migration 503 to restore advisory-lock protection.",
+        conflictErrorOccurred,
+      );
+
+      const windowEnd = new Date(
+        newDatetime.getTime() + totalDuration * 60_000,
+      ).toISOString();
+
+      const { data: overlapRows, error: overlapErr } = await adminSupabase
+        .from("booking_services")
+        .select("id, booking_id, booking:bookings!inner(id, status)")
+        .eq("staff_id", staffId)
+        .neq("booking_id", bookingId)
+        .lt("scheduled_start_at", windowEnd)
+        .gt("scheduled_end_at", newDatetime.toISOString());
+
+      if (overlapErr) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[reschedule-core] fallback overlap check failed (actor=${actor}) — FAILING CLOSED`,
+          overlapErr,
+        );
+        return {
+          ok: false,
+          error: {
+            kind: "SLOT_CHECK_UNAVAILABLE",
+            message:
+              "We could not confirm that slot is free right now. Please try again in a moment.",
+          },
+        };
+      }
+
+      type OverlapRow = {
+        booking?: { status?: string | null } | { status?: string | null }[] | null;
+      };
+      const liveOverlap = ((overlapRows ?? []) as OverlapRow[]).some((row) => {
+        const b = Array.isArray(row.booking) ? row.booking[0] : row.booking;
+        const status = b?.status ?? null;
+        return status !== "cancelled" && status !== "no_show" && status !== "completed";
+      });
+
+      if (liveOverlap) {
+        return {
+          ok: false,
+          error: {
+            kind: "SLOT_CONTENDED",
+            message: "That time just became unavailable. Please pick another slot.",
+          },
+        };
+      }
+      // overlap check clean → fall through to optimistic update below.
+    } else {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[reschedule-core] check_reschedule_slot_conflict unavailable (actor=${actor}) — FAILING CLOSED`,
+        conflictErrorOccurred,
+      );
+      return {
+        ok: false,
+        error: {
+          kind: "SLOT_CHECK_UNAVAILABLE",
+          message:
+            "We could not confirm that slot is free right now. Please try again in a moment.",
+        },
+      };
+    }
   }
 
   if (conflictCheck?.conflict) {

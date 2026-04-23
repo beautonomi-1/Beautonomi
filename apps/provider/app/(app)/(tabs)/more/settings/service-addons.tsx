@@ -24,6 +24,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 type AddonType = "service" | "product" | "upgrade";
 
@@ -223,6 +224,7 @@ export default function ServiceAddonsScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(a: ServiceAddon) => a.id}
           showsVerticalScrollIndicator={false}

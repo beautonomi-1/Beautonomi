@@ -480,4 +480,58 @@ describe("Fee Breakdown", () => {
     
     expect(result.breakdown.some(b => b.label.includes("free"))).toBe(true);
   });
+
+  // §Release-audit 2026-04: guard against regressions in the distance
+  // strategy breakdown (was showing the gross `distanceKm * perKmRate`
+  // even when `freeRadiusKm` capped the actual charge below it).
+  describe("distance strategy breakdown vs charged fee", () => {
+    // 10km away from base using an easy per-km rate so assertions are clean.
+    const baseLocation = createMockCoordinates(-33.9249, 18.4241);
+    // Empirically: ~10km east of base. Exact number isn't critical —
+    // assertions check `breakdown.amount` sums equal `result.fee`.
+    const address = createMockAddress({
+      coordinates: createMockCoordinates(-33.9249, 18.5314),
+    });
+
+    it("sums breakdown amounts to the charged fee (no free radius)", () => {
+      const rules: TravelFeeRules = {
+        strategy: "distance",
+        perKmRate: 10,
+        minimumFee: 20,
+      };
+      const result = computeTravelFee(baseLocation, address, rules);
+      const sum = result.breakdown.reduce((acc, b) => acc + b.amount, 0);
+      expect(Number(sum.toFixed(2))).toBeCloseTo(result.fee, 1);
+    });
+
+    it("honors freeRadiusKm in both fee and breakdown", () => {
+      const rules: TravelFeeRules = {
+        strategy: "distance",
+        perKmRate: 10,
+        minimumFee: 0,
+        freeRadiusKm: 5,
+      };
+      const result = computeTravelFee(baseLocation, address, rules);
+      const sum = result.breakdown.reduce((acc, b) => acc + b.amount, 0);
+      expect(Number(sum.toFixed(2))).toBeCloseTo(result.fee, 1);
+      // Must not charge for the first 5km.
+      // (10km - 5km) * 10 = R50, roughly.
+      expect(result.fee).toBeLessThan(80);
+      expect(result.fee).toBeGreaterThan(30);
+      expect(result.breakdown.some((b) => b.label.includes("Free within"))).toBe(true);
+    });
+
+    it("respects maximumFee cap and reflects it in the sum", () => {
+      const rules: TravelFeeRules = {
+        strategy: "distance",
+        perKmRate: 100,
+        minimumFee: 0,
+        maximumFee: 100,
+      };
+      const result = computeTravelFee(baseLocation, address, rules);
+      expect(result.fee).toBeLessThanOrEqual(100);
+      const sum = result.breakdown.reduce((acc, b) => acc + b.amount, 0);
+      expect(Number(sum.toFixed(2))).toBeCloseTo(result.fee, 1);
+    });
+  });
 });

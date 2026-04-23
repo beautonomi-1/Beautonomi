@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import React, { useState, lazy, Suspense, useCallback, useRef, memo } from "react";
+import React, { useState, lazy, Suspense, useCallback, useRef, memo, useEffect } from "react";
 import {
   User,
   ShieldCheck,
@@ -155,6 +155,22 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
     },
     [router]
   );
+
+  // Warm common account routes once the grid is on-screen so the first tap
+  // pays only for the destination RSC payload, not cold chunk discovery.
+  useEffect(() => {
+    const hrefs = ACCOUNT_HUB_CARDS.filter((c) => !c.isAction).map((c) => c.link);
+    const run = () => {
+      hrefs.forEach((h) => warmRoute(h));
+      warmRoute("/provider/onboarding");
+    };
+    if (typeof requestIdleCallback !== "undefined") {
+      const id = requestIdleCallback(run, { timeout: 2500 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = window.setTimeout(run, 300);
+    return () => window.clearTimeout(t);
+  }, [warmRoute]);
 
   const openActionCard = useCallback((card: AccountHubCard) => {
     if (card.link === "#about-us") setShowAboutUs(true);

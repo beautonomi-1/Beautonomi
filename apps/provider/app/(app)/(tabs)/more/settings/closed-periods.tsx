@@ -22,6 +22,7 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { formatDate } from "@/lib/format";
 import { formatLocalYmd } from "@/lib/reportDateRanges";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface AvailabilityBlock {
   id: string;
@@ -319,6 +320,7 @@ export default function ClosedPeriodsScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(b: AvailabilityBlock) => b.id}
           showsVerticalScrollIndicator={false}

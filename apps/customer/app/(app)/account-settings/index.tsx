@@ -91,7 +91,9 @@ export default function AccountSettingsScreen() {
   const groups = useMemo(() => buildAccountSettingsGroups(t), [t]);
   const { user, signOut } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
-  const { data: profileCompletion } = useApi<ProfileCompletion>("/api/me/profile-completion");
+  const { data: profileCompletion } = useApi<ProfileCompletion>("/api/me/profile-completion", {
+    staleTimeMs: 120_000,
+  });
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const completionPct = profileCompletion?.percentage ?? profileCompletion?.completionPercentage ?? 0;
   const showCompletionBanner = profileCompletion && completionPct < 100;

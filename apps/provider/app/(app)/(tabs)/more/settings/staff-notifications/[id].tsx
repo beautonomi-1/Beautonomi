@@ -13,6 +13,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface StaffNotificationSettings {
   emailEnabled: boolean;
@@ -290,6 +291,7 @@ export default function StaffNotificationSettingsScreen() {
               Reminder time
             </Text>
             <FlatList
+              {...verticalFlatListPerf}
               data={REMINDER_OPTIONS}
               keyExtractor={(item: { value: string }) => item.value}
               renderItem={({ item }: { item: { value: string; label: string } }) => (

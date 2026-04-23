@@ -22,6 +22,7 @@ import { Colors } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { getTenantLocaleTag } from "@/lib/locale";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -525,6 +526,7 @@ export default function RecurringBookingsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.white }}>
       <FlatList
+        {...verticalFlatListPerf}
         data={bookings}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}

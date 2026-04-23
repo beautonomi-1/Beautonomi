@@ -4,6 +4,13 @@ import React, { useState, useEffect } from "react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Booking } from "@/types/beautonomi";
 
 type BookingListItem = Booking & { provider_name?: string; services?: Array<{ offering_name?: string }> };
@@ -17,10 +24,24 @@ interface BookingsListProps {
   refreshTrigger?: number;
 }
 
+type SortMode = "scheduled_desc" | "scheduled_asc" | "created_desc" | "created_asc";
+
+function sortModeToQuery(m: SortMode): string {
+  const map: Record<SortMode, [string, string]> = {
+    scheduled_desc: ["scheduled_at", "desc"],
+    scheduled_asc: ["scheduled_at", "asc"],
+    created_desc: ["created_at", "desc"],
+    created_asc: ["created_at", "asc"],
+  };
+  const [sort_by, sort_dir] = map[m];
+  return `sort_by=${sort_by}&sort_dir=${sort_dir}`;
+}
+
 export default function BookingsList({ status, refreshTrigger }: BookingsListProps) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("scheduled_desc");
   const router = useRouter();
 
   useEffect(() => {
@@ -29,9 +50,10 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
         setIsLoading(true);
         setError(null);
 
+        const sortQs = sortModeToQuery(sortMode);
         const params = status
-          ? `?status=${encodeURIComponent(status)}&limit=100&page=1`
-          : "?limit=100&page=1";
+          ? `?status=${encodeURIComponent(status)}&limit=100&page=1&${sortQs}`
+          : `?limit=100&page=1&${sortQs}`;
         const response = await fetcher.get<{
           data: {
             items: Booking[];
@@ -60,7 +82,7 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
     };
 
     loadBookings();
-  }, [status, refreshTrigger]);
+  }, [status, refreshTrigger, sortMode]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -148,6 +170,21 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
 
   return (
     <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <p className="text-sm text-gray-600 font-light">Sort list by</p>
+        <Select value={sortMode} onValueChange={(v) => setSortMode(v as SortMode)}>
+          <SelectTrigger className="w-full sm:w-[280px] h-11 border-gray-200 bg-white/90">
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="scheduled_desc">Appointment time · newest first</SelectItem>
+            <SelectItem value="scheduled_asc">Appointment time · soonest first</SelectItem>
+            <SelectItem value="created_desc">Date booked · newest first</SelectItem>
+            <SelectItem value="created_asc">Date booked · oldest first</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {bookings.map((booking) => (
         <div
           key={booking.id}

@@ -16,6 +16,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface FormField {
   id: string;
@@ -152,6 +153,7 @@ export default function FormsScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={list}
           keyExtractor={(f: Form) => f.id}
           scrollEnabled={false}

@@ -28,6 +28,7 @@ import { formatCurrency, formatDuration } from "@/lib/format";
 import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 import { supabase } from "@/lib/supabase/client";
 import { twStyle } from "@/lib/twStyle";
+import { appendFormDataFileNative } from "@beautonomi/utils";
 
 interface ServiceDetail {
   id: string;
@@ -63,6 +64,7 @@ interface ServiceVariant {
   variant_name?: string | null;
   price: number;
   duration_minutes: number;
+  variant_sort_order?: number | null;
 }
 
 interface FormState {
@@ -101,8 +103,9 @@ interface AddOnFormState {
 
 export default function ServiceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  useRouter();
+  const router = useRouter();
   const { isTablet } = useResponsive();
+  const [deletingService, setDeletingService] = useState(false);
 
   const {
     data: service,
@@ -133,6 +136,8 @@ export default function ServiceDetailScreen() {
     object,
     ServiceVariant
   >(`/api/provider/services/${id}/variants`);
+  const { execute: updateVariant, loading: updatingVariant } = useApiMutation("patch");
+  const { execute: reorderVariant } = useApiMutation("patch");
 
   const [form, setForm] = useState<FormState | null>(null);
   const [editing, setEditing] = useState(false);
@@ -149,6 +154,7 @@ export default function ServiceDetailScreen() {
   // Variant form state
   const [showVariantSheet, setShowVariantSheet] = useState(false);
   const [variantForm, setVariantForm] = useState({ title: "", price: "", duration_minutes: "" });
+  const [editingVariant, setEditingVariant] = useState<ServiceVariant | null>(null);
 
   async function handlePickServiceImage() {
     if (!editing) return;
@@ -178,11 +184,11 @@ export default function ServiceDetailScreen() {
       const token = sessionData.session?.access_token;
 
       const formData = new FormData();
-      formData.append("file", {
+      appendFormDataFileNative(formData, "file", {
         uri: asset.uri,
         name: asset.fileName ?? "service-photo.jpg",
         type: asset.mimeType ?? "image/jpeg",
-      } as any);
+      });
       formData.append("folder", "services");
 
       const uploadRes = await fetch(
@@ -379,8 +385,48 @@ export default function ServiceDetailScreen() {
     ]);
   }
 
-  function openVariantForm() {
-    setVariantForm({ title: "", price: "", duration_minutes: "" });
+  function handleDeleteService() {
+    if (!id || !service) return;
+    Alert.alert(
+      "Delete service",
+      `Remove "${service.title}" from your catalogue? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setDeletingService(true);
+            try {
+              const { error } = await deleteItem(`/api/provider/services/${id}`);
+              if (error) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                Alert.alert("Could not delete", error);
+                return;
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              router.back();
+            } finally {
+              setDeletingService(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  function openVariantForm(v?: ServiceVariant) {
+    if (v) {
+      setEditingVariant(v);
+      setVariantForm({
+        title: v.title || v.variant_name || "",
+        price: String(v.price ?? ""),
+        duration_minutes: String(v.duration_minutes ?? ""),
+      });
+    } else {
+      setEditingVariant(null);
+      setVariantForm({ title: "", price: "", duration_minutes: "" });
+    }
     setShowVariantSheet(true);
   }
 
@@ -391,19 +437,53 @@ export default function ServiceDetailScreen() {
     }
     const payload = {
       title: variantForm.title.trim(),
+      variant_name: variantForm.title.trim(),
       price: Number(variantForm.price),
       duration_minutes: Number(variantForm.duration_minutes),
     };
-    const { error } = await createVariant(payload);
-    if (error) {
-      Alert.alert("Error", error);
-      return;
+    if (editingVariant) {
+      const { error } = await updateVariant(
+        `/api/provider/services/${id}/variants/${editingVariant.id}`,
+        payload,
+      );
+      if (error) {
+        Alert.alert("Error", error);
+        return;
+      }
+    } else {
+      const { error } = await createVariant(payload);
+      if (error) {
+        Alert.alert("Error", error);
+        return;
+      }
     }
     setShowVariantSheet(false);
+    setEditingVariant(null);
     await refreshVariants();
     // Also refresh the service so has_variants flag is current
     await refresh();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  // §Provider-audit 2026-04 (catalogue round 2): reorder a variant by
+  // swapping its `variant_sort_order` with the neighbour. Matches the
+  // server endpoint we just added at /api/provider/services/[id]/variants/[variantId]/reorder.
+  async function handleReorderVariant(v: ServiceVariant, direction: "up" | "down") {
+    if (!variants) return;
+    const idx = variants.findIndex((x) => x.id === v.id);
+    if (idx < 0) return;
+    if (direction === "up" && idx === 0) return;
+    if (direction === "down" && idx === variants.length - 1) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { error } = await reorderVariant(
+      `/api/provider/services/${id}/variants/${v.id}/reorder`,
+      { direction },
+    );
+    if (error) {
+      Alert.alert("Error", error);
+      return;
+    }
+    await refreshVariants();
   }
 
   async function handleDeleteVariant(v: ServiceVariant) {
@@ -748,7 +828,7 @@ export default function ServiceDetailScreen() {
           <SectionHeader
             title="Service Variants"
             actionLabel="Add New"
-            onAction={openVariantForm}
+            onAction={() => openVariantForm()}
           />
           <Text style={twStyle("mb-3 text-xs text-gray-500 leading-relaxed")}>
             Variants let customers choose from different options (e.g. short / long hair, 30 min / 60 min). Each variant gets its own price and duration and appears as a selectable option in the booking flow.
@@ -761,7 +841,7 @@ export default function ServiceDetailScreen() {
               </Text>
               <TouchableOpacity
                 style={twStyle("mt-3 rounded-lg bg-indigo-50 px-4 py-2")}
-                onPress={openVariantForm}
+                onPress={() => openVariantForm()}
                 accessibilityLabel="Create first variant"
                 accessibilityRole="button"
               >
@@ -775,16 +855,52 @@ export default function ServiceDetailScreen() {
               {variants.map((v, vIdx) => (
                 <View
                   key={v.id}
-                  style={[twStyle("flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4"), vIdx > 0 && { marginTop: 8 }]}
+                  style={[twStyle("flex-row items-center rounded-xl border border-gray-100 bg-white p-3"), vIdx > 0 && { marginTop: 8 }]}
                 >
-                  <View style={twStyle("flex-1")}>
+                  {/* §Provider-audit 2026-04 (catalogue round 2): variant reorder buttons — the
+                      variants already sort server-side by `variant_sort_order`, now providers
+                      can control that order from mobile without going to web admin. */}
+                  <View style={twStyle("mr-2 items-center")}>
+                    <TouchableOpacity
+                      hitSlop={8}
+                      onPress={() => handleReorderVariant(v, "up")}
+                      disabled={vIdx === 0}
+                      accessibilityLabel={`Move ${v.title || v.variant_name} up`}
+                      style={{ opacity: vIdx === 0 ? 0.25 : 1 }}
+                    >
+                      <Ionicons name="chevron-up" size={18} color="#6b7280" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      hitSlop={8}
+                      onPress={() => handleReorderVariant(v, "down")}
+                      disabled={vIdx === variants.length - 1}
+                      accessibilityLabel={`Move ${v.title || v.variant_name} down`}
+                      style={{ opacity: vIdx === variants.length - 1 ? 0.25 : 1 }}
+                    >
+                      <Ionicons name="chevron-down" size={18} color="#6b7280" />
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity
+                    style={twStyle("flex-1")}
+                    onPress={() => openVariantForm(v)}
+                    accessibilityLabel={`Edit variant ${v.title || v.variant_name}`}
+                    accessibilityRole="button"
+                  >
                     <Text style={twStyle("text-sm font-medium text-gray-900")}>
                       {v.title || v.variant_name || "—"}
                     </Text>
                     <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                       {formatDuration(v.duration_minutes)} · {formatCurrency(v.price, service.currency)}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => openVariantForm(v)}
+                    style={[twStyle("rounded-lg bg-gray-100 p-2"), { marginRight: 8 }]}
+                    accessibilityLabel={`Edit variant ${v.title || v.variant_name}`}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="pencil-outline" size={16} color="#6b7280" />
+                  </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleDeleteVariant(v)}
                     style={twStyle("rounded-lg bg-red-50 p-2")}
@@ -815,6 +931,31 @@ export default function ServiceDetailScreen() {
                 )}
               </View>
             </>
+          )}
+
+          {/*
+            §Provider-audit 2026-04 (C1): web allows deleting a service from
+            the catalogue page. Mobile previously only supported deleting
+            add-ons/variants, forcing providers to the web admin to retire
+            a service. Put destructive action at the bottom with a confirm.
+          */}
+          {!editing && (
+            <View style={{ marginTop: 24, marginBottom: 16 }}>
+              <TouchableOpacity
+                onPress={handleDeleteService}
+                style={twStyle("rounded-xl border border-red-200 bg-red-50 py-3")}
+                accessibilityRole="button"
+                accessibilityLabel="Delete service"
+                disabled={deletingService}
+              >
+                <Text style={twStyle("text-center text-sm font-semibold text-red-600")}>
+                  {deletingService ? "Deleting…" : "Delete service"}
+                </Text>
+              </TouchableOpacity>
+              <Text style={twStyle("mt-2 text-center text-xs text-gray-500")}>
+                Permanently removes this service and its add-ons. Existing bookings are not affected.
+              </Text>
+            </View>
           )}
         </View>
       </View>
@@ -881,8 +1022,11 @@ export default function ServiceDetailScreen() {
       {/* Variant Bottom Sheet */}
       <BottomSheet
         visible={showVariantSheet}
-        onClose={() => setShowVariantSheet(false)}
-        title="New Variant"
+        onClose={() => {
+          setShowVariantSheet(false);
+          setEditingVariant(null);
+        }}
+        title={editingVariant ? "Edit Variant" : "New Variant"}
       >
         <Text style={twStyle("mb-3 text-xs text-gray-500 leading-relaxed")}>
           Add a booking option with its own price and duration (e.g. &quot;Short Hair - 30 min&quot;).
@@ -929,10 +1073,10 @@ export default function ServiceDetailScreen() {
           </View>
         </View>
         <ActionButton
-          label="Create Variant"
+          label={editingVariant ? "Update Variant" : "Create Variant"}
           variant="secondary"
           onPress={handleSaveVariant}
-          loading={creatingVariant}
+          loading={creatingVariant || updatingVariant}
           fullWidth
           disabled={!variantForm.title.trim() || !variantForm.price || !variantForm.duration_minutes}
         />

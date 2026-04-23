@@ -69,6 +69,13 @@ interface Client {
   last_visit?: string | null;
   notes?: string | null;
   tags?: string[];
+  /**
+   * §Provider-audit 2026-04: false for walk-in / placeholder clients that
+   * don't have a Beautonomi auth account yet (e.g. created via the provider
+   * add-client form with a generated @beautonomi.invalid email). These
+   * clients can't be messaged via the in-app chat.
+   */
+  is_registered?: boolean;
 }
 
 type ClientFilter = "all" | "vip" | "regular" | "new";
@@ -160,13 +167,31 @@ const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onM
           <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.white }}>Book</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 8 }}
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+            backgroundColor: Colors.white,
+            paddingVertical: 8,
+            opacity: client.is_registered === false ? 0.5 : 1,
+          }}
           onPress={() => onMessage(client)}
           accessibilityRole="button"
-          accessibilityLabel={`Message ${client.full_name}`}
+          accessibilityLabel={
+            client.is_registered === false
+              ? `${client.full_name} is not on Beautonomi yet`
+              : `Message ${client.full_name}`
+          }
+          accessibilityState={{ disabled: client.is_registered === false }}
         >
           <Ionicons name="chatbubble-outline" size={14} color={Colors.gray[700]} />
-          <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Message</Text>
+          <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>
+            Message
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -296,11 +321,21 @@ export default function ClientsScreen() {
       const custId = c.customer_id;
       if (seen.has(custId)) return;
       seen.add(custId);
+      const email: string = c.customer?.email || "";
+      // Treat explicit `is_registered: false` as authoritative; otherwise fall
+      // back to the placeholder-email heuristic so older server responses
+      // without the flag still branch correctly.
+      const isRegistered =
+        typeof c.customer?.is_registered === "boolean"
+          ? c.customer.is_registered
+          : Boolean(email) &&
+            !email.includes("beautonomi.invalid") &&
+            !email.includes("beautonomi.local");
       result.push({
         id: c.id || custId,
         customer_id: custId,
         full_name: c.customer?.full_name || "Unknown",
-        email: c.customer?.email || "",
+        email,
         phone: c.customer?.phone || "",
         avatar_url: c.customer?.avatar_url ?? null,
         created_at: c.created_at || "",
@@ -309,6 +344,7 @@ export default function ClientsScreen() {
         last_visit: c.last_service_date ?? null,
         notes: c.notes ?? null,
         tags: c.tags ?? [],
+        is_registered: isRegistered,
       });
     };
 
@@ -482,21 +518,42 @@ export default function ClientsScreen() {
   }
 
   const handleViewClient = useCallback((client: Client) => {
-    router.push(`/(app)/(tabs)/more/clients/${client.id}` as any);
+    router.push(`/(app)/(tabs)/more/clients/${client.id}` as never);
   }, [router]);
 
   const handleBook = useCallback((client: Client) => {
-    router.push(`/(app)/(tabs)/more/bookings/new?clientId=${client.customer_id}` as any);
+    router.push(`/(app)/(tabs)/more/bookings/new?clientId=${client.customer_id}` as never);
   }, [router]);
 
   const handleMessage = useCallback(async (client: Client) => {
+    // §Provider-audit 2026-04: walk-in / placeholder clients don't have a
+    // Beautonomi auth account, so there's no inbox to deliver a chat to.
+    // Surface a clear hint instead of firing a POST that will 404.
+    if (client.is_registered === false) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert(
+        "Invite this client first",
+        `${client.full_name || "This client"} isn't on Beautonomi yet. Share your booking link or ask them to sign up, then you can chat inside the app.`,
+        [{ text: "OK", style: "default" }],
+      );
+      return;
+    }
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const result = await api.post<{ id: string }>("/api/provider/conversations/create", {
         customer_id: client.customer_id,
       });
       if (result.error) {
-        Alert.alert("Cannot message", result.error.message);
+        const code = (result.error as { code?: string } | undefined)?.code;
+        if (code === "CUSTOMER_UNREGISTERED") {
+          Alert.alert(
+            "Invite this client first",
+            result.error.message ||
+              "This client isn't on Beautonomi yet. Invite them to sign up before sending a chat message.",
+          );
+        } else {
+          Alert.alert("Cannot message", result.error.message);
+        }
         return;
       }
       if (result.data?.id) {

@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface Automation {
   id: string;
@@ -127,6 +128,7 @@ export default function AutomationsScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={list}
           keyExtractor={(a: Automation) => a.id}
           scrollEnabled={false}

@@ -33,6 +33,7 @@ interface ShippingConfig {
   delivery_radius_km: number | null;
   estimated_delivery_days: number;
   delivery_notes: string | null;
+  collection_notes: string | null;
 }
 
 const DEFAULTS: ShippingConfig = {
@@ -43,6 +44,7 @@ const DEFAULTS: ShippingConfig = {
   delivery_radius_km: null,
   estimated_delivery_days: 3,
   delivery_notes: null,
+  collection_notes: null,
 };
 
 type ShippingResponse = { config?: ShippingConfig };
@@ -65,6 +67,7 @@ export default function ShippingConfigScreen() {
       delivery_radius_km: raw.delivery_radius_km != null ? Number(raw.delivery_radius_km) : null,
       estimated_delivery_days: Number(raw.estimated_delivery_days) || 3,
       delivery_notes: raw.delivery_notes ?? null,
+      collection_notes: raw.collection_notes ?? null,
     });
   }, [data]);
 
@@ -79,6 +82,7 @@ export default function ShippingConfigScreen() {
       delivery_radius_km: config.delivery_radius_km,
       estimated_delivery_days: config.estimated_delivery_days,
       delivery_notes: config.delivery_notes,
+      collection_notes: config.collection_notes,
     });
     setSaving(false);
     if (res.error) {
@@ -133,7 +137,28 @@ export default function ShippingConfigScreen() {
               thumbColor="#fff"
             />
           </View>
-          <Text style={twStyle("text-sm text-gray-500")}>Allow customers to collect orders from your location(s).</Text>
+          <Text style={twStyle("text-sm text-gray-500 mb-3")}>Allow customers to collect orders from your location(s).</Text>
+
+          {config.offers_collection && (
+            <View>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Collection notes</Text>
+              <Text style={twStyle("mb-1.5 text-xs text-gray-500")}>
+                Shown to customers at checkout (e.g. hours, entrance, what to bring).
+              </Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 min-h-[80px]")}
+                value={config.collection_notes ?? ""}
+                onChangeText={(t) =>
+                  setConfig((c) => ({ ...c, collection_notes: t || null }))
+                }
+                placeholder="e.g. Collection Mon–Fri 9am–5pm. Please bring your order confirmation."
+                placeholderTextColor="#9ca3af"
+                multiline
+                maxLength={500}
+                textAlignVertical="top"
+              />
+            </View>
+          )}
         </View>
 
         {/* Delivery */}

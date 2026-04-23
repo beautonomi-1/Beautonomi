@@ -154,6 +154,12 @@ export default function SalesScreen() {
   const locQFirst = selectedLocationId ? `?location_id=${selectedLocationId}` : "";
   const [dateRange, setDateRange] = useState("month");
   const [refreshing, setRefreshing] = useState(false);
+  // §Provider-audit 2026-04 (B2): wire the unified /api/provider/sales
+  // `search` param to a debounced input so providers can quickly find a
+  // specific sale by reference or client name. Previously the screen only
+  // supported date + location filtering, which made scanning busy stores
+  // frustrating. SearchBar debounces internally.
+  const [salesSearchDebounced, setSalesSearchDebounced] = useState("");
 
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("idle");
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -202,13 +208,16 @@ export default function SalesScreen() {
     }
   }, [dateRange]);
 
+  const searchQ = salesSearchDebounced
+    ? `&search=${encodeURIComponent(salesSearchDebounced)}`
+    : "";
   const {
     data: salesResponse,
     loading: salesLoading,
     error: salesError,
     refresh: refreshSales,
   } = useApi<SalesResponse>(
-    `/api/provider/sales?limit=50${dateParams}${locQ}`,
+    `/api/provider/sales?limit=50${dateParams}${locQ}${searchQ}`,
     { enabled: isFocused, staleTimeMs: 15_000 },
   );
   const sales = salesResponse?.data ?? [];
@@ -217,14 +226,14 @@ export default function SalesScreen() {
     "/api/provider/services?is_active=true",
     { enabled: isFocused, staleTimeMs: 60_000 },
   );
-  const { data: productsResponse } = useApi<ProductsResponse>(
+  const { data: productsResponse } = useApi<ProductsResponse | ProductItem[]>(
     "/api/provider/products?limit=200",
     { enabled: isFocused, staleTimeMs: 60_000 },
   );
   const products = useMemo<ProductItem[]>(() => {
     if (!productsResponse) return [];
-    const raw = productsResponse as any;
-    return raw.products ?? raw ?? [];
+    if (Array.isArray(productsResponse)) return productsResponse;
+    return productsResponse.products ?? [];
   }, [productsResponse]);
   const { data: staffMembers } = useApi<StaffMember[]>(
     selectedLocationId ? `/api/provider/staff?location_id=${selectedLocationId}` : "/api/provider/staff",
@@ -917,7 +926,7 @@ export default function SalesScreen() {
         rightAction={
           <TouchableOpacity
             style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[100] }}
-            onPress={() => router.push("/(app)/(tabs)/more/finance" as any)}
+            onPress={() => router.push("/(app)/(tabs)/more/finance" as never)}
             accessibilityLabel="View finance reports"
             accessibilityRole="button"
           >
@@ -968,19 +977,45 @@ export default function SalesScreen() {
 
       <View style={{ marginTop: 16 }}>
         <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
-          Transactions ({sales.length})
+          Transactions ({salesResponse?.total ?? sales.length})
         </Text>
+
+        <View style={{ marginBottom: 12 }}>
+          <SearchBar
+            value={salesSearchDebounced}
+            onChangeText={setSalesSearchDebounced}
+            placeholder="Search by reference or client name"
+          />
+        </View>
 
         {salesLoading && sales.length === 0 ? (
           <LoadingState fullScreen={false} />
         ) : salesError && sales.length === 0 ? (
           <ErrorState message={salesError} onRetry={refreshSales} />
         ) : sales.length === 0 ? (
-          <EmptyState
-            icon="receipt-outline"
-            title="No sales yet"
-            description="Sales created via POS will appear here"
-          />
+          salesSearchDebounced ? (
+            <EmptyState
+              icon="search-outline"
+              title="No matches"
+              description={`No transactions match "${salesSearchDebounced}". Try a different reference or name.`}
+              actionLabel="Clear search"
+              onAction={() => setSalesSearchDebounced("")}
+            />
+          ) : dateRange !== "all" ? (
+            <EmptyState
+              icon="calendar-outline"
+              title="No sales in this range"
+              description="Try expanding the date range or switch to All time."
+              actionLabel="Show all time"
+              onAction={() => setDateRange("all")}
+            />
+          ) : (
+            <EmptyState
+              icon="receipt-outline"
+              title="No sales yet"
+              description="Sales created via POS will appear here"
+            />
+          )
         ) : (
           <View style={[ isTablet ? { flexDirection: "row", flexWrap: "wrap" } : {} ]}>
             {sales.map((sale) => (
