@@ -6,11 +6,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  getUserRoleServer,
-  getPortalForUser,
-  getDefaultRouteForPortal,
-} from "@/lib/auth/role";
+import { getPortalForUser, getDefaultRouteForPortal } from "@/lib/auth/role";
+import { getUserRoleServer } from "@/lib/auth/role-server";
 import { resolvePortalAwareReturnPathname } from "@/lib/auth/post-login-return-path";
 
 export async function GET(request: NextRequest) {

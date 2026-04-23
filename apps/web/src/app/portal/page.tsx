@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { getUserRoleServer, getPortalForUser, getDefaultRouteForPortal } from "@/lib/auth/role";
+import { getPortalForUser, getDefaultRouteForPortal } from "@/lib/auth/role";
+import { getUserRoleServer } from "@/lib/auth/role-server";
 import PortalLandingContent from "./PortalLandingContent";
 
 /**
