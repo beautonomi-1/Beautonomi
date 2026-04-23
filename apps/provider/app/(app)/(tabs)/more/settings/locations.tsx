@@ -22,6 +22,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { getCachedConfigBundle } from "@/lib/config-bundle";
@@ -298,6 +299,7 @@ export default function LocationsSettingsScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={locations}
           keyExtractor={(l: Location) => l.id}
           showsVerticalScrollIndicator={false}

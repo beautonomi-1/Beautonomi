@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_INTEGRATIONS_DEV, ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -11,6 +12,8 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
+import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 interface NotificationChannel {
   enabled: boolean;
@@ -27,7 +30,22 @@ interface NotificationsConfig {
   push?: NotificationChannel;
   in_app?: NotificationChannel;
   whatsapp?: NotificationChannel;
-  onesignal?: { app_id_set?: boolean; api_key_set?: boolean; enabled?: boolean };
+  onesignal?: {
+    app_id_set?: boolean;
+    api_key_set?: boolean;
+    enabled?: boolean;
+    settings_enabled?: boolean;
+  };
+  onesignal_apps?: {
+    customer: { app_id: string | null; rest_api_key_configured: boolean };
+    provider: { app_id: string | null; rest_api_key_configured: boolean };
+  };
+  onesignal_alignment?: {
+    customer_expo_env?: string;
+    provider_expo_env?: string;
+    server_rest_keys?: string;
+    broadcast_note?: string;
+  };
   twilio?: { account_sid_set?: boolean; auth_token_set?: boolean; from_number?: string; enabled?: boolean };
   [key: string]: unknown;
 }
@@ -100,6 +118,11 @@ export function NotificationsConfigPage() {
   );
   const qc = useQueryClient();
   const [showRaw, setShowRaw] = useState(false);
+  const [customerAppId, setCustomerAppId] = useState("");
+  const [providerAppId, setProviderAppId] = useState("");
+  const [customerRestKey, setCustomerRestKey] = useState("");
+  const [providerRestKey, setProviderRestKey] = useState("");
+  const [onesignalEnabled, setOnesignalEnabled] = useState(true);
 
   const q = useQuery({
     queryKey: adminQueryKeys.notificationsConfig(),
@@ -112,6 +135,36 @@ export function NotificationsConfigPage() {
       adminApi.postJson("/api/admin/notifications/test", { channel }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: adminQueryKeys.notificationsConfig() }),
   });
+
+  const saveOnesignalMut = useMutation({
+    mutationFn: () =>
+      adminApi.patchJson("/api/admin/notifications/onesignal", {
+        enabled: onesignalEnabled,
+        customer: {
+          app_id: customerAppId.trim(),
+          rest_api_key: customerRestKey.trim() || undefined,
+        },
+        provider: {
+          app_id: providerAppId.trim(),
+          rest_api_key: providerRestKey.trim() || undefined,
+        },
+      }),
+    onSuccess: () => {
+      adminToast.success("OneSignal settings saved");
+      setCustomerRestKey("");
+      setProviderRestKey("");
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.notificationsConfig() });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.settings() });
+    },
+  });
+
+  useEffect(() => {
+    const cfg = q.data;
+    if (!cfg?.onesignal_apps) return;
+    setCustomerAppId(cfg.onesignal_apps.customer.app_id ?? "");
+    setProviderAppId(cfg.onesignal_apps.provider.app_id ?? "");
+    setOnesignalEnabled(cfg.onesignal?.settings_enabled !== false);
+  }, [q.data]);
 
   if (denied) return denied;
   if (q.isLoading) {
@@ -145,17 +198,125 @@ export function NotificationsConfigPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Notification configuration"
-        description="Push, email, SMS, and in-app channel settings. Credentials are stored as platform secrets."
+        description="Push, email, SMS, and in-app channel settings. OneSignal REST keys are stored server-side (same as Platform settings)."
         actions={
           <button
             type="button"
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium hover:bg-gray-50"
             onClick={() => setShowRaw((v) => !v)}
           >
-            {showRaw ? "Hide raw" : "Show raw config"}
+            {showRaw ? "Hide diagnostics JSON" : "Show diagnostics JSON"}
           </button>
         }
       />
+
+      {/* OneSignal — editable (customer vs provider) */}
+      <AdminPanel>
+        <h2 className="mb-1 text-sm font-semibold text-gray-900">OneSignal (customer &amp; provider apps)</h2>
+        <p className="mb-4 text-xs text-gray-600">
+          Match the <strong>App ID</strong> values to <code className="rounded bg-gray-100 px-1">EXPO_PUBLIC_ONESIGNAL_APP_ID</code> in each Expo app.
+          Paste <strong>REST API keys</strong> here for the API (broadcasts, tests) — never commit keys to the repo. Leave a key blank to keep the existing saved key.
+        </p>
+        {cfg?.onesignal_alignment && (
+          <ul className="mb-4 list-inside list-disc space-y-1 text-xs text-gray-600">
+            {cfg.onesignal_alignment.customer_expo_env && <li>{cfg.onesignal_alignment.customer_expo_env}</li>}
+            {cfg.onesignal_alignment.provider_expo_env && <li>{cfg.onesignal_alignment.provider_expo_env}</li>}
+            {cfg.onesignal_alignment.broadcast_note && <li>{cfg.onesignal_alignment.broadcast_note}</li>}
+          </ul>
+        )}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+            <h3 className="text-sm font-semibold text-gray-900">Customer app (end-users)</h3>
+            <label className="block text-xs font-medium text-gray-700">
+              OneSignal App ID
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm"
+                value={customerAppId}
+                onChange={(e) => setCustomerAppId(e.target.value)}
+                placeholder="e.g. 09b4aa59-…"
+                autoComplete="off"
+              />
+            </label>
+            <label className="block text-xs font-medium text-gray-700">
+              REST API key
+              <input
+                type="password"
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm"
+                value={customerRestKey}
+                onChange={(e) => setCustomerRestKey(e.target.value)}
+                placeholder={cfg?.onesignal_apps?.customer.rest_api_key_configured ? "•••••••• (leave blank to keep)" : "Paste REST API key"}
+                autoComplete="off"
+              />
+            </label>
+            <p className="text-[11px] text-gray-500">
+              Status:{" "}
+              {cfg?.onesignal_apps?.customer.rest_api_key_configured ? (
+                <span className="font-medium text-green-700">REST key on file</span>
+              ) : (
+                <span className="font-medium text-amber-700">REST key missing — broadcasts to customers will fail</span>
+              )}
+            </p>
+          </div>
+          <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+            <h3 className="text-sm font-semibold text-gray-900">Provider app (salon / pro)</h3>
+            <label className="block text-xs font-medium text-gray-700">
+              OneSignal App ID
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm"
+                value={providerAppId}
+                onChange={(e) => setProviderAppId(e.target.value)}
+                placeholder="e.g. 2a9cb375-…"
+                autoComplete="off"
+              />
+            </label>
+            <label className="block text-xs font-medium text-gray-700">
+              REST API key
+              <input
+                type="password"
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm"
+                value={providerRestKey}
+                onChange={(e) => setProviderRestKey(e.target.value)}
+                placeholder={cfg?.onesignal_apps?.provider.rest_api_key_configured ? "•••••••• (leave blank to keep)" : "Paste REST API key"}
+                autoComplete="off"
+              />
+            </label>
+            <p className="text-[11px] text-gray-500">
+              Status:{" "}
+              {cfg?.onesignal_apps?.provider.rest_api_key_configured ? (
+                <span className="font-medium text-green-700">REST key on file</span>
+              ) : (
+                <span className="font-medium text-amber-700">REST key missing — broadcasts to providers will fail</span>
+              )}
+            </p>
+          </div>
+        </div>
+        <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-gray-800">
+          <input
+            type="checkbox"
+            className="rounded border-gray-300"
+            checked={onesignalEnabled}
+            onChange={(e) => setOnesignalEnabled(e.target.checked)}
+          />
+          Enable OneSignal in platform settings (required for push/email/SMS via OneSignal)
+        </label>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={saveOnesignalMut.isPending}
+            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+            onClick={() => saveOnesignalMut.mutate()}
+          >
+            {saveOnesignalMut.isPending ? "Saving…" : "Save OneSignal credentials"}
+          </button>
+          <Link
+            to={adminSpaTo("/admin/settings")}
+            className="text-sm text-gray-600 underline hover:text-gray-900"
+          >
+            Open full platform settings
+          </Link>
+        </div>
+        <AdminMutationAlert errors={[saveOnesignalMut.error]} />
+      </AdminPanel>
 
       {/* Integration status */}
       {(onesignal || twilio) && (

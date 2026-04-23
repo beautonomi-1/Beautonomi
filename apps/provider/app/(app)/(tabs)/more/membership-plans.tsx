@@ -25,6 +25,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface MembershipPlan {
   id: string;
@@ -261,6 +262,7 @@ export default function MembershipPlansScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(p: MembershipPlan) => p.id}
           showsVerticalScrollIndicator={false}

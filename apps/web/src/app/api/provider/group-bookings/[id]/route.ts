@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 
 /**
  * GET /api/provider/group-bookings/[id]
@@ -63,6 +65,10 @@ export async function PATCH(
     const allowedFields = [
       "title", "scheduled_at", "service_id", "staff_id", "location_id",
       "max_participants", "duration_minutes", "notes", "status",
+      // §Provider-audit 2026-04 (packages round 2): allow updating the
+      // service_package link so providers can attach/detach a package after
+      // the group booking was created.
+      "package_id",
     ];
     const sanitized: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const key of allowedFields) {
@@ -86,6 +92,69 @@ export async function PATCH(
     }
     delete (sanitized as Record<string, unknown>).scheduled_date;
     delete (sanitized as Record<string, unknown>).scheduled_time;
+
+    // Commit-time availability check when the slot / staff / location / duration
+    // changes. Mirrors the single-booking PATCH behaviour so a provider cannot
+    // silently shift a group onto a conflict.
+    const movingSlot =
+      "scheduled_at" in sanitized ||
+      "staff_id" in sanitized ||
+      "location_id" in sanitized ||
+      "duration_minutes" in sanitized ||
+      "service_id" in sanitized;
+    const allowOverride = body?.allow_override === true;
+    if (movingSlot && !allowOverride) {
+      const { data: existing } = await supabase
+        .from("group_bookings")
+        .select("scheduled_at, duration_minutes, staff_id, location_id, service_id")
+        .eq("id", id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      const nextScheduledAt =
+        (sanitized.scheduled_at as string | undefined) ?? existing?.scheduled_at ?? null;
+      const nextDuration = Number(
+        (sanitized.duration_minutes as number | undefined) ?? existing?.duration_minutes ?? 60,
+      );
+      const nextStaff =
+        (sanitized.staff_id as string | null | undefined) ??
+        (existing?.staff_id as string | null | undefined) ??
+        null;
+      const nextLocation =
+        (sanitized.location_id as string | null | undefined) ??
+        (existing?.location_id as string | null | undefined) ??
+        null;
+      const nextService =
+        (sanitized.service_id as string | null | undefined) ??
+        (existing?.service_id as string | null | undefined) ??
+        null;
+      if (nextScheduledAt) {
+        const d = new Date(nextScheduledAt);
+        if (!Number.isNaN(d.getTime())) {
+          const admin = getSupabaseAdmin();
+          const check = await evaluateProviderSlotAgainstGrid(admin, {
+            providerId,
+            scheduledAt: d,
+            durationMinutes: Number.isFinite(nextDuration) ? nextDuration : 60,
+            staffIdsCsv: nextStaff ? String(nextStaff) : null,
+            locationId: nextLocation ? String(nextLocation) : null,
+            excludeBookingId: undefined,
+            excludeGroupBookingId: id,
+            mode: "salon",
+            travelBufferRaw: null,
+            minNoticeMinutes: 0,
+            maxAdvanceDays: 365,
+            resourceOfferingIds: nextService ? [String(nextService)] : [],
+          });
+          if (!check.ok) {
+            return errorResponse(
+              check.conflicts.join("; ") || "Slot is not available",
+              "SLOT_NOT_AVAILABLE",
+              409,
+            );
+          }
+        }
+      }
+    }
 
     const { data, error } = await supabase
       .from("group_bookings")

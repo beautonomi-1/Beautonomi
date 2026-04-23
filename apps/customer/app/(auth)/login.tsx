@@ -28,6 +28,7 @@ import { RADIUS_INPUT, RADIUS_CARD, RADIUS_BUTTON } from "@/constants/layout";
 import { APP_URL } from "@/config/public-env";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { trackLogin, trackSignUp } from "@/lib/analytics";
 import { changeLanguage } from "@/lib/i18n";
 import {
@@ -1299,6 +1300,7 @@ export default function LoginScreen() {
               </View>
             </View>
             <FlatList
+              {...verticalFlatListPerf}
               data={filteredCountries}
               keyExtractor={(c) => c.code}
               keyboardShouldPersistTaps="handled"

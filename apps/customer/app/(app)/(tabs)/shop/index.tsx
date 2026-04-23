@@ -25,6 +25,7 @@ import { shareMarketplaceProduct } from "@/lib/share-product";
 import { haptic } from "@/lib/haptics";
 import { formatMoney } from "@beautonomi/utils";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 const PRIMARY = Colors.primary;
 
@@ -32,8 +33,16 @@ interface ShopProduct {
   id: string;
   name: string;
   description?: string;
-  price: number;
-  currency: string;
+  /**
+   * §Customer-audit 2026-04 (C5 CRITICAL): `/api/public/products` returns
+   * `retail_price` (the DB column), not `price`, and no `currency`. Before
+   * this fix the list rendered `NaN` for every price and quick-add posted
+   * `undefined` to the guest cart snapshot. Accept either field shape so
+   * we stay compatible with any future alias while reading the real value.
+   */
+  price?: number;
+  retail_price?: number;
+  currency?: string;
   image_url?: string | null;
   image_urls?: string[] | null;
   brand?: string | null;
@@ -42,6 +51,13 @@ interface ShopProduct {
   has_variants?: boolean;
   in_stock?: boolean;
   provider?: { id: string; business_name: string; slug: string };
+}
+
+function productPrice(p: ShopProduct): number {
+  if (typeof p.retail_price === "number" && Number.isFinite(p.retail_price)) return p.retail_price;
+  if (typeof p.price === "number" && Number.isFinite(p.price)) return p.price;
+  const coerced = Number(p.retail_price ?? p.price);
+  return Number.isFinite(coerced) ? coerced : 0;
 }
 
 interface ProductsResponse {
@@ -132,7 +148,7 @@ export default function ShopScreen() {
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [query]);
+  }, [query, params.category]);
 
   useEffect(() => {
     fetchProducts({ pageNum: 1 });
@@ -223,8 +239,11 @@ export default function ShopScreen() {
       const img = imageUri(p);
       const { error: addErr } = await cart.addToCart(p.id, 1, null, {
         name: p.name,
-        retail_price: p.price,
-        currency: p.currency,
+        // §Customer-audit 2026-04 (C5): public products API returns
+        // `retail_price` + no currency; fall back to tenant default so
+        // the guest cart snapshot never carries undefined/NaN pricing.
+        retail_price: productPrice(p),
+        currency: p.currency || fb,
         image_url: img,
         provider_id: p.provider.id,
         provider_name: p.provider.business_name,
@@ -240,7 +259,7 @@ export default function ShopScreen() {
         ]);
       }
     },
-    [cart, imageUri, inStock, router],
+    [cart, imageUri, inStock, router, fb],
   );
 
   const renderProduct = useCallback(
@@ -388,7 +407,9 @@ export default function ShopScreen() {
                 {p.provider.business_name}
               </Text>
             ) : null}
-            <Text style={{ fontSize: 14, fontWeight: "700", color: PRIMARY, marginTop: 4 }}>{fmt(p.price, p.currency)}</Text>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: PRIMARY, marginTop: 4 }}>
+              {fmt(productPrice(p), p.currency)}
+            </Text>
           </TouchableOpacity>
         </View>
       );
@@ -483,6 +504,7 @@ export default function ShopScreen() {
           </View>
         ) : (
           <FlatList
+            {...verticalFlatListPerf}
             data={products}
             keyExtractor={productKeyExtractor}
             numColumns={2}

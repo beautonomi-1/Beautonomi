@@ -22,7 +22,7 @@ const SENSITIVE =
 
 // Patterns that usually mean the route scopes data (market, provider, or user), not a blind cross-tenant read.
 const TENANT_HINTS =
-  /resolveTenantIdWithZaFallback|resolveTenantFromRequest|resolveAdminApiTenantId|@tenant-global|@admin-global|tenant_id|booking\.tenant_id|bookings\.tenant_id|providers\.tenant_id|eq\(['"]tenant_id['"]|\.eq\(['"]tenant_id['"]|requirePublicTenant|validatePortalToken|verifyCronRequest|getProviderIdForUser|verifyPaystackWebhook|fetchBookingInAdminTenant|\.eq\(\s*['"]provider_id['"]|\.eq\(\s*['"]user_id['"],\s*user\.id\)|\.eq\(\s*['"]purchaser_user_id['"]|booking\.customer_id\s*!==|customer_id\s*!==\s*user|@tenant-hint/;
+  /resolveTenantIdWithZaFallback|resolveTenantFromRequest|resolveAdminApiTenantId|@tenant-global|@admin-global|tenant_id|booking\.tenant_id|bookings\.tenant_id|providers\.tenant_id|eq\(['"]tenant_id['"]|\.eq\(['"]tenant_id['"]|requirePublicTenant|validatePortalToken|verifyCronRequest|getProviderIdForUser|userHasProviderAccessAdmin|verifyPaystackWebhook|fetchBookingInAdminTenant|\.eq\(\s*['"]provider_id['"]|\.eq\(\s*['"]user_id['"],\s*user\.id\)|\.eq\(\s*['"]purchaser_user_id['"]|booking\.customer_id\s*!==|customer_id\s*!==\s*user|@tenant-hint/;
 
 function walkRouteTs(dir, out = []) {
   for (const name of readdirSync(dir)) {

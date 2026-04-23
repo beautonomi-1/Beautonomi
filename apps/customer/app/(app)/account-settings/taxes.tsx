@@ -485,10 +485,9 @@ export default function TaxesScreen() {
             </Text>
           </View>
         ) : (
-          docs.map((doc) => {
-            const u = getDocumentDownloadSource(doc);
-            return <DocumentCard key={doc.id} doc={doc} onDownload={handleDownload} />;
-          })
+          docs.map((doc) => (
+            <DocumentCard key={doc.id} doc={doc} onDownload={handleDownload} />
+          ))
         )}
       </View>
     </ScrollView>

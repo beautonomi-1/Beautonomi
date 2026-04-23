@@ -99,19 +99,28 @@ export default function NotificationPreferencesScreen() {
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    if (prefs) {
-      const merged = { ...DEFAULT_PREFS };
-      for (const key of Object.keys(DEFAULT_PREFS)) {
-        if (prefs[key] !== undefined) {
-          (merged as any)[key] =
-            typeof prefs[key] === "object"
-              ? { ...(DEFAULT_PREFS as any)[key], ...(prefs[key] as any) }
-              : prefs[key];
-        }
+    if (!prefs) return;
+    const merged: NotifPreferences = { ...DEFAULT_PREFS };
+    (Object.keys(DEFAULT_PREFS) as (keyof typeof DEFAULT_PREFS)[]).forEach((key) => {
+      const incoming = prefs[key];
+      if (incoming === undefined) return;
+      const base = DEFAULT_PREFS[key];
+      if (
+        incoming &&
+        typeof incoming === "object" &&
+        !Array.isArray(incoming) &&
+        base &&
+        typeof base === "object" &&
+        "email" in base &&
+        "email" in (incoming as object)
+      ) {
+        merged[key] = { ...(base as ChannelPrefs), ...(incoming as ChannelPrefs) };
+      } else {
+        (merged as Record<string, unknown>)[key as string] = incoming;
       }
-      setLocal(merged);
-      setDirty(false);
-    }
+    });
+    setLocal(merged);
+    setDirty(false);
   }, [prefs]);
 
   function toggle(key: string, channel: "email" | "sms" | "push") {
@@ -129,7 +138,11 @@ export default function NotificationPreferencesScreen() {
     setLocal((prev) => {
       const next = { ...prev };
       keys.forEach((k) => {
-        (next as any)[k] = { email: true, sms: true, push: true };
+        const key = k as keyof NotifPreferences;
+        const base = DEFAULT_PREFS[key];
+        if (base && typeof base === "object" && "email" in base) {
+          next[key] = { email: true, sms: true, push: true };
+        }
       });
       return next;
     });
@@ -140,7 +153,11 @@ export default function NotificationPreferencesScreen() {
     setLocal((prev) => {
       const next = { ...prev };
       keys.forEach((k) => {
-        (next as any)[k] = { email: false, sms: false, push: false };
+        const key = k as keyof NotifPreferences;
+        const base = DEFAULT_PREFS[key];
+        if (base && typeof base === "object" && "email" in base) {
+          next[key] = { email: false, sms: false, push: false };
+        }
       });
       return next;
     });
@@ -277,7 +294,7 @@ export default function NotificationPreferencesScreen() {
             onPress={() => {
               setLocal((p) => ({
                 ...p,
-                digest_mode: opt.value as any,
+                digest_mode: opt.value as NotifPreferences["digest_mode"],
               }));
               setDirty(true);
             }}
@@ -374,7 +391,7 @@ export default function NotificationPreferencesScreen() {
                 <View style={twStyle("flex-row flex-1 items-center")}>
                   <Ionicons
                     name={
-                      (PREF_LABELS[key]?.icon as any) ?? "notifications-outline"
+                      (PREF_LABELS[key]?.icon as keyof typeof Ionicons.glyphMap) ?? "notifications-outline"
                     }
                     size={16}
                     color="#6b7280"

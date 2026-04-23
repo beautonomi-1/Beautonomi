@@ -40,6 +40,22 @@ interface PaymentSettings {
   tips_distribution: string;
 }
 
+/** GET /api/provider/settings/payments — camelCase fields from web API. */
+type PaymentsSettingsApi = Partial<PaymentSettings> & {
+  taxRatePercent?: number;
+  isVatRegistered?: boolean;
+  vatNumber?: string | null;
+  yoco?: { isEnabled?: boolean };
+  acceptCash?: boolean;
+  acceptCard?: boolean;
+  acceptOnline?: boolean;
+  receiptAutoSend?: boolean;
+  tipsEnabled?: boolean;
+  tipPresets?: number[];
+  tipsDistribution?: string;
+  taxInclusive?: boolean;
+};
+
 const DEFAULT_SETTINGS: PaymentSettings = {
   yoco_connected: false,
   yoco_merchant_id: null,
@@ -100,7 +116,7 @@ export default function PaymentSettingsScreen() {
     loading,
     error: fetchError,
     refresh,
-  } = useApi<PaymentSettings>("/api/provider/settings/payments");
+  } = useApi<PaymentsSettingsApi>("/api/provider/settings/payments");
   const { execute: saveSettings, loading: saving } = useApiMutation("patch");
   const { integration } = useYocoIntegration();
   const yocoConnected = integration?.is_enabled && integration?.api_key_set;
@@ -110,7 +126,7 @@ export default function PaymentSettingsScreen() {
 
   useEffect(() => {
     if (settings) {
-      const raw = settings as any;
+      const raw = settings;
       setForm({
         ...DEFAULT_SETTINGS,
         currency: raw.currency ?? DEFAULT_SETTINGS.currency,

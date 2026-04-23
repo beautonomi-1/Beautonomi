@@ -33,7 +33,14 @@ const validateSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = validateSchema.parse(await request.json());
-    const supabase = await getSupabaseServer();
+    // §Customer-audit 2026-04 (synergy sweep): previously called
+    // `getSupabaseServer()` with no request, so the Authorization header
+    // from mobile clients was dropped and the query fell back to the anon
+    // client. Most reads here are for public provider data (RLS allows it)
+    // but forwarding the request keeps this route behaving like every
+    // other `/api/*` handler — and is required if we ever tighten RLS on
+    // `provider_locations` or add a tenant-scoped filter.
+    const supabase = await getSupabaseServer(request);
 
     // Get provider ID from provider_id or provider_slug
     let providerId: string | null = null;

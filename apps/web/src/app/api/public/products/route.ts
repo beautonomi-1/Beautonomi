@@ -21,11 +21,18 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "24"), 50);
     const offset = (page - 1) * limit;
 
+    // §Release-audit 2026-04: include `has_variants` and
+    // `track_stock_quantity` so product cards can render "Sold out"
+    // badges using the same rule the mobile PDP already uses (see
+    // CUSTOMER_MOBILE_COMPLETION_AUDIT): non-variant + stock-tracked
+    // products are sold out when `quantity <= 0`. Without these flags
+    // the list can't distinguish "stock not tracked" (always sellable)
+    // from "stock tracked, 0 left" (sold out).
     let query = (supabase.from("products") as any)
       .select(
         `
         id, name, slug, brand, category, retail_price, image_urls, short_description,
-        quantity, tags, created_at,
+        quantity, tags, created_at, has_variants, track_stock_quantity,
         provider:providers (
           id, business_name, slug, thumbnail_url, avatar_url
         )

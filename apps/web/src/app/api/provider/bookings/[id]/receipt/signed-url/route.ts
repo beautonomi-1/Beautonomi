@@ -13,10 +13,11 @@
 
 import { NextRequest } from "next/server";
 import {
-  requireRoleInApi,
+  requireAuthInApi,
   successResponse,
   handleApiError,
   errorResponse,
+  userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -30,16 +31,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request,
-    );
+    // §Provider-launch (audit 2026-04): previously gated by requireRoleInApi
+    // with a fixed role list which 403'd any provider whose public.users.role
+    // hadn't been upgraded yet (common race with /api/me/role). Access here
+    // is an ownership question — authenticate, then check the booking row.
+    const { user: authUser } = await requireAuthInApi(request);
     const { id } = await params;
     if (!id) return errorResponse("Booking id is required", "VALIDATION_ERROR", 400);
 
-    // Confirm the booking exists and belongs to a provider the caller can
-    // see. Re-use the sibling receipt JSON route to apply identical access
-    // rules instead of duplicating them here.
     const admin = getSupabaseAdmin();
     const { data: booking } = await admin
       .from("bookings")
@@ -51,26 +50,29 @@ export async function POST(
       return errorResponse("Booking not found", "NOT_FOUND", 404);
     }
 
-    // Delegate the full "can this user access this booking" decision to a
-    // lightweight access check: provider owner, their active staff, or
-    // superadmin. Mirrors the logic enforced by /receipt/route.ts.
-    const { data: accessRows } = await admin
-      .from("provider_staff")
-      .select("id")
-      .eq("provider_id", booking.provider_id)
-      .eq("user_id", user.id)
-      .limit(1);
-    const { data: providerRow } = await admin
-      .from("providers")
-      .select("owner_user_id")
-      .eq("id", booking.provider_id)
+    const { data: userRow } = await admin
+      .from("users")
+      .select("id, role")
+      .eq("id", authUser.id)
       .maybeSingle();
+    const isSuperadmin = userRow?.role === "superadmin";
 
-    const isOwner = providerRow?.owner_user_id === user.id;
-    const isStaff = Array.isArray(accessRows) && accessRows.length > 0;
-    const isSuperadmin = (user as { role?: string }).role === "superadmin";
-    if (!isOwner && !isStaff && !isSuperadmin) {
-      return errorResponse("Forbidden", "FORBIDDEN", 403);
+    // §Multi-provider staff 2026-04: use the same admin-backed access check
+    // as GET /receipt (see userHasProviderAccessAdmin). Previously this
+    // route compared `providers.owner_user_id`, which is not the schema
+    // column (`user_id`), so salon owners always failed the owner check and
+    // relied only on provider_staff — breaking receipt links for owners
+    // without a staff row.
+    const bookingPid = booking.provider_id as string;
+    if (
+      !isSuperadmin &&
+      !(await userHasProviderAccessAdmin(admin, authUser.id, bookingPid))
+    ) {
+      return errorResponse(
+        "You don't have access to this booking's receipt.",
+        "FORBIDDEN",
+        403,
+      );
     }
 
     if (!hasReceiptDownloadSigningSecret()) {
@@ -97,7 +99,7 @@ export async function POST(
     const token = mintReceiptDownloadToken({
       kind: "provider_booking_receipt",
       subjectId: id,
-      userId: user.id,
+      userId: authUser.id,
       ttlSeconds,
     });
     const url = `${origin}/api/provider/bookings/${encodeURIComponent(id)}/receipt/pdf?token=${encodeURIComponent(token)}`;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, Mail, Smartphone, Check, X } from "lucide-react";
+import { Loader2, Mail, Smartphone, Check, X, Clock } from "lucide-react";
 import { toast } from "sonner";
 import {
   BOOKING_ACCENT,
@@ -38,9 +38,18 @@ import {
   normalizeSupabaseSmsOtpToken,
   isCompleteSupabaseSmsOtp,
 } from "@/lib/supabase/auth-sms-otp";
+import { clearBeautonomiHoldIdCookie } from "@/lib/booking/clear-hold-client-markers";
+
+function holdSecondsRemaining(iso: string): number {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return 0;
+  return Math.max(0, Math.floor(ms / 1000));
+}
 
 interface BeautonomiGateModalProps {
   holdId: string;
+  /** From `POST /api/public/booking-holds` — shows the same countdown as checkout while the user signs in. */
+  holdExpiresAt?: string | null;
   open: boolean;
   onClose?: () => void;
   onAuthComplete: () => void;
@@ -49,12 +58,14 @@ interface BeautonomiGateModalProps {
 
 export function BeautonomiGateModal({
   holdId,
+  holdExpiresAt,
   open,
   onClose,
   onAuthComplete,
   redirectUrl: customRedirectUrl,
 }: BeautonomiGateModalProps) {
   const [loading, setLoading] = useState<string | null>(null);
+  const [holdSecondsLeft, setHoldSecondsLeft] = useState<number | null>(null);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [otpSent, setOtpSent] = useState<"email" | "phone" | null>(null);
@@ -62,6 +73,17 @@ export function BeautonomiGateModal({
   const [sentPhoneE164, setSentPhoneE164] = useState<string>("");
 
   const validEmail = email.trim() !== "" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+  useEffect(() => {
+    if (!open || !holdExpiresAt?.trim()) {
+      setHoldSecondsLeft(null);
+      return;
+    }
+    const tick = () => setHoldSecondsLeft(holdSecondsRemaining(holdExpiresAt));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [open, holdExpiresAt]);
 
   const redirectUrl =
     customRedirectUrl ||
@@ -76,6 +98,7 @@ export function BeautonomiGateModal({
       await signInWithOAuth(provider, redirectUrl);
       onAuthComplete();
     } catch (err) {
+      clearBeautonomiHoldIdCookie();
       console.error("OAuth error:", err);
       toast.error(err instanceof Error ? err.message : "Sign in failed");
       setLoading(null);
@@ -189,7 +212,15 @@ export function BeautonomiGateModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose?.()}>
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          clearBeautonomiHoldIdCookie();
+          onClose?.();
+        }
+      }}
+    >
       <DialogContent
         className="sm:max-w-[430px] w-[95vw] p-6 sm:p-8 rounded-[32px] border-0 gap-0 max-h-[90vh] overflow-y-auto min-[640px]:my-8"
         style={contentStyle}
@@ -207,6 +238,34 @@ export function BeautonomiGateModal({
           >
             Great choice! To secure this slot and save your booking history, please sign in or create your Beautonomi profile.
           </DialogDescription>
+          {holdExpiresAt && holdSecondsLeft != null && (
+            <div
+              className="mt-3 rounded-xl border px-3 py-2.5 text-sm flex items-center gap-2"
+              style={{
+                borderColor: BOOKING_BORDER,
+                backgroundColor:
+                  holdSecondsLeft <= 0
+                    ? "rgba(254, 242, 242, 0.95)"
+                    : holdSecondsLeft < 120
+                      ? "rgba(255, 251, 235, 0.95)"
+                      : "rgba(239, 246, 255, 0.95)",
+              }}
+              role="status"
+            >
+              <Clock className="h-4 w-4 shrink-0" style={{ color: BOOKING_ACCENT }} aria-hidden />
+              {holdSecondsLeft <= 0 ? (
+                <span style={{ color: "#991b1b" }}>This slot hold has expired. Close and choose another time.</span>
+              ) : (
+                <span style={{ color: BOOKING_TEXT_PRIMARY }}>
+                  Slot held for{" "}
+                  <span className="tabular-nums font-semibold">
+                    {Math.floor(holdSecondsLeft / 60)}:{String(holdSecondsLeft % 60).padStart(2, "0")}
+                  </span>
+                  . Finish signing in to continue.
+                </span>
+              )}
+            </div>
+          )}
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <Button

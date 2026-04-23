@@ -13,6 +13,10 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { ensurePlanOptionHasBarePlanId } from "@/lib/subscription/extract-subscription-plan-uuid";
 import { getDisplayFeatureBulletsForSubscriptionPlans } from "@/lib/subscription/pricing-plan-display-features";
+import {
+  filterPlansForPublishedCatalog,
+  getPublishedPaidSubscriptionPlanIds,
+} from "@/lib/subscription/published-subscription-plans";
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,7 +45,7 @@ export async function GET(request: NextRequest) {
     const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    const { data: plans, error } = await supabaseAdmin
+    const { data: plansRaw, error } = await supabaseAdmin
       .from("subscription_plans")
       .select("*")
       .eq("is_active", true)
@@ -51,6 +55,9 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching subscription plans:", error);
       return handleApiError(error, "Failed to load subscription plans");
     }
+
+    const publishedPaidIds = await getPublishedPaidSubscriptionPlanIds(supabaseAdmin, effectiveTenantId);
+    const plans = filterPlansForPublishedCatalog(plansRaw as { id: string; is_free?: boolean }[], publishedPaidIds);
 
     const planRows = (plans || []) as { id: string }[];
     const featureMap = await getDisplayFeatureBulletsForSubscriptionPlans(

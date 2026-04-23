@@ -25,11 +25,27 @@ function formatTime(s: string) {
   return parsed.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
+type SortPreset = "appt_desc" | "appt_asc" | "booked_desc" | "booked_asc";
+
+function sortPresetToParams(p: SortPreset): { sort_by: string; sort_dir: string } {
+  switch (p) {
+    case "appt_asc":
+      return { sort_by: "scheduled_at", sort_dir: "asc" };
+    case "appt_desc":
+      return { sort_by: "scheduled_at", sort_dir: "desc" };
+    case "booked_desc":
+      return { sort_by: "created_at", sort_dir: "desc" };
+    case "booked_asc":
+      return { sort_by: "created_at", sort_dir: "asc" };
+  }
+}
+
 export default function AccountBookingsScreen() {
   const { user } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const [tab, setTab] = useState<"upcoming" | "past" | "cancelled">("upcoming");
+  const [sortPreset, setSortPreset] = useState<SortPreset>("appt_desc");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -47,8 +63,9 @@ export default function AccountBookingsScreen() {
     }
     setError(null);
     try {
+      const { sort_by, sort_dir } = sortPresetToParams(sortPreset);
       const res = await api.get<any>(
-        `/api/me/bookings?status=${encodeURIComponent(tab)}&limit=100&page=1`
+        `/api/me/bookings?status=${encodeURIComponent(tab)}&limit=100&page=1&sort_by=${encodeURIComponent(sort_by)}&sort_dir=${encodeURIComponent(sort_dir)}`
       );
       if (gen !== requestGeneration.current) return;
       if (res.error) {
@@ -71,7 +88,7 @@ export default function AccountBookingsScreen() {
         setRefreshing(false);
       }
     }
-  }, [tab]);
+  }, [tab, sortPreset]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -135,6 +152,37 @@ export default function AccountBookingsScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginTop: 12, marginBottom: 6 }}>Sort</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 8 }}>
+          {(
+            [
+              { key: "appt_desc" as const, label: "Appt · newest" },
+              { key: "appt_asc" as const, label: "Appt · soonest" },
+              { key: "booked_desc" as const, label: "Booked · newest" },
+              { key: "booked_asc" as const, label: "Booked · oldest" },
+            ] as const
+          ).map((c) => {
+            const active = sortPreset === c.key;
+            return (
+              <TouchableOpacity
+                key={c.key}
+                onPress={() => setSortPreset(c.key)}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                  borderRadius: 9999,
+                  backgroundColor: active ? Colors.gray[900] : Colors.gray[100],
+                  marginRight: 8,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Sort: ${c.label}`}
+                accessibilityState={{ selected: active }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "600", color: active ? Colors.white : Colors.gray[700] }}>{c.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}>
         {error && (

@@ -8,7 +8,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -22,6 +22,7 @@ import {
 } from "date-fns";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
+import { supabase } from "@/lib/supabase/client";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -31,6 +32,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
+import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import { Colors } from "@/constants/colors";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
 
@@ -70,6 +72,9 @@ interface Booking {
 /* ------------------------------------------------------------------ */
 
 type DateRange = "today" | "week" | "month" | "upcoming" | "all";
+
+/** List ordering: by appointment time (chronological) or by when the booking was created. */
+type BookingsListSort = "appointment" | "booked_at";
 
 const DATE_RANGE_OPTIONS: { label: string; value: DateRange }[] = [
   { label: "Today", value: "today" },
@@ -180,7 +185,7 @@ export default function BookingsListScreen() {
   const insets = useSafeAreaInsets();
   const listBottomPadding = tabScreenScrollBottomPadding(insets.bottom, 16);
   const { screenPadding } = useResponsive();
-  const { selectedLocationId } = useProvider();
+  const { provider, selectedLocationId } = useProvider();
   const currency = getTenantDefaultCurrency();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -188,6 +193,18 @@ export default function BookingsListScreen() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>("month");
+  const [listSort, setListSort] = useState<BookingsListSort>("appointment");
+
+  // §Mobile-parity 2026-04: snapshot metrics strip at the top of the
+  // bookings tab, filterable by time period independent of the list's
+  // `dateRange` so providers can pivot without disturbing their current
+  // list view. Mirrors the web /provider/bookings snapshot.
+  type StatsRange = "today" | "week" | "month" | "all";
+  const [statsRange, setStatsRange] = useState<StatsRange>("today");
+  // §Provider-realtime 2026-04: "live" indicator goes on for ~1s after
+  // every successful refresh so the provider has visible feedback that
+  // the list auto-updated (websocket or polling). Purely cosmetic.
+  const [isLive, setIsLive] = useState(false);
 
   // §Provider-audit 2026-04 (round 6): debounce search input so every
   // keystroke doesn't refetch. Matches the clients screen pattern.
@@ -209,12 +226,16 @@ export default function BookingsListScreen() {
   if (statusFilter) queryParts.push(`status=${encodeURIComponent(statusFilter)}`);
   if (selectedLocationId) queryParts.push(`location_id=${encodeURIComponent(selectedLocationId)}`);
   if (debouncedSearch.length > 0) queryParts.push(`search=${encodeURIComponent(debouncedSearch)}`);
-  // §UX-audit 2026-04: list order previously relied on the API default,
-  // which flipped between newest-first and oldest-first depending on
-  // query variant. Owners expect chronological upcoming-first so they
-  // can triage the next booking on top of the list.
-  queryParts.push("sort=scheduled_at");
-  queryParts.push("order=asc");
+  // §Launch-audit 2026-04: default remains appointment order (soonest
+  // first). Optional "Booked" switches to `created_at` desc so recent
+  // intake appears on top — matches GET /api/me/bookings sort_by.
+  if (listSort === "booked_at") {
+    queryParts.push("sort=created_at");
+    queryParts.push("order=desc");
+  } else {
+    queryParts.push("sort=scheduled_at");
+    queryParts.push("order=asc");
+  }
   const url = `/api/provider/bookings?${queryParts.join("&")}`;
 
   const { data, loading, error, refresh } = useApi<Booking[]>(url);
@@ -228,6 +249,60 @@ export default function BookingsListScreen() {
     }
   }, [refresh]);
 
+  // §Cross-app audit 2026-04 (bookings list freshness): previously the
+  // calendar screen subscribed to `postgres_changes` on `bookings`, so a
+  // new online booking appeared automatically there — but this list only
+  // refreshed on mount / pull-to-refresh, meaning a provider staring at
+  // the tab wouldn't see a just-booked appointment until they swiped
+  // down. Mirror the calendar pattern with two small additions:
+  //
+  //  1. `useFocusEffect` — refresh when the list regains focus (e.g. the
+  //     provider returns from tapping a booking detail). Cheap, covers
+  //     most real-world staleness.
+  //  2. Supabase realtime channel on `bookings` filtered by provider_id
+  //     — debounced 400ms refresh when any booking row changes, matching
+  //     calendar.tsx behaviour so both surfaces converge.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
+
+  useEffect(() => {
+    if (!provider?.id) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        refresh();
+      }, 400);
+    };
+
+    const channel = supabase
+      .channel(`bookings-list:${provider.id}`)
+      .on(
+        "postgres_changes" as never,
+        {
+          event: "*",
+          schema: "public",
+          table: "bookings",
+          filter: `provider_id=eq.${provider.id}`,
+        },
+        () => {
+          scheduleRefresh();
+          setIsLive(true);
+          setTimeout(() => setIsLive(false), 1200);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [provider?.id, refresh]);
+
   const filtered = useMemo(() => {
     const allBookings: Booking[] = Array.isArray(data) ? data : [];
     const q = search.trim().toLowerCase();
@@ -239,6 +314,55 @@ export default function BookingsListScreen() {
       return name.includes(q) || num.includes(q) || service.includes(q);
     });
   }, [data, search]);
+
+  // §Mobile-parity 2026-04: stats snapshot computed across the full
+  // returned result set. Independent of the list's date range so the
+  // numbers still make sense when the list is filtered.
+  const statsSnapshot = useMemo(() => {
+    const allBookings: Booking[] = Array.isArray(data) ? data : [];
+    const now = new Date();
+    let start = 0;
+    let end = Number.POSITIVE_INFINITY;
+    if (statsRange !== "all") {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      if (statsRange === "today") {
+        start = d.getTime();
+        end = start + 24 * 60 * 60 * 1000;
+      } else if (statsRange === "week") {
+        const wk = new Date(d);
+        wk.setDate(d.getDate() - d.getDay());
+        start = wk.getTime();
+        end = start + 7 * 24 * 60 * 60 * 1000;
+      } else {
+        start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+      }
+    }
+    let count = 0;
+    let revenue = 0;
+    let pendingCount = 0;
+    let inProgressCount = 0;
+    for (const b of allBookings) {
+      const s = (b.status || "").toLowerCase();
+      if (s === "pending" || s === "pending_payment") pendingCount += 1;
+      if (s === "in_progress" || s === "started") inProgressCount += 1;
+      const ts = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
+      if (ts >= start && ts < end) {
+        count += 1;
+        if (s !== "cancelled" && s !== "canceled" && s !== "no_show") {
+          revenue += Number(b.total_amount || 0);
+        }
+      }
+    }
+    return { count, revenue, pendingCount, inProgressCount };
+  }, [data, statsRange]);
+
+  const statsRangeLabel = useMemo(() => {
+    if (statsRange === "today") return "Today";
+    if (statsRange === "week") return "Week";
+    if (statsRange === "month") return "Month";
+    return "All";
+  }, [statsRange]);
 
   const dateRangeLabel = useMemo(() => {
     const now = new Date();
@@ -382,6 +506,103 @@ export default function BookingsListScreen() {
         }
       />
 
+      {/* ── Metrics snapshot strip (mobile parity with web) ── */}
+      <View style={twStyle("mx-4 mt-1 mb-2")}>
+        <View style={twStyle("flex-row items-center justify-between mb-2")}>
+          <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-white p-1")}>
+            {(["today", "week", "month", "all"] as StatsRange[]).map((value) => {
+              const active = statsRange === value;
+              const label = value === "today" ? "Today" : value === "week" ? "Week" : value === "month" ? "Month" : "All";
+              return (
+                <TouchableOpacity
+                  key={value}
+                  onPress={() => setStatsRange(value)}
+                  style={twStyle(
+                    `rounded-lg px-2.5 py-1 ${active ? "bg-gray-900" : ""}`,
+                  )}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text
+                    style={twStyle(
+                      `text-[11px] font-semibold ${active ? "text-white" : "text-gray-600"}`,
+                    )}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {isLive && (
+            <View style={twStyle("flex-row items-center gap-1.5")}>
+              <View
+                style={[
+                  twStyle("rounded-full"),
+                  { height: 6, width: 6, backgroundColor: "#10b981" },
+                ]}
+              />
+              <Text style={twStyle("text-[10px] font-semibold text-emerald-600")}>LIVE</Text>
+            </View>
+          )}
+        </View>
+        <View style={twStyle("flex-row gap-2")}>
+          <View style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white p-2.5")}>
+            <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-gray-500")}>{statsRangeLabel}</Text>
+            <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.count}</Text>
+          </View>
+          <View
+            style={[
+              twStyle("flex-1 rounded-xl p-2.5 border"),
+              statsSnapshot.pendingCount > 0
+                ? { backgroundColor: "#fffbeb", borderColor: "#fde68a" }
+                : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
+            ]}
+          >
+            <Text
+              style={[
+                twStyle("text-[10px] font-semibold uppercase tracking-wide"),
+                { color: statsSnapshot.pendingCount > 0 ? "#b45309" : "#6b7280" },
+              ]}
+            >
+              Pending
+            </Text>
+            <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.pendingCount}</Text>
+          </View>
+          <View
+            style={[
+              twStyle("flex-1 rounded-xl p-2.5 border"),
+              statsSnapshot.inProgressCount > 0
+                ? { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe" }
+                : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
+            ]}
+          >
+            <Text
+              style={[
+                twStyle("text-[10px] font-semibold uppercase tracking-wide"),
+                { color: statsSnapshot.inProgressCount > 0 ? "#6d28d9" : "#6b7280" },
+              ]}
+            >
+              Active
+            </Text>
+            <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.inProgressCount}</Text>
+          </View>
+          <View
+            style={[
+              twStyle("flex-[1.3] rounded-xl p-2.5 border"),
+              { backgroundColor: "#fff0f7", borderColor: "#fbcfe8" },
+            ]}
+          >
+            <Text style={[twStyle("text-[10px] font-semibold uppercase tracking-wide"), { color: "#be185d" }]}>
+              Revenue
+            </Text>
+            <Text style={twStyle("mt-0.5 text-[15px] font-bold text-gray-900")} numberOfLines={1}>
+              {formatCurrency(statsSnapshot.revenue, currency)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
       {/* ── Search bar ── */}
       <View style={[twStyle("mx-4 mb-2"), { paddingHorizontal: 0 }]}>
         <View style={twStyle("flex-row items-center rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5")}>
@@ -408,6 +629,7 @@ export default function BookingsListScreen() {
       {/* ── Date range chips ── */}
       <View style={{ marginBottom: 6 }}>
         <FlatList<{ label: string; value: DateRange }>
+          {...horizontalFlatListPerf}
           horizontal
           data={DATE_RANGE_OPTIONS}
           keyExtractor={(o: { label: string; value: DateRange }) => o.value}
@@ -438,9 +660,52 @@ export default function BookingsListScreen() {
         />
       </View>
 
+      {/* ── Sort: appointment time vs date booked ── */}
+      <View style={{ marginBottom: 6 }}>
+        <View
+          style={[
+            twStyle("flex-row gap-2"),
+            { paddingHorizontal: screenPadding },
+          ]}
+        >
+          {(
+            [
+              { key: "appointment" as const, label: "By appointment" },
+              { key: "booked_at" as const, label: "By date booked" },
+            ] as const
+          ).map((opt) => {
+            const active = listSort === opt.key;
+            return (
+              <TouchableOpacity
+                key={opt.key}
+                onPress={() => setListSort(opt.key)}
+                style={[
+                  twStyle(
+                    `rounded-full px-3.5 py-2 ${active ? "bg-indigo-600" : "border border-gray-200 bg-white"}`,
+                  ),
+                  { minHeight: 44, justifyContent: "center" },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Sort bookings ${opt.label}`}
+                accessibilityState={{ selected: active }}
+              >
+                <Text
+                  style={twStyle(
+                    `text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`,
+                  )}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
       {/* ── Status filter chips ── */}
       <View style={{ marginBottom: 10 }}>
         <FlatList<(typeof STATUS_OPTIONS)[number]>
+          {...horizontalFlatListPerf}
           horizontal
           data={STATUS_OPTIONS}
           keyExtractor={(o: (typeof STATUS_OPTIONS)[number]) => o.value || "all"}

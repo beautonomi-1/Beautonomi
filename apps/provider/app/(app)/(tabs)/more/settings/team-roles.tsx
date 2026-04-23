@@ -21,6 +21,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface Role {
   id: string;
@@ -211,18 +212,21 @@ export default function TeamRolesScreen() {
       description: form.description.trim() || null,
       permissions: form.permissions,
     };
+    const wasEditing = Boolean(editing);
     if (editing) {
       const { error } = await updateRole(
         `/api/provider/roles/${editing.id}`,
         payload
       );
       if (error) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert("Error", error);
         return;
       }
     } else {
       const { error } = await createRole(payload);
       if (error) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert("Error", error);
         return;
       }
@@ -230,6 +234,13 @@ export default function TeamRolesScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowForm(false);
     refresh();
+    // §Provider-audit 2026-04: surface an explicit confirmation so owners
+    // know the role save landed. The form sheet auto-closes, which
+    // previously left users uncertain whether the change persisted.
+    Alert.alert(
+      wasEditing ? "Role updated" : "Role created",
+      wasEditing ? "Changes saved successfully." : "New role is ready to assign.",
+    );
   }
 
   function handleDelete(role: Role) {
@@ -346,6 +357,7 @@ export default function TeamRolesScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(r: Role) => r.id}
           showsVerticalScrollIndicator={false}
@@ -536,7 +548,7 @@ export default function TeamRolesScreen() {
                   >
                     <View style={twStyle("flex-row items-center")}>
                       <Ionicons
-                        name={perm.icon as any}
+                        name={perm.icon as keyof typeof Ionicons.glyphMap}
                         style={{ marginRight: 8 }}
                         size={14}
                         color={

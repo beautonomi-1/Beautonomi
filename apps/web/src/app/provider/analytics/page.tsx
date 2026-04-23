@@ -87,6 +87,13 @@ export default function ProviderAnalyticsPage() {
     }).format(amount);
   };
 
+  const periodLabels =
+    period === "week"
+      ? { current: "This week", previous: "Last week", trendTitle: "Revenue trends (last 12 weeks)" }
+      : period === "year"
+        ? { current: "This year", previous: "Last year", trendTitle: "Revenue trends (last 5 years)" }
+        : { current: "This month", previous: "Last month", trendTitle: "Revenue trends (last 12 months)" };
+
   if (isLoading) {
     return (
       <SettingsDetailLayout
@@ -182,9 +189,9 @@ export default function ProviderAnalyticsPage() {
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(analytics.revenue.total)}</div>
               <p className="text-xs text-muted-foreground">
-                This month: {formatCurrency(analytics.revenue.thisMonth)}
+                {periodLabels.current}: {formatCurrency(analytics.revenue.thisMonth)}
                 {analytics.revenue.lastMonth > 0 && (
-                  <span className="ml-2">• Last month: {formatCurrency(analytics.revenue.lastMonth)}</span>
+                  <span className="ml-2">• {periodLabels.previous}: {formatCurrency(analytics.revenue.lastMonth)}</span>
                 )}
               </p>
               <div className="flex items-center mt-2">
@@ -200,9 +207,9 @@ export default function ProviderAnalyticsPage() {
                     ? "text-gray-600"
                     : "text-red-600"
                 }`}>
-                  {analytics.revenue.growth === "New" 
-                    ? "New revenue this month" 
-                    : `${analytics.revenue.growth}% vs last month`}
+                  {analytics.revenue.growth === "New"
+                    ? `New revenue ${periodLabels.current.toLowerCase()}`
+                    : `${analytics.revenue.growth}% vs ${periodLabels.previous.toLowerCase()}`}
                 </span>
               </div>
             </CardContent>
@@ -216,9 +223,9 @@ export default function ProviderAnalyticsPage() {
             <CardContent>
               <div className="text-2xl font-bold">{analytics.bookings.total}</div>
               <p className="text-xs text-muted-foreground">
-                This month: {analytics.bookings.thisMonth} • Upcoming: {analytics.bookings.upcoming}
+                {periodLabels.current}: {analytics.bookings.thisMonth} • Upcoming: {analytics.bookings.upcoming}
                 {analytics.bookings.lastMonth > 0 && (
-                  <span className="ml-2">• Last month: {analytics.bookings.lastMonth}</span>
+                  <span className="ml-2">• {periodLabels.previous}: {analytics.bookings.lastMonth}</span>
                 )}
               </p>
               <div className="flex items-center mt-2">
@@ -234,9 +241,9 @@ export default function ProviderAnalyticsPage() {
                     ? "text-gray-600"
                     : "text-red-600"
                 }`}>
-                  {analytics.bookings.growth === "New" 
-                    ? "New bookings this month" 
-                    : `${analytics.bookings.growth}% vs last month`}
+                  {analytics.bookings.growth === "New"
+                    ? `New bookings ${periodLabels.current.toLowerCase()}`
+                    : `${analytics.bookings.growth}% vs ${periodLabels.previous.toLowerCase()}`}
                 </span>
               </div>
             </CardContent>
@@ -272,7 +279,7 @@ export default function ProviderAnalyticsPage() {
         {/* Revenue Trends Chart */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Revenue Trends (Last 12 Months)</CardTitle>
+            <CardTitle>{periodLabels.trendTitle}</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>

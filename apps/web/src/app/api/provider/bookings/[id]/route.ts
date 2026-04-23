@@ -12,13 +12,12 @@ import {
   type BookingStatus,
   type ProviderBookingStatus,
 } from "@/lib/utils/booking-status";
-import { checkBookingConflict } from "@/lib/bookings/conflict-check";
+import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import {
   computeSequentialServiceWindow,
   rescheduleBookingServicesSequential,
   updateAllBookingServicesStaff,
 } from "@/lib/bookings/reschedule-booking-services";
-import { isProviderCalendarWindowBlocked } from "@/lib/public-booking/provider-calendar-block-overlap";
 import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
 import { awardPointsForBooking } from "@/lib/services/provider-gamification";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
@@ -665,14 +664,13 @@ export async function PATCH(
       const supabaseAdmin = getSupabaseAdmin();
       const { data: currentServices } = await supabaseAdmin
         .from("booking_services")
-        .select("staff_id, scheduled_start_at, scheduled_end_at, duration_minutes, offerings(buffer_minutes)")
+        .select("staff_id, offering_id, scheduled_start_at, scheduled_end_at, duration_minutes, offerings(buffer_minutes)")
         .eq("booking_id", id)
         .order("scheduled_start_at", { ascending: true });
 
       let newStart: Date;
       let newEnd: Date;
       let staffId: string | null = staff_id ?? null;
-      let bufferMinutes = 15;
 
       if (Array.isArray(services) && services.length > 0) {
         const firstWithTime = services.find((s: { scheduled_start_at?: string }) => s.scheduled_start_at);
@@ -688,9 +686,6 @@ export async function PATCH(
         if (staff_id === undefined && currentServices?.[0]) {
           staffId = (currentServices[0] as BookingServiceConflictRow).staff_id ?? null;
         }
-        const firstBsAlt = (currentServices?.[0]) as BookingServiceConflictRow | undefined;
-        const firstOffering = firstBsAlt?.offerings != null ? (Array.isArray(firstBsAlt.offerings) ? firstBsAlt.offerings[0] : firstBsAlt.offerings) : undefined;
-        if (firstOffering?.buffer_minutes != null) bufferMinutes = Number(firstOffering.buffer_minutes);
       } else {
         const servicesList = (currentServices ?? []) as BookingServiceConflictRow[];
         const durationList = servicesList.map((bs) => Number(bs.duration_minutes) || 60);
@@ -705,40 +700,50 @@ export async function PATCH(
         if (staff_id === undefined && servicesList[0]) {
           staffId = servicesList[0].staff_id ?? null;
         }
-        const firstBs = servicesList[0];
-        const firstOff = firstBs?.offerings != null ? (Array.isArray(firstBs.offerings) ? firstBs.offerings[0] : firstBs.offerings) : undefined;
-        if (firstOff?.buffer_minutes != null) bufferMinutes = Number(firstOff.buffer_minutes);
       }
 
-      if (staffId) {
-        const conflictResult = await checkBookingConflict(
-          supabaseAdmin,
-          staffId,
-          newStart,
-          newEnd,
-          bufferMinutes,
-          id
-        );
-        if (conflictResult.hasConflict) {
-          return errorResponse(
-            "This time slot is no longer available. Please choose another time.",
-            "SLOT_CONFLICT",
-            409
-          );
-        }
-      }
+      const gridDur = Math.max(
+        15,
+        Math.min(480, Math.round((newEnd.getTime() - newStart.getTime()) / 60000)),
+      );
+      const staffForGrid = (currentServices ?? [])
+        .map((r) => r.staff_id)
+        .filter((x): x is string => !!x);
+      const uniqueStaffIds = [...new Set(staffForGrid)];
+      const staffIdsCsvGrid = uniqueStaffIds.length > 0 ? uniqueStaffIds.join(",") : null;
 
-      const rescheduleCalBlock = await isProviderCalendarWindowBlocked(supabaseAdmin, {
+      const resourceOfferingIds = [
+        ...new Set(
+          (currentServices ?? [])
+            .map((r: { offering_id?: string | null }) => r.offering_id)
+            .filter((x): x is string => !!x),
+        ),
+      ];
+
+      const effLocationId =
+        (location_id ?? (currentBooking as { location_id?: string | null }).location_id) || null;
+      const effLocType =
+        (location_type as string | undefined) ??
+        ((currentBooking as { location_type?: string | null }).location_type || "at_salon");
+      const mode = effLocType === "at_home" ? "mobile" : "salon";
+
+      const slotEval = await evaluateProviderSlotAgainstGrid(supabaseAdmin, {
         providerId,
-        locationId: (location_id ?? (currentBooking as { location_id?: string | null }).location_id) || undefined,
-        staffId: staffId ?? null,
-        startAt: newStart,
-        endAt: newEnd,
+        scheduledAt: newStart,
+        durationMinutes: gridDur,
+        staffIdsCsv: staffIdsCsvGrid,
+        locationId: effLocationId,
+        excludeBookingId: id,
+        mode,
+        travelBufferRaw: mode === "mobile" ? null : "0",
+        minNoticeMinutes: 0,
+        maxAdvanceDays: 365,
+        resourceOfferingIds,
       });
-      if (rescheduleCalBlock.blocked) {
+      if (!slotEval.ok) {
         return errorResponse(
-          rescheduleCalBlock.reason || "This time slot conflicts with a time block, day off, or is outside working hours.",
-          "CALENDAR_BLOCK",
+          slotEval.conflicts[0] ?? "This time slot is not available. Please choose another time.",
+          "SLOT_NOT_AVAILABLE",
           409,
         );
       }
@@ -1268,8 +1273,30 @@ export async function PATCH(
     // Send notifications for status changes
     if (dbStatus && dbStatus !== previousStatus) {
       try {
-        const { sendCancellationNotification, sendRescheduleNotification, sendBookingConfirmationNotification } = await import('@/lib/bookings/notifications');
-        
+        const {
+          sendCancellationNotification,
+          sendRescheduleNotification,
+          sendBookingConfirmationNotification,
+          sendServiceStartedNotification,
+          sendServiceCompletedNotification,
+        } = await import('@/lib/bookings/notifications');
+
+        // §Release-audit 2026-04: service-lifecycle transitions were silent
+        // on the customer side when routed through the generic PATCH route
+        // (only the dedicated /start-service and /complete-service endpoints
+        // know the customer should be told). Fire these before the
+        // else-chain below so they always run, regardless of whether the
+        // caller also moved `scheduled_at` in the same PATCH body.
+        if (dbStatus === "in_progress" && previousStatus !== "in_progress") {
+          const durationMinutes =
+            typeof (currentBooking as { duration_minutes?: number | null }).duration_minutes === "number"
+              ? ((currentBooking as { duration_minutes?: number | null }).duration_minutes as number)
+              : null;
+          await sendServiceStartedNotification(id, durationMinutes);
+        } else if (dbStatus === "completed" && previousStatus !== "completed") {
+          await sendServiceCompletedNotification(id);
+        }
+
         if (dbStatus === "cancelled") {
           // Reverse loyalty points if they were earned for this booking
           const loyaltyPointsEarned = (currentBooking as BookingRow).loyalty_points_earned || 0;

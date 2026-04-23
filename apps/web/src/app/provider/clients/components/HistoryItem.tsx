@@ -19,6 +19,7 @@ import {
 import { toast } from "sonner";
 import { Money } from "@/components/provider-portal/Money";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { providerPortalFetch } from "@/lib/http/fetcher";
 interface ClientHistory {
   id: string;
   type: "appointment" | "sale" | "note";
@@ -102,7 +103,7 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
       }
 
       const cleanBookingId = String(bookingId).trim();
-      const response = await fetch(`/api/provider/bookings/${cleanBookingId}/receipt/pdf`, {
+      const response = await providerPortalFetch(`/api/provider/bookings/${cleanBookingId}/receipt/pdf`, {
         credentials: "include",
       });
 

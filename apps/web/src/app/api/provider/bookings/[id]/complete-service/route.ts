@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import type { Booking } from "@/types/beautonomi";
 import { awardPointsForBooking, checkProviderMilestones } from "@/lib/services/provider-gamification";
@@ -34,16 +35,26 @@ function resolveLoyaltyBaseAmount(booking: {
 
 /**
  * POST /api/provider/bookings/[id]/complete-service
- * 
- * Mark service as completed.
- * Awards both provider reward points and customer loyalty points (only on completion).
+ *
+ * Mark service as completed. Awards both provider reward points and
+ * customer loyalty points (only on completion), and deducts any product
+ * stock tied to the booking.
+ *
+ * §Release-audit 2026-04 (synergy sweep): aligned with `PATCH
+ * /api/provider/bookings/[id]` which uses `requirePermission('edit_appointments')`.
+ * Previously this route only checked the role tier, so a staff account with
+ * `edit_appointments` disabled could still complete a service from mobile
+ * (and trigger loyalty point awards + stock deduction as a side effect) —
+ * bypassing the permissions matrix the admin UI enforces.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission('edit_appointments', request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -239,6 +250,17 @@ export async function POST(
         }
       } catch (stockErr) {
         console.error("[complete-service] failed to deduct retail stock:", stockErr);
+      }
+
+      // §Release-audit 2026-04: notify the customer that their appointment
+      // is complete, mirroring the cancel / reschedule / confirm paths.
+      try {
+        const { sendServiceCompletedNotification } = await import(
+          "@/lib/bookings/notifications"
+        );
+        await sendServiceCompletedNotification(id);
+      } catch (notifyErr) {
+        console.error("[complete-service] notification failed:", notifyErr);
       }
     }
 

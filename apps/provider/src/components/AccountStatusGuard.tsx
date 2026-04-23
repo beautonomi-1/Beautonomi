@@ -4,11 +4,10 @@
  * signs out and redirects to login with a query param so the login screen can show a message.
  */
 import { useEffect, useState, useRef } from "react";
-import { View, ActivityIndicator, Text } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
-import { Colors } from "@/constants/colors";
+import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import {
   authFlowBreadcrumb,
   captureAuthMessage,
@@ -217,12 +216,8 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
 
   if (!session) return <>{children}</>;
   if (!checked) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 12, fontSize: 14, color: Colors.gray[600] }}>Checking account…</Text>
-      </View>
-    );
+    // §Provider-audit 2026-04 (loading-polish): unified branded gate.
+    return <GateLoadingScreen message="Checking account…" />;
   }
   return <>{children}</>;
 }

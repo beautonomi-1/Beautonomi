@@ -27,7 +27,6 @@ async function playBookingAlert(): Promise<{ stop: () => void }> {
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
     });
-    const sound = new Audio.Sound();
     // Use the built-in system notification sound; expo-av can play short bundled tones.
     // We generate a short "ding-ding" via a 440Hz+880Hz sine wave encoded as a data URI,
     // but for production, replace with a proper asset or signed URL.

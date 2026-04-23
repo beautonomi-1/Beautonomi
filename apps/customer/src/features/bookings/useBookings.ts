@@ -17,6 +17,14 @@ import {
 
 type BookingsStatus = "upcoming" | "past" | "cancelled";
 
+export type MeBookingsSortBy = "scheduled_at" | "created_at";
+export type MeBookingsSortDir = "asc" | "desc";
+
+export interface UseBookingsOptions {
+  sortBy?: MeBookingsSortBy;
+  sortDir?: MeBookingsSortDir;
+}
+
 interface BookingsResponse {
   data?: Booking[];
   items?: Booking[];
@@ -29,7 +37,9 @@ function extractBookingsList(body: BookingsResponse | Booking[] | null | undefin
   return Array.isArray(items) ? items : [];
 }
 
-export function useBookings(status?: BookingsStatus) {
+export function useBookings(status?: BookingsStatus, options?: UseBookingsOptions) {
+  const sortBy = options?.sortBy ?? "scheduled_at";
+  const sortDir = options?.sortDir ?? "desc";
   const { user } = useAuth();
   const [data, setData] = useState<Booking[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,8 +51,8 @@ export function useBookings(status?: BookingsStatus) {
 
   const host = getRuntimeMarketHost().trim().toLowerCase() || "default";
   const cacheKey = user?.id
-    ? `${BOOKINGS_CACHE_KEY_PREFIX}:${host}:${user.id}:${status ?? "all"}`
-    : `${LEGACY_BOOKINGS_CACHE_KEY_PREFIX}${status ?? "all"}`;
+    ? `${BOOKINGS_CACHE_KEY_PREFIX}:${host}:${user.id}:${status ?? "all"}:${sortBy}:${sortDir}`
+    : `${LEGACY_BOOKINGS_CACHE_KEY_PREFIX}${status ?? "all"}:${sortBy}:${sortDir}`;
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -83,6 +93,8 @@ export function useBookings(status?: BookingsStatus) {
 
       const params = new URLSearchParams();
       if (status) params.set("status", status);
+      params.set("sort_by", sortBy);
+      params.set("sort_dir", sortDir);
       // Default API limit is 20; tabs need enough rows for active customers.
       params.set("limit", "100");
       params.set("page", "1");
@@ -130,7 +142,7 @@ export function useBookings(status?: BookingsStatus) {
         }
       }
     },
-    [status, cacheKey, user?.id],
+    [status, sortBy, sortDir, cacheKey, user?.id],
   );
 
   useEffect(() => {

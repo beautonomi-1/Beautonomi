@@ -18,6 +18,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface ServiceCategory {
   id: string;
@@ -55,12 +56,16 @@ export default function ServicesCatalogueScreen() {
 
   const categories =
     categoriesData?.own_categories ??
-    (categoriesData as any)?.data?.own_categories ??
+    (categoriesData && typeof categoriesData === "object" && "data" in categoriesData
+      ? (categoriesData as { data?: { own_categories?: ServiceCategory[] } }).data?.own_categories
+      : undefined) ??
     [];
   const rawServices = services;
   const servicesList = Array.isArray(rawServices)
     ? rawServices
-    : (rawServices as any)?.data ?? [];
+    : rawServices && typeof rawServices === "object" && "data" in rawServices && Array.isArray((rawServices as { data: ServiceItem[] }).data)
+      ? (rawServices as { data: ServiceItem[] }).data
+      : [];
 
   useFocusEffect(
     useCallback(() => {
@@ -211,6 +216,7 @@ export default function ServicesCatalogueScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={sections}
           keyExtractor={(s: { category: ServiceCategory | null; services: ServiceItem[] }) => s.category?.id ?? "section"}
           refreshControl={

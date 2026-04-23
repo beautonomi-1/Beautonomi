@@ -9,6 +9,38 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 
+type OnDemandModuleEnv = "production" | "staging" | "development";
+
+/** Match `on_demand_module_config.environment` — never hard-code production only (preview/staging rows exist). */
+function resolveOnDemandModuleEnvironment(): OnDemandModuleEnv {
+  const explicit = process.env.ON_DEMAND_CONFIG_ENV?.trim().toLowerCase();
+  if (explicit === "production" || explicit === "staging" || explicit === "development") {
+    return explicit;
+  }
+  if (process.env.VERCEL_ENV === "production") return "production";
+  if (process.env.VERCEL_ENV === "preview") return "staging";
+  if (process.env.VERCEL_ENV === "development") return "development";
+  return process.env.NODE_ENV === "production" ? "production" : "development";
+}
+
+async function fetchProviderAcceptWindowSeconds(admin: ReturnType<typeof getSupabaseAdmin>): Promise<number> {
+  const primary = resolveOnDemandModuleEnvironment();
+  const order: OnDemandModuleEnv[] = [primary, "production", "staging", "development"];
+  const seen = new Set<OnDemandModuleEnv>();
+  for (const env of order) {
+    if (seen.has(env)) continue;
+    seen.add(env);
+    const { data } = await admin
+      .from("on_demand_module_config")
+      .select("provider_accept_window_seconds")
+      .eq("environment", env)
+      .maybeSingle();
+    const w = Number((data as { provider_accept_window_seconds?: number } | null)?.provider_accept_window_seconds);
+    if (Number.isFinite(w) && w > 0) return Math.floor(w);
+  }
+  return 30;
+}
+
 const createRequestSchema = z.object({
   provider_id: z.string().uuid("Invalid provider ID"),
   request_payload: z.record(z.string(), z.unknown()).or(z.object({}).passthrough()),
@@ -51,13 +83,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: config } = await admin
-      .from("on_demand_module_config")
-      .select("provider_accept_window_seconds")
-      .eq("environment", "production")
-      .maybeSingle();
-
-    const windowSeconds = Number(config?.provider_accept_window_seconds ?? 30);
+    const windowSeconds = await fetchProviderAcceptWindowSeconds(admin);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + windowSeconds * 1000);
 

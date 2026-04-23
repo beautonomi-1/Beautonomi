@@ -1,10 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  getUserRoleServer,
-  getPortalForUser,
-  ensurePublicUserRowExists,
-} from "@/lib/auth/role";
+import { getPortalForUser } from "@/lib/auth/role";
+import { getUserRoleServer, ensurePublicUserRowExists } from "@/lib/auth/role-server";
 import {
   successResponse,
   handleApiError,

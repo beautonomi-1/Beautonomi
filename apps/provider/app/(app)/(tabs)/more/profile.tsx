@@ -43,9 +43,12 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { formatPhone } from "@/lib/format";
 import { useProvider } from "@/providers/ProviderContext";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { appendFormDataFileNative } from "@beautonomi/utils";
 
 const IMAGE_CONSTRAINTS = { maxSizeBytes: 2 * 1024 * 1024 }; // 2MB
 const PRIMARY = Colors.primary;
@@ -211,19 +214,19 @@ export default function ProfileScreen() {
       const uri = asset.uri;
       const name = uri.split("/").pop() || "photo.jpg";
       const formData = new FormData();
-      formData.append("file", { uri, name, type: "image/jpeg" } as any);
+      appendFormDataFileNative(formData, "file", { uri, name, type: "image/jpeg" });
       const res = await api.fetch<{ url?: string }>("/api/me/avatar", {
         method: "POST",
-        body: formData as any,
+        body: formData,
       });
-      const url = res.data?.url ?? (res as any).data?.url;
+      const url = res.data?.url;
       if (res.error || !url) {
-        Alert.alert("Upload failed", (res as any).error?.message || "Could not upload photo.");
+        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload photo."));
         return;
       }
-      const patchRes = await api.patch<{ data: any }>("/api/me/profile", { avatar_url: url });
+      const patchRes = await api.patch<{ data?: { avatar_url?: string } }>("/api/me/profile", { avatar_url: url });
       if (!patchRes.error) await load();
-      else Alert.alert("Error", (patchRes as any).error?.message || "Failed to update profile.");
+      else Alert.alert("Error", getApiErrorMessage(patchRes.error, "Failed to update profile."));
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Upload failed.");
     } finally {
@@ -283,11 +286,21 @@ export default function ProfileScreen() {
             }
           : undefined,
       };
-      const res = await api.patch<{ data: any }>("/api/me/profile", payload);
+      const res = await api.patch<{
+        data?: {
+          email_change_pending?: boolean;
+          email?: string;
+          phone?: string;
+        };
+      }>("/api/me/profile", payload);
       if (res.error) {
-        Alert.alert("Error", (res as any).error?.message || "Failed to save.");
+        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to save."));
       } else {
-        const data = (res as any).data ?? res.data;
+        const raw = res.data;
+        const data =
+          raw && typeof raw === "object" && "data" in raw && raw.data != null && typeof raw.data === "object"
+            ? (raw as { data: { email_change_pending?: boolean; email?: string; phone?: string } }).data
+            : (raw as { email_change_pending?: boolean; email?: string; phone?: string } | undefined);
         if (data?.email_change_pending) {
           Alert.alert(
             "Confirm your email",
@@ -325,10 +338,10 @@ export default function ProfileScreen() {
         type: "phone_change",
       });
       if (verifyError) throw verifyError;
-      const res = await api.patch<{ data: any }>("/api/me/profile", {
+      const res = await api.patch<{ data?: { phone?: string } }>("/api/me/profile", {
         phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
       });
-      if (res.error) throw new Error((res as any).error?.message || "Failed to save phone");
+      if (res.error) throw new Error(getApiErrorMessage(res.error, "Failed to save phone"));
       initialProfileRef.current.phone = normalizeSupabaseAuthPhone(pendingPhoneE164);
       setSavedPhoneForDisplay(normalizeSupabaseAuthPhone(pendingPhoneE164));
       setPhoneStep(null);
@@ -757,6 +770,7 @@ export default function ProfileScreen() {
               </View>
             </View>
             <FlatList<CountryCodeOption>
+              {...verticalFlatListPerf}
               data={filteredCountries}
               keyExtractor={(c: CountryCodeOption) => c.code}
               keyboardShouldPersistTaps="handled"

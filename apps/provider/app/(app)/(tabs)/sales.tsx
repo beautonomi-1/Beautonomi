@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,6 +15,7 @@ import { format, subDays } from "date-fns";
 import { useApi, useApiPost } from "@/hooks/useApi";
 import { useFocusedApi } from "@/hooks/useFocusedApi";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -51,11 +53,21 @@ interface Sale {
   ref_number: string;
   client_name: string | null;
   date: string;
-  items: { id: string; type: string; name: string; quantity: number; unit_price: number; total: number }[];
+  items: {
+    id: string;
+    type: string;
+    name: string;
+    quantity: number;
+    unit_price: number;
+    total: number;
+    item_id?: string | null;
+    product_variant_id?: string | null;
+  }[];
   subtotal: number;
   tax: number;
   total: number;
   payment_method: string;
+  payment_status?: string;
   team_member_name: string | null;
 }
 
@@ -73,6 +85,15 @@ interface CatalogueService {
   price: number;
   currency: string;
   duration_minutes: number;
+  service_type?: string;
+}
+
+interface ProductVariantRow {
+  id: string;
+  option_values?: Record<string, string>;
+  retail_price: number;
+  quantity: number;
+  sku?: string | null;
 }
 
 interface ProductItem {
@@ -82,6 +103,10 @@ interface ProductItem {
   currency?: string;
   sku?: string;
   stock_quantity?: number;
+  quantity?: number;
+  effective_quantity?: number;
+  has_variants?: boolean;
+  variants?: ProductVariantRow[];
 }
 
 interface ProductsResponse {
@@ -115,11 +140,48 @@ interface StaffMember {
 }
 
 interface CartItem {
+  /** Stable row key for quantity controls and removal */
+  lineId: string;
+  /** offerings.id (variant or parent) or products.id for `sale_items.item_id` */
   item_id: string;
   type: "service" | "product";
   name: string;
   price: number;
   quantity: number;
+  currency?: string;
+  /** When this line is a service variant, parent offering id (for UI only). */
+  parent_service_id?: string | null;
+  product_variant_id?: string | null;
+}
+
+interface ServiceVariantRow {
+  id: string;
+  title: string;
+  price: number;
+  currency?: string;
+}
+
+function parseServiceVariantsPayload(data: unknown): ServiceVariantRow[] {
+  if (!data || typeof data !== "object") return [];
+  const raw = (data as { variants?: unknown }).variants;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((v: Record<string, unknown>) => ({
+    id: String(v.id),
+    title: String(v.title ?? v.variant_name ?? "Option"),
+    price: Number(v.price ?? 0),
+    currency: typeof v.currency === "string" ? v.currency : undefined,
+  }));
+}
+
+function formatProductVariantLabel(v: ProductVariantRow): string {
+  const vals = v.option_values ? Object.values(v.option_values).filter(Boolean) : [];
+  if (vals.length) return vals.join(" / ");
+  if (v.sku) return String(v.sku);
+  return "Option";
+}
+
+function newCartLineId(): string {
+  return `ln-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 type CheckoutStep =
@@ -149,11 +211,20 @@ export default function SalesScreen() {
   const router = useRouter();
   const tenantCurrency = getTenantDefaultCurrency();
   const { isTablet } = useResponsive();
+  const adsModule = useModuleConfig("ads") as { enabled?: boolean } | undefined;
+  const adsFeatureOn = useFeatureFlag("ads.enabled");
+  const adsSelfServeAvailable = Boolean(adsModule?.enabled) || adsFeatureOn;
   const { selectedLocationId } = useProvider();
   const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
   const locQFirst = selectedLocationId ? `?location_id=${selectedLocationId}` : "";
   const [dateRange, setDateRange] = useState("month");
   const [refreshing, setRefreshing] = useState(false);
+  // §Provider-audit 2026-04 (B2): wire the unified /api/provider/sales
+  // `search` param to a debounced input so providers can quickly find a
+  // specific sale by reference or client name. Previously the screen only
+  // supported date + location filtering, which made scanning busy stores
+  // frustrating. SearchBar debounces internally.
+  const [salesSearchDebounced, setSalesSearchDebounced] = useState("");
 
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("idle");
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -165,6 +236,13 @@ export default function SalesScreen() {
   const [clientSearch, setClientSearch] = useState("");
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [cartTab, setCartTab] = useState<"services" | "products">("services");
+  const variantsCacheRef = useRef<Map<string, ServiceVariantRow[]>>(new Map());
+  const [variantLoadingId, setVariantLoadingId] = useState<string | null>(null);
+  const [servicePick, setServicePick] = useState<{
+    parent: CatalogueService;
+    variants: ServiceVariantRow[];
+  } | null>(null);
+  const [productPick, setProductPick] = useState<ProductItem | null>(null);
   const [receiptData, setReceiptData] = useState<{
     total: number;
     items: CartItem[];
@@ -202,13 +280,16 @@ export default function SalesScreen() {
     }
   }, [dateRange]);
 
+  const searchQ = salesSearchDebounced
+    ? `&search=${encodeURIComponent(salesSearchDebounced)}`
+    : "";
   const {
     data: salesResponse,
     loading: salesLoading,
     error: salesError,
     refresh: refreshSales,
   } = useApi<SalesResponse>(
-    `/api/provider/sales?limit=50${dateParams}${locQ}`,
+    `/api/provider/sales?limit=50${dateParams}${locQ}${searchQ}`,
     { enabled: isFocused, staleTimeMs: 15_000 },
   );
   const sales = salesResponse?.data ?? [];
@@ -217,14 +298,14 @@ export default function SalesScreen() {
     "/api/provider/services?is_active=true",
     { enabled: isFocused, staleTimeMs: 60_000 },
   );
-  const { data: productsResponse } = useApi<ProductsResponse>(
+  const { data: productsResponse } = useApi<ProductsResponse | ProductItem[]>(
     "/api/provider/products?limit=200",
     { enabled: isFocused, staleTimeMs: 60_000 },
   );
   const products = useMemo<ProductItem[]>(() => {
     if (!productsResponse) return [];
-    const raw = productsResponse as any;
-    return raw.products ?? raw ?? [];
+    if (Array.isArray(productsResponse)) return productsResponse;
+    return productsResponse.products ?? [];
   }, [productsResponse]);
   const { data: staffMembers } = useApi<StaffMember[]>(
     selectedLocationId ? `/api/provider/staff?location_id=${selectedLocationId}` : "/api/provider/staff",
@@ -280,53 +361,171 @@ export default function SalesScreen() {
     ? afterDiscount + tipAmount
     : afterDiscount + taxAmount + tipAmount;
 
-  function addServiceToCart(service: CatalogueService) {
+  async function handleServiceRowPress(service: CatalogueService) {
+    if (variantLoadingId) return;
+    let rows = variantsCacheRef.current.get(service.id);
+    if (rows === undefined) {
+      setVariantLoadingId(service.id);
+      const res = await api.get<{ variants?: unknown }>(
+        `/api/provider/services/${service.id}/variants`,
+      );
+      setVariantLoadingId(null);
+      if (res.error) {
+        Alert.alert("Could not load options", res.error.message);
+        return;
+      }
+      rows = parseServiceVariantsPayload(res.data);
+      variantsCacheRef.current.set(service.id, rows);
+    }
+    if (rows.length === 0) {
+      addParentServiceToCart(service);
+    } else {
+      setServicePick({ parent: service, variants: rows });
+    }
+  }
+
+  function addParentServiceToCart(service: CatalogueService) {
     setCart((prev) => {
-      const existing = prev.find((i) => i.item_id === service.id && i.type === "service");
+      const existing = prev.find(
+        (i) =>
+          i.type === "service" &&
+          i.item_id === service.id &&
+          !(i.parent_service_id ?? null),
+      );
       if (existing) {
         return prev.map((i) =>
-          i.item_id === service.id && i.type === "service"
-            ? { ...i, quantity: i.quantity + 1 }
-            : i
+          i.lineId === existing.lineId ? { ...i, quantity: i.quantity + 1 } : i,
         );
       }
       return [
         ...prev,
-        { item_id: service.id, type: "service", name: service.title, price: service.price, quantity: 1 },
+        {
+          lineId: newCartLineId(),
+          item_id: service.id,
+          type: "service" as const,
+          name: service.title,
+          price: service.price,
+          quantity: 1,
+          currency: service.currency,
+          parent_service_id: null,
+        },
       ];
     });
   }
 
-  function addProductToCart(product: ProductItem) {
+  function addServiceVariantChoice(parent: CatalogueService, variant: ServiceVariantRow | null) {
+    const name =
+      variant == null
+        ? parent.title
+        : `${parent.title} — ${variant.title}`;
+    const price = variant == null ? parent.price : variant.price;
+    const itemId = variant == null ? parent.id : variant.id;
+    const currency = variant?.currency ?? parent.currency;
     setCart((prev) => {
-      const existing = prev.find((i) => i.item_id === product.id && i.type === "product");
+      const existing = prev.find((i) => i.type === "service" && i.item_id === itemId);
       if (existing) {
         return prev.map((i) =>
-          i.item_id === product.id && i.type === "product"
-            ? { ...i, quantity: i.quantity + 1 }
-            : i
+          i.lineId === existing.lineId ? { ...i, quantity: i.quantity + 1 } : i,
         );
       }
       return [
         ...prev,
-        { item_id: product.id, type: "product", name: product.name, price: product.retail_price, quantity: 1 },
+        {
+          lineId: newCartLineId(),
+          item_id: itemId,
+          type: "service" as const,
+          name,
+          price,
+          quantity: 1,
+          currency,
+          parent_service_id: variant ? parent.id : null,
+        },
+      ];
+    });
+    setServicePick(null);
+  }
+
+  function addSimpleProductToCart(product: ProductItem) {
+    const unit = Number(product.retail_price ?? 0);
+    setCart((prev) => {
+      const existing = prev.find(
+        (i) =>
+          i.type === "product" &&
+          i.item_id === product.id &&
+          !(i.product_variant_id ?? null),
+      );
+      if (existing) {
+        return prev.map((i) =>
+          i.lineId === existing.lineId ? { ...i, quantity: i.quantity + 1 } : i,
+        );
+      }
+      return [
+        ...prev,
+        {
+          lineId: newCartLineId(),
+          item_id: product.id,
+          type: "product" as const,
+          name: product.name,
+          price: unit,
+          quantity: 1,
+          currency: product.currency,
+          product_variant_id: null,
+        },
       ];
     });
   }
 
-  function removeFromCart(itemId: string) {
-    setCart((prev) => prev.filter((i) => i.item_id !== itemId));
+  function addProductVariantToCart(product: ProductItem, variant: ProductVariantRow) {
+    const unit = Number(variant.retail_price ?? 0);
+    const label = formatProductVariantLabel(variant);
+    setCart((prev) => {
+      const existing = prev.find(
+        (i) =>
+          i.type === "product" &&
+          i.item_id === product.id &&
+          (i.product_variant_id ?? null) === variant.id,
+      );
+      if (existing) {
+        return prev.map((i) =>
+          i.lineId === existing.lineId ? { ...i, quantity: i.quantity + 1 } : i,
+        );
+      }
+      return [
+        ...prev,
+        {
+          lineId: newCartLineId(),
+          item_id: product.id,
+          type: "product" as const,
+          name: `${product.name} — ${label}`,
+          price: unit,
+          quantity: 1,
+          currency: product.currency,
+          product_variant_id: variant.id,
+        },
+      ];
+    });
+    setProductPick(null);
   }
 
-  function updateQuantity(itemId: string, qty: number) {
+  function handleProductRowPress(product: ProductItem) {
+    if (product.has_variants && (product.variants?.length ?? 0) > 0) {
+      setProductPick(product);
+      return;
+    }
+    addSimpleProductToCart(product);
+  }
+
+  function removeFromCart(lineId: string) {
+    setCart((prev) => prev.filter((i) => i.lineId !== lineId));
+  }
+
+  function updateQuantity(lineId: string, qty: number) {
     if (qty <= 0) {
-      removeFromCart(itemId);
+      removeFromCart(lineId);
       return;
     }
     setCart((prev) =>
-      prev.map((i) =>
-        i.item_id === itemId ? { ...i, quantity: qty } : i
-      )
+      prev.map((i) => (i.lineId === lineId ? { ...i, quantity: qty } : i)),
     );
   }
 
@@ -341,6 +540,10 @@ export default function SalesScreen() {
     setReceiptData(null);
     setCartTab("services");
     setSelectedStaffId(null);
+    setServicePick(null);
+    setProductPick(null);
+    setVariantLoadingId(null);
+    variantsCacheRef.current.clear();
     yocoPendingSaleIdRef.current = null;
     setYocoLinkedSaleId(null);
     setCheckoutStep("select_client");
@@ -359,6 +562,8 @@ export default function SalesScreen() {
   }
 
   function buildSalePayload(overrides: Record<string, unknown> = {}) {
+    const rawMethod = (overrides.payment_method as PaymentMethod | undefined) ?? paymentMethod;
+    const payment_method = rawMethod === "online" ? "other" : rawMethod;
     return {
       customer_id: selectedClient?.customer_id ?? null,
       is_walk_in: isWalkIn,
@@ -366,6 +571,7 @@ export default function SalesScreen() {
       staff_id: selectedStaffId || null,
       items: cart.map((i) => ({
         item_id: i.item_id,
+        product_variant_id: i.product_variant_id ?? null,
         type: i.type,
         name: i.name,
         quantity: i.quantity,
@@ -378,6 +584,7 @@ export default function SalesScreen() {
       tip_amount: tipAmount,
       total_amount: grandTotal,
       ...overrides,
+      payment_method,
     };
   }
 
@@ -544,15 +751,15 @@ export default function SalesScreen() {
     );
   }
 
-  function renderCartItemControls(itemId: string, inCart: CartItem | undefined) {
+  function renderCartItemControls(inCart: CartItem | undefined) {
     if (inCart) {
       return (
         <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#e0e7ff", paddingHorizontal: 8, paddingVertical: 4 }}>
-          <TouchableOpacity onPress={() => updateQuantity(itemId, inCart.quantity - 1)} accessibilityLabel="Decrease quantity">
+          <TouchableOpacity onPress={() => updateQuantity(inCart.lineId, inCart.quantity - 1)} accessibilityLabel="Decrease quantity">
             <Ionicons name="remove" size={16} color="#6366f1" />
           </TouchableOpacity>
           <Text style={{ marginHorizontal: 8, fontSize: 14, fontWeight: "600", color: "#4338ca" }}>{inCart.quantity}</Text>
-          <TouchableOpacity onPress={() => updateQuantity(itemId, inCart.quantity + 1)} accessibilityLabel="Increase quantity">
+          <TouchableOpacity onPress={() => updateQuantity(inCart.lineId, inCart.quantity + 1)} accessibilityLabel="Increase quantity">
             <Ionicons name="add" size={16} color="#6366f1" />
           </TouchableOpacity>
         </View>
@@ -565,7 +772,11 @@ export default function SalesScreen() {
     return (
       <BottomSheet
         visible
-        onClose={() => setCheckoutStep("idle")}
+        onClose={() => {
+          setServicePick(null);
+          setProductPick(null);
+          setCheckoutStep("idle");
+        }}
         title="Add Items"
         snapHeight="full"
       >
@@ -573,102 +784,259 @@ export default function SalesScreen() {
           Client: {selectedClient?.full_name ?? "Walk-in"}
         </Text>
 
-        <View style={{ marginBottom: 12, flexDirection: "row", borderRadius: 12, backgroundColor: Colors.gray[100], padding: 4 }}>
-          <TouchableOpacity
-            style={[ { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 8 }, cartTab === "services" && { backgroundColor: Colors.white, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 } ]}
-            onPress={() => setCartTab("services")}
-            accessibilityLabel="Services tab"
-          >
-            <Text style={{ fontSize: 14, fontWeight: "500", color: cartTab === "services" ? Colors.gray[900] : Colors.gray[500] }}>
-              Services
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[ { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 8 }, cartTab === "products" && { backgroundColor: Colors.white, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 } ]}
-            onPress={() => setCartTab("products")}
-            accessibilityLabel="Products tab"
-          >
-            <Text style={{ fontSize: 14, fontWeight: "500", color: cartTab === "products" ? Colors.gray[900] : Colors.gray[500] }}>
-              Products
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {cartTab === "services" && (
-          <View>
-            {(catalogue ?? []).map((svc, i) => {
-              const inCart = cart.find((i) => i.item_id === svc.id && i.type === "service");
+        {servicePick ? (
+          <View style={{ marginBottom: 12 }}>
+            <TouchableOpacity
+              onPress={() => setServicePick(null)}
+              style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Back to services list"
+            >
+              <Ionicons name="chevron-back" size={22} color="#6366f1" />
+              <Text style={{ marginLeft: 4, fontSize: 15, fontWeight: "600", color: "#4338ca" }}>Back</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{servicePick.parent.title}</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Choose an option</Text>
+            <TouchableOpacity
+              style={{
+                marginTop: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                backgroundColor: Colors.white,
+                padding: 16,
+              }}
+              onPress={() => addServiceVariantChoice(servicePick.parent, null)}
+            >
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Standard</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+                {formatCurrency(servicePick.parent.price, servicePick.parent.currency)}
+              </Text>
+            </TouchableOpacity>
+            {servicePick.variants.map((v) => (
+              <TouchableOpacity
+                key={v.id}
+                style={{
+                  marginTop: 8,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: Colors.gray[200],
+                  backgroundColor: Colors.white,
+                  padding: 16,
+                }}
+                onPress={() => addServiceVariantChoice(servicePick.parent, v)}
+              >
+                <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{v.title}</Text>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+                  {formatCurrency(v.price, v.currency ?? servicePick.parent.currency)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : productPick ? (
+          <View style={{ marginBottom: 12 }}>
+            <TouchableOpacity
+              onPress={() => setProductPick(null)}
+              style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Back to products list"
+            >
+              <Ionicons name="chevron-back" size={22} color="#6366f1" />
+              <Text style={{ marginLeft: 4, fontSize: 15, fontWeight: "600", color: "#4338ca" }}>Back</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{productPick.name}</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Select variant</Text>
+            {(productPick.variants ?? []).map((v) => {
+              const q = Number(v.quantity ?? 0);
+              const disabled = q <= 0;
               return (
                 <TouchableOpacity
-                  key={svc.id}
+                  key={v.id}
+                  disabled={disabled}
                   style={{
+                    marginTop: 8,
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "space-between",
                     borderRadius: 12,
                     borderWidth: 1,
+                    borderColor: Colors.gray[200],
+                    backgroundColor: disabled ? Colors.gray[100] : Colors.white,
                     padding: 16,
-                    marginTop: i === 0 ? 0 : 8,
-                    ...(inCart ? { borderColor: "#a5b4fc", backgroundColor: "#eef2ff" } : { borderColor: Colors.gray[100], backgroundColor: Colors.white }),
+                    opacity: disabled ? 0.55 : 1,
                   }}
-                  onPress={() => addServiceToCart(svc)}
-                  accessibilityLabel={`Add ${svc.title} to cart`}
+                  onPress={() => !disabled && addProductVariantToCart(productPick, v)}
                 >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{svc.title}</Text>
-                    <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{svc.duration_minutes}min</Text>
-                  </View>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text style={{ marginRight: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{formatCurrency(svc.price, svc.currency)}</Text>
-                    {renderCartItemControls(svc.id, inCart)}
+                  <Text style={{ flex: 1, fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+                    {formatProductVariantLabel(v)}
+                  </Text>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{q} in stock</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
+                      {formatCurrency(v.retail_price)}
+                    </Text>
                   </View>
                 </TouchableOpacity>
               );
             })}
-            {(!catalogue || catalogue.length === 0) && (
-              <Text style={{ paddingVertical: 24, textAlign: "center", fontSize: 14, color: Colors.gray[400] }}>No active services</Text>
-            )}
           </View>
+        ) : (
+          <>
+            <View style={{ marginBottom: 12, flexDirection: "row", borderRadius: 12, backgroundColor: Colors.gray[100], padding: 4 }}>
+              <TouchableOpacity
+                style={[ { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 8 }, cartTab === "services" && { backgroundColor: Colors.white, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 } ]}
+                onPress={() => setCartTab("services")}
+                accessibilityLabel="Services tab"
+              >
+                <Text style={{ fontSize: 14, fontWeight: "500", color: cartTab === "services" ? Colors.gray[900] : Colors.gray[500] }}>
+                  Services
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[ { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 8 }, cartTab === "products" && { backgroundColor: Colors.white, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 } ]}
+                onPress={() => setCartTab("products")}
+                accessibilityLabel="Products tab"
+              >
+                <Text style={{ fontSize: 14, fontWeight: "500", color: cartTab === "products" ? Colors.gray[900] : Colors.gray[500] }}>
+                  Products
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {cartTab === "services" && (
+              <View>
+                {(catalogue ?? []).map((svc, i) => {
+                  const inCart = cart.find(
+                    (c) =>
+                      c.type === "service" &&
+                      (c.item_id === svc.id || c.parent_service_id === svc.id),
+                  );
+                  const loading = variantLoadingId === svc.id;
+                  const cachedVariantRows = variantsCacheRef.current.get(svc.id);
+                  const hasVariantOptions =
+                    cachedVariantRows != null && cachedVariantRows.length > 0;
+                  return (
+                    <TouchableOpacity
+                      key={svc.id}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        padding: 16,
+                        marginTop: i === 0 ? 0 : 8,
+                        ...(inCart ? { borderColor: "#a5b4fc", backgroundColor: "#eef2ff" } : { borderColor: Colors.gray[100], backgroundColor: Colors.white }),
+                      }}
+                      onPress={() => void handleServiceRowPress(svc)}
+                      accessibilityLabel={`Add ${svc.title} to cart`}
+                    >
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
+                          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{svc.title}</Text>
+                          {svc.service_type === "package" && (
+                            <View style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: "#f3e8ff" }}>
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#6b21a8" }}>PACKAGE</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{svc.duration_minutes} min</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Text style={{ marginRight: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{formatCurrency(svc.price, svc.currency)}</Text>
+                        {loading ? (
+                          <ActivityIndicator size="small" color="#6366f1" />
+                        ) : hasVariantOptions && !inCart ? (
+                          <Ionicons name="chevron-forward" size={22} color="#6366f1" />
+                        ) : (
+                          renderCartItemControls(inCart)
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+                {(!catalogue || catalogue.length === 0) && (
+                  <Text style={{ paddingVertical: 24, textAlign: "center", fontSize: 14, color: Colors.gray[400] }}>No active services</Text>
+                )}
+              </View>
+            )}
+
+            {cartTab === "products" && (
+              <View>
+                {products.map((prod, i) => {
+                  const hasOpts = Boolean(prod.has_variants && (prod.variants?.length ?? 0) > 0);
+                  const inCart = hasOpts
+                    ? cart.find((c) => c.type === "product" && c.item_id === prod.id)
+                    : cart.find(
+                        (c) =>
+                          c.type === "product" &&
+                          c.item_id === prod.id &&
+                          !(c.product_variant_id ?? null),
+                      );
+                  const variantPrices = (prod.variants ?? []).map((v) => Number(v.retail_price ?? 0));
+                  const displayPrice =
+                    hasOpts && variantPrices.length > 0
+                      ? Math.min(...variantPrices)
+                      : Number(prod.retail_price ?? 0);
+                  const stockLabel = hasOpts
+                    ? `${prod.effective_quantity ?? prod.quantity ?? 0} in stock`
+                    : `${prod.quantity ?? prod.stock_quantity ?? 0} in stock`;
+                  return (
+                    <TouchableOpacity
+                      key={prod.id}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        padding: 16,
+                        marginTop: i === 0 ? 0 : 8,
+                        ...(inCart ? { borderColor: "#a5b4fc", backgroundColor: "#eef2ff" } : { borderColor: Colors.gray[100], backgroundColor: Colors.white }),
+                      }}
+                      onPress={() => handleProductRowPress(prod)}
+                      accessibilityLabel={`Add ${prod.name} to cart`}
+                    >
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
+                          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{prod.name}</Text>
+                          {hasOpts && (
+                            <View style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 9999, backgroundColor: "#e0e7ff" }}>
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#3730a3" }}>VARIANTS</Text>
+                            </View>
+                          )}
+                        </View>
+                        {prod.sku && !hasOpts && (
+                          <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>SKU: {prod.sku}</Text>
+                        )}
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <View style={{ marginRight: 12, alignItems: "flex-end" }}>
+                          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{formatCurrency(displayPrice)}</Text>
+                          {hasOpts && variantPrices.length > 1 && (
+                            <Text style={{ fontSize: 10, color: Colors.gray[500] }}>from</Text>
+                          )}
+                        </View>
+                        {hasOpts ? <Ionicons name="chevron-forward" size={20} color="#6366f1" /> : renderCartItemControls(inCart)}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+                {products.length === 0 && (
+                  <Text style={{ paddingVertical: 24, textAlign: "center", fontSize: 14, color: Colors.gray[400] }}>No products available</Text>
+                )}
+              </View>
+            )}
+          </>
         )}
 
-        {cartTab === "products" && (
-          <View>
-            {products.map((prod, i) => {
-              const inCart = cart.find((i) => i.item_id === prod.id && i.type === "product");
-              return (
-                <TouchableOpacity
-                  key={prod.id}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    padding: 16,
-                    marginTop: i === 0 ? 0 : 8,
-                    ...(inCart ? { borderColor: "#a5b4fc", backgroundColor: "#eef2ff" } : { borderColor: Colors.gray[100], backgroundColor: Colors.white }),
-                  }}
-                  onPress={() => addProductToCart(prod)}
-                  accessibilityLabel={`Add ${prod.name} to cart`}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{prod.name}</Text>
-                    {prod.sku && <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>SKU: {prod.sku}</Text>}
-                  </View>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text style={{ marginRight: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{formatCurrency(prod.retail_price)}</Text>
-                    {renderCartItemControls(prod.id, inCart)}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-            {products.length === 0 && (
-              <Text style={{ paddingVertical: 24, textAlign: "center", fontSize: 14, color: Colors.gray[400] }}>No products available</Text>
-            )}
-          </View>
-        )}
-
-        {cart.length > 0 && (
+        {!servicePick && !productPick && cart.length > 0 && (
           <View style={{ marginTop: 16 }}>
             <ActionButton
               label={`Continue with ${cart.length} item${cart.length > 1 ? "s" : ""} (${formatCurrency(cartTotal)})`}
@@ -700,7 +1068,7 @@ export default function SalesScreen() {
 
         {cart.map((item) => (
           <View
-            key={`${item.type}-${item.item_id}`}
+            key={item.lineId}
             style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: Colors.gray[50], paddingVertical: 12 }}
           >
             <View style={{ flex: 1 }}>
@@ -917,7 +1285,7 @@ export default function SalesScreen() {
         rightAction={
           <TouchableOpacity
             style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[100] }}
-            onPress={() => router.push("/(app)/(tabs)/more/finance" as any)}
+            onPress={() => router.push("/(app)/(tabs)/more/finance" as never)}
             accessibilityLabel="View finance reports"
             accessibilityRole="button"
           >
@@ -925,6 +1293,37 @@ export default function SalesScreen() {
           </TouchableOpacity>
         }
       />
+
+      {adsSelfServeAvailable ? (
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(tabs)/more/settings/ads" as never)}
+          style={{
+            marginTop: 12,
+            paddingVertical: 14,
+            paddingHorizontal: 14,
+            borderRadius: 16,
+            backgroundColor: "#eef2ff",
+            borderWidth: 1,
+            borderColor: "#c7d2fe",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Sponsored listings and ads"
+          accessibilityHint="Opens settings where you can buy sponsored listing packs"
+        >
+          <Ionicons name="megaphone-outline" size={22} color="#4338ca" />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontWeight: "600", fontSize: 15, color: "#1e1b4b" }}>Grow with sponsored listings</Text>
+            <Text style={{ fontSize: 12, color: "#4338ca", marginTop: 4, lineHeight: 16 }}>
+              Buy ad packs or set a budget in Ads settings. Superadmin sets pricing in Admin → Control Plane → Ads; your
+              slots appear on the customer app and web home when your campaign is active.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#4338ca" />
+        </TouchableOpacity>
+      ) : null}
 
       <View style={[ isTablet ? { flexDirection: "row" } : {} ]}>
         <View style={[ isTablet ? { flex: 1 } : {}, isTablet && { marginRight: 12 } ]}>
@@ -968,19 +1367,45 @@ export default function SalesScreen() {
 
       <View style={{ marginTop: 16 }}>
         <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
-          Transactions ({sales.length})
+          Transactions ({salesResponse?.total ?? sales.length})
         </Text>
+
+        <View style={{ marginBottom: 12 }}>
+          <SearchBar
+            value={salesSearchDebounced}
+            onChangeText={setSalesSearchDebounced}
+            placeholder="Search by reference or client name"
+          />
+        </View>
 
         {salesLoading && sales.length === 0 ? (
           <LoadingState fullScreen={false} />
         ) : salesError && sales.length === 0 ? (
           <ErrorState message={salesError} onRetry={refreshSales} />
         ) : sales.length === 0 ? (
-          <EmptyState
-            icon="receipt-outline"
-            title="No sales yet"
-            description="Sales created via POS will appear here"
-          />
+          salesSearchDebounced ? (
+            <EmptyState
+              icon="search-outline"
+              title="No matches"
+              description={`No transactions match "${salesSearchDebounced}". Try a different reference or name.`}
+              actionLabel="Clear search"
+              onAction={() => setSalesSearchDebounced("")}
+            />
+          ) : dateRange !== "all" ? (
+            <EmptyState
+              icon="calendar-outline"
+              title="No sales in this range"
+              description="Try expanding the date range or switch to All time."
+              actionLabel="Show all time"
+              onAction={() => setDateRange("all")}
+            />
+          ) : (
+            <EmptyState
+              icon="receipt-outline"
+              title="No sales yet"
+              description="Sales created via POS will appear here"
+            />
+          )
         ) : (
           <View style={[ isTablet ? { flexDirection: "row", flexWrap: "wrap" } : {} ]}>
             {sales.map((sale) => (

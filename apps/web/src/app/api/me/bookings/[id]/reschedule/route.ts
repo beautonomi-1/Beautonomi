@@ -1,14 +1,15 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
-import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
-import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
-import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
-import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
-import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
-import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
-import { formatInTimeZone } from "date-fns-tz";
+import {
+  successResponse,
+  handleApiError,
+  requireAuthInApi,
+} from "@/lib/supabase/api-helpers";
+import {
+  executeReschedule,
+  httpStatusForRescheduleError,
+} from "@/lib/bookings/reschedule-core";
 import { z } from "zod";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_BOOKING_RESCHEDULED } from "@/lib/analytics/amplitude/types";
@@ -19,400 +20,157 @@ const rescheduleSchema = z.object({
 
 /**
  * POST /api/me/bookings/[id]/reschedule
- * 
- * Reschedule a booking (subject to cancellation policy and availability)
+ *
+ * Reschedule a booking (subject to cancellation policy and availability).
+ *
+ * §Cross-app audit 2026-04 (reschedule unification): this route used to
+ * re-implement ~400 lines of availability, timezone, conflict-check, and
+ * booking_services cascade logic inline. All of that now lives in
+ * `lib/bookings/reschedule-core.ts#executeReschedule` so the customer,
+ * portal, and provider surfaces share a single implementation. Divergence
+ * (e.g. the old portal fail-open bug, or missing `timezone` option on
+ * `calculateAvailableSlots`) is no longer possible. The only logic left
+ * here is the customer-specific pre-flight (ownership + group-booking
+ * primary-contact gate) and post-flight (notification + Amplitude).
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user } = await requireAuthInApi(request);
     const { id: bookingId } = await params;
     const body = await request.json();
 
-    // Validate input
     const validated = rescheduleSchema.parse(body);
     const newDatetime = new Date(validated.new_datetime);
 
     const supabase = await getSupabaseServer(request);
     const adminSupabase = getSupabaseAdmin();
 
-    // Load booking with services
-    const { data: booking, error: bookingError } = await supabase
-      .from('bookings')
-      .select(`
-        id,
-        provider_id,
-        location_type,
-        scheduled_at,
-        created_at,
-        status,
-        customer_id,
-        booking_services (
-          id,
-          offering_id,
-          staff_id,
-          scheduled_start_at,
-          scheduled_end_at,
-          duration_minutes,
-          offerings:offerings!booking_services_offering_id_fkey!inner(buffer_minutes, duration_minutes)
-        )
-      `)
-      .eq('id', bookingId)
+    // ── Customer-only pre-flight: ownership + group-booking gating.
+    // The core engine doesn't know about `customer_id` (it's intentionally
+    // actor-agnostic), so we check it here before entering the shared flow.
+    const { data: bookingMeta, error: bookingMetaError } = await supabase
+      .from("bookings")
+      .select("id, customer_id, scheduled_at, provider_id")
+      .eq("id", bookingId)
       .single();
 
-    if (bookingError || !booking) {
+    if (bookingMetaError || !bookingMeta) {
       return handleApiError(
         new Error("Booking not found"),
         "Booking not found",
         "NOT_FOUND",
-        404
+        404,
       );
     }
 
-    // Verify user owns the booking
-    if (booking.customer_id !== user.id) {
+    if ((bookingMeta as { customer_id?: string }).customer_id !== user.id) {
       return handleApiError(
         new Error("Unauthorized"),
         "You can only reschedule your own bookings",
         "UNAUTHORIZED",
-        403
+        403,
       );
     }
 
-    const nonReschedulableStatuses = ["completed", "cancelled", "no_show"];
-    if (nonReschedulableStatuses.includes(booking.status)) {
-      return handleApiError(
-        new Error("Cannot reschedule a booking that is " + booking.status),
-        `Cannot reschedule a ${booking.status} booking`,
-        "INVALID_STATUS",
-        400
-      );
-    }
-
-    // Check if booking is part of a group booking
+    // If the booking is part of a group, only the primary contact can
+    // reschedule it (same rule as before — enforced here so the core
+    // engine can stay single-booking).
     const { data: participant } = await supabase
-      .from('booking_participants')
-      .select('group_booking_id, is_primary_contact')
-      .eq('booking_id', bookingId)
+      .from("booking_participants")
+      .select("group_booking_id, is_primary_contact")
+      .eq("booking_id", bookingId)
       .single();
 
-    if (participant?.group_booking_id) {
-      // If part of group, only primary contact can reschedule
-      if (!participant.is_primary_contact) {
-        // Get primary contact info
-        const { data: groupBooking } = await supabase
-          .from('group_bookings')
-          .select('primary_contact_booking_id, bookings!primary_contact_booking_id(customer_id, users!inner(email))')
-          .eq('id', participant.group_booking_id)
-          .single();
+    if (participant?.group_booking_id && !participant.is_primary_contact) {
+      const { data: groupBooking } = await supabase
+        .from("group_bookings")
+        .select(
+          "primary_contact_booking_id, bookings!primary_contact_booking_id(customer_id, users!inner(email))",
+        )
+        .eq("id", participant.group_booking_id)
+        .single();
 
-        const primaryContactEmail = (groupBooking as any)?.bookings?.users?.email || 'the primary contact';
+      const primaryContactEmail =
+        (groupBooking as { bookings?: { users?: { email?: string } } })?.bookings?.users?.email ||
+        "the primary contact";
 
-        return handleApiError(
-          new Error("Only the primary contact can reschedule group bookings"),
-          `Only the primary contact can reschedule group bookings. Please contact ${primaryContactEmail}.`,
-          "GROUP_BOOKING_RESTRICTION",
-          403
-        );
-      }
+      return handleApiError(
+        new Error("Only the primary contact can reschedule group bookings"),
+        `Only the primary contact can reschedule group bookings. Please contact ${primaryContactEmail}.`,
+        "GROUP_BOOKING_RESTRICTION",
+        403,
+      );
     }
 
-    // Check if booking can be rescheduled (same policy as cancellation)
-    const policy = await getCancellationPolicy(
+    // ── Core flow.
+    const result = await executeReschedule({
       supabase,
-      booking.provider_id,
-      booking.location_type as 'at_salon' | 'at_home'
-    );
-
-    if (policy) {
-      const checkResult = canCancelBooking(
-        {
-          id: booking.id,
-          created_at: booking.created_at,
-          scheduled_at: booking.scheduled_at,
-          location_type: booking.location_type as 'at_salon' | 'at_home',
-        },
-        policy
-      );
-
-      if (!checkResult.allowed) {
-        return handleApiError(
-          new Error(checkResult.reason || "Rescheduling not allowed"),
-          checkResult.reason || "Rescheduling not allowed",
-          "RESCHEDULE_BLOCKED",
-          403
-        );
-      }
-    }
-
-    // Check if new time slot is available
-    const bookingServices = booking.booking_services as any[];
-    if (bookingServices.length === 0) {
-      return handleApiError(
-        new Error("Booking has no services"),
-        "Booking has no services",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-
-    const allStaffIds = [...new Set(bookingServices.map((bs: { staff_id?: string }) => bs.staff_id).filter((sid): sid is string => !!sid))];
-    const staffId = allStaffIds[0];
-
-    if (!staffId) {
-      return handleApiError(
-        new Error("Booking has no assigned staff"),
-        "Booking has no assigned staff",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-
-    // Total blocked span = sum(durations) + sum(buffers) to match book flow
-    let totalDuration = 0;
-    type BsRow = { duration_minutes?: number; offerings?: { duration_minutes?: number; buffer_minutes?: number } };
-    bookingServices.forEach((bs: BsRow) => {
-      const dur = bs.duration_minutes ?? bs.offerings?.duration_minutes ?? 60;
-      const buf = bs.offerings?.buffer_minutes ?? 15;
-      totalDuration += dur + buf;
-    });
-
-    // Resolve the provider's business timezone so the new slot is interpreted
-    // in the calendar the customer actually saw. Fallback to the default
-    // booking display timezone when a provider has not set one.
-    const { data: providerRow } = await supabase
-      .from('providers')
-      .select('timezone')
-      .eq('id', booking.provider_id)
-      .maybeSingle();
-    // §Launch-audit 2026-04-18: normalise legacy offset-style zones (e.g.
-    // "GMT+2") before handing to `formatInTimeZone`, otherwise Intl throws
-    // and the reschedule 500s. See supabase migration 511.
-    const rawProviderTz =
-      (providerRow as { timezone?: string | null } | null)?.timezone ?? null;
-    const providerTz =
-      normalizeProviderTimezone(rawProviderTz) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
-    if (rawProviderTz && !normalizeProviderTimezone(rawProviderTz)) {
-      console.warn(
-        `[reschedule] provider ${booking.provider_id} has unparseable timezone "${rawProviderTz}" — falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}`,
-      );
-    }
-
-    // B5: derive the target calendar date and HH:mm in the provider's tz
-    // (not UTC, not the Node server's local tz). The previous code compared
-    // `newDatetime.getUTCHours()` against `slot.time` (provider-local), which
-    // silently shifted the valid slot by the UTC offset and let customers
-    // confirm an "available" slot that was actually outside business hours.
-    const newDate = formatInTimeZone(newDatetime, providerTz, "yyyy-MM-dd");
-    const requestedTime = formatInTimeZone(newDatetime, providerTz, "HH:mm");
-
-    const constraints = await loadAvailabilityConstraints(
-      supabase,
-      staffId,
-      newDate,
-      booking.provider_id,
-      {
-        excludeBookingId: bookingId,
-        publicCalendarParity: {
-          providerId: booking.provider_id,
-          date: newDate,
-          locationId: undefined,
-          slotStaffId: staffId,
-          staffIdsForTimeOff: allStaffIds,
-        },
-      }
-    );
-
-    const slots = calculateAvailableSlots(
-      constraints,
-      totalDuration,
-      newDate,
-      {
-        slotInterval: 15,
-        travelBuffer: booking.location_type === 'at_home' ? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES : 0,
-        // Wave 1.3 (audit 2026-04 final 100/100): without this option the
-        // calculator falls back to UTC, which silently shifts every slot by
-        // the provider's UTC offset and rejected valid slots in SAST/+2h.
-        // See reschedule-core.ts for the single canonical implementation.
-        timezone: providerTz,
-      }
-    );
-
-    const isAvailable = slots.some(
-      (slot) => slot.time === requestedTime && slot.available,
-    );
-
-    if (!isAvailable) {
-      return handleApiError(
-        new Error("Selected time slot is not available"),
-        "Selected time slot is not available. Please choose another time.",
-        "SLOT_UNAVAILABLE",
-        409
-      );
-    }
-
-    // B5: Re-check conflicts under a serializable advisory lock on the staff
-    // + slot to block the race where two customers reschedule onto the same
-    // minute between the availability check and the UPDATE. The existing
-    // version-based optimistic lock below only protects the booking *row* —
-    // it does nothing against a DIFFERENT booking landing on the same staff
-    // at the same time.
-    type ConflictCheckResult = { conflict: boolean };
-    let lockError: unknown = null;
-    let conflictCheck: ConflictCheckResult | null = null;
-    try {
-      const { data: conflictRow, error: conflictErr } = await (
-        adminSupabase.rpc as any
-      )("check_reschedule_slot_conflict", {
-        p_booking_id: bookingId,
-        p_staff_id: staffId,
-        p_provider_id: booking.provider_id,
-        p_new_start: newDatetime.toISOString(),
-        p_total_minutes: totalDuration,
-      });
-      if (conflictErr) {
-        lockError = conflictErr;
-      } else {
-        conflictCheck = Array.isArray(conflictRow)
-          ? (conflictRow[0] as ConflictCheckResult | null)
-          : ((conflictRow as ConflictCheckResult | null) ?? null);
-      }
-    } catch (err) {
-      lockError = err;
-    }
-
-    if (lockError) {
-      // §Final-audit 2026-04: previously we silently fell back to the
-      // optimistic row lock here, which means a provider whose DB is
-      // missing migration 503 (or a transient RPC failure) can silently
-      // double-book via reschedule. That is exactly B5. Fail closed: if
-      // the slot conflict RPC is unusable, reject the reschedule with a
-      // retryable error and log loudly for ops.
-      console.error(
-        "[reschedule] check_reschedule_slot_conflict unavailable — FAILING CLOSED to prevent double-book",
-        lockError,
-      );
-      return handleApiError(
-        new Error("Slot conflict check unavailable"),
-        "We could not confirm that slot is free right now. Please try again in a moment.",
-        "SLOT_CHECK_UNAVAILABLE",
-        503,
-      );
-    } else if (conflictCheck?.conflict) {
-      return handleApiError(
-        new Error("Slot locked by concurrent booking"),
-        "That time just became unavailable. Please pick another slot.",
-        "SLOT_CONTENDED",
-        409,
-      );
-    }
-
-    // Optimistic lock: prevent concurrent reschedules from overwriting each other.
-    const { data: currentRow } = await adminSupabase
-      .from('bookings')
-      .select('version')
-      .eq('id', bookingId)
-      .single();
-    const currentVersion = (currentRow as any)?.version ?? 0;
-
-    const { data: updatedBooking, error: updateError } = await adminSupabase
-      .from('bookings')
-      .update({
-        scheduled_at: newDatetime.toISOString(),
-        version: currentVersion + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', bookingId)
-      .eq('version', currentVersion)
-      .select()
-      .single();
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    if (!updatedBooking) {
-      return handleApiError(
-        new Error("Booking was modified concurrently"),
-        "This booking was updated by someone else. Please try again.",
-        "CONFLICT",
-        409
-      );
-    }
-
-    // Update all booking_services with new times
-    let cursor = newDatetime;
-    type BsUpdateRow = BsRow & { id: string };
-    const updatePromises = bookingServices.map(async (bs: BsUpdateRow) => {
-      const start = new Date(cursor);
-      const duration = bs.duration_minutes ?? bs.offerings?.duration_minutes ?? 60;
-      const end = new Date(start.getTime() + duration * 60000);
-      const buffer = bs.offerings?.buffer_minutes ?? 15;
-
-      const { error } = await adminSupabase
-        .from("booking_services")
-        .update({
-          scheduled_start_at: start.toISOString(),
-          scheduled_end_at: end.toISOString(),
-        })
-        .eq("id", bs.id);
-
-      if (error) {
-        throw error;
-      }
-
-      // Advance cursor by duration + buffer
-      cursor = new Date(end.getTime() + buffer * 60000);
-    });
-
-    await Promise.all(updatePromises);
-
-    // Create booking event
-    await adminSupabase.from('booking_events').insert({
-      booking_id: bookingId,
-      event_type: 'rescheduled',
-      event_data: {
-        old_datetime: booking.scheduled_at,
-        new_datetime: newDatetime.toISOString(),
-        rescheduled_by: user.id,
-      },
-      created_by: user.id,
-    });
-
-    // Send reschedule notification
-    const { sendRescheduleNotification } = await import('@/lib/bookings/notifications');
-    await sendRescheduleNotification(
+      adminSupabase,
       bookingId,
-      new Date(booking.scheduled_at),
-      newDatetime
-    );
+      newDatetime,
+      actor: "customer",
+      actorUserId: user.id,
+    });
 
-    // Track Amplitude event
+    if (result.ok === false) {
+      const { status, code } = httpStatusForRescheduleError(result.error);
+      return handleApiError(
+        new Error(result.error.message),
+        result.error.message,
+        code,
+        status,
+      );
+    }
+
+    // ── Customer-only post-flight: reschedule notification + Amplitude.
     try {
-      await trackServer(EVENT_BOOKING_RESCHEDULED, {
-        portal: "client",
-        provider_id: booking.provider_id,
-        booking_id: bookingId,
-        old_scheduled_at: booking.scheduled_at,
-        new_scheduled_at: newDatetime.toISOString(),
-      }, user.id);
+      const { sendRescheduleNotification } = await import(
+        "@/lib/bookings/notifications"
+      );
+      await sendRescheduleNotification(
+        bookingId,
+        new Date(result.oldScheduledAt),
+        new Date(result.newScheduledAt),
+      );
+    } catch (notifyErr) {
+      console.error("[me-reschedule] notification dispatch failed:", notifyErr);
+    }
+
+    try {
+      await trackServer(
+        EVENT_BOOKING_RESCHEDULED,
+        {
+          portal: "client",
+          provider_id: result.providerId,
+          booking_id: bookingId,
+          old_scheduled_at: result.oldScheduledAt,
+          new_scheduled_at: result.newScheduledAt,
+        },
+        user.id,
+      );
     } catch (amplitudeError) {
-      console.error("[Amplitude] Failed to track booking reschedule:", amplitudeError);
+      console.error(
+        "[Amplitude] Failed to track booking reschedule:",
+        amplitudeError,
+      );
     }
 
     return successResponse({
-      booking: updatedBooking,
+      booking: result.booking,
       message: "Booking rescheduled successfully",
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(
-        new Error(error.issues.map((e: { message: string }) => e.message).join(", ")),
+        new Error(
+          error.issues.map((e: { message: string }) => e.message).join(", "),
+        ),
         "Validation failed",
         "VALIDATION_ERROR",
-        400
+        400,
       );
     }
     return handleApiError(error, "Failed to reschedule booking");

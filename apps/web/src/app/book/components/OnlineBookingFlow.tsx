@@ -121,6 +121,15 @@ export default function OnlineBookingFlow({
     if (typeof window === "undefined") return null;
     try { return sessionStorage.getItem("beautonomi_hold_id") || null; } catch { return null; }
   });
+  const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const e = sessionStorage.getItem("beautonomi_hold_expires_at");
+      return e?.trim() || null;
+    } catch {
+      return null;
+    }
+  });
   const [gateOpen, setGateOpen] = useState(false);
   const [preAuthGateOpen, setPreAuthGateOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -384,10 +393,19 @@ export default function OnlineBookingFlow({
         },
         { headers: { "Idempotency-Key": holdIdemKey } }
       );
-      const id = (res.data as any)?.hold_id ?? res.data?.hold_id;
+      const env = res as { data?: { hold_id?: string; expires_at?: string }; hold_id?: string; expires_at?: string };
+      const payload = env.data;
+      const id = (payload as { hold_id?: string } | undefined)?.hold_id ?? env.hold_id;
+      const exp = payload?.expires_at ?? env.expires_at;
       if (id) {
         setHoldId(id);
-        try { sessionStorage.setItem("beautonomi_hold_id", id); } catch {}
+        const expTrim = typeof exp === "string" && exp.trim() ? exp.trim() : null;
+        setHoldExpiresAt(expTrim);
+        try {
+          sessionStorage.setItem("beautonomi_hold_id", id);
+          if (expTrim) sessionStorage.setItem("beautonomi_hold_expires_at", expTrim);
+          else sessionStorage.removeItem("beautonomi_hold_expires_at");
+        } catch {}
         setGateOpen(true);
       } else {
         toast.error("Failed to secure slot");
@@ -663,6 +681,7 @@ export default function OnlineBookingFlow({
 
       <BeautonomiGateModal
         holdId={holdId ?? ""}
+        holdExpiresAt={holdExpiresAt}
         open={gateOpen || preAuthGateOpen}
         onAuthComplete={handleAuthComplete}
         onClose={() => {

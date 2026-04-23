@@ -3,6 +3,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ApiError } from "@beautonomi/types";
+import type { ApiClientRequestBody } from "@beautonomi/api";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { getRuntimeMarketHost } from "@/config/public-env";
@@ -199,7 +200,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   return { data, loading, error, errorCode, timedOut, refresh, mutate };
 }
 
-export function useApiPost<TReq, TRes>(path: string) {
+export function useApiPost<TReq extends ApiClientRequestBody, TRes>(path: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -218,7 +219,7 @@ export function useApiPost<TReq, TRes>(path: string) {
         setLoading(true);
         setError(null);
         setErrorCode(null);
-        const result = await api.post<TRes>(path, body as Record<string, unknown>);
+        const result = await api.post<TRes>(path, body);
         if (result.error) {
           // §Provider-audit 2026-04: surface `error.code` so callers can
           // branch on specific server contracts (e.g. CONFLICT, CALENDAR_BLOCK,
@@ -263,7 +264,7 @@ export function useApiMutation<TRes>(method: "put" | "patch" | "post" | "delete"
   const execute = useCallback(
     async (
       path: string,
-      body?: Record<string, unknown> | object
+      body?: ApiClientRequestBody
     ): Promise<{ data: TRes | null; error: string | null; errorCode: string | null }> => {
       try {
         setLoading(true);
@@ -272,11 +273,11 @@ export function useApiMutation<TRes>(method: "put" | "patch" | "post" | "delete"
         if (method === "delete") {
           result = await api.delete<TRes>(path);
         } else if (method === "patch") {
-          result = await api.patch<TRes>(path, body as Record<string, unknown>);
+          result = await api.patch<TRes>(path, body);
         } else if (method === "post") {
-          result = await api.post<TRes>(path, body as Record<string, unknown>);
+          result = await api.post<TRes>(path, body);
         } else {
-          result = await api.put<TRes>(path, body as Record<string, unknown>);
+          result = await api.put<TRes>(path, body);
         }
         if (result.error) {
           const apiErr = result.error as ApiError;

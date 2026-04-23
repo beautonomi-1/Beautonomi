@@ -7,9 +7,29 @@ import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const ENVS = ["production", "staging", "development"];
 
+const VALID_AD_MODELS = ["cpc_budget", "impression_pack", "time_based"] as const;
+
 function parseEnv(s: string | null): string {
   if (s && ENVS.includes(s)) return s;
   return "production";
+}
+
+function normalizeAdsModels(body: Record<string, unknown>): {
+  available_models: string[];
+  default_model: string;
+} {
+  const raw = body.available_models;
+  let available = Array.isArray(raw)
+    ? raw.filter((m): m is string => typeof m === "string" && VALID_AD_MODELS.includes(m as (typeof VALID_AD_MODELS)[number]))
+    : [...VALID_AD_MODELS];
+  if (available.length === 0) {
+    available = [...VALID_AD_MODELS];
+  }
+  let defaultModel = typeof body.default_model === "string" ? body.default_model : "time_based";
+  if (!VALID_AD_MODELS.includes(defaultModel as (typeof VALID_AD_MODELS)[number]) || !available.includes(defaultModel)) {
+    defaultModel = available.includes("time_based") ? "time_based" : available[0];
+  }
+  return { available_models: available, default_model: defaultModel };
 }
 
 /**
@@ -52,24 +72,31 @@ export async function PUT(request: NextRequest) {
       .eq("environment", environment)
       .maybeSingle();
 
+    const { available_models, default_model } = normalizeAdsModels(body as Record<string, unknown>);
+
+    const maxSlots =
+      body.max_sponsored_slots != null && body.max_sponsored_slots !== ""
+        ? Math.min(100, Math.max(0, Math.floor(Number(body.max_sponsored_slots))))
+        : null;
+    let cpiRatio =
+      body.cost_per_impression_ratio != null && body.cost_per_impression_ratio !== ""
+        ? Number(body.cost_per_impression_ratio)
+        : null;
+    if (cpiRatio != null && (Number.isNaN(cpiRatio) || cpiRatio < 0 || cpiRatio > 1)) {
+      cpiRatio = null;
+    }
+
     const payload: Record<string, any> = {
       environment,
       enabled: body.enabled ?? false,
-      model: body.model ?? null,
+      model: default_model,
       disclosure_label: body.disclosure_label ?? null,
-      max_sponsored_slots: body.max_sponsored_slots ?? null,
-      cost_per_impression_ratio: body.cost_per_impression_ratio != null ? Number(body.cost_per_impression_ratio) : null,
+      max_sponsored_slots: maxSlots,
+      cost_per_impression_ratio: cpiRatio,
+      available_models,
+      default_model,
       updated_at: new Date().toISOString(),
     };
-    if (body.available_models !== undefined) {
-      const validModels = ["cpc_budget", "impression_pack", "time_based"];
-      payload.available_models = Array.isArray(body.available_models)
-        ? body.available_models.filter((m: string) => validModels.includes(m))
-        : validModels;
-    }
-    if (body.default_model !== undefined) {
-      payload.default_model = body.default_model ?? "time_based";
-    }
 
     const { data: after, error } = await supabase
       .from("ads_module_config")

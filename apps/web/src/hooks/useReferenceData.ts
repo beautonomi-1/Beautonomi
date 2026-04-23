@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { providerPortalFetch } from "@/lib/http/fetcher";
 
 export interface ReferenceDataItem {
   id: string;
@@ -83,7 +84,7 @@ export function useReferenceData(types?: ReferenceDataType[]) {
       setError(null);
 
       const typesQuery = types?.length ? `?type=${types.join(",")}` : "";
-      const response = await fetch(`/api/provider/reference-data${typesQuery}`);
+      const response = await providerPortalFetch(`/api/provider/reference-data${typesQuery}`);
 
       if (!response.ok) {
         throw new Error("Failed to fetch reference data");
@@ -186,7 +187,7 @@ export async function prefetchReferenceData(): Promise<ReferenceDataMap> {
   }
 
   try {
-    const response = await fetch("/api/provider/reference-data");
+    const response = await providerPortalFetch("/api/provider/reference-data");
     if (!response.ok) {
       throw new Error("Failed to fetch reference data");
     }

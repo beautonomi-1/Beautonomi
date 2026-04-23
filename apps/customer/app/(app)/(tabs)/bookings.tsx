@@ -4,6 +4,7 @@ import {
   Text,
   RefreshControl,
   TouchableOpacity,
+  ScrollView,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -11,7 +12,7 @@ import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
-import { useBookings } from "@/features/bookings/useBookings";
+import { useBookings, type MeBookingsSortBy, type MeBookingsSortDir } from "@/features/bookings/useBookings";
 import { haptic } from "@/lib/haptics";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import type { Booking } from "@/types/api";
@@ -171,13 +172,33 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
   );
 }
 
+type SortPreset = "appt_desc" | "appt_asc" | "booked_desc" | "booked_asc";
+
+function presetToApi(p: SortPreset): { sortBy: MeBookingsSortBy; sortDir: MeBookingsSortDir } {
+  switch (p) {
+    case "appt_asc":
+      return { sortBy: "scheduled_at", sortDir: "asc" };
+    case "appt_desc":
+      return { sortBy: "scheduled_at", sortDir: "desc" };
+    case "booked_desc":
+      return { sortBy: "created_at", sortDir: "desc" };
+    case "booked_asc":
+      return { sortBy: "created_at", sortDir: "asc" };
+  }
+}
+
 export default function BookingsScreen() {
   useScreenTracking("Bookings");
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const { user } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const [tab, setTab] = useState<BookingsTabType>("upcoming");
-  const { data: bookings, loading, refreshing, error, refetch } = useBookings(tab);
+  const [sortPreset, setSortPreset] = useState<SortPreset>("appt_desc");
+  const { sortBy, sortDir } = presetToApi(sortPreset);
+  const { data: bookings, loading, refreshing, error, refetch } = useBookings(tab, {
+    sortBy,
+    sortDir,
+  });
 
   // Real-time: refresh list when any of the customer's bookings change (status updates, confirmations, etc.)
   const refetchRef = useRef(refetch);
@@ -215,6 +236,13 @@ export default function BookingsScreen() {
     { key: "upcoming", label: "Upcoming" },
     { key: "past", label: "Past" },
     { key: "cancelled", label: "Cancelled" },
+  ];
+
+  const sortChips: { key: SortPreset; label: string }[] = [
+    { key: "appt_desc", label: "Appt · newest" },
+    { key: "appt_asc", label: "Appt · soonest" },
+    { key: "booked_desc", label: "Booked · newest" },
+    { key: "booked_asc", label: "Booked · oldest" },
   ];
 
   const onBookingPress = useCallback(
@@ -292,6 +320,37 @@ export default function BookingsScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginTop: 14, marginBottom: 8 }}>
+            Sort
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 8 }}>
+            {sortChips.map((c) => {
+              const active = sortPreset === c.key;
+              return (
+                <TouchableOpacity
+                  key={c.key}
+                  onPress={() => {
+                    haptic.selection();
+                    setSortPreset(c.key);
+                  }}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    borderRadius: 9999,
+                    backgroundColor: active ? Colors.gray[900] : Colors.gray[100],
+                    marginRight: 8,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort bookings: ${c.label}`}
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: active ? Colors.white : Colors.gray[700] }}>
+                    {c.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
       </View>
 
@@ -304,7 +363,7 @@ export default function BookingsScreen() {
       ) : (
         <FlashList
           data={bookings}
-          extraData={tab}
+          extraData={`${tab}:${sortPreset}`}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
           contentContainerStyle={{

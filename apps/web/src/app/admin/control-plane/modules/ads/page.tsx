@@ -283,12 +283,17 @@ export default function AdsModulePage() {
                         form.available_models.includes(m) ? "border-blue-200 bg-blue-50/50" : "border-zinc-200 bg-zinc-50/50 opacity-60"
                       }`}
                       onClick={() => {
-                        setForm((p) => ({
-                          ...p,
-                          available_models: p.available_models.includes(m)
+                        setForm((p) => {
+                          const next = p.available_models.includes(m)
                             ? p.available_models.filter((x) => x !== m)
-                            : [...p.available_models, m],
-                        }));
+                            : [...p.available_models, m];
+                          const models = next.length > 0 ? next : p.available_models;
+                          let default_model = p.default_model;
+                          if (!models.includes(default_model)) {
+                            default_model = models.includes("time_based") ? "time_based" : models[0];
+                          }
+                          return { ...p, available_models: models, default_model };
+                        });
                       }}
                     >
                       <div className="flex items-start justify-between mb-2">
@@ -296,12 +301,17 @@ export default function AdsModulePage() {
                         <Switch
                           checked={form.available_models.includes(m)}
                           onCheckedChange={(v) => {
-                            setForm((p) => ({
-                              ...p,
-                              available_models: v
+                            setForm((p) => {
+                              const next = v
                                 ? [...p.available_models, m]
-                                : p.available_models.filter((x) => x !== m),
-                            }));
+                                : p.available_models.filter((x) => x !== m);
+                              const models = next.length > 0 ? next : p.available_models;
+                              let default_model = p.default_model;
+                              if (!models.includes(default_model)) {
+                                default_model = models.includes("time_based") ? "time_based" : models[0];
+                              }
+                              return { ...p, available_models: models, default_model };
+                            });
                           }}
                           onClick={(e) => e.stopPropagation()}
                         />
@@ -315,12 +325,25 @@ export default function AdsModulePage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Default Model</Label>
-                  <Select value={form.default_model} onValueChange={(v) => setForm((p) => ({ ...p, default_model: v }))}>
+                  <Select
+                    value={
+                      form.available_models.includes(form.default_model)
+                        ? form.default_model
+                        : form.available_models[0] ?? "time_based"
+                    }
+                    onValueChange={(v) => setForm((p) => ({ ...p, default_model: v }))}
+                  >
                     <SelectTrigger className="w-full sm:w-80"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="time_based">Time-Based (predictable revenue)</SelectItem>
-                      <SelectItem value="impression_pack">Impression Packs</SelectItem>
-                      <SelectItem value="cpc_budget">CPC Budget</SelectItem>
+                      {form.available_models.includes("time_based") ? (
+                        <SelectItem value="time_based">Time-Based (predictable revenue)</SelectItem>
+                      ) : null}
+                      {form.available_models.includes("impression_pack") ? (
+                        <SelectItem value="impression_pack">Impression Packs</SelectItem>
+                      ) : null}
+                      {form.available_models.includes("cpc_budget") ? (
+                        <SelectItem value="cpc_budget">CPC Budget</SelectItem>
+                      ) : null}
                     </SelectContent>
                   </Select>
                   <p className="text-[11px] text-muted-foreground">Shown first when providers create a campaign</p>

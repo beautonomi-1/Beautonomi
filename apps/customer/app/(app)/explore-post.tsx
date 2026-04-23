@@ -29,6 +29,7 @@ import { haptic } from "@/lib/haptics";
 import * as Clipboard from "expo-clipboard";
 import { APP_URL } from "@/config/public-env";
 import type { ExplorePost, ExploreComment } from "@/types/api";
+import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 
 function formatTime(iso: string) {
   const date = new Date(iso);
@@ -316,6 +317,7 @@ export default function ExplorePostScreen() {
           {images.length > 0 ? (
             <View style={{ width: screenWidth, backgroundColor: "#F3F4F6" }}>
               <FlatList
+                {...horizontalFlatListPerf}
                 data={images}
                 horizontal
                 pagingEnabled

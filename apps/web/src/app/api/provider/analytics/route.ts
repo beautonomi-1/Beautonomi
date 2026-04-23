@@ -3,7 +3,17 @@ import { createClient } from "@supabase/supabase-js";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
-import { subMonths, startOfMonth, endOfMonth } from "date-fns";
+import {
+  subMonths,
+  startOfMonth,
+  endOfMonth,
+  subWeeks,
+  startOfWeek,
+  endOfWeek,
+  subYears,
+  startOfYear,
+  endOfYear,
+} from "date-fns";
 
 /**
  * GET /api/provider/analytics
@@ -135,24 +145,61 @@ export async function GET(request: NextRequest) {
       ? (serviceDataResult.data as ServiceRow[])
       : [];
 
-    // Revenue trends - 12 data points (months for month/year periods; weeks for week period)
+    // Revenue trends — bucket size matches the selected period:
+    //   week  → last 12 ISO weeks
+    //   year  → last 5 calendar years
+    //   month → last 12 calendar months (default)
     const trendPromises: Promise<{ month: string; revenue: number; bookings: number }>[] = [];
 
-    for (let i = 11; i >= 0; i--) {
-      const monthDate = startOfMonth(subMonths(now, i));
-      const monthEnd = endOfMonth(subMonths(now, i));
-      const monthStr = monthDate.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    type TrendBucket = { start: Date; end: Date; label: string };
+    const trendBuckets: TrendBucket[] = [];
 
+    if (period === "week") {
+      for (let i = 11; i >= 0; i--) {
+        const weekRef = subWeeks(now, i);
+        const start = startOfWeek(weekRef, { weekStartsOn: 1 });
+        const end = endOfWeek(weekRef, { weekStartsOn: 1 });
+        trendBuckets.push({
+          start,
+          end,
+          label: `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+        });
+      }
+    } else if (period === "year") {
+      for (let i = 4; i >= 0; i--) {
+        const yearRef = subYears(now, i);
+        const start = startOfYear(yearRef);
+        const end = endOfYear(yearRef);
+        trendBuckets.push({
+          start,
+          end,
+          label: `${start.getFullYear()}`,
+        });
+      }
+    } else {
+      for (let i = 11; i >= 0; i--) {
+        const monthRef = subMonths(now, i);
+        const start = startOfMonth(monthRef);
+        const end = endOfMonth(monthRef);
+        trendBuckets.push({
+          start,
+          end,
+          label: start.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+        });
+      }
+    }
+
+    for (const bucket of trendBuckets) {
       trendPromises.push(
         Promise.all([
-          getProviderRevenue(supabaseAdmin, providerId, monthDate, monthEnd, locationId, dashOpts),
+          getProviderRevenue(supabaseAdmin, providerId, bucket.start, bucket.end, locationId, dashOpts),
           (() => {
-            let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("created_at", monthDate.toISOString()).lte("created_at", monthEnd.toISOString());
+            let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("created_at", bucket.start.toISOString()).lte("created_at", bucket.end.toISOString());
             if (locationId) q = q.eq("location_id", locationId);
             return q;
           })(),
         ]).then(([revenueData, bookingsData]) => ({
-          month: monthStr,
+          month: bucket.label,
           revenue: revenueData.totalRevenue,
           bookings: bookingsData.count || 0,
         }))

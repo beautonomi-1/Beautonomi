@@ -644,6 +644,7 @@ export default function ProviderBookingDetail() {
         items = [
           {
             item_id: null,
+            product_variant_id: null,
             type: "service",
             name: "Booking balance due",
             quantity: 1,
@@ -668,6 +669,7 @@ export default function ProviderBookingDetail() {
           sale_date: b.scheduled_at,
           items: items.map((i) => ({
             item_id: i.item_id,
+            product_variant_id: i.product_variant_id ?? null,
             type: i.type,
             name: i.name,
             quantity: i.quantity,

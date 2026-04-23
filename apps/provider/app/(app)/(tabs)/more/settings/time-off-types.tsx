@@ -21,6 +21,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface TimeOffType {
   id: string;
@@ -280,6 +281,7 @@ export default function TimeOffTypesScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(t: TimeOffType) => t.id}
           showsVerticalScrollIndicator={false}

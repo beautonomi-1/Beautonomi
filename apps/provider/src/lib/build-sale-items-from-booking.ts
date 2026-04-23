@@ -5,6 +5,7 @@
 
 export type BookingSaleLine = {
   item_id: string | null;
+  product_variant_id?: string | null;
   type: "service" | "product";
   name: string;
   quantity: number;
@@ -28,6 +29,7 @@ type ProductRow = {
   unit_price?: number;
   total_price?: number;
   product_id?: string;
+  product_variant_id?: string;
   id?: string;
 };
 
@@ -68,8 +70,11 @@ export function buildSaleItemsFromBookingDetail(b: BookingLike): BookingSaleLine
       const lineTotal = Number(p.total_price ?? unit * qty);
       const unitPrice = unit > 0 ? unit : lineTotal / qty;
       const pid = p.product_id ?? p.id;
+      const pvid = p.product_variant_id;
       items.push({
         item_id: typeof pid === "string" ? pid : pid != null ? String(pid) : null,
+        product_variant_id:
+          typeof pvid === "string" && pvid.trim() ? pvid.trim() : null,
         type: "product",
         name,
         quantity: qty,

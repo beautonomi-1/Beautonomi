@@ -120,7 +120,7 @@ export default function WaitlistScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const { selectedLocationId, setSelectedLocationId, provider } = useProvider();
-  const locations = provider?.locations ?? [];
+  const locations = useMemo(() => provider?.locations ?? [], [provider?.locations]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("waiting");

@@ -6,7 +6,22 @@ import { fetchGodsEyeCustomerMarkers } from "@/lib/admin/gods-eye-customer-marke
 
 type PingRow = { provider_id: string };
 type BookingRow = { id: string; provider_id: string; location_type?: string; location_id?: string; address_latitude?: number | null; address_longitude?: number | null; status?: string; current_stage?: string };
-type ProviderRow = { id: string; business_name?: string; owner_name?: string };
+type ProviderRow = {
+  id: string;
+  business_name?: string;
+  status?: string;
+  user_id?: string;
+  users?:
+    | { full_name?: string | null }
+    | Array<{ full_name?: string | null }>
+    | null;
+};
+
+function pickOwnerName(users: ProviderRow["users"]): string | null {
+  if (!users) return null;
+  const row = Array.isArray(users) ? users[0] : users;
+  return row?.full_name ?? null;
+}
 type EventRow = { provider_id: string; lat: number; lng: number; recorded_at: string; booking_id: string | null };
 type TrackingRow = { booking_id: string; provider_last_lat?: number | null; provider_last_lng?: number | null; provider_last_at?: string; arrived_at_target?: boolean; arrived_at?: string | null; arrived_distance_m?: number | null; last_distance_to_target_m?: number | null; status?: string };
 type LocRow = { id: string; latitude?: number | null; longitude?: number | null; name?: string };
@@ -104,7 +119,7 @@ export async function GET(request: NextRequest) {
 
     let providerQuery = admin
       .from("providers")
-      .select("id, business_name, owner_name, status")
+      .select("id, business_name, status, user_id, users:user_id(full_name)")
       .eq("tenant_id", tenantId)
       .in("id", allProviderIds);
     if (providerStatus) {
@@ -112,8 +127,8 @@ export async function GET(request: NextRequest) {
     }
     const { data: providers, error: provErr } = await providerQuery;
     if (provErr) console.warn("gods-eye map-state: providers query:", provErr.message);
-    const providerList = providers || [];
-    const providerIdsFilter = providerList.map((p: ProviderRow) => p.id);
+    const providerList = (providers || []) as unknown as ProviderRow[];
+    const providerIdsFilter = providerList.map((p) => p.id);
 
     const { data: latestEvents } = await admin
       .from("provider_location_events")
@@ -186,7 +201,7 @@ export async function GET(request: NextRequest) {
     });
 
     type LastLocation = { provider_last_lat?: number; provider_last_lng?: number; provider_last_at?: string; lat?: number; lng?: number; recorded_at?: string };
-    const providerMarkers = providerList.map((p: ProviderRow) => {
+    const providerMarkers = providerList.map((p) => {
       const last = latestByProvider[p.id] || trackingByBooking[bookingList.find((b: BookingRow) => b.provider_id === p.id)?.id ?? ""] as LastLocation | undefined;
       const L = last as LastLocation | undefined;
       let lastLat = L?.provider_last_lat ?? L?.lat;
@@ -209,7 +224,7 @@ export async function GET(request: NextRequest) {
       else if (ts?.status === "arrived" || ts?.status === "in_service") status = "in_service";
       return {
         provider_id: p.id,
-        name: p.business_name || p.owner_name || "Provider",
+        name: p.business_name || pickOwnerName(p.users) || "Provider",
         last_lat: lastLat != null ? Number(lastLat) : null,
         last_lng: lastLng != null ? Number(lastLng) : null,
         last_at: lastAt || null,
@@ -218,7 +233,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const providerIdSet = new Set(providerList.map((p: ProviderRow) => p.id));
+    const providerIdSet = new Set(providerList.map((p) => p.id));
     const atHomeBookings = bookingList
       .filter((b: BookingRow) => b.location_type === "at_home" && providerIdSet.has(b.provider_id))
       .map((b: BookingRow) => {

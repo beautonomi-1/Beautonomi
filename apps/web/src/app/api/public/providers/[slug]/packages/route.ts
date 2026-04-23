@@ -123,22 +123,43 @@ export async function GET(
           if (!itemsByPackage[item.package_id]) {
             itemsByPackage[item.package_id] = [];
           }
-          if (item.offering) {
+          // §Release-audit 2026-04: the supabase join is aliased
+          // `offerings:offering_id(...)` on line 114, so the hydrated
+          // row surfaces as `item.offerings` (plural). This block
+          // previously read `item.offering` (singular) which was
+          // always undefined — so packages were rendered as "product
+          // only" on the customer-visible provider profile. Fix the
+          // alias so service items actually populate.
+          const offeringRow = (item.offerings ?? item.offering) as
+            | { id: string; title: string; duration_minutes?: number | null }
+            | null
+            | undefined;
+          const productRow = (item.products ?? item.product) as
+            | {
+                id: string;
+                name: string;
+                retail_price?: number | null;
+                sku?: string | null;
+                brand?: string | null;
+              }
+            | null
+            | undefined;
+          if (offeringRow) {
             itemsByPackage[item.package_id].push({
-              id: item.offering.id,
-              title: item.offering.title,
+              id: offeringRow.id,
+              title: offeringRow.title,
               type: "service",
-              duration_minutes: item.offering.duration_minutes,
+              duration_minutes: offeringRow.duration_minutes ?? null,
               quantity: item.quantity,
             });
-          } else if (item.products) {
+          } else if (productRow) {
             itemsByPackage[item.package_id].push({
-              id: item.products.id,
-              title: item.products.name,
+              id: productRow.id,
+              title: productRow.name,
               type: "product",
-              price: item.products.retail_price,
-              sku: item.products.sku,
-              brand: item.products.brand,
+              price: productRow.retail_price ?? null,
+              sku: productRow.sku ?? null,
+              brand: productRow.brand ?? null,
               quantity: item.quantity,
             });
           }

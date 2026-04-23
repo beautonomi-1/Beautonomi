@@ -215,13 +215,16 @@ export async function PATCH(
       );
     }
 
-    const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
-    // Check if user exists
-    const { data: existingUser, error: fetchError } = await supabase
+    // Tenant-scoped admin cannot rely on RLS for other users' rows; use service role
+    // with the same preferred_home_tenant guard as GET /api/admin/users/[id].
+    const { data: existingUser, error: fetchError } = await admin
       .from("users")
       .select("id, role")
       .eq("id", id)
+      .eq("preferred_home_tenant_id", tenantId)
       .single();
 
     if (fetchError || !existingUser) {
@@ -283,11 +286,12 @@ export async function PATCH(
       updateData.push_notifications_enabled = validationResult.data.push_notifications_enabled;
     }
 
-    // Update user
-    const { data: updatedUser, error: updateError } = await supabase
+    // Update via admin client (RLS only allows self-update + superadmin; tenant admins need bypass).
+    const { data: updatedUser, error: updateError } = await admin
       .from("users")
       .update(updateData)
       .eq("id", id)
+      .eq("preferred_home_tenant_id", tenantId)
       .select()
       .single();
 
@@ -308,14 +312,12 @@ export async function PATCH(
 
     // If user is being deactivated, also deactivate auth user
     if (updateData.deactivated_at) {
-      const supabaseAdmin = getSupabaseAdmin();
-      await supabaseAdmin.auth.admin.updateUserById(id, {
+      await admin.auth.admin.updateUserById(id, {
         ban_duration: "876000h", // ~100 years (effectively permanent)
       });
     } else if (updateData.deactivated_at === null) {
       // If user is being reactivated, unban auth user
-      const supabaseAdmin = getSupabaseAdmin();
-      await supabaseAdmin.auth.admin.updateUserById(id, {
+      await admin.auth.admin.updateUserById(id, {
         ban_duration: "0",
       });
     }

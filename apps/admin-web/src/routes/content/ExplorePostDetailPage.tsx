@@ -112,6 +112,7 @@ export function ExplorePostDetailPage() {
     | { id?: string; business_name?: string; slug?: string }[]
     | undefined;
   const providers = Array.isArray(providersRaw) ? providersRaw[0] : providersRaw;
+  const providerIdForLink = String(providers?.id ?? post.provider_id ?? "");
   const isHidden = Boolean(post.is_hidden);
 
   return (
@@ -200,9 +201,9 @@ export function ExplorePostDetailPage() {
               <div>
                 <dt className="text-gray-500">Provider</dt>
                 <dd>
-                  {providers?.id ? (
-                    <Link className="font-medium text-primary underline" to={adminSpaTo(`/admin/providers/${providers.id}`)}>
-                      {providers.business_name || providers.slug}
+                  {providerIdForLink ? (
+                    <Link className="font-medium text-primary underline" to={adminSpaTo(`/admin/providers/${providerIdForLink}`)}>
+                      {providers?.business_name?.trim() || providers?.slug?.trim() || providerIdForLink}
                     </Link>
                   ) : (
                     "—"

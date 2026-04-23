@@ -277,7 +277,20 @@ export default function ProviderAdsPage() {
       {!enabled && (
         <Alert className="mb-6">
           <AlertDescription>
-            Paid ads are not enabled. Contact support or enable the ads module in Control Plane.
+            Sponsored listings are off for this marketplace, or packs are not published yet. A marketplace admin turns this
+            on in <strong>Admin → Control Plane → Ads</strong> (enable the module and activate impression or time packs).
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {enabled && (
+        <Alert className="mb-6 border-indigo-200 bg-indigo-50/80">
+          <AlertDescription className="text-indigo-950">
+            <strong>Where advertising is bought:</strong> you purchase boosts and budgets on this page.{" "}
+            <strong>Who sets pricing:</strong> your marketplace configures packs, models, and disclosure labels in{" "}
+            <strong>Admin → Control Plane → Ads</strong>.{" "}
+            <strong>Where customers see it:</strong> winning campaigns appear as sponsored cards in the Beautonomi customer
+            app and website (search and home).
           </AlertDescription>
         </Alert>
       )}
@@ -340,12 +353,21 @@ export default function ProviderAdsPage() {
                             const targeting = createForm.global_category_ids.length > 0
                               ? { global_category_ids: createForm.global_category_ids }
                               : {};
-                            const res = await fetcher.post<{ data: { payment_url?: string } }>("/api/provider/ads/campaigns", {
+                            const res = await fetcher.post<{
+                              data:
+                                | Campaign
+                                | { campaign: Campaign; requires_payment?: boolean; payment_url?: string | null };
+                            }>("/api/provider/ads/campaigns", {
                               time_pack_id: tp.id,
                               targeting,
                             });
-                            if (res.data?.payment_url) {
-                              window.location.href = res.data.payment_url;
+                            const payload = res.data as {
+                              payment_url?: string | null;
+                              requires_payment?: boolean;
+                              campaign?: Campaign;
+                            };
+                            if (payload?.requires_payment && payload?.payment_url) {
+                              window.location.href = payload.payment_url;
                               return;
                             }
                             toast.success("Campaign created.");

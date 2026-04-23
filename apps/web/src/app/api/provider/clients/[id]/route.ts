@@ -451,8 +451,18 @@ export async function GET(
     history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const defaultAddrMap = await fetchDefaultAddressesForUsers(supabaseAdmin, [customerId]);
+    // §Release-audit 2026-04 — expose `is_registered` so the provider UI
+    // can disable identity-editing controls for self-registered customers
+    // (same semantics as the list endpoint + the server-side lock in PATCH).
+    const customerEmail = (customer as { email?: string | null }).email ?? "";
+    const isRegistered =
+      typeof customerEmail === "string" &&
+      customerEmail.length > 0 &&
+      !customerEmail.includes("beautonomi.invalid") &&
+      !customerEmail.includes("beautonomi.local");
     const customerWithAddress = {
       ...customer,
+      is_registered: isRegistered,
       default_address: defaultAddrMap.get(customerId) ?? null,
     };
 
@@ -534,23 +544,73 @@ export async function PATCH(
       data = existing;
     }
 
-    // Update user-level fields on the users table if provided
-    if (client.customer_id) {
-      const userUpdates: any = {};
-      if (body.date_of_birth !== undefined) userUpdates.date_of_birth = body.date_of_birth || null;
-      if (body.full_name !== undefined) userUpdates.full_name = body.full_name;
-      if (body.phone !== undefined) userUpdates.phone = body.phone;
-      if (body.email !== undefined) userUpdates.email = body.email;
-      if (body.sms_opt_in !== undefined) userUpdates.sms_notifications_enabled = body.sms_opt_in;
-      if (body.email_opt_in !== undefined) userUpdates.email_notifications_enabled = body.email_opt_in;
+    // Update user-level fields on the users table if provided.
+    // §Release-audit 2026-04 — customer vs provider parity:
+    // Only allow writing identity / contact columns on the `users` row
+    // when this is a provider-created walk-in placeholder (those accounts
+    // are flagged by an `@beautonomi.invalid` / `@beautonomi.local` email).
+    // For a self-registered Beautonomi customer the `users` row is their
+    // own profile surface (see GET /api/me/profile) and providers must
+    // not be able to rewrite name/phone/email/DOB/notification prefs from
+    // the provider portal. The notes/tags/is_favorite fields above live
+    // on `provider_clients` and are correctly provider-owned.
+    const identityBodyKeys = [
+      "date_of_birth",
+      "full_name",
+      "phone",
+      "email",
+      "sms_opt_in",
+      "email_opt_in",
+    ] as const;
+    const identityFieldsInBody = identityBodyKeys.filter(
+      (k) => (body as Record<string, unknown>)[k] !== undefined,
+    );
 
-      if (Object.keys(userUpdates).length > 0) {
-        await admin
-          .from("users")
-          .update(userUpdates)
-          .eq("id", client.customer_id);
+    let profileLockedForIdentity = false;
+    if (identityFieldsInBody.length > 0 && client.customer_id) {
+      const { data: targetUser } = await admin
+        .from("users")
+        .select("email")
+        .eq("id", client.customer_id)
+        .maybeSingle();
+
+      const targetEmail = (targetUser as { email?: string | null } | null)?.email ?? "";
+      const isWalkInPlaceholder =
+        targetEmail.includes("beautonomi.invalid") ||
+        targetEmail.includes("beautonomi.local");
+
+      if (!isWalkInPlaceholder) {
+        profileLockedForIdentity = true;
+        // Silently ignore identity writes for registered customers so a
+        // provider saving `notes` + auto-echoed `date_of_birth` doesn't
+        // 403. The mobile `Edit` button is hidden for registered clients
+        // (see apps/provider/app/(app)/(tabs)/more/clients/[id].tsx),
+        // and provider-web should hide identity inputs the same way.
+        console.info(
+          "[provider/clients PATCH] dropping identity-field writes for registered customer",
+          { customerId: client.customer_id, attemptedFields: identityFieldsInBody },
+        );
+      } else {
+        const userUpdates: Record<string, unknown> = {};
+        if (body.date_of_birth !== undefined) userUpdates.date_of_birth = body.date_of_birth || null;
+        if (body.full_name !== undefined) userUpdates.full_name = body.full_name;
+        if (body.phone !== undefined) userUpdates.phone = body.phone;
+        if (body.email !== undefined) userUpdates.email = body.email;
+        if (body.sms_opt_in !== undefined) userUpdates.sms_notifications_enabled = body.sms_opt_in;
+        if (body.email_opt_in !== undefined) userUpdates.email_notifications_enabled = body.email_opt_in;
+
+        if (Object.keys(userUpdates).length > 0) {
+          await admin
+            .from("users")
+            .update(userUpdates)
+            .eq("id", client.customer_id);
+        }
       }
     }
+    // Suppress unused-var warning if the caller doesn't inspect this —
+    // the variable exists for future response surface (e.g. returning a
+    // flag so the UI can show "identity fields were ignored").
+    void profileLockedForIdentity;
 
     const addressPayload = parseAddressFromBody(body);
     if (addressPayload && client.customer_id) {

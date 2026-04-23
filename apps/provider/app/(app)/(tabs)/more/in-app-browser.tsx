@@ -13,6 +13,7 @@ import {
   Linking,
 } from "react-native";
 import { WebView } from "react-native-webview";
+import type { WebViewMessageEvent } from "react-native-webview";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -26,6 +27,21 @@ export default function InAppBrowserScreen() {
   const displayTitle = params.title ? decodeURIComponent(params.title) : "Web";
 
   const [error, setError] = useState<string | null>(null);
+
+  const onWebMessage = useCallback(
+    (e: WebViewMessageEvent) => {
+      try {
+        const raw = JSON.parse(e.nativeEvent.data) as { type?: string };
+        if (raw?.type === "BEAUTONOMI_ADS_PAYMENT_DONE") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          router.back();
+        }
+      } catch {
+        // ignore non-JSON messages
+      }
+    },
+    [router],
+  );
 
   const isValid =
     rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
@@ -154,6 +170,7 @@ export default function InAppBrowserScreen() {
         <WebView
           source={{ uri: rawUrl }}
           style={styles.webview}
+          onMessage={onWebMessage}
           onError={() => {
             setError("Could not load this page.");
           }}

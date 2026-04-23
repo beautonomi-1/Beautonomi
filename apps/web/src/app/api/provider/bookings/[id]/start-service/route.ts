@@ -1,21 +1,31 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import type { Booking } from "@/types/beautonomi";
 
 /**
  * POST /api/provider/bookings/[id]/start-service
- * 
- * Mark service as started (after OTP verification for at-home bookings)
+ *
+ * Mark service as started (after OTP verification for at-home bookings).
+ *
+ * §Release-audit 2026-04 (synergy sweep): aligned with `PATCH
+ * /api/provider/bookings/[id]` which uses `requirePermission('edit_appointments')`.
+ * Previously this route only checked the role tier, so a staff account with
+ * `edit_appointments` explicitly disabled could still start a service from
+ * mobile — bypassing the permissions matrix the admin UI enforces. Swap to
+ * `requirePermission` so the policy is consistent across entry points.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission('edit_appointments', request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -118,6 +128,22 @@ export async function POST(
       .select("*")
       .eq("id", id)
       .single();
+
+    // §Release-audit 2026-04: let the customer know the service has begun.
+    // Fire-and-forget — notification failure must not break the provider's
+    // start-service action.
+    try {
+      const { sendServiceStartedNotification } = await import(
+        "@/lib/bookings/notifications"
+      );
+      const durationMinutes =
+        typeof (updatedBooking as { duration_minutes?: number | null } | null)?.duration_minutes === "number"
+          ? ((updatedBooking as { duration_minutes?: number | null })!.duration_minutes as number)
+          : null;
+      await sendServiceStartedNotification(id, durationMinutes);
+    } catch (notifyErr) {
+      console.error("[start-service] notification failed:", notifyErr);
+    }
 
     return successResponse({
       booking: updatedBooking as Booking,

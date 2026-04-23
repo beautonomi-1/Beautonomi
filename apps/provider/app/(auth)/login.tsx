@@ -38,6 +38,7 @@ import {
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { trackLogin } from "@/lib/analytics";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { supabase } from "@/lib/supabase/client";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
 
@@ -942,6 +943,7 @@ export default function LoginScreen() {
               </View>
             </View>
             <FlatList
+              {...verticalFlatListPerf}
               data={filteredCountries}
               keyExtractor={(c: { code: string }) => c.code}
               keyboardShouldPersistTaps="handled"

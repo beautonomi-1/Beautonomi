@@ -11,6 +11,9 @@ export const adminQueryKeys = {
   tenants: () => [...adminQueryKeys.root, "tenants"] as const,
   activity: () => [...adminQueryKeys.root, "activity"] as const,
 
+  /** Superadmin safety incidents list (GET /api/admin/safety/logs). */
+  safetyLogs: (signature: string) => [...adminQueryKeys.root, "safety-logs", signature] as const,
+
   dashboard: () => [...adminQueryKeys.root, "dashboard"] as const,
   /** Superadmin tenant-scoped acquisition & migration analytics (GET /api/admin/dashboard/marketing-insights). */
   dashboardMarketingInsights: () => [...adminQueryKeys.root, "dashboard", "marketing-insights"] as const,
@@ -179,6 +182,7 @@ export const adminQueryKeys = {
   productReturns: (q: string) => [...adminQueryKeys.root, "product-returns", q] as const,
 
   productCatalog: (q: string) => [...adminQueryKeys.root, "product-catalog", q] as const,
+  productCatalogDetail: (id: string) => [...adminQueryKeys.root, "product-catalog", "detail", id] as const,
 
   webhooks: () => [...adminQueryKeys.root, "webhooks", "endpoints"] as const,
 

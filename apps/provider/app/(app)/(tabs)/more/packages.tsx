@@ -25,6 +25,7 @@ import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Colors } from "@/constants/colors";
 import { normalizePackagesList, normalizeProductsList } from "@/lib/unpack-provider-api";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface PackageItem {
   id: string;
@@ -285,6 +286,7 @@ export default function PackagesScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(p: ServicePackage) => p.id}
           style={{ flex: 1, minHeight: 0 }}

@@ -69,6 +69,18 @@ function relativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
+/**
+ * List handlers differ: some return `T[]` after `{ data }` unwrap; the lead
+ * activities route returns `{ data: T[], meta }`, so the client sees an object.
+ * Normalize so `.map` never runs on a non-array.
+ */
+function unwrapApiArray<T>(res: T[] | { data?: T[] } | null | undefined): T[] {
+  if (res == null) return [];
+  if (Array.isArray(res)) return res;
+  if (typeof res === "object" && Array.isArray(res.data)) return res.data;
+  return [];
+}
+
 const CATEGORY_ORDER = ["cold_intro", "follow_up", "hot_lead", "pricing_info", "re_engagement", "custom"];
 const CATEGORY_LABELS: Record<string, string> = {
   cold_intro: "Cold Intro",
@@ -93,22 +105,26 @@ export function LeadWhatsAppPanel({ lead }: LeadWhatsAppPanelProps) {
 
   const sessionsQuery = useQuery({
     queryKey: adminQueryKeys.whatsapp.sessions(),
-    queryFn: () => adminApi.getJson<Session[]>("/api/admin/whatsapp/sessions"),
+    queryFn: () =>
+      adminApi.getJson<Session[] | { data?: Session[] }>("/api/admin/whatsapp/sessions").then(unwrapApiArray),
     enabled: hasPhone,
   });
 
   const templatesQuery = useQuery({
     queryKey: adminQueryKeys.whatsapp.templates(),
-    queryFn: () => adminApi.getJson<Template[]>("/api/admin/whatsapp/templates"),
+    queryFn: () =>
+      adminApi.getJson<Template[] | { data?: Template[] }>("/api/admin/whatsapp/templates").then(unwrapApiArray),
     enabled: hasPhone,
   });
 
   const commsQuery = useQuery({
     queryKey: adminQueryKeys.whatsapp.leadComms(lead.id),
     queryFn: () =>
-      adminApi.getJson<CommEntry[]>(
-        `/api/admin/provider-ops/leads/${lead.id}/activities?channel=whatsapp&limit=5`,
-      ),
+      adminApi
+        .getJson<CommEntry[] | { data: CommEntry[]; meta?: unknown }>(
+          `/api/admin/provider-ops/leads/${lead.id}/activities?channel=whatsapp&limit=5`,
+        )
+        .then(unwrapApiArray),
     enabled: hasPhone,
   });
 
@@ -166,23 +182,23 @@ export function LeadWhatsAppPanel({ lead }: LeadWhatsAppPanelProps) {
   const handleTemplateChange = (templateId: string) => {
     setSelectedTemplate(templateId);
     if (!templateId) { setMessage(""); return; }
-    const tpl = (templatesQuery.data || []).find((t) => t.id === templateId);
+    const tpl = unwrapApiArray(templatesQuery.data).find((t) => t.id === templateId);
     if (tpl) setMessage(resolveLocal(tpl.body));
   };
 
   // Auto-select session if only one
-  const activeSessions = (sessionsQuery.data || []).filter((s) => s.status === "connected" && !s.is_paused);
+  const activeSessions = unwrapApiArray(sessionsQuery.data).filter((s) => s.status === "connected" && !s.is_paused);
   if (activeSessions.length === 1 && !selectedSession) {
     setSelectedSession(activeSessions[0].id);
   }
 
   // Group templates by category
-  const templates = templatesQuery.data || [];
+  const templates = unwrapApiArray(templatesQuery.data);
   const groupedTemplates = CATEGORY_ORDER
     .map((cat) => ({ cat, items: templates.filter((t) => t.category === cat) }))
     .filter((g) => g.items.length > 0);
 
-  const recentComms = (commsQuery.data || []) as CommEntry[];
+  const recentComms = unwrapApiArray(commsQuery.data);
 
   if (!hasPhone) {
     return (
@@ -228,7 +244,7 @@ export function LeadWhatsAppPanel({ lead }: LeadWhatsAppPanelProps) {
             onChange={(e) => setSelectedSession(e.target.value)}
           >
             <option value="">Select session…</option>
-            {(sessionsQuery.data || []).map((s) => (
+            {unwrapApiArray(sessionsQuery.data).map((s) => (
               <option key={s.id} value={s.id} disabled={s.status !== "connected" || s.is_paused}>
                 {s.name} {s.phone_number ? `(${s.phone_number})` : ""} {s.status !== "connected" ? "(offline)" : ""}
               </option>

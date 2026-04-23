@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkExpressBookingFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
 import { z } from "zod";
 
@@ -41,7 +42,7 @@ export async function PATCH(
     const expressAccess = await checkExpressBookingFeatureAccess(providerId);
     if (!expressAccess.enabled) {
       return errorResponse(
-        "Express booking links require a subscription upgrade. Please upgrade to Starter plan or higher.",
+        SUBSCRIPTION_UPGRADE_SHORT,
         "SUBSCRIPTION_REQUIRED",
         403
       );

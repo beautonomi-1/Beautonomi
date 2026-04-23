@@ -20,9 +20,12 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/auth/role", () => ({
+vi.mock("@/lib/auth/role-server", () => ({
   getUserRoleServer: (...args: any[]) => mockGetUserRoleServer(...args),
   ensurePublicUserRowExists: (...args: any[]) => mockEnsurePublicUserRowExists(...args),
+}));
+
+vi.mock("@/lib/auth/role", () => ({
   getPortalForUser: (params: { role: string; provider_status?: string | null }) => {
     if (params.role === "superadmin") return "admin";
     if (params.role === "customer") return "customer";

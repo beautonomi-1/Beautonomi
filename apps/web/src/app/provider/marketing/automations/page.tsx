@@ -246,7 +246,7 @@ export default function ProviderAutomations() {
           <SubscriptionGate
             feature="Marketing Automations"
             message="Marketing automations require a subscription upgrade"
-            upgradeMessage="Upgrade to Starter plan or higher to access marketing automations and send automated messages to your clients."
+            upgradeMessage="Upgrade your platform plan under Subscription to use marketing automations."
             showUpgradeButton={true}
           />
         </div>

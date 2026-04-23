@@ -45,6 +45,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import {
+  appendFormDataFileNative,
   ARRIVAL_PIN_LENGTH_HINT,
   ARRIVAL_PIN_PLACEHOLDER,
   ARRIVAL_PIN_PROVIDER_HEADING,
@@ -162,7 +163,13 @@ type BookingDetail = {
   version?: number;
   total_paid?: number;
   total_refunded?: number;
+  /** Applied wallet balance toward this booking (GET detail). */
+  wallet_amount?: number | null;
+  /** Applied gift card toward this booking (GET detail). */
+  gift_card_amount?: number | null;
   payment_status?: string;
+  /** IANA TZ for customer-facing wall times when API sends it. */
+  display_time_zone?: string | null;
   subtotal?: number;
   discount_amount?: number;
   discount_code?: string | null;
@@ -370,11 +377,48 @@ export default function BookingDetailScreen() {
   const [rescheduleTime, setRescheduleTime] = useState("");
   const [rescheduling, setRescheduling] = useState(false);
   const rescheduleDateStr = format(rescheduleDate, "yyyy-MM-dd");
-  const { data: rescheduleSlotsData } = useApi<{ slots: string[] }>(
-    `/api/provider/bookings/available-slots?date=${rescheduleDateStr}&duration_minutes=${durationMinutes}&exclude_booking_id=${id ?? ""}`,
-    { enabled: showReschedule && !!rescheduleDateStr }
+
+  const rescheduleAvailableSlotsUrl = useMemo(() => {
+    if (!showReschedule || !rescheduleDateStr || !bookingIdStr) return "";
+    const b = data;
+    const staffIds = [...new Set((b?.services ?? []).map((s) => s.staff_id).filter((x): x is string => !!x))];
+    const offeringIds = [
+      ...new Set(
+        (b?.services ?? [])
+          .map((s) => s.offering_id || s.service_id)
+          .filter((x): x is string => !!x),
+      ),
+    ];
+    const locId = b?.location_id?.trim();
+    const isHome = b?.location_type === "at_home";
+    const mode = isHome ? "mobile" : "salon";
+    const travelBuffer = isHome ? 30 : 0;
+    let q = `/api/provider/bookings/available-slots?date=${encodeURIComponent(rescheduleDateStr)}&duration_minutes=${encodeURIComponent(String(durationMinutes))}&exclude_booking_id=${encodeURIComponent(bookingIdStr)}`;
+    if (staffIds.length > 0) q += `&staff_ids=${encodeURIComponent(staffIds.join(","))}`;
+    if (offeringIds.length > 0) q += `&service_ids=${encodeURIComponent(offeringIds.join(","))}`;
+    if (locId) q += `&location_id=${encodeURIComponent(locId)}`;
+    q += `&mode=${encodeURIComponent(mode)}&travel_buffer=${encodeURIComponent(String(travelBuffer))}`;
+    return q;
+  }, [showReschedule, rescheduleDateStr, bookingIdStr, durationMinutes, data]);
+
+  type RescheduleSlotRow = { time: string; available: boolean; reason?: string };
+  type RescheduleSlotsResponse = {
+    slots: string[];
+    slot_grid?: RescheduleSlotRow[];
+    provider_timezone?: string | null;
+  };
+
+  const { data: rescheduleSlotsData, loading: rescheduleSlotsLoading } = useApi<RescheduleSlotsResponse>(
+    rescheduleAvailableSlotsUrl,
+    { enabled: !!rescheduleAvailableSlotsUrl }
   );
-  const rescheduleSlots = rescheduleSlotsData?.slots ?? [];
+
+  const rescheduleTimeRows = useMemo((): RescheduleSlotRow[] => {
+    const grid = rescheduleSlotsData?.slot_grid;
+    if (grid && grid.length > 0) return grid;
+    const legacy = rescheduleSlotsData?.slots ?? [];
+    return legacy.map((time) => ({ time, available: true }));
+  }, [rescheduleSlotsData]);
 
   // Notes
   const [editingNotes, setEditingNotes] = useState(false);
@@ -482,7 +526,7 @@ export default function BookingDetailScreen() {
 
       const formData = new FormData();
       formData.append("form_id", formId);
-      formData.append("file", { uri, name: fileName, type: mimeType } as unknown as Blob);
+      appendFormDataFileNative(formData, "file", { uri, name: fileName, type: mimeType });
 
       const res = await api.fetch<{ url: string }>(`/api/provider/bookings/${id}/consent-document`, {
         method: "POST",
@@ -496,7 +540,7 @@ export default function BookingDetailScreen() {
         Alert.alert("Success", "Consent document uploaded");
         await refresh();
       }
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "Failed to upload document");
     } finally {
       setUploadingConsentFormId(null);
@@ -819,11 +863,11 @@ export default function BookingDetailScreen() {
   const totalAmount = b.total_amount ?? 0;
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
-  const walletAmountApplied = Number((b as any).wallet_amount ?? 0);
-  const giftCardAmountApplied = Number((b as any).gift_card_amount ?? 0);
+  const walletAmountApplied = Number(b.wallet_amount ?? 0);
+  const giftCardAmountApplied = Number(b.gift_card_amount ?? 0);
   const effectivePaid = Math.max(0, totalPaid - totalRefunded);
   const outstandingRaw = totalAmount - effectivePaid - walletAmountApplied - giftCardAmountApplied;
-  const ps = ((b as any).payment_status || "").toLowerCase();
+  const ps = (b.payment_status || "").toLowerCase();
   const outstanding = ps === "refunded" ? 0 : Math.max(0, outstandingRaw);
   /**
    * Amount for Yoco / POS sale / "Mark paid" without a custom line: deposit bookings collect the
@@ -986,6 +1030,7 @@ export default function BookingDetailScreen() {
       if (Math.abs(chargeAmount - bookingTotal) > 0.01) {
         items = [{
           item_id: null,
+          product_variant_id: null,
           type: "service",
           name: "Booking balance due",
           quantity: 1,
@@ -1006,6 +1051,7 @@ export default function BookingDetailScreen() {
         sale_date: b.scheduled_at,
         items: items.map((i) => ({
           item_id: i.item_id,
+          product_variant_id: i.product_variant_id ?? null,
           type: i.type,
           name: i.name,
           quantity: i.quantity,
@@ -1197,11 +1243,11 @@ export default function BookingDetailScreen() {
     // §Release-audit 2026-04: use the provider's IANA timezone, not the
     // device's, so reschedule persists the correct UTC instant even when
     // the provider's phone is temporarily in a different zone.
-    const newScheduledAt = buildZonedIsoForWallClock(
-      rescheduleDateStr,
-      rescheduleTime,
-      providerTimezone,
-    );
+    const slotsTz =
+      (typeof rescheduleSlotsData?.provider_timezone === "string" && rescheduleSlotsData.provider_timezone.trim().length > 0
+        ? rescheduleSlotsData.provider_timezone.trim()
+        : null) || providerTimezone;
+    const newScheduledAt = buildZonedIsoForWallClock(rescheduleDateStr, rescheduleTime, slotsTz);
     try {
       const staffIds = (b.services ?? []).map((s: { staff_id?: string | null }) => s.staff_id).filter((sid): sid is string => !!sid);
       const checkParams = new URLSearchParams({
@@ -1229,6 +1275,9 @@ export default function BookingDetailScreen() {
       );
       if (rescheduleOfferingIds.length > 0)
         checkParams.set("offering_ids", rescheduleOfferingIds.join(","));
+      const rescheduleIsHome = b.location_type === "at_home";
+      checkParams.set("mode", rescheduleIsHome ? "mobile" : "salon");
+      checkParams.set("travel_buffer", rescheduleIsHome ? "30" : "0");
       const checkRes = await api.get<{ available?: boolean; conflicts?: string[] }>(
         `/api/provider/bookings/check-availability?${checkParams}`
       );
@@ -1736,7 +1785,7 @@ export default function BookingDetailScreen() {
             <TouchableOpacity
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push("/(app)/(tabs)/more/rewards-hub" as any);
+                router.push("/(app)/(tabs)/more/rewards-hub" as never);
               }}
               accessibilityRole="button"
               accessibilityLabel={PROVIDER_EXCELLENCE_DASHBOARD_CTA}
@@ -1847,7 +1896,7 @@ export default function BookingDetailScreen() {
             </View>
           </View>
           <Text style={twStyle("text-sm text-gray-600")}>
-            {formatDateTimeSafe(b.scheduled_at, (b as any).display_time_zone)}
+            {formatDateTimeSafe(b.scheduled_at, b.display_time_zone)}
           </Text>
           {addressLine ? (
             <Text style={twStyle("mt-2 text-sm text-gray-500")}>{addressLine}</Text>
@@ -2555,7 +2604,7 @@ export default function BookingDetailScreen() {
                 )}
                 {s.scheduled_start_at && (
                   <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-                    {formatTimeSafe(s.scheduled_start_at, (b as any).display_time_zone)}
+                    {formatTimeSafe(s.scheduled_start_at, b.display_time_zone)}
                     {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
                   </Text>
                 )}
@@ -2692,24 +2741,45 @@ export default function BookingDetailScreen() {
           </ScrollView>
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Time</Text>
           <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
-          <View style={twStyle("flex-row flex-wrap")}>
-            {rescheduleSlots.length > 0 ? (
-              rescheduleSlots.map((slot) => {
-                const isSelected = rescheduleTime === slot;
+            <View style={twStyle("flex-row flex-wrap")}>
+              {rescheduleSlotsLoading && rescheduleTimeRows.length === 0 ? (
+                <Text style={twStyle("text-sm text-gray-500")}>Loading slots…</Text>
+              ) : null}
+              {!rescheduleSlotsLoading && rescheduleTimeRows.length === 0 ? (
+                <Text style={twStyle("text-sm text-gray-500")}>No times for this date</Text>
+              ) : null}
+              {rescheduleTimeRows.map((row) => {
+                const isSelected = rescheduleTime === row.time;
+                const unavailable = !row.available;
+                const chip = unavailable
+                  ? twStyle("border border-red-200 bg-red-50")
+                  : isSelected
+                    ? twStyle("bg-gray-900")
+                    : twStyle("border border-gray-200 bg-white");
                 return (
                   <TouchableOpacity
-                    key={slot}
-                    onPress={() => setRescheduleTime(slot)}
-                    style={[twStyle("rounded-lg px-3 py-2 mr-2 mb-2"), isSelected ? twStyle("bg-gray-900") : twStyle("border border-gray-200 bg-white")]}
+                    key={row.time}
+                    disabled={unavailable}
+                    onPress={() => {
+                      if (unavailable) return;
+                      setRescheduleTime(row.time);
+                    }}
+                    style={[twStyle("rounded-lg px-3 py-2 mr-2 mb-2"), chip]}
+                    accessibilityState={{ disabled: unavailable, selected: isSelected }}
                   >
-                    <Text style={twStyle(`text-sm font-medium ${isSelected ? "text-white" : "text-gray-700"}`)}>{slot}</Text>
+                    <Text
+                      style={twStyle(
+                        `text-sm font-medium ${
+                          unavailable ? "text-red-300 line-through" : isSelected ? "text-white" : "text-gray-700"
+                        }`,
+                      )}
+                    >
+                      {row.time}
+                    </Text>
                   </TouchableOpacity>
                 );
-              })
-            ) : (
-              <Text style={twStyle("text-sm text-gray-500")}>Loading slots…</Text>
-            )}
-          </View>
+              })}
+            </View>
           </ScrollView>
           <ActionButton
             label={rescheduling ? "Rescheduling…" : "Confirm reschedule"}
@@ -2974,7 +3044,7 @@ export default function BookingDetailScreen() {
             <TouchableOpacity
               onPress={() => {
                 dismissProviderCompletionModal(true);
-                router.push("/(app)/(tabs)/more/explore-posts?create=1" as any);
+                router.push("/(app)/(tabs)/more/explore-posts?create=1" as never);
               }}
               style={{ backgroundColor: "#ec4899", paddingVertical: 14, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
               activeOpacity={0.8}

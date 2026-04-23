@@ -1,6 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  successResponse,
+  handleApiError,
+  forbiddenResponse,
+  userHasProviderAccessAdmin,
+} from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 
 /**
@@ -19,6 +25,7 @@ export async function POST(
     }
 
     const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const body = await request.json();
     const { amount, paymentMethodId, paymentDate, paymentReference } = body;
 
@@ -31,18 +38,11 @@ export async function POST(
       );
     }
 
-    // Get invoice
-    const providerId = await getProviderIdForUser(permissionCheck.user!.id);
-    let query = supabase
+    const { data: invoice, error: invoiceError } = await admin
       .from("provider_invoices")
       .select("*")
-      .eq("id", id);
-
-    if (providerId) {
-      query = query.eq("provider_id", providerId);
-    }
-
-    const { data: invoice, error: invoiceError } = await query.single();
+      .eq("id", id)
+      .maybeSingle();
 
     if (invoiceError || !invoice) {
       return handleApiError(
@@ -51,6 +51,20 @@ export async function POST(
         "NOT_FOUND",
         404
       );
+    }
+
+    const invPid = (invoice as { provider_id?: string | null }).provider_id;
+    if (!invPid) {
+      return forbiddenResponse("Invalid invoice record");
+    }
+    if (
+      !(await userHasProviderAccessAdmin(
+        admin,
+        permissionCheck.user!.id,
+        invPid,
+      ))
+    ) {
+      return forbiddenResponse("You do not have access to this invoice");
     }
 
     // Check if payment amount exceeds amount due

@@ -82,12 +82,23 @@ export async function GET(request: NextRequest) {
     if (providerIds.length > 0) {
       const { data: provs, error: pErr } = await admin
         .from("providers")
-        .select("id, business_name, owner_name")
+        .select("id, business_name, user_id, users:user_id(full_name)")
         .in("id", providerIds);
       if (pErr) throw pErr;
       for (const p of provs ?? []) {
-        const pr = p as { id: string; business_name?: string | null; owner_name?: string | null };
-        providerNameById.set(pr.id, pr.business_name?.trim() || pr.owner_name?.trim() || "Provider");
+        const pr = p as {
+          id: string;
+          business_name?: string | null;
+          users?:
+            | { full_name?: string | null }
+            | Array<{ full_name?: string | null }>
+            | null;
+        };
+        const userRow = Array.isArray(pr.users) ? pr.users[0] : pr.users;
+        providerNameById.set(
+          pr.id,
+          pr.business_name?.trim() || userRow?.full_name?.trim() || "Provider"
+        );
       }
     }
 

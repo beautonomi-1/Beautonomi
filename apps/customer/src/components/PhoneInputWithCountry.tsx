@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { RADIUS_INPUT } from "@/constants/layout";
 import { COUNTRY_CODES, type CountryCodeEntry } from "@/constants/phone";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 type Props = {
   label?: string;
@@ -228,6 +229,7 @@ export function PhoneInputWithCountry({
               </View>
             </View>
             <FlatList
+              {...verticalFlatListPerf}
               data={filteredCountries}
               keyExtractor={(c) => c.code}
               keyboardShouldPersistTaps="handled"

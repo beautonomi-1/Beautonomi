@@ -20,6 +20,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 /* ─── types (aligned with API: hours_before, refund_percentage, is_default) ─── */
 interface CancellationPolicy {
@@ -223,6 +224,7 @@ export default function CancellationPoliciesScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={policies}
           keyExtractor={(p: CancellationPolicy) => p.id}
           showsVerticalScrollIndicator={false}

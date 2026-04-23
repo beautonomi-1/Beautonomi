@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Avatar } from "@/components/ui/Avatar";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface StaffMember {
   id: string;
@@ -90,6 +91,7 @@ export default function StaffPermissionsListScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={list}
           keyExtractor={(s: StaffMember) => s.id}
           contentContainerStyle={{ paddingBottom: 120 }}
@@ -99,7 +101,7 @@ export default function StaffPermissionsListScreen() {
               onPress={() => {
                 if (!canManageTeam && ownStaffId !== item.id) return;
                 router.push(
-                  `/(app)/(tabs)/more/settings/staff-permissions/${item.id}` as any
+                  `/(app)/(tabs)/more/settings/staff-permissions/${item.id}` as never
                 );
               }}
               disabled={!canManageTeam && ownStaffId !== item.id}

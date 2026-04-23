@@ -9,6 +9,7 @@ import {
   Platform,
   Share,
   Alert,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -273,24 +274,66 @@ export default function ProductOrderDetailScreen() {
             })
           )}
 
-          {/* Tracking number */}
-          {order.tracking_number && (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginTop: 12,
-                padding: 12,
-                borderRadius: 10,
-                backgroundColor: "#EFF6FF",
-              }}
-            >
-              <Ionicons name="location-outline" size={18} color="#3B82F6" />
-              <Text style={{ fontSize: 13, color: "#3B82F6", fontWeight: "600", marginLeft: 8 }}>
-                Tracking: {order.tracking_number}
-              </Text>
-            </View>
-          )}
+          {/* §Customer-audit 2026-04 (follow-up): when the provider records a
+              `tracking_url`, render the whole row as a tappable link. Otherwise
+              fall back to the existing number-only display. */}
+          {order.tracking_number || order.tracking_url ? (
+            (() => {
+              const label = [
+                order.carrier,
+                order.tracking_number ? `#${order.tracking_number}` : null,
+              ]
+                .filter(Boolean)
+                .join(" ");
+              const display = label || "Track shipment";
+              if (order.tracking_url) {
+                return (
+                  <TouchableOpacity
+                    accessibilityRole="link"
+                    accessibilityLabel={`Open tracking${order.carrier ? ` with ${order.carrier}` : ""}`}
+                    onPress={async () => {
+                      try {
+                        await Linking.openURL(order.tracking_url!);
+                      } catch {
+                        Alert.alert("Could not open link", "Please copy the tracking number manually.");
+                      }
+                    }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      marginTop: 12,
+                      padding: 12,
+                      borderRadius: 10,
+                      backgroundColor: "#EFF6FF",
+                    }}
+                  >
+                    <Ionicons name="location-outline" size={18} color="#3B82F6" />
+                    <Text style={{ flex: 1, fontSize: 13, color: "#3B82F6", fontWeight: "600", marginLeft: 8 }} numberOfLines={1}>
+                      Tracking: {display}
+                    </Text>
+                    <Ionicons name="open-outline" size={16} color="#3B82F6" />
+                  </TouchableOpacity>
+                );
+              }
+              return (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 10,
+                    backgroundColor: "#EFF6FF",
+                  }}
+                >
+                  <Ionicons name="location-outline" size={18} color="#3B82F6" />
+                  <Text style={{ fontSize: 13, color: "#3B82F6", fontWeight: "600", marginLeft: 8 }}>
+                    Tracking: {display}
+                  </Text>
+                </View>
+              );
+            })()
+          ) : null}
         </View>
 
         {/* Items */}

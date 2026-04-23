@@ -59,6 +59,12 @@ interface BookingService {
   };
 }
 
+interface BookingAddonRow {
+  id: string;
+  price?: number;
+  quantity?: number;
+}
+
 interface BookingProduct {
   id: string;
   product_id: string;
@@ -70,6 +76,29 @@ interface BookingProduct {
     name: string;
     retail_price: number;
   };
+}
+
+interface AdditionalChargeRow {
+  id: string;
+  description?: string;
+  amount?: number;
+  status?: string;
+}
+
+const MONEY_TOL = 0.02;
+
+function sumAdditionalChargesForDisplay(charges: AdditionalChargeRow[] | undefined): number {
+  if (!charges?.length) return 0;
+  return charges.reduce((s, c) => {
+    const st = (c.status || "").toLowerCase();
+    if (st === "rejected" || st === "cancelled") return s;
+    return s + (Number(c.amount) || 0);
+  }, 0);
+}
+
+function travelFeeDoubleListed(dbSubtotal: number, servicesPlusAddonsProducts: number, travelFee: number): boolean {
+  if (!(travelFee > 0)) return false;
+  return Math.abs(dbSubtotal - servicesPlusAddonsProducts - travelFee) < MONEY_TOL;
 }
 
 interface Booking {
@@ -86,6 +115,19 @@ interface Booking {
   country?: string;
   total_amount: number;
   currency: string;
+  subtotal?: number | null;
+  travel_fee?: number | null;
+  service_fee_amount?: number | null;
+  service_fee_percentage?: number | null;
+  service_fee_paid_by?: string | null;
+  tip_amount?: number | null;
+  tax_amount?: number | null;
+  tax_rate?: number | null;
+  discount_amount?: number | null;
+  discount_code?: string | null;
+  cancellation_fee?: number | null;
+  additional_charges?: AdditionalChargeRow[];
+  booking_addons?: BookingAddonRow[];
   notes?: string;
   customer: {
     id: string;
@@ -304,9 +346,33 @@ export default function BookingDetailPage() {
     );
   }
 
-  const subtotal = booking.booking_services?.reduce((sum, s) => sum + (s.price || 0), 0) || 0;
+  const lineServicesSubtotal = booking.booking_services?.reduce((sum, s) => sum + (s.price || 0), 0) || 0;
+  const addonTotal =
+    booking.booking_addons?.reduce((s, x) => s + (Number(x.price) || 0) * (x.quantity || 1), 0) || 0;
   const productTotal = booking.booking_products?.reduce((sum, p) => sum + (p.total_price || 0), 0) || 0;
-  const total = subtotal + productTotal;
+  const additionalChargesTotal = sumAdditionalChargesForDisplay(booking.additional_charges);
+  const goodsBeforeTravel = lineServicesSubtotal + addonTotal + productTotal + additionalChargesTotal;
+  const dbSubtotal =
+    booking.subtotal != null && !Number.isNaN(Number(booking.subtotal))
+      ? Number(booking.subtotal)
+      : goodsBeforeTravel;
+  const travelFeeAmt = Number(booking.travel_fee ?? 0) || 0;
+  const travelListedSeparately = !travelFeeDoubleListed(
+    dbSubtotal,
+    lineServicesSubtotal + addonTotal + productTotal,
+    travelFeeAmt
+  );
+  const discountAmt = Number(booking.discount_amount ?? 0) || 0;
+  const taxAmt = Number(booking.tax_amount ?? 0) || 0;
+  const svcFeeAmt = Number(booking.service_fee_amount ?? 0) || 0;
+  const tipAmt = Number(booking.tip_amount ?? 0) || 0;
+  const cancelAmt = Number(booking.cancellation_fee ?? 0) || 0;
+  const expectedTotalFromColumns =
+    dbSubtotal - discountAmt + taxAmt + svcFeeAmt + travelFeeAmt + tipAmt - cancelAmt;
+  const totalMismatch =
+    booking.total_amount != null &&
+    Math.abs(expectedTotalFromColumns - Number(booking.total_amount)) > MONEY_TOL;
+  const fmt = (n: number) => `${booking.currency} ${n.toFixed(2)}`;
 
   return (
     <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
@@ -725,22 +791,104 @@ export default function BookingDetailPage() {
                 className="bg-white border rounded-lg p-6"
               >
                 <h2 className="text-xl font-semibold mb-4">Pricing Summary</h2>
-                <div className="space-y-2">
+                <p className="text-xs text-muted-foreground mb-3">
+                  Aligns with <code className="text-[11px]">bookings</code> columns: recorded subtotal, travel, fees,
+                  and tip. Travel is not shown twice when it is already folded into subtotal.
+                </p>
+                <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <p className="text-gray-600">Subtotal</p>
-                    <p>{booking.currency} {subtotal.toFixed(2)}</p>
+                    <p className="text-gray-600">Services (line items)</p>
+                    <p className="tabular-nums">{fmt(lineServicesSubtotal)}</p>
                   </div>
-                  {productTotal > 0 && (
+                  {addonTotal > 0 ? (
                     <div className="flex justify-between">
-                      <p className="text-gray-600">Products</p>
-                      <p>{booking.currency} {productTotal.toFixed(2)}</p>
+                      <p className="text-gray-600">Add-ons</p>
+                      <p className="tabular-nums">{fmt(addonTotal)}</p>
+                    </div>
+                  ) : null}
+                  {productTotal > 0 ? (
+                    <div className="flex justify-between">
+                      <p className="text-gray-600">Retail products</p>
+                      <p className="tabular-nums">{fmt(productTotal)}</p>
+                    </div>
+                  ) : null}
+                  {additionalChargesTotal > 0 ? (
+                    <div className="flex justify-between">
+                      <p className="text-gray-600">Additional charges</p>
+                      <p className="tabular-nums">{fmt(additionalChargesTotal)}</p>
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between border-t border-dashed pt-2">
+                    <p className="text-gray-700">Recorded subtotal</p>
+                    <p className="tabular-nums font-medium">{fmt(dbSubtotal)}</p>
+                  </div>
+                  {travelFeeAmt > 0 && !travelListedSeparately ? (
+                    <p className="text-xs text-muted-foreground">
+                      Travel {fmt(travelFeeAmt)} is included in recorded subtotal above; <code className="text-[11px]">travel_fee</code> is
+                      also stored for reporting.
+                    </p>
+                  ) : null}
+                  {travelListedSeparately ? (
+                    <div className="flex justify-between">
+                      <p className="text-gray-600">Travel fee</p>
+                      <p className="tabular-nums">{fmt(travelFeeAmt)}</p>
+                    </div>
+                  ) : null}
+                  {(svcFeeAmt > 0 || booking.service_fee_percentage != null) && (
+                    <div className="flex justify-between">
+                      <p className="text-gray-600">
+                        Service fee
+                        {booking.service_fee_percentage != null
+                          ? ` (${Number(booking.service_fee_percentage).toFixed(2)}%)`
+                          : ""}
+                        {booking.service_fee_paid_by ? ` · ${booking.service_fee_paid_by}` : ""}
+                      </p>
+                      <p className="tabular-nums">{fmt(svcFeeAmt)}</p>
                     </div>
                   )}
+                  {taxAmt > 0 ? (
+                    <div className="flex justify-between">
+                      <p className="text-gray-600">
+                        Tax{booking.tax_rate != null ? ` (${Number(booking.tax_rate).toFixed(2)}%)` : ""}
+                      </p>
+                      <p className="tabular-nums">{fmt(taxAmt)}</p>
+                    </div>
+                  ) : null}
+                  {tipAmt > 0 ? (
+                    <div className="flex justify-between">
+                      <p className="text-gray-600">Tip</p>
+                      <p className="tabular-nums">{fmt(tipAmt)}</p>
+                    </div>
+                  ) : null}
+                  {discountAmt > 0 ? (
+                    <div className="flex justify-between text-emerald-800">
+                      <p>Discount{booking.discount_code ? ` (${booking.discount_code})` : ""}</p>
+                      <p className="tabular-nums">−{fmt(discountAmt)}</p>
+                    </div>
+                  ) : null}
+                  {cancelAmt > 0 ? (
+                    <div className="flex justify-between">
+                      <p className="text-gray-600">Cancellation fee</p>
+                      <p className="tabular-nums">{fmt(cancelAmt)}</p>
+                    </div>
+                  ) : null}
+                  {Math.abs(goodsBeforeTravel - dbSubtotal) > MONEY_TOL ? (
+                    <p className="rounded-md border border-amber-200 bg-amber-50/80 px-2 py-1.5 text-xs text-amber-950">
+                      Sum of services, add-ons, products, and additional charges ({fmt(goodsBeforeTravel)}) does not match
+                      recorded subtotal ({fmt(dbSubtotal)}).
+                    </p>
+                  ) : null}
+                  {totalMismatch ? (
+                    <p className="rounded-md border border-red-200 bg-red-50/80 px-2 py-1.5 text-xs text-red-950">
+                      <span className="font-medium">Check:</span> subtotal − discount + tax + service fee + travel + tip
+                      − cancellation = {fmt(expectedTotalFromColumns)} vs total_amount {fmt(Number(booking.total_amount))}.
+                    </p>
+                  ) : null}
                   <div className="border-t pt-2 mt-2">
                     <div className="flex justify-between">
                       <p className="font-semibold">Total</p>
-                      <p className="font-semibold text-lg">
-                        {booking.currency} {booking.total_amount?.toFixed(2) || total.toFixed(2)}
+                      <p className="font-semibold text-lg tabular-nums">
+                        {fmt(Number(booking.total_amount ?? 0))}
                       </p>
                     </div>
                   </div>

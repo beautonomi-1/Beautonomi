@@ -3,11 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
 import { rescheduleGroupBooking, isPrimaryContact, getGroupBooking } from "@/lib/bookings/group-booking";
-import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
-import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
-import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
-import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
-import { formatInTimeZone } from "date-fns-tz";
+import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { z } from "zod";
 
 const rescheduleSchema = z.object({
@@ -57,108 +53,85 @@ export async function POST(
       );
     }
 
-    // Check availability for all bookings in the group
-    // For simplicity, we'll check if the new time works for all bookings
-    // In a more sophisticated implementation, we'd check each booking's staff availability
     const bookings = groupBooking.bookings || [];
-    
-    // Calculate time offset
     const originalScheduledAt = new Date(groupBooking.scheduled_at);
-    const _timeOffset = newDatetime.getTime() - originalScheduledAt.getTime();
 
-    // Check availability for each booking (simplified - checks first booking's staff)
+    // §Cross-app audit 2026-04: route through the shared engine that the
+    // provider new-booking / single-booking reschedule surfaces already use.
+    // This way a customer reschedule respects the SAME rules as a provider
+    // reschedule — resources, blocks, holds, staff days-off, travel buffer.
     if (bookings.length > 0) {
-      const firstBooking = bookings[0];
-      // Get staff from first booking service
-      const { data: firstService } = await supabase
-        .from('booking_services')
-        .select('staff_id, duration_minutes')
-        .eq('booking_id', firstBooking.id)
-        .limit(1)
-        .single();
-
-      if (firstService?.staff_id) {
-        // Resolve provider_id so publicCalendarParity can block day-offs / time-off.
-        const { data: staffProviderRow } = await supabase
-          .from('provider_staff')
-          .select('provider_id, providers:provider_id(timezone)')
-          .eq('id', firstService.staff_id)
-          .maybeSingle();
-        const groupProviderIdForParity = staffProviderRow?.provider_id as string | undefined;
-        // §Launch-audit 2026-04-18: normalise offset-style zones (see
-        // supabase migration 511) so Intl doesn't throw a RangeError.
-        const rawGroupProviderTz =
-          ((staffProviderRow as unknown as { providers?: { timezone?: string | null } | null })?.providers
-            ?.timezone ?? null) as string | null;
-        const groupProviderTz =
-          normalizeProviderTimezone(rawGroupProviderTz) ??
-          DEFAULT_BOOKING_DISPLAY_TIMEZONE;
-        if (rawGroupProviderTz && !normalizeProviderTimezone(rawGroupProviderTz)) {
-          console.warn(
-            `[group-reschedule] provider ${groupProviderIdForParity ?? "(unknown)"} has unparseable timezone "${rawGroupProviderTz}" — falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}`,
-          );
-        }
-
-        // B5: compute date + HH:mm in the provider's business timezone, not UTC.
-        const newDate = formatInTimeZone(newDatetime, groupProviderTz, "yyyy-MM-dd");
-        const requestedTime = formatInTimeZone(newDatetime, groupProviderTz, "HH:mm");
-
-        const constraints = await loadAvailabilityConstraints(
-          supabase,
-          firstService.staff_id,
-          newDate,
-          groupProviderIdForParity,
-          groupProviderIdForParity
-            ? {
-                publicCalendarParity: {
-                  providerId: groupProviderIdForParity,
-                  date: newDate,
-                  locationId: undefined,
-                  slotStaffId: firstService.staff_id,
-                  staffIdsForTimeOff: [firstService.staff_id],
-                },
-              }
-            : undefined
+      const providerIdForGroup = (groupBooking as { provider_id?: string }).provider_id;
+      if (!providerIdForGroup) {
+        return handleApiError(
+          new Error("Group booking missing provider_id"),
+          "Unable to verify availability for this group booking.",
+          "UNAVAILABLE",
+          409,
         );
-        
-        // Total blocked span = sum(durations) + sum(buffers) across all group booking services
+      }
+
+      // Preserve each booking's original offset inside the group so the
+      // check runs per-booking at the shifted time.
+      const timeOffsetMs = newDatetime.getTime() - originalScheduledAt.getTime();
+
+      for (const booking of bookings) {
+        const bookingScheduled = new Date(
+          (booking as { scheduled_at?: string }).scheduled_at ?? originalScheduledAt.toISOString(),
+        );
+        const shifted = new Date(bookingScheduled.getTime() + timeOffsetMs);
+
+        const { data: services } = await supabase
+          .from("booking_services")
+          .select("staff_id, duration_minutes, offering_id, offerings(buffer_minutes)")
+          .eq("booking_id", (booking as { id: string }).id);
+
+        type ServiceRow = {
+          staff_id?: string | null;
+          duration_minutes?: number | null;
+          offering_id?: string | null;
+          offerings?: { buffer_minutes?: number } | { buffer_minutes?: number }[];
+        };
+        const rows = (services as ServiceRow[] | null) ?? [];
         let totalDuration = 0;
-        for (const booking of bookings) {
-          const { data: services } = await supabase
-            .from('booking_services')
-            .select('duration_minutes, offerings(buffer_minutes)')
-            .eq('booking_id', booking.id);
-          type ServiceRow = { duration_minutes?: number; offerings?: { buffer_minutes?: number } | { buffer_minutes?: number }[] };
-          (services ?? []).forEach((s: ServiceRow) => {
-            const dur = s.duration_minutes ?? 60;
-            const off = Array.isArray(s.offerings) ? s.offerings[0] : s.offerings;
-            const buf = off?.buffer_minutes ?? 15;
-            totalDuration += dur + buf;
-          });
+        for (const r of rows) {
+          const dur = r.duration_minutes ?? 60;
+          const off = Array.isArray(r.offerings) ? r.offerings[0] : r.offerings;
+          const buf = off?.buffer_minutes ?? 0;
+          totalDuration += dur + buf;
         }
+        if (totalDuration <= 0) totalDuration = 60;
 
-        const slots = calculateAvailableSlots(
-          constraints,
-          totalDuration,
-          newDate,
-          {
-            slotInterval: 15,
-            travelBuffer: 0, // Could be enhanced for at-home bookings
-            // Wave 1.3 (audit 2026-04 final 100/100): match the single-
-            // booking surfaces so group reschedule sees the same slot
-            // truth in the provider's wall clock.
-            timezone: groupProviderTz,
-          }
-        );
+        const staffIds = [...new Set(rows.map((r) => r.staff_id).filter(Boolean) as string[])];
+        const offeringIds = [
+          ...new Set(rows.map((r) => r.offering_id).filter(Boolean) as string[]),
+        ];
+        const locationType = (booking as { location_type?: string | null }).location_type ?? null;
+        const locationId = (booking as { location_id?: string | null }).location_id ?? null;
+        const atHome = locationType === "at_home" || locationType === "customer_address";
 
-        const isAvailable = slots.some((slot) => slot.time === requestedTime && slot.available);
+        const check = await evaluateProviderSlotAgainstGrid(adminSupabase, {
+          providerId: providerIdForGroup,
+          scheduledAt: shifted,
+          durationMinutes: totalDuration,
+          staffIdsCsv: staffIds.length > 0 ? staffIds.join(",") : null,
+          locationId: !atHome && locationId ? locationId : null,
+          excludeBookingId: (booking as { id: string }).id,
+          excludeGroupBookingId: groupBookingId,
+          mode: atHome ? "mobile" : "salon",
+          travelBufferRaw: atHome ? null : "0",
+          minNoticeMinutes: 0,
+          maxAdvanceDays: 365,
+          resourceOfferingIds: offeringIds,
+        });
 
-        if (!isAvailable) {
+        if (!check.ok) {
           return handleApiError(
             new Error("Selected time slot is not available for all bookings"),
-            "Selected time slot is not available. Please choose another time.",
-            "SLOT_UNAVAILABLE",
-            409
+            check.conflicts.join("; ") ||
+              "Selected time slot is not available. Please choose another time.",
+            "SLOT_NOT_AVAILABLE",
+            409,
           );
         }
       }

@@ -4,6 +4,7 @@ import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { transformPublicProduct } from "@/lib/public-products/transform-public-product";
 
 /**
  * GET /api/public/providers/[slug]/products
@@ -69,29 +70,14 @@ export async function GET(
       });
     }
 
-    // Transform products for frontend
-    const transformedProducts = (products || []).map((product: any) => {
-      const withVariants = Boolean(product.has_variants) && Array.isArray(variantsByProduct[product.id]) && variantsByProduct[product.id].length > 0;
-      const variantList = withVariants ? variantsByProduct[product.id].sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)) : [];
-      const minPrice = withVariants && variantList.length ? Math.min(...variantList.map((v: any) => Number(v.retail_price || 0))) : Number(product.retail_price || 0);
-      const inStock = withVariants ? variantList.some((v: any) => (v.quantity || 0) > 0) : (product.track_stock_quantity ? (product.quantity || 0) > 0 : true);
-      const totalQty = withVariants ? variantList.reduce((s: number, v: any) => s + (v.quantity || 0), 0) : (product.quantity || 0);
-      return {
-        id: product.id,
-        name: product.name,
-        description: product.short_description || product.description || "",
-        category: typeof product.category === "string" && product.category.trim() ? product.category.trim() : null,
-        price: minPrice,
-        currency: defaultCurrency,
-        imageUrl: Array.isArray(product.image_urls) && product.image_urls.length > 0 ? product.image_urls[0] : null,
-        inStock,
-        quantity: totalQty,
-        track_stock_quantity: product.track_stock_quantity || false,
-        hasVariants: withVariants,
-        variantOptionTypes: product.variant_option_types || [],
-        variants: variantList.map((v: any) => ({ id: v.id, option_values: v.option_values, retail_price: Number(v.retail_price || 0), quantity: v.quantity || 0 })),
-      };
-    });
+    // §Release-audit 2026-04: variant pricing + stock must agree with
+    // validate-booking. The transform is pulled into a shared pure helper
+    // (`transformPublicProduct`) so the route + the regression tests exercise
+    // the same implementation. See that module's header comment for the full
+    // rationale.
+    const transformedProducts = (products || []).map((product: any) =>
+      transformPublicProduct(product, variantsByProduct[product.id], defaultCurrency),
+    );
 
     const res = successResponse(transformedProducts);
     res.headers.set("Cache-Control", "public, s-maxage=120, stale-while-revalidate=300");

@@ -1,17 +1,16 @@
 import { Redirect, Stack } from "expo-router";
-import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
+import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 
 export default function AuthLayout() {
   const { session, loading } = useAuth();
 
-  // Show a loading indicator while auth state resolves — prevents blank white flash.
+  // §Customer-audit 2026-04 (loading-polish): use the shared branded gate
+  // loader so the auth layout matches the other access gates — previously
+  // this was a bare spinner on white, which made the first frame look like
+  // a blank splash.
   if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#ffffff" }}>
-        <ActivityIndicator size="large" color="#FF0077" />
-      </View>
-    );
+    return <GateLoadingScreen />;
   }
 
   // Already authenticated — root index.tsx will route to the correct screen

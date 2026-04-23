@@ -3,7 +3,14 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireRoleInApi, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ALL_ADMIN_ROLES } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchAllProviderIdsForTenant } from "@/lib/tenant/admin-tenant-scope";
 import { fetchMergedFinanceLedgerSliceForTenant } from "@/lib/admin/finance-ledger-tenant";
+import {
+  countAllOpenSafetyEvents,
+  countOpenSafetyEventsForTenant,
+  fetchOpenSafetyEventsGlobal,
+  fetchOpenSafetyEventsForTenant,
+} from "@/lib/admin/safety-events-tenant-scope";
 
 /**
  * GET /api/admin/activity
@@ -12,10 +19,13 @@ import { fetchMergedFinanceLedgerSliceForTenant } from "@/lib/admin/finance-ledg
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(ALL_ADMIN_ROLES, request);
+    const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
+    const isSuperadmin = String(user?.role ?? '').toLowerCase() === 'superadmin';
     const supabase = getSupabaseAdmin();
 
     const tenantId = await resolveAdminApiTenantId(request);
+    const tenantProviderIds = isSuperadmin ? await fetchAllProviderIdsForTenant(supabase, tenantId) : [];
+    const safetyGlobalView = isSuperadmin && new URL(request.url).searchParams.get("scope") === "global";
 
     const now = new Date();
     const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -544,9 +554,47 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    activities.sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-    );
+    let safetyOpenForBadge = 0;
+    if (isSuperadmin) {
+      try {
+        const [openCount, rows] = safetyGlobalView
+          ? await Promise.all([
+              countAllOpenSafetyEvents(supabase),
+              fetchOpenSafetyEventsGlobal(supabase, 12),
+            ])
+          : await Promise.all([
+              countOpenSafetyEventsForTenant(supabase, tenantId, tenantProviderIds),
+              fetchOpenSafetyEventsForTenant(supabase, tenantId, tenantProviderIds, 12),
+            ]);
+        safetyOpenForBadge = openCount;
+        for (const row of rows) {
+          const title =
+            row.event_type === "panic"
+              ? "Safety panic"
+              : row.event_type === "check_in"
+                ? "Safety check-in"
+                : "Safety escalation";
+          activities.push({
+            id: `safety-${row.id}`,
+            type: "safety_event",
+            title,
+            message: `Open incident (${row.status}) — review in Safety logs`,
+            timestamp: row.created_at,
+            link: "/admin/control-plane/safety-logs",
+            priority: "critical",
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const priorityRank = (p: string) => (p === "critical" ? 3 : p === "high" ? 2 : p === "medium" ? 1 : 0);
+    activities.sort((a, b) => {
+      const byPri = priorityRank(b.priority) - priorityRank(a.priority);
+      if (byPri !== 0) return byPri;
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
 
     // Get counts for badge
     const counts = {
@@ -583,6 +631,7 @@ export async function GET(request: NextRequest) {
       ops_stalled: opsStalledOnboarding.status === 'fulfilled' && opsStalledOnboarding.value.data
         ? opsStalledOnboarding.value.data.length
         : 0,
+      safety_open: safetyOpenForBadge,
     };
 
     const totalUnread = 
@@ -596,7 +645,8 @@ export async function GET(request: NextRequest) {
       counts.provider_violations +
       counts.pending_user_reports +
       counts.ops_new_leads +
-      counts.ops_stalled;
+      counts.ops_stalled +
+      counts.safety_open;
 
     return successResponse({
       activities: activities.slice(0, 20), // Limit to 20 most recent

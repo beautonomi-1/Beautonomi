@@ -21,3 +21,15 @@ export function getApiErrorMessage(
   if (typeof msg === "string" && msg.trim()) return msg.trim();
   return fallback;
 }
+
+/**
+ * Read numeric HTTP status from API client error objects (`status` or `statusCode`).
+ * Used for auth detection without `as any`.
+ */
+export function getHttpErrorStatus(err: unknown): number | undefined {
+  if (err == null || typeof err !== "object") return undefined;
+  const o = err as { status?: unknown; statusCode?: unknown };
+  if (typeof o.status === "number" && Number.isFinite(o.status)) return o.status;
+  if (typeof o.statusCode === "number" && Number.isFinite(o.statusCode)) return o.statusCode;
+  return undefined;
+}

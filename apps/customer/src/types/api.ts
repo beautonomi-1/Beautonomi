@@ -216,6 +216,8 @@ export interface HomeApiResponse {
   nearest: PublicProviderCard[];
   hottest: PublicProviderCard[];
   upcoming: PublicProviderCard[];
+  /** Section + card badge label from Control Plane → Ads (`disclosure_label`). */
+  ads_disclosure_label?: string;
 }
 
 export interface SearchResult {

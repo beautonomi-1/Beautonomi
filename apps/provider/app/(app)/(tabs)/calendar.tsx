@@ -60,6 +60,7 @@ import {
   capitalizeFirst,
 } from "@/lib/format";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { trackCalendarView } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
@@ -70,6 +71,17 @@ import {
   resolveTimeBlockRecordId,
 } from "@/lib/expand-time-blocks";
 import { newBookingScreenHrefFromCalendarDay } from "@/lib/new-booking-nav-defaults";
+import {
+  DAY_NAMES as SHARED_DAY_NAMES,
+  dayMinuteRanges,
+  deriveGridHourWindow,
+  formatDateKeyInTimeZone,
+  getWeekdayInTimeZone,
+  mergeOperatingHours,
+  resolveDayHours as sharedResolveDayHours,
+  timeStringToMinutes as sharedTimeStringToMinutes,
+  type WeeklyHours,
+} from "@beautonomi/utils";
 
 /* ================================================================== */
 /*  Types                                                              */
@@ -78,6 +90,8 @@ import { newBookingScreenHrefFromCalendarDay } from "@/lib/new-booking-nav-defau
 interface BookingService {
   name: string;
   offering_name?: string;
+  /** Present when the calendar API returns offering ids (resource / check-availability parity). */
+  offering_id?: string | null;
   duration_minutes: number;
   staff_name: string | null;
   staff_id: string | null;
@@ -236,15 +250,9 @@ const MIN_WEEK_COL_WIDTH_TABLET = 120;
 const DARK_HEADER = "#1a1f3c";
 const TEAL_ACCENT = "#4fd1c5";
 
-const DAY_NAMES = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-];
+// §Calendar-hours: use the shared DAY_NAMES tuple so day-index lookups stay
+// aligned with `resolveDayHours` / `deriveGridHourWindow` helpers.
+const DAY_NAMES: readonly string[] = SHARED_DAY_NAMES;
 
 type ColorTriple = { bg: string; border: string; text: string };
 
@@ -424,34 +432,38 @@ function getCalendarOverlayColors(block: TimeBlock) {
 /*  Helpers                                                            */
 /* ================================================================== */
 
+/**
+ * §Calendar-hours: local wrappers that preserve the historical signatures
+ * used throughout this file while delegating the underlying parsing to the
+ * shared engine in `@beautonomi/utils/calendar-hours`.
+ */
 function timeStringToMinutes(t: string | undefined | null): number {
-  if (t == null || typeof t !== "string") return 0;
-  const [hRaw, mRaw] = t.split(":").map(Number);
-  const h = Number.isFinite(hRaw) ? Math.max(0, Math.min(23, hRaw)) : 0;
-  const m = Number.isFinite(mRaw) ? Math.max(0, Math.min(59, mRaw)) : 0;
-  return h * 60 + m;
+  return sharedTimeStringToMinutes(t ?? null) ?? 0;
 }
 
 function normalizeOperatingSchedule(
   schedule: unknown,
 ): { isOpen: boolean; openTime?: string; closeTime?: string } | null {
-  if (!schedule || typeof schedule !== "object") return null;
-  const raw = schedule as Record<string, unknown>;
-  const isOpen =
-    raw.is_open === true || (raw.closed !== true && raw.is_open !== false);
-  const openTime =
-    typeof raw.open_time === "string"
-      ? raw.open_time
-      : typeof raw.open === "string"
-        ? raw.open
-        : undefined;
-  const closeTime =
-    typeof raw.close_time === "string"
-      ? raw.close_time
-      : typeof raw.close === "string"
-        ? raw.close
-        : undefined;
-  return { isOpen, openTime, closeTime };
+  const resolved = sharedResolveDayHours(schedule);
+  if (!resolved) {
+    // Keep historical behaviour: an explicit closed flag without a parseable
+    // open/close still short-circuits downstream open-hour math.
+    if (schedule && typeof schedule === "object" && !Array.isArray(schedule)) {
+      const raw = schedule as Record<string, unknown>;
+      if (raw.closed === true || raw.is_open === false) {
+        return { isOpen: false };
+      }
+    }
+    return null;
+  }
+  if (resolved.closed) return { isOpen: false };
+  const pad = (m: number) =>
+    `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  return {
+    isOpen: true,
+    openTime: pad(resolved.openMin),
+    closeTime: pad(resolved.closeMin),
+  };
 }
 
 function parseApiDateTime(value: unknown): Date | null {
@@ -566,12 +578,55 @@ function buildScheduleShareBody(
 /* ================================================================== */
 
 function CalendarSkeleton() {
+  // §Provider-launch (audit 2026-04-21): skeleton now mirrors the real
+  // calendar layout (time gutter + faux booking cards at plausible
+  // hours). A subtle pulse makes it read as "loading" instead of "broken".
+  const pulse = useRef(new Animated.Value(0.5)).current;
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.5, duration: 900, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
+
+  const rowHours = [9, 10, 11, 12, 13, 14, 15, 16];
+  const fakeCards: { atHour: number; height: number; offset: number; width: string }[] = [
+    { atHour: 9, height: 56, offset: 12, width: "72%" },
+    { atHour: 11, height: 44, offset: 28, width: "55%" },
+    { atHour: 13, height: 64, offset: 4, width: "85%" },
+    { atHour: 15, height: 48, offset: 20, width: "60%" },
+  ];
+
   return (
     <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }} accessibilityLabel="Loading calendar">
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <View key={i} style={{ marginBottom: 12, flexDirection: "row", alignItems: "center" }}>
-          <View style={{ marginRight: 12, height: 16, width: 40, borderRadius: 4, backgroundColor: Colors.gray[200] }} />
-          <View style={{ height: 56, flex: 1, borderRadius: 12, backgroundColor: Colors.gray[100] }} />
+      {rowHours.map((h, i) => (
+        <View key={h} style={{ position: "relative", height: 60, flexDirection: "row", alignItems: "flex-start", borderTopWidth: i === 0 ? 0 : 1, borderTopColor: Colors.gray[100] }}>
+          <View style={{ width: 40, paddingTop: 2 }}>
+            <Animated.View style={{ opacity: pulse, height: 10, width: 28, borderRadius: 4, backgroundColor: Colors.gray[200] }} />
+          </View>
+          <View style={{ flex: 1, position: "relative" }}>
+            {fakeCards
+              .filter((c) => c.atHour === h)
+              .map((c, idx) => (
+                <Animated.View
+                  key={`${h}-${idx}`}
+                  style={{
+                    opacity: pulse,
+                    marginTop: c.offset,
+                    height: c.height,
+                    width: c.width as `${number}%`,
+                    borderRadius: 10,
+                    borderLeftWidth: 3,
+                    borderLeftColor: Colors.gray[300],
+                    backgroundColor: Colors.gray[100],
+                  }}
+                />
+              ))}
+          </View>
         </View>
       ))}
     </View>
@@ -872,7 +927,53 @@ function MonthOverviewModal({
 /*  Main component                                                     */
 /* ================================================================== */
 
+/**
+ * §Provider-launch (audit 2026-04-21): calendar-scoped ErrorBoundary.
+ * The root `_layout` ErrorBoundary catches render errors too — but its
+ * fallback replaces the entire app chrome with a generic "Something went
+ * wrong" screen. For the calendar tab specifically we want to keep the
+ * tab bar in place and give a calendar-contextualised recovery (reload
+ * today's bookings / jump to Today) so a transient render error never
+ * looks like the whole app broke.
+ */
+function CalendarCrashFallback({ onReset }: { onReset: () => void }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
+      <View style={{ height: 72, width: 72, alignItems: "center", justifyContent: "center", borderRadius: 24, backgroundColor: "#fef2f2", marginBottom: 16 }}>
+        <Ionicons name="calendar-outline" size={30} color="#ef4444" />
+      </View>
+      <Text style={{ fontSize: 17, fontWeight: "700", color: Colors.gray[900], textAlign: "center" }}>
+        We hit a snag opening your calendar
+      </Text>
+      <Text style={{ marginTop: 8, fontSize: 14, lineHeight: 20, color: Colors.gray[500], textAlign: "center" }}>
+        Tap reload to try again — your appointments and bookings are safe.
+      </Text>
+      <TouchableOpacity
+        onPress={onReset}
+        style={{ marginTop: 20, borderRadius: 12, backgroundColor: DARK_HEADER, paddingHorizontal: 28, paddingVertical: 12, minHeight: 44, alignItems: "center", justifyContent: "center" }}
+        accessibilityRole="button"
+        accessibilityLabel="Reload calendar"
+      >
+        <Text style={{ color: Colors.white, fontWeight: "600" }}>Reload calendar</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function CalendarScreen() {
+  const [resetKey, setResetKey] = useState(0);
+  return (
+    <ErrorBoundary
+      key={resetKey}
+      onReset={() => setResetKey((k) => k + 1)}
+      fallback={<CalendarCrashFallback onReset={() => setResetKey((k) => k + 1)} />}
+    >
+      <CalendarScreenBody />
+    </ErrorBoundary>
+  );
+}
+
+function CalendarScreenBody() {
   const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -1018,19 +1119,21 @@ export default function CalendarScreen() {
   // §Provider-launch (audit 2026-04): surface active booking_holds as ghost
   // slots so providers don't accidentally double-book a slot a customer is
   // currently finalising payment for. Matches web calendar B8 behaviour.
-  const { data: bookingHoldSegments, refresh: refreshBookingHolds } = useApi<Array<{
-    id: string;
-    date: string;
-    start_time: string;
-    end_time: string;
-    team_member_id: string | null;
-    location_id: string | null;
-    block_type: string;
-    reason?: string | null;
-    _source?: string;
-    hold_id?: string;
-    hold_expires_at?: string | null;
-  }>>(
+  const { data: bookingHoldSegments, refresh: refreshBookingHolds } = useApi<
+    {
+      id: string;
+      date: string;
+      start_time: string;
+      end_time: string;
+      team_member_id: string | null;
+      location_id: string | null;
+      block_type: string;
+      reason?: string | null;
+      _source?: string;
+      hold_id?: string;
+      hold_expires_at?: string | null;
+    }[]
+  >(
     `/api/provider/calendar/booking-holds?date_from=${encodeURIComponent(startDate)}&date_to=${encodeURIComponent(endDate)}`,
     { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
   );
@@ -1153,88 +1256,99 @@ export default function CalendarScreen() {
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [selectedDate]);
 
-  const operatingHours = useMemo(() => {
+  const operatingHours = useMemo<Record<string, DaySchedule> | null>(() => {
     if (!locations || locations.length === 0) return null;
-    const loc = locationFilter !== "all"
-      ? locations.find((l) => l.id === locationFilter)
-      : locations[0];
-    const raw = loc?.operating_hours as unknown;
-    // API mistakes / legacy shapes: arrays or primitives break day-key lookups and can crash downstream.
-    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
-    return raw as Record<string, DaySchedule>;
+    // §Calendar-hours: when the user filters by a single location, use that
+    // location's schedule verbatim. When "All Locations" is selected, merge
+    // every location's operating_hours into the widest open window per day
+    // so the overlays and grid range reflect the full business footprint
+    // (not just the first location).
+    if (locationFilter !== "all") {
+      const loc = locations.find((l) => l.id === locationFilter);
+      const raw = loc?.operating_hours as unknown;
+      if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
+      return raw as Record<string, DaySchedule>;
+    }
+    const merged = mergeOperatingHours(locations.map((l) => l.operating_hours as unknown));
+    if (!merged) return null;
+    return merged as unknown as Record<string, DaySchedule>;
   }, [locations, locationFilter]);
 
+  // §Provider-audit 2026-04: staffList / staffNameToId used to live ~60 lines
+  // below this block, AFTER getHoursForDay() was invoked via todayHours and
+  // the startHour/endHour useMemo. In TDZ the const binding is uninitialised,
+  // which iOS JSC reports as `TypeError: Cannot convert undefined value to
+  // object` on the `for (const member of staffList)` line inside the hours
+  // calculator. Declaring these derived lists BEFORE any consumer removes the
+  // crash and keeps a single source of truth.
+  const staffList = useMemo(() => staff ?? [], [staff]);
+  const staffNameToId = useMemo(() => {
+    const map = new Map<string, string>();
+    staffList.forEach((s) => map.set(s.name, s.id));
+    return map;
+  }, [staffList]);
+  const staffOptions = useMemo(() => {
+    const opts: { label: string; value: string }[] = [{ label: "All", value: "all" }];
+    staffList.forEach((s) => opts.push({ label: s.name, value: s.id }));
+    return opts;
+  }, [staffList]);
+
+  /**
+   * §Calendar-hours: delegate the per-day visible range to the shared
+   * `deriveGridHourWindow` so overnight shifts, sub-hour opens, and
+   * staff-only weekend windows are all handled in one place.
+   */
   function getHoursForDay(day: Date): { startHour: number; endHour: number; isOpen: boolean } {
-    const dayName = DAY_NAMES[day.getDay()] ?? "monday";
-    let minH = 23;
-    let maxH = 0;
-    let anyOpen = false;
-
-    // Location operating hours
-    if (operatingHours) {
-      const schedule = normalizeOperatingSchedule(operatingHours[dayName]);
-      if (schedule?.isOpen && schedule.openTime != null && schedule.closeTime != null) {
-        anyOpen = true;
-        minH = Math.min(minH, Math.floor(timeStringToMinutes(schedule.openTime) / 60));
-        maxH = Math.max(maxH, Math.ceil(timeStringToMinutes(schedule.closeTime) / 60));
-      }
-    }
-
-    // Staff working hours — expand range for any staff member who works this day,
-    // even if the location itself is nominally closed (e.g. weekends).
-    for (const member of staffList) {
-      if (!member.working_hours) continue;
-      const dayWh = member.working_hours[dayName];
-      if (!dayWh) continue;
-      if (dayWh.closed === true || dayWh.is_open === false) continue;
-      const openStr = dayWh.open ?? dayWh.open_time;
-      const closeStr = dayWh.close ?? dayWh.close_time;
-      if (typeof openStr !== "string" || typeof closeStr !== "string") continue;
-      anyOpen = true;
-      minH = Math.min(minH, Math.floor(timeStringToMinutes(openStr) / 60));
-      maxH = Math.max(maxH, Math.ceil(timeStringToMinutes(closeStr) / 60));
-    }
-
-    if (!anyOpen) {
-      const start = Math.max(0, preferences.workdayStartHour - 1);
-      const end = Math.min(23, preferences.workdayEndHour + 1);
-      return { startHour: start, endHour: end, isOpen: false };
-    }
-
-    const sh = Math.max(0, minH - 1);
-    const eh = Math.min(23, maxH + 1);
-    return { startHour: sh, endHour: eh, isOpen: true };
+    const staffWorkingHours = (staffList ?? [])
+      .map((m) => (m?.working_hours ?? null) as WeeklyHours | null);
+    const { startHour, endHour, hasAnyOpenSlot } = deriveGridHourWindow({
+      visibleDates: [day],
+      locationOperatingHours: (operatingHours ?? null) as WeeklyHours | null,
+      staffWorkingHours,
+      defaultStartHour: Math.max(0, preferences.workdayStartHour - 1),
+      defaultEndHour: Math.min(23, preferences.workdayEndHour + 1),
+      paddingHours: 1,
+      timeZone: provider?.timezone ?? null,
+    });
+    return { startHour, endHour, isOpen: hasAnyOpenSlot };
   }
 
   const todayHours = getHoursForDay(selectedDate);
-  // All views use operating hours; week/3-day merge hours across all visible days
+  // All views use operating hours; week/3-day views union hours across visible days.
   const { startHour, endHour } = useMemo(() => {
+    const visibleDates: Date[] = [];
     if (viewMode === "day") {
-      return { startHour: todayHours.startHour, endHour: todayHours.endHour };
-    }
-    const count = viewMode === "3day" ? 3 : 7;
-    let minH = 23;
-    let maxH = 0;
-    let hasOpen = false;
-    for (let i = 0; i < count; i++) {
-      const d = viewMode === "week"
-        ? addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), i)
-        : addDays(selectedDate, i);
-      const dh = getHoursForDay(d);
-      if (dh.isOpen) {
-        hasOpen = true;
-        minH = Math.min(minH, dh.startHour);
-        maxH = Math.max(maxH, dh.endHour);
+      visibleDates.push(selectedDate);
+    } else {
+      const count = viewMode === "3day" ? 3 : 7;
+      for (let i = 0; i < count; i++) {
+        const d = viewMode === "week"
+          ? addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), i)
+          : addDays(selectedDate, i);
+        visibleDates.push(d);
       }
     }
-    if (!hasOpen) {
-      const fallback = Math.max(0, preferences.workdayStartHour - 1);
-      const fallbackEnd = Math.min(23, preferences.workdayEndHour + 1);
-      return { startHour: fallback, endHour: fallbackEnd };
-    }
-    return { startHour: minH, endHour: maxH };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, selectedDate, todayHours.startHour, todayHours.endHour, todayHours.isOpen, operatingHours, preferences.workdayStartHour, preferences.workdayEndHour]);
+    const staffWorkingHours = (staffList ?? [])
+      .map((m) => (m?.working_hours ?? null) as WeeklyHours | null);
+    const { startHour: sh, endHour: eh } = deriveGridHourWindow({
+      visibleDates,
+      locationOperatingHours: (operatingHours ?? null) as WeeklyHours | null,
+      staffWorkingHours,
+      defaultStartHour: Math.max(0, preferences.workdayStartHour - 1),
+      defaultEndHour: Math.min(23, preferences.workdayEndHour + 1),
+      paddingHours: 1,
+      timeZone: provider?.timezone ?? null,
+    });
+    return { startHour: sh, endHour: eh };
+  }, [
+    viewMode,
+    selectedDate,
+    operatingHours,
+    staffList,
+    preferences.workdayStartHour,
+    preferences.workdayEndHour,
+    provider?.timezone,
+  ]);
 
   const scrollToCurrentTime = useCallback(() => {
     if (!preferences.scrollToNow || hasScrolledToNow.current) return;
@@ -1262,18 +1376,7 @@ export default function CalendarScreen() {
   const rowHeight = (preferences.timeIncrementMinutes / 60) * SLOT_HEIGHT;
   const totalGridHeight = (endHour - startHour) * SLOT_HEIGHT;
 
-  const staffList = useMemo(() => staff ?? [], [staff]);
-  const staffOptions = useMemo(() => {
-    const opts: { label: string; value: string }[] = [{ label: "All", value: "all" }];
-    staffList.forEach((s) => opts.push({ label: s.name, value: s.id }));
-    return opts;
-  }, [staffList]);
-
-  const staffNameToId = useMemo(() => {
-    const map = new Map<string, string>();
-    staffList.forEach((s) => map.set(s.name, s.id));
-    return map;
-  }, [staffList]);
+  // staffList / staffOptions / staffNameToId moved above getHoursForDay to avoid TDZ.
 
   const locationOptions = useMemo(() => {
     const opts: { label: string; value: string }[] = [{ label: "All Locations", value: "all" }];
@@ -1405,7 +1508,12 @@ export default function CalendarScreen() {
     day: Date,
     blockContext?: { staffColumnId?: string | null } | null,
   ): TimeBlock[] {
-    const dayStr = format(day, "yyyy-MM-dd");
+    const tz = provider?.timezone ?? null;
+    // §Calendar-hours: overlay `.date` values come from the server as the
+    // provider's wall-clock date (YYYY-MM-DD in the salon's zone). Format
+    // `day` in the same zone so a device in a different tz doesn't filter
+    // out overlays when the visible day straddles midnight locally.
+    const dayStr = tz ? formatDateKeyInTimeZone(day, tz) : format(day, "yyyy-MM-dd");
     const out: TimeBlock[] = [];
     const columnId = blockContext?.staffColumnId;
 
@@ -1422,22 +1530,34 @@ export default function CalendarScreen() {
       return true;
     };
 
+    // §Calendar-hours: when the user has filtered to a single location,
+    // every overlay source must also respect that filter to match the web
+    // calendar. Overlays without a `location_id` are treated as location-
+    // agnostic (e.g. staff time off that applies everywhere).
+    const blockMatchesLocation = (blockLocationId: string | null | undefined) => {
+      if (locationFilter === "all") return true;
+      if (blockLocationId == null) return true;
+      return blockLocationId === locationFilter;
+    };
+
     for (const seg of staffUnavailSegments ?? []) {
       if (seg.date !== dayStr) continue;
       if (!blockMatchesStaff(seg.team_member_id)) continue;
+      if (!blockMatchesLocation(seg.location_id)) continue;
       out.push(availabilitySegmentToTimeBlock(seg));
     }
 
     for (const seg of availabilitySegments) {
       if (seg.date !== dayStr) continue;
       if (!blockMatchesStaff(seg.team_member_id)) continue;
+      if (!blockMatchesLocation(seg.location_id)) continue;
       out.push(availabilitySegmentToTimeBlock(seg));
     }
 
-    // §Provider-launch: booking holds (customers mid-checkout).
     for (const seg of bookingHoldSegments ?? []) {
       if (seg.date !== dayStr) continue;
       if (!blockMatchesStaff(seg.team_member_id)) continue;
+      if (!blockMatchesLocation(seg.location_id)) continue;
       out.push({
         id: seg.id,
         staff_id: seg.team_member_id,
@@ -1456,6 +1576,12 @@ export default function CalendarScreen() {
       for (const tb of expandedApiTimeBlocks) {
         if (tb.date !== dayStr) continue;
         if (!blockMatchesStaff(tb.staff_id)) continue;
+        if (
+          !blockMatchesLocation(
+            (tb as TimeBlock & { location_id?: string | null }).location_id ?? null,
+          )
+        )
+          continue;
         out.push(tb);
       }
     }
@@ -1716,18 +1842,18 @@ export default function CalendarScreen() {
     }
     if (newStatus === "completed") {
       const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/complete-service`, {});
-      if (error) { Alert.alert("Error", error); refresh(); }
+      if (error) { Alert.alert("Couldn't complete service", error); refresh(); }
       return;
     }
     if (newStatus === "started") {
       const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/start-service`, {});
-      if (error) { Alert.alert("Error", error); refresh(); }
+      if (error) { Alert.alert("Couldn't start service", error); refresh(); }
       return;
     }
     const body: Record<string, unknown> = { status: newStatus };
     if (newStatus === "cancelled" && reason) body.cancellation_reason = reason;
     const { error } = await patchBooking(`/api/provider/bookings/${bookingId}`, body);
-    if (error) { Alert.alert("Error", error); refresh(); }
+    if (error) { Alert.alert("Couldn't update booking", error); refresh(); }
   }
 
   /** Drag-and-drop: compute new time and optionally staff from drop position, check availability, then PATCH */
@@ -1792,23 +1918,33 @@ export default function CalendarScreen() {
       const locationIdForCheck =
         (booking as Booking & { location_id?: string | null }).location_id ??
         (locationFilter !== "all" ? locationFilter : null);
-      const checkUrl =
+      const dragOfferingIds = Array.from(
+        new Set(
+          (booking.services ?? []).map((s) => s.offering_id).filter((x): x is string => !!x),
+        ),
+      );
+      const dragAtHome = booking.location_type === "at_home";
+      let checkUrl =
         `/api/provider/bookings/check-availability?scheduled_at=${encodeURIComponent(newScheduledAt)}&duration_minutes=${durationMinutes}` +
         `&exclude_booking_id=${encodeURIComponent(booking.id)}` +
         (staffIdsParam ? `&staff_ids=${encodeURIComponent(staffIdsParam)}` : "") +
         (locationIdForCheck ? `&location_id=${encodeURIComponent(locationIdForCheck)}` : "");
+      if (dragOfferingIds.length > 0) {
+        checkUrl += `&offering_ids=${encodeURIComponent(dragOfferingIds.join(","))}`;
+      }
+      checkUrl += `&mode=${encodeURIComponent(dragAtHome ? "mobile" : "salon")}&travel_buffer=${encodeURIComponent(dragAtHome ? "30" : "0")}`;
 
       (async () => {
         const res = await api.get<{ available?: boolean; conflicts?: string[] }>(checkUrl);
         if (res.error) {
-          Alert.alert("Error", res.error.message ?? "Could not check availability");
+          Alert.alert("Couldn't move appointment", res.error.message ?? "We couldn't check availability for that slot. Please try again.");
           return;
         }
         const available = res.data?.available ?? false;
         if (!available) {
           Alert.alert(
             "Slot not available",
-            (res.data as any)?.conflicts?.join("\n") ?? "Another booking or block overlaps this time.",
+            res.data?.conflicts?.join("\n") ?? "Another booking or block overlaps this time.",
           );
           return;
         }
@@ -1816,7 +1952,7 @@ export default function CalendarScreen() {
         if (newStaffId !== undefined) payload.staff_id = newStaffId || null;
         const { error } = await patchBooking(`/api/provider/bookings/${booking.id}`, payload);
         if (error) {
-          Alert.alert("Error", error);
+          Alert.alert("Couldn't move appointment", error);
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1841,7 +1977,7 @@ export default function CalendarScreen() {
   /* ─── Time block creation ─── */
   async function handleCreateTimeBlock() {
     if (!timeBlockForm.startTime || !timeBlockForm.endTime) {
-      Alert.alert("Required", "Start and end time are required");
+      Alert.alert("Start and end time required", "Please set both a start and end time for this block.");
       return;
     }
     const { error } = await createTimeBlock("/api/provider/time-blocks", {
@@ -1852,7 +1988,7 @@ export default function CalendarScreen() {
       staff_id: timeBlockForm.staffId ? timeBlockForm.staffId : null,
     });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert("Couldn't save time block", error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1914,7 +2050,7 @@ export default function CalendarScreen() {
                       `/api/provider/availability-blocks/${block.availability_block_id}`,
                     );
                     if (error) {
-                      Alert.alert("Error", error);
+                      Alert.alert("Couldn't remove block", error);
                       return;
                     }
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1944,7 +2080,7 @@ export default function CalendarScreen() {
                   const recordId = resolveTimeBlockRecordId(block);
                   const { error } = await deleteCalendarTimeBlock(`/api/provider/time-blocks/${recordId}`);
                   if (error) {
-                    Alert.alert("Error", error);
+                    Alert.alert("Couldn't remove time block", error);
                     return;
                   }
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1978,7 +2114,7 @@ export default function CalendarScreen() {
       staff_id: availabilityEdit.staff_id,
     });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert("Couldn't save block", error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2330,12 +2466,22 @@ export default function CalendarScreen() {
 
   function renderHoursShading(day: Date) {
     if (!operatingHours) return null;
-    const dayName = DAY_NAMES[day.getDay()] ?? "monday";
-    const schedule = normalizeOperatingSchedule(operatingHours[dayName]);
     const shadeBg = preferences.highContrast ? Colors.gray[700] : Colors.gray[200];
 
-    if (!schedule || !schedule.isOpen || schedule.openTime == null || schedule.closeTime == null) {
-      const dayName2 = DAY_NAMES[day.getDay()] ?? "monday";
+    // §Calendar-hours: use the shared engine so overnight shifts (22:00-02:00)
+    // render correctly on BOTH days — the grid gets an open range on the
+    // opening day and another on the wrap-around day, with the non-open
+    // portions shaded in between.
+    const openRanges = dayMinuteRanges(
+      day,
+      operatingHours as WeeklyHours,
+      provider?.timezone ?? null,
+    );
+
+    if (openRanges.length === 0) {
+      const tz = provider?.timezone ?? null;
+      const weekdayIndex = tz ? getWeekdayInTimeZone(day, tz) : day.getDay();
+      const dayName2 = DAY_NAMES[weekdayIndex] ?? "monday";
       const anyStaffWorks = staffList.some((s) => {
         const wh = s.working_hours?.[dayName2];
         if (!wh) return false;
@@ -2348,17 +2494,42 @@ export default function CalendarScreen() {
       );
     }
 
-    const openMin = timeStringToMinutes(schedule.openTime);
-    const closeMin = timeStringToMinutes(schedule.closeTime);
+    const gridStartMin = startHour * 60;
+    const gridEndMin = (endHour + 1) * 60;
+    const minToTop = (min: number) =>
+      GRID_TOP_PADDING + ((Math.max(gridStartMin, Math.min(gridEndMin, min)) - gridStartMin) / 60) * SLOT_HEIGHT;
+
     const elements: React.ReactNode[] = [];
-    const beforeHeight = Math.max(0, (openMin / 60 - startHour) * SLOT_HEIGHT);
-    if (beforeHeight > 0) {
-      elements.push(<View key="before" style={{ position: "absolute", left: 0, right: 0, top: GRID_TOP_PADDING, height: beforeHeight, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />);
-    }
-    const afterTop = GRID_TOP_PADDING + (closeMin / 60 - startHour) * SLOT_HEIGHT;
-    const afterHeight = totalGridHeight + GRID_TOP_PADDING - afterTop;
-    if (afterHeight > 0 && afterTop < totalGridHeight + GRID_TOP_PADDING) {
-      elements.push(<View key="after" style={{ position: "absolute", left: 0, right: 0, top: afterTop, height: afterHeight, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />);
+    let cursor = gridStartMin;
+    openRanges.forEach((range, idx) => {
+      if (range.endMin <= gridStartMin || range.startMin >= gridEndMin) return;
+      if (range.startMin > cursor) {
+        const top = minToTop(cursor);
+        const bottom = minToTop(range.startMin);
+        const height = bottom - top;
+        if (height > 0) {
+          elements.push(
+            <View
+              key={`gap-${idx}-before`}
+              style={{ position: "absolute", left: 0, right: 0, top, height, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }}
+            />,
+          );
+        }
+      }
+      cursor = Math.max(cursor, range.endMin);
+    });
+    if (cursor < gridEndMin) {
+      const top = minToTop(cursor);
+      const bottom = minToTop(gridEndMin);
+      const height = bottom - top;
+      if (height > 0) {
+        elements.push(
+          <View
+            key="tail"
+            style={{ position: "absolute", left: 0, right: 0, top, height, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }}
+          />,
+        );
+      }
     }
     return <>{elements}</>;
   }
@@ -2756,11 +2927,50 @@ export default function CalendarScreen() {
         </View>
       )}
 
+      {/* §Provider-launch (audit 2026-04-21): stale-data banner. When
+           useApi preserves previously-successful bookings through a
+           refresh failure (flaky network, backgrounded app), the user
+           previously saw no indication their data was potentially
+           stale. Banner stays lightweight, dismissible by tapping
+           refresh, and doesn't replace the grid. */}
+      {fetchError && bookings && !loading && (
+        <TouchableOpacity
+          onPress={handleRefresh}
+          activeOpacity={0.85}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginHorizontal: isTablet ? screenPadding : 12,
+            marginTop: 8,
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+            borderRadius: 12,
+            backgroundColor: "#FFF7ED",
+            borderWidth: 1,
+            borderColor: "#FED7AA",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Calendar may be out of date. Tap to refresh."
+        >
+          <Ionicons name="cloud-offline-outline" size={18} color="#B45309" />
+          <Text style={{ flex: 1, marginLeft: 10, fontSize: 12, fontWeight: "600", color: "#92400E" }} numberOfLines={2}>
+            Showing last known schedule — tap to refresh
+          </Text>
+          <Ionicons name="refresh" size={16} color="#B45309" />
+        </TouchableOpacity>
+      )}
+
       {/* ─── Calendar grid — ALWAYS shown, never blocked by empty state ─── */}
       {loading && !bookings ? (
         <CalendarSkeleton />
       ) : fetchError && !bookings ? (
-        <ErrorState message={fetchError} onRetry={refresh} />
+        <ErrorState
+          title="Can't load your calendar"
+          message={fetchError}
+          onRetry={refresh}
+          retryLabel="Reload"
+          icon="calendar-outline"
+        />
       ) : (
         <ScrollView
           ref={scrollRef}
@@ -2821,10 +3031,11 @@ export default function CalendarScreen() {
                               <Text style={{ fontSize: 14, fontWeight: "700", color: isToday ? "#4f46e6" : Colors.gray[700] }}>{format(day, "d MMM")}</Text>
                               {(() => {
                                 if (!operatingHours) return null;
-                                const dn = DAY_NAMES[day.getDay()] ?? "monday";
+                                const tz = provider?.timezone ?? null;
+                                const weekdayIndex = tz ? getWeekdayInTimeZone(day, tz) : day.getDay();
+                                const dn = DAY_NAMES[weekdayIndex] ?? "monday";
                                 const sc = normalizeOperatingSchedule(operatingHours[dn]);
                                 if (!sc?.isOpen) {
-                                  // Check if any staff member works this day before labelling "CLOSED"
                                   const anyStaffWorks = staffList.some((m) => {
                                     const wh = m.working_hours?.[dn];
                                     if (!wh) return false;
@@ -2962,7 +3173,9 @@ export default function CalendarScreen() {
                             <Text style={{ fontSize: 12, fontWeight: "700", color: isToday ? "#4f46e6" : Colors.gray[700] }}>{format(day, "d")}</Text>
                             {(() => {
                               if (!operatingHours) return null;
-                              const dn = DAY_NAMES[day.getDay()] ?? "monday";
+                              const tz = provider?.timezone ?? null;
+                              const weekdayIndex = tz ? getWeekdayInTimeZone(day, tz) : day.getDay();
+                              const dn = DAY_NAMES[weekdayIndex] ?? "monday";
                               const sc = normalizeOperatingSchedule(operatingHours[dn]);
                               if (!sc?.isOpen) {
                                 const anyStaffWorks = staffList.some((m) => {

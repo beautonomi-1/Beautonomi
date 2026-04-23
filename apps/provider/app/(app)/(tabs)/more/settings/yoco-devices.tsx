@@ -45,7 +45,6 @@ export default function YocoDevicesScreen() {
     loading: integrationLoading,
     connect,
     disconnect,
-    reload: reloadIntegration,
   } = useYocoIntegration();
   const { data: locations } = useApi<Location[]>("/api/provider/locations");
 

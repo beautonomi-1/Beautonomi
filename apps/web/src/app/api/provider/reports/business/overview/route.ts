@@ -89,17 +89,25 @@ export async function GET(request: NextRequest) {
       .select("id")
       .eq("provider_id", providerId);
 
-    // Get refund data from ledger (finance_transactions) for consistency
+    // Get refund data from ledger (finance_transactions) for consistency.
+    // NOTE: finance_transactions does NOT have a `location_id` column. Location scoping
+    // for refunds is applied indirectly by restricting to booking_ids of the filtered
+    // bookings in the period. Non-booking refunds (e.g. gift card voids) are provider-wide
+    // and therefore excluded when a specific location is selected — matches dashboard behavior.
     const bookingIds = bookings?.map((b) => b.id) || [];
     let refundQuery = supabaseAdmin
       .from("finance_transactions")
-      .select("amount")
+      .select("amount, booking_id")
       .eq("provider_id", providerId)
       .eq("transaction_type", "refund")
       .gte("created_at", startOfDay(fromDate).toISOString())
       .lte("created_at", endOfDay(toDate).toISOString());
     if (locationId) {
-      refundQuery = refundQuery.eq("location_id", locationId);
+      if (bookingIds.length > 0) {
+        refundQuery = refundQuery.in("booking_id", bookingIds);
+      } else {
+        refundQuery = refundQuery.eq("booking_id", "00000000-0000-0000-0000-000000000000");
+      }
     }
     const { data: refundRows } = await refundQuery;
 

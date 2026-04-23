@@ -1717,7 +1717,11 @@ export async function GET(request: Request) {
     const env = process.env.NODE_ENV === "production" ? "production" : "development";
     const supabaseAdmin = getSupabaseAdmin();
     const [adsRow, rankingRow, distanceRow] = await Promise.all([
-      supabaseAdmin.from("ads_module_config").select("enabled, max_sponsored_slots").eq("environment", env).maybeSingle(),
+      supabaseAdmin
+        .from("ads_module_config")
+        .select("enabled, max_sponsored_slots, disclosure_label")
+        .eq("environment", env)
+        .maybeSingle(),
       supabaseAdmin.from("ranking_module_config").select("enabled").eq("environment", env).maybeSingle(),
       supabaseAdmin.from("distance_module_config").select("enabled").eq("environment", env).maybeSingle(),
     ]);
@@ -1748,6 +1752,14 @@ export async function GET(request: Request) {
 
     // Always return empty browseByCity (feature removed from UI)
     data = { ...data, browseByCity: [] };
+
+    const adsDisclosureLabel =
+      String((adsRow?.data as { disclosure_label?: string | null } | null | undefined)?.disclosure_label ?? "").trim() ||
+      "Sponsored";
+    data = {
+      ...data,
+      ads_disclosure_label: adsDisclosureLabel,
+    } as typeof data & { ads_disclosure_label: string };
 
     if (adsRow?.data?.enabled && adsRow.data.max_sponsored_slots) {
       const maxSlots = Math.min(Number(adsRow.data.max_sponsored_slots) || 5, 10);

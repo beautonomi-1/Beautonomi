@@ -36,8 +36,9 @@ import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
-import { resolveGlobalCategoryIconUri } from "@beautonomi/utils";
+import { appendFormDataFileNative, resolveGlobalCategoryIconUri } from "@beautonomi/utils";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useOnboardingWizard } from "./OnboardingWizardContext";
 import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboarding-phone";
 import { DEFAULT_COUNTRY_NAME } from "./state";
@@ -239,6 +240,7 @@ function Step2Identity() {
               style={twStyle("mt-3 rounded-xl border border-gray-200 px-3 py-2")}
             />
             <FlatList<CountryCodeOption>
+              {...verticalFlatListPerf}
               data={COUNTRY_CODES.filter(
                 (c: CountryCodeOption) =>
                   !countrySearch.trim() ||
@@ -576,7 +578,7 @@ function Step7Location() {
 
 async function uploadOnboardingImage(uri: string, mime: string, name: string): Promise<string | null> {
   const formData = new FormData();
-  formData.append("file", { uri, type: mime, name } as unknown as Blob);
+  appendFormDataFileNative(formData, "file", { uri, type: mime, name });
   formData.append("folder", "provider-onboarding");
   const res = await api.fetch<{ url?: string }>("/api/upload", {
     method: "POST",
@@ -588,6 +590,17 @@ async function uploadOnboardingImage(uri: string, mime: string, name: string): P
 
 function Step8Photos() {
   const { formData, updateFormData } = useOnboardingWizard();
+  /**
+   * §Provider-onboarding 2026-04 (photos UX polish): previously tapping
+   * any of the three upload buttons spun silently (no feedback, no
+   * preview), and the user had no way to tell if the upload succeeded
+   * or even started. Now we track per-slot upload state and show the
+   * uploaded image so the provider can visually confirm + remove.
+   */
+  const [uploading, setUploading] = useState<{ thumb: boolean; avatar: boolean; gallery: boolean }>(
+    { thumb: false, avatar: false, gallery: false },
+  );
+
   const pick = async (kind: "thumb" | "avatar" | "gallery") => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -601,44 +614,153 @@ function Step8Photos() {
     });
     if (result.canceled || !result.assets[0]) return;
     const a = result.assets[0];
-    const url = await uploadOnboardingImage(
-      a.uri,
-      a.mimeType || "image/jpeg",
-      a.fileName || `img-${Date.now()}.jpg`,
-    );
-    if (!url) {
-      Alert.alert("Upload failed", "Try again.");
-      return;
+    setUploading((p) => ({ ...p, [kind]: true }));
+    try {
+      const url = await uploadOnboardingImage(
+        a.uri,
+        a.mimeType || "image/jpeg",
+        a.fileName || `img-${Date.now()}.jpg`,
+      );
+      if (!url) {
+        Alert.alert("Upload failed", "Try again.");
+        return;
+      }
+      if (kind === "thumb") updateFormData({ thumbnail_url: url });
+      else if (kind === "avatar") updateFormData({ avatar_url: url });
+      else updateFormData({ gallery: [...(formData.gallery || []), url] });
+    } finally {
+      setUploading((p) => ({ ...p, [kind]: false }));
     }
-    if (kind === "thumb") updateFormData({ thumbnail_url: url });
-    else if (kind === "avatar") updateFormData({ avatar_url: url });
-    else updateFormData({ gallery: [...(formData.gallery || []), url] });
   };
+
+  const removeGalleryAt = (idx: number) => {
+    const cur = formData.gallery || [];
+    const next = cur.filter((_, i) => i !== idx);
+    updateFormData({ gallery: next });
+  };
+
+  const thumbUrl = formData.thumbnail_url;
+  const avatarUrl = formData.avatar_url;
+  const gallery = formData.gallery || [];
+
+  const renderSlot = (kind: "thumb" | "avatar", title: string, subtitle: string, url: string | undefined) => (
+    <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
+      <View style={twStyle("flex-row items-center gap-3")}>
+        <View
+          style={twStyle(
+            `h-16 w-16 items-center justify-center overflow-hidden rounded-xl ${url ? "bg-gray-100" : "bg-gray-50 border border-dashed border-gray-300"}`,
+          )}
+        >
+          {url ? (
+            <Image source={{ uri: url }} style={{ width: 64, height: 64 }} resizeMode="cover" />
+          ) : (
+            <Ionicons name="image-outline" size={22} color="#94a3b8" />
+          )}
+        </View>
+        <View style={twStyle("flex-1")}>
+          <Text style={twStyle("text-base font-semibold text-gray-900")}>{title}</Text>
+          <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>{subtitle}</Text>
+        </View>
+      </View>
+      <View style={twStyle("mt-3 flex-row gap-2")}>
+        <TouchableOpacity
+          onPress={() => pick(kind)}
+          disabled={uploading[kind]}
+          style={twStyle(
+            `flex-1 rounded-xl py-2.5 items-center ${uploading[kind] ? "bg-gray-100" : url ? "bg-gray-900" : "bg-primary"}`,
+          )}
+          accessibilityRole="button"
+          accessibilityLabel={url ? `Replace ${title}` : `Upload ${title}`}
+        >
+          {uploading[kind] ? (
+            <ActivityIndicator color="#6b7280" size="small" />
+          ) : (
+            <Text style={twStyle("text-sm font-semibold text-white")}>{url ? "Replace" : "Choose photo"}</Text>
+          )}
+        </TouchableOpacity>
+        {url ? (
+          <TouchableOpacity
+            onPress={() => {
+              if (kind === "thumb") updateFormData({ thumbnail_url: undefined });
+              else updateFormData({ avatar_url: undefined });
+            }}
+            style={twStyle("rounded-xl border border-gray-200 bg-white px-4 items-center justify-center")}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${title}`}
+          >
+            <Ionicons name="trash-outline" size={18} color="#dc2626" />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
 
   return (
     <View style={twStyle("gap-3")}>
       <Text style={twStyle("text-sm text-gray-600")}>Optional — you can add these later in settings.</Text>
-      <TouchableOpacity
-        onPress={() => pick("thumb")}
-        style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 items-center")}
-      >
-        <Text style={twStyle("text-base font-semibold text-gray-900")}>Main business photo</Text>
-        <Text style={twStyle("mt-1 text-center text-sm text-gray-600")}>Shown on your listing</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => pick("avatar")}
-        style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 items-center")}
-      >
-        <Text style={twStyle("text-base font-semibold text-gray-900")}>Profile / avatar</Text>
-        <Text style={twStyle("mt-1 text-center text-sm text-gray-600")}>How you appear to clients</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => pick("gallery")}
-        style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 items-center")}
-      >
-        <Text style={twStyle("text-base font-semibold text-gray-900")}>Add gallery image</Text>
-        <Text style={twStyle("mt-1 text-center text-sm text-gray-600")}>Portfolio-style photos</Text>
-      </TouchableOpacity>
+      {renderSlot("thumb", "Main business photo", "Shown on your listing", thumbUrl)}
+      {renderSlot("avatar", "Profile / avatar", "How you appear to clients", avatarUrl)}
+
+      <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-3")}>
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-1 pr-2")}>
+            <Text style={twStyle("text-base font-semibold text-gray-900")}>Gallery</Text>
+            <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>
+              Portfolio-style photos. {gallery.length > 0 ? `${gallery.length} added.` : "None yet."}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => pick("gallery")}
+            disabled={uploading.gallery}
+            style={twStyle(
+              `rounded-xl px-4 py-2.5 ${uploading.gallery ? "bg-gray-100" : "bg-primary"}`,
+            )}
+            accessibilityRole="button"
+            accessibilityLabel="Add gallery photo"
+          >
+            {uploading.gallery ? (
+              <ActivityIndicator color="#6b7280" size="small" />
+            ) : (
+              <Text style={twStyle("text-sm font-semibold text-white")}>Add</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+        {gallery.length > 0 ? (
+          <View style={twStyle("flex-row flex-wrap gap-2")}>
+            {gallery.map((url, idx) => (
+              <View
+                key={`${url}-${idx}`}
+                style={{ position: "relative", width: 72, height: 72 }}
+              >
+                <Image
+                  source={{ uri: url }}
+                  style={{ width: 72, height: 72, borderRadius: 10 }}
+                  resizeMode="cover"
+                />
+                <TouchableOpacity
+                  onPress={() => removeGalleryAt(idx)}
+                  hitSlop={8}
+                  style={{
+                    position: "absolute",
+                    top: -6,
+                    right: -6,
+                    width: 22,
+                    height: 22,
+                    borderRadius: 11,
+                    backgroundColor: "#ef4444",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove gallery image ${idx + 1}`}
+                >
+                  <Ionicons name="close" size={14} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -713,6 +835,7 @@ function Step9Zones() {
 
   return (
     <FlatList<ZoneRow>
+      {...verticalFlatListPerf}
       data={zones}
       keyExtractor={(z: ZoneRow) => z.id}
       scrollEnabled={false}
@@ -767,6 +890,7 @@ function Step10Categories() {
 
   return (
     <FlatList<Cat>
+      {...verticalFlatListPerf}
       data={cats}
       keyExtractor={(c: Cat) => c.id}
       numColumns={2}

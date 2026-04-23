@@ -23,6 +23,7 @@ import {
 import "@/components/provider-portal/AppointmentDialogMobile";
 import "@/components/provider-portal/AppointmentDetailsModal";
 import { format, startOfWeek, endOfWeek, addDays, parseISO } from "date-fns";
+import { deriveGridHourWindow, type WeeklyHours } from "@beautonomi/utils";
 import { dateRangeBoundsUtc, resolveTz, nowInTz } from "@/lib/dates/provider-tz";
 import { useRoutePerformance } from "@/lib/performance/useRoutePerformance";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -290,27 +291,6 @@ function MobileCalendarPreferencesSection() {
   );
 }
 
-const parseHourFromUnknown = (value: unknown): number | null => {
-  if (typeof value !== "string") return null;
-  const match = value.trim().match(/^(\d{1,2})(?::\d{1,2})?/);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  return Number.isFinite(hour) ? Math.max(0, Math.min(23, hour)) : null;
-};
-
-const readHoursField = (dayHours: unknown, key: "open" | "close"): unknown => {
-  if (!dayHours || typeof dayHours !== "object") return undefined;
-  const raw = dayHours as Record<string, unknown>;
-  if (key === "open") return raw.open ?? raw.open_time ?? raw.start_time ?? raw.start;
-  return raw.close ?? raw.close_time ?? raw.end_time ?? raw.end;
-};
-
-const isClosedDay = (dayHours: unknown): boolean => {
-  if (!dayHours || typeof dayHours !== "object") return false;
-  const raw = dayHours as Record<string, unknown>;
-  return raw.closed === true || raw.is_open === false;
-};
-
 const parseTimeFromUnknown = (
   value: unknown,
   fallbackHour: number,
@@ -367,6 +347,7 @@ type CheckoutSaleLine = {
   unit_price: number;
   total: number;
   item_id?: string | null;
+  product_variant_id?: string | null;
 };
 
 /** Build POS sale lines from calendar appointment (multi-service + booking products). */
@@ -398,6 +379,7 @@ function buildSaleItemsFromAppointment(apt: Appointment): CheckoutSaleLine[] {
       const unit = Number(p.unit_price ?? 0);
       const lineTotal = Number(p.total_price ?? unit * qty);
       const pid = p.product_id ?? p.id;
+      const pvid = (p as { product_variant_id?: string }).product_variant_id;
       items.push({
         id: String(pid ?? `prd-${idx}`),
         type: "product",
@@ -406,6 +388,8 @@ function buildSaleItemsFromAppointment(apt: Appointment): CheckoutSaleLine[] {
         unit_price: unit,
         total: lineTotal,
         item_id: typeof pid === "string" ? pid : pid != null ? String(pid) : null,
+        product_variant_id:
+          typeof pvid === "string" && pvid.trim() ? pvid.trim() : null,
       });
     });
   }
@@ -448,106 +432,55 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   });
   const selectedDateSafe = isValidDateValue(selectedDate) ? selectedDate : nowInTz(businessTz);
   const [locationOperatingHours, setLocationOperatingHours] = useState<Record<string, { open: string; close: string; closed: boolean }> | null>(null);
-  
-  // Calculate optimal startHour and endHour based on operating hours,
-  // staff working hours, and actual appointment / block times.
+
+  // §Calendar-hours: delegate the visible-hour derivation to the shared
+  // `deriveGridHourWindow` so the logic is unit-tested and identical across
+  // web + mobile, including overnight shifts and staff-only weekend windows.
   const { startHour, endHour } = React.useMemo(() => {
-    const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const getDayKey = (date: Date) => DAY_NAMES[date.getDay()];
-
-    const getDatesForView = () => {
-      const dates: Date[] = [];
-      const start = new Date(selectedDateSafe);
-      if (dateView === "day") {
-        dates.push(new Date(start));
-      } else if (dateView === "3-days") {
-        for (let i = 0; i < 3; i++) dates.push(addDays(start, i));
-      } else {
-        const weekStart = startOfWeek(selectedDateSafe, { weekStartsOn: 1 });
-        for (let i = 0; i < 7; i++) dates.push(addDays(weekStart, i));
-      }
-      return dates;
-    };
-    const visibleDates = getDatesForView();
-    const visibleDateStrs = new Set(visibleDates.map(d => format(d, "yyyy-MM-dd")));
-
-    let calculatedStartHour = 8;
-    let calculatedEndHour = 20;
-
-    // Collect the widest hour range from BOTH location operating hours
-    // AND individual staff working hours so the calendar covers all
-    // shifts — including staff who work outside location hours or on
-    // weekends when the location is nominally "closed".
-    let minHour = 23;
-    let maxHour = 0;
-    let hasAnyOpenSlot = false;
-
-    const expandFromDayHours = (dayHours: unknown) => {
-      if (!dayHours || isClosedDay(dayHours)) return;
-      const openHour = parseHourFromUnknown(readHoursField(dayHours, "open"));
-      const closeHour = parseHourFromUnknown(readHoursField(dayHours, "close"));
-      if (openHour == null || closeHour == null) return;
-      hasAnyOpenSlot = true;
-      minHour = Math.min(minHour, openHour);
-      maxHour = Math.max(maxHour, closeHour);
-    };
-
-    visibleDates.forEach((date) => {
-      const dayKey = getDayKey(date);
-
-      // Location operating hours
-      if (locationOperatingHours) {
-        expandFromDayHours(locationOperatingHours[dayKey]);
-      }
-
-      // Staff working hours — expand the range for every team member
-      // whose shift falls on a visible day, even if the location itself
-      // is marked "closed" for that day.
-      for (const member of teamMembers) {
-        if (!member.working_hours) continue;
-        expandFromDayHours(member.working_hours[dayKey]);
-      }
-    });
-
-    if (hasAnyOpenSlot) {
-      const padding = 1;
-      calculatedStartHour = Math.max(0, minHour - padding);
-      calculatedEndHour = Math.min(23, maxHour + padding);
+    const toDateStr = (d: string) => (d && d.length >= 10 ? d.slice(0, 10) : d);
+    const visibleDates: Date[] = [];
+    if (dateView === "day") {
+      visibleDates.push(new Date(selectedDateSafe));
+    } else if (dateView === "3-days") {
+      for (let i = 0; i < 3; i++) visibleDates.push(addDays(selectedDateSafe, i));
     } else {
-      // No open slots detected — either location hours aren't set,
-      // all visible days are closed, or the data format wasn't parsed.
-      // Use sensible business-hour defaults so the grid isn't empty.
-      calculatedStartHour = 8;
-      calculatedEndHour = 20;
+      const weekStart = startOfWeek(selectedDateSafe, { weekStartsOn: 1 });
+      for (let i = 0; i < 7; i++) visibleDates.push(addDays(weekStart, i));
     }
 
-    // Expand range to include all appointments on visible dates (prevents clipping)
-    const toDateStr = (d: string) => (d && d.length >= 10 ? d.slice(0, 10) : d);
+    const events: { date: string; startMin: number; endMin: number }[] = [];
     appointments.forEach((apt) => {
-      const aptDateStr = toDateStr(apt.scheduled_date || "");
-      if (!aptDateStr || !visibleDateStrs.has(aptDateStr)) return;
-      const { hour: h, minute: m } = parseTimeFromUnknown(apt.scheduled_time, 9, 0);
+      const d = toDateStr(apt.scheduled_date || "");
+      if (!d) return;
+      const { hour, minute } = parseTimeFromUnknown(apt.scheduled_time, 9, 0);
+      const startMin = hour * 60 + minute;
       const duration = apt.duration_minutes || 60;
-      const endMinutes = h * 60 + m + duration;
-      const endH = Math.min(23, Math.ceil(endMinutes / 60));
-      if (h < calculatedStartHour) calculatedStartHour = Math.max(0, h - 1);
-      if (endH > calculatedEndHour) calculatedEndHour = Math.min(23, endH + 1);
+      events.push({ date: d, startMin, endMin: startMin + duration });
     });
-
-    // Include time blocks in the visible hour range
     timeBlocks.forEach((block) => {
-      const blockDateStr =
-        typeof block.date === "string" && block.date.length >= 10 ? block.date.slice(0, 10) : "";
-      if (!blockDateStr || !visibleDateStrs.has(blockDateStr)) return;
-      const { hour: h } = parseTimeFromUnknown(block.start_time, 0, 0);
-      const endParts = parseTimeFromUnknown(block.end_time, h, 0);
-      const endMinutes = endParts.hour * 60 + endParts.minute;
-      const endH = Math.min(23, Math.ceil(endMinutes / 60));
-      if (h < calculatedStartHour) calculatedStartHour = Math.max(0, h - 1);
-      if (endH > calculatedEndHour) calculatedEndHour = Math.min(23, endH + 1);
+      const d = typeof block.date === "string" && block.date.length >= 10
+        ? block.date.slice(0, 10)
+        : "";
+      if (!d) return;
+      const start = parseTimeFromUnknown(block.start_time, 0, 0);
+      const end = parseTimeFromUnknown(block.end_time, start.hour, 0);
+      events.push({
+        date: d,
+        startMin: start.hour * 60 + start.minute,
+        endMin: end.hour * 60 + end.minute,
+      });
     });
 
-    return { startHour: calculatedStartHour, endHour: calculatedEndHour };
+    const { startHour: sh, endHour: eh } = deriveGridHourWindow({
+      visibleDates,
+      locationOperatingHours: locationOperatingHours as WeeklyHours | null,
+      staffWorkingHours: teamMembers.map((m) => m.working_hours as WeeklyHours | null | undefined),
+      events,
+      defaultStartHour: 8,
+      defaultEndHour: 20,
+      paddingHours: 1,
+    });
+    return { startHour: sh, endHour: eh };
   }, [locationOperatingHours, selectedDateSafe, dateView, appointments, timeBlocks, teamMembers]);
   
   const _timeBlockSidebarState = useTimeBlockSidebar();
@@ -1453,6 +1386,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             unit_price: i.unit_price,
             total: i.total,
             item_id: i.item_id ?? undefined,
+            product_variant_id: i.product_variant_id ?? undefined,
           })),
           subtotal: subtotalForSale,
           tax: taxForSale,

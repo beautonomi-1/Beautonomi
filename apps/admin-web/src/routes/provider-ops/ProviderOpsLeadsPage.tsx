@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
@@ -249,6 +250,26 @@ export function ProviderOpsLeadsPage() {
     enabled: allowed && !!selectedLeadId,
   });
 
+  /**
+   * Lead detail below the `lg` breakpoint is a bottom sheet portaled to `document.body` so
+   * `position:fixed` is tied to the viewport. Without a portal, ancestors
+   * (e.g. overflow/transform in the admin shell) can make the sheet paint at
+   * the document bottom so users must scroll the page to see it.
+   */
+  useEffect(() => {
+    if (!selectedLeadId) return;
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const syncBodyScroll = () => {
+      document.body.style.overflow = mq.matches ? "hidden" : "";
+    };
+    syncBodyScroll();
+    mq.addEventListener("change", syncBodyScroll);
+    return () => {
+      mq.removeEventListener("change", syncBodyScroll);
+      document.body.style.overflow = "";
+    };
+  }, [selectedLeadId]);
+
   // ── Mutations ──
   const stageChangeMut = useMutation({
     mutationFn: ({ id, newStage }: { id: string; newStage: string }) =>
@@ -268,6 +289,39 @@ export function ProviderOpsLeadsPage() {
       adminToast.success("Lead deleted");
     },
     onError: (e: Error) => adminToast.error(`Delete failed: ${e.message}`),
+  });
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: (ids: string[]) =>
+      adminApi.postJson<{ deleted: number; skipped_matched: string[]; not_found: string[] }>(
+        "/api/admin/provider-ops/leads/bulk-delete",
+        { ids },
+      ),
+    onSuccess: (data, idsRequested) => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      setSelectedIds(new Set());
+      setSelectedLeadId((cur) => {
+        if (!cur || !idsRequested.includes(cur)) return cur;
+        if (data.skipped_matched.includes(cur)) return cur;
+        return null;
+      });
+      if (data.deleted > 0) {
+        adminToast.success(`Deleted ${data.deleted} lead${data.deleted === 1 ? "" : "s"}`);
+      } else if (data.skipped_matched.length > 0) {
+        adminToast.warning("No leads deleted — matched leads must be unlinked first");
+      } else {
+        adminToast.info("No leads deleted");
+      }
+      if (data.skipped_matched.length > 0 && data.deleted > 0) {
+        adminToast.warning(
+          `${data.skipped_matched.length} matched lead${data.skipped_matched.length === 1 ? "" : "s"} skipped (unlink from a provider to delete)`,
+        );
+      }
+      if (data.not_found.length > 0) {
+        adminToast.info(`${data.not_found.length} id${data.not_found.length === 1 ? "" : "s"} not found (already removed?)`);
+      }
+    },
+    onError: (e: Error) => adminToast.error(`Bulk delete failed: ${e.message}`),
   });
 
   const [noteText, setNoteText] = useState("");
@@ -334,6 +388,18 @@ export function ProviderOpsLeadsPage() {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  }
+
+  function confirmBulkDelete() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const n = ids.length;
+    const msg =
+      n === 1
+        ? "Delete this lead? This cannot be undone. If it is linked to a provider account, it will be skipped."
+        : `Delete ${n} leads? This cannot be undone. Leads linked to a provider account will be skipped.`;
+    if (!confirm(msg)) return;
+    bulkDeleteMut.mutate(ids);
   }
 
   const handleImportFile = useCallback(async (file: File) => {
@@ -515,6 +581,16 @@ export function ProviderOpsLeadsPage() {
                   <option value="">Bulk stage…</option>
                   {STAGES.filter((s) => s !== "all").map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
                 </select>
+                <button
+                  type="button"
+                  disabled={bulkDeleteMut.isPending}
+                  onClick={confirmBulkDelete}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-200 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  title="Delete selected leads"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </button>
                 <button type="button" onClick={() => setSelectedIds(new Set())} className="shrink-0 text-blue-500 hover:text-blue-700"><X className="h-3.5 w-3.5" /></button>
               </div>
             )}
@@ -640,39 +716,46 @@ export function ProviderOpsLeadsPage() {
         )}
       </div>
 
-      {selectedLeadId && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 pt-[env(safe-area-inset-top,0px)] lg:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Lead details"
-          onClick={(e) => { if (e.target === e.currentTarget) setSelectedLeadId(null); }}
-        >
+      {selectedLeadId &&
+        createPortal(
           <div
-            className="mx-auto flex min-h-0 w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl"
-            style={{
-              maxHeight: "min(92dvh, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 0.5rem))",
-              paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            className="fixed inset-0 z-[100] flex max-h-[100dvh] flex-col justify-end bg-black/40 pt-[env(safe-area-inset-top,0px)] lg:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Lead details"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSelectedLeadId(null);
             }}
           >
-            <DetailPanel
-              lead={detail}
-              activities={activities}
-              isLoading={detailQ.isLoading}
-              noteText={noteText}
-              setNoteText={setNoteText}
-              onAddNote={() => addNoteMut.mutate(selectedLeadId)}
-              addingNote={addNoteMut.isPending}
-              onStageChange={(s) => stageMutateSafe(stageChangeMut, selectedLeadId, s)}
-              onDelete={() => { if (confirm("Delete this lead?")) deleteMut.mutate(selectedLeadId); }}
-              onClose={() => setSelectedLeadId(null)}
-              isDeleting={deleteMut.isPending}
-              onSave={(fields) => updateLeadMut.mutate(fields)}
-              isSaving={updateLeadMut.isPending}
-            />
-          </div>
-        </div>
-      )}
+            <div
+              className="mx-auto flex min-h-0 w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl"
+              style={{
+                maxHeight:
+                  "min(92dvh, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 0.5rem))",
+                paddingBottom: "env(safe-area-inset-bottom, 0px)",
+              }}
+            >
+              <DetailPanel
+                lead={detail}
+                activities={activities}
+                isLoading={detailQ.isLoading}
+                noteText={noteText}
+                setNoteText={setNoteText}
+                onAddNote={() => addNoteMut.mutate(selectedLeadId)}
+                addingNote={addNoteMut.isPending}
+                onStageChange={(s) => stageMutateSafe(stageChangeMut, selectedLeadId, s)}
+                onDelete={() => {
+                  if (confirm("Delete this lead?")) deleteMut.mutate(selectedLeadId);
+                }}
+                onClose={() => setSelectedLeadId(null)}
+                isDeleting={deleteMut.isPending}
+                onSave={(fields) => updateLeadMut.mutate(fields)}
+                isSaving={updateLeadMut.isPending}
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* Floating action bar for bulk selection */}
       {selectedIds.size > 0 && (
@@ -683,6 +766,15 @@ export function ProviderOpsLeadsPage() {
             onClick={() => setShowBulkWhatsApp(true)}
           >
             <MessageCircle className="h-4 w-4" /> Send WhatsApp
+          </button>
+          <button
+            type="button"
+            disabled={bulkDeleteMut.isPending}
+            className="inline-flex items-center gap-2 rounded-xl border border-red-400/80 bg-red-600/90 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
+            onClick={confirmBulkDelete}
+          >
+            <Trash2 className="h-4 w-4" />
+            {bulkDeleteMut.isPending ? "Deleting…" : "Delete selected"}
           </button>
           <button
             className="text-sm text-gray-400 hover:text-white"

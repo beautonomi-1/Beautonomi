@@ -145,9 +145,15 @@ export default function ServiceFormScreen() {
 
   const categories =
     categoriesRes?.own_categories ??
-    (categoriesRes as any)?.data?.own_categories ??
+    (categoriesRes && typeof categoriesRes === "object" && "data" in categoriesRes
+      ? categoriesRes.data?.own_categories
+      : undefined) ??
     [];
-  const staff = Array.isArray(staffData) ? staffData : (staffData as any)?.data ?? [];
+  const staff = Array.isArray(staffData)
+    ? staffData
+    : staffData && typeof staffData === "object" && "data" in staffData && Array.isArray(staffData.data)
+      ? staffData.data
+      : [];
   const refObj = refData && typeof refData === "object" && !Array.isArray(refData)
     ? (refData as Record<string, { value: string; label: string }[]>)
     : {};

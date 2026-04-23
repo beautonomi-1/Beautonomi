@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { errorResponse, successResponse } from "@/lib/supabase/api-helpers";
 
@@ -14,9 +15,15 @@ import { errorResponse, successResponse } from "@/lib/supabase/api-helpers";
  * Fall back to the legacy `get_user_loyalty_balance` (sums
  * `loyalty_point_transactions`) only if the ledger RPC is unavailable —
  * that keeps older deployments working.
+ *
+ * §Customer-audit 2026-04 (round 2): previously this handler ignored the
+ * incoming request, so mobile clients sending Bearer tokens were treated as
+ * unauthenticated and the booking-flow loyalty panel silently showed 0
+ * balance. Passing `request` enables Bearer-token auth via
+ * `getSupabaseServer`.
  */
-export async function GET() {
-  const supabase = await getSupabaseServer();
+export async function GET(request: NextRequest) {
+  const supabase = await getSupabaseServer(request);
   const {
     data: { user },
   } = await supabase.auth.getUser();

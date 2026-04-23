@@ -21,6 +21,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface CommissionTier {
   id?: string;
@@ -223,6 +224,7 @@ export default function TeamCommissionsScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(s: StaffCommission) => s.staffId}
           showsVerticalScrollIndicator={false}

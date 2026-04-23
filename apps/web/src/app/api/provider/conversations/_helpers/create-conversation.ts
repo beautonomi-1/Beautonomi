@@ -37,13 +37,22 @@ export async function createConversation(request: NextRequest): Promise<Response
       .single();
 
     if (customerError || !customer) {
-      return handleApiError(new Error("Customer not found"), "Customer not found", 404);
+      // §Provider-audit 2026-04: surface a specific code so the mobile app
+      // can show a dedicated "walk-in client" hint instead of the generic
+      // "Cannot message" alert.
+      return handleApiError(
+        new Error("Customer not found"),
+        "This client isn't on Beautonomi yet. Invite them to sign up before sending a chat message.",
+        "CUSTOMER_UNREGISTERED",
+        404
+      );
     }
 
     if (customer.email?.includes("beautonomi.invalid") || customer.email?.includes("beautonomi.local")) {
       return handleApiError(
         new Error("Customer is not registered"),
-        "This customer is not registered on Beautonomi. Only registered customers can receive chat messages.",
+        "This client isn't on Beautonomi yet. Invite them to sign up before sending a chat message.",
+        "CUSTOMER_UNREGISTERED",
         400
       );
     }

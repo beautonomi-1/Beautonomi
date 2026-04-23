@@ -1,4 +1,4 @@
-import { differenceInHours, getDay } from "date-fns";
+import { differenceInHours } from "date-fns";
 import {
   mapStatus,
   AppointmentStatus,
@@ -8,7 +8,15 @@ import {
   getAppointmentVisualStyle,
 } from "@/lib/scheduling/visualMapping";
 import type { Appointment, AvailabilityBlockDisplay, TimeBlock } from "@/lib/provider-portal/types";
-import { SERVICE_COLORS, DAY_NAMES, HOUR_HEIGHT } from "./constants";
+import {
+  hourIsOutsideWeekly,
+  mergeStaffWorkingHours as sharedMergeStaffWorkingHours,
+  resolveDayHours as sharedResolveDayHours,
+  timeStringToMinutes as sharedTimeStringToMinutes,
+  type MergedDayHours,
+  type WeeklyHours,
+} from "@beautonomi/utils";
+import { SERVICE_COLORS, HOUR_HEIGHT } from "./constants";
 
 // Re-export for external consumers that used these from the old monolith
 export { getStatusColorsVm as getStatusColors };
@@ -106,50 +114,55 @@ export const parseHourRange = (
 
 /** Convert "HH:MM" or "H:MM" to total minutes for reliable comparison. */
 export const timeToMinutes = (t: string | undefined): number => {
-  const { hour, minute } = parseScheduledTime(t);
-  return hour * 60 + minute;
+  const parsed = sharedTimeStringToMinutes(t ?? null);
+  return parsed ?? 0;
 };
 
+/**
+ * Legacy-shape wrapper around the shared `resolveDayHours`. Returns a
+ * `{ open?, close?, closed }` object to keep the long-standing call-site
+ * contract (callers read `.closed` and pass `.open` / `.close` through to
+ * `timeToMinutes`).
+ */
 export const resolveDayHours = (
   dayHours: unknown,
 ): { open?: string; close?: string; closed: boolean } | null => {
-  if (!dayHours || typeof dayHours !== "object") return null;
-  const raw = dayHours as Record<string, unknown>;
-  const hasClosed = raw.closed !== undefined;
-  const hasIsOpen = raw.is_open !== undefined;
-  const closedFlag = hasClosed
-    ? raw.closed === true
-    : hasIsOpen
-      ? raw.is_open === false
-      : false;
-  const open = typeof raw.open === "string" ? raw.open
-    : typeof raw.open_time === "string" ? raw.open_time
-    : typeof raw.start_time === "string" ? raw.start_time
-    : typeof raw.start === "string" ? raw.start
-    : undefined;
-  const close = typeof raw.close === "string" ? raw.close
-    : typeof raw.close_time === "string" ? raw.close_time
-    : typeof raw.end_time === "string" ? raw.end_time
-    : typeof raw.end === "string" ? raw.end
-    : undefined;
-  return { open, close, closed: closedFlag };
+  const normalized = sharedResolveDayHours(dayHours);
+  if (normalized) {
+    if (normalized.closed) {
+      return { open: undefined, close: undefined, closed: true };
+    }
+    const pad = (m: number) =>
+      `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    return { open: pad(normalized.openMin), close: pad(normalized.closeMin), closed: false };
+  }
+  // Preserve the historical "return {closed: …, open: undefined}" when the
+  // shape has an explicit closed flag but no parseable open/close times —
+  // some callers only read `.closed` to decide shading.
+  if (dayHours && typeof dayHours === "object" && !Array.isArray(dayHours)) {
+    const raw = dayHours as Record<string, unknown>;
+    const hasClosed = raw.closed !== undefined;
+    const hasIsOpen = raw.is_open !== undefined;
+    if (hasClosed || hasIsOpen) {
+      const closedFlag = hasClosed ? raw.closed === true : raw.is_open === false;
+      return { open: undefined, close: undefined, closed: closedFlag };
+    }
+  }
+  return null;
 };
 
+/**
+ * §Calendar-hours: delegates to the shared `hourIsOutsideWeekly` so 09:30
+ * opens no longer mark the 09:00 hour row as closed, and overnight shifts
+ * (22:00 -> 02:00) are correctly honoured on the wrap-around day.
+ */
 export const isOutsideOperatingHours = (
   date: Date,
   hour: number,
   locationOperatingHours?: Record<string, { open: string; close: string; closed: boolean }> | null,
 ): boolean => {
   if (!locationOperatingHours) return false;
-  const dayKey = DAY_NAMES[getDay(date)];
-  const resolved = resolveDayHours(locationOperatingHours[dayKey]);
-  if (!resolved) return false;
-  if (resolved.closed) return true;
-  const openMin = timeToMinutes(resolved.open);
-  const closeMin = timeToMinutes(resolved.close);
-  if (openMin === closeMin) return false;
-  const slotMin = hour * 60;
-  return slotMin < openMin || slotMin >= closeMin;
+  return hourIsOutsideWeekly(date, hour, locationOperatingHours as WeeklyHours);
 };
 
 export const isOutsideStaffHours = (
@@ -158,15 +171,7 @@ export const isOutsideStaffHours = (
   staffWorkingHours?: Record<string, { open: string; close: string; closed?: boolean }> | null,
 ): boolean => {
   if (!staffWorkingHours || Object.keys(staffWorkingHours).length === 0) return false;
-  const dayKey = DAY_NAMES[getDay(date)];
-  const resolved = resolveDayHours(staffWorkingHours[dayKey]);
-  if (!resolved) return false;
-  if (resolved.closed) return true;
-  const openMin = timeToMinutes(resolved.open);
-  const closeMin = timeToMinutes(resolved.close);
-  if (openMin === closeMin) return false;
-  const slotMin = hour * 60;
-  return slotMin < openMin || slotMin >= closeMin;
+  return hourIsOutsideWeekly(date, hour, staffWorkingHours as WeeklyHours);
 };
 
 /** First grid hour where the location is open and at least one team member can work (falls back to startHour). */
@@ -280,45 +285,47 @@ export const isBookingHoldOverlay = (block: CalendarBlock): boolean =>
  * Union of all team members' weekly hours (same semantics as week-view `DateColumn`).
  * Used in day view when a staff row has no personal `working_hours` so weekend shifts
  * match week view instead of falling back to location-only hours.
+ *
+ * §Calendar-hours: delegates to the shared `mergeStaffWorkingHours` and
+ * synthesises an all-day weekly schedule for members with no `working_hours`
+ * so they keep the historical "always open" contribution to the merged window.
  */
 export function mergeTeamWorkingHoursForCalendar(
   teamMembers: Array<{
     working_hours?: Record<string, { open: string; close: string; closed?: boolean }> | null;
   }>,
 ): Record<string, { open: string; close: string; closed?: boolean }> | undefined {
-  const anyStaffHasHours = teamMembers.some((m) => m.working_hours && Object.keys(m.working_hours).length > 0);
+  const anyStaffHasHours = teamMembers.some(
+    (m) => m.working_hours && Object.keys(m.working_hours).length > 0,
+  );
   if (!anyStaffHasHours) return undefined;
 
-  const padH = (mins: number) =>
-    `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+  const allDay: Record<string, { open: string; close: string }> = {};
+  for (const day of ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]) {
+    allDay[day] = { open: "00:00", close: "24:00" };
+  }
 
-  const merged: Record<string, { open: string; close: string; closed?: boolean }> = {};
-  for (const dayName of DAY_NAMES) {
-    let earliestMin = Infinity;
-    let latestMin = -1;
-    let anyOpen = false;
-    for (const m of teamMembers) {
-      if (!m.working_hours || Object.keys(m.working_hours).length === 0) {
-        anyOpen = true;
-        earliestMin = Math.min(earliestMin, 0);
-        latestMin = Math.max(latestMin, 24 * 60);
-        continue;
-      }
-      const resolved = resolveDayHours(m.working_hours[dayName]);
-      if (!resolved || resolved.closed) continue;
-      anyOpen = true;
-      const openMin = timeToMinutes(resolved.open);
-      const closeMin = timeToMinutes(resolved.close);
-      if (openMin < earliestMin) earliestMin = openMin;
-      if (closeMin > latestMin) latestMin = closeMin;
-    }
-    if (anyOpen && earliestMin < Infinity && latestMin > -1) {
-      merged[dayName] = { open: padH(earliestMin), close: padH(latestMin) };
+  const normalized = teamMembers.map((m) => ({
+    working_hours:
+      m.working_hours && Object.keys(m.working_hours).length > 0
+        ? (m.working_hours as WeeklyHours)
+        : (allDay as WeeklyHours),
+  }));
+
+  const merged = sharedMergeStaffWorkingHours(normalized);
+  if (!merged) return undefined;
+
+  const out: Record<string, { open: string; close: string; closed?: boolean }> = {};
+  let anyOpenDay = false;
+  for (const [day, rawEntry] of Object.entries(merged) as Array<[string, MergedDayHours]>) {
+    if (rawEntry.closed) {
+      out[day] = { open: "00:00", close: "00:00", closed: true };
     } else {
-      merged[dayName] = { open: "00:00", close: "00:00", closed: true };
+      anyOpenDay = true;
+      out[day] = { open: rawEntry.open, close: rawEntry.close };
     }
   }
-  return Object.values(merged).some((v) => !v.closed) ? merged : undefined;
+  return anyOpenDay ? out : undefined;
 }
 
 export const getBlockLabel = (block: CalendarBlock): string => {

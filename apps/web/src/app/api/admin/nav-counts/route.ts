@@ -5,6 +5,7 @@ import { ALL_ADMIN_ROLES } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchAllProviderIdsForTenant } from "@/lib/tenant/admin-tenant-scope";
 import { fetchOrphanRefundPaymentTxsForTenant } from "@/lib/admin/payment-transactions-tenant-scope";
+import { countAllOpenSafetyEvents, countOpenSafetyEventsForTenant } from "@/lib/admin/safety-events-tenant-scope";
 
 /**
  * GET /api/admin/nav-counts
@@ -14,7 +15,9 @@ import { fetchOrphanRefundPaymentTxsForTenant } from "@/lib/admin/payment-transa
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(ALL_ADMIN_ROLES, request);
+    const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
+    const isSuperadmin = String(user?.role ?? "").toLowerCase() === "superadmin";
+    const scopeGlobalSafety = new URL(request.url).searchParams.get("scope") === "global";
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
     const tenantProviderIds = await fetchAllProviderIdsForTenant(supabase, tenantId);
@@ -35,6 +38,7 @@ export async function GET(request: NextRequest) {
       opsNewLeadsResult,
       opsStalledResult,
       opsActivationResult,
+      safetyOpenResult,
     ] = await Promise.all([
       supabase
         .from("user_verifications")
@@ -165,6 +169,19 @@ export async function GET(request: NextRequest) {
         .select("id", { count: "exact", head: true })
         .eq("status", "pending_approval")
         .eq("tenant_id", tenantId),
+      (async () => {
+        if (!isSuperadmin) return { count: 0 };
+        try {
+          if (scopeGlobalSafety) {
+            const n = await countAllOpenSafetyEvents(supabase);
+            return { count: n };
+          }
+          const n = await countOpenSafetyEventsForTenant(supabase, tenantId, tenantProviderIds);
+          return { count: n };
+        } catch {
+          return { count: 0 };
+        }
+      })(),
     ]);
 
     const counts: Record<string, number> = {
@@ -183,6 +200,7 @@ export async function GET(request: NextRequest) {
       "/admin/provider-ops/leads": opsNewLeadsResult.count ?? 0,
       "/admin/provider-ops/tracker": opsStalledResult.count ?? 0,
       "/admin/provider-ops/activation": opsActivationResult.count ?? 0,
+      "/admin/control-plane/safety-logs": safetyOpenResult.count ?? 0,
     };
 
     return successResponse(counts);

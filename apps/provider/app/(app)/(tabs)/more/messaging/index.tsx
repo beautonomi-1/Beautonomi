@@ -53,7 +53,9 @@ export default function MessagingListScreen() {
   const customerId = typeof params.customerId === "string" ? params.customerId : undefined;
   const hasRedirected = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
-  const { data, loading, error, refresh } = useApi<Conversation[]>("/api/provider/conversations");
+  const { data, loading, error, refresh } = useApi<Conversation[]>("/api/provider/conversations", {
+    staleTimeMs: 0,
+  });
 
   // §Provider-audit 2026-04 (round 9): subscribe to conversation row updates
   // so an incoming customer message bumps the list preview / unread counter

@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { ALL_ADMIN_ROLES } from "@/lib/admin-sections";
+import type { UserRole } from "@/types/beautonomi";
 import { getStorageServiceClientOrUser } from "@/lib/supabase/storage-service-client";
 
 /** Must match `405_storage_product_images_bucket.sql` (not the legacy non-existent `public` bucket). */
@@ -14,7 +16,14 @@ const PRODUCT_UPLOAD_BUCKET =
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['provider_owner', 'provider_staff', 'customer', 'superadmin'], request);
+    const uploadRoles: UserRole[] = [
+      "provider_owner",
+      "provider_staff",
+      "customer",
+      "superadmin",
+      ...ALL_ADMIN_ROLES,
+    ];
+    await requireRoleInApi(uploadRoles, request);
 
     const supabase = await getSupabaseServer();
     const storageClient = getStorageServiceClientOrUser(supabase);

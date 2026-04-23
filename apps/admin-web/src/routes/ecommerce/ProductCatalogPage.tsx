@@ -21,7 +21,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
-import { AdminModal } from "@/components/admin/AdminModal";
+import { AdminProductEditorSheet } from "./AdminProductEditorSheet";
 
 type ProductRow = Record<string, unknown> & {
   id?: string;
@@ -30,13 +30,19 @@ type ProductRow = Record<string, unknown> & {
   brand?: string;
   category?: string;
   retail_price?: number;
+  display_retail_price?: number;
   supply_price?: number;
   quantity?: number;
+  effective_quantity?: number;
+  track_stock_quantity?: boolean;
+  low_stock_level?: number;
   is_active?: boolean;
   retail_sales_enabled?: boolean;
   has_variants?: boolean;
   variant_count?: number;
   variant_option_types?: { name: string; values: string[] }[];
+  image_urls?: string[];
+  preferred_currency?: string;
   provider?: { id?: string; business_name?: string; status?: string } | null;
 };
 
@@ -46,6 +52,14 @@ type CatalogPayload = {
   pagination: { totalPages: number; total: number };
 };
 
+function money(amount: number, currency: string) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: currency || "ZAR",
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
 export function ProductCatalogPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_ECOMMERCE, "E-commerce access is required.");
   const qc = useQueryClient();
@@ -54,7 +68,7 @@ export function ProductCatalogPage() {
   const search = sp.get("search") || "";
   const category = sp.get("category") || "";
   const [searchDraft, setSearchDraft] = useState(search);
-  const [detailProduct, setDetailProduct] = useState<ProductRow | null>(null);
+  const [editProductId, setEditProductId] = useState<string | null>(null);
   useEffect(() => {
     setSearchDraft(search);
   }, [search]);
@@ -89,6 +103,7 @@ export function ProductCatalogPage() {
       adminApi.patchJson(`/api/admin/ecommerce/catalog/${id}`, body),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.productCatalog(qk) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.productCatalogDetail(vars.id) });
       if ("is_active" in vars.body) {
         adminToast.success(vars.body.is_active ? "Product activated" : "Product deactivated");
       } else if ("retail_sales_enabled" in vars.body) {
@@ -129,7 +144,7 @@ export function ProductCatalogPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Product catalog"
-        description="All SKUs in the tenant, including inactive or not listed on the public shop."
+        description="Tenant-wide SKUs with images, variants, and pricing — edit in place (same fields as the provider portal)."
         actions={
           <Link
             to={adminSpaTo("/admin/ecommerce")}
@@ -201,6 +216,7 @@ export function ProductCatalogPage() {
         <AdminDataTable>
           <AdminTableHead>
             <tr>
+              <AdminTh className="w-14"> </AdminTh>
               <AdminTh>Name</AdminTh>
               <AdminTh>SKU</AdminTh>
               <AdminTh>Brand</AdminTh>
@@ -208,83 +224,117 @@ export function ProductCatalogPage() {
               <AdminTh>Status</AdminTh>
               <AdminTh>Retail</AdminTh>
               <AdminTh>Price</AdminTh>
-              <AdminTh>Qty</AdminTh>
+              <AdminTh>Stock</AdminTh>
               <AdminTh>Variants</AdminTh>
               <AdminTh>Actions</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
-            {rows.map((p) => (
-              <tr key={String(p.id)} className={p.is_active === false ? "opacity-50" : ""}>
-                <AdminTd>
-                  <div className="font-medium">{String(p.name ?? "")}</div>
-                  {p.category && <div className="text-xs text-gray-400">{String(p.category)}</div>}
-                </AdminTd>
-                <AdminTd className="font-mono text-xs">{String(p.sku ?? "—")}</AdminTd>
-                <AdminTd className="text-xs text-gray-600">{String(p.brand ?? "—")}</AdminTd>
-                <AdminTd>
-                  {p.provider?.id ? (
-                    <Link className="text-primary underline" to={adminSpaTo(`/admin/providers/${p.provider.id}`)}>
-                      {String(p.provider.business_name ?? "")}
-                    </Link>
-                  ) : (
-                    String(p.provider?.business_name ?? "")
-                  )}
-                </AdminTd>
-                <AdminTd>
-                  <button
-                    type="button"
-                    disabled={toggleMut.isPending}
-                    onClick={() => p.id && toggleMut.mutate({ id: String(p.id), body: { is_active: !p.is_active } })}
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${p.is_active ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
-                  >
-                    {p.is_active ? "active" : "inactive"}
-                  </button>
-                </AdminTd>
-                <AdminTd>
-                  <button
-                    type="button"
-                    disabled={toggleMut.isPending}
-                    onClick={() => p.id && toggleMut.mutate({ id: String(p.id), body: { retail_sales_enabled: !p.retail_sales_enabled } })}
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${p.retail_sales_enabled ? "bg-blue-100 text-blue-800 hover:bg-blue-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
-                  >
-                    {p.retail_sales_enabled ? "yes" : "no"}
-                  </button>
-                </AdminTd>
-                <AdminTd className="tabular-nums">
-                  <div>{Number(p.retail_price ?? 0).toFixed(2)}</div>
-                  {p.supply_price != null && Number(p.supply_price) > 0 && (
-                    <div className="text-xs text-gray-400">cost {Number(p.supply_price).toFixed(2)}</div>
-                  )}
-                </AdminTd>
-                <AdminTd className="tabular-nums">{String(p.quantity ?? "")}</AdminTd>
-                <AdminTd>
-                  {p.has_variants ? (
-                    <div>
-                      <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800">
-                        {p.variant_count ?? 0} variant{(p.variant_count ?? 0) !== 1 ? "s" : ""}
+            {rows.map((p) => {
+              const cur = String(p.preferred_currency ?? "ZAR");
+              const thumb = Array.isArray(p.image_urls) && p.image_urls[0] ? String(p.image_urls[0]) : "";
+              const listPrice =
+                typeof p.display_retail_price === "number" ? p.display_retail_price : Number(p.retail_price ?? 0);
+              const showFrom = Boolean(p.has_variants && (p.variant_count ?? 0) > 0);
+              const stock =
+                typeof p.effective_quantity === "number" ? p.effective_quantity : Number(p.quantity ?? 0);
+              const low = Number(p.low_stock_level) || 5;
+              const track = p.track_stock_quantity !== false;
+              const stockClass =
+                !track ? "text-gray-400" : stock === 0 ? "text-red-600 font-semibold" : stock <= low ? "text-amber-700 font-medium" : "";
+
+              return (
+                <tr key={String(p.id)} className={p.is_active === false ? "opacity-50" : ""}>
+                  <AdminTd className="w-14">
+                    {thumb ? (
+                      <img src={thumb} alt="" className="h-10 w-10 rounded-lg border border-gray-100 object-cover" />
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-[10px] text-gray-400">
+                        —
+                      </div>
+                    )}
+                  </AdminTd>
+                  <AdminTd>
+                    <div className="font-medium">{String(p.name ?? "")}</div>
+                    {p.category && <div className="text-xs text-gray-400">{String(p.category)}</div>}
+                  </AdminTd>
+                  <AdminTd className="font-mono text-xs">{String(p.sku ?? "—")}</AdminTd>
+                  <AdminTd className="text-xs text-gray-600">{String(p.brand ?? "—")}</AdminTd>
+                  <AdminTd>
+                    {p.provider?.id ? (
+                      <Link className="text-primary underline" to={adminSpaTo(`/admin/providers/${p.provider.id}`)}>
+                        {String(p.provider.business_name ?? "")}
+                      </Link>
+                    ) : (
+                      String(p.provider?.business_name ?? "")
+                    )}
+                  </AdminTd>
+                  <AdminTd>
+                    <button
+                      type="button"
+                      disabled={toggleMut.isPending}
+                      onClick={() => p.id && toggleMut.mutate({ id: String(p.id), body: { is_active: !p.is_active } })}
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${p.is_active ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                    >
+                      {p.is_active ? "active" : "inactive"}
+                    </button>
+                  </AdminTd>
+                  <AdminTd>
+                    <button
+                      type="button"
+                      disabled={toggleMut.isPending}
+                      onClick={() =>
+                        p.id && toggleMut.mutate({ id: String(p.id), body: { retail_sales_enabled: !p.retail_sales_enabled } })
+                      }
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${p.retail_sales_enabled ? "bg-blue-100 text-blue-800 hover:bg-blue-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                    >
+                      {p.retail_sales_enabled ? "yes" : "no"}
+                    </button>
+                  </AdminTd>
+                  <AdminTd className="tabular-nums text-sm">
+                    {showFrom ? (
+                      <span className="inline-flex flex-wrap items-baseline gap-1">
+                        <span className="text-[10px] font-normal uppercase text-gray-400">From</span>
+                        {money(listPrice, cur)}
                       </span>
-                      {Array.isArray(p.variant_option_types) && p.variant_option_types.length > 0 && (
-                        <div className="mt-0.5 text-xs text-gray-400">
-                          {p.variant_option_types.map((o) => o.name).join(", ")}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-gray-400">—</span>
-                  )}
-                </AdminTd>
-                <AdminTd>
-                  <button
-                    type="button"
-                    className="text-xs text-primary underline"
-                    onClick={() => setDetailProduct(p)}
-                  >
-                    View details
-                  </button>
-                </AdminTd>
-              </tr>
-            ))}
+                    ) : (
+                      money(listPrice, cur)
+                    )}
+                    {p.supply_price != null && Number(p.supply_price) > 0 && (
+                      <div className="text-xs text-gray-400">cost {money(Number(p.supply_price), cur)}</div>
+                    )}
+                  </AdminTd>
+                  <AdminTd className={`tabular-nums text-sm ${stockClass}`}>
+                    {!track ? "—" : stock === 0 ? "Out" : stock}
+                  </AdminTd>
+                  <AdminTd>
+                    {p.has_variants ? (
+                      <div>
+                        <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800">
+                          {p.variant_count ?? 0} variant{(p.variant_count ?? 0) !== 1 ? "s" : ""}
+                        </span>
+                        {Array.isArray(p.variant_option_types) && p.variant_option_types.length > 0 && (
+                          <div className="mt-0.5 text-xs text-gray-400">
+                            {p.variant_option_types.map((o) => o.name).join(", ")}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
+                  </AdminTd>
+                  <AdminTd>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-primary underline"
+                      onClick={() => p.id && setEditProductId(String(p.id))}
+                    >
+                      Edit product
+                    </button>
+                  </AdminTd>
+                </tr>
+              );
+            })}
           </AdminTableBody>
         </AdminDataTable>
       )}
@@ -309,44 +359,12 @@ export function ProductCatalogPage() {
         </div>
       ) : null}
 
-      <AdminModal
-        open={!!detailProduct}
-        onClose={() => setDetailProduct(null)}
-        title={String(detailProduct?.name ?? "Product details")}
-        footer={
-          <button
-            type="button"
-            className="rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
-            onClick={() => setDetailProduct(null)}
-          >
-            Close
-          </button>
-        }
-      >
-        {detailProduct ? (
-          <div className="space-y-2 text-sm text-gray-700">
-            <p><strong>SKU:</strong> {String(detailProduct.sku ?? "—")}</p>
-            <p><strong>Brand:</strong> {String(detailProduct.brand ?? "—")}</p>
-            <p><strong>Category:</strong> {String(detailProduct.category ?? "—")}</p>
-            <p><strong>Retail price:</strong> {Number(detailProduct.retail_price ?? 0).toFixed(2)}</p>
-            <p><strong>Supply price:</strong> {Number(detailProduct.supply_price ?? 0).toFixed(2)}</p>
-            <p><strong>Quantity:</strong> {String(detailProduct.quantity ?? "—")}</p>
-            <p><strong>Variants:</strong> {detailProduct.has_variants ? `${detailProduct.variant_count ?? 0}` : "No variants"}</p>
-            {Array.isArray(detailProduct.variant_option_types) && detailProduct.variant_option_types.length > 0 ? (
-              <div>
-                <p className="font-medium text-gray-900">Variant options</p>
-                <ul className="mt-1 list-disc pl-5 text-xs">
-                  {detailProduct.variant_option_types.map((o) => (
-                    <li key={o.name}>
-                      {o.name}: {(o.values || []).join(", ")}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </AdminModal>
+      <AdminProductEditorSheet
+        open={!!editProductId}
+        productId={editProductId}
+        onClose={() => setEditProductId(null)}
+        onSaved={() => void qc.invalidateQueries({ queryKey: adminQueryKeys.productCatalog(qk) })}
+      />
     </div>
   );
 }

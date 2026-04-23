@@ -6,6 +6,11 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api-client";
+import {
+  ACTIVE_PROVIDER_ORG_HINT_STORAGE_KEY,
+  looksLikeActiveProviderUuid,
+  setActiveProviderApiHint,
+} from "@/lib/active-provider-api-hint";
 import { useAuth } from "./AuthProvider";
 import { captureError, addBreadcrumb } from "@/lib/sentry";
 
@@ -111,6 +116,27 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       if (fetchIdRef.current === myId) setLoading(false);
     }, PROFILE_LOAD_TIMEOUT_MS);
     try {
+      try {
+        const raw = await AsyncStorage.getItem(ACTIVE_PROVIDER_ORG_HINT_STORAGE_KEY);
+        if (raw && userId) {
+          const o = JSON.parse(raw) as { userId?: string; providerId?: string };
+          if (
+            typeof o.userId === "string" &&
+            o.userId === userId &&
+            typeof o.providerId === "string" &&
+            looksLikeActiveProviderUuid(o.providerId)
+          ) {
+            setActiveProviderApiHint(o.providerId);
+          } else {
+            setActiveProviderApiHint(null);
+          }
+        } else {
+          setActiveProviderApiHint(null);
+        }
+      } catch {
+        setActiveProviderApiHint(null);
+      }
+
       const [profileRes, roleResFirst, storedId] = await Promise.all([
         api.get<ProviderProfile>("/api/provider/profile"),
         api.get<{ role: string }>("/api/me/role"),
@@ -146,6 +172,8 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
         // New provider completing onboarding: no providers row yet — expected; still need role for RoleGate.
         setProvider(null);
         setProfileLoadError(null);
+        setActiveProviderApiHint(null);
+        AsyncStorage.removeItem(ACTIVE_PROVIDER_ORG_HINT_STORAGE_KEY).catch(() => {});
         applyRoleFromResponse(roleRes);
       } else if (profileRes.error) {
         captureError(new Error(profileRes.error.message), {
@@ -159,6 +187,14 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       } else if (profileRes.data) {
         setProfileLoadError(null);
         setProvider(profileRes.data);
+        if (userId) {
+          const pid = profileRes.data.id;
+          setActiveProviderApiHint(pid);
+          AsyncStorage.setItem(
+            ACTIVE_PROVIDER_ORG_HINT_STORAGE_KEY,
+            JSON.stringify({ userId, providerId: pid }),
+          ).catch(() => {});
+        }
         const locations = profileRes.data.locations ?? [];
         const validIds = locations.map((l) => l.id);
 
@@ -183,11 +219,12 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       setProfileLoadError(e instanceof Error ? e.message : "Something went wrong");
       setProvider(null);
       setRole(null);
+      setActiveProviderApiHint(null);
     } finally {
       clearTimeout(timeoutId);
       if (fetchIdRef.current === myId) setLoading(false);
     }
-  }, [applyRoleFromResponse]);
+  }, [applyRoleFromResponse, userId]);
 
   useEffect(() => {
     if (!userId) {
@@ -197,7 +234,9 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       setProfileLoadError(null);
       setLoading(false);
       restoredRef.current = false;
+      setActiveProviderApiHint(null);
       AsyncStorage.removeItem(LOCATION_STORAGE_KEY).catch(() => {});
+      AsyncStorage.removeItem(ACTIVE_PROVIDER_ORG_HINT_STORAGE_KEY).catch(() => {});
       return;
     }
 

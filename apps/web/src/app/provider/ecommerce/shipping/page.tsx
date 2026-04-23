@@ -17,6 +17,7 @@ interface ShippingConfig {
   delivery_radius_km: number | null;
   estimated_delivery_days: number;
   delivery_notes: string | null;
+  collection_notes: string | null;
 }
 
 const DEFAULTS: ShippingConfig = {
@@ -27,6 +28,7 @@ const DEFAULTS: ShippingConfig = {
   delivery_radius_km: null,
   estimated_delivery_days: 3,
   delivery_notes: null,
+  collection_notes: null,
 };
 
 export default function ProviderShippingConfigPage() {
@@ -164,7 +166,7 @@ export default function ProviderShippingConfigPage() {
           </div>
         )}
 
-        <div className="pt-4 border-t">
+        <div className="pt-4 border-t space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <Label className="text-base font-medium">Enable Collection</Label>
@@ -177,6 +179,25 @@ export default function ProviderShippingConfigPage() {
               onCheckedChange={(v) => setConfig({ ...config, offers_collection: v })}
             />
           </div>
+
+          {config.offers_collection && (
+            <div className="pl-4 border-l-2 border-pink-200">
+              <Label>Collection Notes</Label>
+              <p className="text-xs text-gray-400 mb-1">
+                Shown to customers at checkout (e.g. hours, entrance, what to bring)
+              </p>
+              <textarea
+                value={config.collection_notes ?? ""}
+                onChange={(e) =>
+                  setConfig({ ...config, collection_notes: e.target.value || null })
+                }
+                placeholder="e.g. Collection available Mon-Fri 9am-5pm. Please bring a copy of your order confirmation."
+                rows={3}
+                maxLength={500}
+                className="mt-1 w-full border rounded-lg p-3 text-sm resize-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+              />
+            </div>
+          )}
         </div>
 
         <button

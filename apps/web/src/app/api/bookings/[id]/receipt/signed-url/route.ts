@@ -14,10 +14,11 @@
 
 import { NextRequest } from "next/server";
 import {
-  requireRoleInApi,
+  requireAuthInApi,
   successResponse,
   handleApiError,
   errorResponse,
+  userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -31,10 +32,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(
-      ["customer", "provider_owner", "provider_staff", "superadmin"],
-      request,
-    );
+    // §Customer-launch (audit 2026-04): previously gated by requireRoleInApi
+    // with a fixed role list, which 403'd users whose public.users.role was
+    // stale/missing/not in the list (e.g. legacy `customer` rows still on
+    // `provider_onboarding`). Access here is an ownership question, not a
+    // role question — authenticate the caller, then check the booking row.
+    const { user: authUser } = await requireAuthInApi(request);
     const { id } = await params;
     if (!id) return errorResponse("Booking id is required", "VALIDATION_ERROR", 400);
 
@@ -49,33 +52,58 @@ export async function POST(
       return errorResponse("Booking not found", "NOT_FOUND", 404);
     }
 
-    const isCustomer = booking.customer_id === user.id;
-    const isSuperadmin = (user as { role?: string }).role === "superadmin";
+    const { data: userRow } = await admin
+      .from("users")
+      .select("id, email, phone, role")
+      .eq("id", authUser.id)
+      .maybeSingle();
 
-    let isProviderSide = false;
-    if (!isCustomer && !isSuperadmin) {
-      const { data: providerRow } = await admin
-        .from("providers")
-        .select("owner_user_id")
-        .eq("id", booking.provider_id)
+    const isSuperadmin = userRow?.role === "superadmin";
+    let isCustomer = booking.customer_id === authUser.id;
+
+    // Legacy guest→account linkage: if the booking's customer row still points
+    // at a guest placeholder with matching email/phone, treat the signed-in
+    // user as the owner and self-heal the link so future loads are O(1).
+    if (!isCustomer && booking.customer_id && (userRow?.email || userRow?.phone)) {
+      const { data: bookingCustomer } = await admin
+        .from("users")
+        .select("id, email, phone")
+        .eq("id", booking.customer_id)
         .maybeSingle();
-      if (providerRow?.owner_user_id === user.id) {
-        isProviderSide = true;
-      } else {
-        const { data: staffRows } = await admin
-          .from("provider_staff")
-          .select("id")
-          .eq("provider_id", booking.provider_id)
-          .eq("user_id", user.id)
-          .limit(1);
-        if (Array.isArray(staffRows) && staffRows.length > 0) {
-          isProviderSide = true;
-        }
+      const emailMatches =
+        !!userRow?.email && !!bookingCustomer?.email &&
+        userRow.email.toLowerCase() === bookingCustomer.email.toLowerCase();
+      const phoneMatches =
+        !!userRow?.phone && !!bookingCustomer?.phone &&
+        userRow.phone === bookingCustomer.phone;
+      if (emailMatches || phoneMatches) {
+        isCustomer = true;
+        await admin
+          .from("bookings")
+          .update({ customer_id: authUser.id })
+          .eq("id", booking.id)
+          .eq("customer_id", booking.customer_id);
       }
     }
 
+    // §Multi-provider + schema 2026-04: use providers.user_id via
+    // userHasProviderAccessAdmin (same as provider signed-url); never use
+    // the non-existent owner_user_id column for owner checks.
+    let isProviderSide = false;
+    if (!isCustomer && !isSuperadmin && booking.provider_id) {
+      isProviderSide = await userHasProviderAccessAdmin(
+        admin,
+        authUser.id,
+        booking.provider_id as string,
+      );
+    }
+
     if (!isCustomer && !isSuperadmin && !isProviderSide) {
-      return errorResponse("Forbidden", "FORBIDDEN", 403);
+      return errorResponse(
+        "You don't have access to this booking's receipt.",
+        "FORBIDDEN",
+        403,
+      );
     }
 
     if (!hasReceiptDownloadSigningSecret()) {
@@ -102,7 +130,7 @@ export async function POST(
     const token = mintReceiptDownloadToken({
       kind: "customer_booking_receipt",
       subjectId: id,
-      userId: user.id,
+      userId: authUser.id,
       ttlSeconds,
     });
 

@@ -105,6 +105,8 @@ export interface ServiceItem {
   // Variant specific
   variant_name?: string | null;
   parent_service_id?: string | null;
+  /** Child variant rows when catalogue was loaded with `include_variants=true` (see provider API). */
+  variants?: ServiceItem[];
 }
 
 /** Option type for product variants, e.g. { name: "Size", values: ["250ml", "500ml"] } */
@@ -361,6 +363,10 @@ export interface SaleItem {
   quantity: number;
   unit_price: number;
   total: number;
+  /** offerings.id or products.id when known (POS / reporting). */
+  item_id?: string | null;
+  /** When set, inventory is decremented from `product_variants` (ecommerce / POS parity). */
+  product_variant_id?: string | null;
 }
 
 export interface PaymentTransaction {

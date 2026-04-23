@@ -25,6 +25,7 @@ export interface MergedProviderClient {
   last_visit?: string;
   total_visits: number;
   total_spent: number;
+  /** Avg stars from post-visit booking ratings (`users.customer_booking_rating_avg`, all providers). */
   average_rating?: number;
   preferred_team_member_id?: string;
   preferred_team_member_name?: string;
@@ -74,7 +75,10 @@ export function mergeProviderClientsListFromSources(
       last_visit: client.last_service_date,
       total_visits: client.total_bookings || 0,
       total_spent: client.total_spent || 0,
-      average_rating: client.customer?.rating_average,
+      average_rating:
+        client.customer?.customer_booking_rating_avg != null
+          ? Number(client.customer.customer_booking_rating_avg)
+          : undefined,
       birth_date: client.customer?.date_of_birth || null,
       marketing_consent: client.customer?.email_notifications_enabled ?? true,
       sms_consent: client.customer?.sms_notifications_enabled ?? true,
@@ -102,7 +106,10 @@ export function mergeProviderClientsListFromSources(
         last_visit: client.last_service_date,
         total_visits: client.total_bookings || 0,
         total_spent: client.total_spent || 0,
-        average_rating: client.customer?.rating_average,
+        average_rating:
+          client.customer?.customer_booking_rating_avg != null
+            ? Number(client.customer.customer_booking_rating_avg)
+            : undefined,
         birth_date: client.customer?.date_of_birth || null,
         marketing_consent: client.customer?.email_notifications_enabled ?? true,
         sms_consent: client.customer?.sms_notifications_enabled ?? true,
@@ -134,7 +141,10 @@ export function mergeProviderClientsListFromSources(
         last_visit: client.last_service_date || null,
         total_visits: client.total_bookings || 0,
         total_spent: client.total_spent || 0,
-        average_rating: client.customer?.rating_average,
+        average_rating:
+          client.customer?.customer_booking_rating_avg != null
+            ? Number(client.customer.customer_booking_rating_avg)
+            : undefined,
         birth_date: client.customer?.date_of_birth || null,
         marketing_consent: client.customer?.email_notifications_enabled ?? true,
         sms_consent: client.customer?.sms_notifications_enabled ?? true,

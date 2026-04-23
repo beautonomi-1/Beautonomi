@@ -16,6 +16,7 @@ import { Colors } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { Ionicons } from "@expo/vector-icons";
 import { getTenantLocaleTag } from "@/lib/locale";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -313,6 +314,7 @@ export default function WaitlistScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.white }}>
       <FlatList
+        {...verticalFlatListPerf}
         data={entries}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}

@@ -1,6 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
@@ -40,9 +40,20 @@ export default function EngagementHubScreen() {
   const reviewsUrl = selectedLocationId
     ? `/api/provider/reviews?limit=50&location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/reviews?limit=50";
-  const { data, loading, error, refresh } = useApi<ReviewsResponse>(reviewsUrl);
+  const { data, loading, error, refresh } = useApi<ReviewsResponse>(reviewsUrl, { staleTimeMs: 0 });
+  const engagementHubInitialFocusRef = useRef(true);
 
   const reviews: Review[] = (data as ReviewsResponse)?.reviews ?? [];
+
+  useFocusEffect(
+    useCallback(() => {
+      if (engagementHubInitialFocusRef.current) {
+        engagementHubInitialFocusRef.current = false;
+        return;
+      }
+      void refresh();
+    }, [refresh]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

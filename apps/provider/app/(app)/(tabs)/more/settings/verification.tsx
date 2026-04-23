@@ -23,6 +23,8 @@ import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { appendFormDataFileNative } from "@beautonomi/utils";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -118,7 +120,7 @@ export default function VerificationScreen() {
         `/api/provider/verification/sumsub/token?environment=${encodeURIComponent(env)}`
       );
       const access_token = res.data?.access_token;
-      const refresh_token = (res.data as any)?.refresh_token;
+      const refresh_token = res.data?.refresh_token;
       if (!access_token) {
         Alert.alert(
           "Automated verification unavailable",
@@ -166,17 +168,17 @@ export default function VerificationScreen() {
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.append("file", {
+      appendFormDataFileNative(formData, "file", {
         uri: selectedFile.uri,
         name: selectedFile.fileName,
         type: "image/jpeg",
-      } as any);
+      });
       formData.append("document_type", docType);
       formData.append("country", country.trim());
 
-      const res = await api.post<{ verification_id?: string }>("/api/me/verification", formData as any);
+      const res = await api.post<{ verification_id?: string }>("/api/me/verification", formData);
       if (res.error) {
-        Alert.alert("Upload failed", (res.error as any)?.message ?? "Could not upload document.");
+        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload document."));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

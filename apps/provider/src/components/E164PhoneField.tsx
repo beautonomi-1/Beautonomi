@@ -21,6 +21,7 @@ import {
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { normalizeSupabaseAuthPhone } from "@/lib/supabase-sms-otp";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 const PRIMARY = Colors.primary;
 
@@ -230,6 +231,7 @@ export function E164PhoneField({
               </View>
             </View>
             <FlatList<CountryCodeOption>
+              {...verticalFlatListPerf}
               data={filtered}
               keyExtractor={(c: CountryCodeOption) => c.code}
               keyboardShouldPersistTaps="handled"

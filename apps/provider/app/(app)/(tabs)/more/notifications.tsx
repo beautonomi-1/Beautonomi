@@ -29,6 +29,8 @@ interface Notification {
   title: string;
   message: string;
   is_read: boolean;
+  /** Legacy/alternate payloads (some rows use `read` instead of `is_read`). */
+  read?: boolean;
   read_at: string | null;
   created_at: string;
   link?: string;
@@ -234,7 +236,7 @@ function SwipeableNotificationItem({
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const iconInfo = getNotificationIcon(notif.type);
-  const isUnread = isUnreadProp ?? !(notif.read_at || (notif as any).read === true || (notif as any).is_read === true);
+  const isUnread = isUnreadProp ?? !(notif.read_at || notif.read === true || notif.is_read === true);
 
   // §Provider-audit 2026-04 (round 3): real swipe-to-reveal gesture.
   // Previously the delete slot was only exposed via long-press, which
@@ -375,13 +377,13 @@ export default function NotificationsScreen() {
     mutate: mutateRaw,
   } = useApi<NotificationsResponse>("/api/provider/notifications", { enabled: !!session });
   const notifications = rawData?.notifications ?? null;
-  const isUnread = (n: Notification) => !(n.read_at || (n as any).read === true || (n as any).is_read === true);
+  const isUnread = (n: Notification) => !(n.read_at || n.read === true || n.is_read === true);
   const mutate = useCallback(
     (updated: Notification[]) =>
       mutateRaw({
         notifications: updated,
         total_unread: updated.filter(
-          (n) => !(n.read_at || (n as any).read === true || (n as any).is_read === true),
+          (n) => !(n.read_at || n.read === true || n.is_read === true),
         ).length,
       }),
     [mutateRaw],
@@ -444,7 +446,7 @@ export default function NotificationsScreen() {
     (notif: Notification) => {
       const route = getNotificationRoute(notif);
       if (route) {
-        router.push(route as any);
+        router.push(route as never);
       }
     },
     [router],
@@ -457,7 +459,7 @@ export default function NotificationsScreen() {
       // introduced a visible ~300–1500ms hang on spotty networks. The
       // optimistic mutate handles the badge locally; failures roll back.
       const alreadyRead =
-        !!notif.read_at || !!(notif as any).is_read || !!(notif as any).read;
+        !!notif.read_at || !!notif.is_read || !!notif.read;
       navigateToNotification(notif);
       if (alreadyRead) return;
 

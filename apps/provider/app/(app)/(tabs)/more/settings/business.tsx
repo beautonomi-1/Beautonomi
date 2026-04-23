@@ -43,6 +43,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 type BusinessData = {
   id: string;
@@ -129,7 +130,7 @@ export default function BusinessDetailsScreen() {
 
   useEffect(() => {
     if (!data) return;
-    const d = data as any;
+    const d = data;
     setForm({
       id: d.id ?? "",
       business_name: d.business_name ?? "",
@@ -666,6 +667,7 @@ export default function BusinessDetailsScreen() {
               </View>
             </View>
             <FlatList<CountryCodeOption>
+              {...verticalFlatListPerf}
               data={filteredCountries}
               keyExtractor={(c: CountryCodeOption) => c.code}
               keyboardShouldPersistTaps="handled"

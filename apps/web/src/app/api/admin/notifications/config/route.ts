@@ -99,6 +99,9 @@ export async function GET(request: NextRequest) {
 
     const osReady = appIdSet && apiKeySet && onesignalSectionEnabled;
 
+    const custCreds = await resolveOneSignalCredentials("customer", { tenantId });
+    const provCreds = await resolveOneSignalCredentials("provider", { tenantId });
+
     const data = {
       push: {
         enabled: pushEnabled && osReady,
@@ -129,8 +132,29 @@ export async function GET(request: NextRequest) {
       },
       onesignal: {
         enabled: osReady,
+        /** OneSignal feature toggle from platform_settings.settings.onesignal.enabled */
+        settings_enabled: onesignalSectionEnabled,
         app_id_set: appIdSet,
         api_key_set: apiKeySet,
+      },
+      /** Resolved per-app credentials (App IDs are non-secret; use to align Expo env). REST keys: presence only. */
+      onesignal_apps: {
+        customer: {
+          app_id: custCreds.appId,
+          rest_api_key_configured: !!custCreds.restKey?.trim(),
+        },
+        provider: {
+          app_id: provCreds.appId,
+          rest_api_key_configured: !!provCreds.restKey?.trim(),
+        },
+      },
+      onesignal_alignment: {
+        customer_expo_env: "EXPO_PUBLIC_ONESIGNAL_APP_ID in apps/customer — must match Customer App ID saved here.",
+        provider_expo_env: "EXPO_PUBLIC_ONESIGNAL_APP_ID in apps/provider — must match Provider App ID saved here.",
+        server_rest_keys:
+          "REST API keys are server-only (never put in Expo). Save them below or set ONESIGNAL_REST_API_KEY_CUSTOMER / ONESIGNAL_REST_API_KEY_PROVIDER (or legacy single ONESIGNAL_*) in the API environment.",
+        broadcast_note:
+          "Broadcast to all users uses the customer OneSignal app; broadcast to all providers uses the provider app. Configure both for full coverage.",
       },
       twilio: {
         enabled: twilioIntegrationActive,

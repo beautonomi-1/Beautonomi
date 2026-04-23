@@ -1,13 +1,19 @@
 "use client";
 
+import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Clock } from "lucide-react";
+import { clearBeautonomiHoldClientMarkers } from "@/lib/booking/clear-hold-client-markers";
 
 export default function OnDemandResultPage() {
   const searchParams = useSearchParams();
+
+  useEffect(() => {
+    clearBeautonomiHoldClientMarkers();
+  }, []);
   const status = searchParams.get("status") ?? "expired";
   const onDemandConfig = useModuleConfig("on_demand");
   const uiCopy = (onDemandConfig?.ui_copy ?? {}) as Record<string, string>;

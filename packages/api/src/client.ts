@@ -20,6 +20,9 @@ export type ApiClientExtraOptions = Omit<
   "body" | "method" | "baseUrl" | "getAccessToken"
 >;
 
+/** JSON or multipart bodies for POST/PUT/PATCH (matches `RequestOptions["body"]` without `undefined`). */
+export type ApiClientRequestBody = NonNullable<RequestOptions["body"]>;
+
 function responseBodyLooksLikeHtml(raw: string): boolean {
   const t = raw.trim();
   return (
@@ -243,8 +246,11 @@ export interface ApiClientConfig {
   getAccessToken?: () => Promise<string | null>;
   /** Default headers sent with every request (e.g. X-App: provider for provider app). */
   headers?: Record<string, string>;
-  /** Per-request headers (e.g. active market ISO2 from device locale). Merged after static `headers`. */
-  getDefaultHeaders?: () => Record<string, string>;
+  /**
+   * Per-request headers (e.g. active market ISO2 from device locale). Merged after static `headers`.
+   * `path` is the request path (e.g. `/api/provider/profile`).
+   */
+  getDefaultHeaders?: (ctx: { path: string; method: string }) => Record<string, string>;
 }
 
 /**
@@ -258,7 +264,8 @@ export function createApiClient(config: ApiClientConfig) {
     path: string,
     options: Omit<RequestOptions, "baseUrl" | "getAccessToken"> = {}
   ) => {
-    const dynamic = getDefaultHeaders?.() ?? {};
+    const method = String(options.method ?? "GET").toUpperCase();
+    const dynamic = getDefaultHeaders?.({ path, method }) ?? {};
     const resolvedBase = getBaseUrl ? getBaseUrl() : baseUrl;
     return apiFetch<T>(path, {
       ...options,
@@ -275,11 +282,11 @@ export function createApiClient(config: ApiClientConfig) {
   return {
     get: <T>(path: string, init?: ApiClientExtraOptions) =>
       request<T>(path, { ...init, method: "GET" }),
-    post: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
+    post: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
       request<T>(path, { ...init, method: "POST", body }),
-    put: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
+    put: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
       request<T>(path, { ...init, method: "PUT", body }),
-    patch: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
+    patch: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
       request<T>(path, { ...init, method: "PATCH", body }),
     delete: <T>(path: string, init?: ApiClientExtraOptions) =>
       request<T>(path, { ...init, method: "DELETE" }),

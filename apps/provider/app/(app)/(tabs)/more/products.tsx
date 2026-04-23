@@ -41,6 +41,7 @@ interface Product {
   id: string;
   name: string;
   sku?: string | null;
+  barcode?: string | null;
   retail_price: number;
   quantity?: number;
   low_stock_level?: number;
@@ -53,6 +54,7 @@ interface Product {
   variants?: ProductVariant[];
   /** Merged primary + extra URLs from API */
   image_urls?: string[] | null;
+  tax_rate?: number | null;
   track_stock_quantity?: boolean;
   /** Sum of variant qty or base quantity (GET /api/provider/products) */
   effective_quantity?: number;
@@ -94,6 +96,14 @@ const defaultForm = {
   barcode: "",
   brand: "",
   supplier: "",
+  // §Provider-audit 2026-04 (follow-up): the full `product-form.tsx`
+  // surfaces tax rate and the "track stock quantity" toggle. The quick
+  // modal previously hid these, forcing providers to bounce to the full
+  // form any time they wanted tax-exempt stock-less items (e.g. custom
+  // made-to-order additions). Expose them here too; default values mirror
+  // the POST /api/provider/products defaults.
+  tax_rate: "0",
+  track_stock_quantity: true,
   hasVariants: false,
   variantOptionName: "",
   variantOptionValues: "",
@@ -169,8 +179,8 @@ export function ProductsContent() {
         const res = await api.get<{ variants?: ProductVariant[]; variant_option_types?: { name: string; values: string[] }[] }>(
           `/api/provider/products/${p.id}`
         );
-        const data = res.data as any;
-        const fullProduct = data ?? p;
+        const detail = res.data && typeof res.data === "object" ? res.data : {};
+        const fullProduct: Product = { ...p, ...detail };
         const optTypes = fullProduct.variant_option_types ?? p.variant_option_types ?? [];
         const vars = fullProduct.variants ?? p.variants ?? [];
         setForm({
@@ -181,9 +191,11 @@ export function ProductsContent() {
           quantity: "",
           low_stock_level: "5",
           short_description: fullProduct.short_description ?? p.short_description ?? "",
-          barcode: "",
+          barcode: fullProduct.barcode ?? p.barcode ?? "",
           brand: fullProduct.brand ?? p.brand ?? "",
           supplier: fullProduct.supplier ?? p.supplier ?? "",
+          tax_rate: String(fullProduct.tax_rate ?? p.tax_rate ?? 0),
+          track_stock_quantity: (fullProduct.track_stock_quantity ?? p.track_stock_quantity) !== false,
           hasVariants: true,
           variantOptionName: optTypes[0]?.name ?? "Option",
           variantOptionValues: (optTypes[0]?.values ?? []).join(", "),
@@ -205,9 +217,11 @@ export function ProductsContent() {
           quantity: "",
           low_stock_level: "5",
           short_description: p.short_description ?? "",
-          barcode: "",
+          barcode: p.barcode ?? "",
           brand: "",
           supplier: "",
+          tax_rate: String(p.tax_rate ?? 0),
+          track_stock_quantity: p.track_stock_quantity !== false,
           hasVariants: true,
           variantOptionName: "Option",
           variantOptionValues: "",
@@ -234,9 +248,11 @@ export function ProductsContent() {
         quantity: "",
         low_stock_level: "5",
         short_description: p.short_description ?? "",
-        barcode: "",
+        barcode: p.barcode ?? "",
         brand: p.brand ?? "",
         supplier: p.supplier ?? "",
+        tax_rate: String(p.tax_rate ?? 0),
+        track_stock_quantity: p.track_stock_quantity !== false,
         hasVariants: true,
         variantOptionName: optTypes[0]?.name ?? "Option",
         variantOptionValues: (optTypes[0]?.values ?? []).join(", "),
@@ -258,9 +274,11 @@ export function ProductsContent() {
         quantity: String(p.quantity ?? ""),
         low_stock_level: String(p.low_stock_level ?? 5),
         short_description: p.short_description ?? "",
-        barcode: "",
+        barcode: p.barcode ?? "",
         brand: "",
         supplier: "",
+        tax_rate: String(p.tax_rate ?? 0),
+        track_stock_quantity: p.track_stock_quantity !== false,
         hasVariants: false,
         variantOptionName: "",
         variantOptionValues: "",
@@ -294,6 +312,20 @@ export function ProductsContent() {
       }
     }
 
+    // §Provider-audit 2026-04 (C2 CRITICAL): the quick add/edit modal used
+    // to collect `barcode` in the form but never forwarded it to the API,
+    // silently dropping scans. Forward it alongside SKU for both create
+    // and update paths (matches the full `product-form.tsx` flow).
+    const barcodeTrim = form.barcode.trim();
+    // §Provider-audit 2026-04 (follow-up): forward tax_rate + track_stock_quantity
+    // from the quick modal — both are accepted by POST/PATCH /api/provider/products
+    // but were silently dropped by the old modal.
+    const taxRateTrim = form.tax_rate.trim();
+    const taxRateNumber = taxRateTrim === "" ? undefined : Number(taxRateTrim);
+    const taxRatePayload =
+      taxRateNumber !== undefined && Number.isFinite(taxRateNumber) && taxRateNumber >= 0
+        ? taxRateNumber
+        : undefined;
     if (editingProduct) {
       const payload: Record<string, unknown> = {
         name,
@@ -301,6 +333,9 @@ export function ProductsContent() {
         short_description: form.short_description.trim() || undefined,
         brand: form.brand.trim() || undefined,
         supplier: form.supplier.trim() || undefined,
+        barcode: barcodeTrim || undefined,
+        tax_rate: taxRatePayload,
+        track_stock_quantity: form.track_stock_quantity,
       };
       if (withVariants) {
         const optionName = form.variantOptionName.trim() || "Option";
@@ -334,6 +369,9 @@ export function ProductsContent() {
         short_description: form.short_description.trim() || undefined,
         brand: form.brand.trim() || undefined,
         supplier: form.supplier.trim() || undefined,
+        barcode: barcodeTrim || undefined,
+        tax_rate: taxRatePayload,
+        track_stock_quantity: form.track_stock_quantity,
       };
       if (withVariants) {
         const optionName = form.variantOptionName.trim() || "Option";
@@ -655,8 +693,37 @@ export function ProductsContent() {
               keyboardType="number-pad"
               style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             />
+            {/* §Provider-audit 2026-04 (follow-up): track-stock toggle lives inside
+                the non-variant branch because variants manage their own quantity.
+                Disabling this prevents any "sold out" treatment on the customer PDP. */}
+            <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Track stock quantity</Text>
+                <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>Turn off for unlimited / made-to-order items.</Text>
+              </View>
+              <Switch
+                value={form.track_stock_quantity}
+                onValueChange={(v) => setForm((f) => ({ ...f, track_stock_quantity: v }))}
+                trackColor={{ false: "#d1d5db", true: "#8b5cf6" }}
+                thumbColor="#fff"
+              />
+            </View>
               </>
             )}
+            {/* §Provider-audit 2026-04 (follow-up): tax rate applies to both
+                variant and non-variant products (it is a product-level column). */}
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Tax rate (%)</Text>
+            <TextInput
+              value={form.tax_rate}
+              onChangeText={(v) => setForm((f) => ({ ...f, tax_rate: v }))}
+              placeholder="0"
+              placeholderTextColor="#9ca3af"
+              keyboardType="decimal-pad"
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+            />
+            <Text style={{ marginTop: -8, marginBottom: 16, fontSize: 12, color: Colors.gray[500] }}>
+              Leave at 0 for tax-free items. Use the full product form for reference-list options.
+            </Text>
 
             {form.hasVariants && (
               <View style={{ marginBottom: 16 }}>

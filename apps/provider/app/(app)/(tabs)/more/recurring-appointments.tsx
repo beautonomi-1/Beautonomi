@@ -282,7 +282,7 @@ export default function RecurringAppointmentsScreen() {
       setViewItem(null);
       refresh();
     }
-  }, [viewItem, editFreq, editTime, editEnd, editNoEnd, patchRecurring, refresh]);
+  }, [viewItem, editFreq, editTime, editEnd, editNoEnd, patchRecurring, refresh, router]);
 
   const handleToggleActive = useCallback(
     async (item: RecurringAppointment) => {
@@ -300,7 +300,7 @@ export default function RecurringAppointmentsScreen() {
         refresh();
       }
     },
-    [patchRecurring, refresh]
+    [patchRecurring, refresh, router]
   );
 
   const handleDelete = useCallback(
@@ -331,7 +331,7 @@ export default function RecurringAppointmentsScreen() {
         ]
       );
     },
-    [deleteRecurring, refresh]
+    [deleteRecurring, refresh, router]
   );
 
   if (loading && !data) {

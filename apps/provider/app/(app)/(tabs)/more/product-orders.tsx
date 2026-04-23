@@ -47,6 +47,7 @@ interface Order {
   fulfillment_type?: string;
   tracking_number?: string | null;
   carrier?: string | null;
+  tracking_url?: string | null;
   created_at: string;
   items?: OrderItem[];
   customer?: { full_name?: string | null; email?: string | null; phone?: string | null };
@@ -119,6 +120,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [trackingNumber, setTrackingNumber] = useState("");
   const [carrier, setCarrier] = useState("");
+  const [trackingUrl, setTrackingUrl] = useState("");
 
   const url = `/api/provider/product-orders?limit=100${statusFilter ? `&status=${statusFilter}` : ""}`;
   const { data, loading, error, refresh } = useApi<OrdersListResponse>(url);
@@ -205,9 +207,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   }, [deepLinkOrderId, loading, openOrder]);
 
   const doUpdateStatus = useCallback(
-    async (orderId: string, status: string, extra?: { tracking_number?: string; carrier?: string }) => {
+    async (
+      orderId: string,
+      status: string,
+      extra?: { tracking_number?: string; carrier?: string; tracking_url?: string },
+    ) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const { error: err, data: responseData } = await patchOrder(`/api/provider/product-orders/${orderId}`, {
+      const { error: err } = await patchOrder(`/api/provider/product-orders/${orderId}`, {
         status,
         ...extra,
       });
@@ -221,10 +227,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         setPendingStatus(null);
         setTrackingNumber("");
         setCarrier("");
+        setTrackingUrl("");
         refresh();
       }
     },
-    [patchOrder, refresh, data]
+    [patchOrder, refresh]
   );
 
   const handleStatusTap = useCallback(
@@ -233,6 +240,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         setPendingStatus(orderId + "|" + status);
         setTrackingNumber("");
         setCarrier("");
+        setTrackingUrl("");
         setTrackingSheetOpen(true);
       } else if (status === "cancelled") {
         Alert.alert(
@@ -262,11 +270,17 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const handleConfirmShipped = useCallback(() => {
     if (!pendingStatus) return;
     const [orderId] = pendingStatus.split("|");
+    const urlTrim = trackingUrl.trim();
+    if (urlTrim && !/^https?:\/\//i.test(urlTrim)) {
+      Alert.alert("Invalid URL", "Tracking URL must start with http:// or https://");
+      return;
+    }
     doUpdateStatus(orderId, "shipped", {
       tracking_number: trackingNumber.trim() || undefined,
       carrier: carrier.trim() || undefined,
+      tracking_url: urlTrim || undefined,
     });
-  }, [pendingStatus, trackingNumber, carrier, doUpdateStatus]);
+  }, [pendingStatus, trackingNumber, carrier, trackingUrl, doUpdateStatus]);
 
   if (loading && !data) {
     return (
@@ -458,7 +472,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               )}
 
               {/* Tracking info */}
-              {activeOrder.tracking_number && (
+              {(activeOrder.tracking_number || activeOrder.tracking_url) && (
                 <View style={twStyle("mb-3 rounded-xl bg-blue-50 px-4 py-3")}>
                   <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-blue-400 mb-1")}>
                     Tracking
@@ -466,7 +480,14 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   {activeOrder.carrier && (
                     <Text style={twStyle("text-sm font-medium text-blue-800")}>{activeOrder.carrier}</Text>
                   )}
-                  <Text style={twStyle("text-sm text-blue-700")}>{activeOrder.tracking_number}</Text>
+                  {activeOrder.tracking_number && (
+                    <Text style={twStyle("text-sm text-blue-700")}>{activeOrder.tracking_number}</Text>
+                  )}
+                  {activeOrder.tracking_url && (
+                    <Text style={twStyle("mt-0.5 text-xs text-blue-600")} numberOfLines={1}>
+                      {activeOrder.tracking_url}
+                    </Text>
+                  )}
                 </View>
               )}
 
@@ -587,10 +608,31 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
               onChangeText={setCarrier}
               placeholder="e.g. Aramex, DHL, Paxi"
               placeholderTextColor="#9ca3af"
-              returnKeyType="done"
+              returnKeyType="next"
               style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               accessibilityLabel="Carrier name"
             />
+          </View>
+          {/* §Customer-audit 2026-04 (follow-up): let providers paste a
+              carrier tracking link so the customer can tap straight through
+              from their order detail page. */}
+          <View>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Tracking URL (optional)</Text>
+            <TextInput
+              value={trackingUrl}
+              onChangeText={setTrackingUrl}
+              placeholder="https://…"
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              returnKeyType="done"
+              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+              accessibilityLabel="Tracking URL"
+            />
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+              Paste the carrier&apos;s tracking page so customers can tap through from their order.
+            </Text>
           </View>
           <ActionButton
             label={patching ? "Saving…" : "Confirm shipped"}

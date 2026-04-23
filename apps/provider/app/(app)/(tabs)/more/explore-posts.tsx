@@ -25,6 +25,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
+import { appendFormDataFileNative } from "@beautonomi/utils";
 
 interface ExplorePost {
   id: string;
@@ -111,8 +112,13 @@ export default function ExplorePostsScreen() {
 
   useEffect(() => {
     api.get<GlobalCategory[] | { data: GlobalCategory[] }>("/api/public/categories/global").then((res) => {
-      const raw = (res as any)?.data ?? res;
-      setCategories(Array.isArray(raw) ? raw : raw?.data ?? []);
+      const body = res.data;
+      const list = Array.isArray(body)
+        ? body
+        : body && typeof body === "object" && "data" in body && Array.isArray((body as { data: GlobalCategory[] }).data)
+          ? (body as { data: GlobalCategory[] }).data
+          : [];
+      setCategories(list);
     }).catch(() => {});
   }, []);
 
@@ -239,11 +245,11 @@ export default function ExplorePostsScreen() {
     try {
       for (const asset of selectedAssets) {
         const formData = new FormData();
-        formData.append("file", {
+        appendFormDataFileNative(formData, "file", {
           uri: asset.uri,
           type: asset.mimeType ?? "image/jpeg",
           name: asset.fileName ?? "image.jpg",
-        } as unknown as Blob);
+        });
         const res = await api.fetch<{ path: string }>("/api/explore/upload", {
           method: "POST",
           body: formData,

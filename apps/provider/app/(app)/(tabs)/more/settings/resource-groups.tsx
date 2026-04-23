@@ -21,6 +21,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface ResourceGroup {
   id: string;
@@ -243,6 +244,7 @@ export default function ResourceGroupsScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(g: ResourceGroup) => g.id}
           showsVerticalScrollIndicator={false}

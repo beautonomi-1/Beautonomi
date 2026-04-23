@@ -1293,22 +1293,22 @@ export default function BookCheckoutScreen() {
       try {
         const res = await api.get<{
           data?: {
-            provider_memberships?: Array<{
+            provider_memberships?: {
               provider_id: string;
               plan_name?: string;
               discount_percent?: number;
-            }>;
+            }[];
           };
         }>("/api/me/membership");
         if (cancelled || res.error) return;
         const raw = res.data as { data?: Record<string, unknown> } | Record<string, unknown>;
         const d =
           ((raw as { data?: Record<string, unknown> }).data ?? raw) as {
-            provider_memberships?: Array<{
+            provider_memberships?: {
               provider_id: string;
               plan_name?: string;
               discount_percent?: number;
-            }>;
+            }[];
           };
         const match = (d?.provider_memberships ?? []).find(
           (m) => m.provider_id === hold.provider_id,
@@ -1758,14 +1758,26 @@ export default function BookCheckoutScreen() {
           return;
         }
         if (errStatus === 403) {
+          // §Customer-audit 2026-04: HOLD_OWNERSHIP used to fire any time a
+          // guest-minted hold was consumed by the user after the device's
+          // guest-fingerprint rotated (fresh install, locale change,
+          // keychain reset). The server now accepts authed+guest holds
+          // outright, so the remaining 403 cases here are genuine
+          // "slot taken by another session" scenarios — surface that
+          // clearly and push the user back to re-pick the time.
+          const serverMsg = (res.error as { message?: string }).message?.trim();
           const msg403 =
             errCode === "SUBSCRIPTION_LIMIT_EXCEEDED"
               ? "You've reached your booking limit. Please upgrade your plan."
               : errCode === "MARKET_SWITCH_REQUIRED"
                 ? "This provider is in a different market. Please update your location."
                 : errCode === "HOLD_OWNERSHIP"
-                  ? "This booking slot is tied to another device or session. Go back, pick the time again, and complete checkout within a few minutes."
-                  : "You don't have permission to complete this booking. Please sign in again.";
+                  ? serverMsg && serverMsg.length > 0
+                    ? serverMsg
+                    : "This booking slot has already been claimed. Please go back and pick a new time."
+                  : serverMsg && serverMsg.length > 0
+                    ? serverMsg
+                    : "You don't have permission to complete this booking.";
           setError(msg403);
           return;
         }
@@ -3390,7 +3402,7 @@ export default function BookCheckoutScreen() {
             {onDemandEnabled && user && hold?.provider_on_demand_accept_enabled && (
               <TouchableOpacity
                 onPress={() => { haptic.medium(); handleRequestNow(); }}
-                disabled={requestingNow || isExpired || policyAckBlocksCheckout}
+                disabled={requestingNow || isExpired || policyAckBlocksCheckout || loyaltyValidating || promoValidating || giftCardValidating}
                 style={{
                   backgroundColor: isExpired ? "#D1D5DB" : "#F3F4F6",
                   borderRadius: 14,
@@ -3401,7 +3413,7 @@ export default function BookCheckoutScreen() {
                   marginBottom: 10,
                   borderWidth: 1.5,
                   borderColor: "#E5E7EB",
-                  opacity: (requestingNow || isExpired || policyAckBlocksCheckout) ? 0.7 : 1,
+                  opacity: (requestingNow || isExpired || policyAckBlocksCheckout || loyaltyValidating || promoValidating || giftCardValidating) ? 0.7 : 1,
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={t("checkout.requestNowAccessibility")}
@@ -3418,17 +3430,17 @@ export default function BookCheckoutScreen() {
             )}
             <TouchableOpacity
               onPress={() => { haptic.medium(); handleComplete(); }}
-              disabled={consuming || isExpired || policyAckBlocksCheckout}
+              disabled={consuming || isExpired || policyAckBlocksCheckout || loyaltyValidating || promoValidating || giftCardValidating}
               style={{
                 backgroundColor: isExpired ? "#D1D5DB" : Colors.primary,
                 borderRadius: 14, paddingVertical: 16,
                 alignItems: "center", flexDirection: "row", justifyContent: "center",
-                opacity: consuming || policyAckBlocksCheckout ? 0.7 : 1,
+                opacity: consuming || policyAckBlocksCheckout || loyaltyValidating || promoValidating || giftCardValidating ? 0.7 : 1,
               }}
               accessibilityRole="button"
               accessibilityLabel={user ? t("checkout.completeBooking") : t("checkout.signInToComplete")}
               accessibilityHint={user ? "Double tap to confirm and pay for your appointment" : "Double tap to sign in first"}
-              accessibilityState={{ disabled: consuming || isExpired || policyAckBlocksCheckout }}
+              accessibilityState={{ disabled: consuming || isExpired || policyAckBlocksCheckout || loyaltyValidating || promoValidating || giftCardValidating }}
             >
               {consuming ? (
                 <View style={{ flexDirection: "row", alignItems: "center" }}>

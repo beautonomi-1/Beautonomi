@@ -80,10 +80,26 @@ export async function GET(request: NextRequest) {
 
     const fromStr = searchParams.get("from");
     const toStr = searchParams.get("to");
+    // The SPA Reports hub only sends `period`, not from/to — respect it here so the
+    // Yoco report matches the selected Reports period instead of silently falling back
+    // to the last 30 days.
+    const period = searchParams.get("period");
     const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10) || 100, 500);
 
-    const from = fromStr ? new Date(fromStr) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const to = toStr ? new Date(toStr) : new Date();
+    const now = new Date();
+    const periodToMs: Record<string, number> = {
+      "7d": 7 * 24 * 60 * 60 * 1000,
+      "30d": 30 * 24 * 60 * 60 * 1000,
+      "90d": 90 * 24 * 60 * 60 * 1000,
+      "1y": 365 * 24 * 60 * 60 * 1000,
+    };
+
+    const from = fromStr
+      ? new Date(fromStr)
+      : period && periodToMs[period]
+        ? new Date(now.getTime() - periodToMs[period])
+        : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const to = toStr ? new Date(toStr) : now;
 
     const query = supabaseAdmin
       .from("provider_yoco_payments")

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { Colors } from "@/constants/colors";
+import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import type { UserRole } from "@beautonomi/types";
 import { authFlowBreadcrumb, isSentryEnabled, setAuthFlowTags } from "@/lib/sentry";
 
@@ -58,12 +59,9 @@ export function RoleGate({ children }: RoleGateProps) {
 
   if (!user) return null;
   if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: 16, color: Colors.gray[600] }}>Checking access…</Text>
-      </View>
-    );
+    // §Provider-audit 2026-04 (loading-polish): use the branded gate so role
+    // checks look consistent with auth / portal / profile-completion gates.
+    return <GateLoadingScreen message="Checking access…" />;
   }
   if (blocked) {
     const isNetwork = blockReason === "network";

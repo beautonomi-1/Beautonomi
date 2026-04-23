@@ -14,6 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import {
   countryFilterIso2FromStorage,
   mapGeocodeFeatureToAddressParts,
@@ -172,6 +173,7 @@ export function AddressAutocomplete({
       {showResults && results.length > 0 ? (
         <View style={twStyle("mt-1 max-h-48 rounded-xl border border-gray-100 bg-white shadow-sm")}>
           <FlatList
+            {...verticalFlatListPerf}
             data={results}
             keyExtractor={(item: GeocodingResult, i: number) =>
               item.id ? String(item.id) : `${item.place_name}-${i}`

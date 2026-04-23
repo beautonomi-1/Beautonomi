@@ -9,7 +9,26 @@ import {
   resolveFinanceLedgerRowProviderId,
 } from "@/lib/admin/finance-ledger-tenant";
 
-type ProviderRow = { id: string; business_name?: string; owner_name?: string; rating_average?: number; status?: string; created_at?: string };
+type ProviderRow = {
+  id: string;
+  business_name?: string;
+  rating_average?: number;
+  status?: string;
+  created_at?: string;
+  user_id?: string;
+  // Supabase embeds one-to-one FK joins as an array in its generated types — accept both
+  // to keep the code robust to either shape.
+  users?:
+    | { full_name?: string | null }
+    | Array<{ full_name?: string | null }>
+    | null;
+};
+
+function pickOwnerName(users: ProviderRow["users"]): string | null {
+  if (!users) return null;
+  const row = Array.isArray(users) ? users[0] : users;
+  return row?.full_name ?? null;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -105,122 +124,168 @@ export async function GET(request: NextRequest) {
       getRevenue(new Date(0).toISOString()), // All time
     ]);
 
-    // Top providers: fetch all providers (any status) so list is never empty when providers exist
-    const { data: activeProvidersData } = await supabase
-      .from('providers')
-      .select('id, business_name, owner_name, rating_average, status')
-      .eq('tenant_id', tenantId)
-      .limit(20);
+    // Top providers: rank ACROSS THE ENTIRE TENANT'S LEDGER, not a 20-row sample.
+    // Previously we fetched 20 providers by default list order, scored them, and sorted —
+    // which silently hid the real top earners. Correct flow: aggregate provider earnings
+    // over the full ledger, pick top N provider_ids, then fetch names for just those rows.
+    const providerRevenueAll: Record<string, number> = {};
+    try {
+      const mergedAll = await fetchFinanceLedgerExportRowsForTenant(
+        supabase,
+        tenantId,
+        {},
+        { transactionTypes: ["provider_earnings", "travel_fee", "tip"] },
+      );
+      for (const row of mergedAll) {
+        const id = resolveFinanceLedgerRowProviderId(row);
+        if (!id) continue;
+        providerRevenueAll[id] = (providerRevenueAll[id] || 0) + Number(row.net ?? row.amount ?? 0);
+      }
+    } catch (err) {
+      console.error("[gods-eye] full-tenant provider ledger aggregation failed", err);
+    }
 
-    const allProviderIds = (activeProvidersData || []).map((p: ProviderRow) => p.id);
+    const topProviderIdsByRevenue = Object.entries(providerRevenueAll)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id]) => id);
 
-    // Revenue from merged ledger (provider_earnings, travel_fee, tip), scoped to listed providers
-    const providerRevenue: Record<string, number> = {};
-    if (allProviderIds.length > 0) {
+    // If no ledger activity exists yet, fall back to 5 most-recent providers so the card
+    // still shows something useful for a new tenant.
+    let topProviderIds = topProviderIdsByRevenue;
+    if (topProviderIds.length === 0) {
+      const { data: recentForFallback } = await supabase
+        .from("providers")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      topProviderIds = ((recentForFallback as { id: string }[] | null) ?? []).map((r) => r.id);
+    }
+
+    const providerDetailsById: Record<string, ProviderRow> = {};
+    if (topProviderIds.length > 0) {
+      const { data: topProviderRows } = await supabase
+        .from("providers")
+        .select("id, business_name, rating_average, status, user_id, users:user_id(full_name)")
+        .eq("tenant_id", tenantId)
+        .in("id", topProviderIds);
+      for (const row of (topProviderRows || []) as unknown as ProviderRow[]) {
+        providerDetailsById[row.id] = row;
+      }
+    }
+
+    const topProviderBookingsCounts: Record<string, number> = {};
+    if (topProviderIds.length > 0) {
+      const { data: bookingRows } = await supabase
+        .from("bookings")
+        .select("provider_id")
+        .eq("tenant_id", tenantId)
+        .in("provider_id", topProviderIds);
+      for (const b of (bookingRows || []) as { provider_id?: string }[]) {
+        if (!b.provider_id) continue;
+        topProviderBookingsCounts[b.provider_id] =
+          (topProviderBookingsCounts[b.provider_id] || 0) + 1;
+      }
+    }
+
+    const topProviders = topProviderIds.map((id) => {
+      const provider = providerDetailsById[id];
+      return {
+        id,
+        name: provider?.business_name || pickOwnerName(provider?.users) || "Unknown",
+        bookings_count: topProviderBookingsCounts[id] || 0,
+        revenue: providerRevenueAll[id] ?? 0,
+        rating: Number(provider?.rating_average) || 0,
+      };
+    });
+
+    // Top customers: rank by actual spend across the full tenant ledger, not a 20-row user sample.
+    // 1. Aggregate payment/additional_charge ledger rows by booking -> customer.
+    // 2. Keep only customers that are in tenant scope (preferred home OR activity sample).
+    // 3. Pick top 5 by spend.
+    type BookingRef = { id: string; customer_id?: string };
+    const tenantCustomerScope = new Set<string>(scopedUserIds);
+    // Also include customers whose `preferred_home_tenant_id` is this tenant.
+    {
+      const { data: preferredHomeUsers } = await supabase
+        .from("users")
+        .select("id")
+        .eq("role", "customer")
+        .eq("preferred_home_tenant_id", tenantId);
+      for (const u of ((preferredHomeUsers as { id: string }[] | null) ?? [])) {
+        tenantCustomerScope.add(u.id);
+      }
+    }
+
+    // Walk all tenant bookings with customer_id to build booking -> customer map.
+    const bookingToCustomerAll: Record<string, string> = {};
+    const customerBookingsCountsAll: Record<string, number> = {};
+    {
+      const { data: allTenantBookings } = await supabase
+        .from("bookings")
+        .select("id, customer_id")
+        .eq("tenant_id", tenantId);
+      for (const b of (allTenantBookings || []) as BookingRef[]) {
+        if (!b.customer_id) continue;
+        if (tenantCustomerScope.size > 0 && !tenantCustomerScope.has(b.customer_id)) continue;
+        bookingToCustomerAll[b.id] = b.customer_id;
+        customerBookingsCountsAll[b.customer_id] =
+          (customerBookingsCountsAll[b.customer_id] || 0) + 1;
+      }
+    }
+
+    const customerSpentAll: Record<string, number> = {};
+    const allBookingIds = Object.keys(bookingToCustomerAll);
+    if (allBookingIds.length > 0) {
       try {
-        const merged = await fetchFinanceLedgerExportRowsForTenant(supabase, tenantId, {}, {
-          transactionTypes: ["provider_earnings", "travel_fee", "tip"],
-          restrictProviderIds: allProviderIds,
-        });
-        const idSet = new Set(allProviderIds);
-        for (const row of merged) {
-          const id = resolveFinanceLedgerRowProviderId(row);
-          if (!id || !idSet.has(id)) continue;
-          if (!providerRevenue[id]) providerRevenue[id] = 0;
-          providerRevenue[id] += Number(row.net ?? row.amount ?? 0);
+        const ledgerRows = await fetchFinanceLedgerRowsForTenant(
+          supabase,
+          tenantId,
+          {},
+          {
+            transactionTypes: ["payment", "additional_charge_payment"],
+            restrictBookingIds: allBookingIds,
+          },
+        );
+        for (const row of ledgerRows) {
+          const bid = row.booking_id;
+          if (!bid) continue;
+          const cid = bookingToCustomerAll[bid];
+          if (!cid) continue;
+          customerSpentAll[cid] = (customerSpentAll[cid] || 0) + Number(row.amount ?? 0);
         }
       } catch (err) {
-        console.error("Error loading gods-eye provider revenue ledger:", err);
+        console.error("[gods-eye] full-tenant customer spend ledger failed", err);
       }
     }
 
-    // Bookings count per provider
-    const bookingsCounts: Record<string, number> = {};
-    if (allProviderIds.length > 0) {
-      const { data: bookingRows } = await supabase
-        .from('bookings')
-        .select('provider_id')
-        .eq('tenant_id', tenantId)
-        .in('provider_id', allProviderIds);
-      (bookingRows || []).forEach((b: { provider_id?: string }) => {
-        bookingsCounts[b.provider_id] = (bookingsCounts[b.provider_id] || 0) + 1;
-      });
-    }
-
-    const topProviders = (activeProvidersData || [])
-      .map((provider: ProviderRow) => ({
-        id: provider.id,
-        name: provider.business_name || provider.owner_name || 'Unknown',
-        bookings_count: bookingsCounts[provider.id] || 0,
-        revenue: providerRevenue[provider.id] ?? 0,
-        rating: Number(provider.rating_average) || 0,
-      }))
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
-
-    // Top customers: same tenant scoping as admin users list (preferred home + activity sample).
-    let topCustomersQuery = supabase
-      .from("users")
-      .select("id, full_name, email")
-      .eq("role", "customer");
-    if (scopedUserIds.length > 0) {
-      topCustomersQuery = topCustomersQuery.in("id", scopedUserIds);
-    } else {
-      topCustomersQuery = topCustomersQuery.eq("preferred_home_tenant_id", tenantId);
-    }
-    const { data: topCustomersData } = await topCustomersQuery.limit(20);
+    const topCustomerIds = Object.entries(customerSpentAll)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id]) => id);
 
     type CustomerRow = { id: string; full_name?: string; email?: string };
-    const customerIds = (topCustomersData || []).map((c: CustomerRow) => c.id);
-    const customerBookingsCounts: Record<string, number> = {};
-    const customerSpent: Record<string, number> = {};
-
-    if (customerIds.length > 0) {
-      const { data: customerBookings } = await supabase
-        .from('bookings')
-        .select('id, customer_id')
-        .eq('tenant_id', tenantId)
-        .in('customer_id', customerIds);
-      type BookingRef = { id: string; customer_id?: string };
-      (customerBookings || []).forEach((b: BookingRef) => {
-        customerBookingsCounts[b.customer_id ?? ""] = (customerBookingsCounts[b.customer_id ?? ""] || 0) + 1;
-      });
-      const bookingIds = (customerBookings || []).map((b: BookingRef) => b.id);
-      const bookingToCustomer: Record<string, string> = {};
-      (customerBookings || []).forEach((b: BookingRef) => {
-        bookingToCustomer[b.id] = b.customer_id ?? "";
-      });
-      const customerIdSet = new Set(customerIds);
-      if (bookingIds.length > 0) {
-        try {
-          const ledgerRows = await fetchFinanceLedgerRowsForTenant(
-            supabase,
-            tenantId,
-            {},
-            {
-              transactionTypes: ["payment", "additional_charge_payment"],
-              restrictBookingIds: bookingIds,
-            },
-          );
-          for (const row of ledgerRows) {
-            const bid = row.booking_id;
-            if (!bid) continue;
-            const cid = bookingToCustomer[bid];
-            if (!cid || !customerIdSet.has(cid)) continue;
-            customerSpent[cid] = (customerSpent[cid] || 0) + Number(row.amount ?? 0);
-          }
-        } catch (err) {
-          console.error("Error loading gods-eye customer spend ledger:", err);
-        }
+    const customerDetailsById: Record<string, CustomerRow> = {};
+    if (topCustomerIds.length > 0) {
+      const { data: topCustomerRows } = await supabase
+        .from("users")
+        .select("id, full_name, email")
+        .in("id", topCustomerIds);
+      for (const r of ((topCustomerRows as CustomerRow[] | null) ?? [])) {
+        customerDetailsById[r.id] = r;
       }
     }
 
-    const topCustomers = (topCustomersData || []).map((customer: CustomerRow) => ({
-      id: customer.id,
-      name: customer.full_name || customer.email || 'Unknown',
-      bookings_count: customerBookingsCounts[customer.id] || 0,
-      total_spent: customerSpent[customer.id] || 0,
-    })).sort((a, b) => b.total_spent - a.total_spent).slice(0, 5);
+    const topCustomers = topCustomerIds.map((id) => {
+      const customer = customerDetailsById[id];
+      return {
+        id,
+        name: customer?.full_name || customer?.email || "Unknown",
+        bookings_count: customerBookingsCountsAll[id] || 0,
+        total_spent: customerSpentAll[id] || 0,
+      };
+    });
 
     // Get recent activity
     const recentActivity: Array<{
@@ -341,17 +406,17 @@ export async function GET(request: NextRequest) {
         this_month: revenueThisMonth,
         all_time: revenueAllTime,
       },
-      top_providers: topProviders
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 5),
-      top_customers: topCustomers
-        .sort((a, b) => b.total_spent - a.total_spent)
-        .slice(0, 5),
+      top_providers: topProviders,
+      top_customers: topCustomers,
+      // System health here is indicative only — the SPA ("Indicative checks — wire real
+      // probes in ops tooling") already labels it as such. `synthetic: true` lets any
+      // future consumer disambiguate synthetic values from real probe output.
       system_health: {
-        api_uptime: 99.9, // Mock value - in production, calculate from actual metrics
-        database_status: 'operational', // In production, check actual database connection
-        payment_gateway_status: 'operational', // In production, check Paystack API status
-        notification_service_status: 'operational', // In production, check OneSignal API status
+        synthetic: true,
+        api_uptime: 99.9,
+        database_status: "operational",
+        payment_gateway_status: "operational",
+        notification_service_status: "operational",
       },
     });
   } catch (error) {

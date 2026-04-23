@@ -3,13 +3,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { validatePortalToken } from "@/lib/portal/token";
-import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
-import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
-import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
-import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
-import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
-import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
-import { formatInTimeZone } from "date-fns-tz";
+import {
+  executeReschedule,
+  httpStatusForRescheduleError,
+} from "@/lib/bookings/reschedule-core";
 import { z } from "zod";
 
 const rescheduleSchema = z.object({
@@ -18,13 +15,22 @@ const rescheduleSchema = z.object({
 
 /**
  * POST /api/portal/booking/reschedule
- * 
- * Reschedule booking via portal token (passwordless access)
+ *
+ * Reschedule a booking via a portal token (passwordless access).
+ *
+ * §Cross-app audit 2026-04 (reschedule unification): previously this
+ * route re-implemented ~350 lines of the same flow the customer route
+ * used — with one important divergence that caused a real production
+ * incident: the portal version silently fell open on a missing conflict
+ * RPC (customer failed closed), letting portal users sometimes double-
+ * book past the last defence. It also differed on timezone handling in
+ * places. Both routes now share `executeReschedule` so those bugs can't
+ * come back.
  */
 export async function POST(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const token = searchParams.get('token');
+    const token = searchParams.get("token");
     const body = await request.json();
 
     if (!token) {
@@ -32,335 +38,76 @@ export async function POST(request: NextRequest) {
         new Error("Token required"),
         "Access token is required",
         "TOKEN_REQUIRED",
-        400
+        400,
       );
     }
 
-    // Validate input
     const validated = rescheduleSchema.parse(body);
     const newDatetime = new Date(validated.new_datetime);
 
     const supabase = await getSupabaseServer();
     const adminSupabase = getSupabaseAdmin();
 
-    // Validate token
     const validation = await validatePortalToken(supabase, token);
     if (!validation.isValid || !validation.bookingId) {
       return handleApiError(
         new Error(validation.reason || "Invalid token"),
         validation.reason || "Invalid or expired access token",
         "INVALID_TOKEN",
-        401
+        401,
       );
     }
 
-    // Load booking with services
-    const { data: booking, error: bookingError } = await supabase
-      .from('bookings')
-      .select(`
-        id,
-        provider_id,
-        location_type,
-        scheduled_at,
-        created_at,
+    // ── Core flow. Portal has no authenticated user, so `actorUserId` is
+    // null — the core inserts the booking_event without a `created_by`
+    // reference in that case.
+    const result = await executeReschedule({
+      supabase,
+      adminSupabase,
+      bookingId: validation.bookingId,
+      newDatetime,
+      actor: "portal",
+      actorUserId: null,
+    });
+
+    if (result.ok === false) {
+      const { status, code } = httpStatusForRescheduleError(result.error);
+      return handleApiError(
+        new Error(result.error.message),
+        result.error.message,
+        code,
         status,
-        booking_services (
-          id,
-          offering_id,
-          staff_id,
-          scheduled_start_at,
-          scheduled_end_at,
-          duration_minutes,
-          offerings!inner (
-            buffer_minutes,
-            duration_minutes
-          )
-        )
-      `)
-      .eq('id', validation.bookingId)
-      .single();
-
-    if (bookingError || !booking) {
-      return handleApiError(
-        new Error("Booking not found"),
-        "Booking not found",
-        "NOT_FOUND",
-        404
       );
     }
 
-    const nonReschedulableStatuses = ["completed", "cancelled", "no_show"];
-    if (nonReschedulableStatuses.includes(booking.status)) {
-      return handleApiError(
-        new Error("Cannot reschedule a booking that is " + booking.status),
-        `Cannot reschedule a ${booking.status} booking`,
-        "INVALID_STATUS",
-        400
-      );
-    }
-
-    // Check if booking can be rescheduled (same policy as cancellation)
-    const policy = await getCancellationPolicy(
-      supabase,
-      booking.provider_id,
-      booking.location_type as 'at_salon' | 'at_home'
-    );
-
-    if (policy) {
-      const checkResult = canCancelBooking(
-        {
-          id: booking.id,
-          created_at: booking.created_at,
-          scheduled_at: booking.scheduled_at,
-          location_type: booking.location_type as 'at_salon' | 'at_home',
-        },
-        policy
-      );
-
-      if (!checkResult.allowed) {
-        return handleApiError(
-          new Error(checkResult.reason || "Rescheduling not allowed"),
-          checkResult.reason || "Rescheduling not allowed",
-          "RESCHEDULE_BLOCKED",
-          403
-        );
-      }
-    }
-
-    // Check if new time slot is available
-    const bookingServices = booking.booking_services as any[];
-    if (bookingServices.length === 0) {
-      return handleApiError(
-        new Error("Booking has no services"),
-        "Booking has no services",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-
-    const allStaffIds = [...new Set(bookingServices.map((bs: { staff_id?: string }) => bs.staff_id).filter((sid): sid is string => !!sid))];
-    const staffId = allStaffIds[0];
-
-    if (!staffId) {
-      return handleApiError(
-        new Error("Booking has no assigned staff"),
-        "Booking has no assigned staff",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-
-    // Total blocked span = sum(durations) + sum(buffers) to match book flow
-    let totalDuration = 0;
-    bookingServices.forEach((bs: any) => {
-      const dur = bs.duration_minutes ?? bs.offerings?.duration_minutes ?? 60;
-      const buf = bs.offerings?.buffer_minutes ?? 15;
-      totalDuration += dur + buf;
-    });
-
-    // Resolve provider timezone so the new slot is validated in the provider's
-    // business clock, not Node's local time or UTC.
-    const { data: portalProviderRow } = await supabase
-      .from('providers')
-      .select('timezone')
-      .eq('id', booking.provider_id)
-      .maybeSingle();
-    // §Launch-audit 2026-04-18: normalise offset-style zones before
-    // feeding Intl/date-fns-tz. See migration 511.
-    const rawPortalTz =
-      (portalProviderRow as { timezone?: string | null } | null)?.timezone ?? null;
-    const portalProviderTz =
-      normalizeProviderTimezone(rawPortalTz) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
-    if (rawPortalTz && !normalizeProviderTimezone(rawPortalTz)) {
-      console.warn(
-        `[portal-reschedule] provider ${booking.provider_id} has unparseable timezone "${rawPortalTz}" — falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}`,
-      );
-    }
-
-    const newDate = formatInTimeZone(newDatetime, portalProviderTz, "yyyy-MM-dd");
-    const requestedTime = formatInTimeZone(newDatetime, portalProviderTz, "HH:mm");
-
-    const constraints = await loadAvailabilityConstraints(
-      supabase,
-      staffId,
-      newDate,
-      booking.provider_id,
-      {
-        excludeBookingId: validation.bookingId,
-        publicCalendarParity: {
-          providerId: booking.provider_id,
-          date: newDate,
-          locationId: undefined,
-          slotStaffId: staffId,
-          staffIdsForTimeOff: allStaffIds,
-        },
-      }
-    );
-
-    const slots = calculateAvailableSlots(
-      constraints,
-      totalDuration,
-      newDate,
-      {
-        slotInterval: 15,
-        travelBuffer: booking.location_type === 'at_home' ? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES : 0,
-        // Wave 1.3 (audit 2026-04 final 100/100): match the customer
-        // surface so portal users see the same slot truth in their tz.
-        timezone: portalProviderTz,
-      }
-    );
-
-    const isAvailable = slots.some((slot) => slot.time === requestedTime && slot.available);
-
-    if (!isAvailable) {
-      return handleApiError(
-        new Error("Selected time slot is not available"),
-        "Selected time slot is not available. Please choose another time.",
-        "SLOT_UNAVAILABLE",
-        409
-      );
-    }
-
-    // Wave 1.3 (audit 2026-04 final 100/100): DB-level lock against cross-
-    // booking contention on (staff, slot). Previously this surface caught
-    // the RPC error and continued, silently fail-OPEN — meaning a missing
-    // migration or transient DB error let portal users double-book past the
-    // last layer of defence. The customer surface fails closed; portal must
-    // too. See reschedule-core.ts for the canonical pattern.
-    type PortalConflictResult = { conflict: boolean };
-    let portalLockError: unknown = null;
-    let portalConflictCheck: PortalConflictResult | null = null;
+    // ── Portal post-flight: notify customer + provider of the new time.
     try {
-      const { data: conflictRow, error: conflictErr } = await (
-        adminSupabase.rpc as any
-      )("check_reschedule_slot_conflict", {
-        p_booking_id: validation.bookingId,
-        p_staff_id: staffId,
-        p_provider_id: booking.provider_id,
-        p_new_start: newDatetime.toISOString(),
-        p_total_minutes: totalDuration,
-      });
-      if (conflictErr) {
-        portalLockError = conflictErr;
-      } else {
-        portalConflictCheck = Array.isArray(conflictRow)
-          ? (conflictRow[0] as PortalConflictResult | null)
-          : ((conflictRow as PortalConflictResult | null) ?? null);
-      }
-    } catch (err) {
-      portalLockError = err;
-    }
-
-    if (portalLockError) {
+      const { sendRescheduleNotification } = await import(
+        "@/lib/bookings/notifications"
+      );
+      await sendRescheduleNotification(
+        validation.bookingId,
+        new Date(result.oldScheduledAt),
+        new Date(result.newScheduledAt),
+      );
+    } catch (notifyErr) {
       console.error(
-        "[portal reschedule] check_reschedule_slot_conflict unavailable — FAILING CLOSED to prevent double-book",
-        portalLockError,
-      );
-      return handleApiError(
-        new Error("Slot conflict check unavailable"),
-        "We could not confirm that slot is free right now. Please try again in a moment.",
-        "SLOT_CHECK_UNAVAILABLE",
-        503,
-      );
-    } else if (portalConflictCheck?.conflict) {
-      return handleApiError(
-        new Error("Slot locked by concurrent booking"),
-        "That time just became unavailable. Please pick another slot.",
-        "SLOT_CONTENDED",
-        409,
+        "[portal-reschedule] notification dispatch failed:",
+        notifyErr,
       );
     }
-
-    // Optimistic lock: read current version, then update with eq('version', ...) to
-    // prevent concurrent reschedules from overwriting each other.
-    const { data: currentRow } = await adminSupabase
-      .from('bookings')
-      .select('version')
-      .eq('id', validation.bookingId)
-      .single();
-    const currentVersion = (currentRow as any)?.version ?? 0;
-
-    const { data: updatedBooking, error: updateError } = await adminSupabase
-      .from('bookings')
-      .update({
-        scheduled_at: newDatetime.toISOString(),
-        version: currentVersion + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', validation.bookingId)
-      .eq('version', currentVersion)
-      .select()
-      .single();
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    if (!updatedBooking) {
-      return handleApiError(
-        new Error("Booking was modified concurrently"),
-        "This booking was updated by someone else. Please try again.",
-        "CONFLICT",
-        409
-      );
-    }
-
-    // Update all booking_services with new times
-    let cursor = newDatetime;
-    const updatePromises = bookingServices.map(async (bs: any) => {
-      const start = new Date(cursor);
-      const duration = bs.duration_minutes || bs.offerings?.duration_minutes || 60;
-      const end = new Date(start.getTime() + duration * 60000);
-      const buffer = bs.offerings?.buffer_minutes || 15;
-
-      const { error } = await adminSupabase
-        .from('booking_services')
-        .update({
-          scheduled_start_at: start.toISOString(),
-          scheduled_end_at: end.toISOString(),
-        })
-        .eq('id', bs.id);
-
-      if (error) {
-        throw error;
-      }
-
-      // Advance cursor by duration + buffer
-      cursor = new Date(end.getTime() + buffer * 60000);
-    });
-
-    await Promise.all(updatePromises);
-
-    // Create booking event
-    await adminSupabase.from('booking_events').insert({
-      booking_id: validation.bookingId,
-      event_type: 'rescheduled',
-      event_data: {
-        old_datetime: booking.scheduled_at,
-        new_datetime: newDatetime.toISOString(),
-        rescheduled_via: 'portal',
-      },
-    });
-
-    // Send reschedule notification
-    const { sendRescheduleNotification } = await import('@/lib/bookings/notifications');
-    await sendRescheduleNotification(
-      validation.bookingId,
-      new Date(booking.scheduled_at),
-      newDatetime
-    );
 
     return successResponse({
-      booking: updatedBooking,
+      booking: result.booking,
       message: "Booking rescheduled successfully",
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(
-        new Error(error.issues.map(e => e.message).join(", ")),
+        new Error(error.issues.map((e) => e.message).join(", ")),
         "Validation failed",
         "VALIDATION_ERROR",
-        400
+        400,
       );
     }
     return handleApiError(error, "Failed to reschedule booking");

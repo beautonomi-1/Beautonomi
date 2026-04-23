@@ -7,6 +7,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
+import { providerPortalFetch } from "@/lib/http/fetcher";
 
 function parseHash(hash: string): { token?: string; refresh_token?: string } {
   const params: Record<string, string> = {};
@@ -48,7 +49,7 @@ export default function SumsubEmbedPage() {
       }
       const refreshCb = (): Promise<string> => {
         if (!refresh_token) return Promise.resolve(token);
-        return fetch(
+        return providerPortalFetch(
           `${window.location.origin}/api/provider/verification/sumsub/refresh?refresh_token=${encodeURIComponent(refresh_token)}`
         )
           .then((r) => r.json())

@@ -20,9 +20,13 @@ import {
 } from "@/lib/sentry";
 
 const IDX = "customer_index";
-const PORTAL_CHECK_DELAY_MS = 400;
+// §Customer-perf 2026-04: these were 400ms / 300ms artificial delays before
+// hitting `/api/me/portal` and `/api/me/profile-completion`. That added
+// ~700ms to every cold start after auth resolved for no user-visible benefit
+// (the API client now resolves tokens locally without extra round-trips).
+const PORTAL_CHECK_DELAY_MS = 0;
 const PORTAL_TIMEOUT_MS = 12 * 1000;
-const PROFILE_COMPLETION_DELAY_MS = 300;
+const PROFILE_COMPLETION_DELAY_MS = 0;
 const PROFILE_COMPLETION_TIMEOUT_MS = 8000;
 const ONBOARDING_STATUS_WARN_MS = 25_000;
 

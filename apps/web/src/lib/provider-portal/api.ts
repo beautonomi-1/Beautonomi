@@ -14,6 +14,7 @@ import {
   isNotFoundHttpError,
   isTransientNetworkFetchError,
   PROVIDER_BOOTSTRAP_TIMEOUT_MS,
+  providerPortalFetch,
 } from "@/lib/http/fetcher";
 import { APPOINTMENT_STATUS, DEFAULT_APPOINTMENT_STATUS } from "./constants";
 import { transformBookingRowsToAppointments } from "./transform-bookings-to-calendar-appointments";
@@ -1404,20 +1405,26 @@ export class ProviderApiClient implements ProviderApi {
           customer_id: (data as any).customer_id || null,
           staff_id: data.team_member_id || null,
           sale_date: data.date || new Date().toISOString(),
-          items: (data.items || []).map(item => ({
+          items: (data.items || []).map((item) => ({
             type: item.type || 'product',
-            item_id: (item as any).item_id || null,
+            item_id: (item as any).item_id ?? null,
+            product_variant_id: (item as any).product_variant_id ?? null,
             name: item.name,
             quantity: item.quantity || 1,
             unit_price: item.unit_price || 0,
           })),
           subtotal: data.subtotal || 0,
-          tax_rate: (data as any).tax_rate || 0,
+          tax_rate: (data as any).tax_rate ?? 0,
           tax_amount: data.tax || 0,
-          discount_amount: (data as any).discount_amount || 0,
+          discount_amount: (data as any).discount_amount ?? 0,
+          tip_amount: (data as any).tip_amount ?? 0,
           total_amount: data.total || 0,
           payment_method: data.payment_method || 'cash',
           payment_status: (data as any).payment_status || 'completed',
+          payment_reference: (data as any).payment_reference ?? null,
+          service_location_type: (data as any).service_location_type ?? null,
+          house_call_address: (data as any).house_call_address ?? null,
+          is_walk_in: (data as any).is_walk_in ?? false,
           notes: (data as any).notes || null,
         }
       );
@@ -3794,7 +3801,7 @@ export class ProviderApiClient implements ProviderApi {
   }
 
   async getCalendarAuthUrl(provider: CalendarProvider): Promise<{ url: string }> {
-    const response = await fetch(`/api/provider/calendar/auth/${provider}`, {
+    const response = await providerPortalFetch(`/api/provider/calendar/auth/${provider}`, {
       credentials: "include",
     });
     if (!response.ok) {
@@ -4455,7 +4462,7 @@ export class ProviderApiClient implements ProviderApi {
   }
 
   async getPublicCalendarFeed(linkToken: string): Promise<any> {
-    const res = await fetch(`/api/provider/calendar/links/${encodeURIComponent(linkToken)}/feed`);
+    const res = await providerPortalFetch(`/api/provider/calendar/links/${encodeURIComponent(linkToken)}/feed`);
     if (!res.ok) throw new Error("Calendar feed not available");
     const content = await res.text();
     return { format: "ical", content };
@@ -4688,7 +4695,7 @@ export class ProviderApiClient implements ProviderApi {
         ? appointmentId.split("-svc-")[0]!
         : appointmentId;
 
-      const response = await fetch(`/api/provider/bookings/${bookingId}/receipt/pdf`, {
+      const response = await providerPortalFetch(`/api/provider/bookings/${bookingId}/receipt/pdf`, {
         credentials: "include",
       });
 

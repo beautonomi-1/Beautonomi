@@ -188,7 +188,7 @@ export const CpModuleAdsPage = lazy(() =>
   import("@/routes/control-plane/CpControlPlaneModules").then((m) => ({ default: m.CpModuleAdsPage }))
 );
 export const CpSafetyLogsPage = lazy(() =>
-  import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpSafetyLogsPage }))
+  import("@/routes/control-plane/CpSafetyLogsPage").then((m) => ({ default: m.CpSafetyLogsPage }))
 );
 export const CpAuditLogPage = lazy(() =>
   import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpAuditLogPage }))

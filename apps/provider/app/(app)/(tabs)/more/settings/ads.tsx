@@ -28,6 +28,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 type Campaign = {
   id: string;
@@ -44,6 +45,29 @@ type Campaign = {
   targeting?: { global_category_ids?: string[] };
   created_at: string;
 };
+
+/** POST /api/provider/ads/campaigns success body (wrapped or bare campaign). */
+type AdsCampaignCreateData = Campaign | {
+  campaign?: Campaign;
+  requires_payment?: boolean;
+  payment_url?: string | null;
+  order_id?: string;
+};
+
+function pickCampaignFromAdsCreate(data: AdsCampaignCreateData | undefined): Campaign | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  if ("campaign" in data && data.campaign) return data.campaign;
+  if ("id" in data && typeof (data as Campaign).id === "string") return data as Campaign;
+  return undefined;
+}
+
+function adsCreatePaymentUrl(data: AdsCampaignCreateData | undefined): string | null {
+  if (!data || typeof data !== "object" || !("requires_payment" in data) || !data.requires_payment) {
+    return null;
+  }
+  const url = "payment_url" in data ? data.payment_url : null;
+  return typeof url === "string" && url.trim() ? url : null;
+}
 
 type PerformanceSummary = {
   impressions: number;
@@ -68,6 +92,9 @@ type TimePack = {
 };
 
 type GlobalCategory = { id: string; name: string; slug: string };
+
+/** Tells Paystack to return to a page that notifies the RN WebView (see web `/provider/settings/ads/payment-return`). */
+const ADS_NATIVE_PAYMENT = { payment_redirect: "provider_inapp" as const };
 
 const STATUS_COLOR: Record<string, string> = {
   draft: "#6b7280",
@@ -136,7 +163,7 @@ export default function AdsSettingsScreen() {
         setTimePacks(Array.isArray(pd.time_packs) ? pd.time_packs : []);
         setAvailableModels(Array.isArray(pd.available_models) ? pd.available_models : []);
       } else {
-        setPacks(Array.isArray(pd) ? (pd as any) : []);
+        setPacks(Array.isArray(pd) ? (pd as ImpressionPack[]) : []);
       }
       setGlobalCategories(Array.isArray(catRes.data) ? catRes.data : []);
     } catch {
@@ -182,6 +209,7 @@ export default function AdsSettingsScreen() {
       const res = await api.post<Campaign | { campaign: Campaign; requires_payment?: boolean; payment_url?: string | null; order_id?: string }>(
         "/api/provider/ads/campaigns",
         {
+          ...ADS_NATIVE_PAYMENT,
           budget: budgetNum,
           daily_budget: createForm.daily_budget ? parseFloat(createForm.daily_budget.replace(/,/g, ".")) : null,
           bid_cpc: createForm.bid_cpc ? parseFloat(createForm.bid_cpc.replace(/,/g, ".")) : 0,
@@ -191,24 +219,25 @@ export default function AdsSettingsScreen() {
         }
       );
       if (res.error) {
-        Alert.alert("Error", (res.error as any)?.message ?? "Failed to create campaign");
+        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to create campaign"));
         return;
       }
-      const data = res.data as any;
-      const campaign = data?.campaign ?? data;
+      const data = res.data as AdsCampaignCreateData | undefined;
+      const campaign = pickCampaignFromAdsCreate(data);
       if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
       setCreateOpen(false);
       setCreateForm({ budget: "", daily_budget: "", bid_cpc: "", global_category_ids: [] });
-      if (data?.requires_payment && data?.payment_url) {
+      const payUrl = adsCreatePaymentUrl(data);
+      if (payUrl) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        pushInAppBrowser(router, data.payment_url, "Ad payment");
+        pushInAppBrowser(router, payUrl, "Ad payment");
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       loadAll();
       Alert.alert("Done", "Campaign created (draft). Activate it when ready.");
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to create campaign");
+    } catch (e: unknown) {
+      Alert.alert("Error", getApiErrorMessage(e, "Failed to create campaign"));
     } finally {
       setCreating(false);
     }
@@ -222,30 +251,38 @@ export default function AdsSettingsScreen() {
           Campaign | { campaign: Campaign; requires_payment?: boolean; payment_url?: string | null }
         >(
           "/api/provider/ads/campaigns",
-          { impression_pack_id: pack.id }
+          {
+            ...ADS_NATIVE_PAYMENT,
+            impression_pack_id: pack.id,
+            targeting:
+              createForm.global_category_ids.length > 0
+                ? { global_category_ids: createForm.global_category_ids }
+                : undefined,
+          }
         );
         if (res.error) {
-          Alert.alert("Error", (res.error as any)?.message ?? "Failed to create campaign");
+          Alert.alert("Error", getApiErrorMessage(res.error, "Failed to create campaign"));
           return;
         }
-        const data = res.data as any;
-        const campaign = data?.campaign ?? data;
+        const data = res.data as AdsCampaignCreateData | undefined;
+        const campaign = pickCampaignFromAdsCreate(data);
         if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
-        if (data?.requires_payment && data?.payment_url) {
+        const payUrl = adsCreatePaymentUrl(data);
+        if (payUrl) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          pushInAppBrowser(router, data.payment_url, "Ad payment");
+          pushInAppBrowser(router, payUrl, "Ad payment");
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         loadAll();
         Alert.alert("Done", "Campaign created.");
-      } catch (e: any) {
-        Alert.alert("Error", e?.message ?? "Failed to create campaign");
+      } catch (e: unknown) {
+        Alert.alert("Error", getApiErrorMessage(e, "Failed to create campaign"));
       } finally {
         setCreatingPackId(null);
       }
     },
-    [loadAll, router]
+    [loadAll, router, createForm.global_category_ids]
   );
 
   const handleUpdateCampaign = useCallback(async () => {
@@ -259,15 +296,15 @@ export default function AdsSettingsScreen() {
         targeting: { global_category_ids: editForm.global_category_ids },
       });
       if (res.error) {
-        Alert.alert("Error", (res.error as any)?.message ?? "Failed to update campaign");
+        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update campaign"));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditCampaign(null);
       loadAll();
       Alert.alert("Done", "Campaign updated.");
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to update campaign");
+    } catch (e: unknown) {
+      Alert.alert("Error", getApiErrorMessage(e, "Failed to update campaign"));
     } finally {
       setUpdating(null);
     }
@@ -279,13 +316,13 @@ export default function AdsSettingsScreen() {
       try {
         const res = await api.patch(`/api/provider/ads/campaigns/${campaignId}`, { status });
         if (res.error) {
-          Alert.alert("Error", (res.error as any)?.message ?? "Failed to update status");
+          Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update status"));
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         loadAll();
-      } catch (e: any) {
-        Alert.alert("Error", e?.message ?? "Failed to update status");
+      } catch (e: unknown) {
+        Alert.alert("Error", getApiErrorMessage(e, "Failed to update status"));
       } finally {
         setUpdating(null);
       }
@@ -311,7 +348,10 @@ export default function AdsSettingsScreen() {
           <View style={twStyle("rounded-2xl border border-gray-200 bg-amber-50 p-6")}>
             <Ionicons name="megaphone-outline" size={40} color="#b45309" />
             <Text style={twStyle("mt-3 text-base font-semibold text-gray-900")}>Ads not enabled</Text>
-            <Text style={twStyle("mt-1 text-sm text-gray-600")}>Paid ads are not enabled for your account. Contact support to get access.</Text>
+            <Text style={twStyle("mt-1 text-sm text-gray-600")}>
+              Sponsored listings are turned off for this marketplace, or packs have not been published yet. Your marketplace
+              team enables this in Admin → Control Plane → Ads (module on, impression or time packs active).
+            </Text>
           </View>
         </View>
       </ScreenContainer>
@@ -339,6 +379,15 @@ export default function AdsSettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[twStyle("px-4 pt-4"), { paddingHorizontal: screenPadding }]}>
+          <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/80 p-4")}>
+            <Text style={twStyle("text-sm font-semibold text-indigo-950")}>Buy advertising here</Text>
+            <Text style={twStyle("mt-1 text-xs leading-5 text-indigo-900/90")}>
+              Impression packs, time boosts, and CPC budgets are configured by your marketplace in{" "}
+              <Text style={twStyle("font-semibold")}>Admin → Control Plane → Ads</Text>. You purchase and manage
+              campaigns on this screen; customers see your listing as sponsored in the Beautonomi app and website when your
+              bid wins a slot.
+            </Text>
+          </View>
           {/* Performance */}
           {performance && (
             <View style={twStyle("mb-6")}>
@@ -384,12 +433,23 @@ export default function AdsSettingsScreen() {
                         const targeting = createForm.global_category_ids.length > 0
                           ? { global_category_ids: createForm.global_category_ids }
                           : {};
-                        const res = await api.post<{ payment_url?: string }>("/api/provider/ads/campaigns", {
+                        const res = await api.post<
+                          Campaign | { campaign?: Campaign; requires_payment?: boolean; payment_url?: string | null }
+                        >("/api/provider/ads/campaigns", {
+                          ...ADS_NATIVE_PAYMENT,
                           time_pack_id: tp.id,
                           targeting,
                         });
-                        if (res.data?.payment_url) {
-                          pushInAppBrowser(router, res.data.payment_url, "Ad payment");
+                        if (res.error) {
+                          Alert.alert("Error", getApiErrorMessage(res.error, "Failed to create campaign."));
+                          return;
+                        }
+                        const data = res.data as AdsCampaignCreateData | undefined;
+                        const campaign = pickCampaignFromAdsCreate(data);
+                        if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
+                        const payUrl = adsCreatePaymentUrl(data);
+                        if (payUrl) {
+                          pushInAppBrowser(router, payUrl, "Ad payment");
                           return;
                         }
                         Alert.alert("Success", "Campaign created.");

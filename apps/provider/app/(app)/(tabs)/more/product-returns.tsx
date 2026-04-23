@@ -58,6 +58,10 @@ export function ProductReturnsContent() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [rejectNoteModal, setRejectNoteModal] = useState(false);
   const [rejectNote, setRejectNote] = useState("");
+  // §Provider-audit 2026-04 (C3): web lets the provider pick the return
+  // method at approval time. Mobile previously hardcoded `drop_off`, which
+  // broke couriers that use pickup. Expose the same two-option chooser.
+  const [returnMethod, setReturnMethod] = useState<"drop_off" | "ship_back">("drop_off");
 
   const url = `/api/provider/returns?limit=50${statusFilter ? `&status=${statusFilter}` : ""}`;
   const { data, loading, error, refresh } = useApi<ReturnsListResponse>(url);
@@ -217,6 +221,39 @@ export function ProductReturnsContent() {
                   Refund amount: {formatCurrency(Number(detail.refund_amount))}
                 </Text>
               )}
+              {/* Return method chooser only surfaces when approval is a valid action */}
+              {getActions(detail.status).some((a) => a.action === "approve") && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={twStyle("mb-2 text-xs font-medium uppercase text-gray-500")}>Return method</Text>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {([
+                      { value: "drop_off", label: "Drop off" },
+                      { value: "ship_back", label: "Ship back" },
+                    ] as const).map((opt) => {
+                      const selected = returnMethod === opt.value;
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          onPress={() => setReturnMethod(opt.value)}
+                          style={twStyle(
+                            `flex-1 rounded-xl border py-2 ${selected ? "border-emerald-500 bg-emerald-50" : "border-gray-200 bg-white"}`,
+                          )}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                        >
+                          <Text
+                            style={twStyle(
+                              `text-center text-sm font-medium ${selected ? "text-emerald-700" : "text-gray-700"}`,
+                            )}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
               {getActions(detail.status).map(({ action, label }) => (
                 <TouchableOpacity
                   key={action}
@@ -225,7 +262,7 @@ export function ProductReturnsContent() {
                       setRejectNote("");
                       setRejectNoteModal(true);
                     } else if (action === "approve") {
-                      performAction("approve", { return_method: "drop_off", resolution: "full_refund" });
+                      performAction("approve", { return_method: returnMethod, resolution: "full_refund" });
                     } else {
                       performAction(action);
                     }

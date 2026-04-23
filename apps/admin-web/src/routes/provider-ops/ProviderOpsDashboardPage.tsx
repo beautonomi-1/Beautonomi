@@ -13,7 +13,14 @@ import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 
 interface DashboardData {
-  urgent: { stalled_signups: number; dropped_off: number; pending_approval: number };
+  urgent: {
+    stalled_signups: number;
+    dropped_off: number;
+    pending_approval: number;
+    /** §Release-audit 2026-04: duplicate-lead pressure (email/phone collisions + already-a-provider matches). */
+    duplicate_groups?: number;
+    duplicate_leads?: number;
+  };
   kpis: { signups_today: number; signups_this_week: number; leads_this_week: number; active_providers: number; total_leads: number };
   pipeline: Record<string, number>;
   recent_activities: { id: string; activity_type: string; description: string; created_at: string }[];
@@ -44,7 +51,13 @@ export function ProviderOpsDashboardPage() {
   const data = q.data;
   if (!data) return <AdminRetryBlock message="No data returned" onRetry={() => void q.refetch()} />;
 
-  const urgentTotal = data.urgent.stalled_signups + data.urgent.dropped_off + data.urgent.pending_approval;
+  const duplicateGroups = data.urgent.duplicate_groups ?? 0;
+  const duplicateLeads = data.urgent.duplicate_leads ?? 0;
+  const urgentTotal =
+    data.urgent.stalled_signups +
+    data.urgent.dropped_off +
+    data.urgent.pending_approval +
+    duplicateGroups;
 
   return (
     <div className="space-y-6">
@@ -60,10 +73,19 @@ export function ProviderOpsDashboardPage() {
       />
 
       {urgentTotal > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <UrgentCard label="Stalled Signups" count={data.urgent.stalled_signups} color="red" href="/admin/provider-ops/tracker?status=stalled" desc="No progress for 24+ hours" />
           <UrgentCard label="Dropped Off" count={data.urgent.dropped_off} color="red" href="/admin/provider-ops/tracker?status=dropped_off" desc="No progress for 7+ days" />
           <UrgentCard label="Pending Approval" count={data.urgent.pending_approval} color="amber" href="/admin/provider-ops/activation" desc="Ready for review" />
+          {duplicateGroups > 0 && (
+            <UrgentCard
+              label="Duplicate Leads"
+              count={duplicateGroups}
+              color="amber"
+              href="/admin/provider-ops/duplicates"
+              desc={`${duplicateLeads.toLocaleString()} removable lead${duplicateLeads === 1 ? "" : "s"} across ${duplicateGroups} group${duplicateGroups === 1 ? "" : "s"}`}
+            />
+          )}
         </div>
       )}
 

@@ -24,6 +24,10 @@ const updateSchema = z.object({
     .optional(),
   tracking_number: z.string().max(100).optional(),
   carrier: z.string().max(100).optional(),
+  // §Customer-audit 2026-04 (follow-up): accept an optional tracking URL so
+  // customer surfaces can render it as a tappable link. Accept empty string
+  // as "clear" to make wiping a previously-saved URL a no-special-case op.
+  tracking_url: z.string().url().max(500).optional().or(z.literal("")),
   estimated_delivery_date: z.string().optional(),
   cancellation_reason: z.string().max(500).optional(),
 });
@@ -148,6 +152,10 @@ export async function PATCH(
     }
     if (parsed.tracking_number) updatePayload.tracking_number = parsed.tracking_number;
     if (parsed.carrier) updatePayload.carrier = parsed.carrier;
+    if (parsed.tracking_url !== undefined) {
+      // Empty string = explicit clear; otherwise store the validated URL.
+      updatePayload.tracking_url = parsed.tracking_url === "" ? null : parsed.tracking_url;
+    }
     if (parsed.estimated_delivery_date)
       updatePayload.estimated_delivery_date = parsed.estimated_delivery_date;
 

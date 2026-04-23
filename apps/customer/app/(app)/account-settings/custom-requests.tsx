@@ -18,6 +18,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import * as Haptics from "expo-haptics";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 // ---------------------------------------------------------------------------
 // Types (aligned with API: custom_requests with offers[])
@@ -520,6 +521,7 @@ export default function CustomRequestsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
       <FlatList
+        {...verticalFlatListPerf}
         data={data}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (

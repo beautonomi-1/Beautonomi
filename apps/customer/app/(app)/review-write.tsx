@@ -20,6 +20,7 @@ import { useImagePicker } from "@/hooks/useImagePicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
+import { appendFormDataFileNative } from "@beautonomi/utils";
 
 export default function ReviewWriteScreen() {
   useScreenTracking("Review Write");
@@ -205,17 +206,17 @@ export default function ReviewWriteScreen() {
         return;
       }
       const formData = new FormData();
-      formData.append("files", {
+      appendFormDataFileNative(formData, "files", {
         uri: result.uri,
         name: result.fileName || "image.jpg",
         type: "image/jpeg",
-      } as any);
-      const res = await api.post<any>("/api/me/custom-requests/upload", formData as any);
+      });
+      const res = await api.post<{ urls?: string[] }>("/api/me/custom-requests/upload", formData);
       if (res.error) {
         Alert.alert("Error", "Failed to upload photo");
         return;
       }
-      const urls = (res.data as any)?.urls ?? [];
+      const urls = res.data?.urls ?? [];
       if (urls.length > 0) {
         setPhotos((p) => [...p, ...urls].slice(0, 4));
       }

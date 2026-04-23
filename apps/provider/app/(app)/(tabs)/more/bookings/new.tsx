@@ -39,7 +39,7 @@ import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { calculateBookingTotals } from "@beautonomi/utils";
+import { calculateBookingTotals, safeNum } from "@beautonomi/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -97,6 +97,12 @@ interface SelectedService {
   staffId?: string;
   addOnIds: string[];
   customization?: string;
+  /**
+   * §Provider-audit 2026-04 (packages round 2): track which package a line
+   * came from so the "Remove package" action can cleanly undo everything the
+   * package added without wiping manual selections.
+   */
+  fromPackageId?: string;
 }
 
 interface Product {
@@ -114,6 +120,8 @@ interface SelectedProduct {
   productVariantName?: string;
   quantity: number;
   unitPrice: number;
+  /** See `SelectedService.fromPackageId`. */
+  fromPackageId?: string;
 }
 
 interface PackageItem {
@@ -190,20 +198,18 @@ function buildScheduledAtWithTz(
   return buildZonedIsoForWallClock(format(date, "yyyy-MM-dd"), timeStr, zone ?? null);
 }
 
+/** Non-throwing read of server `_warnings` on create-booking success payloads. */
+function readCreateBookingWarnings(data: unknown): string[] | undefined {
+  if (data == null || typeof data !== "object") return undefined;
+  const raw = (data as { _warnings?: unknown })._warnings;
+  if (!Array.isArray(raw)) return undefined;
+  const strings = raw.filter((x): x is string => typeof x === "string");
+  return strings.length ? strings : undefined;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
-
-const TIME_SLOTS = (() => {
-  const slots: string[] = [];
-  for (let h = 6; h <= 21; h++) {
-    for (let m = 0; m < 60; m += 15) {
-      slots.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-    }
-  }
-  slots.push("22:00");
-  return slots;
-})();
 
 const DATE_RANGE_DAYS = 90;
 const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -234,12 +240,29 @@ interface PaymentSettings {
   taxInclusive?: boolean;
 }
 
+/** Matches `/api/provider/bookings/available-slots` (shared web availability engine). */
+interface AvailableSlotsApiRow {
+  time: string;
+  available: boolean;
+  reason?: string;
+}
+
+interface AvailableSlotsApiResponse {
+  slots: string[];
+  date: string;
+  slot_grid?: AvailableSlotsApiRow[];
+  provider_timezone?: string | null;
+}
+
+/** Default mobile travel buffer minutes — keep aligned with `HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES` in apps/web. */
+const DEFAULT_MOBILE_TRAVEL_BUFFER_MINUTES = 30;
+
 export default function NewBookingScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ date?: string; time?: string; status?: string; defaultStatus?: string; clientId?: string; client_id?: string; walk_in?: string; staff_id?: string; location_id?: string }>();
   const { isTablet } = useResponsive();
   const { selectedLocationId: providerLocationId, provider: providerProfile } = useProvider();
-  const providerTimezone = providerProfile?.timezone ?? null;
+  const profileTimezone = providerProfile?.timezone ?? null;
   // §Provider-launch (audit 2026-04): honour an explicit `location_id` query
   // param (carried from the calendar's location filter) over the provider
   // context's remembered location so the new-booking fetches scope to the
@@ -546,42 +569,81 @@ export default function NewBookingScreen() {
     setPendingDraft(null);
   }, []);
 
+  // §Provider-audit 2026-04 (B3): wrap every numeric summand in a
+  // finite-only coercion so a single malformed price/duration coming
+  // from the API (e.g. null, "—", NaN) can't poison `subtotal` or
+  // `total` and render "R NaN" in the UI or send NaN to the server.
+  //
+  // §Cross-app audit 2026-04: `safeNum` is now imported from
+  // `@beautonomi/utils` so the customer app and the web API share the
+  // same coercion instead of re-implementing it.
+
   // Summary (must be before slotParams which uses summary.totalMinutes)
   const summary = useMemo(() => {
     let subtotal = 0;
+    let servicesSubtotal = 0;
     let totalMinutes = 0;
     const items: { name: string; price: number; duration: number; staffName?: string; quantity?: number }[] = [];
     selectedServices.forEach((sel) => {
       const svc = services?.find((s) => s.id === sel.serviceId);
       if (!svc) return;
-      subtotal += svc.price;
-      totalMinutes += svc.duration_minutes;
+      const svcPrice = safeNum(svc.price);
+      const svcMinutes = safeNum(svc.duration_minutes);
+      subtotal += svcPrice;
+      servicesSubtotal += svcPrice;
+      totalMinutes += svcMinutes;
       const staffName = staffList?.find((s) => s.id === sel.staffId)?.name;
-      items.push({ name: svc.title, price: svc.price, duration: svc.duration_minutes, staffName });
+      items.push({ name: svc.title, price: svcPrice, duration: svcMinutes, staffName });
       sel.addOnIds.forEach((aoId) => {
         const ao = svc.add_ons?.find((a) => a.id === aoId);
         if (!ao) return;
-        subtotal += ao.price;
-        totalMinutes += ao.duration_minutes;
-        items.push({ name: `  + ${ao.name}`, price: ao.price, duration: ao.duration_minutes });
+        const aoPrice = safeNum(ao.price);
+        const aoMinutes = safeNum(ao.duration_minutes);
+        subtotal += aoPrice;
+        servicesSubtotal += aoPrice;
+        totalMinutes += aoMinutes;
+        items.push({ name: `  + ${ao.name}`, price: aoPrice, duration: aoMinutes });
       });
     });
     selectedProducts.forEach((p) => {
-      const lineTotal = p.unitPrice * p.quantity;
+      const unit = safeNum(p.unitPrice);
+      const qty = Math.max(1, Math.floor(safeNum(p.quantity)) || 1);
+      const lineTotal = unit * qty;
       subtotal += lineTotal;
-      items.push({ name: p.productVariantName ? `${p.productName} · ${p.productVariantName}` : p.productName, price: lineTotal, duration: 0, quantity: p.quantity });
+      items.push({
+        name: p.productVariantName ? `${p.productName} · ${p.productVariantName}` : p.productName,
+        price: lineTotal,
+        duration: 0,
+        quantity: qty,
+      });
     });
+    const discountNumeric = safeNum(discountValue);
     const manualDiscount = discountValue
       ? discountType === "percentage"
-        ? (subtotal * (parseFloat(discountValue) || 0)) / 100
-        : (parseFloat(discountValue) || 0)
+        ? (subtotal * discountNumeric) / 100
+        : discountNumeric
       : 0;
-    const discountAmt = promoApplied ? promoApplied.discount : manualDiscount;
-    const taxRatePercent = paymentSettings?.taxRatePercent ?? 0;
+    const promoDiscount = promoApplied ? safeNum(promoApplied.discount) : 0;
+
+    // §Provider-audit 2026-04 (packages round 2): mirror the server math in
+    // POST /api/provider/bookings — `packageDiscount = max(0, servicesSubtotal - pkg.price)` —
+    // so the summary on screen matches what gets saved. Previously the
+    // provider saw the pre-discount total, then the server silently applied
+    // the bundle discount, which made the UI look broken.
+    const activePackage = selectedPackageId
+      ? packagesList.find((p) => p.id === selectedPackageId)
+      : null;
+    const packageDiscount = activePackage && activePackage.price != null
+      ? Math.max(0, servicesSubtotal - safeNum(activePackage.price))
+      : 0;
+
+    const discountAmt = Math.max(manualDiscount, promoDiscount, packageDiscount);
+
+    const taxRatePercent = safeNum(paymentSettings?.taxRatePercent);
     const taxRate = taxRatePercent / 100;
     const taxInclusive = paymentSettings?.taxInclusive ?? true;
-    const travelFeeNum = Number(travelFee) || 0;
-    const tipNum = Number(tipAmount) || 0;
+    const travelFeeNum = safeNum(travelFee);
+    const tipNum = safeNum(tipAmount);
     const pricing = calculateBookingTotals({
       subtotal,
       discountAmount: discountAmt,
@@ -591,8 +653,22 @@ export default function NewBookingScreen() {
       serviceFeePercentage: 0,
       tipAmount: tipNum,
     });
-    return { items, subtotal, discountAmt, afterDiscount: pricing.afterDiscount, tax: pricing.taxAmount, total: pricing.totalAmount, totalMinutes, taxRate, taxRatePercent, taxInclusive, travelFeeNum, tipNum };
-  }, [selectedServices, selectedProducts, services, staffList, discountValue, discountType, paymentSettings, travelFee, tipAmount, promoApplied]);
+    return {
+      items,
+      subtotal,
+      discountAmt,
+      packageDiscount,
+      afterDiscount: safeNum(pricing.afterDiscount),
+      tax: safeNum(pricing.taxAmount),
+      total: safeNum(pricing.totalAmount),
+      totalMinutes,
+      taxRate,
+      taxRatePercent,
+      taxInclusive,
+      travelFeeNum,
+      tipNum,
+    };
+  }, [selectedServices, selectedProducts, services, staffList, discountValue, discountType, paymentSettings, travelFee, tipAmount, promoApplied, selectedPackageId, packagesList]);
 
   // Auto-clear promo code when cart items change so stale discount doesn't apply
   useEffect(() => {
@@ -609,16 +685,56 @@ export default function NewBookingScreen() {
     const d = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
     const dur = summary.totalMinutes || 60;
     const staffIds = selectedServices.map((s) => s.staffId).filter((id): id is string => !!id);
-    return { date: d, duration_minutes: dur, staff_ids: staffIds.join(","), location_id: selectedLocationId ?? "" };
-  }, [selectedDate, summary.totalMinutes, selectedServices, selectedLocationId]);
-  const { data: availableSlotsData } = useApi<{ slots: string[]; date: string }>(
-    `/api/provider/bookings/available-slots?date=${slotParams.date}&duration_minutes=${slotParams.duration_minutes}${slotParams.staff_ids ? `&staff_ids=${encodeURIComponent(slotParams.staff_ids)}` : ""}${slotParams.location_id ? `&location_id=${encodeURIComponent(slotParams.location_id)}` : ""}`,
-    { enabled: !!slotParams.date }
+    const serviceIds = [...new Set(selectedServices.map((s) => s.serviceId).filter(Boolean))];
+    const mode = locationType === "at_home" ? "mobile" : "salon";
+    const travelBuffer = locationType === "at_home" ? DEFAULT_MOBILE_TRAVEL_BUFFER_MINUTES : 0;
+    return {
+      date: d,
+      duration_minutes: dur,
+      staff_ids: staffIds.join(","),
+      location_id: selectedLocationId ?? "",
+      service_ids: serviceIds.join(","),
+      mode,
+      travel_buffer: travelBuffer,
+    };
+  }, [selectedDate, summary.totalMinutes, selectedServices, selectedLocationId, locationType]);
+
+  const availableSlotsUrl = useMemo(() => {
+    const p = slotParams;
+    if (!p.date) return "";
+    let q = `/api/provider/bookings/available-slots?date=${encodeURIComponent(p.date)}&duration_minutes=${encodeURIComponent(String(p.duration_minutes))}`;
+    if (p.staff_ids) q += `&staff_ids=${encodeURIComponent(p.staff_ids)}`;
+    if (p.location_id) q += `&location_id=${encodeURIComponent(p.location_id)}`;
+    if (p.service_ids) q += `&service_ids=${encodeURIComponent(p.service_ids)}`;
+    q += `&mode=${encodeURIComponent(p.mode)}&travel_buffer=${encodeURIComponent(String(p.travel_buffer))}`;
+    return q;
+  }, [slotParams]);
+
+  const { data: availableSlotsData, loading: availableSlotsLoading } = useApi<AvailableSlotsApiResponse>(
+    availableSlotsUrl,
+    { enabled: !!slotParams.date && availableSlotsUrl.length > 0 }
   );
-  const timeSlotsToShow = useMemo(
-    () => (availableSlotsData?.slots?.length ? availableSlotsData.slots : TIME_SLOTS),
-    [availableSlotsData?.slots]
-  );
+
+  const schedulingTimezone =
+    (typeof availableSlotsData?.provider_timezone === "string" && availableSlotsData.provider_timezone.trim().length > 0
+      ? availableSlotsData.provider_timezone.trim()
+      : null) || profileTimezone;
+
+  const timePickerRows = useMemo((): AvailableSlotsApiRow[] => {
+    const grid = availableSlotsData?.slot_grid;
+    if (grid && grid.length > 0) return grid;
+    const legacy = availableSlotsData?.slots;
+    if (legacy && legacy.length > 0) {
+      return legacy.map((time) => ({ time, available: true }));
+    }
+    return [];
+  }, [availableSlotsData]);
+
+  const apiAvailableTimes = useMemo(() => {
+    const fromGrid = availableSlotsData?.slot_grid?.filter((s) => s.available).map((s) => s.time);
+    if (fromGrid && fromGrid.length > 0) return fromGrid;
+    return availableSlotsData?.slots ?? [];
+  }, [availableSlotsData]);
 
   // §Provider-launch (audit 2026-04): when the user entered this screen
   // from a specific staff column or a filtered location on the calendar,
@@ -635,18 +751,17 @@ export default function NewBookingScreen() {
 
   // When the engine returns concrete slots, keep the selected time inside that set
   // so check-availability and create payloads match blocks/staff hours.
-  const apiSlots = availableSlotsData?.slots;
   useEffect(() => {
-    if (!apiSlots?.length) return;
+    if (!apiAvailableTimes.length) return;
     setSelectedTime((cur) => {
-      if (cur && apiSlots.includes(cur)) return cur;
+      if (cur && apiAvailableTimes.includes(cur)) return cur;
       if (cur) {
-        const idx = apiSlots.findIndex((s) => s >= cur);
-        return idx >= 0 ? apiSlots[idx]! : apiSlots[0]!;
+        const idx = apiAvailableTimes.findIndex((s) => s >= cur);
+        return idx >= 0 ? apiAvailableTimes[idx]! : apiAvailableTimes[0]!;
       }
-      return apiSlots[0] ?? "";
+      return apiAvailableTimes[0] ?? "";
     });
-  }, [apiSlots, selectedDate]);
+  }, [apiAvailableTimes, selectedDate]);
 
   // Solo team member: every service line should carry staff_id for slot filtering + create payload.
   useEffect(() => {
@@ -703,37 +818,73 @@ export default function NewBookingScreen() {
       Alert.alert("Error", "This package has no items");
       return;
     }
+    // §Provider-audit 2026-04 (packages round 2): if another package was
+    // already attached, swap it rather than stacking two packages onto one
+    // booking. Server only stores a single `package_id`, and the discount
+    // math only applies to one package.
+    let nextServices = selectedPackageId
+      ? selectedServices.filter((s) => s.fromPackageId !== selectedPackageId)
+      : [...selectedServices];
+    let nextProducts = selectedPackageId
+      ? selectedProducts.filter((p) => p.fromPackageId !== selectedPackageId)
+      : [...selectedProducts];
+    const skippedServiceNames: string[] = [];
+
     pkg.items.forEach((item) => {
       if (item.offering_id && item.offering) {
         const offering = item.offering;
         const catalogueService = services?.find((s) => s.id === item.offering_id);
         if (catalogueService) {
-          setSelectedServices((prev) => [
-            ...prev,
-            {
+          // Respect the package's quantity for services too — some packages
+          // bundle "3 blowouts" as one offering with quantity 3.
+          const qty = Math.max(1, Math.floor(item.quantity || 1));
+          for (let i = 0; i < qty; i++) {
+            nextServices.push({
               serviceId: catalogueService.id,
               addOnIds: [],
               ...(defaultStaffForNewLines ? { staffId: defaultStaffForNewLines } : {}),
-            },
-          ]);
+              fromPackageId: pkg.id,
+            });
+          }
         } else if (offering.id) {
-          Alert.alert("Notice", `Service "${offering.title || offering.name || "Unknown"}" from this package is not in your active catalogue. It was skipped.`);
+          skippedServiceNames.push(offering.title || offering.name || "Unknown service");
         }
       } else if (item.product_id && item.product) {
         const prod = item.product;
         const catalogueProduct = productsList.find((p) => p.id === item.product_id);
         const unitPrice = catalogueProduct?.price ?? prod.retail_price ?? 0;
-        setSelectedProducts((prev) => [...prev, {
+        nextProducts.push({
           productId: item.product_id!,
           productName: catalogueProduct?.name ?? prod.name ?? "Product",
           quantity: item.quantity || 1,
           unitPrice,
-        }]);
+          fromPackageId: pkg.id,
+        });
       }
     });
+    setSelectedServices(nextServices);
+    setSelectedProducts(nextProducts);
     setSelectedPackageId(pkg.id);
     setShowPackagePicker(false);
+    if (skippedServiceNames.length > 0) {
+      Alert.alert(
+        "Some services were skipped",
+        `The following services are not in your active catalogue and were skipped:\n\n• ${skippedServiceNames.join("\n• ")}`,
+      );
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  // §Provider-audit 2026-04 (packages round 2): removing a package should
+  // undo the lines it added, otherwise the provider is left with a cart that
+  // no longer matches the package discount and confusing Summary rows.
+  function handleRemovePackage() {
+    if (!selectedPackageId) return;
+    const pkgId = selectedPackageId;
+    setSelectedServices((prev) => prev.filter((s) => s.fromPackageId !== pkgId));
+    setSelectedProducts((prev) => prev.filter((p) => p.fromPackageId !== pkgId));
+    setSelectedPackageId(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }
 
   async function applyPromoCode() {
@@ -827,7 +978,7 @@ export default function NewBookingScreen() {
     setConflictWarning(null);
 
     try {
-      const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime, providerTimezone);
+      const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime, schedulingTimezone);
       const staffIds = selectedServices
         .map((s) => s.staffId)
         .filter((id): id is string => !!id);
@@ -845,6 +996,11 @@ export default function NewBookingScreen() {
         new Set(selectedServices.map((s) => s.serviceId).filter(Boolean)),
       );
       if (offeringIds.length > 0) params.set("offering_ids", offeringIds.join(","));
+      params.set("mode", locationType === "at_home" ? "mobile" : "salon");
+      params.set(
+        "travel_buffer",
+        locationType === "at_home" ? String(DEFAULT_MOBILE_TRAVEL_BUFFER_MINUTES) : "0",
+      );
 
       const res = await api.get<{ available?: boolean; conflicts?: string[] }>(
         `/api/provider/bookings/check-availability?${params}`,
@@ -910,7 +1066,7 @@ export default function NewBookingScreen() {
             customer_email: newClientEmail.trim() || undefined,
           };
 
-    const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime, providerTimezone);
+    const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime, schedulingTimezone);
 
     const payload: Record<string, unknown> = {
       ...clientPayload,
@@ -932,14 +1088,18 @@ export default function NewBookingScreen() {
           ...(s.customization ? { customization: s.customization } : {}),
         };
       }),
-      products: selectedProducts.map((p) => ({
-        productId: p.productId,
-        productName: p.productName,
-        quantity: p.quantity,
-        unitPrice: p.unitPrice,
-        totalPrice: p.unitPrice * p.quantity,
-        productVariantId: p.productVariantId || null,
-      })),
+      products: selectedProducts.map((p) => {
+        const unit = safeNum(p.unitPrice);
+        const qty = Math.max(1, Math.floor(safeNum(p.quantity)) || 1);
+        return {
+          productId: p.productId,
+          productName: p.productName,
+          quantity: qty,
+          unitPrice: unit,
+          totalPrice: unit * qty,
+          productVariantId: p.productVariantId || null,
+        };
+      }),
       location_type: locationType,
       location_id: locationType === "at_salon" ? selectedLocationId : undefined,
       special_requests: notes.trim() || undefined,
@@ -991,7 +1151,12 @@ export default function NewBookingScreen() {
       // than scanning the translated message. Slot-conflict / calendar-block
       // paths kick the provider back into the time picker to re-verify
       // availability (common when two devices try to claim the same slot).
-      if (errorCode === "CONFLICT" || errorCode === "CALENDAR_BLOCK" || errorCode === "RESOURCE_CONFLICT") {
+      if (
+        errorCode === "CONFLICT" ||
+        errorCode === "CALENDAR_BLOCK" ||
+        errorCode === "RESOURCE_CONFLICT" ||
+        errorCode === "SLOT_NOT_AVAILABLE"
+      ) {
         setConflictWarning(error);
         Alert.alert("Slot unavailable", error, [
           {
@@ -1017,7 +1182,7 @@ export default function NewBookingScreen() {
             {
               text: "View subscription",
               onPress: () =>
-                router.push("/(app)/(tabs)/more/settings/subscription" as any),
+                router.push("/(app)/(tabs)/more/settings/subscription" as never),
             },
           ]
         );
@@ -1027,7 +1192,7 @@ export default function NewBookingScreen() {
       return;
     }
     AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
-    const warnings = (responseData as any)?._warnings as string[] | undefined;
+    const warnings = readCreateBookingWarnings(responseData);
     const newBookingId =
       responseData && typeof responseData === "object" && responseData !== null && "id" in responseData
         ? String((responseData as { id: unknown }).id)
@@ -1042,7 +1207,7 @@ export default function NewBookingScreen() {
       paymentMethod === "card" && cardChargeTotal > 0 && newBookingId.length > 0;
 
     const navigateYoco = () => {
-      router.replace(`/(app)/(tabs)/more/bookings/${newBookingId}?collectYoco=1` as any);
+      router.replace(`/(app)/(tabs)/more/bookings/${newBookingId}?collectYoco=1` as never);
     };
 
     if (goYoco) {
@@ -1449,7 +1614,7 @@ export default function NewBookingScreen() {
                     accessibilityLabel={loc.label}
                   >
                     <Ionicons
-                      name={loc.icon as any}
+                      name={loc.icon as keyof typeof Ionicons.glyphMap}
                       size={16}
                       color={isActive ? "#fff" : "#6b7280"}
                     />
@@ -1769,8 +1934,8 @@ export default function NewBookingScreen() {
                         {packagesList.find((p) => p.id === selectedPackageId)?.name ?? "Package"}
                       </Text>
                       <TouchableOpacity
-                        onPress={() => setSelectedPackageId(null)}
-                        accessibilityLabel="Remove package"
+                        onPress={handleRemovePackage}
+                        accessibilityLabel="Remove package and undo its items"
                       >
                         <Ionicons name="close-circle" size={18} color="#ef4444" />
                       </TouchableOpacity>
@@ -2148,7 +2313,11 @@ export default function NewBookingScreen() {
             </View>
             {summary.discountAmt > 0 && (
               <View style={twStyle("flex-row justify-between")}>
-                <Text style={twStyle("text-sm text-green-600")}>Discount</Text>
+                <Text style={twStyle("text-sm text-green-600")}>
+                  {selectedPackageId && summary.packageDiscount > 0 && summary.discountAmt === summary.packageDiscount
+                    ? "Package saving"
+                    : "Discount"}
+                </Text>
                 <Text style={twStyle("text-sm text-green-600")}>{formatCurrency(-summary.discountAmt, tenantCurrency)}</Text>
               </View>
             )}
@@ -2206,34 +2375,72 @@ export default function NewBookingScreen() {
           title="Select Time"
           snapHeight="half"
         >
-          <View style={twStyle("flex-row flex-wrap")}>
-            {timeSlotsToShow.map((slot) => {
-              const isActive = selectedTime === slot;
-              return (
-                <TouchableOpacity
-                  key={slot}
-                  style={[twStyle(`rounded-lg px-3 py-2 ${
-                    isActive ? "bg-gray-900" : "border border-gray-200 bg-white"
-                  }`), { marginRight: 8, marginBottom: 8 }]}
-                  onPress={() => {
-                    setSelectedTime(slot);
-                    setShowTimePicker(false);
-                  }}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: isActive }}
-                  accessibilityLabel={`Time ${slot}`}
-                >
-                  <Text
-                    style={twStyle(`text-sm font-medium ${
-                      isActive ? "text-white" : "text-gray-700"
-                    }`)}
-                  >
-                    {slot}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          {availableSlotsLoading && timePickerRows.length === 0 ? (
+            <Text style={twStyle("py-4 text-center text-sm text-gray-500")}>Loading times…</Text>
+          ) : null}
+          {!availableSlotsLoading && timePickerRows.length === 0 ? (
+            <Text style={twStyle("py-4 text-center text-sm text-gray-500")}>No times for this date</Text>
+          ) : null}
+          {timePickerRows.length > 0 ? (
+            <>
+              <View style={twStyle("mb-3 flex-row flex-wrap items-center")}>
+                <View style={twStyle("mr-4 flex-row items-center")}>
+                  <View style={twStyle("mr-1.5 h-2 w-2 rounded-full bg-emerald-400")} />
+                  <Text style={twStyle("text-xs text-gray-600")}>Open</Text>
+                </View>
+                <View style={twStyle("flex-row items-center")}>
+                  <View style={twStyle("mr-1.5 h-2 w-2 rounded-full bg-red-300")} />
+                  <Text style={twStyle("text-xs text-gray-600")}>Unavailable</Text>
+                </View>
+              </View>
+              <ScrollView style={{ maxHeight: 360 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                <View style={twStyle("flex-row flex-wrap")}>
+                  {timePickerRows.map((row) => {
+                    const isActive = selectedTime === row.time;
+                    const unavailable = !row.available;
+                    const baseChip = unavailable
+                      ? "border border-red-200 bg-red-50"
+                      : isActive
+                        ? "bg-gray-900"
+                        : "border border-gray-200 bg-white";
+                    return (
+                      <TouchableOpacity
+                        key={row.time}
+                        disabled={unavailable}
+                        style={[twStyle(`rounded-lg px-3 py-2 ${baseChip}`), { marginRight: 8, marginBottom: 8 }]}
+                        onPress={() => {
+                          if (unavailable) return;
+                          setSelectedTime(row.time);
+                          setShowTimePicker(false);
+                        }}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: isActive, disabled: unavailable }}
+                        accessibilityLabel={
+                          unavailable
+                            ? `${row.time}, unavailable${row.reason ? `, ${row.reason}` : ""}`
+                            : `Time ${row.time}`
+                        }
+                      >
+                        <Text
+                          style={twStyle(
+                            `text-sm font-medium ${
+                              unavailable
+                                ? "text-red-300 line-through"
+                                : isActive
+                                  ? "text-white"
+                                  : "text-gray-700"
+                            }`,
+                          )}
+                        >
+                          {row.time}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </>
+          ) : null}
         </BottomSheet>
 
         {/* -------- STAFF PICKER SHEET -------- */}
@@ -2329,30 +2536,81 @@ export default function NewBookingScreen() {
         </BottomSheet>
 
         {/* -------- PACKAGE PICKER SHEET -------- */}
+        {/* §Provider-audit 2026-04 (packages round 2): each row now previews
+            the items bundled in the package and surfaces the saving vs. the
+            items' standalone price, so the provider can tell packages apart
+            at a glance (previously they only saw name + price). */}
         <BottomSheet
           visible={showPackagePicker}
           onClose={() => setShowPackagePicker(false)}
           title="Add Package"
         >
-          <ScrollView style={{ maxHeight: 400 }}>
-            {packagesList.map((pkg) => (
-              <TouchableOpacity
-                key={pkg.id}
-                style={twStyle("flex-row items-center justify-between px-4 py-3 border-b border-gray-100")}
-                onPress={() => handleAddPackage(pkg)}
-              >
-                <View style={twStyle("flex-1 mr-3")}>
-                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{pkg.name}</Text>
-                  {pkg.description ? (
-                    <Text style={twStyle("text-xs text-gray-500 mt-0.5")} numberOfLines={1}>{pkg.description}</Text>
-                  ) : null}
-                  <Text style={twStyle("text-xs text-gray-400 mt-0.5")}>
-                    {pkg.items.length} item{pkg.items.length !== 1 ? "s" : ""}
-                  </Text>
-                </View>
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>{formatCurrency(pkg.price, pkg.currency || tenantCurrency)}</Text>
-              </TouchableOpacity>
-            ))}
+          <ScrollView style={{ maxHeight: 480 }}>
+            {packagesList.map((pkg) => {
+              const itemsSubtotal = (pkg.items ?? []).reduce((sum, it) => {
+                const qty = Math.max(1, Math.floor(it.quantity || 1));
+                if (it.offering_id) {
+                  const catalogue = services?.find((s) => s.id === it.offering_id);
+                  const unit = safeNum(catalogue?.price ?? it.offering?.price);
+                  return sum + unit * qty;
+                }
+                if (it.product_id) {
+                  const catalogue = productsList.find((p) => p.id === it.product_id);
+                  const unit = safeNum(catalogue?.price ?? it.product?.retail_price);
+                  return sum + unit * qty;
+                }
+                return sum;
+              }, 0);
+              const saving = Math.max(0, itemsSubtotal - safeNum(pkg.price));
+              const itemsLabel = (pkg.items ?? [])
+                .slice(0, 3)
+                .map((it) => {
+                  const qty = Math.max(1, Math.floor(it.quantity || 1));
+                  const name = it.offering?.title || it.offering?.name || it.product?.name || "Item";
+                  return qty > 1 ? `${qty}× ${name}` : name;
+                })
+                .join(", ");
+              const extraItems = Math.max(0, (pkg.items?.length ?? 0) - 3);
+              const currency = pkg.currency || tenantCurrency;
+              return (
+                <TouchableOpacity
+                  key={pkg.id}
+                  style={twStyle("px-4 py-3 border-b border-gray-100")}
+                  onPress={() => handleAddPackage(pkg)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add package ${pkg.name}`}
+                >
+                  <View style={twStyle("flex-row items-start justify-between")}>
+                    <View style={twStyle("flex-1 mr-3")}>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>{pkg.name}</Text>
+                      {pkg.description ? (
+                        <Text style={twStyle("text-xs text-gray-500 mt-0.5")} numberOfLines={2}>{pkg.description}</Text>
+                      ) : null}
+                      {itemsLabel ? (
+                        <Text style={twStyle("text-xs text-gray-500 mt-1")} numberOfLines={2}>
+                          {itemsLabel}
+                          {extraItems > 0 ? ` +${extraItems} more` : ""}
+                        </Text>
+                      ) : (
+                        <Text style={twStyle("text-xs text-gray-400 mt-1")}>
+                          {pkg.items.length} item{pkg.items.length !== 1 ? "s" : ""}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={twStyle("items-end")}>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                        {formatCurrency(pkg.price, currency)}
+                      </Text>
+                      {saving > 0 && (
+                        <Text style={twStyle("text-xs font-medium text-green-600 mt-0.5")}>
+                          Save {formatCurrency(saving, currency)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
             {packagesList.length === 0 && (
               <Text style={twStyle("py-4 text-center text-sm text-gray-400")}>No packages available</Text>
             )}

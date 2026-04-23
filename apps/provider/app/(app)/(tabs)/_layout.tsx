@@ -1,7 +1,7 @@
 import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo } from "react";
-import { View, Platform } from "react-native";
+import { View, Platform, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -65,7 +65,7 @@ export default function TabsLayout() {
               left: 0,
               right: 0,
               zIndex: 999,
-            } as any)
+            } as unknown as ViewStyle)
           : {}),
       },
       tabBarLabelStyle: {
@@ -123,13 +123,20 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "chatbubbles" : "chatbubbles-outline"} focused={focused} />,
         }}
       />
+      {/*
+        §Provider-audit 2026-04: the previous "Transaction History" tab was
+        rarely the first thing providers wanted — bookings are. We surface
+        bookings here and move sales/transactions into the More tab.
+      */}
       <Tabs.Screen
-        name="sales"
+        name="bookings"
         options={{
-          title: t("payments.transactionHistory"),
-          tabBarIcon: ({ focused }) => <TabIcon name={focused ? "card" : "card-outline"} focused={focused} />,
+          title: t("provider.bookings"),
+          tabBarIcon: ({ focused }) => <TabIcon name={focused ? "calendar-clear" : "calendar-clear-outline"} focused={focused} />,
         }}
       />
+      {/* Sales is still reachable via More → Sales history. */}
+      <Tabs.Screen name="sales" options={{ href: null }} />
       <Tabs.Screen
         name="more"
         options={{

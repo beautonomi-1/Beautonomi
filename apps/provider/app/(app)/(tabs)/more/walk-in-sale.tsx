@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -85,8 +85,8 @@ export default function WalkInSaleScreen() {
   );
   const { execute: postSale, loading: creating } = useApiMutation<{ order: WalkInSale }>("post");
 
-  const products: Product[] = productsData?.products ?? [];
-  const activeProducts = products.filter((p) => p.is_active !== false);
+  const products = useMemo(() => productsData?.products ?? [], [productsData?.products]);
+  const activeProducts = useMemo(() => products.filter((p) => p.is_active !== false), [products]);
   const sales = salesData?.sales ?? [];
   const totalSales = salesData?.total ?? 0;
 

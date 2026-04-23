@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
-import { CreditCard, Banknote, Loader2, Tag, Heart, FileText, Zap, Clock, MapPin, Repeat } from "lucide-react";
+import { CreditCard, Banknote, Loader2, Tag, Heart, FileText, Zap, Clock, MapPin, Repeat, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useModuleConfig, useFeatureFlag, useConfigBundle } from "@/providers/ConfigBundleProvider";
 import {
@@ -28,6 +28,10 @@ import {
 import { isCompleteE164, normalizePhoneToE164 } from "@/lib/phone";
 import { defaultPhoneCountryDigitsForNormalize } from "@/lib/user-default-phone-dial";
 import { syncBookingDraftTenantFromServer } from "@/lib/booking/booking-draft-tenant";
+import {
+  clearBeautonomiHoldClientMarkers,
+  clearBeautonomiHoldIdCookie,
+} from "@/lib/booking/clear-hold-client-markers";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { CustomFieldsForm } from "@/components/custom-fields/CustomFieldsForm";
 import { Input } from "@/components/ui/input";
@@ -54,6 +58,18 @@ interface ProviderForm {
   is_active: boolean;
   fields: ProviderFormField[];
 }
+
+type HoldCancellationPolicy = {
+  cancellation_window_hours?: number | null;
+  grace_window_minutes?: number | null;
+  policy_text?: string | null;
+  late_refund_percentage?: number | null;
+  fee_amount?: number | null;
+  fee_type?: "fixed" | "percentage" | undefined;
+  currency?: string | null;
+  no_show_fee_enabled?: boolean;
+  no_show_fee_amount?: number | null;
+};
 
 interface HoldData {
   hold_id: string;
@@ -88,6 +104,71 @@ interface HoldData {
   payment_paystack?: boolean;
   payment_wallet?: boolean;
   gift_cards?: boolean;
+  cancellation_policy?: HoldCancellationPolicy | null;
+}
+
+function getHoldTimeRemaining(expiresAt: string): { minutes: number; seconds: number; expired: boolean } {
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (!Number.isFinite(diff) || diff <= 0) return { minutes: 0, seconds: 0, expired: true };
+  const totalSeconds = Math.floor(diff / 1000);
+  return { minutes: Math.floor(totalSeconds / 60), seconds: totalSeconds % 60, expired: false };
+}
+
+/** Same rules as customer app checkout — require explicit ack when policy has material terms. */
+function cancellationPolicyRequiresCustomerAck(policy: HoldCancellationPolicy | null | undefined): boolean {
+  if (!policy) return false;
+  const windowHrs = policy.cancellation_window_hours;
+  const graceMin = policy.grace_window_minutes;
+  const noShowFee =
+    policy.no_show_fee_enabled && policy.no_show_fee_amount != null && Number(policy.no_show_fee_amount) > 0;
+  const latePct = policy.late_refund_percentage;
+  const showLateLine =
+    latePct !== undefined && latePct !== null && !Number.isNaN(Number(latePct)) && Number(latePct) < 100;
+  const policyTextTrimmed = typeof policy.policy_text === "string" ? policy.policy_text.trim() : "";
+  const policySnippet = policyTextTrimmed.length > 0 ? policyTextTrimmed : null;
+  if (!windowHrs && !noShowFee && !(graceMin != null && graceMin > 0) && !showLateLine && !policySnippet) {
+    return false;
+  }
+  return true;
+}
+
+function HoldSlotCountdown({ expiresAt }: { expiresAt: string }) {
+  const [tick, setTick] = useState(() => getHoldTimeRemaining(expiresAt));
+  useEffect(() => {
+    const id = setInterval(() => setTick(getHoldTimeRemaining(expiresAt)), 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+  const urgent = !tick.expired && tick.minutes < 2;
+  return (
+    <div
+      role="status"
+      className="rounded-2xl border p-4 flex gap-3 items-start"
+      style={{
+        backgroundColor: tick.expired ? "rgba(254, 242, 242, 0.95)" : urgent ? "rgba(255, 251, 235, 0.95)" : "rgba(239, 246, 255, 0.95)",
+        borderColor: tick.expired ? "#fecaca" : urgent ? "#fde68a" : "#bfdbfe",
+      }}
+    >
+      <Clock className="h-5 w-5 shrink-0 mt-0.5" style={{ color: tick.expired ? "#dc2626" : urgent ? "#d97706" : "#2563eb" }} />
+      <div className="min-w-0 flex-1 text-sm font-medium" style={{ color: tick.expired ? "#991b1b" : urgent ? "#92400e" : "#1e40af" }}>
+        {tick.expired ? (
+          <>
+            <p>Your reserved slot has expired. Go back and pick a new time to continue.</p>
+            <Button type="button" variant="outline" className="mt-3 w-full" onClick={() => window.history.back()}>
+              Back to booking
+            </Button>
+          </>
+        ) : (
+          <p>
+            Slot held for{" "}
+            <span className="tabular-nums">
+              {tick.minutes}:{String(tick.seconds).padStart(2, "0")}
+            </span>
+            . Complete checkout before the timer ends.
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 interface AddonInfo {
@@ -210,6 +291,9 @@ function BookContinueContent() {
     type: "percentage", percentage: 0, fixed: 0,
   });
   const [requestingNow, setRequestingNow] = useState(false);
+  /** Mirrors customer app: disable checkout when the hold clock hits zero without waiting for a refetch. */
+  const [isSlotExpired, setIsSlotExpired] = useState(false);
+  const [cancellationPolicyAccepted, setCancellationPolicyAccepted] = useState(false);
   const [subscribeRecurring, setSubscribeRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">("weekly");
   const [groupBookingForRecurring, setGroupBookingForRecurring] = useState(false);
@@ -272,8 +356,11 @@ function BookContinueContent() {
           payment_paystack: (data as { payment_paystack?: boolean }).payment_paystack,
           payment_wallet: (data as { payment_wallet?: boolean }).payment_wallet,
           gift_cards: (data as { gift_cards?: boolean }).gift_cards,
+          cancellation_policy: (data as { cancellation_policy?: HoldCancellationPolicy | null }).cancellation_policy ?? null,
         };
+        setCancellationPolicyAccepted(false);
         setHold(holdData);
+        clearBeautonomiHoldIdCookie();
 
         {
           const slugForLookup = holdData.provider_slug;
@@ -401,11 +488,31 @@ function BookContinueContent() {
             : "This hold may have expired. Please start a new booking.";
         setErrorMessage(msg);
         setStatus("error");
+        clearBeautonomiHoldClientMarkers();
       }
     };
 
     loadHold();
   }, [holdId]);
+
+  useEffect(() => {
+    if (!hold?.expires_at) {
+      setIsSlotExpired(false);
+      return;
+    }
+    if (getHoldTimeRemaining(hold.expires_at).expired) {
+      setIsSlotExpired(true);
+      return;
+    }
+    setIsSlotExpired(false);
+    const timer = setInterval(() => {
+      if (getHoldTimeRemaining(hold.expires_at).expired) {
+        setIsSlotExpired(true);
+        clearInterval(timer);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [hold?.expires_at]);
 
   useEffect(() => {
     if (!hold) return;
@@ -538,6 +645,14 @@ function BookContinueContent() {
       router.push(`/login?return_to=${encodeURIComponent(`/book/continue?hold_id=${holdId}`)}`);
       return;
     }
+    if (hold.expires_at && getHoldTimeRemaining(hold.expires_at).expired) {
+      setValidationError("This time slot has expired. Please go back and select a new time.");
+      return;
+    }
+    if (cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && !cancellationPolicyAccepted) {
+      setValidationError("Please confirm you have read the cancellation policy below.");
+      return;
+    }
     setRequestingNow(true);
     setValidationError(null);
     try {
@@ -565,13 +680,14 @@ function BookContinueContent() {
           phone: effectiveClient.phone?.trim() || undefined,
         };
       }
-      const res = await fetcher.post<{ id: string } | { data: { id: string } }>(
+      const res = await fetcher.post<{ data?: { id?: string }; id?: string }>(
         "/api/me/on-demand/requests",
         { provider_id: hold.provider_id, request_payload: requestPayload }
       );
-      const data = res as { id?: string; data?: { id?: string } };
-      const requestId = data?.id ?? data?.data?.id;
+      const envelope = res as { data?: { id?: string }; id?: string };
+      const requestId = envelope.data?.id ?? envelope.id;
       if (requestId) {
+        clearBeautonomiHoldClientMarkers();
         router.replace(`/book/on-demand/waiting?requestId=${encodeURIComponent(requestId)}`);
       } else {
         setValidationError("Could not submit request. Try again or complete a scheduled booking.");
@@ -582,10 +698,19 @@ function BookContinueContent() {
     } finally {
       setRequestingNow(false);
     }
-  }, [hold, user, holdId, addonIds, tipAmount, clientInfo, clientForm, router]);
+  }, [hold, user, holdId, addonIds, tipAmount, clientInfo, clientForm, router, cancellationPolicyAccepted]);
 
   const handleComplete = async () => {
     if (!holdId || !hold) return;
+
+    if (hold.expires_at && getHoldTimeRemaining(hold.expires_at).expired) {
+      setValidationError("This time slot has expired. Please go back and select a new time.");
+      return;
+    }
+    if (cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && !cancellationPolicyAccepted) {
+      setValidationError("Please confirm you have read the cancellation policy below.");
+      return;
+    }
 
     const hasClientFromSession = clientInfo && (clientInfo.firstName || clientInfo.lastName || clientInfo.email || clientInfo.phone);
     const effectiveClient = hasClientFromSession ? clientInfo! : clientForm;
@@ -716,6 +841,7 @@ function BookContinueContent() {
             );
           }
         }
+        clearBeautonomiHoldClientMarkers();
         setStatus("redirecting");
         window.location.href = paymentUrl;
         return;
@@ -735,6 +861,7 @@ function BookContinueContent() {
       }
 
       try {
+        clearBeautonomiHoldClientMarkers();
         sessionStorage.removeItem("beautonomi_booking_client");
         sessionStorage.removeItem("beautonomi_booking_addons");
         sessionStorage.removeItem("beautonomi_booking_special_requests");
@@ -855,6 +982,8 @@ function BookContinueContent() {
     const depositAmount = showDepositChoice ? Math.ceil((totalAmount * depositPct) / 100) : 0;
     const remainingAfterDeposit = Math.max(0, totalAmount - depositAmount);
     const cardOnlineBlocked = !paystackEnabled && !allowPayInPerson;
+    const policyAckBlocksCheckout =
+      cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && !cancellationPolicyAccepted;
 
     const cardStyle = {
       background: BOOKING_GLASS_BG,
@@ -871,6 +1000,8 @@ function BookContinueContent() {
           <h1 className="text-2xl font-semibold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
             Review your booking
           </h1>
+
+          {hold.expires_at ? <HoldSlotCountdown expiresAt={hold.expires_at} /> : null}
 
           {/* Booking summary — aligned with provider portal: Services, Add-ons, Travel, Promo, Tip, Total */}
           <div
@@ -1254,6 +1385,68 @@ function BookContinueContent() {
             </div>
           )}
 
+          {cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && hold.cancellation_policy && (
+            <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
+              <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: BOOKING_ACCENT }} />
+                Cancellation policy
+              </h2>
+              <ul className="text-sm space-y-2 list-disc pl-5" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                {hold.cancellation_policy.grace_window_minutes != null && hold.cancellation_policy.grace_window_minutes > 0 && (
+                  <li>Grace period: free cancellation within {hold.cancellation_policy.grace_window_minutes} minutes of booking.</li>
+                )}
+                {hold.cancellation_policy.cancellation_window_hours != null &&
+                  hold.cancellation_policy.cancellation_window_hours > 0 && (
+                    <li>
+                      Free cancellation up to {hold.cancellation_policy.cancellation_window_hours}{" "}
+                      {hold.cancellation_policy.cancellation_window_hours === 1 ? "hour" : "hours"} before your appointment.
+                    </li>
+                  )}
+                {hold.cancellation_policy.late_refund_percentage != null &&
+                  !Number.isNaN(Number(hold.cancellation_policy.late_refund_percentage)) &&
+                  Number(hold.cancellation_policy.late_refund_percentage) < 100 && (
+                    <li>
+                      Late cancellation:{" "}
+                      {Number(hold.cancellation_policy.late_refund_percentage) <= 0
+                        ? "no refund"
+                        : `${Math.round(Number(hold.cancellation_policy.late_refund_percentage))}% refund`}
+                      .
+                    </li>
+                  )}
+                {hold.cancellation_policy.no_show_fee_enabled &&
+                  hold.cancellation_policy.no_show_fee_amount != null &&
+                  Number(hold.cancellation_policy.no_show_fee_amount) > 0 && (
+                    <li>
+                      No-show fee:{" "}
+                      {formatCurrency(
+                        Number(hold.cancellation_policy.no_show_fee_amount),
+                        hold.cancellation_policy.currency || currency
+                      )}
+                      .
+                    </li>
+                  )}
+                {typeof hold.cancellation_policy.policy_text === "string" &&
+                  hold.cancellation_policy.policy_text.trim().length > 0 && (
+                    <li className="list-none -ml-5 pl-0 text-xs leading-relaxed opacity-90">
+                      {hold.cancellation_policy.policy_text.trim().slice(0, 400)}
+                      {hold.cancellation_policy.policy_text.trim().length > 400 ? "…" : ""}
+                    </li>
+                  )}
+              </ul>
+              <div className="flex items-start gap-3 pt-2">
+                <Checkbox
+                  id="cancellation-policy-ack"
+                  checked={cancellationPolicyAccepted}
+                  onCheckedChange={(c) => setCancellationPolicyAccepted(c === true)}
+                  className="mt-1"
+                />
+                <Label htmlFor="cancellation-policy-ack" className="text-sm cursor-pointer leading-snug" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                  I understand the cancellation terms and any fees above.
+                </Label>
+              </div>
+            </div>
+          )}
+
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
             <h2 className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>Payment</h2>
             <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
@@ -1348,7 +1541,12 @@ function BookContinueContent() {
                 borderColor: BOOKING_EDGE,
               }}
               onClick={handleRequestNow}
-              disabled={requestingNow || (status as string) === "consuming"}
+              disabled={
+                requestingNow ||
+                (status as string) === "consuming" ||
+                isSlotExpired ||
+                policyAckBlocksCheckout
+              }
             >
               {requestingNow ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -1363,7 +1561,12 @@ function BookContinueContent() {
             className="w-full rounded-2xl h-14 font-semibold text-white flex items-center justify-center gap-2 min-h-[44px] transition-transform active:scale-[0.98] disabled:opacity-70"
             style={{ backgroundColor: BOOKING_ACCENT, boxShadow: BOOKING_SHADOW_CARD }}
             onClick={handleComplete}
-            disabled={(status as string) === "consuming" || cardOnlineBlocked}
+            disabled={
+              (status as string) === "consuming" ||
+              cardOnlineBlocked ||
+              isSlotExpired ||
+              policyAckBlocksCheckout
+            }
           >
             {(status as string) === "consuming" ? (
               <Loader2 className="h-5 w-5 animate-spin" />

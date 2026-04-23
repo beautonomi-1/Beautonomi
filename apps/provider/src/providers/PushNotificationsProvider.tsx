@@ -403,9 +403,11 @@ function usePushRegistration() {
             (event: NotificationWillDisplayEvent) => {
               event.getNotification().display();
               // Vibrate for booking notifications to grab attention
-              const data = (event.getNotification() as any).additionalData as
-                | Record<string, unknown>
-                | undefined;
+              const gn = event.getNotification();
+              const data =
+                gn && typeof gn === "object" && "additionalData" in gn
+                  ? (gn as { additionalData?: Record<string, unknown> }).additionalData
+                  : undefined;
               const tKey = String(data?.template_key ?? data?.type ?? "");
               if (
                 PROVIDER_BOOKING_TEMPLATE_KEYS.has(tKey) ||

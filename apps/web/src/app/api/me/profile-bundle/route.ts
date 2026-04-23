@@ -106,18 +106,40 @@ export async function GET(request: NextRequest) {
       handle: (userData as any).handle ?? null,
       email_verified: (userData as any).email_verified ?? false,
       phone_verified: (userData as any).phone_verified ?? false,
+      // §Release-audit 2026-04: include latitude/longitude so customer
+      // booking flow can forward coords into POST /api/public/booking-holds.
+      // Without them the server skips travel-fee computation entirely.
       address: defaultAddress
-        ? {
-            country: (defaultAddress as any).country || "",
-            line1: (defaultAddress as any).address_line1 || "",
-            line2: (defaultAddress as any).address_line2 || "",
-            city: (defaultAddress as any).city || "",
-            state: (defaultAddress as any).state || "",
-            postal_code: (defaultAddress as any).postal_code || "",
-            street: (defaultAddress as any).address_line1 || "",
-            apt: (defaultAddress as any).address_line2 || "",
-            zip: (defaultAddress as any).postal_code || "",
-          }
+        ? (() => {
+            const a = defaultAddress as Record<string, unknown>;
+            const latRaw = a.latitude;
+            const lngRaw = a.longitude;
+            const lat =
+              typeof latRaw === "number"
+                ? latRaw
+                : latRaw != null && latRaw !== ""
+                  ? Number(latRaw)
+                  : null;
+            const lng =
+              typeof lngRaw === "number"
+                ? lngRaw
+                : lngRaw != null && lngRaw !== ""
+                  ? Number(lngRaw)
+                  : null;
+            return {
+              country: (a.country as string) || "",
+              line1: (a.address_line1 as string) || "",
+              line2: (a.address_line2 as string) || "",
+              city: (a.city as string) || "",
+              state: (a.state as string) || "",
+              postal_code: (a.postal_code as string) || "",
+              street: (a.address_line1 as string) || "",
+              apt: (a.address_line2 as string) || "",
+              zip: (a.postal_code as string) || "",
+              latitude: lat != null && Number.isFinite(lat) ? lat : null,
+              longitude: lng != null && Number.isFinite(lng) ? lng : null,
+            };
+          })()
         : null,
       emergency_contact: {
         name: (userData as any).emergency_contact_name || "",

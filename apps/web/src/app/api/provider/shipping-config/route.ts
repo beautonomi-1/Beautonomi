@@ -9,6 +9,12 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 
+// §Release-audit 2026-04: `collection_notes` is already stored on
+// `provider_shipping_config` and exposed via the public
+// `/api/public/products/shipping-config` endpoint so customers see
+// "bring ID, enter via side door, etc." at PDP/checkout. The provider
+// write path was missing it — providers could never set it from the
+// web UI. Add it here in parity with `delivery_notes`.
 const updateSchema = z.object({
   offers_delivery: z.boolean().optional(),
   offers_collection: z.boolean().optional(),
@@ -17,6 +23,7 @@ const updateSchema = z.object({
   delivery_radius_km: z.number().min(0).nullable().optional(),
   estimated_delivery_days: z.number().int().min(1).optional(),
   delivery_notes: z.string().max(500).nullable().optional(),
+  collection_notes: z.string().max(500).nullable().optional(),
 });
 
 /**
@@ -47,6 +54,7 @@ export async function GET(request: NextRequest) {
       delivery_radius_km: null,
       estimated_delivery_days: 3,
       delivery_notes: null,
+      collection_notes: null,
     };
 
     return successResponse({ config });

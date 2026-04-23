@@ -22,6 +22,8 @@ import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { appendFormDataFileNative } from "@beautonomi/utils";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
@@ -173,21 +175,21 @@ export default function IdentityVerificationScreen() {
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.append("file", {
+      appendFormDataFileNative(formData, "file", {
         uri: selectedFile.uri,
         name: selectedFile.fileName,
         type: selectedFile.mimeType || "image/jpeg",
-      } as any);
+      });
       formData.append("document_type", documentType);
       formData.append("country", country.trim());
 
       const res = await api.post<{ verification_id?: string; status?: string }>(
         "/api/me/verification",
-        formData as any
+        formData
       );
 
       if (res.error) {
-        Alert.alert("Upload failed", (res.error as any)?.message ?? "Could not upload document.");
+        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload document."));
         return;
       }
       haptic.success();

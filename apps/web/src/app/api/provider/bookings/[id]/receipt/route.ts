@@ -3,13 +3,13 @@ import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invaria
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import {
   requireRoleInApi,
   successResponse,
   handleApiError,
-  getProviderIdForUser,
   notFoundResponse,
+  forbiddenResponse,
+  userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
@@ -50,7 +50,6 @@ export async function GET(
     }
 
     const supabaseAdmin = getSupabaseAdmin();
-    const scopedSupabase = await getSupabaseServer(request);
 
     let user: { id: string; role: string };
     if (tokenUserId) {
@@ -74,12 +73,12 @@ export async function GET(
       user = { id: authed.user.id, role: authed.user.role as string };
     }
 
-    const providerId = await getProviderIdForUser(user.id, scopedSupabase);
-    if (!providerId && user.role !== "superadmin") {
-      return notFoundResponse("Provider not found");
-    }
-
-    let query = supabaseAdmin
+    // §Multi-provider staff 2026-04: never gate this read on
+    // getProviderIdForUser() — that helper returns only the *first*
+    // active provider_staff row, so a staff member who works for two
+    // salons would get 404 on bookings for the other salon. Load by
+    // booking id, then verify access against the row's provider_id.
+    const { data: booking, error } = await supabaseAdmin
       .from("bookings")
       .select(
         `
@@ -135,16 +134,26 @@ export async function GET(
         )
       `
       )
-      .eq("id", id);
-
-    if (providerId) {
-      query = query.eq("provider_id", providerId);
-    }
-
-    const { data: booking, error } = await (query as any).single();
+      .eq("id", id)
+      .maybeSingle();
 
     if (error || !booking) {
       return notFoundResponse("Booking not found");
+    }
+
+    const bookingProviderId = (booking as { provider_id?: string | null }).provider_id;
+    if (user.role !== "superadmin") {
+      if (!bookingProviderId) {
+        return forbiddenResponse("Invalid booking record");
+      }
+      const allowed = await userHasProviderAccessAdmin(
+        supabaseAdmin,
+        user.id,
+        bookingProviderId,
+      );
+      if (!allowed) {
+        return forbiddenResponse("You do not have access to this booking");
+      }
     }
 
     const b = booking as any;

@@ -170,31 +170,20 @@ export async function POST(request: NextRequest) {
       return successResponse({ subscription_id: (subscription as SubRow).id, is_free: true });
     }
 
-    const paystackPlanCode = billing_period === "yearly"
-      ? planRow.paystack_plan_code_yearly
-      : planRow.paystack_plan_code_monthly;
-
-    if (!paystackPlanCode) {
-      throw new Error(`Paystack plan code not found for ${billing_period} billing period`);
-    }
-
-    // Get or create Paystack customer
     const { data: userEmailRow } = await supabase
       .from("users")
       .select("email, first_name, last_name, phone")
       .eq("id", user.id)
       .single();
-    
+
     const email = userEmailRow?.email || user.email;
     if (!email) throw new Error("User email is required for payment");
 
     let customerCode: string;
     try {
-      // Try to fetch existing customer
       const customerResponse = await fetchCustomer(email, { tenantId });
       customerCode = customerResponse.data?.customer_code || email;
     } catch {
-      // Create new customer if doesn't exist
       try {
         const customerResponse = await createCustomer({
           email,
@@ -207,6 +196,21 @@ export async function POST(request: NextRequest) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         throw new Error(`Failed to create Paystack customer: ${msg}`);
       }
+    }
+
+    const paystackPlanCode = billing_period === "yearly"
+      ? planRow.paystack_plan_code_yearly
+      : planRow.paystack_plan_code_monthly;
+
+    // Missing Paystack plan codes: do not 500 — send the client to one-off checkout
+    // (`initialize-payment`) which uses amount + reference, not recurring plan codes.
+    if (!paystackPlanCode) {
+      return successResponse({
+        requires_payment: true,
+        customer_code: customerCode,
+        message:
+          "This plan is not linked to a Paystack recurring code yet. Complete checkout to pay and activate.",
+      });
     }
 
     // Create Paystack subscription
@@ -233,13 +237,11 @@ export async function POST(request: NextRequest) {
     const oldPlan = existingRow?.subscription_plans;
 
     if (!authorizationCode) {
-      // No authorization code - need to initialize payment first
-      // Return a flag indicating payment initialization is needed
-      return successResponse({ 
+      return successResponse({
         requires_payment: true,
         customer_code: customerCode,
         plan_code: paystackPlanCode,
-        message: "Payment authorization required. Please complete a payment first."
+        message: "Payment authorization required. Please complete a payment first.",
       });
     }
 

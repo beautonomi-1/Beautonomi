@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { requireRoleInApi, userHasProviderAccessAdmin } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
@@ -138,8 +137,32 @@ export async function GET(
 
     // Use admin client so RLS doesn't block access — ownership is verified below
     const supabase = getSupabaseAdmin();
-    // Still need a scoped client for getProviderIdForUser (which uses RLS-aware client)
-    const scopedSupabase = await getSupabaseServer(request);
+
+    // §Launch-audit 2026-04: the deep join below was returning 404 "Booking
+    // not found" for bookings that do exist whenever any embedded relation
+    // had schema drift (e.g. renamed FK). We now do a cheap existence probe
+    // first so we can return 404 *only* when the booking truly doesn't
+    // exist, and a diagnostic 500 when the detail query fails.
+    const { data: existsRow, error: existsErr } = await supabase
+      .from("bookings")
+      .select("id, customer_id, provider_id")
+      .eq("id", bookingId)
+      .maybeSingle();
+
+    if (existsErr) {
+      console.error("[receipt] Booking lookup failed:", existsErr);
+      return NextResponse.json(
+        { error: "Failed to load booking", code: existsErr.code ?? null },
+        { status: 500 },
+      );
+    }
+
+    if (!existsRow) {
+      return NextResponse.json(
+        { error: "Booking not found" },
+        { status: 404 },
+      );
+    }
 
     // Get booking with all related data
     const { data: bookingRaw, error: bookingError } = await supabase
@@ -214,10 +237,29 @@ export async function GET(
       .single();
 
     if (bookingError) {
-      console.error("[receipt] Supabase error:", bookingError.message, bookingError.code);
+      // §Launch-audit 2026-04: the booking existed (we just probed it with
+      // `existsRow` above) but the detail join failed. That's a 500, not a
+      // 404 — mislabelling it as 404 was what made the bug invisible to
+      // support. Surface the Supabase error code so ops can tell whether
+      // it's a schema drift (e.g. PGRST200 / missing FK hint) or a
+      // genuinely transient failure.
+      console.error(
+        "[receipt] Detail query failed:",
+        bookingError.message,
+        bookingError.code,
+        bookingError.details,
+      );
+      return NextResponse.json(
+        {
+          error: "Failed to load receipt details",
+          code: bookingError.code ?? null,
+          message: bookingError.message ?? null,
+        },
+        { status: 500 },
+      );
     }
 
-    if (bookingError || !bookingRaw) {
+    if (!bookingRaw) {
       return NextResponse.json(
         { error: "Booking not found" },
         { status: 404 }
@@ -231,10 +273,14 @@ export async function GET(
       : null;
     const currencyFallback = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    // Verify access: customer = booking owner; provider = owner or staff of the booking's provider; superadmin = support
+    // Verify access: customer = booking owner; provider = owner or staff of
+    // the booking's provider (multi-provider staff safe); superadmin = support
     const isCustomer = booking.customer_id === user.id;
-    const providerId = await getProviderIdForUser(user.id, scopedSupabase);
-    const isProvider = providerId != null && booking.provider_id === providerId;
+    const isProvider = await userHasProviderAccessAdmin(
+      supabase,
+      user.id,
+      booking.provider_id,
+    );
     const isAdmin = user.role === "superadmin";
 
     if (!isCustomer && !isProvider && !isAdmin) {

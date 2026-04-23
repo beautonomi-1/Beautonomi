@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -239,29 +239,40 @@ export function useCart() {
     return { error: null };
   }, [user, reloadGuestCart]);
 
-  const lineUnit = (i: CartItem) =>
-    typeof i.effective_price === "number" && Number.isFinite(i.effective_price)
-      ? i.effective_price
-      : (i.product_variant?.retail_price ?? i.product?.retail_price ?? 0) || 0;
-
-  const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
-  const subtotal = items.reduce((sum, i) => sum + lineUnit(i) * i.quantity, 0);
-
-  const groupedByProvider = items.reduce(
-    (acc, item) => {
-      const pid = item.provider?.id ?? "unknown";
-      if (!acc[pid]) {
-        acc[pid] = { provider: item.provider, items: [], subtotal: 0 };
-      }
-      acc[pid].items.push(item);
-      acc[pid].subtotal += lineUnit(item) * item.quantity;
-      return acc;
-    },
-    {} as Record<
+  /**
+   * §Customer-audit 2026-04 (C5 CRITICAL — checkout hang): these derived
+   * values were recomputed every render. Any consumer that listed
+   * `cart.groupedByProvider` (or the plain `subtotal`) in a `useEffect`
+   * dep array would re-run the effect forever because the reference
+   * changed on every `setItems` call. Memoize on `items` so the
+   * references are stable when the cart contents haven't changed.
+   */
+  const derived = useMemo(() => {
+    const lineUnit = (i: CartItem) =>
+      typeof i.effective_price === "number" && Number.isFinite(i.effective_price)
+        ? i.effective_price
+        : (i.product_variant?.retail_price ?? i.product?.retail_price ?? 0) || 0;
+    let itemCountAcc = 0;
+    let subtotalAcc = 0;
+    const grouped: Record<
       string,
       { provider: CartItem["provider"]; items: CartItem[]; subtotal: number }
-    >,
-  );
+    > = {};
+    for (const item of items) {
+      itemCountAcc += item.quantity;
+      const line = lineUnit(item) * item.quantity;
+      subtotalAcc += line;
+      const pid = item.provider?.id ?? "unknown";
+      if (!grouped[pid]) {
+        grouped[pid] = { provider: item.provider, items: [], subtotal: 0 };
+      }
+      grouped[pid].items.push(item);
+      grouped[pid].subtotal += line;
+    }
+    return { itemCount: itemCountAcc, subtotal: subtotalAcc, groupedByProvider: grouped };
+  }, [items]);
+
+  const { itemCount, subtotal, groupedByProvider } = derived;
 
   return {
     items,

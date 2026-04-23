@@ -173,7 +173,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 90 | `/admin/control-plane/modules/ranking/scores` | W5 | platform_config | Y | `GET /api/admin/ranking/scores` | Provider score table + per-provider recompute |
 | 91 | `/admin/control-plane/modules/distance` | W5 | platform_config | Y | `GET/PUT .../distance` | |
 | 92 | `/admin/control-plane/modules/safety` | W5 | platform_config | Y | `GET/PUT .../safety` | |
-| 93 | `/admin/control-plane/safety-logs` | W5 | platform_config | Y | `GET /api/admin/safety/logs` | Read-only, filtered by event type |
+| 93 | `/admin/control-plane/safety-logs` | W5 | platform_config | Y | `GET /api/admin/safety/logs`, `PATCH /api/admin/safety/logs/[id]` (resolve) | List + mark resolved (superadmin) |
 | 94 | `/admin/control-plane/maintenance` | W5 | platform_config | Y | `GET/PATCH /api/admin/maintenance` | Per-scope config + enable/disable + countdown |
 | 95 | `/admin/control-plane/maintenance/sign-ups` | W5 | platform_config | Y | `GET /api/admin/maintenance-notify` | Read-only list + CSV export, filtered by scope |
 | 96 | `/admin/control-plane/audit-log` | W5 | platform_config | Y | `GET /api/admin/control-plane/config-change-log` | Paginated, filtered by area + record key |

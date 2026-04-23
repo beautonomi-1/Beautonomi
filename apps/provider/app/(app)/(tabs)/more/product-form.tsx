@@ -25,6 +25,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { twStyle } from "@/lib/twStyle";
+import { appendFormDataFileNative } from "@beautonomi/utils";
 
 interface ProductVariantRow {
   id?: string;
@@ -279,7 +280,7 @@ export default function ProductFormScreen() {
         const formData = new FormData();
         const name = asset.fileName || `photo-${Date.now()}.jpg`;
         const type = asset.mimeType || "image/jpeg";
-        formData.append("file", { uri: asset.uri, type, name } as unknown as Blob);
+        appendFormDataFileNative(formData, "file", { uri: asset.uri, type, name });
         formData.append("folder", "products");
         const res = await api.fetch<{ url?: string; path?: string }>("/api/upload", {
           method: "POST",
@@ -312,7 +313,7 @@ export default function ProductFormScreen() {
         const formData = new FormData();
         const name = asset.fileName || `variant-${rowIndex}-${Date.now()}.jpg`;
         const type = asset.mimeType || "image/jpeg";
-        formData.append("file", { uri: asset.uri, type, name } as unknown as Blob);
+        appendFormDataFileNative(formData, "file", { uri: asset.uri, type, name });
         formData.append("folder", "products");
         const res = await api.fetch<{ url?: string }>("/api/upload", {
           method: "POST",

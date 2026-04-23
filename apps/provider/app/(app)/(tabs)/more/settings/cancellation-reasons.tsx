@@ -21,6 +21,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { twStyle } from "@/lib/twStyle";
+import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface CancellationReason {
   id: string;
@@ -257,6 +258,7 @@ export default function CancellationReasonsScreen() {
         />
       ) : (
         <FlatList
+          {...verticalFlatListPerf}
           data={filtered}
           keyExtractor={(r: CancellationReason) => r.id}
           showsVerticalScrollIndicator={false}
