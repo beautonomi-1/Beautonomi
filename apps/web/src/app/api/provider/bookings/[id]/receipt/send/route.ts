@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
   handleApiError,
-  getProviderIdForUser,
   errorResponse,
   notFoundResponse,
+  forbiddenResponse,
+  userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { notifyReceiptSent } from "@/lib/notifications/notification-service";
 
@@ -22,23 +23,26 @@ export async function POST(
 ) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
-    const supabase = await getSupabaseServer(request);
     const { id } = await params;
+    const admin = getSupabaseAdmin();
 
-    const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId) {
-      return notFoundResponse("Provider not found");
-    }
-
-    const { data: booking, error } = await supabase
+    const { data: booking, error } = await admin
       .from("bookings")
-      .select("id, customer_id, total_amount, completed_at, created_at, booking_number")
+      .select("id, provider_id, customer_id, total_amount, completed_at, created_at, booking_number")
       .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
+      .maybeSingle();
 
     if (error || !booking) {
       return notFoundResponse("Booking not found");
+    }
+
+    const bookingPid = (booking as { provider_id?: string | null }).provider_id;
+    if (!bookingPid) {
+      return errorResponse("Invalid booking record", "VALIDATION_ERROR", 400);
+    }
+    const allowed = await userHasProviderAccessAdmin(admin, user.id, bookingPid);
+    if (!allowed) {
+      return forbiddenResponse("You do not have access to this booking");
     }
 
     type ReceiptBookingRow = { customer_id?: string; total_amount?: number; completed_at?: string; created_at?: string };

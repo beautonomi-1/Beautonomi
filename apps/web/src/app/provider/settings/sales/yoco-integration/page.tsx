@@ -163,7 +163,7 @@ export default function YocoIntegrationPage() {
           <SubscriptionGate
             feature="yoco_integration"
             message="Yoco integration requires a subscription upgrade"
-            upgradeMessage="Upgrade to Starter plan or higher to connect Yoco payment devices"
+            upgradeMessage="Upgrade your platform plan under Subscription to connect Yoco devices."
           />
         )}
 

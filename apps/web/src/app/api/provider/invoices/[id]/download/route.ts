@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   handleApiError,
-  getProviderIdForUser,
+  forbiddenResponse,
+  userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -22,22 +23,9 @@ export async function GET(
   try {
     const { id } = await params;
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
-    const supabase = await getSupabaseServer(request);
-    
-    let providerId: string | null = null;
-    if (user.role !== "superadmin") {
-      providerId = await getProviderIdForUser(user.id, supabase);
-      if (!providerId) {
-        return handleApiError(
-          new Error("Provider not found"),
-          "Provider not found",
-          "NOT_FOUND",
-          404
-        );
-      }
-    }
+    const admin = getSupabaseAdmin();
 
-    let query = supabase
+    const { data: invoice, error } = await admin
       .from("provider_invoices")
       .select(
         `
@@ -47,13 +35,8 @@ export async function GET(
         payments:provider_invoice_payments(*)
       `
       )
-      .eq("id", id);
-
-    if (providerId) {
-      query = query.eq("provider_id", providerId);
-    }
-
-    const { data: invoice, error } = await query.single();
+      .eq("id", id)
+      .maybeSingle();
 
     if (error || !invoice) {
       return handleApiError(
@@ -62,6 +45,17 @@ export async function GET(
         "NOT_FOUND",
         404
       );
+    }
+
+    const invPid = (invoice as { provider_id?: string | null }).provider_id;
+    if (user.role !== "superadmin") {
+      if (!invPid) {
+        return forbiddenResponse("Invalid invoice record");
+      }
+      const allowed = await userHasProviderAccessAdmin(admin, user.id, invPid);
+      if (!allowed) {
+        return forbiddenResponse("You do not have access to this invoice");
+      }
     }
 
     const inv = invoice as {

@@ -54,6 +54,7 @@ import {
   Columns3,
   Plug,
   Sparkles,
+  ScrollText,
 } from "lucide-react";
 import type { AdminSection } from "@beautonomi/admin-access";
 import {
@@ -255,6 +256,12 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Tenants", href: "/admin/settings/tenants", icon: Network, superadminOnly: true },
       { title: "Tenant domains", href: "/admin/settings/tenant-domains", icon: Network, superadminOnly: true },
       { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers, superadminOnly: true },
+      {
+        title: "Safety logs",
+        href: "/admin/control-plane/safety-logs",
+        icon: ScrollText,
+        superadminOnly: true,
+      },
       {
         title: "Compliance purge",
         href: "/admin/control-plane/compliance",

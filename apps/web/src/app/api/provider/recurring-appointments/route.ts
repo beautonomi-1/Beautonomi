@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
+import {
+  ADVANCED_RECURRENCE_UPGRADE,
+  SUBSCRIPTION_UPGRADE_SHORT,
+} from "@/lib/subscriptions/subscription-upgrade-copy";
 import { isAdvancedRecurrenceRule } from "@/lib/recurring/advanced-rrule";
 import { z } from "zod";
 
@@ -39,11 +43,7 @@ export async function GET(request: NextRequest) {
     // Check subscription allows recurring appointments
     const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
-      return errorResponse(
-        "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",
-        "SUBSCRIPTION_REQUIRED",
-        403
-      );
+      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }
 
     const { searchParams } = new URL(request.url);
@@ -114,11 +114,7 @@ export async function POST(request: NextRequest) {
     // Check subscription allows recurring appointments
     const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
-      return errorResponse(
-        "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",
-        "SUBSCRIPTION_REQUIRED",
-        403
-      );
+      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }
 
     const body = await request.json();
@@ -128,7 +124,7 @@ export async function POST(request: NextRequest) {
 
     if (isAdvancedPattern && !recurringAccess.advancedPatterns) {
       return errorResponse(
-        "Custom recurring patterns require a Professional plan or higher. Please upgrade to use advanced patterns.",
+        ADVANCED_RECURRENCE_UPGRADE,
         "SUBSCRIPTION_REQUIRED",
         403
       );

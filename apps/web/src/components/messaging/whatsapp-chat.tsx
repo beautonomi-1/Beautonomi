@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import { useClientMounted } from "@/hooks/use-client-mounted";
 import { Send, ArrowLeft, MoreVertical, Phone, Tag, User, Mail, Copy, Check, Paperclip, X, File, Play, Trash2, Pencil, Undo2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,6 +91,7 @@ export default function WhatsAppChat({
   onConversationUpdate,
   messagesEndpoint,
 }: WhatsAppChatProps) {
+  const clientMounted = useClientMounted();
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -630,6 +632,7 @@ export default function WhatsAppChat({
   };
 
   const formatMessageTime = (dateString: string) => {
+    if (!clientMounted) return "\u2013";
     const date = new Date(dateString);
     if (isToday(date)) {
       return format(date, "HH:mm");
@@ -917,7 +920,12 @@ export default function WhatsAppChat({
                           </div>
                           {message.attachments[0]?.preferred_start_at && !message.attachments[0]?.withdrawn && (
                             <div className="text-[11px] text-white/60 mb-3">
-                              {format(new Date(message.attachments[0].preferred_start_at), "EEE, d MMM · HH:mm")}
+                              {clientMounted
+                                ? format(
+                                    new Date(message.attachments[0].preferred_start_at),
+                                    "EEE, d MMM · HH:mm",
+                                  )
+                                : "\u2013"}
                             </div>
                           )}
                           {/* Provider actions: Retract, Edit & resend */}

@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
   handleApiError,
-  getProviderIdForUser,
+  forbiddenResponse,
+  userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 
@@ -19,19 +20,9 @@ export async function GET(
   try {
     const { id } = await params;
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
-    const supabase = await getSupabaseServer(request);
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const admin = getSupabaseAdmin();
 
-    if (!providerId) {
-      return handleApiError(
-        new Error("Provider not found"),
-        "Provider not found",
-        "NOT_FOUND",
-        404
-      );
-    }
-
-    const { data: invoice, error } = await supabase
+    const { data: invoice, error } = await admin
       .from("provider_invoices")
       .select(
         `
@@ -42,8 +33,7 @@ export async function GET(
       `
       )
       .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       throw error;
@@ -56,6 +46,14 @@ export async function GET(
         "NOT_FOUND",
         404
       );
+    }
+
+    const invPid = (invoice as { provider_id?: string | null }).provider_id;
+    if (!invPid) {
+      return forbiddenResponse("Invalid invoice record");
+    }
+    if (!(await userHasProviderAccessAdmin(admin, user.id, invPid))) {
+      return forbiddenResponse("You do not have access to this invoice");
     }
 
     return successResponse(invoice);
@@ -74,26 +72,41 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const supabase = await getSupabaseServer(request);
     const permissionCheck = await requirePermission("edit_settings", request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }
 
     const { user } = permissionCheck;
-    const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId) {
+    const admin = getSupabaseAdmin();
+
+    const { data: existing, error: loadErr } = await admin
+      .from("provider_invoices")
+      .select("id, provider_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (loadErr || !existing) {
       return handleApiError(
-        new Error("Provider not found"),
-        "Provider not found",
+        new Error("Invoice not found"),
+        "Invoice not found",
         "NOT_FOUND",
         404
       );
     }
+
+    const invPid = (existing as { provider_id?: string | null }).provider_id;
+    if (!invPid) {
+      return forbiddenResponse("Invalid invoice record");
+    }
+    if (!(await userHasProviderAccessAdmin(admin, user.id, invPid))) {
+      return forbiddenResponse("You do not have access to this invoice");
+    }
+
     const body = await request.json();
     const { status, notes } = body;
 
-    const updates: any = {};
+    const updates: Record<string, unknown> = {};
 
     if (status) {
       updates.status = status;
@@ -106,11 +119,11 @@ export async function PATCH(
       updates.notes = notes;
     }
 
-    const { data: invoice, error } = await supabase
+    const { data: invoice, error } = await admin
       .from("provider_invoices")
       .update(updates)
       .eq("id", id)
-      .eq("provider_id", providerId)
+      .eq("provider_id", invPid)
       .select()
       .single();
 

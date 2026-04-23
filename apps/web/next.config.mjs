@@ -267,12 +267,13 @@ const nextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.sentry.io https://cdn.onesignal.com https://cdn.amplitude.com https://maps.googleapis.com https://api.mapbox.com https://va.vercel-scripts.com https://vercel.live",
               // Styles: self + inline (Tailwind runtime)
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              // Fonts
-              "font-src 'self' data: https://fonts.gstatic.com",
+              // Fonts — include Vercel Live (geist fonts used by preview toolbar)
+              "font-src 'self' data: https://fonts.gstatic.com https://vercel.live https://*.vercel.live",
               // Images: supabase storage + maps + data URIs
-              "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://maps.googleapis.com https://maps.gstatic.com https://api.mapbox.com https://events.mapbox.com https://flagcdn.com",
-              // XHR/fetch/WebSocket
-              "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://api.onesignal.com https://*.sentry.io https://*.amplitude.com https://api.paystack.co https://api.mapbox.com https://events.mapbox.com",
+              "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://maps.googleapis.com https://maps.gstatic.com https://api.mapbox.com https://events.mapbox.com https://flagcdn.com https://vercel.com https://*.vercel.com https://vercel.live https://*.vercel.live",
+              // XHR/fetch/WebSocket — Pusher is used by the Vercel Live
+              // preview comments toolbar (only loaded on preview/dev builds).
+              "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://api.onesignal.com https://*.sentry.io https://*.amplitude.com https://api.paystack.co https://api.mapbox.com https://events.mapbox.com https://vercel.live https://*.vercel.live wss://*.pusher.com wss://ws-us3.pusher.com wss://ws-us2.pusher.com wss://ws-eu.pusher.com",
               // Iframes: Paystack popup; Vercel preview toolbar (vercel.live)
               "frame-src 'self' https://checkout.paystack.com https://js.paystack.co https://vercel.live",
               // Workers (Next.js, service workers)

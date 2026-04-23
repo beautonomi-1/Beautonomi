@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkCalendarSyncFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
 
 const createCalendarSyncSchema = z.object({
@@ -34,11 +35,7 @@ export async function GET(request: NextRequest) {
     // Check subscription allows calendar sync
     const calendarAccess = await checkCalendarSyncFeatureAccess(providerId);
     if (!calendarAccess.enabled) {
-      return errorResponse(
-        "Calendar sync requires a subscription upgrade. Please upgrade to Starter plan or higher.",
-        "SUBSCRIPTION_REQUIRED",
-        403
-      );
+      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }
 
     const { data: syncs, error } = await supabase
@@ -75,11 +72,7 @@ export async function POST(request: NextRequest) {
     // Check subscription allows calendar sync
     const calendarAccess = await checkCalendarSyncFeatureAccess(providerId);
     if (!calendarAccess.enabled) {
-      return errorResponse(
-        "Calendar sync requires a subscription upgrade. Please upgrade to Starter plan or higher.",
-        "SUBSCRIPTION_REQUIRED",
-        403
-      );
+      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }
 
     const body = await request.json();

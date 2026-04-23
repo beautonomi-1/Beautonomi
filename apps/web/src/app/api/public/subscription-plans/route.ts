@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { resolveTenantIdWithZaFallback } from '@/lib/tenant/resolve-tenant-from-db';
 import { getTenantRegionConfig } from '@/lib/regions/config';
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { ensurePlanOptionHasBarePlanId } from "@/lib/subscription/extract-subscription-plan-uuid";
 import { getDisplayFeatureBulletsForSubscriptionPlans } from "@/lib/subscription/pricing-plan-display-features";
+import {
+  filterPlansForPublishedCatalog,
+  getPublishedPaidSubscriptionPlanIds,
+} from "@/lib/subscription/published-subscription-plans";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,9 +26,14 @@ export async function GET(request: NextRequest) {
       );
     }
     const supabase = await getSupabaseServer();
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
 
     // Fetch available subscription plans
-    const { data: plans, error } = await supabase
+    const { data: plansRaw, error } = await supabase
       .from('subscription_plans')
       .select('*')
       .eq('is_active', true)
@@ -36,6 +46,9 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    const publishedPaidIds = await getPublishedPaidSubscriptionPlanIds(supabaseAdmin, tenantId);
+    const plans = filterPlansForPublishedCatalog(plansRaw as { id: string; is_free?: boolean }[], publishedPaidIds);
 
     const planRows = (plans || []) as { id: string }[];
     const featureMap = await getDisplayFeatureBulletsForSubscriptionPlans(

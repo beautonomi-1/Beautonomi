@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { formatCurrency } from "@/lib/format";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -43,8 +44,12 @@ function reportBadge(report: ProviderReportItem): string {
 export default function ReportsIndex() {
   const router = useRouter();
   const { isTablet } = useResponsive();
+  const { selectedLocationId } = useProvider();
   const [search, setSearch] = useState("");
-  const { data: analytics, loading: analyticsLoading, error: analyticsError } = useApi<AnalyticsSummary>("/api/provider/analytics");
+  const analyticsUrl = selectedLocationId
+    ? `/api/provider/analytics?location_id=${encodeURIComponent(selectedLocationId)}`
+    : `/api/provider/analytics`;
+  const { data: analytics, loading: analyticsLoading, error: analyticsError } = useApi<AnalyticsSummary>(analyticsUrl);
 
   useEffect(() => {
     trackScreenView("provider_reports");

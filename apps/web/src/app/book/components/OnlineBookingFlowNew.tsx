@@ -424,6 +424,16 @@ export default function OnlineBookingFlowNew({
     if (typeof window === "undefined") return null;
     try { return sessionStorage.getItem("beautonomi_hold_id") || null; } catch { return null; }
   });
+  /** Mirrors `/book/continue` countdown while the auth gate is open (from latest hold create + session restore). */
+  const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const e = sessionStorage.getItem("beautonomi_hold_expires_at");
+      return e?.trim() || null;
+    } catch {
+      return null;
+    }
+  });
   const [gateOpen, setGateOpen] = useState(false);
   const [preAuthGateOpen, setPreAuthGateOpen] = useState(false);
   const [creatingHold, setCreatingHold] = useState(false);
@@ -1275,10 +1285,19 @@ export default function OnlineBookingFlowNew({
         guest_fingerprint_hash: getGuestFingerprintHash(),
         ...(pkgForHold ? { package_id: pkgForHold } : {}),
       }, { headers: { "Idempotency-Key": holdIdemKey } });
-      const id = (res as any)?.data?.hold_id ?? (res as any)?.hold_id;
+      const env = res as { data?: { hold_id?: string; id?: string; expires_at?: string }; hold_id?: string; expires_at?: string };
+      const payload = env.data;
+      const id = payload?.hold_id ?? payload?.id ?? env.hold_id;
+      const exp = payload?.expires_at ?? env.expires_at;
       if (id) {
         setHoldId(id);
-        try { sessionStorage.setItem("beautonomi_hold_id", id); } catch {}
+        const expTrim = typeof exp === "string" && exp.trim() ? exp.trim() : null;
+        setHoldExpiresAt(expTrim);
+        try {
+          sessionStorage.setItem("beautonomi_hold_id", id);
+          if (expTrim) sessionStorage.setItem("beautonomi_hold_expires_at", expTrim);
+          else sessionStorage.removeItem("beautonomi_hold_expires_at");
+        } catch {}
         try {
           const tc = await fetch("/api/public/tenant-context", { credentials: "same-origin", cache: "no-store" }).then((r) =>
             r.json().catch(() => null)
@@ -1640,6 +1659,7 @@ export default function OnlineBookingFlowNew({
 
       <BeautonomiGateModal
         holdId={holdId ?? ""}
+        holdExpiresAt={holdExpiresAt}
         open={gateOpen || preAuthGateOpen}
         onAuthComplete={handleAuthComplete}
         onClose={() => {

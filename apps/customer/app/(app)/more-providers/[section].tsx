@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, ActivityIndicator, Platform } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
@@ -57,7 +58,11 @@ export default function MoreProvidersScreen() {
 
   const { data, loading, refreshing, error, refetch } = useHomeData(effectiveLat, effectiveLng);
   const providers = getProviders(data, section);
-  const title = SECTION_TITLES[section] ?? "Providers";
+  const adsDisclosureLabel = useMemo(
+    () => (String(data?.ads_disclosure_label ?? "Sponsored").trim() || "Sponsored"),
+    [data?.ads_disclosure_label],
+  );
+  const title = section === "sponsored" ? adsDisclosureLabel : (SECTION_TITLES[section] ?? "Providers");
   const badge = getBadge(section);
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
 
@@ -113,6 +118,7 @@ export default function MoreProvidersScreen() {
                     showHottestBadge={badge === "hottest"}
                     showNearestBadge={badge === "nearest"}
                     showUpcomingBadge={badge === "upcoming"}
+                    sponsoredListingLabel={section === "sponsored" ? adsDisclosureLabel : undefined}
                   />
                 </View>
               ))}

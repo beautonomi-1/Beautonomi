@@ -3,6 +3,36 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { createClient } from "@supabase/supabase-js";
+import {
+  applyPosProductStockDecrements,
+  validatePosProductStock,
+} from "@/lib/provider-sales/pos-product-stock";
+
+/** Values allowed by `sales.payment_method` CHECK (see migration 129). */
+const DB_SALE_PAYMENT_METHODS = new Set([
+  "cash",
+  "card",
+  "paystack",
+  "yoco",
+  "gift_card",
+  "other",
+]);
+
+/** Align POS / appointment UI labels with DB constraint (e.g. EFT → other). */
+function normalizeSalePaymentMethodForDb(raw: string | undefined | null): string {
+  const m = String(raw || "cash").toLowerCase().trim();
+  if (DB_SALE_PAYMENT_METHODS.has(m)) return m;
+  if (
+    m === "eft" ||
+    m === "bank_transfer" ||
+    m === "mobile" ||
+    m === "online" ||
+    m === "debit"
+  ) {
+    return "other";
+  }
+  return "other";
+}
 
 /**
  * GET /api/provider/sales
@@ -94,6 +124,28 @@ export async function GET(request: NextRequest) {
       throw salesError;
     }
 
+    // Also compute a period-wide aggregate (sum of total_amount) across the FILTERED rows,
+    // not just the current page. The mobile sales-history screen relies on this so the
+    // "Revenue" card shows the real total, not just the first page.
+    let periodTotalAmount = 0;
+    try {
+      let totalsQuery = supabaseAdmin
+        .from("sales")
+        .select("total_amount")
+        .eq("provider_id", providerId);
+      if (locationId) totalsQuery = totalsQuery.eq("location_id", locationId);
+      if (dateFrom) totalsQuery = totalsQuery.gte("sale_date", `${dateFrom}T00:00:00`);
+      if (dateTo) totalsQuery = totalsQuery.lte("sale_date", `${dateTo}T23:59:59`);
+      if (search) totalsQuery = totalsQuery.ilike("ref_number", `%${search}%`);
+      const { data: totalsRows } = await totalsQuery;
+      periodTotalAmount = (totalsRows ?? []).reduce(
+        (s: number, r: { total_amount?: number | null }) => s + Number(r.total_amount ?? 0),
+        0
+      );
+    } catch (err) {
+      console.warn("Sales total aggregate failed:", err);
+    }
+
     // Get related data separately to avoid nested join issues
     const saleIds = (sales || []).map(s => s.id);
     const customerIds = new Set<string>();
@@ -181,6 +233,8 @@ export async function GET(request: NextRequest) {
           quantity: item.quantity,
           unit_price: Number(item.unit_price),
           total: Number(item.total_price),
+          item_id: item.item_id ?? null,
+          product_variant_id: item.product_variant_id ?? null,
         });
       });
     }
@@ -200,6 +254,7 @@ export async function GET(request: NextRequest) {
         tax: Number(sale.tax_amount || 0),
         total: Number(sale.total_amount || 0),
         payment_method: sale.payment_method || 'cash',
+        payment_status: sale.payment_status || 'completed',
         team_member_id: sale.staff_id || null,
         team_member_name: staffName || null,
       };
@@ -220,6 +275,8 @@ export async function GET(request: NextRequest) {
     return successResponse({
       data: filteredSales,
       total: count || filteredSales.length,
+      /** Sum of `total_amount` across ALL rows matching the filters (not just this page). */
+      total_amount_sum: periodTotalAmount,
       page,
       limit,
       total_pages: totalPages,
@@ -293,12 +350,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const resolvedPaymentStatus = payment_status || "completed";
+    const normalizedPaymentMethod = normalizeSalePaymentMethodForDb(payment_method);
+
+    const stockError = await validatePosProductStock(supabase, providerId, items);
+    if (stockError) {
+      return handleApiError(
+        new Error(stockError),
+        stockError,
+        "STOCK_ERROR",
+        400,
+      );
+    }
+
     // Calculate totals if not provided
     const calculatedSubtotal = subtotal || items.reduce((sum: number, item: any) => 
       sum + (item.unit_price || 0) * (item.quantity || 1), 0
     );
     const calculatedTax = tax_amount || (calculatedSubtotal * (tax_rate || 0));
-    const calculatedTotal = total_amount || (calculatedSubtotal + calculatedTax - (discount_amount || 0));
+    const tipNum = Number(tip_amount || 0);
+    const calculatedTotal =
+      total_amount !== undefined && total_amount !== null
+        ? Number(total_amount)
+        : calculatedSubtotal + calculatedTax - Number(discount_amount || 0) + tipNum;
 
     // Create sale
     const { data: sale, error: saleError } = await supabase
@@ -314,8 +388,8 @@ export async function POST(request: NextRequest) {
         tax_amount: calculatedTax,
         discount_amount: discount_amount || 0,
         total_amount: calculatedTotal,
-        payment_method: payment_method || 'cash',
-        payment_status: payment_status || 'completed',
+        payment_method: normalizedPaymentMethod,
+        payment_status: resolvedPaymentStatus,
         notes: (() => {
           const parts: string[] = [];
           if (notes) parts.push(notes);
@@ -341,6 +415,7 @@ export async function POST(request: NextRequest) {
       sale_id: sale.id,
       item_type: item.type || 'product',
       item_id: item.item_id || null,
+      product_variant_id: item.product_variant_id || null,
       item_name: item.name,
       quantity: item.quantity || 1,
       unit_price: item.unit_price || 0,
@@ -355,6 +430,20 @@ export async function POST(request: NextRequest) {
       // Rollback sale creation
       await supabase.from('sales').delete().eq('id', sale.id);
       throw itemsError;
+    }
+
+    if (resolvedPaymentStatus === "completed") {
+      try {
+        await applyPosProductStockDecrements(supabase, items);
+      } catch (stockErr) {
+        await supabase.from("sales").delete().eq("id", sale.id);
+        return handleApiError(
+          stockErr instanceof Error ? stockErr : new Error(String(stockErr)),
+          "Sale was not saved: inventory could not be updated. Try again or check product stock.",
+          "SALE_STOCK_FAILED",
+          500,
+        );
+      }
     }
 
     // Fetch complete sale with items (simplified query)
@@ -397,11 +486,14 @@ export async function POST(request: NextRequest) {
         quantity: item.quantity,
         unit_price: Number(item.unit_price),
         total: Number(item.total_price),
+        item_id: item.item_id ?? null,
+        product_variant_id: item.product_variant_id ?? null,
       })),
       subtotal: Number(sale.subtotal),
       tax: Number(sale.tax_amount),
       total: Number(sale.total_amount),
       payment_method: sale.payment_method,
+      payment_status: sale.payment_status,
       team_member_id: sale.staff_id || null,
       team_member_name: staffName,
     });

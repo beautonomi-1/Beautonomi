@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useClientMounted } from "@/hooks/use-client-mounted";
 import { Search, MessageSquare } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -39,6 +40,7 @@ export default function ConversationList({
   isProviderView = false,
 }: ConversationListProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const clientMounted = useClientMounted();
 
   const filteredConversations = conversations.filter((conv) => {
     if (!searchQuery.trim()) return true;
@@ -63,6 +65,7 @@ export default function ConversationList({
   });
 
   const formatTime = (dateString: string) => {
+    if (!clientMounted) return "\u2013";
     const date = new Date(dateString);
     if (isToday(date)) {
       return format(date, "HH:mm");

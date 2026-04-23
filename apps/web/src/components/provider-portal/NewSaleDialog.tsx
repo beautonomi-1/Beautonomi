@@ -22,11 +22,13 @@ import type {
   ServiceCategory,
   ServiceItem,
   ProductItem,
+  ProductVariantItem,
   TeamMember,
   Sale,
   YocoPayment,
 } from "@/lib/provider-portal/types";
 import { isLikelyUuid } from "@/lib/http/api-error";
+import { providerPortalFetch } from "@/lib/http/fetcher";
 import { providerApi } from "@/lib/provider-portal/api";
 import { Money } from "./Money";
 import { YocoPaymentDialog } from "./YocoPaymentDialog";
@@ -67,6 +69,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -92,6 +95,9 @@ interface CartItem {
   quantity: number;
   unit_price: number;
   total: number;
+  /** offerings.id (service / variant / addon) or products.id for API `sale_items.item_id`. */
+  item_id?: string;
+  product_variant_id?: string | null;
   team_member_id?: string;
   team_member_name?: string;
   parent_service_id?: string;
@@ -111,6 +117,31 @@ interface ServiceAddon {
   price: number;
   addon_category?: string;
   is_recommended?: boolean;
+}
+
+/** GET /api/provider/services/[id]/variants returns `{ data: { variants: [...] } }`. */
+function normalizeServiceVariantsFromResponse(json: unknown): ServiceVariant[] {
+  const root = json as { data?: unknown } | null | undefined;
+  const inner = root?.data ?? json;
+  const raw = Array.isArray(inner)
+    ? inner
+    : inner && typeof inner === "object" && inner !== null && "variants" in inner
+      ? (inner as { variants?: unknown }).variants
+      : [];
+  if (!Array.isArray(raw)) return [];
+  return raw.map((v: Record<string, unknown>) => ({
+    id: String(v.id),
+    name: String(v.title ?? v.name ?? v.variant_name ?? "Variant"),
+    price: Number(v.price ?? 0),
+    variant_name: (v.variant_name ?? v.title ?? v.name) as string | undefined,
+  }));
+}
+
+function formatProductVariantLabel(v: ProductVariantItem): string {
+  const vals = v.option_values ? Object.values(v.option_values).filter(Boolean) : [];
+  if (vals.length) return vals.join(" / ");
+  if (v.sku) return String(v.sku);
+  return "Variant";
 }
 
 // Payment methods for POS sale dialog - aligned with other dialogs
@@ -157,6 +188,7 @@ export function NewSaleDialog({
   
   // Service selection state
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
+  const selectedServiceRef = useRef<ServiceItem | null>(null);
   const [serviceVariants, setServiceVariants] = useState<ServiceVariant[]>([]);
   const [serviceAddons, setServiceAddons] = useState<ServiceAddon[]>([]);
   const [selectedVariant, setSelectedVariant] = useState<ServiceVariant | null>(null);
@@ -187,6 +219,7 @@ export function NewSaleDialog({
   // Modals
   const [showNewClientDialog, setShowNewClientDialog] = useState(false);
   const [showCustomServiceDialog, setShowCustomServiceDialog] = useState(false);
+  const [productForVariantPick, setProductForVariantPick] = useState<ProductItem | null>(null);
   
   // New client form
   const [newClientForm, setNewClientForm] = useState({
@@ -257,7 +290,7 @@ export function NewSaleDialog({
     const searchClients = async () => {
       if (clientSearchQuery.length >= 1) {
         try {
-          const response = await fetch(`/api/provider/clients?search=${encodeURIComponent(clientSearchQuery)}`);
+          const response = await providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(clientSearchQuery)}`);
           if (response.ok) {
             const data = await response.json();
             const clients = data.data || [];
@@ -298,6 +331,10 @@ export function NewSaleDialog({
   }, [clientSearchQuery]);
 
   // Load service variants and addons when service is selected
+  useEffect(() => {
+    selectedServiceRef.current = selectedService;
+  }, [selectedService]);
+
   useEffect(() => {
     if (selectedService) {
       loadServiceDetails(selectedService.id);
@@ -349,14 +386,32 @@ export function NewSaleDialog({
     try {
       // Load variants and addons for the service
       const [variantsResponse, addonsResponse] = await Promise.all([
-        fetch(`/api/provider/services/${serviceId}/variants`).catch(() => ({ ok: false })),
-        fetch(`/api/provider/services/${serviceId}/addons`).catch(() => ({ ok: false })),
+        providerPortalFetch(`/api/provider/services/${serviceId}/variants`).catch(() => ({ ok: false })),
+        providerPortalFetch(`/api/provider/services/${serviceId}/addons`).catch(() => ({ ok: false })),
       ]);
 
       if (variantsResponse.ok && "json" in variantsResponse) {
         const variantsData = await (variantsResponse as Response).json();
-        const variants = variantsData.data || variantsData || [];
-        setServiceVariants(Array.isArray(variants) ? variants : []);
+        const normalized = normalizeServiceVariantsFromResponse(variantsData);
+        const latest = selectedServiceRef.current;
+        if (
+          normalized.length === 0 &&
+          latest?.id === serviceId &&
+          (latest.variants?.filter((v) => v.is_active !== false).length ?? 0) > 0
+        ) {
+          setServiceVariants(
+            (latest.variants ?? [])
+              .filter((v) => v.is_active !== false)
+              .map((v) => ({
+                id: v.id,
+                name: v.name,
+                price: Number(v.price ?? 0),
+                variant_name: v.variant_name ?? v.name,
+              })),
+          );
+        } else {
+          setServiceVariants(normalized);
+        }
       } else {
         setServiceVariants([]);
       }
@@ -394,6 +449,7 @@ export function NewSaleDialog({
     setAppliedCoupon(null);
     setShowNewClientDialog(false);
     setShowCustomServiceDialog(false);
+    setProductForVariantPick(null);
     setNewClientForm({ first_name: "", last_name: "", email: "", phone: "" });
     setCustomServiceForm({ name: "", price: "", duration_minutes: "30", category_id: "" });
     setServiceLocationType("at-salon");
@@ -419,6 +475,12 @@ export function NewSaleDialog({
 
   // Quick add service (without opening details modal) - supports group bookings
   const handleQuickAddService = (service: ServiceItem) => {
+    const embeddedVariants = service.variants?.filter((v) => v.is_active !== false) ?? [];
+    if (embeddedVariants.length > 0) {
+      handleServiceClick(service);
+      return;
+    }
+
     const teamMember = teamMembers.find((m) => m.id === selectedTeamMember);
     
     // Create unique cart item ID that includes service ID, team member, and timestamp for group bookings
@@ -449,6 +511,7 @@ export function NewSaleDialog({
         quantity: 1,
         unit_price: service.price,
         total: service.price,
+        item_id: service.id,
         team_member_id: selectedTeamMember || undefined,
         team_member_name: teamMember?.name,
       };
@@ -461,18 +524,19 @@ export function NewSaleDialog({
     if (!selectedService) return;
 
     const teamMember = teamMembers.find((m) => m.id === selectedTeamMember);
-    const serviceToAdd = selectedVariant || selectedService;
     
     // Ensure serviceAddons is an array
     const addonsArray = Array.isArray(serviceAddons) ? serviceAddons : [];
     const addonItems = addonsArray.filter((a: any) => selectedAddons.includes(a.id));
-    const addonTotal = addonItems.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
-    const servicePrice = serviceToAdd.price + addonTotal;
+    // Base line is only the chosen service or variant; add-ons are separate cart lines (avoid double-counting).
+    const baseUnitPrice = Number(
+      selectedVariant != null ? selectedVariant.price : selectedService?.price ?? 0,
+    );
 
     // Create unique cart item ID base
-    const baseId = selectedVariant 
-      ? `${serviceToAdd.id}-${selectedVariant.id}-${selectedTeamMember || 'default'}`
-      : `${serviceToAdd.id}-${selectedTeamMember || 'default'}`;
+    const baseId = selectedVariant
+      ? `${selectedService.id}-${selectedVariant.id}-${selectedTeamMember || "default"}`
+      : `${selectedService.id}-${selectedTeamMember || "default"}`;
 
     // Check if this exact service+variant+team combo already exists
     const existingIndex = cart.findIndex(
@@ -498,8 +562,9 @@ export function NewSaleDialog({
         type: selectedVariant ? "variant" : "service",
         name: selectedVariant ? `${selectedService.name} - ${selectedVariant.variant_name || selectedVariant.name}` : selectedService.name,
         quantity: 1,
-        unit_price: servicePrice,
-        total: servicePrice,
+        unit_price: baseUnitPrice,
+        total: baseUnitPrice,
+        item_id: selectedVariant ? selectedVariant.id : selectedService.id,
         team_member_id: selectedTeamMember || undefined,
         team_member_name: teamMember?.name,
         parent_service_id: selectedVariant ? selectedService.id : undefined,
@@ -514,6 +579,7 @@ export function NewSaleDialog({
         quantity: 1,
         unit_price: addon.price || 0,
         total: addon.price || 0,
+        item_id: addon.id,
         team_member_id: selectedTeamMember || undefined,
         team_member_name: teamMember?.name,
         parent_service_id: selectedService.id,
@@ -529,21 +595,30 @@ export function NewSaleDialog({
     setSelectedAddons([]);
   };
 
-  const handleAddProduct = (product: ProductItem) => {
-    // Check if this exact product already exists (for group bookings, allow multiple)
+  const openProductOrAdd = (product: ProductItem) => {
+    if (product.has_variants && (product.variants?.length ?? 0) > 0) {
+      setProductForVariantPick(product);
+      return;
+    }
+    addSimpleProductToCart(product);
+  };
+
+  const addSimpleProductToCart = (product: ProductItem) => {
+    const unit = Number(product.retail_price ?? 0);
     const existingIndex = cart.findIndex(
-      (item) => item.id === product.id && item.type === "product"
+      (item) =>
+        item.type === "product" &&
+        item.item_id === product.id &&
+        !(item.product_variant_id ?? null),
     );
 
     if (existingIndex >= 0) {
-      // Increment quantity for group bookings
       const newCart = [...cart];
       newCart[existingIndex].quantity += 1;
       newCart[existingIndex].total = newCart[existingIndex].quantity * newCart[existingIndex].unit_price;
       setCart(newCart);
       toast.success(`Product quantity updated (${newCart[existingIndex].quantity} items)`);
     } else {
-      // Add new product
       setCart([
         ...cart,
         {
@@ -551,12 +626,49 @@ export function NewSaleDialog({
           type: "product",
           name: product.name,
           quantity: 1,
-          unit_price: product.retail_price,
-          total: product.retail_price,
+          unit_price: unit,
+          total: unit,
+          item_id: product.id,
+          product_variant_id: null,
         },
       ]);
       toast.success("Product added to cart");
     }
+  };
+
+  const addProductVariantToCart = (product: ProductItem, variant: ProductVariantItem) => {
+    const unit = Number(variant.retail_price ?? 0);
+    const label = formatProductVariantLabel(variant);
+    const existingIndex = cart.findIndex(
+      (item) =>
+        item.type === "product" &&
+        item.item_id === product.id &&
+        (item.product_variant_id ?? null) === variant.id,
+    );
+
+    if (existingIndex >= 0) {
+      const newCart = [...cart];
+      newCart[existingIndex].quantity += 1;
+      newCart[existingIndex].total = newCart[existingIndex].quantity * newCart[existingIndex].unit_price;
+      setCart(newCart);
+      toast.success(`Product quantity updated (${newCart[existingIndex].quantity} items)`);
+    } else {
+      setCart([
+        ...cart,
+        {
+          id: `${product.id}_v_${variant.id}`,
+          type: "product",
+          name: `${product.name} — ${label}`,
+          quantity: 1,
+          unit_price: unit,
+          total: unit,
+          item_id: product.id,
+          product_variant_id: variant.id,
+        },
+      ]);
+      toast.success("Product added to cart");
+    }
+    setProductForVariantPick(null);
   };
 
   const handleUpdateQuantity = (index: number, delta: number) => {
@@ -585,7 +697,7 @@ export function NewSaleDialog({
     setIsValidatingCoupon(true);
     try {
       // Include subtotal in validation request for accurate discount calculation
-      const response = await fetch(`/api/provider/coupons/validate?code=${encodeURIComponent(couponCode)}&subtotal=${subtotal}`);
+      const response = await providerPortalFetch(`/api/provider/coupons/validate?code=${encodeURIComponent(couponCode)}&subtotal=${subtotal}`);
       if (response.ok) {
         const result = await response.json();
         const data = result.data || result; // Handle both wrapped and unwrapped responses
@@ -614,7 +726,7 @@ export function NewSaleDialog({
 
     setIsValidatingGiftCard(true);
     try {
-      const response = await fetch(`/api/provider/gift-cards/validate?code=${encodeURIComponent(giftCardCode)}`);
+      const response = await providerPortalFetch(`/api/provider/gift-cards/validate?code=${encodeURIComponent(giftCardCode)}`);
       if (response.ok) {
         const result = await response.json();
         const data = result.data || result; // Handle both wrapped and unwrapped responses
@@ -669,7 +781,13 @@ export function NewSaleDialog({
         ? selectedClient.id
         : undefined;
 
-    const saleBase: Partial<Sale> & { customer_id?: string } = {
+    const saleBase: Partial<Sale> & {
+      customer_id?: string;
+      discount_amount?: number;
+      tax_rate?: number;
+      tip_amount?: number;
+      is_walk_in?: boolean;
+    } = {
       customer_id: customerId,
       client_name: clientName,
       items: cart.map((item) => ({
@@ -679,10 +797,16 @@ export function NewSaleDialog({
         quantity: item.quantity,
         unit_price: item.unit_price,
         total: item.total,
+        item_id: item.item_id ?? null,
+        product_variant_id:
+          item.type === "product" ? (item.product_variant_id ?? null) : null,
       })),
       subtotal,
       tax,
       total,
+      discount_amount: discountAmount,
+      tax_rate: taxRate,
+      tip_amount: tipAmount,
       payment_method: selectedPaymentMethod,
       location_id: serviceLocationType === "at-salon" ? selectedLocationId : undefined,
       service_location_type: serviceLocationType,
@@ -692,6 +816,10 @@ export function NewSaleDialog({
       coupon_code: appliedCoupon?.code,
       gift_card_code: giftCardBalance > 0 ? giftCardCode : undefined,
       gift_card_amount: giftCardApplied,
+      is_walk_in:
+        !customerId ||
+        Boolean(selectedClient?.id?.startsWith("walk-in")) ||
+        Boolean(selectedClient?.id?.startsWith("new-client-")),
     };
 
     // Yoco: create a pending sale, charge terminal with sale_id, then mark completed (no second insert)
@@ -1367,7 +1495,19 @@ export function NewSaleDialog({
                                     onClick={() => handleServiceClick(service)}
                                     className="w-full text-left"
                                   >
-                                    <p className="font-semibold text-sm mb-1">{service.name}</p>
+                                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                      <p className="font-semibold text-sm">{service.name}</p>
+                                      {service.service_type === "package" && (
+                                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
+                                          Package
+                                        </Badge>
+                                      )}
+                                      {(service.variants?.length ?? 0) > 0 && (
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-normal">
+                                          Options
+                                        </Badge>
+                                      )}
+                                    </div>
                                     <div className="flex items-center justify-between mt-1">
                                       <span className="text-xs text-gray-500">
                                         {service.duration_minutes} min
@@ -1437,16 +1577,36 @@ export function NewSaleDialog({
                         >
                           <button
                             type="button"
-                            onClick={() => handleAddProduct(product)}
+                            onClick={() => openProductOrAdd(product)}
                             className="w-full text-left"
                           >
-                            <p className="font-semibold text-sm mb-1">{product.name}</p>
+                            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                              <p className="font-semibold text-sm">{product.name}</p>
+                              {product.has_variants && (product.variants?.length ?? 0) > 0 && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-normal">
+                                  Variants
+                                </Badge>
+                              )}
+                            </div>
                             <div className="flex items-center justify-between mt-1">
                               <span className="text-xs text-gray-500">
-                                {product.quantity} in stock
+                                {product.has_variants
+                                  ? `${product.effective_quantity ?? product.quantity} in stock`
+                                  : `${product.quantity} in stock`}
                               </span>
                               <span className="text-sm font-bold text-primary">
-                                <Money amount={product.retail_price} />
+                                <Money
+                                  amount={
+                                    product.has_variants && product.variants?.length
+                                      ? Math.min(
+                                          ...product.variants.map((v) => Number(v.retail_price ?? 0)),
+                                        )
+                                      : product.retail_price
+                                  }
+                                />
+                                {product.has_variants && product.variants && product.variants.length > 1 && (
+                                  <span className="text-[10px] font-normal text-gray-500 ml-0.5">from</span>
+                                )}
                               </span>
                             </div>
                           </button>
@@ -1455,7 +1615,7 @@ export function NewSaleDialog({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleAddProduct(product);
+                              openProductOrAdd(product);
                             }}
                             className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-hover opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                             title="Add to cart"
@@ -1713,6 +1873,51 @@ export function NewSaleDialog({
           onSuccess={handleYocoPaymentSuccess}
         />
       )}
+
+      {/* Product variant picker */}
+      <Dialog
+        open={Boolean(productForVariantPick)}
+        onOpenChange={(next) => {
+          if (!next) setProductForVariantPick(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select product option</DialogTitle>
+            <DialogDescription className="truncate">
+              {productForVariantPick?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 overflow-y-auto space-y-2 py-2">
+            {(productForVariantPick?.variants ?? []).map((v) => {
+              const q = Number(v.quantity ?? 0);
+              const disabled = q <= 0;
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    if (productForVariantPick) addProductVariantToCart(productForVariantPick, v);
+                  }}
+                  className={cn(
+                    "w-full flex items-center justify-between rounded-lg border p-3 text-left text-sm transition-colors",
+                    disabled ? "opacity-50 cursor-not-allowed" : "hover:border-primary hover:bg-primary/5",
+                  )}
+                >
+                  <span className="font-medium pr-2">{formatProductVariantLabel(v)}</span>
+                  <span className="flex flex-shrink-0 items-center gap-2">
+                    <span className="text-xs text-gray-500">{q} in stock</span>
+                    <span className="font-semibold text-primary">
+                      <Money amount={Number(v.retail_price ?? 0)} />
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add New Client Dialog */}
       <Dialog open={showNewClientDialog} onOpenChange={setShowNewClientDialog}>

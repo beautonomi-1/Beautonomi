@@ -37,6 +37,73 @@ export class FetchTimeoutError extends Error {
 const ADMIN_SCOPE_STORAGE_KEY = "admin_scope_mode";
 const ADMIN_SCOPE_TENANT_STORAGE_KEY = "admin_scope_tenant_id";
 
+/** Must match `STORAGE_KEY` in `ProviderPortalProvider.tsx`. */
+const PROVIDER_PORTAL_CACHE_STORAGE_KEY = "provider_portal_cache_v2";
+/** Must match `ACTIVE_PROVIDER_ID_HEADER` in `@/lib/supabase/api-helpers`. */
+const ACTIVE_PROVIDER_ID_HEADER = "x-provider-id";
+
+function looksLikeUuid(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    id.trim(),
+  );
+}
+
+function isProviderApiUrl(url: string): boolean {
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const path = new URL(url, base).pathname;
+    return path === "/api/provider" || path.startsWith("/api/provider/");
+  } catch {
+    return url === "/api/provider" || url.startsWith("/api/provider/");
+  }
+}
+
+function readActiveProviderIdFromPortalCache(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.sessionStorage.getItem(PROVIDER_PORTAL_CACHE_STORAGE_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as { provider?: { id?: string } | null };
+    const id =
+      parsed?.provider && typeof parsed.provider.id === "string" ? parsed.provider.id.trim() : "";
+    return looksLikeUuid(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Merge `x-provider-id` from portal sessionStorage for raw `fetch()` to `/api/provider/*`
+ * (same hint as {@link fetchJson}). No-op on server or non-provider URLs.
+ */
+export function mergeProviderPortalFetchHeaders(
+  url: string,
+  headers?: HeadersInit,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (headers) {
+    new Headers(headers).forEach((value, key) => {
+      out[key] = value;
+    });
+  }
+  if (typeof document !== "undefined" && isProviderApiUrl(url)) {
+    const existing = out["x-provider-id"] ?? out["X-Provider-Id"];
+    if (!existing) {
+      const id = readActiveProviderIdFromPortalCache();
+      if (id) out[ACTIVE_PROVIDER_ID_HEADER] = id;
+    }
+  }
+  return out;
+}
+
+/** Same-origin `fetch` with multi-org header parity for `/api/provider/*`. */
+export function providerPortalFetch(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    headers: mergeProviderPortalFetchHeaders(url, init?.headers),
+  });
+}
+
 /** Path is `prefix` or `prefix/...`, not `prefix-other` (matches admin-api-client `matchesScopedPathPrefix`). */
 function adminPathMatchesPrefix(url: string, prefix: string): boolean {
   try {
@@ -62,7 +129,8 @@ function isScopedAdminCustomizationUrl(url: string): boolean {
     adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/gemini") ||
     adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/aura") ||
     adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/sumsub") ||
-    adminPathMatchesPrefix(url, "/api/admin/subscription-plans")
+    adminPathMatchesPrefix(url, "/api/admin/subscription-plans") ||
+    adminPathMatchesPrefix(url, "/api/admin/ecommerce")
   );
 }
 
@@ -212,10 +280,8 @@ export async function fetchJson<T = unknown>(
 
   const requestStartTime = Date.now();
   try {
-    // Prepare headers
-    const requestHeaders: HeadersInit = {
-      ...headers,
-    };
+    // Prepare headers (includes x-provider-id for /api/provider/* when portal cache has id)
+    const requestHeaders: HeadersInit = mergeProviderPortalFetchHeaders(url, headers);
 
     // Auto-inject CSRF token for mutation requests (POST/PUT/PATCH/DELETE)
     if (typeof document !== "undefined" && method !== "GET" && method !== "HEAD") {

@@ -416,9 +416,10 @@ export async function POST(request: NextRequest) {
           }
           // §Release-audit 2026-04: mirror validate-booking so a hold
           // cannot tie up calendar time for an offline-only service or
-          // a non-service offering (addon / variant). Without this a
-          // client could hold a slot that the commit path will reject
-          // anyway, blocking real bookings in the meantime.
+          // an addon offering submitted as a main service line. Variants
+          // are legitimate bookable services (their own price/duration
+          // row in `offerings`) and are what the StepServices UI submits
+          // when a service has variants, so they are NOT rejected here.
           if ((off as { online_booking_enabled?: boolean }).online_booking_enabled === false) {
             return handleApiError(
               new Error("Service is not available for online booking"),
@@ -428,7 +429,7 @@ export async function POST(request: NextRequest) {
             );
           }
           const svcType = (off as { service_type?: string | null }).service_type;
-          if (svcType === "addon" || svcType === "variant") {
+          if (svcType === "addon") {
             return handleApiError(
               new Error("Non-service offering submitted as service"),
               "Invalid service selection",

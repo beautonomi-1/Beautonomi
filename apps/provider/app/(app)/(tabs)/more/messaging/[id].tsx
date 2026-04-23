@@ -126,6 +126,7 @@ export default function ChatScreen() {
     refresh,
   } = useApi<ConversationDetail>(`/api/provider/conversations/${conversationId}`, {
     enabled: !!conversationId,
+    staleTimeMs: 0,
   });
   const { execute: sendMessage, loading: sending } = useApiPost<any, any>(
     `/api/provider/conversations/${conversationId ?? ""}/messages`

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/popover";
 import type { TeamMember, ServiceItem } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
+import { providerPortalFetch } from "@/lib/http/fetcher";
 import { format } from "date-fns";
 import { 
   Calendar, 
@@ -91,7 +92,7 @@ export function QuickBookingPopover({
     const searchClients = async () => {
       if (clientSearchQuery.length >= 2) {
         try {
-          const response = await fetch(`/api/provider/clients?search=${encodeURIComponent(clientSearchQuery)}`);
+          const response = await providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(clientSearchQuery)}`);
           if (response.ok) {
             const data = await response.json();
             setClientSearchResults(data.data || []);

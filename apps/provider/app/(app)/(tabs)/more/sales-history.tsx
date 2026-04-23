@@ -50,6 +50,8 @@ interface Sale {
 interface SalesResponse {
   data: Sale[];
   total: number;
+  /** Sum of total_amount across ALL rows matching the filter, not just this page. */
+  total_amount_sum?: number;
   page: number;
   limit: number;
   total_pages: number;
@@ -132,8 +134,11 @@ export default function SalesHistoryScreen() {
   }, [refresh]);
 
   const stats = useMemo(() => {
-    const totalRevenue = sales.reduce((sum, s) => sum + s.total, 0);
-    return { count: salesData?.total ?? sales.length, revenue: totalRevenue };
+    // Use the server-computed period-wide aggregate when available. Falling back to the
+    // page-only sum would understate revenue for any filter that spans multiple pages.
+    const pageSum = sales.reduce((sum, s) => sum + s.total, 0);
+    const revenue = salesData?.total_amount_sum ?? pageSum;
+    return { count: salesData?.total ?? sales.length, revenue };
   }, [sales, salesData]);
 
   return (

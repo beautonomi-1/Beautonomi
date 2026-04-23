@@ -7,6 +7,7 @@
 
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { cookies, headers } from "next/headers";
 import * as Sentry from "@sentry/nextjs";
 import { getSupabaseServer, createSupabaseClientFromToken } from "./server";
 import { getSupabaseAdmin } from "./admin";
@@ -558,50 +559,166 @@ export function createPaginatedResponse<T>(
   };
 }
 
+/** HTTP header clients may send to pin the salon/org for `/api/provider/*`. */
+export const ACTIVE_PROVIDER_ID_HEADER = "x-provider-id";
+
+/** Cookie mirrored from the provider portal so API routes resolve the same org without per-route changes. */
+export const ACTIVE_PROVIDER_ID_COOKIE = "bn_active_provider_id";
+
 /**
- * Get provider ID for current user (works for both owners and staff)
+ * Read {@link ACTIVE_PROVIDER_ID_HEADER} from an incoming request (case-insensitive).
+ */
+export function readActiveProviderIdFromRequest(
+  request: Pick<Request, "headers"> | null | undefined,
+): string | null {
+  if (!request?.headers?.get) return null;
+  const raw = request.headers.get(ACTIVE_PROVIDER_ID_HEADER)?.trim();
+  if (!raw || !isValidUUID(raw)) return null;
+  return raw;
+}
+
+/**
+ * Resolves {@link ACTIVE_PROVIDER_ID_HEADER} from an explicit Request (if any)
+ * or from Next's dynamic `headers()` (App Router route handlers / RSC request).
+ */
+async function readActiveProviderIdFromIncomingHttp(
+  request?: NextRequest | Request | null,
+): Promise<string | null> {
+  const fromExplicit = request ? readActiveProviderIdFromRequest(request) : null;
+  if (fromExplicit) return fromExplicit;
+  try {
+    const h = await headers();
+    const raw =
+      h.get(ACTIVE_PROVIDER_ID_HEADER)?.trim() ?? h.get("X-Provider-Id")?.trim();
+    if (raw && isValidUUID(raw)) return raw;
+  } catch {
+    // Non-request contexts (build, scripts, some tests).
+  }
+  return null;
+}
+
+export type GetProviderIdForUserOptions = {
+  /** Explicit override (e.g. server action) — must pass {@link userHasProviderAccessAdmin}. */
+  preferredProviderId?: string | null;
+  /** When set, reads {@link ACTIVE_PROVIDER_ID_HEADER} before the portal cookie. */
+  request?: NextRequest | Request | null;
+};
+
+/**
+ * Get provider ID for current user (works for both owners and staff).
+ *
+ * **Multi-org staff:** if the user has several `provider_staff` rows, an
+ * unambiguous hint is required: {@link ACTIVE_PROVIDER_ID_HEADER} (set by
+ * the web fetcher from the portal cache), {@link ACTIVE_PROVIDER_ID_COOKIE}
+ * (set when the portal loads), or `options.preferredProviderId`. If a hint
+ * is present but the user has no access, returns **null** (fail closed).
+ *
+ * For **single-row** reads (e.g. one booking), still prefer
+ * {@link userHasProviderAccessAdmin} against the row's `provider_id`.
  */
 export async function getProviderIdForUser(
   userId: string,
-  supabaseClient?: Awaited<ReturnType<typeof getSupabaseServer>>
+  supabaseClient?: Awaited<ReturnType<typeof getSupabaseServer>>,
+  options?: GetProviderIdForUserOptions | null,
 ): Promise<string | null> {
-  const supabase = supabaseClient || await getSupabaseServer();
-  
+  const explicit = options?.preferredProviderId?.trim();
+  const fromHeader = await readActiveProviderIdFromIncomingHttp(
+    options?.request ?? null,
+  );
+
+  let hint: string | null = null;
+  if (explicit && isValidUUID(explicit)) {
+    hint = explicit;
+  } else if (fromHeader) {
+    hint = fromHeader;
+  }
+
+  if (!hint) {
+    try {
+      const store = await cookies();
+      const c = store.get(ACTIVE_PROVIDER_ID_COOKIE)?.value?.trim();
+      if (c && isValidUUID(c)) hint = c;
+    } catch {
+      // Not in a Next.js server context (e.g. some scripts/tests).
+    }
+  }
+
+  if (hint) {
+    const admin = getSupabaseAdmin();
+    if (await userHasProviderAccessAdmin(admin, userId, hint)) {
+      return hint;
+    }
+    return null;
+  }
+
+  const supabase = supabaseClient || (await getSupabaseServer());
+
   // First check if user is a provider owner
   const { data: provider, error: providerError } = await supabase
-    .from('providers')
-    .select('id')
-    .eq('user_id', userId)
+    .from("providers")
+    .select("id")
+    .eq("user_id", userId)
     .maybeSingle();
-  
+
   if (providerError) {
-    console.error('Error fetching provider ID for user:', providerError);
+    console.error("Error fetching provider ID for user:", providerError);
   }
-  
+
   if (provider) {
     return provider.id;
   }
-  
-  // Staff may have multiple active rows (e.g. several providers); maybeSingle() errors in that case.
+
+  // Staff may have multiple active rows; default: earliest by created_at.
   const { data: staffRows, error: staffError } = await supabase
-    .from('provider_staff')
-    .select('provider_id')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .order('created_at', { ascending: true })
+    .from("provider_staff")
+    .select("provider_id")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
     .limit(1);
-  
+
   if (staffError) {
-    console.error('Error fetching provider ID from staff:', staffError);
+    console.error("Error fetching provider ID from staff:", staffError);
     return null;
   }
-  
+
   const staffPid = staffRows?.[0]?.provider_id;
   if (staffPid) {
     return staffPid;
   }
-  
+
   return null;
+}
+
+/**
+ * Whether `userId` owns `providerId` or has an active `provider_staff`
+ * row for that provider. Uses the **service-role** admin client so the
+ * result is not affected by RLS and is correct when the same user has
+ * multiple `provider_staff` rows (multi-salon staff). Prefer this for
+ * authorization after loading a row by id — do **not** gate on
+ * {@link getProviderIdForUser} alone, which returns only the first staff
+ * provider and can cause false "not found" for legitimate bookings.
+ */
+export async function userHasProviderAccessAdmin(
+  admin: Awaited<ReturnType<typeof getSupabaseAdmin>>,
+  userId: string,
+  providerId: string,
+): Promise<boolean> {
+  const { data: ownerRow } = await admin
+    .from("providers")
+    .select("id")
+    .eq("id", providerId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (ownerRow) return true;
+  const { data: staffRows } = await admin
+    .from("provider_staff")
+    .select("id")
+    .eq("provider_id", providerId)
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .limit(1);
+  return (staffRows?.length ?? 0) > 0;
 }
 
 /**

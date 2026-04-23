@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
       leadsWeekHead,
       stageCountRows,
       recentActivitiesRes,
+      duplicateScanRes,
     ] = await Promise.all([
       supabase
         .from("providers")
@@ -85,6 +86,19 @@ export async function GET(request: NextRequest) {
         .eq("provider_leads.tenant_id", tenantId)
         .order("created_at", { ascending: false })
         .limit(20),
+      /**
+       * §Release-audit 2026-04: surface duplicate-lead pressure as an urgent
+       * signal on the hub. Selects a small projection so the dashboard stays
+       * fast — the real grouping logic lives in /api/admin/provider-ops/duplicates.
+       */
+      supabase
+        .from("provider_leads")
+        .select("id, email, phone_e164")
+        .eq("tenant_id", tenantId)
+        .is("matched_provider_id", null)
+        .not("commercial_stage", "eq", "lost")
+        .order("created_at", { ascending: false })
+        .limit(5000),
     ]);
 
     const leadsByStage: Record<string, number> = {};
@@ -133,11 +147,80 @@ export async function GET(request: NextRequest) {
       if (created > now - 7 * 24 * 60 * 60 * 1000) signupsThisWeek++;
     }
 
+    /**
+     * §Release-audit 2026-04: estimate duplicate-lead pressure cheaply.
+     * Count (a) groups with 2+ leads sharing email or phone and
+     * (b) leads whose email/phone matches an existing provider/owner.
+     * Uses a 9-digit phone tail to tolerate national vs E.164 formats.
+     */
+    const normEmail = (e: string | null | undefined) =>
+      e?.trim() ? e.trim().toLowerCase() : null;
+    const normPhone = (p: string | null | undefined) => {
+      if (!p?.trim()) return null;
+      const cleaned = p.trim().replace(/[\s\-().]/g, "").replace(/^00/, "+");
+      if (!cleaned) return null;
+      const digits = cleaned.replace(/\D/g, "");
+      return digits.length >= 9 ? digits.slice(-9) : digits;
+    };
+
+    const leadRowsForDup = duplicateScanRes.data ?? [];
+    const emailBuckets = new Map<string, number>();
+    const phoneBuckets = new Map<string, number>();
+    for (const row of leadRowsForDup) {
+      const r = row as { id: string; email: string | null; phone_e164: string | null };
+      const e = normEmail(r.email);
+      if (e) emailBuckets.set(e, (emailBuckets.get(e) ?? 0) + 1);
+      const p = normPhone(r.phone_e164);
+      if (p) phoneBuckets.set(p, (phoneBuckets.get(p) ?? 0) + 1);
+    }
+
+    const providerEmailSet = new Set<string>();
+    const providerPhoneSet = new Set<string>();
+    if (emailBuckets.size || phoneBuckets.size) {
+      const { data: providersForDup } = await supabase
+        .from("providers")
+        .select("email, billing_email, phone, billing_phone")
+        .eq("tenant_id", tenantId);
+      for (const raw of providersForDup ?? []) {
+        const p = raw as {
+          email: string | null;
+          billing_email: string | null;
+          phone: string | null;
+          billing_phone: string | null;
+        };
+        for (const e of [normEmail(p.email), normEmail(p.billing_email)]) {
+          if (e) providerEmailSet.add(e);
+        }
+        for (const ph of [normPhone(p.phone), normPhone(p.billing_phone)]) {
+          if (ph) providerPhoneSet.add(ph);
+        }
+      }
+    }
+
+    let duplicateGroupCount = 0;
+    let duplicateLeadCount = 0;
+    for (const [k, n] of emailBuckets) {
+      const matchesProvider = providerEmailSet.has(k);
+      if (n >= 2 || matchesProvider) {
+        duplicateGroupCount++;
+        duplicateLeadCount += matchesProvider ? n : Math.max(0, n - 1);
+      }
+    }
+    for (const [k, n] of phoneBuckets) {
+      const matchesProvider = providerPhoneSet.has(k);
+      if (n >= 2 || matchesProvider) {
+        duplicateGroupCount++;
+        duplicateLeadCount += matchesProvider ? n : Math.max(0, n - 1);
+      }
+    }
+
     return successResponse({
       urgent: {
         stalled_signups: stalledCount,
         dropped_off: droppedOffCount,
         pending_approval: pendingRes.count || 0,
+        duplicate_groups: duplicateGroupCount,
+        duplicate_leads: duplicateLeadCount,
       },
       kpis: {
         signups_today: signupsToday,

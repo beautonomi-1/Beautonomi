@@ -68,6 +68,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    /** When `provider_inapp`, Paystack returns to a minimal page that notifies the RN WebView (see `/provider/settings/ads/payment-return`). */
+    const paymentRedirect = String(body.payment_redirect ?? "web").toLowerCase();
     const impressionPackId = body.impression_pack_id ?? null;
     const timePackId = body.time_pack_id ?? null;
     let budget = Number(body.budget) || 0;
@@ -179,8 +181,11 @@ export async function POST(request: NextRequest) {
     if (!email) return errorResponse("User email required for payment", "VALIDATION", 400);
 
     const reference = generateTransactionReference("ads_budget", order.id);
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-    const callbackUrl = `${baseUrl}/provider/settings/ads?payment_success=1&order_id=${order.id}`;
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+    const callbackUrl =
+      paymentRedirect === "provider_inapp"
+        ? `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}`
+        : `${baseUrl}/provider/settings/ads?payment_success=1&order_id=${encodeURIComponent(order.id)}`;
 
     const paystackData = await initializePaystackTransaction({
       email,

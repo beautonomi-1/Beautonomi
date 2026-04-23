@@ -24,23 +24,25 @@ export async function GET(
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    // Verify user belongs to this tenant
+    // Verify user belongs to this tenant (same guard as GET /api/admin/users/[id])
     const { data: targetUser, error: targetErr } = await supabase
       .from("users")
       .select("id")
       .eq("id", userId)
-      .eq("tenant_id", tenantId)
+      .eq("preferred_home_tenant_id", tenantId)
       .maybeSingle();
-    if (targetErr) throw targetErr;
-    if (!targetUser) return notFoundResponse("User not found");
+    if (targetErr || !targetUser) {
+      return notFoundResponse("User not found");
+    }
 
     let balance = 0;
-    try {
-      const { data: balData } = await supabase.rpc("get_user_loyalty_balance", {
-        p_user_id: userId,
-      });
-      balance = typeof balData === "number" ? balData : 0;
-    } catch {
+    const { data: balData, error: balRpcErr } = await supabase.rpc("get_user_loyalty_balance", {
+      p_user_id: userId,
+    });
+    const rpcBalance = !balRpcErr && balData != null ? Number(balData) : NaN;
+    if (Number.isFinite(rpcBalance)) {
+      balance = Math.max(rpcBalance, 0);
+    } else {
       const { data: txRows } = await supabase
         .from("loyalty_point_transactions")
         .select("points, transaction_type, expires_at")
@@ -62,16 +64,21 @@ export async function GET(
       }
     }
 
-    const { data: transactions } = await supabase
+    const { data: txRaw } = await supabase
       .from("loyalty_point_transactions")
-      .select("id, points, transaction_type, source, description, created_at")
+      .select("id, points, transaction_type, reference_type, reference_id, description, created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(50);
 
+    const transactions = (txRaw ?? []).map((row) => ({
+      ...row,
+      source: row.reference_type ?? null,
+    }));
+
     return successResponse({
       balance,
-      transactions: transactions || [],
+      transactions,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch loyalty data");

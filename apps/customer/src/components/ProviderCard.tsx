@@ -14,6 +14,8 @@ interface ProviderCardProps {
   showHottestBadge?: boolean;
   showNearestBadge?: boolean;
   showUpcomingBadge?: boolean;
+  /** Badge copy when `provider.is_sponsored` (from `/api/public/home` `ads_disclosure_label`). */
+  sponsoredListingLabel?: string;
   compact?: boolean;
   /** Same coords used for home feed distance — keeps profile distance consistent when opening from a card */
   feedOriginLat?: number | null;
@@ -28,6 +30,7 @@ export const ProviderCard = React.memo(function ProviderCard({
   showHottestBadge = false,
   showNearestBadge = false,
   showUpcomingBadge = false,
+  sponsoredListingLabel = "Sponsored",
   compact = false,
   feedOriginLat,
   feedOriginLng,
@@ -108,7 +111,11 @@ export const ProviderCard = React.memo(function ProviderCard({
             provider.supports_house_calls && <View key="house" style={[badgeStyle, { backgroundColor: "#22C55E" }]}><Text style={badgeTextStyle}>House Calls</Text></View>,
             provider.supports_salon && <View key="salon" style={[badgeStyle, { backgroundColor: "#A855F7" }]}><Text style={badgeTextStyle}>At Salon</Text></View>,
             provider.current_badge && <View key="badge" style={[badgeStyle, { backgroundColor: provider.current_badge.color ?? "#6366f1" }]}><Text style={badgeTextStyle}>{provider.current_badge.name}</Text></View>,
-            provider.is_sponsored && <View key="spon" style={[badgeStyle, { backgroundColor: "#D97706" }]}><Text style={badgeTextStyle}>Sponsored</Text></View>,
+            provider.is_sponsored && (
+              <View key="spon" style={[badgeStyle, { backgroundColor: "#D97706" }]}>
+                <Text style={badgeTextStyle}>{sponsoredListingLabel}</Text>
+              </View>
+            ),
           ].filter(Boolean)}
         </View>
         <View style={[{ position: "absolute", top: 8, right: 8, backgroundColor: Colors.white, borderRadius: 9999, padding: 6 }, Shadows.cardSubtle]}>

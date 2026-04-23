@@ -43,6 +43,7 @@ import {
   isCompleteSupabaseSmsOtp,
 } from "@/lib/supabase/auth-sms-otp";
 import type { UserRole } from "@/types/beautonomi";
+import { resolvePostLoginPathnameFromRole } from "@/lib/auth/post-login-return-path";
 
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
@@ -443,8 +444,16 @@ export default function LoginModal({
             router.replace("/admin/dashboard");
           } else if (finalRole === "provider_owner" || finalRole === "provider_staff") {
             router.replace("/provider/dashboard");
+          } else if (finalRole === "provider_onboarding") {
+            router.replace("/provider/get-started");
           } else if (redirectUrl) {
-            router.replace(redirectUrl);
+            try {
+              const u = new URL(redirectUrl, window.location.origin);
+              const resolved = resolvePostLoginPathnameFromRole(String(finalRole), u.pathname);
+              router.replace(resolved !== u.pathname ? resolved : redirectUrl);
+            } catch {
+              router.replace(redirectUrl);
+            }
           } else {
             // If redirectContext is provider, send customers to onboarding to become a provider
             if (providerContext) {
@@ -555,6 +564,24 @@ export default function LoginModal({
       return;
     }
     if (redirectUrl) {
+      try {
+        const u = new URL(redirectUrl, window.location.origin);
+        const roleRes = await fetch("/api/me/role", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (roleRes.ok) {
+          const j = (await roleRes.json()) as { data?: { role?: string } };
+          const r = j?.data?.role;
+          if (r) {
+            const resolved = resolvePostLoginPathnameFromRole(r, u.pathname);
+            router.replace(resolved !== u.pathname ? resolved : redirectUrl);
+            return;
+          }
+        }
+      } catch {
+        // fall through
+      }
       router.replace(redirectUrl);
       return;
     }

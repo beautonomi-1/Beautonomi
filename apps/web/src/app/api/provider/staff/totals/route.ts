@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { STAFF_COMMISSION_REVENUE_TYPES } from "@/lib/reports/constants";
 import { calculateStaffCommission } from "@/lib/payroll/commission-calculator";
 import { getTipsByStaff } from "@/lib/payroll/tips-helper";
 
@@ -84,11 +85,17 @@ export async function GET(request: NextRequest) {
       return successResponse([]);
     }
 
+    // Allocate booking-level provider earnings only. Tips are reported in the
+    // separate `tips` column (getTipsByStaff) and would otherwise double-count if
+    // we used the default LEDGER_FULL_PROVIDER_NET_TYPES here. Travel fees are
+    // a pass-through to the provider and not part of a staff member's service revenue.
     const { revenueByBooking } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       fromDate,
-      toDate
+      toDate,
+      null,
+      { transactionTypes: STAFF_COMMISSION_REVENUE_TYPES }
     );
 
     const { data: bookings } = await supabaseAdmin

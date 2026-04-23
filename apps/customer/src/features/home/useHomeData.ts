@@ -38,6 +38,9 @@ function normalize(r: unknown): HomeApiResponse {
   const raw = r as Record<string, unknown>;
   const arr = (a: unknown): PublicProviderCard[] =>
     Array.isArray(a) ? a.map((x) => normalizeProvider(x as Record<string, unknown>)) : [];
+  const disclosureRaw = raw.ads_disclosure_label ?? raw.adsDisclosureLabel;
+  const disclosureTrimmed =
+    typeof disclosureRaw === "string" ? disclosureRaw.trim() : String(disclosureRaw ?? "Sponsored").trim();
 
   return {
     topRated: arr(raw?.topRated ?? raw?.top_rated),
@@ -45,6 +48,7 @@ function normalize(r: unknown): HomeApiResponse {
     nearest: arr(raw?.nearest),
     hottest: arr(raw?.hottest),
     upcoming: arr(raw?.upcoming),
+    ads_disclosure_label: disclosureTrimmed || "Sponsored",
   };
 }
 

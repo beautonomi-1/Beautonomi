@@ -140,14 +140,13 @@ export default function SubscriptionScreen() {
   const { data: plans, error: plansError } = useApi<Plan[]>("/api/provider/subscription/plans");
   const { execute: postAction } = useApiMutation("post");
 
-  const monthlyPlans = useMemo(
-    () => (plans ?? []).filter((p) => p.billing_period === "monthly"),
-    [plans]
-  );
-  const yearlyPlans = useMemo(
-    () => (plans ?? []).filter((p) => p.billing_period === "yearly"),
-    [plans]
-  );
+  const [billingSegment, setBillingSegment] = useState<"monthly" | "yearly">("monthly");
+  const visiblePlansList = useMemo(() => {
+    const plist = plans ?? [];
+    const free = plist.filter((p) => p.is_free);
+    const paid = plist.filter((p) => !p.is_free && p.billing_period === billingSegment);
+    return [...free, ...paid];
+  }, [plans, billingSegment]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
@@ -348,7 +347,7 @@ export default function SubscriptionScreen() {
       {/* Hero intro */}
       <View style={{ marginBottom: 8, marginTop: 4 }}>
         <Text style={twStyle("text-base leading-6 text-gray-600")}>
-          Same plans and features as our public pricing. Switch or change billing period anytime.
+          Plans match your region&apos;s public pricing catalog. Use Monthly / Yearly to compare paid tiers without duplicate cards.
         </Text>
       </View>
 
@@ -461,27 +460,33 @@ export default function SubscriptionScreen() {
       <SectionHeader title="All plans" />
       {plans && plans.length > 0 ? (
         <View style={twStyle("pb-4")}>
-          {monthlyPlans.length > 0 ? (
-            <Text style={twStyle("mb-3 text-xs font-bold uppercase tracking-wider text-gray-400")}>
-              Billed monthly
-            </Text>
+          {(plans ?? []).some((p) => !p.is_free) ? (
+            <View style={twStyle("mb-4 flex-row rounded-full bg-gray-100 p-1")}>
+              {(["monthly", "yearly"] as const).map((seg) => {
+                const active = billingSegment === seg;
+                return (
+                  <TouchableOpacity
+                    key={seg}
+                    style={[
+                      twStyle("flex-1 rounded-full py-2.5"),
+                      active ? { backgroundColor: "#fff", shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4 } : {},
+                    ]}
+                    onPress={() => setBillingSegment(seg)}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={twStyle(
+                        `text-center text-sm font-semibold ${active ? "text-gray-900" : "text-gray-500"}`
+                      )}
+                    >
+                      {seg === "monthly" ? "Monthly" : "Yearly"}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           ) : null}
-          {monthlyPlans.map((plan) => (
-            <PlanCard
-              key={plan.id}
-              plan={plan}
-              subscription={subscription}
-              upgradingId={upgradingId}
-              onUpgrade={handleUpgrade}
-            />
-          ))}
-
-          {yearlyPlans.length > 0 ? (
-            <Text style={twStyle("mb-3 mt-6 text-xs font-bold uppercase tracking-wider text-gray-400")}>
-              Billed yearly
-            </Text>
-          ) : null}
-          {yearlyPlans.map((plan) => (
+          {visiblePlansList.map((plan) => (
             <PlanCard
               key={plan.id}
               plan={plan}

@@ -17,6 +17,7 @@ import {
   successResponse,
   handleApiError,
   errorResponse,
+  userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -56,21 +57,17 @@ export async function POST(
       .maybeSingle();
     const isSuperadmin = userRow?.role === "superadmin";
 
-    const { data: accessRows } = await admin
-      .from("provider_staff")
-      .select("id")
-      .eq("provider_id", booking.provider_id)
-      .eq("user_id", authUser.id)
-      .limit(1);
-    const { data: providerRow } = await admin
-      .from("providers")
-      .select("owner_user_id")
-      .eq("id", booking.provider_id)
-      .maybeSingle();
-
-    const isOwner = providerRow?.owner_user_id === authUser.id;
-    const isStaff = Array.isArray(accessRows) && accessRows.length > 0;
-    if (!isOwner && !isStaff && !isSuperadmin) {
+    // §Multi-provider staff 2026-04: use the same admin-backed access check
+    // as GET /receipt (see userHasProviderAccessAdmin). Previously this
+    // route compared `providers.owner_user_id`, which is not the schema
+    // column (`user_id`), so salon owners always failed the owner check and
+    // relied only on provider_staff — breaking receipt links for owners
+    // without a staff row.
+    const bookingPid = booking.provider_id as string;
+    if (
+      !isSuperadmin &&
+      !(await userHasProviderAccessAdmin(admin, authUser.id, bookingPid))
+    ) {
       return errorResponse(
         "You don't have access to this booking's receipt.",
         "FORBIDDEN",

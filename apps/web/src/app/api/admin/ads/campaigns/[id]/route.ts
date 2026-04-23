@@ -38,11 +38,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const c = campaign as Record<string, unknown>;
 
-    const { data: provider } = await admin
+    const { data: providerRaw } = await admin
       .from("providers")
-      .select("id, business_name, owner_name, email, phone, slug, avatar_url")
+      .select(
+        "id, business_name, email, phone, slug, avatar_url, user_id, users:user_id(full_name)"
+      )
       .eq("id", c.provider_id as string)
       .maybeSingle();
+
+    // Flatten owner display name from the linked users row so existing callers that read
+    // `provider.owner_name` keep working without a column that does not exist.
+    const provider = (() => {
+      if (!providerRaw) return null;
+      const raw = providerRaw as Record<string, unknown> & {
+        users?:
+          | { full_name?: string | null }
+          | Array<{ full_name?: string | null }>
+          | null;
+      };
+      const userRow = Array.isArray(raw.users) ? raw.users[0] : raw.users;
+      return {
+        ...raw,
+        owner_name: userRow?.full_name ?? null,
+      };
+    })();
 
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString();

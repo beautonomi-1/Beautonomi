@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
+import { providerPortalFetch } from "@/lib/http/fetcher";
 
 interface ProviderClientRatingDialogProps {
   open: boolean;
@@ -50,7 +51,7 @@ export function ProviderClientRatingDialog({
 
     setIsSubmitting(true);
     try {
-      const response = await fetch("/api/provider/ratings", {
+      const response = await providerPortalFetch("/api/provider/ratings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -7,6 +7,11 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_ECOMMERCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import {
+  effectiveStockQuantity,
+  displayRetailPriceMin,
+  type ProductInventoryRow,
+} from "@/lib/provider-portal/product-inventory-metrics";
 
 /**
  * GET /api/admin/ecommerce/catalog — all products in tenant (including inactive / not on public shop)
@@ -69,11 +74,21 @@ export async function GET(request: NextRequest) {
     ).sort();
 
     const enriched = (products ?? []).map((p: Record<string, unknown>) => {
-      const variants = Array.isArray(p.variants) ? p.variants : [];
+      const variants = (Array.isArray(p.variants) ? p.variants : []) as ProductInventoryRow["product_variants"];
+      const inv: ProductInventoryRow = {
+        quantity: p.quantity,
+        retail_price: p.retail_price,
+        has_variants: Boolean(p.has_variants),
+        track_stock_quantity: p.track_stock_quantity as boolean | null | undefined,
+        low_stock_level: p.low_stock_level,
+        product_variants: variants,
+      };
+      const { variants: _omit, ...rest } = p;
       return {
-        ...p,
-        variant_count: variants.length,
-        variants: undefined,
+        ...rest,
+        variant_count: variants?.length ?? 0,
+        effective_quantity: effectiveStockQuantity(inv),
+        display_retail_price: displayRetailPriceMin(inv),
       };
     });
 

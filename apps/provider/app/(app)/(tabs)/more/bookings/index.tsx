@@ -195,6 +195,17 @@ export default function BookingsListScreen() {
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const [listSort, setListSort] = useState<BookingsListSort>("appointment");
 
+  // §Mobile-parity 2026-04: snapshot metrics strip at the top of the
+  // bookings tab, filterable by time period independent of the list's
+  // `dateRange` so providers can pivot without disturbing their current
+  // list view. Mirrors the web /provider/bookings snapshot.
+  type StatsRange = "today" | "week" | "month" | "all";
+  const [statsRange, setStatsRange] = useState<StatsRange>("today");
+  // §Provider-realtime 2026-04: "live" indicator goes on for ~1s after
+  // every successful refresh so the provider has visible feedback that
+  // the list auto-updated (websocket or polling). Purely cosmetic.
+  const [isLive, setIsLive] = useState(false);
+
   // §Provider-audit 2026-04 (round 6): debounce search input so every
   // keystroke doesn't refetch. Matches the clients screen pattern.
   useEffect(() => {
@@ -280,6 +291,8 @@ export default function BookingsListScreen() {
         },
         () => {
           scheduleRefresh();
+          setIsLive(true);
+          setTimeout(() => setIsLive(false), 1200);
         },
       )
       .subscribe();
@@ -301,6 +314,55 @@ export default function BookingsListScreen() {
       return name.includes(q) || num.includes(q) || service.includes(q);
     });
   }, [data, search]);
+
+  // §Mobile-parity 2026-04: stats snapshot computed across the full
+  // returned result set. Independent of the list's date range so the
+  // numbers still make sense when the list is filtered.
+  const statsSnapshot = useMemo(() => {
+    const allBookings: Booking[] = Array.isArray(data) ? data : [];
+    const now = new Date();
+    let start = 0;
+    let end = Number.POSITIVE_INFINITY;
+    if (statsRange !== "all") {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      if (statsRange === "today") {
+        start = d.getTime();
+        end = start + 24 * 60 * 60 * 1000;
+      } else if (statsRange === "week") {
+        const wk = new Date(d);
+        wk.setDate(d.getDate() - d.getDay());
+        start = wk.getTime();
+        end = start + 7 * 24 * 60 * 60 * 1000;
+      } else {
+        start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+      }
+    }
+    let count = 0;
+    let revenue = 0;
+    let pendingCount = 0;
+    let inProgressCount = 0;
+    for (const b of allBookings) {
+      const s = (b.status || "").toLowerCase();
+      if (s === "pending" || s === "pending_payment") pendingCount += 1;
+      if (s === "in_progress" || s === "started") inProgressCount += 1;
+      const ts = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
+      if (ts >= start && ts < end) {
+        count += 1;
+        if (s !== "cancelled" && s !== "canceled" && s !== "no_show") {
+          revenue += Number(b.total_amount || 0);
+        }
+      }
+    }
+    return { count, revenue, pendingCount, inProgressCount };
+  }, [data, statsRange]);
+
+  const statsRangeLabel = useMemo(() => {
+    if (statsRange === "today") return "Today";
+    if (statsRange === "week") return "Week";
+    if (statsRange === "month") return "Month";
+    return "All";
+  }, [statsRange]);
 
   const dateRangeLabel = useMemo(() => {
     const now = new Date();
@@ -443,6 +505,103 @@ export default function BookingsListScreen() {
           </TouchableOpacity>
         }
       />
+
+      {/* ── Metrics snapshot strip (mobile parity with web) ── */}
+      <View style={twStyle("mx-4 mt-1 mb-2")}>
+        <View style={twStyle("flex-row items-center justify-between mb-2")}>
+          <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-white p-1")}>
+            {(["today", "week", "month", "all"] as StatsRange[]).map((value) => {
+              const active = statsRange === value;
+              const label = value === "today" ? "Today" : value === "week" ? "Week" : value === "month" ? "Month" : "All";
+              return (
+                <TouchableOpacity
+                  key={value}
+                  onPress={() => setStatsRange(value)}
+                  style={twStyle(
+                    `rounded-lg px-2.5 py-1 ${active ? "bg-gray-900" : ""}`,
+                  )}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text
+                    style={twStyle(
+                      `text-[11px] font-semibold ${active ? "text-white" : "text-gray-600"}`,
+                    )}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {isLive && (
+            <View style={twStyle("flex-row items-center gap-1.5")}>
+              <View
+                style={[
+                  twStyle("rounded-full"),
+                  { height: 6, width: 6, backgroundColor: "#10b981" },
+                ]}
+              />
+              <Text style={twStyle("text-[10px] font-semibold text-emerald-600")}>LIVE</Text>
+            </View>
+          )}
+        </View>
+        <View style={twStyle("flex-row gap-2")}>
+          <View style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white p-2.5")}>
+            <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-gray-500")}>{statsRangeLabel}</Text>
+            <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.count}</Text>
+          </View>
+          <View
+            style={[
+              twStyle("flex-1 rounded-xl p-2.5 border"),
+              statsSnapshot.pendingCount > 0
+                ? { backgroundColor: "#fffbeb", borderColor: "#fde68a" }
+                : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
+            ]}
+          >
+            <Text
+              style={[
+                twStyle("text-[10px] font-semibold uppercase tracking-wide"),
+                { color: statsSnapshot.pendingCount > 0 ? "#b45309" : "#6b7280" },
+              ]}
+            >
+              Pending
+            </Text>
+            <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.pendingCount}</Text>
+          </View>
+          <View
+            style={[
+              twStyle("flex-1 rounded-xl p-2.5 border"),
+              statsSnapshot.inProgressCount > 0
+                ? { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe" }
+                : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
+            ]}
+          >
+            <Text
+              style={[
+                twStyle("text-[10px] font-semibold uppercase tracking-wide"),
+                { color: statsSnapshot.inProgressCount > 0 ? "#6d28d9" : "#6b7280" },
+              ]}
+            >
+              Active
+            </Text>
+            <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.inProgressCount}</Text>
+          </View>
+          <View
+            style={[
+              twStyle("flex-[1.3] rounded-xl p-2.5 border"),
+              { backgroundColor: "#fff0f7", borderColor: "#fbcfe8" },
+            ]}
+          >
+            <Text style={[twStyle("text-[10px] font-semibold uppercase tracking-wide"), { color: "#be185d" }]}>
+              Revenue
+            </Text>
+            <Text style={twStyle("mt-0.5 text-[15px] font-bold text-gray-900")} numberOfLines={1}>
+              {formatCurrency(statsSnapshot.revenue, currency)}
+            </Text>
+          </View>
+        </View>
+      </View>
 
       {/* ── Search bar ── */}
       <View style={[twStyle("mx-4 mb-2"), { paddingHorizontal: 0 }]}>

@@ -16,6 +16,10 @@ import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 import { authFlowBreadcrumb, captureError, isSentryEnabled } from "@/lib/sentry";
 import { getHttpErrorStatus } from "@/lib/api-error";
+import {
+  activeProviderIdHeadersForPath,
+  clearActiveProviderApiHintMemory,
+} from "@/lib/active-provider-api-hint";
 
 /** Resolve API base URL with strict production safeguards. Never throws — callers expect sync resolution inside apiFetch try/catch. */
 function getApiBaseUrl(): string {
@@ -77,6 +81,7 @@ function clearCachedToken(): void {
 export function invalidateApiAccessTokenCache(): void {
   inflightToken = null;
   clearCachedToken();
+  clearActiveProviderApiHintMemory();
 }
 
 async function resolveAccessToken(): Promise<string | null> {
@@ -155,9 +160,10 @@ const baseApi = createApiClient({
   getBaseUrl: getApiBaseUrl,
   getAccessToken,
   headers: { "X-App": "provider" },
-  getDefaultHeaders: () => ({
+  getDefaultHeaders: (ctx) => ({
     ...webApiTenantHeaders(),
     "X-Active-Market-Country": getDeviceRegionCountryIso(),
+    ...activeProviderIdHeadersForPath(ctx.path),
   }),
 });
 

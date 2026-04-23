@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
@@ -81,22 +82,42 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
     : [];
 
   const kpis = [
-    { label: "Total revenue", value: fmtMoney(data.totalRevenue) },
+    { label: "Total revenue (GMV)", value: fmtMoney(data.totalRevenue), sub: "Booking value in period" },
+    { label: "Net collected", value: fmtMoney(data.netCollected), sub: "Cash collected − refunds" },
     ...(pr
       ? [
-          { label: "Platform revenue", value: fmtMoney(pr.total_platform_revenue_net) },
-          { label: "Booking commission", value: fmtMoney(pr.booking_commission_net) },
+          { label: "Platform revenue (net)", value: fmtMoney(pr.total_platform_revenue_net), sub: "Take + subs + ads + service fees" },
+          { label: "Booking commission (net)", value: fmtMoney(pr.booking_commission_net), sub: "After refund contra & gateway fees" },
           { label: "Subscription net", value: fmtMoney(pr.subscription_net) },
           { label: "Ads net", value: fmtMoney(pr.ads_net) },
-          { label: "Provider earnings", value: fmtMoney(pr.provider_earnings_net) },
-          { label: "Refunds", value: fmtMoney(pr.refunds_gross) },
-          { label: "Gateway fees", value: fmtMoney(pr.gateway_fees_total) },
+          { label: "Provider earnings", value: fmtMoney(pr.provider_earnings_net), sub: "Paid to providers (ledger)" },
+          { label: "Refunds", value: fmtMoney(pr.refunds_abs_gross ?? pr.refunds_gross), sub: "Absolute refunds to customers" },
+          { label: "Gateway fees", value: fmtMoney(pr.gateway_fees_total), sub: "Paystack/Yoco processing" },
         ]
       : []),
   ];
 
+  const showNegativeExplainer =
+    pr && typeof pr.booking_commission_net === "number" && pr.booking_commission_net < 0;
+
   return (
     <div className="space-y-6">
+      <AdminPanel>
+        <p className="text-xs leading-5 text-gray-600">
+          <strong>Total revenue</strong> is booking <em>GMV</em> (what the customer was
+          charged at booking time). <strong>Platform revenue</strong> is what the platform
+          actually keeps after refunds, gateway fees and provider payouts are recognised on
+          the finance ledger.
+        </p>
+        {showNegativeExplainer && (
+          <p className="mt-2 text-xs leading-5 text-amber-700">
+            Note: Booking commission can be <em>negative</em> in a period when gateway fees
+            or refund contra lines exceed the commission recognised from new bookings in the
+            same window. This is expected and reconciles with Finance / Gods&nbsp;Eye.
+          </p>
+        )}
+      </AdminPanel>
+
       <KpiGrid items={kpis} />
 
       {gcm && (
@@ -105,7 +126,7 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
           <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
             {[
               ["Total sales", fmtMoney(gcm.totalSales)],
-              ["Total redemptions", fmt(gcm.totalRedemptions)],
+              ["Redemption value", fmtMoney(gcm.totalRedemptions)],
               ["Outstanding liability", fmtMoney(gcm.outstandingLiability)],
               ["Redemption rate", `${fmt(gcm.redemptionRate)}%`],
             ].map(([l, v]) => (
@@ -251,7 +272,19 @@ function ProvidersReport({ data }: { data: Record<string, unknown> }) {
 
 // ── Customers ─────────────────────────────────────────────────────────────────
 function CustomersReport({ data }: { data: Record<string, unknown> }) {
-  const customers = Array.isArray(data.customers) ? (data.customers as Record<string, unknown>[]) : [];
+  const customersAll = Array.isArray(data.customers)
+    ? (data.customers as Record<string, unknown>[])
+    : [];
+
+  // Default to "Active in period" so the table matches "Active customers" KPI
+  // instead of showing 19 zero-booking rows alongside 1 active customer.
+  const [filter, setFilter] = useState<"active" | "all">("active");
+  const customers = useMemo(() => {
+    if (filter === "all") return customersAll;
+    return customersAll.filter((r) => Number(r.bookings_count ?? r.bookings ?? 0) > 0);
+  }, [customersAll, filter]);
+  const hiddenInactive = customersAll.length - customers.length;
+
   const kpis = [
     { label: "Total customers", value: fmt(data.totalCustomers ?? data.total) },
     { label: "Active customers", value: fmt(data.activeCustomers ?? data.active) },
@@ -261,34 +294,67 @@ function CustomersReport({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div className="space-y-6">
+      <AdminPanel>
+        <p className="text-xs leading-5 text-gray-600">
+          Scope: customers with preferred home = this tenant, plus any customer who has
+          booked a provider here. “Bookings” and “Total spent” count only confirmed or
+          completed bookings with <em>scheduled_at</em> in the selected period.
+        </p>
+      </AdminPanel>
       {kpis.length > 0 && <KpiGrid items={kpis} />}
-      {customers.length > 0 && (
+      {customersAll.length > 0 && (
         <AdminPanel>
-          <SectionHeading>Customer breakdown</SectionHeading>
-          <AdminDataTable className="mt-3">
-            <AdminTableHead>
-              <tr>
-                <AdminTh>Customer</AdminTh>
-                <AdminTh>Bookings</AdminTh>
-                <AdminTh>Total spent</AdminTh>
-                <AdminTh>Last booking</AdminTh>
-              </tr>
-            </AdminTableHead>
-            <AdminTableBody>
-              {customers.slice(0, 100).map((r, i) => (
-                <tr key={i}>
-                  <AdminTd className="text-xs">
-                    {String(r.customer_name ?? r.full_name ?? r.email ?? r.customer_id ?? "")}
-                  </AdminTd>
-                  <AdminTd className="tabular-nums text-xs">{fmt(r.bookings_count ?? r.bookings)}</AdminTd>
-                  <AdminTd className="tabular-nums text-xs">{fmtMoney(r.total_spent ?? r.revenue)}</AdminTd>
-                  <AdminTd className="text-xs text-gray-500">
-                    {String(r.last_booking_at ?? r.last_booking ?? "—").slice(0, 10)}
-                  </AdminTd>
+          <div className="flex items-center justify-between gap-3">
+            <SectionHeading>Customer breakdown</SectionHeading>
+            <label className="flex items-center gap-2 text-xs text-gray-600">
+              Show
+              <select
+                className="rounded border border-gray-300 px-2 py-0.5 text-xs"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as "active" | "all")}
+              >
+                <option value="active">Active in period</option>
+                <option value="all">All tenant customers</option>
+              </select>
+              {filter === "active" && hiddenInactive > 0 && (
+                <span className="text-gray-400">({hiddenInactive} inactive hidden)</span>
+              )}
+            </label>
+          </div>
+          {customers.length > 0 ? (
+            <AdminDataTable className="mt-3">
+              <AdminTableHead>
+                <tr>
+                  <AdminTh>Customer</AdminTh>
+                  <AdminTh>Bookings</AdminTh>
+                  <AdminTh>Total spent</AdminTh>
+                  <AdminTh>Last booking</AdminTh>
                 </tr>
-              ))}
-            </AdminTableBody>
-          </AdminDataTable>
+              </AdminTableHead>
+              <AdminTableBody>
+                {customers.slice(0, 100).map((r, i) => (
+                  <tr key={i}>
+                    <AdminTd className="text-xs">
+                      {String(r.customer_name ?? r.full_name ?? r.email ?? r.customer_id ?? "")}
+                    </AdminTd>
+                    <AdminTd className="tabular-nums text-xs">
+                      {fmt(r.bookings_count ?? r.bookings)}
+                    </AdminTd>
+                    <AdminTd className="tabular-nums text-xs">
+                      {fmtMoney(r.total_spent ?? r.revenue)}
+                    </AdminTd>
+                    <AdminTd className="text-xs text-gray-500">
+                      {String(r.last_booking_at ?? r.last_booking ?? "—").slice(0, 10)}
+                    </AdminTd>
+                  </tr>
+                ))}
+              </AdminTableBody>
+            </AdminDataTable>
+          ) : (
+            <p className="mt-3 text-sm text-gray-500">
+              No customers with bookings in this period.
+            </p>
+          )}
         </AdminPanel>
       )}
     </div>
@@ -300,10 +366,30 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
   const byStatus = Array.isArray(data.bookingsByStatus)
     ? (data.bookingsByStatus as Record<string, unknown>[])
     : [];
-  const byDay = Array.isArray(data.bookingsByDay) ? (data.bookingsByDay as Record<string, unknown>[]) : [];
-  const topProviders = Array.isArray(data.topProviders)
-    ? (data.topProviders as Record<string, unknown>[])
+  const byDayAll = Array.isArray(data.bookingsByDay)
+    ? (data.bookingsByDay as Record<string, unknown>[])
     : [];
+  // API returns `bookingsByProvider`; keep `topProviders` as a back-compat fallback.
+  const topProvidersRaw = Array.isArray(data.bookingsByProvider)
+    ? (data.bookingsByProvider as Record<string, unknown>[])
+    : Array.isArray(data.topProviders)
+      ? (data.topProviders as Record<string, unknown>[])
+      : [];
+  const topProviders = [...topProvidersRaw].sort((a, b) => {
+    const av = Number(a.count ?? a.bookings ?? a.bookings_count ?? 0);
+    const bv = Number(b.count ?? b.bookings ?? b.bookings_count ?? 0);
+    return bv - av;
+  });
+
+  const [showEmptyDays, setShowEmptyDays] = useState(false);
+  const byDay = useMemo(() => {
+    if (showEmptyDays) return byDayAll;
+    return byDayAll.filter((r) => {
+      const c = Number(r.bookings ?? r.count ?? 0);
+      return c > 0;
+    });
+  }, [byDayAll, showEmptyDays]);
+  const hiddenEmptyDays = byDayAll.length - byDay.length;
 
   const kpis = [
     { label: "Total bookings", value: fmt(data.totalBookings ?? data.total) },
@@ -331,27 +417,44 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
           </div>
         </AdminPanel>
       )}
-      {byDay.length > 0 && (
+      {byDayAll.length > 0 && (
         <AdminPanel>
-          <SectionHeading>Daily bookings</SectionHeading>
-          <AdminDataTable className="mt-3">
-            <AdminTableHead>
-              <tr>
-                <AdminTh>Date</AdminTh>
-                <AdminTh>Bookings</AdminTh>
-                <AdminTh>Revenue</AdminTh>
-              </tr>
-            </AdminTableHead>
-            <AdminTableBody>
-              {byDay.slice(0, 50).map((r, i) => (
-                <tr key={i}>
-                  <AdminTd className="text-xs">{String(r.date ?? "")}</AdminTd>
-                  <AdminTd className="tabular-nums text-xs">{fmt(r.bookings ?? r.count)}</AdminTd>
-                  <AdminTd className="tabular-nums text-xs">{fmtMoney(r.revenue)}</AdminTd>
+          <div className="flex items-center justify-between gap-3">
+            <SectionHeading>Daily bookings</SectionHeading>
+            <label className="flex items-center gap-2 text-xs text-gray-600">
+              <input
+                type="checkbox"
+                checked={showEmptyDays}
+                onChange={(e) => setShowEmptyDays(e.target.checked)}
+              />
+              Show empty days
+              {!showEmptyDays && hiddenEmptyDays > 0 && (
+                <span className="text-gray-400">({hiddenEmptyDays} hidden)</span>
+              )}
+            </label>
+          </div>
+          {byDay.length > 0 ? (
+            <AdminDataTable className="mt-3">
+              <AdminTableHead>
+                <tr>
+                  <AdminTh>Date</AdminTh>
+                  <AdminTh>Bookings</AdminTh>
+                  <AdminTh>Revenue</AdminTh>
                 </tr>
-              ))}
-            </AdminTableBody>
-          </AdminDataTable>
+              </AdminTableHead>
+              <AdminTableBody>
+                {byDay.slice(0, 100).map((r, i) => (
+                  <tr key={i}>
+                    <AdminTd className="text-xs">{String(r.date ?? "")}</AdminTd>
+                    <AdminTd className="tabular-nums text-xs">{fmt(r.bookings ?? r.count)}</AdminTd>
+                    <AdminTd className="tabular-nums text-xs">{fmtMoney(r.revenue)}</AdminTd>
+                  </tr>
+                ))}
+              </AdminTableBody>
+            </AdminDataTable>
+          ) : (
+            <p className="mt-3 text-sm text-gray-500">No bookings in this period.</p>
+          )}
         </AdminPanel>
       )}
       {topProviders.length > 0 && (
@@ -362,15 +465,17 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
               <tr>
                 <AdminTh>Provider</AdminTh>
                 <AdminTh>Bookings</AdminTh>
-                <AdminTh>Revenue</AdminTh>
               </tr>
             </AdminTableHead>
             <AdminTableBody>
               {topProviders.slice(0, 25).map((r, i) => (
                 <tr key={i}>
-                  <AdminTd className="text-xs">{String(r.provider_name ?? r.name ?? r.provider_id ?? "")}</AdminTd>
-                  <AdminTd className="tabular-nums text-xs">{fmt(r.bookings_count ?? r.bookings)}</AdminTd>
-                  <AdminTd className="tabular-nums text-xs">{fmtMoney(r.revenue)}</AdminTd>
+                  <AdminTd className="text-xs">
+                    {String(r.provider_name ?? r.name ?? r.provider_id ?? "")}
+                  </AdminTd>
+                  <AdminTd className="tabular-nums text-xs">
+                    {fmt(r.count ?? r.bookings_count ?? r.bookings)}
+                  </AdminTd>
                 </tr>
               ))}
             </AdminTableBody>
@@ -383,19 +488,42 @@ function BookingsReport({ data }: { data: Record<string, unknown> }) {
 
 // ── Gift cards ────────────────────────────────────────────────────────────────
 function GiftCardsReport({ data }: { data: Record<string, unknown> }) {
-  const byDay = Array.isArray(data.salesByDay) ? (data.salesByDay as Record<string, unknown>[]) : [];
+  const byDay = Array.isArray(data.salesByDay)
+    ? (data.salesByDay as Record<string, unknown>[])
+    : [];
+  const redByDay = Array.isArray(data.redemptionsByDay)
+    ? (data.redemptionsByDay as Record<string, unknown>[])
+    : [];
 
+  const rate = data.redemptionRate ?? data.redemption_rate;
   const kpis = [
     { label: "Total sold", value: fmt(data.totalSold ?? data.total_sold) },
     { label: "Total sales value", value: fmtMoney(data.totalSalesValue ?? data.total_sales_value) },
     { label: "Total redeemed", value: fmt(data.totalRedeemed ?? data.total_redeemed) },
-    { label: "Outstanding liability", value: fmtMoney(data.outstandingLiability ?? data.outstanding_liability) },
-    { label: "Redemption rate", value: `${fmt(data.redemptionRate ?? data.redemption_rate)}%` },
+    {
+      label: "Redeemed value",
+      value: fmtMoney(data.totalRedemptionValue ?? data.total_redemption_value),
+    },
+    {
+      label: "Outstanding liability",
+      value: fmtMoney(data.outstandingLiability ?? data.outstanding_liability),
+    },
+    {
+      label: "Redemption rate",
+      value: typeof rate === "number" ? `${rate.toFixed(1)}%` : String(rate ?? "—"),
+    },
     { label: "Active cards", value: fmt(data.activeCards ?? data.active_cards) },
-  ].filter((k) => k.value !== "—%" && k.value !== "—");
+  ].filter((k) => k.value !== "—" && k.value !== "—%");
 
   return (
     <div className="space-y-6">
+      <AdminPanel>
+        <p className="text-xs leading-5 text-gray-600">
+          Gift card sales are a <strong>liability</strong> (cash received, service owed).
+          Platform revenue is recognised as commission when the card is redeemed against a
+          booking — see the Revenue report for that flow.
+        </p>
+      </AdminPanel>
       {kpis.length > 0 && <KpiGrid items={kpis} />}
       {byDay.length > 0 && (
         <AdminPanel>
@@ -420,52 +548,135 @@ function GiftCardsReport({ data }: { data: Record<string, unknown> }) {
           </AdminDataTable>
         </AdminPanel>
       )}
+      {redByDay.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Redemptions by day</SectionHeading>
+          <AdminDataTable className="mt-3">
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Date</AdminTh>
+                <AdminTh>Count</AdminTh>
+                <AdminTh>Value</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {redByDay.slice(0, 50).map((r, i) => (
+                <tr key={i}>
+                  <AdminTd className="text-xs">{String(r.date ?? "")}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{fmt(r.count)}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">
+                    {fmtMoney(r.value ?? r.redemptions)}
+                  </AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        </AdminPanel>
+      )}
+      {byDay.length === 0 && redByDay.length === 0 && (
+        <AdminPanel>
+          <p className="text-sm text-gray-600">
+            No gift card sales or redemptions in this period for this tenant.
+          </p>
+        </AdminPanel>
+      )}
     </div>
   );
 }
 
 // ── Yoco reconciliation ───────────────────────────────────────────────────────
 function YocoReport({ data }: { data: Record<string, unknown> }) {
-  const rows = Array.isArray(data.transactions)
-    ? (data.transactions as Record<string, unknown>[])
-    : Array.isArray(data.records)
-      ? (data.records as Record<string, unknown>[])
-      : [];
-  const kpis = [
-    { label: "Total transactions", value: fmt(data.total ?? data.count) },
-    { label: "Matched", value: fmt(data.matched) },
-    { label: "Unmatched", value: fmt(data.unmatched) },
-    { label: "Total amount", value: fmtMoney(data.totalAmount ?? data.total_amount) },
-  ].filter((k) => k.value !== "—");
+  // API returns { payments: [...], summary: { total, with_booking, synced, not_synced } }
+  // Keep legacy fallbacks so the view is robust to other shapes.
+  const rows = Array.isArray(data.payments)
+    ? (data.payments as Record<string, unknown>[])
+    : Array.isArray(data.transactions)
+      ? (data.transactions as Record<string, unknown>[])
+      : Array.isArray(data.records)
+        ? (data.records as Record<string, unknown>[])
+        : [];
+  const summary = (data.summary && typeof data.summary === "object"
+    ? (data.summary as Record<string, unknown>)
+    : null) as { total?: number; with_booking?: number; synced?: number; not_synced?: number } | null;
 
-  const cols = rows.length > 0 ? Object.keys(rows[0]).slice(0, 8) : [];
+  const totalAmount = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const currency =
+    rows.length > 0 && typeof rows[0].currency === "string" ? String(rows[0].currency) : "ZAR";
+
+  const kpis = [
+    { label: "Total payments", value: fmt(summary?.total ?? rows.length) },
+    { label: "Linked to booking", value: fmt(summary?.with_booking) },
+    { label: "Synced to ledger", value: fmt(summary?.synced) },
+    { label: "Not synced", value: fmt(summary?.not_synced) },
+    { label: "Gross amount", value: fmtMoney(totalAmount, currency) },
+  ].filter((k) => k.value !== "—");
 
   return (
     <div className="space-y-6">
+      <AdminPanel>
+        <p className="text-xs leading-5 text-gray-600">
+          Lists Yoco payments captured by tenant providers. A payment is{" "}
+          <strong>synced</strong> when it is linked to a booking and a matching row exists
+          in <code>booking_payments</code>. Unsynced rows typically indicate the provider
+          has not yet linked the Yoco sale to a Beautonomi booking.
+        </p>
+      </AdminPanel>
       {kpis.length > 0 && <KpiGrid items={kpis} />}
-      {rows.length > 0 && (
+      {rows.length > 0 ? (
         <AdminPanel>
-          <SectionHeading>Transactions</SectionHeading>
+          <SectionHeading>Payments</SectionHeading>
           <AdminDataTable className="mt-3">
             <AdminTableHead>
               <tr>
-                {cols.map((c) => (
-                  <AdminTh key={c}>{c}</AdminTh>
-                ))}
+                <AdminTh>Created</AdminTh>
+                <AdminTh>Provider</AdminTh>
+                <AdminTh>Yoco ID</AdminTh>
+                <AdminTh>Amount</AdminTh>
+                <AdminTh>Status</AdminTh>
+                <AdminTh>Booking</AdminTh>
+                <AdminTh>Synced</AdminTh>
               </tr>
             </AdminTableHead>
             <AdminTableBody>
-              {rows.slice(0, 100).map((r, i) => (
-                <tr key={i}>
-                  {cols.map((c) => (
-                    <AdminTd key={c} className="max-w-[10rem] truncate text-xs">
-                      {typeof r[c] === "object" ? JSON.stringify(r[c]) : String(r[c] ?? "")}
-                    </AdminTd>
-                  ))}
+              {rows.slice(0, 200).map((r, i) => (
+                <tr key={String(r.id ?? i)}>
+                  <AdminTd className="text-xs text-gray-500">
+                    {String(r.created_at ?? "").slice(0, 16).replace("T", " ")}
+                  </AdminTd>
+                  <AdminTd className="text-xs">
+                    {String(r.provider_name ?? r.provider_id ?? "—")}
+                  </AdminTd>
+                  <AdminTd className="text-xs font-mono">
+                    {String(r.yoco_payment_id ?? "")}
+                  </AdminTd>
+                  <AdminTd className="tabular-nums text-xs">
+                    {fmtMoney(r.amount, r.currency)}
+                  </AdminTd>
+                  <AdminTd className="text-xs capitalize">{String(r.status ?? "—")}</AdminTd>
+                  <AdminTd className="text-xs text-gray-500">
+                    {r.appointment_id ? "yes" : "—"}
+                  </AdminTd>
+                  <AdminTd className="text-xs">
+                    {r.booking_synced ? (
+                      <span className="rounded bg-green-100 px-1.5 py-0.5 text-green-700">synced</span>
+                    ) : r.appointment_id ? (
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700">pending</span>
+                    ) : (
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">unlinked</span>
+                    )}
+                  </AdminTd>
                 </tr>
               ))}
             </AdminTableBody>
           </AdminDataTable>
+        </AdminPanel>
+      ) : (
+        <AdminPanel>
+          <p className="text-sm text-gray-600">
+            No Yoco payments in the last 30 days for this tenant. Providers connect Yoco
+            under <em>Provider settings → Payments</em>; once they take a sale there it
+            will appear here for reconciliation.
+          </p>
         </AdminPanel>
       )}
     </div>
@@ -613,12 +824,23 @@ export function ReportDetailPage() {
         <button
           type="button"
           className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
-          onClick={() =>
+          onClick={() => {
+            // Map each report to its dedicated export endpoint so the downloaded CSV
+            // matches what is on screen. Falls back to the generic analytics export
+            // for reports without a dedicated CSV endpoint yet.
+            const EXPORT_ENDPOINTS: Record<string, string> = {
+              revenue: "/api/admin/export/finance",
+              providers: "/api/admin/export/providers",
+              customers: "/api/admin/export/users",
+              bookings: "/api/admin/export/bookings",
+              "yoco-reconciliation": "/api/admin/export/transactions",
+            };
+            const endpoint = EXPORT_ENDPOINTS[reportKey] ?? "/api/admin/export/analytics";
             void downloadAdminBlob(
-              `/api/admin/export/analytics?period=${encodeURIComponent(period)}`,
+              `${endpoint}?period=${encodeURIComponent(period)}`,
               `${reportKey}-${period}.csv`
-            ).catch(() => alert("Export failed"))
-          }
+            ).catch(() => alert("Export failed"));
+          }}
         >
           Download CSV
         </button>

@@ -23,7 +23,9 @@ export default function SponsoredSection({
   initialProviders,
   initialHydrated = false,
 }: SponsoredSectionProps) {
-  const adsConfig = useModuleConfig("ads") as { enabled?: boolean } | undefined;
+  const adsConfig = useModuleConfig("ads") as { enabled?: boolean; disclosure_label?: string | null } | undefined;
+  const sponsoredHeading = (adsConfig?.disclosure_label || "Sponsored").trim() || "Sponsored";
+  const sponsoredBadgeText = sponsoredHeading;
   const sponsoredEnabled = useFeatureFlag("ads.sponsored_slots.enabled");
   const { location: userLocation } = useUserLocation();
   const enabled = Boolean(adsConfig?.enabled) && sponsoredEnabled;
@@ -92,12 +94,12 @@ export default function SponsoredSection({
         <div className="flex items-center justify-between mb-4 md:mb-6">
           <div className="flex items-center gap-2">
             <Megaphone className="h-5 w-5 text-muted-foreground" />
-            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">Sponsored</h2>
+            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">{sponsoredHeading}</h2>
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
           {providers.slice(0, 8).map((provider) => (
-            <ProviderCard key={provider.id} provider={provider} />
+            <ProviderCard key={provider.id} provider={provider} sponsoredBadgeText={sponsoredBadgeText} />
           ))}
         </div>
       </div>

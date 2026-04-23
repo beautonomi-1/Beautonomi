@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkAutomationFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
 
 const createAutomationSchema = z.object({
@@ -32,11 +33,7 @@ export async function GET(request: NextRequest) {
     // Check subscription allows automations
     const automationAccess = await checkAutomationFeatureAccess(providerId);
     if (!automationAccess.enabled) {
-      return errorResponse(
-        "Marketing automations require a subscription upgrade. Please upgrade to Starter plan or higher.",
-        "SUBSCRIPTION_REQUIRED",
-        403
-      );
+      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }
 
     // Use service role client for template seeding (needs elevated permissions)
@@ -109,11 +106,7 @@ export async function POST(request: NextRequest) {
     // Check subscription allows automations
     const automationAccess = await checkAutomationFeatureAccess(providerId);
     if (!automationAccess.enabled) {
-      return errorResponse(
-        "Marketing automations require a subscription upgrade. Please upgrade to Starter plan or higher.",
-        "SUBSCRIPTION_REQUIRED",
-        403
-      );
+      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }
 
     // Check automation limit

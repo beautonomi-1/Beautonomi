@@ -1,10 +1,11 @@
 import { type ReactNode, useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 
-const MODAL_MAX: Record<"md" | "lg" | "xl", string> = {
+const MODAL_MAX: Record<"md" | "lg" | "xl" | "2xl", string> = {
   md: "max-w-md",
   lg: "max-w-xl",
   xl: "max-w-[95vw] sm:max-w-3xl",
+  "2xl": "max-w-[98vw] sm:max-w-5xl",
 };
 
 /**
@@ -28,7 +29,7 @@ export function AdminModal({
   footer: ReactNode;
   labelledBy?: string;
   /** Wide dialogs for CMS-style forms (notification templates, rich editors). */
-  size?: "md" | "lg" | "xl";
+  size?: "md" | "lg" | "xl" | "2xl";
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
 

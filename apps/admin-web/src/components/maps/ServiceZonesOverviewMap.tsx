@@ -106,9 +106,9 @@ export function ServiceZonesOverviewMap({ zones, className = "" }: ServiceZonesO
     let cancelled = false;
 
     const removeOverview = () => {
-      if (map.getLayer(OV_LINE)) map.removeLayer(OV_LINE);
-      if (map.getLayer(OV_FILL)) map.removeLayer(OV_FILL);
-      if (map.getSource(OV_SOURCE)) map.removeSource(OV_SOURCE);
+      safeRemoveLayer(map, OV_LINE);
+      safeRemoveLayer(map, OV_FILL);
+      safeRemoveSource(map, OV_SOURCE);
     };
 
     const apply = (): (() => void) => {

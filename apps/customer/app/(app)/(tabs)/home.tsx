@@ -280,6 +280,7 @@ function ProviderSection({
   onViewMore,
   feedOriginLat,
   feedOriginLng,
+  sponsoredListingLabel,
 }: {
   title: string;
   providers: PublicProviderCard[];
@@ -290,6 +291,7 @@ function ProviderSection({
   onViewMore?: () => void;
   feedOriginLat?: number | null;
   feedOriginLng?: number | null;
+  sponsoredListingLabel?: string;
 }) {
   if (providers.length === 0) return null;
 
@@ -316,6 +318,7 @@ function ProviderSection({
               showHottestBadge={badge === "hottest"}
               showNearestBadge={badge === "nearest"}
               showUpcomingBadge={badge === "upcoming"}
+              sponsoredListingLabel={sponsoredListingLabel}
               feedOriginLat={feedOriginLat}
               feedOriginLng={feedOriginLng}
             />
@@ -445,6 +448,11 @@ export default function HomeScreen() {
     effectiveLat,
     effectiveLng,
     activeCategorySlug
+  );
+
+  const adsDisclosureLabel = useMemo(
+    () => (String(data?.ads_disclosure_label ?? "Sponsored").trim() || "Sponsored"),
+    [data?.ads_disclosure_label],
   );
 
   const handleCategoryPress = useCallback((cat: string) => {
@@ -726,11 +734,12 @@ export default function HomeScreen() {
                   onViewMore={() => router.push("/(app)/more-providers/top-rated")}
                 />
                 <ProviderSection
-                  title="Sponsored"
+                  title={adsDisclosureLabel}
                   providers={data.sponsored || []}
                   badge="sponsored"
                   cardWidth={cardWidth}
                   contentPadding={contentPadding}
+                  sponsoredListingLabel={adsDisclosureLabel}
                   feedOriginLat={effectiveLat}
                   feedOriginLng={effectiveLng}
                   onViewMore={() => router.push("/(app)/more-providers/sponsored")}

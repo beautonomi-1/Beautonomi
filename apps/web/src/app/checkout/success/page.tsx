@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Calendar, Plus, MapPin, Clock, Download, ExternalLink, Smartphone } from "lucide-react";
 import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
+import { clearBeautonomiHoldClientMarkers } from "@/lib/booking/clear-hold-client-markers";
 
 /** Beautonomi primary (use CSS var in styles for single source) */
 const ACCENT = "var(--primary, #FF0077)";
@@ -37,6 +38,10 @@ function CheckoutSuccessContent() {
 
   /** Local dev / no webhook: finalize payment via Paystack verify (records booking_payments + confirms booking). */
   const paystackVerifyStarted = useRef(false);
+
+  useEffect(() => {
+    clearBeautonomiHoldClientMarkers();
+  }, []);
 
   useEffect(() => {
     if (isWaitlist || isCustomOffer) return;

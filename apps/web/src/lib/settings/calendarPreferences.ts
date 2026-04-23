@@ -12,6 +12,7 @@
  */
 
 import { AppointmentStatus } from "../scheduling/mangomintAdapter";
+import { providerPortalFetch } from "@/lib/http/fetcher";
 
 // ============================================================================
 // TYPES
@@ -306,7 +307,7 @@ export async function syncPreferencesToServer(
   preferences: MangomintCalendarPreferences
 ): Promise<void> {
   try {
-    await fetch("/api/provider/settings/calendar-preferences", {
+    await providerPortalFetch("/api/provider/settings/calendar-preferences", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(preferences),
@@ -323,7 +324,7 @@ export async function loadPreferencesFromServer(
   _providerId: string
 ): Promise<MangomintCalendarPreferences | null> {
   try {
-    const response = await fetch("/api/provider/settings/calendar-preferences");
+    const response = await providerPortalFetch("/api/provider/settings/calendar-preferences");
     if (response.ok) {
       const data = await response.json();
       if (data.data) return data.data;

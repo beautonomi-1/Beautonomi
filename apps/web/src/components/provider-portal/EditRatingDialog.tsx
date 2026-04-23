@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
+import { providerPortalFetch } from "@/lib/http/fetcher";
 
 interface EditRatingDialogProps {
   open: boolean;
@@ -55,7 +56,7 @@ export function EditRatingDialog({
 
     setIsSubmitting(true);
     try {
-      const response = await fetch(`/api/provider/ratings/${rating.id}`, {
+      const response = await providerPortalFetch(`/api/provider/ratings/${rating.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -89,7 +90,7 @@ export function EditRatingDialog({
 
     setIsSubmitting(true);
     try {
-      const response = await fetch(`/api/provider/ratings/${rating.id}`, {
+      const response = await providerPortalFetch(`/api/provider/ratings/${rating.id}`, {
         method: "DELETE",
       });
 

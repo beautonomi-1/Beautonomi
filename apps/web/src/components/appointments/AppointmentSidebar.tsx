@@ -105,7 +105,7 @@ import type {
   Provider as PortalProviderProfile,
 } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, providerPortalFetch } from "@/lib/http/fetcher";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import {
   formatApiErrorMessage,
@@ -319,7 +319,7 @@ export function AppointmentSidebar({
           params.set("exclude_booking_id", activeBookingId);
         }
 
-        const res = await fetch(`/api/provider/bookings/check-availability?${params.toString()}`, {
+        const res = await providerPortalFetch(`/api/provider/bookings/check-availability?${params.toString()}`, {
           signal: ac.signal,
         });
         const body = (await res.json().catch(() => null)) as {
@@ -599,8 +599,8 @@ export function AppointmentSidebar({
         try {
           // Search both saved clients and serviced customers
           const [savedClientsResponse, servicedClientsResponse] = await Promise.all([
-            fetch(`/api/provider/clients?search=${encodeURIComponent(clientSearchQuery)}`),
-            fetch(`/api/provider/clients/serviced?search=${encodeURIComponent(clientSearchQuery)}`),
+            providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(clientSearchQuery)}`),
+            providerPortalFetch(`/api/provider/clients/serviced?search=${encodeURIComponent(clientSearchQuery)}`),
           ]);
           
           const allClients: Array<{
@@ -675,7 +675,7 @@ export function AppointmentSidebar({
         let addr: Record<string, any> | null = null;
 
         // Try client detail endpoint first
-        const res = await fetch(`/api/provider/clients/${client.id}`);
+        const res = await providerPortalFetch(`/api/provider/clients/${client.id}`);
         if (res.ok) {
           const body = await res.json();
           const clientData = body?.data ?? body;
@@ -684,7 +684,7 @@ export function AppointmentSidebar({
 
         // Fallback: try the dedicated addresses endpoint
         if (!addr) {
-          const addrRes = await fetch(`/api/provider/clients/${client.id}/addresses`);
+          const addrRes = await providerPortalFetch(`/api/provider/clients/${client.id}/addresses`);
           if (addrRes.ok) {
             const addrBody = await addrRes.json();
             const addresses = addrBody?.data ?? addrBody ?? [];
@@ -745,7 +745,7 @@ export function AppointmentSidebar({
     }
     
     try {
-      const response = await fetch("/api/provider/clients/create", {
+      const response = await providerPortalFetch("/api/provider/clients/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -931,7 +931,7 @@ export function AppointmentSidebar({
     const loadSettings = async () => {
         try {
           // Load tax rate
-          const taxResponse = await fetch("/api/provider/tax-rate");
+          const taxResponse = await providerPortalFetch("/api/provider/tax-rate");
           if (taxResponse.ok) {
             const taxResponseData = await taxResponse.json();
             const taxRate = (taxResponseData?.data?.taxRate ?? 0) / 100; // Convert percentage to decimal (0% for non-VAT)
@@ -969,7 +969,7 @@ export function AppointmentSidebar({
           }
           
           // Load service fee (for reference, but provider-created appointments use 0)
-          const serviceFeeResponse = await fetch("/api/provider/service-fee");
+          const serviceFeeResponse = await providerPortalFetch("/api/provider/service-fee");
           if (serviceFeeResponse.ok) {
             const serviceFeeData = await serviceFeeResponse.json();
             const serviceFeePercentage = (serviceFeeData.data?.serviceFeePercentage || 10) / 100; // Convert percentage to decimal
@@ -977,14 +977,14 @@ export function AppointmentSidebar({
           }
           
           // Load travel settings
-          const travelResponse = await fetch("/api/provider/settings/travel");
+          const travelResponse = await providerPortalFetch("/api/provider/settings/travel");
           if (travelResponse.ok) {
             const travelData = await travelResponse.json();
             setTravelSettings(travelData.data?.settings || DEFAULT_TRAVEL_FEE_RULES);
           }
           
           // Load buffer time settings
-          const bufferResponse = await fetch("/api/provider/buffer-time");
+          const bufferResponse = await providerPortalFetch("/api/provider/buffer-time");
           if (bufferResponse.ok) {
             const bufferData = await bufferResponse.json();
             setBufferSettings({
@@ -995,7 +995,7 @@ export function AppointmentSidebar({
           }
 
           // Load deposit + tax-inclusive settings from provider payment settings
-          const depositResponse = await fetch("/api/provider/settings/payments");
+          const depositResponse = await providerPortalFetch("/api/provider/settings/payments");
           if (depositResponse.ok) {
             const depositData = await depositResponse.json();
             const d = depositData?.data;
@@ -1346,7 +1346,7 @@ export function AppointmentSidebar({
         throw new Error("Appointment ID is missing");
       }
       
-      const response = await fetch(`/api/provider/bookings/${bookingId}/receipt/pdf`, {
+      const response = await providerPortalFetch(`/api/provider/bookings/${bookingId}/receipt/pdf`, {
         credentials: "include",
       });
       
@@ -1392,7 +1392,7 @@ export function AppointmentSidebar({
       }
       
       // Use booking receipt send API (sends to booking's customer email)
-      const response = await fetch(`/api/provider/bookings/${bookingId}/receipt/send`, {
+      const response = await providerPortalFetch(`/api/provider/bookings/${bookingId}/receipt/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -2088,7 +2088,7 @@ export function AppointmentSidebar({
       // Send reschedule notification if enabled and time changed (API route to avoid server-only imports)
       if (sendNotification && timeChanged) {
         try {
-          const res = await fetch(`/api/provider/bookings/${activeBookingId}/notify-reschedule`, {
+          const res = await providerPortalFetch(`/api/provider/bookings/${activeBookingId}/notify-reschedule`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -2158,7 +2158,7 @@ export function AppointmentSidebar({
         toast.success("Appointment completed");
         if (selectedAppointment?.id && selectedAppointment?.client_id) {
           try {
-            const ratingCheck = await fetch(`/api/provider/ratings?booking_id=${activeBookingId}`);
+            const ratingCheck = await providerPortalFetch(`/api/provider/ratings?booking_id=${activeBookingId}`);
             if (ratingCheck.ok) {
               const ratingData = await ratingCheck.json();
               if (!ratingData.data?.has_rating) {
@@ -2240,7 +2240,7 @@ export function AppointmentSidebar({
 
       if (sendNotification) {
         try {
-          const res = await fetch(`/api/provider/bookings/${activeBookingId}/notify-cancellation`, {
+          const res = await providerPortalFetch(`/api/provider/bookings/${activeBookingId}/notify-cancellation`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ cancellation_type: cancelReason }),
@@ -2317,7 +2317,7 @@ export function AppointmentSidebar({
     }
 
     try {
-      const res = await fetch(`/api/provider/bookings/${activeBookingId}/notify-resend`, {
+      const res = await providerPortalFetch(`/api/provider/bookings/${activeBookingId}/notify-resend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type }),
@@ -4202,7 +4202,7 @@ export function AppointmentSidebar({
                         }
                         const subtotal = formData.subtotal;
                         try {
-                          const res = await fetch(`/api/provider/coupons/validate?code=${encodeURIComponent(code)}&subtotal=${subtotal || 0}`);
+                          const res = await providerPortalFetch(`/api/provider/coupons/validate?code=${encodeURIComponent(code)}&subtotal=${subtotal || 0}`);
                           const data = await res.json();
                           if (!res.ok) {
                             toast.error(data?.error?.message || "Invalid promo code");
@@ -4486,7 +4486,7 @@ export function AppointmentSidebar({
                                     const remainingBalance = Math.max(0, totalAmount - effectivePaidInner - walletInner - giftInner);
                                     const paymentAmount = remainingBalance > 0 ? remainingBalance : totalAmount;
                                     
-                                    const response = await fetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
+                                    const response = await providerPortalFetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
                                       method: 'POST',
                                       headers: { 'Content-Type': 'application/json' },
                                       body: JSON.stringify({
@@ -4548,7 +4548,7 @@ export function AppointmentSidebar({
                               const paymentAmountCard = remainingBalanceCard > 0 ? remainingBalanceCard : totalAmountCard;
                               
                               // Fetch Yoco terminals/devices first
-                              const terminalsResponse = await fetch('/api/provider/yoco/devices');
+                              const terminalsResponse = await providerPortalFetch('/api/provider/yoco/devices');
                               const terminalsData = await terminalsResponse.json();
                               let terminals = terminalsData.data || [];
 
@@ -4582,7 +4582,7 @@ export function AppointmentSidebar({
                                 if (!manualConfirm) return;
 
                                 // Manual card payment
-                                const response = await fetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
+                                const response = await providerPortalFetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({
@@ -4627,7 +4627,7 @@ export function AppointmentSidebar({
 
                               // Process Yoco POS payment
                               toast.info('Processing payment on Yoco terminal...');
-                              const paymentResponse = await fetch('/api/provider/yoco/payments', {
+                              const paymentResponse = await providerPortalFetch('/api/provider/yoco/payments', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -4660,7 +4660,7 @@ export function AppointmentSidebar({
                               const paymentAmountYoco = remainingBalanceYoco > 0 ? remainingBalanceYoco : totalAmountYoco;
                               const isPartiallyPaidYoco = effectivePaidYoco > 0 && remainingBalanceYoco > 0;
                               
-                              const markPaidResponse = await fetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
+                              const markPaidResponse = await providerPortalFetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -4705,7 +4705,7 @@ export function AppointmentSidebar({
                             size="sm"
                             onClick={async () => {
                               try {
-                                const response = await fetch(`/api/provider/bookings/${activeBookingId}/send-payment-link`, {
+                                const response = await providerPortalFetch(`/api/provider/bookings/${activeBookingId}/send-payment-link`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({
@@ -4761,7 +4761,7 @@ export function AppointmentSidebar({
                             
                             if (selectedAppointment.payment_status === 'partially_paid') {
                               try {
-                                const paymentsResponse = await fetch(`/api/provider/bookings/${activeBookingId}/payments`);
+                                const paymentsResponse = await providerPortalFetch(`/api/provider/bookings/${activeBookingId}/payments`);
                                 if (paymentsResponse.ok) {
                                   const paymentsData = await paymentsResponse.json();
                                   const totalPaid = paymentsData.data?.summary?.total_paid || 0;
@@ -4841,7 +4841,7 @@ export function AppointmentSidebar({
                                   }
                                   
                                   try {
-                                    const response = await fetch(`/api/provider/bookings/${activeBookingId}/refund`, {
+                                    const response = await providerPortalFetch(`/api/provider/bookings/${activeBookingId}/refund`, {
                                       method: 'POST',
                                       headers: { 'Content-Type': 'application/json' },
                                       body: JSON.stringify({

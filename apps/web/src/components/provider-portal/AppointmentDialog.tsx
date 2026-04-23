@@ -20,6 +20,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type { Appointment, TeamMember, ServiceItem, ProductItem } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
+import { providerPortalFetch } from "@/lib/http/fetcher";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -303,7 +304,7 @@ export function AppointmentDialog({
 
     // 2. Fetch full booking from API
     try {
-      const res = await fetch(`/api/provider/bookings/${appt.id}`);
+      const res = await providerPortalFetch(`/api/provider/bookings/${appt.id}`);
       if (res.ok) {
         const data = await res.json();
         const booking = data.data || data;
@@ -359,7 +360,7 @@ export function AppointmentDialog({
     if (clientQuery.length < 2) { setClientResults([]); return; }
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/provider/clients?search=${encodeURIComponent(clientQuery)}`);
+        const res = await providerPortalFetch(`/api/provider/clients?search=${encodeURIComponent(clientQuery)}`);
         if (res.ok) {
           const d = await res.json();
           setClientResults(d.data || []);
@@ -492,7 +493,7 @@ export function AppointmentDialog({
       duration_minutes: String(totalDuration || 60),
       staff_ids: formData.team_member_id,
     });
-    fetch(`/api/provider/bookings/available-slots?${params}`)
+    providerPortalFetch(`/api/provider/bookings/available-slots?${params}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled) return;

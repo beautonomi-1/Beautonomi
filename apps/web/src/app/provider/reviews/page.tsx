@@ -11,13 +11,7 @@ import { Star, MessageSquare, Flag, Eye, EyeOff, Edit2, Send } from "lucide-reac
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface Review {
   id: string;
@@ -45,7 +39,8 @@ export default function ProviderReviewsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "pending_response" | "responded">("all");
-  const [_selectedReview, setSelectedReview] = useState<Review | null>(null);
+  /** Which review the respond/edit modal is for (controlled dialog closes reliably after submit). */
+  const [responseDialogReviewId, setResponseDialogReviewId] = useState<string | null>(null);
   const [responseText, setResponseText] = useState("");
   const [isResponding, setIsResponding] = useState(false);
   const [isModerating, setIsModerating] = useState(false);
@@ -53,6 +48,14 @@ export default function ProviderReviewsPage() {
   useEffect(() => {
     loadReviews();
   }, [statusFilter]);
+
+  useEffect(() => {
+    if (!responseDialogReviewId) return;
+    if (!reviews.some((r) => r.id === responseDialogReviewId)) {
+      setResponseDialogReviewId(null);
+      setResponseText("");
+    }
+  }, [reviews, responseDialogReviewId]);
 
   const loadReviews = async () => {
     try {
@@ -71,6 +74,11 @@ export default function ProviderReviewsPage() {
     }
   };
 
+  const closeResponseDialog = () => {
+    setResponseDialogReviewId(null);
+    setResponseText("");
+  };
+
   const handleRespond = async (reviewId: string, isEdit: boolean = false) => {
     if (!responseText.trim()) {
       toast.error("Please enter a response");
@@ -85,9 +93,8 @@ export default function ProviderReviewsPage() {
       });
 
       toast.success(isEdit ? "Response updated successfully" : "Response added successfully");
-      setSelectedReview(null);
-      setResponseText("");
-      loadReviews();
+      closeResponseDialog();
+      await loadReviews();
     } catch (err) {
       toast.error(err instanceof FetchError ? err.message : "Failed to save response");
       console.error("Error saving response:", err);
@@ -105,7 +112,7 @@ export default function ProviderReviewsPage() {
       });
 
       toast.success(`Review ${action}ed successfully`);
-      loadReviews();
+      await loadReviews();
     } catch (err) {
       toast.error(err instanceof FetchError ? err.message : "Failed to moderate review");
       console.error("Error moderating review:", err);
@@ -113,6 +120,11 @@ export default function ProviderReviewsPage() {
       setIsModerating(false);
     }
   };
+
+  const responseDialogReview =
+    responseDialogReviewId == null
+      ? null
+      : reviews.find((r) => r.id === responseDialogReviewId) ?? null;
 
   if (isLoading) {
     return (
@@ -226,7 +238,7 @@ export default function ProviderReviewsPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            setSelectedReview(review);
+                            setResponseDialogReviewId(review.id);
                             setResponseText(review.provider_response || "");
                           }}
                         >
@@ -240,53 +252,17 @@ export default function ProviderReviewsPage() {
                       </p>
                     </div>
                   ) : (
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedReview(review);
-                            setResponseText("");
-                          }}
-                        >
-                          <MessageSquare className="w-4 h-4 mr-2" />
-                          Respond
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Respond to Review</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <Textarea
-                            placeholder="Write your response..."
-                            value={responseText}
-                            onChange={(e) => setResponseText(e.target.value)}
-                            rows={6}
-                            maxLength={1000}
-                          />
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedReview(null);
-                                setResponseText("");
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              onClick={() => handleRespond(review.id, false)}
-                              disabled={isResponding}
-                            >
-                              <Send className="w-4 h-4 mr-2" />
-                              Send Response
-                            </Button>
-                          </div>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setResponseDialogReviewId(review.id);
+                        setResponseText("");
+                      }}
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      Respond
+                    </Button>
                   )}
 
                   <div className="flex gap-2 mt-4 pt-4 border-t">
@@ -338,6 +314,51 @@ export default function ProviderReviewsPage() {
             ))
           )}
         </div>
+
+        <Dialog
+          open={responseDialogReviewId !== null && responseDialogReview !== null}
+          onOpenChange={(open) => {
+            if (!open) closeResponseDialog();
+          }}
+        >
+          <DialogContent>
+            {responseDialogReview ? (
+              <>
+                <DialogHeader>
+                  <DialogTitle>
+                    {responseDialogReview.provider_response ? "Edit your response" : "Respond to review"}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <Textarea
+                    placeholder="Write your response..."
+                    value={responseText}
+                    onChange={(e) => setResponseText(e.target.value)}
+                    rows={6}
+                    maxLength={1000}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={closeResponseDialog}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={() =>
+                        handleRespond(
+                          responseDialogReview.id,
+                          Boolean(responseDialogReview.provider_response)
+                        )
+                      }
+                      disabled={isResponding}
+                    >
+                      <Send className="w-4 h-4 mr-2" />
+                      {responseDialogReview.provider_response ? "Save changes" : "Send response"}
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </DialogContent>
+        </Dialog>
       </div>
     </SettingsDetailLayout>
   );

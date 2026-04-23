@@ -6,7 +6,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { getUserRoleServer, getPortalForUser, getDefaultRouteForPortal } from "@/lib/auth/role";
+import {
+  getUserRoleServer,
+  getPortalForUser,
+  getDefaultRouteForPortal,
+} from "@/lib/auth/role";
+import { resolvePortalAwareReturnPathname } from "@/lib/auth/post-login-return-path";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
@@ -144,7 +149,15 @@ export async function GET(request: NextRequest) {
     );
   }
   if (isAllowedNext && normalizedPath && normalizedPath !== "/") {
-    return NextResponse.redirect(new URL(normalizedPath, requestUrl.origin));
+    const roleResult = await getUserRoleServer(supabase);
+    const portal = roleResult
+      ? getPortalForUser({
+          role: roleResult.role,
+          provider_status: roleResult.provider_status,
+        })
+      : "customer";
+    const pathname = resolvePortalAwareReturnPathname(portal, normalizedPath);
+    return NextResponse.redirect(new URL(pathname, requestUrl.origin));
   }
 
   // When next is "/" or missing, redirect by role so provider/customer land in the right place.
@@ -164,5 +177,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.redirect(new URL("/bookings", requestUrl.origin));
+  return NextResponse.redirect(new URL("/portal", requestUrl.origin));
 }

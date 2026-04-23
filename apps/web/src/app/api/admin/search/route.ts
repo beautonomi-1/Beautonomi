@@ -123,13 +123,70 @@ export async function GET(request: NextRequest) {
 
     const bookingsError = null;
 
-    // Search providers (by business name, owner name, email, or phone)
-    const { data: providers, error: providersError } = await supabase
+    // Search providers (by business name, email, or phone). `providers` has no
+    // `owner_name` / `owner_email` columns — owner info lives on the linked `users` row,
+    // so matching the owner's name/email now goes via `users` and the results are joined
+    // back here. Previously the `.or(... owner_name.ilike ...)` caused Postgres to error
+    // and the whole provider search returned an empty list.
+    let ownerMatchedProviderIds: string[] = [];
+    {
+      const { data: ownerRows, error: ownerErr } = await supabase
+        .from("users")
+        .select("id, full_name, email")
+        .or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
+        .limit(25);
+      if (ownerErr) {
+        console.error("Error searching provider owners (users):", ownerErr);
+      }
+      const ownerIds = (ownerRows || []).map((u) => (u as { id: string }).id);
+      if (ownerIds.length > 0) {
+        const { data: provOwnerRows } = await supabase
+          .from("providers")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .in("user_id", ownerIds);
+        ownerMatchedProviderIds = (provOwnerRows || []).map((p) => (p as { id: string }).id);
+      }
+    }
+
+    const providerOrClauses = [
+      `business_name.ilike.%${searchTerm}%`,
+      `phone.ilike.%${searchTerm}%`,
+    ];
+    if (ownerMatchedProviderIds.length > 0) {
+      providerOrClauses.push(`id.in.(${ownerMatchedProviderIds.join(",")})`);
+    }
+
+    const { data: providersRaw, error: providersError } = await supabase
       .from("providers")
-      .select("id, business_name, owner_name, owner_email, phone, status")
+      .select(
+        "id, business_name, phone, status, user_id, users:user_id(full_name, email)"
+      )
       .eq("tenant_id", tenantId)
-      .or(`business_name.ilike.%${searchTerm}%,owner_name.ilike.%${searchTerm}%,owner_email.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
+      .or(providerOrClauses.join(","))
       .limit(5);
+
+    const providers = (providersRaw || []).map((p) => {
+      const row = p as {
+        id: string;
+        business_name?: string | null;
+        phone?: string | null;
+        status?: string | null;
+        users?:
+          | { full_name?: string | null; email?: string | null }
+          | Array<{ full_name?: string | null; email?: string | null }>
+          | null;
+      };
+      const userRow = Array.isArray(row.users) ? row.users[0] : row.users;
+      return {
+        id: row.id,
+        business_name: row.business_name,
+        owner_name: userRow?.full_name ?? null,
+        owner_email: userRow?.email ?? null,
+        phone: row.phone,
+        status: row.status,
+      };
+    });
 
     if (usersError) {
       console.error("Error searching users:", usersError);

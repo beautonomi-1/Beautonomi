@@ -376,12 +376,12 @@ export async function validateBooking(
         400
       );
     }
-    // Reject addon / variant offerings from being submitted as a main
-    // service line — they must flow through `draft.addons` /
-    // variant-selection on their parent, respectively. Without this the
-    // customer could hide an addon as a "service" and bypass addon
-    // scoping rules (applicable_service_ids, addon_locations).
-    if (off.service_type === "addon" || off.service_type === "variant") {
+    // §Release-audit 2026-04: addons must NOT be submitted as main service
+    // lines — they go through `draft.addons` so addon-specific scoping
+    // (applicable_service_ids, addon_locations) is enforced. Variants are
+    // legitimate bookable services in their own right (own price/duration
+    // row in `offerings` with `parent_service_id` set) so we allow them.
+    if (off.service_type === "addon") {
       return handleApiError(
         new Error("Non-service offering submitted as service"),
         "Invalid service selection",
@@ -421,7 +421,7 @@ export async function validateBooking(
             400
           );
         }
-        if (off.service_type === "addon" || off.service_type === "variant") {
+        if (off.service_type === "addon") {
           return handleApiError(
             new Error("Non-service offering submitted for group participant"),
             "Invalid service selection",

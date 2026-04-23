@@ -71,6 +71,17 @@ import {
   resolveTimeBlockRecordId,
 } from "@/lib/expand-time-blocks";
 import { newBookingScreenHrefFromCalendarDay } from "@/lib/new-booking-nav-defaults";
+import {
+  DAY_NAMES as SHARED_DAY_NAMES,
+  dayMinuteRanges,
+  deriveGridHourWindow,
+  formatDateKeyInTimeZone,
+  getWeekdayInTimeZone,
+  mergeOperatingHours,
+  resolveDayHours as sharedResolveDayHours,
+  timeStringToMinutes as sharedTimeStringToMinutes,
+  type WeeklyHours,
+} from "@beautonomi/utils";
 
 /* ================================================================== */
 /*  Types                                                              */
@@ -239,15 +250,9 @@ const MIN_WEEK_COL_WIDTH_TABLET = 120;
 const DARK_HEADER = "#1a1f3c";
 const TEAL_ACCENT = "#4fd1c5";
 
-const DAY_NAMES = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-];
+// §Calendar-hours: use the shared DAY_NAMES tuple so day-index lookups stay
+// aligned with `resolveDayHours` / `deriveGridHourWindow` helpers.
+const DAY_NAMES: readonly string[] = SHARED_DAY_NAMES;
 
 type ColorTriple = { bg: string; border: string; text: string };
 
@@ -427,34 +432,38 @@ function getCalendarOverlayColors(block: TimeBlock) {
 /*  Helpers                                                            */
 /* ================================================================== */
 
+/**
+ * §Calendar-hours: local wrappers that preserve the historical signatures
+ * used throughout this file while delegating the underlying parsing to the
+ * shared engine in `@beautonomi/utils/calendar-hours`.
+ */
 function timeStringToMinutes(t: string | undefined | null): number {
-  if (t == null || typeof t !== "string") return 0;
-  const [hRaw, mRaw] = t.split(":").map(Number);
-  const h = Number.isFinite(hRaw) ? Math.max(0, Math.min(23, hRaw)) : 0;
-  const m = Number.isFinite(mRaw) ? Math.max(0, Math.min(59, mRaw)) : 0;
-  return h * 60 + m;
+  return sharedTimeStringToMinutes(t ?? null) ?? 0;
 }
 
 function normalizeOperatingSchedule(
   schedule: unknown,
 ): { isOpen: boolean; openTime?: string; closeTime?: string } | null {
-  if (!schedule || typeof schedule !== "object") return null;
-  const raw = schedule as Record<string, unknown>;
-  const isOpen =
-    raw.is_open === true || (raw.closed !== true && raw.is_open !== false);
-  const openTime =
-    typeof raw.open_time === "string"
-      ? raw.open_time
-      : typeof raw.open === "string"
-        ? raw.open
-        : undefined;
-  const closeTime =
-    typeof raw.close_time === "string"
-      ? raw.close_time
-      : typeof raw.close === "string"
-        ? raw.close
-        : undefined;
-  return { isOpen, openTime, closeTime };
+  const resolved = sharedResolveDayHours(schedule);
+  if (!resolved) {
+    // Keep historical behaviour: an explicit closed flag without a parseable
+    // open/close still short-circuits downstream open-hour math.
+    if (schedule && typeof schedule === "object" && !Array.isArray(schedule)) {
+      const raw = schedule as Record<string, unknown>;
+      if (raw.closed === true || raw.is_open === false) {
+        return { isOpen: false };
+      }
+    }
+    return null;
+  }
+  if (resolved.closed) return { isOpen: false };
+  const pad = (m: number) =>
+    `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  return {
+    isOpen: true,
+    openTime: pad(resolved.openMin),
+    closeTime: pad(resolved.closeMin),
+  };
 }
 
 function parseApiDateTime(value: unknown): Date | null {
@@ -1247,15 +1256,22 @@ function CalendarScreenBody() {
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [selectedDate]);
 
-  const operatingHours = useMemo(() => {
+  const operatingHours = useMemo<Record<string, DaySchedule> | null>(() => {
     if (!locations || locations.length === 0) return null;
-    const loc = locationFilter !== "all"
-      ? locations.find((l) => l.id === locationFilter)
-      : locations[0];
-    const raw = loc?.operating_hours as unknown;
-    // API mistakes / legacy shapes: arrays or primitives break day-key lookups and can crash downstream.
-    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
-    return raw as Record<string, DaySchedule>;
+    // §Calendar-hours: when the user filters by a single location, use that
+    // location's schedule verbatim. When "All Locations" is selected, merge
+    // every location's operating_hours into the widest open window per day
+    // so the overlays and grid range reflect the full business footprint
+    // (not just the first location).
+    if (locationFilter !== "all") {
+      const loc = locations.find((l) => l.id === locationFilter);
+      const raw = loc?.operating_hours as unknown;
+      if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
+      return raw as Record<string, DaySchedule>;
+    }
+    const merged = mergeOperatingHours(locations.map((l) => l.operating_hours as unknown));
+    if (!merged) return null;
+    return merged as unknown as Record<string, DaySchedule>;
   }, [locations, locationFilter]);
 
   // §Provider-audit 2026-04: staffList / staffNameToId used to live ~60 lines
@@ -1277,86 +1293,62 @@ function CalendarScreenBody() {
     return opts;
   }, [staffList]);
 
+  /**
+   * §Calendar-hours: delegate the per-day visible range to the shared
+   * `deriveGridHourWindow` so overnight shifts, sub-hour opens, and
+   * staff-only weekend windows are all handled in one place.
+   */
   function getHoursForDay(day: Date): { startHour: number; endHour: number; isOpen: boolean } {
-    const dayName = DAY_NAMES[day.getDay()] ?? "monday";
-    let minH = 23;
-    let maxH = 0;
-    let anyOpen = false;
-
-    // Location operating hours
-    if (operatingHours) {
-      const schedule = normalizeOperatingSchedule(operatingHours[dayName]);
-      if (schedule?.isOpen && schedule.openTime != null && schedule.closeTime != null) {
-        anyOpen = true;
-        minH = Math.min(minH, Math.floor(timeStringToMinutes(schedule.openTime) / 60));
-        maxH = Math.max(maxH, Math.ceil(timeStringToMinutes(schedule.closeTime) / 60));
-      }
-    }
-
-    // Staff working hours — expand range for any staff member who works this day,
-    // even if the location itself is nominally closed (e.g. weekends).
-    for (const member of staffList ?? []) {
-      if (!member || !member.working_hours || typeof member.working_hours !== "object") continue;
-      const dayWh = (member.working_hours as Record<string, unknown>)[dayName] as
-        | {
-            closed?: boolean;
-            is_open?: boolean;
-            open?: string;
-            close?: string;
-            open_time?: string;
-            close_time?: string;
-          }
-        | undefined;
-      if (!dayWh) continue;
-      if (dayWh.closed === true || dayWh.is_open === false) continue;
-      const openStr = dayWh.open ?? dayWh.open_time;
-      const closeStr = dayWh.close ?? dayWh.close_time;
-      if (typeof openStr !== "string" || typeof closeStr !== "string") continue;
-      anyOpen = true;
-      minH = Math.min(minH, Math.floor(timeStringToMinutes(openStr) / 60));
-      maxH = Math.max(maxH, Math.ceil(timeStringToMinutes(closeStr) / 60));
-    }
-
-    if (!anyOpen) {
-      const start = Math.max(0, preferences.workdayStartHour - 1);
-      const end = Math.min(23, preferences.workdayEndHour + 1);
-      return { startHour: start, endHour: end, isOpen: false };
-    }
-
-    const sh = Math.max(0, minH - 1);
-    const eh = Math.min(23, maxH + 1);
-    return { startHour: sh, endHour: eh, isOpen: true };
+    const staffWorkingHours = (staffList ?? [])
+      .map((m) => (m?.working_hours ?? null) as WeeklyHours | null);
+    const { startHour, endHour, hasAnyOpenSlot } = deriveGridHourWindow({
+      visibleDates: [day],
+      locationOperatingHours: (operatingHours ?? null) as WeeklyHours | null,
+      staffWorkingHours,
+      defaultStartHour: Math.max(0, preferences.workdayStartHour - 1),
+      defaultEndHour: Math.min(23, preferences.workdayEndHour + 1),
+      paddingHours: 1,
+      timeZone: provider?.timezone ?? null,
+    });
+    return { startHour, endHour, isOpen: hasAnyOpenSlot };
   }
 
   const todayHours = getHoursForDay(selectedDate);
-  // All views use operating hours; week/3-day merge hours across all visible days
+  // All views use operating hours; week/3-day views union hours across visible days.
   const { startHour, endHour } = useMemo(() => {
+    const visibleDates: Date[] = [];
     if (viewMode === "day") {
-      return { startHour: todayHours.startHour, endHour: todayHours.endHour };
-    }
-    const count = viewMode === "3day" ? 3 : 7;
-    let minH = 23;
-    let maxH = 0;
-    let hasOpen = false;
-    for (let i = 0; i < count; i++) {
-      const d = viewMode === "week"
-        ? addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), i)
-        : addDays(selectedDate, i);
-      const dh = getHoursForDay(d);
-      if (dh.isOpen) {
-        hasOpen = true;
-        minH = Math.min(minH, dh.startHour);
-        maxH = Math.max(maxH, dh.endHour);
+      visibleDates.push(selectedDate);
+    } else {
+      const count = viewMode === "3day" ? 3 : 7;
+      for (let i = 0; i < count; i++) {
+        const d = viewMode === "week"
+          ? addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), i)
+          : addDays(selectedDate, i);
+        visibleDates.push(d);
       }
     }
-    if (!hasOpen) {
-      const fallback = Math.max(0, preferences.workdayStartHour - 1);
-      const fallbackEnd = Math.min(23, preferences.workdayEndHour + 1);
-      return { startHour: fallback, endHour: fallbackEnd };
-    }
-    return { startHour: minH, endHour: maxH };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, selectedDate, todayHours.startHour, todayHours.endHour, todayHours.isOpen, operatingHours, preferences.workdayStartHour, preferences.workdayEndHour]);
+    const staffWorkingHours = (staffList ?? [])
+      .map((m) => (m?.working_hours ?? null) as WeeklyHours | null);
+    const { startHour: sh, endHour: eh } = deriveGridHourWindow({
+      visibleDates,
+      locationOperatingHours: (operatingHours ?? null) as WeeklyHours | null,
+      staffWorkingHours,
+      defaultStartHour: Math.max(0, preferences.workdayStartHour - 1),
+      defaultEndHour: Math.min(23, preferences.workdayEndHour + 1),
+      paddingHours: 1,
+      timeZone: provider?.timezone ?? null,
+    });
+    return { startHour: sh, endHour: eh };
+  }, [
+    viewMode,
+    selectedDate,
+    operatingHours,
+    staffList,
+    preferences.workdayStartHour,
+    preferences.workdayEndHour,
+    provider?.timezone,
+  ]);
 
   const scrollToCurrentTime = useCallback(() => {
     if (!preferences.scrollToNow || hasScrolledToNow.current) return;
@@ -1516,7 +1508,12 @@ function CalendarScreenBody() {
     day: Date,
     blockContext?: { staffColumnId?: string | null } | null,
   ): TimeBlock[] {
-    const dayStr = format(day, "yyyy-MM-dd");
+    const tz = provider?.timezone ?? null;
+    // §Calendar-hours: overlay `.date` values come from the server as the
+    // provider's wall-clock date (YYYY-MM-DD in the salon's zone). Format
+    // `day` in the same zone so a device in a different tz doesn't filter
+    // out overlays when the visible day straddles midnight locally.
+    const dayStr = tz ? formatDateKeyInTimeZone(day, tz) : format(day, "yyyy-MM-dd");
     const out: TimeBlock[] = [];
     const columnId = blockContext?.staffColumnId;
 
@@ -1533,22 +1530,34 @@ function CalendarScreenBody() {
       return true;
     };
 
+    // §Calendar-hours: when the user has filtered to a single location,
+    // every overlay source must also respect that filter to match the web
+    // calendar. Overlays without a `location_id` are treated as location-
+    // agnostic (e.g. staff time off that applies everywhere).
+    const blockMatchesLocation = (blockLocationId: string | null | undefined) => {
+      if (locationFilter === "all") return true;
+      if (blockLocationId == null) return true;
+      return blockLocationId === locationFilter;
+    };
+
     for (const seg of staffUnavailSegments ?? []) {
       if (seg.date !== dayStr) continue;
       if (!blockMatchesStaff(seg.team_member_id)) continue;
+      if (!blockMatchesLocation(seg.location_id)) continue;
       out.push(availabilitySegmentToTimeBlock(seg));
     }
 
     for (const seg of availabilitySegments) {
       if (seg.date !== dayStr) continue;
       if (!blockMatchesStaff(seg.team_member_id)) continue;
+      if (!blockMatchesLocation(seg.location_id)) continue;
       out.push(availabilitySegmentToTimeBlock(seg));
     }
 
-    // §Provider-launch: booking holds (customers mid-checkout).
     for (const seg of bookingHoldSegments ?? []) {
       if (seg.date !== dayStr) continue;
       if (!blockMatchesStaff(seg.team_member_id)) continue;
+      if (!blockMatchesLocation(seg.location_id)) continue;
       out.push({
         id: seg.id,
         staff_id: seg.team_member_id,
@@ -1567,6 +1576,12 @@ function CalendarScreenBody() {
       for (const tb of expandedApiTimeBlocks) {
         if (tb.date !== dayStr) continue;
         if (!blockMatchesStaff(tb.staff_id)) continue;
+        if (
+          !blockMatchesLocation(
+            (tb as TimeBlock & { location_id?: string | null }).location_id ?? null,
+          )
+        )
+          continue;
         out.push(tb);
       }
     }
@@ -2451,12 +2466,22 @@ function CalendarScreenBody() {
 
   function renderHoursShading(day: Date) {
     if (!operatingHours) return null;
-    const dayName = DAY_NAMES[day.getDay()] ?? "monday";
-    const schedule = normalizeOperatingSchedule(operatingHours[dayName]);
     const shadeBg = preferences.highContrast ? Colors.gray[700] : Colors.gray[200];
 
-    if (!schedule || !schedule.isOpen || schedule.openTime == null || schedule.closeTime == null) {
-      const dayName2 = DAY_NAMES[day.getDay()] ?? "monday";
+    // §Calendar-hours: use the shared engine so overnight shifts (22:00-02:00)
+    // render correctly on BOTH days — the grid gets an open range on the
+    // opening day and another on the wrap-around day, with the non-open
+    // portions shaded in between.
+    const openRanges = dayMinuteRanges(
+      day,
+      operatingHours as WeeklyHours,
+      provider?.timezone ?? null,
+    );
+
+    if (openRanges.length === 0) {
+      const tz = provider?.timezone ?? null;
+      const weekdayIndex = tz ? getWeekdayInTimeZone(day, tz) : day.getDay();
+      const dayName2 = DAY_NAMES[weekdayIndex] ?? "monday";
       const anyStaffWorks = staffList.some((s) => {
         const wh = s.working_hours?.[dayName2];
         if (!wh) return false;
@@ -2469,17 +2494,42 @@ function CalendarScreenBody() {
       );
     }
 
-    const openMin = timeStringToMinutes(schedule.openTime);
-    const closeMin = timeStringToMinutes(schedule.closeTime);
+    const gridStartMin = startHour * 60;
+    const gridEndMin = (endHour + 1) * 60;
+    const minToTop = (min: number) =>
+      GRID_TOP_PADDING + ((Math.max(gridStartMin, Math.min(gridEndMin, min)) - gridStartMin) / 60) * SLOT_HEIGHT;
+
     const elements: React.ReactNode[] = [];
-    const beforeHeight = Math.max(0, (openMin / 60 - startHour) * SLOT_HEIGHT);
-    if (beforeHeight > 0) {
-      elements.push(<View key="before" style={{ position: "absolute", left: 0, right: 0, top: GRID_TOP_PADDING, height: beforeHeight, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />);
-    }
-    const afterTop = GRID_TOP_PADDING + (closeMin / 60 - startHour) * SLOT_HEIGHT;
-    const afterHeight = totalGridHeight + GRID_TOP_PADDING - afterTop;
-    if (afterHeight > 0 && afterTop < totalGridHeight + GRID_TOP_PADDING) {
-      elements.push(<View key="after" style={{ position: "absolute", left: 0, right: 0, top: afterTop, height: afterHeight, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />);
+    let cursor = gridStartMin;
+    openRanges.forEach((range, idx) => {
+      if (range.endMin <= gridStartMin || range.startMin >= gridEndMin) return;
+      if (range.startMin > cursor) {
+        const top = minToTop(cursor);
+        const bottom = minToTop(range.startMin);
+        const height = bottom - top;
+        if (height > 0) {
+          elements.push(
+            <View
+              key={`gap-${idx}-before`}
+              style={{ position: "absolute", left: 0, right: 0, top, height, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }}
+            />,
+          );
+        }
+      }
+      cursor = Math.max(cursor, range.endMin);
+    });
+    if (cursor < gridEndMin) {
+      const top = minToTop(cursor);
+      const bottom = minToTop(gridEndMin);
+      const height = bottom - top;
+      if (height > 0) {
+        elements.push(
+          <View
+            key="tail"
+            style={{ position: "absolute", left: 0, right: 0, top, height, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }}
+          />,
+        );
+      }
     }
     return <>{elements}</>;
   }
@@ -2981,10 +3031,11 @@ function CalendarScreenBody() {
                               <Text style={{ fontSize: 14, fontWeight: "700", color: isToday ? "#4f46e6" : Colors.gray[700] }}>{format(day, "d MMM")}</Text>
                               {(() => {
                                 if (!operatingHours) return null;
-                                const dn = DAY_NAMES[day.getDay()] ?? "monday";
+                                const tz = provider?.timezone ?? null;
+                                const weekdayIndex = tz ? getWeekdayInTimeZone(day, tz) : day.getDay();
+                                const dn = DAY_NAMES[weekdayIndex] ?? "monday";
                                 const sc = normalizeOperatingSchedule(operatingHours[dn]);
                                 if (!sc?.isOpen) {
-                                  // Check if any staff member works this day before labelling "CLOSED"
                                   const anyStaffWorks = staffList.some((m) => {
                                     const wh = m.working_hours?.[dn];
                                     if (!wh) return false;
@@ -3122,7 +3173,9 @@ function CalendarScreenBody() {
                             <Text style={{ fontSize: 12, fontWeight: "700", color: isToday ? "#4f46e6" : Colors.gray[700] }}>{format(day, "d")}</Text>
                             {(() => {
                               if (!operatingHours) return null;
-                              const dn = DAY_NAMES[day.getDay()] ?? "monday";
+                              const tz = provider?.timezone ?? null;
+                              const weekdayIndex = tz ? getWeekdayInTimeZone(day, tz) : day.getDay();
+                              const dn = DAY_NAMES[weekdayIndex] ?? "monday";
                               const sc = normalizeOperatingSchedule(operatingHours[dn]);
                               if (!sc?.isOpen) {
                                 const anyStaffWorks = staffList.some((m) => {

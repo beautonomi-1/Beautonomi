@@ -141,7 +141,7 @@ const baseApi = createApiClient({
   /** Align with config bundle / Help WebView: localhost in dev when EXPO_PUBLIC_APP_URL is unset. */
   getBaseUrl: getBackendUrl,
   getAccessToken,
-  getDefaultHeaders: () => ({
+  getDefaultHeaders: (_ctx) => ({
     ...webApiTenantHeaders(),
     "X-Active-Market-Country": getDeviceRegionCountryIso(),
   }),

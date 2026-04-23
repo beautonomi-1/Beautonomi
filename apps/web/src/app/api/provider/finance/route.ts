@@ -7,6 +7,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 
 /**
  * GET /api/provider/finance
@@ -89,7 +90,12 @@ export async function GET(request: NextRequest) {
     const startIso = range === "all" ? "1970-01-01T00:00:00.000Z" : startDate.toISOString();
     const nowIso = now.toISOString();
 
-    // Build finance transactions query (service role: full ledger for this provider)
+    // Build finance transactions query (service role: full ledger for this provider).
+    // IMPORTANT: aggregates below (earnings, fees, tips, refunds, growth, etc.) must scan
+    // the complete ledger in the selected range. A page-level LIMIT here was previously
+    // capping totals for any provider that had >200 rows — producing understated numbers
+    // on the finance page, mobile transactions hub, and payouts screen. Keep the limit
+    // only on the rendered transaction list (below).
     const financeQuery = db
       .from("finance_transactions")
       .select("id, transaction_type, amount, net, fees, commission, created_at, description, booking_id")
@@ -97,7 +103,7 @@ export async function GET(request: NextRequest) {
       .gte("created_at", startIso)
       .lte("created_at", nowIso)
       .order("created_at", { ascending: false })
-      .limit(200);
+      .limit(MAX_FINANCE_TRANSACTIONS);
 
     const { data: ledgerRows, error: ledgerError } = await financeQuery;
 

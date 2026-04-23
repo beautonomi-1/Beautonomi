@@ -8,6 +8,10 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
+import {
+  applyPosProductStockDecrements,
+  validatePosProductStock,
+} from "@/lib/provider-sales/pos-product-stock";
 
 const patchBodySchema = z.object({
   payment_status: z.enum(["pending", "completed", "failed", "refunded"]).optional(),
@@ -56,6 +60,54 @@ export async function PATCH(
       return handleApiError(new Error("No valid fields to update"), "VALIDATION_ERROR", 400);
     }
 
+    const { data: existingSale, error: existingErr } = await supabase
+      .from("sales")
+      .select("id, payment_status, payment_provider, payment_provider_id")
+      .eq("id", saleId)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+
+    if (existingErr || !existingSale) {
+      return notFoundResponse("Sale not found");
+    }
+
+    const nextPaymentStatus =
+      parsed.data.payment_status !== undefined
+        ? parsed.data.payment_status
+        : (existingSale.payment_status as string);
+    const becomingCompleted =
+      existingSale.payment_status === "pending" && nextPaymentStatus === "completed";
+
+    let itemsForStock: Array<{
+      type?: string;
+      item_id?: string | null;
+      product_variant_id?: string | null;
+      quantity?: number;
+    }> = [];
+
+    if (becomingCompleted) {
+      const { data: lineRows, error: lineErr } = await supabase
+        .from("sale_items")
+        .select("item_type, item_id, product_variant_id, quantity")
+        .eq("sale_id", saleId);
+
+      if (lineErr) {
+        return handleApiError(lineErr, "Failed to load sale lines", "INTERNAL_ERROR", 500);
+      }
+
+      itemsForStock = (lineRows || []).map((row: Record<string, unknown>) => ({
+        type: row.item_type as string,
+        item_id: (row.item_id as string | null) ?? null,
+        product_variant_id: (row.product_variant_id as string | null) ?? null,
+        quantity: Number(row.quantity ?? 1),
+      }));
+
+      const stockError = await validatePosProductStock(supabase, providerId, itemsForStock);
+      if (stockError) {
+        return handleApiError(new Error(stockError), stockError, "STOCK_ERROR", 400);
+      }
+    }
+
     const { data: sale, error: saleError } = await supabase
       .from("sales")
       .update(updates)
@@ -66,6 +118,29 @@ export async function PATCH(
 
     if (saleError || !sale) {
       return notFoundResponse("Sale not found");
+    }
+
+    if (becomingCompleted) {
+      try {
+        await applyPosProductStockDecrements(supabase, itemsForStock);
+      } catch (stockErr) {
+        await supabase
+          .from("sales")
+          .update({
+            payment_status: existingSale.payment_status,
+            payment_provider: existingSale.payment_provider,
+            payment_provider_id: existingSale.payment_provider_id,
+          })
+          .eq("id", saleId)
+          .eq("provider_id", providerId);
+
+        return handleApiError(
+          stockErr instanceof Error ? stockErr : new Error(String(stockErr)),
+          "Sale was left pending: inventory could not be updated. Try again or check product stock.",
+          "SALE_STOCK_FAILED",
+          500,
+        );
+      }
     }
 
     const { data: fetchedSaleItems } = await supabase
@@ -106,6 +181,8 @@ export async function PATCH(
         quantity: item.quantity,
         unit_price: Number(item.unit_price),
         total: Number(item.total_price),
+        item_id: item.item_id ?? null,
+        product_variant_id: item.product_variant_id ?? null,
       })),
       subtotal: Number(sale.subtotal),
       tax: Number(sale.tax_amount),

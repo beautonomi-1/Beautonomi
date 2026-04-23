@@ -28,9 +28,7 @@ export function createAdminApiClient(options: AdminApiClientOptions = {}) {
     const unwrapData = init.unwrapData ?? true;
     const method = (init.method ?? "GET").toUpperCase();
     let urlPath = path.startsWith("/") ? path : `/${path}`;
-    if (method === "GET") {
-      urlPath = withAdminScopeUrl(urlPath, "GET");
-    }
+    urlPath = withAdminScopeUrl(urlPath, method);
     const url = joinUrl(baseUrl, urlPath);
     const controller = new AbortController();
     const timeoutMs = init.timeoutMs ?? 60000;
@@ -102,9 +100,7 @@ export function createAdminApiClient(options: AdminApiClientOptions = {}) {
   ): Promise<Blob> {
     const method = (init.method ?? "GET").toUpperCase();
     let urlPath = path.startsWith("/") ? path : `/${path}`;
-    if (method === "GET") {
-      urlPath = withAdminScopeUrl(urlPath, "GET");
-    }
+    urlPath = withAdminScopeUrl(urlPath, method);
     const url = joinUrl(baseUrl, urlPath);
     const controller = new AbortController();
     const timeoutMs = init.timeoutMs ?? 60000;

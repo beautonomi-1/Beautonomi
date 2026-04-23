@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import logo from "../../../public/images/logo.svg";
 import type { UserRole } from "@/types/beautonomi";
+import { isCustomerSkewedPostLoginPath } from "@/lib/auth/post-login-return-path";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -93,9 +94,33 @@ export default function LoginPage() {
 
   const redirectByRole = async (finalRole: string) => {
     const next = nextUrl && nextUrl.startsWith("/") ? nextUrl : null;
+    let nextPathname: string | null = null;
+    if (next) {
+      try {
+        nextPathname = new URL(next, typeof window !== "undefined" ? window.location.origin : "https://example.com").pathname;
+      } catch {
+        nextPathname = null;
+      }
+    }
+
+    const isProviderFamily =
+      finalRole === "provider_owner" ||
+      finalRole === "provider_staff" ||
+      finalRole === "provider_onboarding";
+
     if (next && next !== "/login" && !next.includes("signup")) {
-      router.replace(next);
-      return;
+      if (isProviderFamily) {
+        const allowNext =
+          (nextPathname?.startsWith("/provider") ?? false) ||
+          (nextPathname != null && !isCustomerSkewedPostLoginPath(nextPathname));
+        if (allowNext) {
+          router.replace(next);
+          return;
+        }
+      } else {
+        router.replace(next);
+        return;
+      }
     }
     // Superadmin must use dedicated admin login; send them there (they are already signed in, so /admin/login will redirect to dashboard)
     if (finalRole === "superadmin") {
@@ -104,6 +129,10 @@ export default function LoginPage() {
       return;
     }
     // Redirect by role so provider/customer land in the right place
+    if (finalRole === "provider_onboarding") {
+      router.replace("/provider/get-started");
+      return;
+    }
     if (finalRole === "provider_owner" || finalRole === "provider_staff") {
       router.replace("/provider/dashboard");
       return;

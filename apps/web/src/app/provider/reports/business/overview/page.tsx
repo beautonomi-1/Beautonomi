@@ -111,7 +111,7 @@ export default function BusinessOverviewReport() {
           <SubscriptionGate
             feature="Business Overview Reports"
             message="Reports require a subscription upgrade."
-            upgradeMessage="Upgrade to Starter plan or higher to access comprehensive business analytics and insights."
+            upgradeMessage="Upgrade your platform plan under Subscription to access business analytics."
           />
         </div>
       </SettingsDetailLayout>

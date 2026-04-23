@@ -14,7 +14,15 @@ const ScrollArea = React.forwardRef<
     className={cn("relative overflow-hidden", className)}
     {...props}
   >
-    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] overflow-y-auto overflow-x-hidden">
+    {/**
+     * §Bookings-modal-cutoff 2026-04: Radix wraps the Viewport's children in
+     * an internal `<div style="display:table; min-width:100%">` wrapper. That
+     * `display:table` breaks `flex-wrap` and lets inner time-slot grids (see
+     * `AvailabilitySlotPicker`) overflow horizontally. Forcing the inner
+     * wrapper back to `block` + clamping its width to the viewport restores
+     * correct wrapping so modals render all buttons inside their bounds.
+     */}
+    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] overflow-y-auto overflow-x-hidden [&>div]:!block [&>div]:!w-full [&>div]:min-w-0 [&>div]:max-w-full">
       {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar />

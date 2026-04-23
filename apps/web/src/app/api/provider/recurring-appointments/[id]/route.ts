@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
+import {
+  ADVANCED_RECURRENCE_UPGRADE,
+  SUBSCRIPTION_UPGRADE_SHORT,
+} from "@/lib/subscriptions/subscription-upgrade-copy";
 import { isAdvancedRecurrenceRule } from "@/lib/recurring/advanced-rrule";
 import { z } from "zod";
 
@@ -41,7 +45,7 @@ export async function PATCH(
     const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
       return errorResponse(
-        "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",
+        SUBSCRIPTION_UPGRADE_SHORT,
         "SUBSCRIPTION_REQUIRED",
         403
       );
@@ -68,7 +72,7 @@ export async function PATCH(
 
       if (isAdvancedPattern && !recurringAccess.advancedPatterns) {
         return errorResponse(
-          "Custom recurring patterns require a Professional plan or higher. Please upgrade to use advanced patterns.",
+          ADVANCED_RECURRENCE_UPGRADE,
           "SUBSCRIPTION_REQUIRED",
           403
         );
@@ -123,7 +127,7 @@ export async function DELETE(
     const recurringAccessDelete = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccessDelete.enabled) {
       return errorResponse(
-        "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",
+        SUBSCRIPTION_UPGRADE_SHORT,
         "SUBSCRIPTION_REQUIRED",
         403
       );

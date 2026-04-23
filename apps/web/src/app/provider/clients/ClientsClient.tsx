@@ -990,12 +990,47 @@ function ClientDetailSheet({
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(false);
   const [clientDetails, setClientDetails] = useState<any>(null);
   const [ratingStats, setRatingStats] = useState<any>(null);
+  const [isLoadingRatingStats, setIsLoadingRatingStats] = useState(false);
   const [ratingsList, setRatingsList] = useState<any[]>([]);
   const [isLoadingRatings, setIsLoadingRatings] = useState(false);
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [selectedBookingForRating, setSelectedBookingForRating] = useState<any>(null);
   const [showEditRatingDialog, setShowEditRatingDialog] = useState(false);
   const [selectedRatingToEdit, setSelectedRatingToEdit] = useState<any>(null);
+
+  // Same aggregate as the Ratings tab — this provider's post-visit booking ratings only.
+  const loadRatingStats = async (opts?: { silent?: boolean }) => {
+    if (!client?.customer_id) {
+      if (!opts?.silent) setIsLoadingRatingStats(false);
+      return;
+    }
+    if (!opts?.silent) setIsLoadingRatingStats(true);
+    try {
+      const data = await fetcher.get<{ data?: any }>(`/api/provider/ratings?customer_id=${client.customer_id}`);
+      setRatingStats(data.data ?? null);
+    } catch (error) {
+      console.error("Error loading rating stats:", error);
+      setRatingStats(null);
+    } finally {
+      if (!opts?.silent) setIsLoadingRatingStats(false);
+    }
+  };
+
+  const loadRatingsList = async () => {
+    if (!client?.customer_id || !open) return;
+
+    setIsLoadingRatings(true);
+    try {
+      const data = await fetcher.get<{ data?: { ratings?: any[] } }>(
+        `/api/provider/ratings/list?customer_id=${client.customer_id}`,
+      );
+      setRatingsList(data.data?.ratings || []);
+    } catch (error) {
+      console.error("Error loading ratings list:", error);
+    } finally {
+      setIsLoadingRatings(false);
+    }
+  };
 
   // Load full client details including communication preferences
   useEffect(() => {
@@ -1017,39 +1052,18 @@ function ClientDetailSheet({
       }
     };
 
-    if (open && client) {
-      loadClientDetails();
-      loadRatingStats();
-      loadRatingsList();
+    if (!open || !client) {
+      setRatingStats(null);
+      setIsLoadingRatingStats(false);
+      return;
     }
+
+    setRatingStats(null);
+    setIsLoadingRatingStats(true);
+    void loadClientDetails();
+    void loadRatingStats({ silent: false });
+    void loadRatingsList();
   }, [open, client]);
-
-  // Load rating statistics
-  const loadRatingStats = async () => {
-    if (!client?.customer_id || !open) return;
-    
-    try {
-      const data = await fetcher.get<{ data?: any }>(`/api/provider/ratings?customer_id=${client.customer_id}`);
-      setRatingStats(data.data);
-    } catch (error) {
-      console.error("Error loading rating stats:", error);
-    }
-  };
-
-  // Load ratings list
-  const loadRatingsList = async () => {
-    if (!client?.customer_id || !open) return;
-    
-    setIsLoadingRatings(true);
-    try {
-      const data = await fetcher.get<{ data?: { ratings?: any[] } }>(`/api/provider/ratings/list?customer_id=${client.customer_id}`);
-      setRatingsList(data.data?.ratings || []);
-    } catch (error) {
-      console.error("Error loading ratings list:", error);
-    } finally {
-      setIsLoadingRatings(false);
-    }
-  };
 
   // Get bookings that can be rated (completed/no_show without existing rating)
   const [rateableBookings, setRateableBookings] = useState<any[]>([]);
@@ -1115,8 +1129,8 @@ function ClientDetailSheet({
   };
 
   const handleRatingSubmitted = () => {
-    loadRatingStats();
-    loadRatingsList();
+    void loadRatingStats({ silent: true });
+    void loadRatingsList();
     // Trigger reload of rateable bookings by updating dependency
     if (open && client) {
       setIsLoadingRateableBookings(true);
@@ -1187,6 +1201,12 @@ function ClientDetailSheet({
 
   if (!client) return null;
 
+  /** Same source as the Ratings tab: this provider's post-visit booking ratings only. */
+  const providerBookingAvgDisplay =
+    ratingStats && typeof ratingStats.total_ratings === "number" && ratingStats.total_ratings > 0
+      ? Number(ratingStats.average_rating).toFixed(1)
+      : null;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
@@ -1241,18 +1261,26 @@ function ClientDetailSheet({
             <p className="text-xs text-gray-600">Total Spent</p>
           </div>
           <div className="bg-gray-50 rounded-lg p-4 text-center">
-            {client.average_rating ? (
+            {isLoadingRatingStats ? (
+              <div className="flex justify-center py-1">
+                <Skeleton className="h-8 w-14 rounded-md" />
+              </div>
+            ) : providerBookingAvgDisplay != null ? (
               <div className="flex items-center justify-center gap-1">
-                <p className="text-2xl font-semibold">{client.average_rating}</p>
+                <p className="text-2xl font-semibold">{providerBookingAvgDisplay}</p>
                 <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
               </div>
             ) : (
-              <p className="text-2xl font-semibold">-</p>
+              <p className="text-2xl font-semibold">–</p>
             )}
             <p className="text-xs text-gray-600">Avg Rating</p>
-            {client.average_rating && (
-              <p className="text-xs text-gray-400 mt-1">Your rating of this client</p>
-            )}
+            <p className="text-xs text-gray-400 mt-1">
+              {isLoadingRatingStats
+                ? "Loading…"
+                : providerBookingAvgDisplay != null
+                  ? "Your post-visit ratings (this business)"
+                  : "No booking ratings yet"}
+            </p>
           </div>
         </div>
 

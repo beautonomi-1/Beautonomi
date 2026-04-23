@@ -149,7 +149,7 @@ export default function BookingSummaryReport() {
           <SubscriptionGate
             feature="Booking Summary Reports"
             message="Basic reports require a subscription upgrade."
-            upgradeMessage="Upgrade to Starter plan or higher to access booking analytics and insights."
+            upgradeMessage="Upgrade your platform plan under Subscription to access booking analytics."
           />
         </div>
       </SettingsDetailLayout>

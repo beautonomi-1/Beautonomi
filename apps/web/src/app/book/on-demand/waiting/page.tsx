@@ -8,6 +8,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { WaitingIllustration } from "@/components/on-demand/WaitingIllustration";
 import { Button } from "@/components/ui/button";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { clearBeautonomiHoldClientMarkers } from "@/lib/booking/clear-hold-client-markers";
 
 interface OnDemandRequest {
   id: string;
@@ -28,6 +29,10 @@ export default function OnDemandWaitingPage() {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    clearBeautonomiHoldClientMarkers();
+  }, []);
 
   const load = useCallback(async () => {
     if (!requestId) return;

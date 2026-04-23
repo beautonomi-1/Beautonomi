@@ -1,10 +1,11 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
-  getProviderIdForUser,
+  forbiddenResponse,
+  userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 
@@ -72,21 +73,11 @@ export async function GET(
       ["provider_owner", "provider_staff", "superadmin"],
       request
     );
-    const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
 
-    let providerId: string | null = null;
-    if (user.role !== "superadmin") {
-      providerId = await getProviderIdForUser(user.id, supabase);
-      if (!providerId) {
-        return NextResponse.json(
-          { error: "Provider not found" },
-          { status: 404 }
-        );
-      }
-    }
-
-    let query = (supabase.from("product_orders") as any).select(
-      `
+    const { data: orderRaw, error } = await (admin.from("product_orders") as any)
+      .select(
+        `
         *,
         items:product_order_items (
           id, product_id, product_variant_id, product_name, product_image_url, quantity, unit_price, total_price,
@@ -102,14 +93,9 @@ export async function GET(
           id, name, address_line1, city
         )
       `
-    );
-
-    query = query.eq("id", id);
-    if (providerId) {
-      query = query.eq("provider_id", providerId);
-    }
-
-    const { data: orderRaw, error } = await query.single();
+      )
+      .eq("id", id)
+      .maybeSingle();
 
     if (error || !orderRaw) {
       return NextResponse.json(
@@ -119,6 +105,16 @@ export async function GET(
     }
 
     const order = orderRaw as ProductOrderRow;
+
+    if (user.role !== "superadmin") {
+      const pid = order.provider_id;
+      if (!pid) {
+        return forbiddenResponse("Invalid order record");
+      }
+      if (!(await userHasProviderAccessAdmin(admin, user.id, pid))) {
+        return forbiddenResponse("You do not have access to this order");
+      }
+    }
 
     const tenantRegion = order.tenant_id
       ? await getTenantRegionConfig(order.tenant_id)

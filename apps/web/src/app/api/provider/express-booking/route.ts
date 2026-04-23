@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkExpressBookingFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
 import { z } from "zod";
 
@@ -37,11 +38,7 @@ export async function GET(request: NextRequest) {
     // Check subscription allows express booking
     const expressAccess = await checkExpressBookingFeatureAccess(providerId);
     if (!expressAccess.enabled) {
-      return errorResponse(
-        "Express booking links require a subscription upgrade. Please upgrade to Starter plan or higher.",
-        "SUBSCRIPTION_REQUIRED",
-        403
-      );
+      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }
 
     const { data: links, error } = await supabase
@@ -78,11 +75,7 @@ export async function POST(request: NextRequest) {
     // Check subscription allows express booking
     const expressAccess = await checkExpressBookingFeatureAccess(providerId);
     if (!expressAccess.enabled) {
-      return errorResponse(
-        "Express booking links require a subscription upgrade. Please upgrade to Starter plan or higher.",
-        "SUBSCRIPTION_REQUIRED",
-        403
-      );
+      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
     }
 
     // Check link limit

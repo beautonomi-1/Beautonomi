@@ -38,6 +38,21 @@ let cachedProviderData: {
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache - longer for stability
 const STORAGE_KEY = "provider_portal_cache_v2";
 
+/** Mirrors active org for `/api/provider/*` (see `ACTIVE_PROVIDER_ID_COOKIE` in api-helpers). */
+const ACTIVE_PROVIDER_ID_COOKIE = "bn_active_provider_id";
+const ACTIVE_PROVIDER_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
+function syncActiveProviderIdCookie(providerId: string | null): void {
+  if (typeof document === "undefined") return;
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:";
+  const base = `Path=/; SameSite=Lax${secure ? "; Secure" : ""}`;
+  if (!providerId) {
+    document.cookie = `${ACTIVE_PROVIDER_ID_COOKIE}=; ${base}; Max-Age=0`;
+    return;
+  }
+  document.cookie = `${ACTIVE_PROVIDER_ID_COOKIE}=${encodeURIComponent(providerId)}; ${base}; Max-Age=${ACTIVE_PROVIDER_COOKIE_MAX_AGE}`;
+}
+
 // Load from sessionStorage on module load
 if (typeof window !== 'undefined') {
   try {
@@ -53,12 +68,14 @@ if (typeof window !== 'undefined') {
         const p = parsed.provider;
         if (p && typeof p === "object" && p.id) {
           cachedProviderData = parsed as NonNullable<typeof cachedProviderData>;
+          syncActiveProviderIdCookie(p.id);
         } else {
           try {
             sessionStorage.removeItem(STORAGE_KEY);
           } catch {
             // ignore
           }
+          syncActiveProviderIdCookie(null);
         }
       }
     }
@@ -108,6 +125,8 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
         selectedLocationId: cachedProviderData!.provider?.selected_location_id || cachedProviderData!.salons[0]?.id || null,
         setupCompletion: cachedProviderData!.setupCompletion,
       }));
+      const cachedPid = cachedProviderData!.provider?.id ?? null;
+      syncActiveProviderIdCookie(cachedPid);
       setIsLoading(false);
       setLoadError(null);
       
@@ -138,6 +157,7 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
 
         if (!provider?.id) {
           cachedProviderData = null;
+          syncActiveProviderIdCookie(null);
           if (typeof window !== "undefined") {
             try {
               sessionStorage.removeItem(STORAGE_KEY);
@@ -216,6 +236,7 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
             // Ignore storage errors
           }
         }
+        syncActiveProviderIdCookie(provider.id);
 
         setLoadError(null);
       } catch (error) {
@@ -291,6 +312,7 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
           selectedLocationId: locationId,
           setupCompletion: cached.setupCompletion,
         }));
+        syncActiveProviderIdCookie(cached.provider?.id ?? null);
         setIsLoading(false);
         setLoadError(null);
       }

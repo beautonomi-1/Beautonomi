@@ -68,8 +68,10 @@ export default function ReviewsScreen() {
   const [responseText, setResponseText] = useState("");
   const [savingReply, setSavingReply] = useState(false);
   const url = `/api/provider/reviews?status=${status}&limit=50${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
-  const { data, loading, error, refresh } = useApi<ReviewsResponse>(url);
-  const { execute: postRespond, loading: responding } = useApiMutation("post");
+  const { data, loading, error, refresh, mutate } = useApi<ReviewsResponse>(url, { staleTimeMs: 0 });
+  const { execute: postRespond, loading: responding } = useApiMutation<{ review?: Review; message?: string }>(
+    "post",
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -107,17 +109,36 @@ export default function ReviewsScreen() {
           Alert.alert("Error", getApiErrorMessage(res.error, "Could not update reply."));
           return;
         }
+        if (data && res.data?.review) {
+          const row = res.data.review as Partial<Review>;
+          mutate({
+            ...data,
+            reviews: data.reviews.map((r) => (r.id === respondReview.id ? { ...r, ...row } : r)),
+          });
+        }
       } else {
-        const { error: err } = await postRespond(path, { response: trimmed });
+        const { data: wrote, error: err } = await postRespond(path, { response: trimmed });
         if (err) {
           Alert.alert("Error", err);
           return;
+        }
+        if (data && wrote?.review) {
+          const row = wrote.review as Partial<Review>;
+          const rid = respondReview.id;
+          if (status === "pending_response") {
+            mutate({ ...data, reviews: data.reviews.filter((r) => r.id !== rid) });
+          } else {
+            mutate({
+              ...data,
+              reviews: data.reviews.map((r) => (r.id === rid ? { ...r, ...row } : r)),
+            });
+          }
         }
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setRespondReview(null);
       setResponseText("");
-      refresh();
+      await refresh();
     } finally {
       setSavingReply(false);
     }

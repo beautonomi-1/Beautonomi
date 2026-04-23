@@ -48,11 +48,18 @@ export async function GET(request: NextRequest) {
     const startISO = startDate.toISOString();
     const endISO = endDate.toISOString();
 
-    // All providers with basic info
-    const { data: providers } = await supabase
-      .from('providers')
-      .select('id, business_name, owner_name, status, rating_average, created_at')
-      .eq('tenant_id', tenantId);
+    // All providers with basic info. `providers` has no `owner_name` column — pull the
+    // owner's display name from the linked `users` row via user_id (was silently erroring
+    // before, which caused the whole providers list to come back empty).
+    const { data: providers, error: providersErr } = await supabase
+      .from("providers")
+      .select(
+        "id, business_name, status, rating_average, created_at, user_id, users:user_id(full_name)"
+      )
+      .eq("tenant_id", tenantId);
+    if (providersErr) {
+      console.error("[reports/providers] providers select failed", providersErr);
+    }
 
     const providerIds = (providers || []).map((p: { id: string }) => p.id);
 
@@ -95,19 +102,35 @@ export async function GET(request: NextRequest) {
       revenueByProvider[id] += Number(row.net ?? row.amount ?? 0);
     }
 
-    type ProviderReportRow = { id: string; business_name?: string; owner_name?: string; status?: string; rating_average?: number };
-    const providersWithMetrics = (providers || []).map((p: ProviderReportRow) => {
+    type ProviderReportRow = {
+      id: string;
+      business_name?: string;
+      status?: string;
+      rating_average?: number;
+      users?:
+        | { full_name?: string | null }
+        | Array<{ full_name?: string | null }>
+        | null;
+    };
+    const pickOwner = (u: ProviderReportRow["users"]): string | null => {
+      if (!u) return null;
+      const row = Array.isArray(u) ? u[0] : u;
+      return row?.full_name ?? null;
+    };
+    const providersWithMetrics = ((providers || []) as unknown as ProviderReportRow[]).map(
+      (p) => {
       const bookingsData = bookingsByProvider[p.id] || { count: 0, revenue: 0 };
       const txRevenue = revenueByProvider[p.id] ?? 0;
       return {
         provider_id: p.id,
-        provider_name: p.business_name || p.owner_name || "Unknown",
+        provider_name: p.business_name || pickOwner(p.users) || "Unknown",
         status: p.status,
         rating_average: Number(p.rating_average) || 0,
         bookings_count: bookingsData.count,
         revenue: txRevenue > 0 ? txRevenue : bookingsData.revenue,
       };
-    });
+    }
+    );
 
     const sorted = providersWithMetrics.sort((a, b) => b.revenue - a.revenue);
     const totalProviders = sorted.length;

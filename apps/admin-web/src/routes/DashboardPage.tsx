@@ -566,7 +566,7 @@ export function DashboardPage() {
                   variant="slate"
                   label="Bookings created today"
                   value={formatAdminNumber(s.active_bookings_today)}
-                  hint="Rows created today (UTC server day)"
+                  hint="Rows created today (tenant timezone)"
                   footer={metricFooterLink("/admin/bookings", "Open bookings")}
                 />
                 <AdminMetricCard

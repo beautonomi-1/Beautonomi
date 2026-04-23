@@ -18,6 +18,7 @@ import {
   successResponse,
   handleApiError,
   errorResponse,
+  userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -85,26 +86,16 @@ export async function POST(
       }
     }
 
+    // §Multi-provider + schema 2026-04: use providers.user_id via
+    // userHasProviderAccessAdmin (same as provider signed-url); never use
+    // the non-existent owner_user_id column for owner checks.
     let isProviderSide = false;
-    if (!isCustomer && !isSuperadmin) {
-      const { data: providerRow } = await admin
-        .from("providers")
-        .select("owner_user_id")
-        .eq("id", booking.provider_id)
-        .maybeSingle();
-      if (providerRow?.owner_user_id === authUser.id) {
-        isProviderSide = true;
-      } else {
-        const { data: staffRows } = await admin
-          .from("provider_staff")
-          .select("id")
-          .eq("provider_id", booking.provider_id)
-          .eq("user_id", authUser.id)
-          .limit(1);
-        if (Array.isArray(staffRows) && staffRows.length > 0) {
-          isProviderSide = true;
-        }
-      }
+    if (!isCustomer && !isSuperadmin && booking.provider_id) {
+      isProviderSide = await userHasProviderAccessAdmin(
+        admin,
+        authUser.id,
+        booking.provider_id as string,
+      );
     }
 
     if (!isCustomer && !isSuperadmin && !isProviderSide) {

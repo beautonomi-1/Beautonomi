@@ -123,7 +123,7 @@ export default function SalesSummaryReport() {
           <SubscriptionGate
             feature="Sales Summary Reports"
             message="Basic reports require a subscription upgrade."
-            upgradeMessage="Upgrade to Starter plan or higher to access sales analytics and revenue tracking."
+            upgradeMessage="Upgrade your platform plan under Subscription to access sales analytics."
           />
         </div>
       </SettingsDetailLayout>

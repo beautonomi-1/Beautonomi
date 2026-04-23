@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, CreditCard, Calendar } from "lucide-react";
+import { Check, CreditCard, Calendar, Sparkles } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -13,6 +13,7 @@ import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout
 import { PageHeader } from "@/components/provider/PageHeader";
 import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface SubscriptionPlan {
   id: string;
@@ -83,6 +84,14 @@ export default function SubscriptionPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [showInAppReturnBanner, setShowInAppReturnBanner] = useState(false);
+  const [billingTab, setBillingTab] = useState<"monthly" | "yearly">("monthly");
+
+  const visiblePlans = useMemo(() => {
+    if (!plans.length) return [];
+    const free = plans.filter((p) => p.is_free);
+    const paid = plans.filter((p) => !p.is_free && p.billing_period === billingTab);
+    return [...free, ...paid];
+  }, [plans, billingTab]);
 
   useEffect(() => {
     loadData();
@@ -213,7 +222,9 @@ export default function SubscriptionPage() {
       toast.success("Subscription checkout started");
       setShowUpgradeDialog(false);
     } catch (error) {
-      toast.error("Failed to upgrade subscription");
+      const msg =
+        error instanceof FetchError ? error.message : "Failed to upgrade subscription";
+      toast.error(msg);
       console.error("Error upgrading subscription:", error);
     }
   };
@@ -313,10 +324,22 @@ export default function SubscriptionPage() {
 
   return (
     <SettingsDetailLayout>
-      <PageHeader
-        title="Subscription Management"
-        subtitle="Manage your Beautonomi subscription plan"
-      />
+      <div className="mx-auto max-w-5xl">
+      <div className="relative mb-8 overflow-hidden rounded-2xl border border-pink-100/80 bg-gradient-to-br from-pink-50/90 via-white to-violet-50/70 px-5 py-8 md:px-8 md:py-10">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#FF0077]/10 blur-3xl" aria-hidden />
+        <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-pink-200/60 bg-white/80 px-3 py-1 text-xs font-medium text-pink-800">
+              <Sparkles className="h-3.5 w-3.5" aria-hidden />
+              Platform billing
+            </div>
+            <PageHeader
+              title="Subscription"
+              subtitle="Published plans for your region — same catalog as public pricing."
+            />
+          </div>
+        </div>
+      </div>
 
       {showInAppReturnBanner && (
         <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-4 text-center text-sm text-green-800">
@@ -332,14 +355,14 @@ export default function SubscriptionPage() {
       )}
 
       {subscription ? (
-        <div className="space-y-6">
-          {/* Current Subscription Card */}
-          <Card>
+        <div className="space-y-8">
+          <div className="rounded-2xl bg-gradient-to-br from-pink-500/[0.07] via-transparent to-violet-500/[0.06] p-[1px] shadow-sm">
+          <Card className="border-0 shadow-md">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="flex items-center gap-2">
-                    Current Subscription
+                  <CardTitle className="flex flex-wrap items-center gap-2 text-xl">
+                    Your subscription
                     {subscription.status === "active" && (
                       <Badge variant="secondary" className="bg-green-100 text-green-800">
                         Active
@@ -374,6 +397,13 @@ export default function SubscriptionPage() {
                   <CardDescription className="text-base text-gray-600">
                     {currentPlan?.description || currentPlan?.name || "No plan selected"}
                   </CardDescription>
+                  {currentPlan?.is_free ? (
+                    <p className="mt-3 text-sm leading-relaxed text-amber-900/90">
+                      You are on the free tier. Premium tools (recurring appointments, automations, calendar sync, etc.)
+                      follow the feature switches on each subscription plan in admin — upgrade below when a paid plan
+                      includes the capability you need.
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </CardHeader>
@@ -401,7 +431,9 @@ export default function SubscriptionPage() {
                       {(Array.isArray(currentPlan.features) ? currentPlan.features : []).map((feature, index) => (
                         <li key={index} className="flex items-start gap-3 text-sm text-gray-700">
                           <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#FF0077]" />
-                          <span>{feature}</span>
+                          <div className="min-w-0 flex-1 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+                            <PricingFeatureHtml html={feature} className="block" />
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -409,10 +441,10 @@ export default function SubscriptionPage() {
                 </div>
               )}
 
-              <div className="flex gap-2 pt-4 border-t">
+              <div className="flex flex-wrap gap-2 border-t pt-4">
                 {subscription.status !== "active" && (
                   <Button onClick={() => setShowUpgradeDialog(true)}>
-                    <CreditCard className="w-4 h-4 mr-2" />
+                    <CreditCard className="mr-2 h-4 w-4" />
                     Choose Plan
                   </Button>
                 )}
@@ -429,82 +461,147 @@ export default function SubscriptionPage() {
               </div>
             </CardContent>
           </Card>
+          </div>
 
-          {/* Available Plans — match public /pricing card layout */}
-          {plans.length > 0 && (
-            <div>
-              <h3 className="mb-6 text-xl font-semibold text-gray-900">Available plans</h3>
-              <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-                {plans.map((plan) => {
+          <div>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold tracking-tight text-gray-900">Change plan</h3>
+                <p className="mt-1 max-w-xl text-sm text-gray-500">
+                  Only plans linked to an active public pricing card for your region are shown — same as your marketing site.
+                </p>
+              </div>
+            </div>
+
+            {plans.some((p) => !p.is_free) ? (
+              <Tabs value={billingTab} onValueChange={(v) => setBillingTab(v as "monthly" | "yearly")} className="w-full">
+                <TabsList className="mb-6 grid h-11 w-full max-w-md grid-cols-2 rounded-full bg-gray-100/90 p-1">
+                  <TabsTrigger value="monthly" className="rounded-full data-[state=active]:shadow-sm">
+                    Monthly
+                  </TabsTrigger>
+                  <TabsTrigger value="yearly" className="rounded-full data-[state=active]:shadow-sm">
+                    Yearly
+                  </TabsTrigger>
+                </TabsList>
+                  {visiblePlans.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
+                      {visiblePlans.map((plan) => {
+                        const isCurrent =
+                          subscription?.plan_id === plan.plan_id &&
+                          (subscription?.billing_period ?? "monthly") === plan.billing_period;
+                        return (
+                          <div
+                            key={plan.id}
+                            className={`relative flex flex-col rounded-2xl border bg-white/95 p-6 shadow-sm backdrop-blur-sm transition-shadow hover:shadow-md ${
+                              plan.is_popular
+                                ? "border-[#FF0077]/40 ring-1 ring-[#FF0077]/20"
+                                : "border-gray-200/90"
+                            } ${isCurrent ? "ring-2 ring-gray-400 ring-offset-2" : ""}`}
+                          >
+                            {plan.is_popular ? (
+                              <span className="absolute -top-3 left-6 rounded-full bg-[#FF0077] px-3 py-0.5 text-xs font-semibold text-white shadow">
+                                Popular
+                              </span>
+                            ) : null}
+                            {isCurrent ? (
+                              <Badge className="absolute -top-3 right-6 border-0 bg-gray-900 text-white hover:bg-gray-900">
+                                Current
+                              </Badge>
+                            ) : null}
+                            <div className="mb-5 mt-1">
+                              <h4 className="text-lg font-bold tracking-tight text-gray-900">{plan.name}</h4>
+                              {plan.description ? (
+                                <p className="mt-2 text-sm leading-relaxed text-gray-600">{plan.description}</p>
+                              ) : null}
+                              <div className="mt-4 flex flex-wrap items-baseline gap-1">
+                                <span className="text-3xl font-bold tabular-nums text-gray-900">
+                                  {formatPlanPriceMain(plan)}
+                                </span>
+                                {formatPlanPricePeriod(plan) ? (
+                                  <span className="text-sm font-medium text-gray-500">{formatPlanPricePeriod(plan)}</span>
+                                ) : null}
+                                {plan.currency && !plan.is_free ? (
+                                  <span className="ml-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                                    {plan.currency}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                            <ul className="mb-6 flex-1 space-y-3 border-t border-gray-100 pt-4">
+                              {(Array.isArray(plan.features) ? plan.features : []).slice(0, 8).map((feature, index) => (
+                                <li key={index} className="flex items-start gap-2.5 text-sm">
+                                  <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#FF0077]" />
+                                  <div className="min-w-0 flex-1 text-gray-700 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+                                    <PricingFeatureHtml html={feature} className="block leading-snug" />
+                                  </div>
+                                </li>
+                              ))}
+                              {(plan.features?.length ?? 0) > 8 ? (
+                                <li className="pl-6 text-xs text-gray-400">+ more included</li>
+                              ) : null}
+                            </ul>
+                            {!isCurrent ? (
+                              <Button
+                                className={`mt-auto w-full rounded-xl py-5 text-base font-semibold ${
+                                  plan.is_popular
+                                    ? "bg-[#FF0077] text-white hover:bg-[#D60565]"
+                                    : "bg-gray-900 text-white hover:bg-gray-800"
+                                }`}
+                                onClick={() => handleUpgrade(plan.id)}
+                              >
+                                {subscription?.status === "trial" ? "Upgrade from trial" : "Continue with this plan"}
+                              </Button>
+                            ) : (
+                              <div className="mt-auto rounded-xl bg-gray-50 py-3 text-center text-sm font-medium text-gray-500">
+                                Your active selection
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-10 text-center text-sm text-gray-600">
+                      No {billingTab} options are published for your region. Try the other billing period or ask an admin
+                      to enable pricing for this market.
+                    </div>
+                  )}
+              </Tabs>
+            ) : plans.length > 0 ? (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {visiblePlans.map((plan) => {
                   const isCurrent =
                     subscription?.plan_id === plan.plan_id &&
                     (subscription?.billing_period ?? "monthly") === plan.billing_period;
                   return (
                     <div
                       key={plan.id}
-                      className={`relative rounded-2xl border-2 bg-white p-8 ${
-                        plan.is_popular ? "border-[#FF0077] shadow-xl md:scale-[1.02]" : "border-gray-200"
-                      } ${isCurrent ? "ring-2 ring-gray-400 ring-offset-2" : ""}`}
+                      className={`relative rounded-2xl border bg-white p-6 shadow-sm ${
+                        isCurrent ? "ring-2 ring-gray-400 ring-offset-2" : "border-gray-200"
+                      }`}
                     >
-                      {plan.is_popular && (
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 transform">
-                          <span className="rounded-full bg-[#FF0077] px-4 py-1 text-sm font-semibold text-white">
-                            Most Popular
-                          </span>
-                        </div>
-                      )}
-                      {isCurrent && (
-                        <div className="absolute -top-4 right-4">
-                          <Badge variant="secondary" className="shadow-sm">
-                            Current
-                          </Badge>
-                        </div>
-                      )}
-                      <div className="mb-8 text-center">
-                        <h4 className="mb-2 text-2xl font-bold text-gray-900">{plan.name}</h4>
-                        {plan.currency ? (
-                          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">
-                            {plan.currency}
-                          </p>
-                        ) : null}
-                        <div className="mb-2 flex items-baseline justify-center gap-1">
-                          <span className="text-4xl font-bold text-gray-900">{formatPlanPriceMain(plan)}</span>
-                          {formatPlanPricePeriod(plan) ? (
-                            <span className="text-gray-600">{formatPlanPricePeriod(plan)}</span>
-                          ) : null}
-                        </div>
-                        {plan.description ? (
-                          <p className="text-sm text-gray-600">{plan.description}</p>
-                        ) : null}
-                      </div>
-                      <ul className="mb-8 space-y-4">
-                        {(Array.isArray(plan.features) ? plan.features : []).map((feature, index) => (
-                          <li key={index} className="flex items-start gap-3 text-sm">
-                            <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#FF0077]" />
-                            <div className="min-w-0 flex-1 text-left text-gray-700 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
-                              <PricingFeatureHtml html={feature} className="block" />
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                      {!isCurrent && (
-                        <Button
-                          className={`w-full rounded-full py-6 text-lg font-semibold ${
-                            plan.is_popular
-                              ? "bg-[#FF0077] text-white hover:bg-[#D60565]"
-                              : "bg-gray-900 text-white hover:bg-gray-800"
-                          }`}
-                          onClick={() => handleUpgrade(plan.id)}
-                        >
-                          {subscription?.status === "trial" ? "Upgrade from Trial" : "Switch plan"}
+                      {isCurrent ? (
+                        <Badge className="absolute right-4 top-4 border-0 bg-gray-900 text-white">Current</Badge>
+                      ) : null}
+                      <h4 className="text-lg font-bold text-gray-900">{plan.name}</h4>
+                      <p className="mt-3 text-3xl font-bold">{formatPlanPriceMain(plan)}</p>
+                      {!isCurrent ? (
+                        <Button className="mt-6 w-full rounded-xl bg-[#FF0077] py-5 text-white hover:bg-[#D60565]" onClick={() => handleUpgrade(plan.id)}>
+                          Continue
                         </Button>
-                      )}
+                      ) : null}
                     </div>
                   );
                 })}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="rounded-xl border border-amber-200/80 bg-amber-50/50 px-4 py-6 text-sm text-amber-950">
+                No purchasable plans are published for this workspace. In admin, open Finance → Plans, enable{" "}
+                <strong>Show on public pricing page</strong> for the tiers you want providers to see, then refresh this
+                page.
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <EmptyState
@@ -523,6 +620,7 @@ export default function SubscriptionPage() {
         plans={plans}
         onUpgrade={handleUpgrade}
       />
+      </div>
     </SettingsDetailLayout>
   );
 }

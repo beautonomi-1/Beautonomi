@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { requireRoleInApi, userHasProviderAccessAdmin } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
@@ -138,8 +137,6 @@ export async function GET(
 
     // Use admin client so RLS doesn't block access — ownership is verified below
     const supabase = getSupabaseAdmin();
-    // Still need a scoped client for getProviderIdForUser (which uses RLS-aware client)
-    const scopedSupabase = await getSupabaseServer(request);
 
     // §Launch-audit 2026-04: the deep join below was returning 404 "Booking
     // not found" for bookings that do exist whenever any embedded relation
@@ -276,10 +273,14 @@ export async function GET(
       : null;
     const currencyFallback = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    // Verify access: customer = booking owner; provider = owner or staff of the booking's provider; superadmin = support
+    // Verify access: customer = booking owner; provider = owner or staff of
+    // the booking's provider (multi-provider staff safe); superadmin = support
     const isCustomer = booking.customer_id === user.id;
-    const providerId = await getProviderIdForUser(user.id, scopedSupabase);
-    const isProvider = providerId != null && booking.provider_id === providerId;
+    const isProvider = await userHasProviderAccessAdmin(
+      supabase,
+      user.id,
+      booking.provider_id,
+    );
     const isAdmin = user.role === "superadmin";
 
     if (!isCustomer && !isProvider && !isAdmin) {

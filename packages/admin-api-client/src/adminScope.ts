@@ -20,6 +20,8 @@ export const SCOPED_ADMIN_PATH_PREFIXES: readonly string[] = [
   "/api/admin/control-plane/integrations/aura",
   "/api/admin/control-plane/integrations/sumsub",
   "/api/admin/subscription-plans",
+  /** E-commerce catalog (products / variants) — mutating requests must carry tenant scope for superadmin picker. */
+  "/api/admin/ecommerce",
 ];
 
 /** True for `prefix` or `prefix/...`, but not `prefix-suffix` (e.g. maintenance vs maintenance-notify). */
@@ -95,12 +97,16 @@ export function readAdminScopeFromStorage(
 }
 
 /**
- * Append scope query params for GET; for mutating requests with JSON body, matching server
- * expectations should mirror fetcher (body carries scope when required).
+ * Append `scope` + `tenant_id` query params for admin routes that participate in tenant resolution
+ * (`resolveAdminApiTenantId` reads the **URL**, not JSON bodies). Applies to **all** HTTP methods
+ * so PATCH/POST/PUT match GET behaviour for superadmin tenant picker.
+ *
+ * Scoped JSON bodies (`mergeAdminScopeIntoJsonBody`) remain for legacy routes that expect
+ * tenant in the payload; URL params are the source of truth for tenant resolution.
  */
 export function withAdminScopeUrl(
   url: string,
-  method: string,
+  _method: string,
   storage?: Pick<Storage, "getItem">
 ): string {
   if (typeof window === "undefined") return url;
@@ -111,7 +117,6 @@ export function withAdminScopeUrl(
     }
 
     const { scope, tenantId } = readAdminScopeFromStorage(storage);
-    if (method.toUpperCase() !== "GET") return url;
     if (scope !== "global" && scope !== "tenant") return url;
 
     u.searchParams.set("scope", scope);

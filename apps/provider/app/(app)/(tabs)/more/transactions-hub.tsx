@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -77,8 +78,12 @@ function formatDateTimeSafe(value: unknown): string {
 export default function TransactionsHubScreen() {
   const router = useRouter();
   const tenantCurrency = getTenantDefaultCurrency();
+  const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
-  const { data, loading, error, refresh } = useApi<FinanceResponse>("/api/provider/finance");
+  const financeUrl = selectedLocationId
+    ? `/api/provider/finance?range=month&location_id=${encodeURIComponent(selectedLocationId)}`
+    : `/api/provider/finance?range=month`;
+  const { data, loading, error, refresh } = useApi<FinanceResponse>(financeUrl);
 
   const transactions: Transaction[] = (data as FinanceResponse)?.transactions ?? [];
 

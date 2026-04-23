@@ -1,6 +1,7 @@
 "use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { providerPortalFetch } from "@/lib/http/fetcher";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -282,7 +283,7 @@ export function AddClientDialog({
       } : null;
 
       // Call API to create client
-      const response = await fetch("/api/provider/clients/create", {
+      const response = await providerPortalFetch("/api/provider/clients/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

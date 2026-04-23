@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   Platform,
   Switch,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -84,6 +84,12 @@ interface ClientDetail {
   history: HistoryItem[];
 }
 
+/** GET /api/provider/ratings — same aggregate as provider web Ratings tab. */
+interface ProviderRatingStats {
+  total_ratings?: number;
+  average_rating?: number;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   completed: "text-green-600",
   confirmed: "text-blue-600",
@@ -151,7 +157,38 @@ export default function ClientDetailScreen() {
   } = useApi<ClientDetail>(`/api/provider/clients/${clientId}`, {
     enabled: !!clientId,
   });
+
+  const ratingCustomerId = client?.customer_id ?? client?.customer?.id ?? "";
+  const ratingsStatsUrl = ratingCustomerId
+    ? `/api/provider/ratings?customer_id=${encodeURIComponent(ratingCustomerId)}`
+    : "/api/provider/ratings?_noop=1";
+  const {
+    data: ratingStats,
+    loading: ratingStatsLoading,
+    refresh: refreshRatingStats,
+  } = useApi<ProviderRatingStats>(ratingsStatsUrl, {
+    enabled: Boolean(ratingCustomerId),
+    staleTimeMs: 0,
+  });
+  const clientDetailFocusRef = useRef(true);
+
   const { execute: patchClient } = useApiMutation("patch");
+
+  useFocusEffect(
+    useCallback(() => {
+      if (clientDetailFocusRef.current) {
+        clientDetailFocusRef.current = false;
+        return;
+      }
+      if (!clientId) return;
+      void refresh();
+      if (ratingCustomerId) void refreshRatingStats();
+    }, [clientId, ratingCustomerId, refresh, refreshRatingStats]),
+  );
+
+  useEffect(() => {
+    clientDetailFocusRef.current = true;
+  }, [clientId]);
 
   const resetAddressFormFromClient = useCallback(
     (c: ClientDetail) => {
@@ -224,8 +261,9 @@ export default function ClientDetailScreen() {
   }, [clientId, homeParsed, mapboxCountryIso, patchClient, refresh]);
 
   const onRefresh = useCallback(() => {
-    refresh();
-  }, [refresh]);
+    void refresh();
+    if (ratingCustomerId) void refreshRatingStats();
+  }, [refresh, refreshRatingStats, ratingCustomerId]);
 
   const goBackToClients = useCallback(() => {
     router.replace("/(app)/(tabs)/clients" as never);
@@ -381,6 +419,13 @@ export default function ClientDetailScreen() {
   const name = customer.full_name ?? "Client";
   const history = client.history ?? [];
   const clientTags = client.tags ?? [];
+  const providerBookingAvg =
+    ratingStats &&
+    typeof ratingStats.total_ratings === "number" &&
+    ratingStats.total_ratings > 0 &&
+    typeof ratingStats.average_rating === "number"
+      ? ratingStats.average_rating.toFixed(1)
+      : null;
   const homeAddressLocked = Boolean(customer.default_address?.customer_managed_home);
   const isFavorite = Boolean(client.is_favorite);
   const dob = customer.date_of_birth;
@@ -494,7 +539,7 @@ export default function ClientDetailScreen() {
               </View>
             ) : null}
 
-            {/* Stats row */}
+            {/* Stats row — avg matches provider web /api/provider/ratings (this business, post-visit only). */}
             <View style={twStyle("mt-3 flex-row rounded-xl bg-gray-50 px-3 py-3")}>
               <View style={{ flex: 1 }}>
                 <Text style={twStyle("text-xs text-gray-400")}>Bookings</Text>
@@ -503,10 +548,24 @@ export default function ClientDetailScreen() {
                 </Text>
               </View>
               <View style={twStyle("h-10 w-px bg-gray-200")} />
-              <View style={{ flex: 1, paddingLeft: 16 }}>
+              <View style={{ flex: 1, paddingLeft: 12 }}>
                 <Text style={twStyle("text-xs text-gray-400")}>Total spent</Text>
                 <Text style={twStyle("text-base font-bold text-gray-900")}>
                   {formatCurrency(client.total_spent)}
+                </Text>
+              </View>
+              <View style={twStyle("h-10 w-px bg-gray-200")} />
+              <View style={{ flex: 1, paddingLeft: 12 }}>
+                <Text style={twStyle("text-xs text-gray-400")}>Avg rating</Text>
+                {ratingStatsLoading ? (
+                  <Text style={twStyle("text-base font-bold text-gray-400")}>…</Text>
+                ) : providerBookingAvg != null ? (
+                  <Text style={twStyle("text-base font-bold text-gray-900")}>{providerBookingAvg}</Text>
+                ) : (
+                  <Text style={twStyle("text-base font-bold text-gray-400")}>—</Text>
+                )}
+                <Text style={twStyle("text-[10px] text-gray-400 mt-0.5")} numberOfLines={2}>
+                  Your post-visit ratings
                 </Text>
               </View>
             </View>

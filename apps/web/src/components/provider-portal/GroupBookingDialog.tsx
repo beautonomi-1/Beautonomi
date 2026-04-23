@@ -42,7 +42,7 @@ import type {
 import type { AppointmentService, AppointmentProduct } from "@/components/appointments/types";
 import { calculateBookingPricing } from "@/components/appointments/pricing";
 import { providerApi } from "@/lib/provider-portal/api";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, providerPortalFetch } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -236,7 +236,7 @@ export function GroupBookingDialog({
       setTeamMembers(members);
 
       try {
-        const locRes = await fetch("/api/provider/locations");
+        const locRes = await providerPortalFetch("/api/provider/locations");
         if (locRes.ok) {
           const locData = await locRes.json();
           setProviderLocations(locData.data || []);
@@ -245,7 +245,7 @@ export function GroupBookingDialog({
 
       if (!externalProviderId) {
         try {
-          const provRes = await fetch("/api/provider/me");
+          const provRes = await providerPortalFetch("/api/provider/me");
           if (provRes.ok) {
             const provData = await provRes.json();
             setProviderId(provData.data?.id ?? provData.id);
