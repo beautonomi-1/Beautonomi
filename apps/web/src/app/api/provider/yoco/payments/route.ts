@@ -33,7 +33,7 @@ const createPaymentSchema = z
  */
 export async function POST(request: Request) {
   try {
-    const auth = await requireRole(["provider_owner", "provider_staff"]);
+    const auth = await requireRole(["provider_owner", "provider_staff"], request);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
@@ -169,6 +169,40 @@ export async function POST(request: Request) {
 
     const secretKey = integrationRow.secret_key;
     const yocoDeviceId = deviceRow.yoco_device_id;
+
+    // §Provider-launch (audit 2026-04): preflight the physical / Web POS
+    // device with Yoco before we create a payment. Without this, a
+    // powered-off or disconnected terminal still received `POST …/payments`
+    // and the provider only saw a generic API failure after a long poll.
+    // A fast `GET /v1/webpos/{deviceId}` surfaces "can't reach terminal"
+    // immediately with a dedicated error code for the mobile sheet.
+    if (yocoDeviceId && secretKey) {
+      const deviceProbe = await fetch(YOCO_ENDPOINTS.getWebPosDevice(yocoDeviceId), {
+        method: "GET",
+        headers: { Authorization: `Bearer ${secretKey}` },
+      });
+      if (!deviceProbe.ok) {
+        const errJson = (await deviceProbe.json().catch(() => ({}))) as {
+          detail?: string;
+          message?: string;
+        };
+        const detail = errJson.detail ?? errJson.message;
+        const isNotFound = deviceProbe.status === 404;
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: isNotFound
+                ? "This terminal was not found in Yoco. Re-link or re-add the device in Payment Settings."
+                : detail?.trim() ||
+                  "Could not reach your Yoco terminal. Check that it is powered on, online, and paired, then try again.",
+              code: isNotFound ? "TERMINAL_NOT_FOUND" : "TERMINAL_UNAVAILABLE",
+            },
+          },
+          { status: isNotFound ? 404 : 503 },
+        );
+      }
+    }
 
     // Validate amount
     const amountValidation = validateYocoAmount(amountInRands);
@@ -415,7 +449,7 @@ export async function POST(request: Request) {
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["provider_owner", "provider_staff"]);
+    const auth = await requireRole(["provider_owner", "provider_staff"], request);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }

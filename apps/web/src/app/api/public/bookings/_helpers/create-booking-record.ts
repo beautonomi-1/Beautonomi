@@ -111,8 +111,23 @@ export async function createBookingRecord(
         409
       );
     }
-    console.error("[create_booking_with_locking]", bookingError);
-    throw new Error(msg || "Failed to create booking (database)");
+    // §Risk-hardening 2026-04: return a structured Response instead of
+    // re-throwing. Previously an unknown RPC error leaked the raw DB
+    // message into the outer route catch and produced a bare 500. Now the
+    // caller gets a stable code and the outer catch sees a Response, not
+    // a thrown exception, so the booking row (if created) and the hold
+    // remain consistently cleanable.
+    console.error("[create_booking_with_locking]", {
+      message: msg,
+      code: (bookingError as { code?: string }).code,
+      details: (bookingError as { details?: string }).details,
+    });
+    return handleApiError(
+      new Error(msg || "Failed to create booking (database)"),
+      "Could not create booking. Please try again.",
+      "CREATE_RPC_ERROR",
+      500,
+    );
   }
 
   if (!bookingId) {
@@ -276,7 +291,20 @@ export async function createBookingRecord(
     .select()
     .eq("booking_id", booking.id);
 
-  if (bookingServicesError) throw bookingServicesError;
+  if (bookingServicesError) {
+    // §Risk-hardening 2026-04: this read previously `throw`-ed, which would
+    // bubble straight to the outer 500 handler even though the booking row
+    // and its services already exist in the DB. Return a structured error
+    // so the caller (process-payment / outer route) can release the slot
+    // cleanly.
+    console.error("[create-booking-record] fetch booking_services failed:", bookingServicesError);
+    return handleApiError(
+      new Error(bookingServicesError.message || "Failed to load booking services"),
+      "Booking was created but we couldn't finish preparing it. Please try again.",
+      "BOOKING_SERVICES_FETCH_ERROR",
+      500,
+    );
+  }
 
   // ── Resource assignments ─────────────────────────────────────────────────
   const draftResourceIds = draft.resource_ids;

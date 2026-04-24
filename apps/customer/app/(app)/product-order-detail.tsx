@@ -14,6 +14,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import * as FileSystem from "expo-file-system/legacy";
+import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
@@ -188,6 +190,44 @@ export default function ProductOrderDetailScreen() {
           accessibilityLabel="Share order receipt"
         >
           <Ionicons name="share-outline" size={22} color="#111827" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={async () => {
+            try {
+              const res = await api.post<{ url?: string }>(
+                `/api/me/orders/${order.id}/receipt/signed-url`,
+                {},
+              );
+              const signedUrl = res.data?.url;
+              if (res.error || !signedUrl) {
+                const msg =
+                  (res.error as { message?: string } | null)?.message ??
+                  "Could not generate this receipt. Please try again.";
+                Alert.alert("Download receipt", msg);
+                return;
+              }
+              if (Platform.OS === "web") {
+                await Linking.openURL(signedUrl);
+                return;
+              }
+              const fileUri = `${FileSystem.cacheDirectory}order_${order.order_number || order.id}.pdf`;
+              await FileSystem.downloadAsync(signedUrl, fileUri);
+              await Share.share({
+                url: fileUri,
+                message: `Order ${order.order_number}`,
+              });
+            } catch (e) {
+              Alert.alert(
+                "Download receipt",
+                e instanceof Error ? e.message : "Something went wrong.",
+              );
+            }
+          }}
+          style={{ padding: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Download order receipt"
+        >
+          <Ionicons name="download-outline" size={22} color="#111827" />
         </TouchableOpacity>
       </View>
 
@@ -428,15 +468,21 @@ export default function ProductOrderDetailScreen() {
           )}
         </View>
 
-        {/* Payment summary */}
+        {/* Payment summary — line items above + full breakdown */}
         <View style={{ backgroundColor: "#fff", padding: contentPadding }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-            Payment Summary
+            Payment summary
           </Text>
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-            <Text style={{ fontSize: 14, color: "#6B7280" }}>Subtotal</Text>
-            <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.subtotal ?? 0))}</Text>
+            <Text style={{ fontSize: 14, color: "#6B7280" }}>Items subtotal</Text>
+            <Text style={{ fontSize: 14, color: "#111827", fontWeight: "600" }}>{fmt(Number(order.subtotal ?? 0))}</Text>
           </View>
+          {Number(order.discount_amount ?? 0) > 0 && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+              <Text style={{ fontSize: 14, color: "#059669" }}>Discount</Text>
+              <Text style={{ fontSize: 14, color: "#059669" }}>-{fmt(Number(order.discount_amount ?? 0))}</Text>
+            </View>
+          )}
           {Number(order.delivery_fee ?? 0) > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
               <Text style={{ fontSize: 14, color: "#6B7280" }}>Delivery</Text>
@@ -449,21 +495,35 @@ export default function ProductOrderDetailScreen() {
               <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.tax_amount ?? 0))}</Text>
             </View>
           )}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              marginTop: 8,
-              paddingTop: 10,
-              borderTopWidth: 1,
-              borderTopColor: "#E5E7EB",
-            }}
-          >
-            <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Total</Text>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>
-              {fmt(Number(order.total_amount ?? 0))}
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Calculated total</Text>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: "#111827" }}>
+              {fmt(
+                Math.max(
+                  0,
+                  Number(order.subtotal ?? 0) -
+                    Number(order.discount_amount ?? 0) +
+                    Number(order.delivery_fee ?? 0) +
+                    Number(order.tax_amount ?? 0),
+                ),
+              )}
             </Text>
           </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Charged total</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>{fmt(Number(order.total_amount ?? 0))}</Text>
+          </View>
+          {Math.abs(
+            Number(order.total_amount ?? 0) -
+              (Number(order.subtotal ?? 0) -
+                Number(order.discount_amount ?? 0) +
+                Number(order.delivery_fee ?? 0) +
+                Number(order.tax_amount ?? 0)),
+          ) > 0.02 && (
+            <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 8 }}>
+              Small differences can come from rounding or wallet/promotions applied at checkout.
+            </Text>
+          )}
         </View>
 
         {/* Provider */}

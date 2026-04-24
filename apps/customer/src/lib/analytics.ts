@@ -323,3 +323,21 @@ export function trackMarketSwitchDeclined(input: {
     country_code: input.countryCode,
   });
 }
+
+// ── Support tickets (customer app) ───────────────────────────────────────────
+
+export function trackSupportTicketsView() {
+  track("customer_support_tickets_view");
+}
+
+export function trackSupportTicketDetailView(ticketId: string, ticketNumber?: string) {
+  track("customer_support_ticket_detail_view", { ticket_id: ticketId, ticket_number: ticketNumber });
+}
+
+export function trackSupportTicketCreated(ticketNumber?: string) {
+  track("customer_support_ticket_created", { ticket_number: ticketNumber });
+}
+
+export function trackSupportTicketReply(ticketId: string) {
+  track("customer_support_ticket_reply", { ticket_id: ticketId });
+}

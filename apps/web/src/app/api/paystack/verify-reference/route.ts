@@ -106,7 +106,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await getSupabaseServer();
+    // §Customer-launch (audit 2026-04): honour Bearer tokens from
+    // mobile clients (otherwise the RLS-scoped SELECT below silently
+    // fails and every mobile payment verification gets "Booking not
+    // found"). The `user` id used in the ownership check below is
+    // already resolved via `requireRoleInApi(request)` above.
+    const supabase = await getSupabaseServer(request);
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select("id, tenant_id, customer_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status")

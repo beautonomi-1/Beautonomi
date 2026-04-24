@@ -10,6 +10,7 @@ import {
 } from "@/lib/booking-slot-math/blocked-window-minutes";
 import { checkPortalRateLimit } from "@/lib/rate-limit/portal";
 import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 
 /**
  * GET /api/portal/availability
@@ -73,6 +74,7 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         provider_id,
+        providers (timezone),
         location_id,
         location_type,
         booking_services (
@@ -105,6 +107,9 @@ export async function GET(request: NextRequest) {
 
     const providerId = (booking as { provider_id?: string }).provider_id;
     const locationId = (booking as { location_id?: string | null }).location_id ?? null;
+    const providerTimeZone = normalizeProviderTimezone(
+      (booking as { providers?: { timezone?: string | null } | null }).providers?.timezone ?? null,
+    );
 
     const constraints = await loadAvailabilityConstraints(supabase, staffId, date, providerId, {
       excludeBookingId: validation.bookingId,
@@ -116,6 +121,7 @@ export async function GET(request: NextRequest) {
               date,
               slotStaffId: staffId,
               staffIdsForTimeOff: [staffId],
+              providerTimeZone,
             }
           : undefined,
     });
@@ -129,6 +135,7 @@ export async function GET(request: NextRequest) {
     const slots = calculateAvailableSlots(constraints, totalDuration, date, {
       slotInterval: 15,
       travelBuffer,
+      timezone: providerTimeZone ?? undefined,
     });
 
     return successResponse({ date, slots });

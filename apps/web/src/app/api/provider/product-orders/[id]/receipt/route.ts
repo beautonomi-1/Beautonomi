@@ -8,6 +8,7 @@ import {
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
+import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 
 type OrderItemRow = {
   product_name?: string | null;
@@ -69,11 +70,44 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
     const admin = getSupabaseAdmin();
+
+    const url = new URL(request.url);
+    const downloadToken = url.searchParams.get("token");
+    let user: { id: string; role: string };
+    if (downloadToken) {
+      const parsed = parseReceiptDownloadToken(downloadToken, {
+        kind: "provider_order_receipt",
+        subjectId: id,
+      });
+      if (!parsed) {
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 },
+        );
+      }
+      const { data: userRow } = await admin
+        .from("users")
+        .select("id, role")
+        .eq("id", parsed.userId)
+        .maybeSingle();
+      if (!userRow) {
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 },
+        );
+      }
+      user = {
+        id: userRow.id as string,
+        role: (userRow.role as string) || "provider_owner",
+      };
+    } else {
+      const authed = await requireRoleInApi(
+        ["provider_owner", "provider_staff", "superadmin"],
+        request,
+      );
+      user = { id: authed.user.id, role: authed.user.role as string };
+    }
 
     const { data: orderRaw, error } = await (admin.from("product_orders") as any)
       .select(

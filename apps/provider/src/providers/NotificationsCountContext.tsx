@@ -4,6 +4,7 @@
  * Subscribes to notifications table changes so the badge updates in real time.
  */
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { Platform } from "react-native";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
@@ -26,6 +27,25 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
     enabled: !!session,
   });
   const totalUnread = data?.total_unread ?? 0;
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const Notifications = await import("expo-notifications");
+        if (cancelled) return;
+        const n = Math.min(999_999, Math.max(0, Math.floor(totalUnread)));
+        await Notifications.setBadgeCountAsync(n);
+      } catch {
+        // Native module unavailable until dev client rebuild
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [totalUnread]);
+
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   const refreshCount = useCallback(async () => {

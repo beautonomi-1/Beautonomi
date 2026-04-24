@@ -25,26 +25,35 @@ export default function HelpScreen() {
       <View style={styles.quickLinks}>
         <TouchableOpacity
           style={[styles.quickLink, styles.quickLinkFirst]}
-          onPress={() => openInAppBrowser("/help/my-tickets", "My tickets")}
+          onPress={() => router.push("/(app)/contact-support" as never)}
+          accessibilityLabel="Contact support"
+          accessibilityRole="button"
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
+          <Text style={styles.quickLinkText}>Contact</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickLink}
+          onPress={() => router.push("/(app)/support-tickets" as never)}
           accessibilityLabel="View my support tickets"
           accessibilityRole="button"
         >
           <Ionicons name="ticket-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
           <Text style={styles.quickLinkText}>My tickets</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.quickLink}
-          onPress={() => openInAppBrowser("/help/submit-ticket", "Submit ticket")}
-          accessibilityLabel="Submit a support ticket"
-          accessibilityRole="button"
-        >
-          <Ionicons name="create-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
-          <Text style={styles.quickLinkText}>Submit ticket</Text>
-        </TouchableOpacity>
       </View>
       <View style={styles.quickLinksSecondRow}>
         <TouchableOpacity
           style={[styles.quickLink, styles.quickLinkFirst]}
+          onPress={() => router.push("/(app)/support-tickets/new" as never)}
+          accessibilityLabel="Submit a new support ticket"
+          accessibilityRole="button"
+        >
+          <Ionicons name="create-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
+          <Text style={styles.quickLinkText}>New ticket</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickLink}
           onPress={() => openInAppBrowser("/privacy-policy", "Privacy policy")}
           accessibilityLabel="Open privacy policy"
           accessibilityRole="button"
@@ -52,8 +61,10 @@ export default function HelpScreen() {
           <Ionicons name="document-text-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
           <Text style={styles.quickLinkText}>Privacy</Text>
         </TouchableOpacity>
+      </View>
+      <View style={styles.quickLinksThirdRow}>
         <TouchableOpacity
-          style={styles.quickLink}
+          style={[styles.quickLink, { flex: 1, marginRight: 0 }]}
           onPress={() => openInAppBrowser("/terms-and-condition", "Terms of service")}
           accessibilityLabel="Open terms of service"
           accessibilityRole="button"
@@ -119,6 +130,14 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   quickLinksSecondRow: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+    backgroundColor: Colors.gray[50],
+  },
+  quickLinksThirdRow: {
     flexDirection: "row",
     paddingHorizontal: 16,
     paddingBottom: 12,

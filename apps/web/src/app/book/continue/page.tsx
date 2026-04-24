@@ -682,7 +682,11 @@ function BookContinueContent() {
       }
       const res = await fetcher.post<{ data?: { id?: string }; id?: string }>(
         "/api/me/on-demand/requests",
-        { provider_id: hold.provider_id, request_payload: requestPayload }
+        {
+          provider_id: hold.provider_id,
+          request_payload: requestPayload,
+          idempotency_key: `on-demand:${holdId}`,
+        }
       );
       const envelope = res as { data?: { id?: string }; id?: string };
       const requestId = envelope.data?.id ?? envelope.id;

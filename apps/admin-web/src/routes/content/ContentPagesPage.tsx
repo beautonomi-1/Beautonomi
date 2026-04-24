@@ -22,7 +22,15 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
-import { CMS_PAGE_SECTION_PRESETS } from "@/lib/cmsPageSectionPresets";
+import {
+  CMS_PAGE_CONTENT_GROUP_LABELS,
+  CMS_PAGE_CONTENT_GROUP_ORDER,
+  CMS_PAGE_SECTION_PRESETS,
+  cmsPageContentGroupForSlug,
+  cmsPagePublicApiHint,
+  cmsPageSlugTitle,
+  cmsSectionPresetLabel,
+} from "@/lib/cmsPageSectionPresets";
 import { Plus, Search } from "lucide-react";
 
 type PageContent = {
@@ -250,6 +258,8 @@ export function ContentPagesPage() {
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  /** Narrow the list to one `page_slug` (grouped headers still reflect the same taxonomy). */
+  const [pageSlugFilter, setPageSlugFilter] = useState("");
   const [mutError, setMutError] = useState<string | null>(null);
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.contentPages() });
@@ -287,16 +297,18 @@ export function ContentPagesPage() {
 
   const rows = (q.data?.data ?? []) as PageContent[];
 
-  const filteredRows = useMemo(() => {
+  const searchedRows = useMemo(() => {
     const qv = search.trim().toLowerCase();
     if (!qv) return rows;
     return rows.filter((r) => {
       const meta = r.metadata as Record<string, unknown> | undefined;
       const title = String(meta?.title ?? "");
+      const preset = cmsSectionPresetLabel(r.page_slug, r.section_key) ?? "";
       const hay = [
         r.page_slug,
         r.section_key,
         title,
+        preset,
         r.content_type,
         typeof r.content === "string" ? r.content.slice(0, 500) : "",
       ]
@@ -306,6 +318,57 @@ export function ContentPagesPage() {
       return hay.includes(qv);
     });
   }, [rows, search]);
+
+  const slugFilteredRows = useMemo(() => {
+    if (!pageSlugFilter) return searchedRows;
+    return searchedRows.filter((r) => r.page_slug === pageSlugFilter);
+  }, [searchedRows, pageSlugFilter]);
+
+  const pageSlugOptions = useMemo(() => {
+    const fromData = rows.map((r) => r.page_slug);
+    const fromPresets = Object.keys(CMS_PAGE_SECTION_PRESETS);
+    return [...new Set([...fromPresets, ...fromData])].sort((a, b) => {
+      const ga = cmsPageContentGroupForSlug(a);
+      const gb = cmsPageContentGroupForSlug(b);
+      const ia = CMS_PAGE_CONTENT_GROUP_ORDER.indexOf(ga);
+      const ib = CMS_PAGE_CONTENT_GROUP_ORDER.indexOf(gb);
+      if (ia !== ib) return ia - ib;
+      return a.localeCompare(b);
+    });
+  }, [rows]);
+
+  const groupedCmsPanels = useMemo(() => {
+    const slugMap = new Map<string, PageContent[]>();
+    for (const r of slugFilteredRows) {
+      if (!slugMap.has(r.page_slug)) slugMap.set(r.page_slug, []);
+      slugMap.get(r.page_slug)!.push(r);
+    }
+    for (const list of slugMap.values()) {
+      list.sort((a, b) => {
+        const oa = Number(a.order) || 0;
+        const ob = Number(b.order) || 0;
+        if (oa !== ob) return oa - ob;
+        return (a.section_key || "").localeCompare(b.section_key || "");
+      });
+    }
+    const slugs = [...slugMap.keys()].sort((a, b) => {
+      const ga = cmsPageContentGroupForSlug(a);
+      const gb = cmsPageContentGroupForSlug(b);
+      const ia = CMS_PAGE_CONTENT_GROUP_ORDER.indexOf(ga);
+      const ib = CMS_PAGE_CONTENT_GROUP_ORDER.indexOf(gb);
+      if (ia !== ib) return ia - ib;
+      return a.localeCompare(b);
+    });
+    type GroupId = (typeof CMS_PAGE_CONTENT_GROUP_ORDER)[number];
+    const out: { group: GroupId; panels: { slug: string; rows: PageContent[] }[] }[] = [];
+    for (const gid of CMS_PAGE_CONTENT_GROUP_ORDER) {
+      const panels = slugs
+        .filter((s) => cmsPageContentGroupForSlug(s) === gid)
+        .map((slug) => ({ slug, rows: slugMap.get(slug)! }));
+      if (panels.length) out.push({ group: gid, panels });
+    }
+    return out;
+  }, [slugFilteredRows]);
 
   if (denied) return denied;
   if (q.isLoading) {
@@ -333,42 +396,69 @@ export function ContentPagesPage() {
       />
 
       <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
-        <strong>Note:</strong> Slug and section identify a block in the app; create a new row for each distinct pair. Editing does not change slug or section—create a new section if you need a different key.
+        <strong>Note:</strong> Each row is one <strong>section</strong> for a <strong>page slug</strong>. Slug and section
+        keys are fixed after creation—add a new row for a new block. Content below is grouped by site area, then by
+        page, with sections sorted by display order.
       </div>
 
       <AdminPanel>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="search"
-              placeholder="Search slug, section, title, or body…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="min-h-11 w-full rounded-xl border border-gray-300 py-2.5 pl-10 pr-3 text-sm"
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={adminToolbarButtonClass(q.isFetching)}
-              disabled={q.isFetching}
-              onClick={() => void q.refetch()}
-            >
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setEditId(null);
-                setMutError(null);
-                setModal("create");
-              }}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800"
-            >
-              <Plus className="h-4 w-4" />
-              New page section
-            </button>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="relative flex-1 max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="search"
+                placeholder="Search slug, section, preset label, title, or body…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="min-h-11 w-full rounded-xl border border-gray-300 py-2.5 pl-10 pr-3 text-sm"
+              />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-xs">
+              <label className="text-xs font-medium text-gray-600">Page slug</label>
+              <select
+                value={pageSlugFilter}
+                onChange={(e) => setPageSlugFilter(e.target.value)}
+                className="min-h-11 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">All page slugs</option>
+                {CMS_PAGE_CONTENT_GROUP_ORDER.map((gid) => {
+                  const slugs = pageSlugOptions.filter((s) => cmsPageContentGroupForSlug(s) === gid);
+                  if (!slugs.length) return null;
+                  return (
+                    <optgroup key={gid} label={CMS_PAGE_CONTENT_GROUP_LABELS[gid]}>
+                      {slugs.map((slug) => (
+                        <option key={slug} value={slug}>
+                          {cmsPageSlugTitle(slug)} ({slug})
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
+              <button
+                type="button"
+                className={adminToolbarButtonClass(q.isFetching)}
+                disabled={q.isFetching}
+                onClick={() => void q.refetch()}
+              >
+                Refresh
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditId(null);
+                  setMutError(null);
+                  setModal("create");
+                }}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800"
+              >
+                <Plus className="h-4 w-4" />
+                New page section
+              </button>
+            </div>
           </div>
         </div>
       </AdminPanel>
@@ -417,73 +507,118 @@ export function ContentPagesPage() {
 
       {rows.length === 0 ? (
         <EmptyState title="No page content sections" description="Create a section to add copy for a page slug." />
-      ) : filteredRows.length === 0 ? (
-        <EmptyState title="No matches" description="Try a different search term." />
+      ) : slugFilteredRows.length === 0 ? (
+        <EmptyState
+          title="No matches"
+          description="Try another search, clear the page slug filter, or create a missing section."
+        />
       ) : (
-        <AdminDataTable>
-          <AdminTableHead>
-            <tr>
-              <AdminTh>Title / Section</AdminTh>
-              <AdminTh>Page slug</AdminTh>
-              <AdminTh>Section key</AdminTh>
-              <AdminTh>Type</AdminTh>
-              <AdminTh>Status</AdminTh>
-              <AdminTh>Updated</AdminTh>
-              <AdminTh className="text-right">Actions</AdminTh>
-            </tr>
-          </AdminTableHead>
-          <AdminTableBody>
-            {filteredRows.map((r) => {
-              const title = String((r.metadata as Record<string, unknown> | undefined)?.title ?? "");
-              const displayTitle = title || `${r.page_slug} / ${r.section_key}`;
-              return (
-                <tr key={r.id}>
-                  <AdminTd className="font-medium">{displayTitle}</AdminTd>
-                  <AdminTd className="text-xs font-mono text-gray-500">{r.page_slug}</AdminTd>
-                  <AdminTd className="text-xs font-mono text-gray-500">{r.section_key}</AdminTd>
-                  <AdminTd>{r.content_type}</AdminTd>
-                  <AdminTd>
-                    <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                        r.is_active !== false ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-                      }`}
-                    >
-                      {r.is_active !== false ? "Active" : "Inactive"}
-                    </span>
-                  </AdminTd>
-                  <AdminTd className="text-xs text-gray-500">
-                    {(r.updated_at ?? r.created_at ?? "").slice(0, 10)}
-                  </AdminTd>
-                  <AdminTd className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditId(r.id);
-                          setMutError(null);
-                          setModal("edit");
-                        }}
-                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        disabled={deleteMut.isPending}
-                        onClick={() => {
-                          if (confirm(`Disable "${displayTitle}"?`)) deleteMut.mutate(r.id);
-                        }}
-                        className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-                      >
-                        Disable
-                      </button>
-                    </div>
-                  </AdminTd>
-                </tr>
-              );
-            })}
-          </AdminTableBody>
-        </AdminDataTable>
+        <div className="space-y-10">
+          {groupedCmsPanels.map(({ group, panels }) => (
+            <section key={group} className="space-y-4">
+              <h2 className="border-b border-gray-200 pb-2 text-base font-semibold text-gray-900">
+                {CMS_PAGE_CONTENT_GROUP_LABELS[group]}
+              </h2>
+              <div className="space-y-6">
+                {panels.map(({ slug, rows: panelRows }) => {
+                  const apiHint = cmsPagePublicApiHint(slug);
+                  return (
+                    <AdminPanel key={slug}>
+                      <div className="mb-4 flex flex-col gap-2 border-b border-gray-100 pb-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-900">{cmsPageSlugTitle(slug)}</h3>
+                          <p className="font-mono text-xs text-gray-500">{slug}</p>
+                          {apiHint ? (
+                            <p className="mt-1 text-xs text-gray-500">
+                              Public: <span className="font-mono">{apiHint}</span>
+                            </p>
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          {panelRows.length} section{panelRows.length === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                      <AdminDataTable>
+                        <AdminTableHead>
+                          <tr>
+                            <AdminTh>Title / Section</AdminTh>
+                            <AdminTh>Preset</AdminTh>
+                            <AdminTh>Section key</AdminTh>
+                            <AdminTh>Type</AdminTh>
+                            <AdminTh>Order</AdminTh>
+                            <AdminTh>Status</AdminTh>
+                            <AdminTh>Updated</AdminTh>
+                            <AdminTh className="text-right">Actions</AdminTh>
+                          </tr>
+                        </AdminTableHead>
+                        <AdminTableBody>
+                          {panelRows.map((r) => {
+                            const title = String((r.metadata as Record<string, unknown> | undefined)?.title ?? "");
+                            const displayTitle = title || `${r.page_slug} / ${r.section_key}`;
+                            const preset = cmsSectionPresetLabel(r.page_slug, r.section_key);
+                            return (
+                              <tr key={r.id}>
+                                <AdminTd className="font-medium">{displayTitle}</AdminTd>
+                                <AdminTd className="text-xs text-gray-600">{preset ?? "—"}</AdminTd>
+                                <AdminTd className="text-xs font-mono text-gray-500">{r.section_key}</AdminTd>
+                                <AdminTd>{r.content_type}</AdminTd>
+                                <AdminTd className="text-xs tabular-nums text-gray-600">{r.order ?? 0}</AdminTd>
+                                <AdminTd>
+                                  <span
+                                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                                      r.is_active !== false
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-gray-100 text-gray-500"
+                                    }`}
+                                  >
+                                    {r.is_active !== false ? "Active" : "Inactive"}
+                                  </span>
+                                </AdminTd>
+                                <AdminTd className="text-xs text-gray-500">
+                                  {(r.updated_at ?? r.created_at ?? "").slice(0, 10)}
+                                </AdminTd>
+                                <AdminTd className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditId(r.id);
+                                        setMutError(null);
+                                        setModal("edit");
+                                      }}
+                                      className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={deleteMut.isPending}
+                                      onClick={() => {
+                                        if (
+                                          confirm(
+                                            `Delete section "${displayTitle}" (${r.section_key}) permanently? This removes the CMS row.`,
+                                          )
+                                        )
+                                          deleteMut.mutate(r.id);
+                                      }}
+                                      className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </AdminTd>
+                              </tr>
+                            );
+                          })}
+                        </AdminTableBody>
+                      </AdminDataTable>
+                    </AdminPanel>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
       )}
     </div>
   );

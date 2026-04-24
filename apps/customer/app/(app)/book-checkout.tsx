@@ -1591,6 +1591,7 @@ export default function BookCheckoutScreen() {
         {
           provider_id: hold.provider_id,
           request_payload: requestPayload,
+          idempotency_key: `on-demand:${hold_id}`,
         },
         { timeout: 120_000 }
       );
@@ -1751,6 +1752,12 @@ export default function BookCheckoutScreen() {
         const errStatus = (res.error as { status?: number }).status;
         const errCode = (res.error as { code?: string }).code;
         if (errStatus === 401) {
+          if (user) {
+            setError(
+              "We couldn't verify your signed-in session for checkout. Please try again; if it repeats, close and reopen the app so your session can refresh.",
+            );
+            return;
+          }
           router.replace({
             pathname: "/(auth)/login",
             params: { return_to: bookContinueReturnTo },
@@ -2588,80 +2595,131 @@ export default function BookCheckoutScreen() {
               </View>
             )}
 
-            {/* ═══ Total ═══ */}
+            {/* ═══ Payment summary (always show line items + running totals) ═══ */}
             <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16 }}>
-              {(travelFee > 0 || addonsSubtotal > 0 || productsSubtotal > 0 || appliedPromoDiscount > 0 || loyaltyDiscountAmount > 0 || membershipDiscountAmount > 0 || tipAmount > 0 || taxAmount > 0 || serviceFeeAmount > 0) && (
-                <>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                    <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.services")}</Text>
-                    <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(subtotal, currency)}</Text>
-                  </View>
-                  {addonsSubtotal > 0 && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.addons")}</Text>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(addonsSubtotal, currency)}</Text>
-                    </View>
-                  )}
-                  {productsSubtotal > 0 && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.products")}</Text>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(productsSubtotal, currency)}</Text>
-                    </View>
-                  )}
-                  {travelFee > 0 && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-<Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.travel")}</Text>
-                    <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(travelFee, currency)}</Text>
-                    </View>
-                  )}
-                  {effectivePromoDiscount > 0 && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.promo")}</Text>
-                      <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(effectivePromoDiscount, currency)}</Text>
-                    </View>
-                  )}
-                  {membershipDiscountAmount > 0 && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#059669" }}>
-                        {membershipPlanName ? `${membershipPlanName} (${membershipDiscountPercent}%)` : `Member discount (${membershipDiscountPercent}%)`}
+              <Text style={{ fontSize: 13, fontWeight: "700", color: "#374151", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                Payment summary
+              </Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                <Text style={{ fontSize: 13, color: "#6B7280" }}>Your services</Text>
+                <Text style={{ fontSize: 13, color: "#111827", fontWeight: "600" }}>{formatCurrency(primarySubtotal, currency)}</Text>
+              </View>
+              {groupParticipantsSubtotal > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>Group / additional guests</Text>
+                  <Text style={{ fontSize: 13, color: "#111827", fontWeight: "600" }}>{formatCurrency(groupParticipantsSubtotal, currency)}</Text>
+                </View>
+              )}
+              {addonsList
+                .filter((a) => selectedAddonIds.includes(a.id))
+                .map((addon) => {
+                  const label = addon.name ?? addon.title ?? "Add-on";
+                  const price = Number(addon.price) || 0;
+                  const addonCurrency = addon.currency ?? currency;
+                  return (
+                    <View key={addon.id} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }} numberOfLines={2}>
+                        Add-on · {label}
                       </Text>
-                      <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(membershipDiscountAmount, currency)}</Text>
+                      <Text style={{ fontSize: 13, color: "#111827" }}>{formatCurrency(price, addonCurrency)}</Text>
                     </View>
-                  )}
-                  {loyaltyDiscountAmount > 0 && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#059669" }}>Loyalty</Text>
-                      <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(loyaltyDiscountAmount, currency)}</Text>
-                    </View>
-                  )}
-                  {taxAmount > 0 && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>
-                        Tax{taxRatePercent > 0 ? ` (${taxRatePercent}%)` : ""}{isTaxInclusive ? " (incl.)" : ""}
-                      </Text>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>
-                        {isTaxInclusive ? "" : "+"}{formatCurrency(taxAmount, currency)}
-                      </Text>
-                    </View>
-                  )}
-                  {serviceFeeAmount > 0 && sfConfig?.show && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>Platform Fee</Text>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>+{formatCurrency(serviceFeeAmount, currency)}</Text>
-                    </View>
-                  )}
-                  {tipAmount > 0 && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.tip")}</Text>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>+{formatCurrency(tipAmount, currency)}</Text>
-                    </View>
-                  )}
-                </>
+                  );
+                })}
+              {selectedProducts.map((p) => (
+                <View key={`${p.productId}-${p.productVariantId ?? "x"}`} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }} numberOfLines={2}>
+                    Product · {p.name}
+                    {p.quantity > 1 ? ` ×${p.quantity}` : ""}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: "#111827" }}>{formatCurrency(p.price * p.quantity, p.currency)}</Text>
+                </View>
+              ))}
+              {travelFee > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.travel")}</Text>
+                  <Text style={{ fontSize: 13, color: "#111827" }}>{formatCurrency(travelFee, currency)}</Text>
+                </View>
+              )}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginTop: 6,
+                  marginBottom: 8,
+                  paddingTop: 8,
+                  borderTopWidth: 1,
+                  borderTopColor: "#E5E7EB",
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Subtotal (before discounts & tax)</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#111827" }}>{formatCurrency(prePromoTotal, currency)}</Text>
+              </View>
+              {effectivePromoDiscount > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.promo")}</Text>
+                  <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(effectivePromoDiscount, currency)}</Text>
+                </View>
+              )}
+              {membershipDiscountAmount > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ fontSize: 13, color: "#059669" }}>
+                    {membershipPlanName ? `${membershipPlanName} (${membershipDiscountPercent}%)` : `Member discount (${membershipDiscountPercent}%)`}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(membershipDiscountAmount, currency)}</Text>
+                </View>
+              )}
+              {loyaltyDiscountAmount > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ fontSize: 13, color: "#059669" }}>Loyalty</Text>
+                  <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(loyaltyDiscountAmount, currency)}</Text>
+                </View>
+              )}
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                <Text style={{ fontSize: 13, color: "#6B7280" }}>After discounts</Text>
+                <Text style={{ fontSize: 13, color: "#111827", fontWeight: "600" }}>{formatCurrency(subtotalAfterLoyalty, currency)}</Text>
+              </View>
+              {taxRatePercent > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                    Tax ({taxRatePercent}%){isTaxInclusive ? " — included in prices" : ""}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                    {isTaxInclusive ? formatCurrency(taxAmount, currency) : `+${formatCurrency(taxAmount, currency)}`}
+                  </Text>
+                </View>
+              )}
+              {serviceFeeAmount > 0 && sfConfig?.show && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>Platform fee</Text>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>+{formatCurrency(serviceFeeAmount, currency)}</Text>
+                </View>
+              )}
+              {tipAmount > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.tip")}</Text>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>+{formatCurrency(tipAmount, currency)}</Text>
+                </View>
               )}
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>{t("checkout.total")}</Text>
                 <Text style={{ fontSize: 22, fontWeight: "800", color: "#111827" }}>{formatCurrency(total, currency)}</Text>
               </View>
+              {hasDeposit && paymentOption === "deposit" && (
+                <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#B45309" }}>{t("checkout.depositNow")}</Text>
+                    <Text style={{ fontSize: 15, fontWeight: "800", color: "#B45309" }}>{formatCurrency(depositAmount, currency)}</Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: "#92400E", marginTop: 6 }}>
+                    {`Remainder of ${formatCurrency(Math.max(0, total - depositAmount), currency)} is due later per the provider's policy.`}
+                  </Text>
+                </View>
+              )}
+              {hasDeposit && paymentOption === "full" && (
+                <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 8 }}>
+                  {`You chose pay in full. A deposit of ${formatCurrency(depositAmount, currency)} would be available if you switch payment option below.`}
+                </Text>
+              )}
 
               {/* Wallet credit breakdown — shown when wallet covers part/all of total */}
               {(paymentMethod === "card" && useWallet && walletBalance > 0) && (() => {

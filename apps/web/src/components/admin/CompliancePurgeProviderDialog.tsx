@@ -26,7 +26,10 @@ type PurgeSuccessPayload = {
 };
 
 function normalizeEmail(e: string): string {
-  return e.trim().toLowerCase();
+  return e
+    .trim()
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
 }
 
 export function CompliancePurgeProviderDialog(props: {
@@ -35,11 +38,13 @@ export function CompliancePurgeProviderDialog(props: {
   providerId: string;
   /** Business email on the provider record (shown for confirmation typing). */
   providerEmail: string;
+  /** Billing / invoice email when different from business `email`. */
+  billingEmail?: string;
   /** Owner account email (must match typed confirmation if used instead of provider email). */
   ownerEmail: string;
   onComplete?: () => void;
 }) {
-  const { open, onOpenChange, providerId, providerEmail, ownerEmail, onComplete } = props;
+  const { open, onOpenChange, providerId, providerEmail, billingEmail = "", ownerEmail, onComplete } = props;
   const [reason, setReason] = useState("");
   const [emailConfirm, setEmailConfirm] = useState("");
   const [phrase, setPhrase] = useState("");
@@ -75,7 +80,7 @@ export function CompliancePurgeProviderDialog(props: {
       return;
     }
 
-    const allowed = [providerEmail, ownerEmail].filter((e) => e && e.trim());
+    const allowed = [providerEmail, billingEmail, ownerEmail].filter((e) => e && e.trim());
     const typed = normalizeEmail(emailConfirm);
     const ok = allowed.some((e) => normalizeEmail(e) === typed);
     if (!ok) {
@@ -143,12 +148,14 @@ export function CompliancePurgeProviderDialog(props: {
                   onChange={(e) => setEmailConfirm(e.target.value)}
                   autoComplete="off"
                   className="mt-1.5"
-                  placeholder={providerEmail || ownerEmail}
+                  placeholder={providerEmail || billingEmail || ownerEmail}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Must match:{" "}
-                  {[...new Set([providerEmail, ownerEmail].filter((e) => e?.trim()))].join(" · ") ||
+                  Must match one of:{" "}
+                  {[...new Set([providerEmail, billingEmail, ownerEmail].filter((e) => e?.trim()))].join(" · ") ||
                     "—"}
+                  {" "}
+                  (owner login email in Auth also accepted on the server if it differs from profile.)
                 </p>
               </div>
               <div>

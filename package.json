@@ -69,6 +69,7 @@
     "audit:deps": "node tooling/audit/npm-audit-lockfile.mjs high",
     "audit:multi-tenant": "pnpm audit:tenant-admin && pnpm audit:tenant-api-hints",
     "audit:multi-tenant:strict": "pnpm audit:tenant-admin && pnpm audit:tenant-api-hints:strict",
+    "verify:cron-schedule": "node docs/scripts/verify-cron-schedule.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md}\"",
     "setup:env": "node scripts/setup-env.js",
     "setup": "pnpm install && node scripts/setup-env.js",

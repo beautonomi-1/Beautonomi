@@ -11,6 +11,7 @@ import {
   Alert,
   Modal,
   Pressable,
+  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, router } from "expo-router";
@@ -102,13 +103,43 @@ function parseRealtimeUpdate(row: unknown): { id: string; is_read?: boolean; rea
   };
 }
 
-function normalizeAttachmentForPreview(a: string | Record<string, unknown>): { url: string; expired?: boolean; name?: string } {
+type NormalizedAttachment = { url: string; expired?: boolean; name?: string; type?: string };
+
+function normalizeAttachmentForPreview(a: string | Record<string, unknown>): NormalizedAttachment {
   if (typeof a === "string") return { url: a };
   return {
     url: typeof a.url === "string" ? a.url : "",
     expired: typeof a.expired === "boolean" ? a.expired : undefined,
     name: typeof a.name === "string" ? a.name : undefined,
+    type: typeof a.type === "string" ? a.type : undefined,
   };
+}
+
+function isImageMime(mime?: string): boolean {
+  if (!mime || !mime.trim()) return false;
+  return /^image\//i.test(mime);
+}
+
+function isVideoMime(mime?: string): boolean {
+  return /^video\//i.test(mime || "");
+}
+
+function urlLooksLikeImageUrl(url: string): boolean {
+  return /\.(jpe?g|png|gif|webp|heic|heif|avif)(\?|$)/i.test(url);
+}
+
+/** Prefer inline image preview; PDFs and videos use tap-to-open rows (matches provider app behaviour). */
+function attachmentDisplaysAsInlineImage(att: NormalizedAttachment): boolean {
+  if (att.expired || !att.url) return false;
+  if (isVideoMime(att.type)) return false;
+  if (isImageMime(att.type)) return true;
+  return !att.type && urlLooksLikeImageUrl(att.url);
+}
+
+function openAttachmentUrl(url: string) {
+  Linking.openURL(url).catch(() => {
+    Alert.alert("Could not open", "This link could not be opened on your device.");
+  });
 }
 
 const PAGE_SIZE = 50;
@@ -346,7 +377,7 @@ export default function ChatScreen() {
       id: optimisticId,
       sender_id: user?.id || "",
       sender_name: user?.user_metadata?.full_name || "You",
-      content: text || (attachments?.length ? "Photo" : ""),
+      content: text || (attachments?.length ? "📎 Attachment" : ""),
       attachments: attachments,
       created_at: new Date().toISOString(),
       is_read: false,
@@ -396,21 +427,22 @@ export default function ChatScreen() {
         return;
       }
       const formData = new FormData();
+      formData.append("conversation_id", id);
       appendFormDataFileNative(formData, "files", {
         uri: result.uri,
         name: result.fileName || "image.jpg",
-        type: "image/jpeg",
+        type: result.mimeType || "image/jpeg",
       });
-      formData.append("conversation_id", id);
-      const res = await api.post<{ attachments?: Message["attachments"] }>(
-        "/api/me/messages/upload",
-        formData
-      );
+      const res = await api.fetch<{ attachments?: Message["attachments"] }>("/api/me/messages/upload", {
+        method: "POST",
+        body: formData,
+      });
       if (res.error) {
-        Alert.alert("Upload failed", "Could not upload the image. Please try again.");
+        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload the image. Please try again."));
         return;
       }
-      const atts = (res.data?.attachments ?? []) as NonNullable<Parameters<typeof send>[0]>;
+      const payload = res.data as { attachments?: Message["attachments"] } | null;
+      const atts = (payload?.attachments ?? []) as NonNullable<Parameters<typeof send>[0]>;
       if (atts.length > 0) {
         await send(atts);
       } else {
@@ -564,11 +596,9 @@ export default function ChatScreen() {
                 const msg = item.message;
                 const isMe = msg.sender_id === user.id;
                 type Att = NonNullable<Message["attachments"]>[number];
-                const attachmentItems: { url: string; expired?: boolean; name?: string }[] = Array.isArray(
-                  msg.attachments
-                )
+                const attachmentItems: NormalizedAttachment[] = Array.isArray(msg.attachments)
                   ? msg.attachments.map((a: Att) =>
-                      normalizeAttachmentForPreview(typeof a === "string" ? a : (a as Record<string, unknown>))
+                      normalizeAttachmentForPreview(typeof a === "string" ? a : (a as Record<string, unknown>)),
                     )
                   : [];
                 const hasRenderableAttachments = attachmentItems.some((a) => a.expired || a.url);
@@ -592,43 +622,124 @@ export default function ChatScreen() {
                     >
                       {hasRenderableAttachments && (
                         <View style={{ marginBottom: 8 }}>
-                          {attachmentItems.map((att, i) =>
-                            att.expired || !att.url ? (
-                              <Text
-                                key={i}
-                                style={{
-                                  fontSize: 13,
-                                  color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[600],
-                                  marginBottom: i < attachmentItems.length - 1 ? 8 : 0,
-                                }}
-                              >
-                                {att.name ? `${att.name} — ` : ""}File no longer available (retention policy).
-                              </Text>
-                            ) : (
-                              <TouchableOpacity
-                                key={i}
-                                activeOpacity={0.85}
-                                onPress={() => setPreviewImageUrl(att.url)}
-                                accessibilityRole="imagebutton"
-                                accessibilityLabel="Open image preview"
-                                style={{
-                                  marginBottom: i < attachmentItems.length - 1 ? 8 : 0,
-                                }}
-                              >
-                                <Image
-                                  source={{ uri: att.url }}
+                          {attachmentItems.map((att, i) => {
+                            const key = `${msg.id}-att-${i}`;
+                            const gap = i < attachmentItems.length - 1 ? 8 : 0;
+                            if (att.expired || !att.url) {
+                              return (
+                                <Text
+                                  key={key}
                                   style={{
-                                    width: 192,
-                                    height: 192,
-                                    borderRadius: 8,
+                                    fontSize: 13,
+                                    color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[600],
+                                    marginBottom: gap,
                                   }}
-                                  contentFit="cover"
-                                  cachePolicy="memory-disk"
-                                  transition={200}
+                                >
+                                  {att.name ? `${att.name} — ` : ""}File no longer available (retention policy).
+                                </Text>
+                              );
+                            }
+                            if (attachmentDisplaysAsInlineImage(att)) {
+                              return (
+                                <TouchableOpacity
+                                  key={key}
+                                  activeOpacity={0.85}
+                                  onPress={() => setPreviewImageUrl(att.url)}
+                                  accessibilityRole="imagebutton"
+                                  accessibilityLabel="Open image preview"
+                                  style={{ marginBottom: gap }}
+                                >
+                                  <Image
+                                    source={{ uri: att.url }}
+                                    style={{
+                                      width: 192,
+                                      height: 192,
+                                      borderRadius: 8,
+                                    }}
+                                    contentFit="cover"
+                                    cachePolicy="memory-disk"
+                                    transition={200}
+                                  />
+                                </TouchableOpacity>
+                              );
+                            }
+                            if (isVideoMime(att.type)) {
+                              return (
+                                <TouchableOpacity
+                                  key={key}
+                                  onPress={() => openAttachmentUrl(att.url)}
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Open video"
+                                  style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    maxWidth: "100%",
+                                    paddingVertical: 10,
+                                    paddingHorizontal: 12,
+                                    borderRadius: 12,
+                                    borderWidth: 1,
+                                    borderColor: isMe ? "rgba(255,255,255,0.35)" : Colors.gray[200],
+                                    backgroundColor: isMe ? "rgba(255,255,255,0.12)" : Colors.white,
+                                    marginBottom: gap,
+                                  }}
+                                >
+                                  <Ionicons
+                                    name="videocam-outline"
+                                    size={22}
+                                    color={isMe ? "#fff" : Colors.gray[600]}
+                                    style={{ marginRight: 10 }}
+                                  />
+                                  <Text
+                                    style={{
+                                      flex: 1,
+                                      fontSize: 14,
+                                      color: isMe ? "#fff" : Colors.gray[800],
+                                    }}
+                                    numberOfLines={2}
+                                  >
+                                    {att.name || "Video — tap to open"}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            }
+                            return (
+                              <TouchableOpacity
+                                key={key}
+                                onPress={() => openAttachmentUrl(att.url)}
+                                accessibilityRole="button"
+                                accessibilityLabel="Open attachment"
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  maxWidth: "100%",
+                                  paddingVertical: 10,
+                                  paddingHorizontal: 12,
+                                  borderRadius: 12,
+                                  borderWidth: 1,
+                                  borderColor: isMe ? "rgba(255,255,255,0.35)" : Colors.gray[200],
+                                  backgroundColor: isMe ? "rgba(255,255,255,0.12)" : Colors.white,
+                                  marginBottom: gap,
+                                }}
+                              >
+                                <Ionicons
+                                  name="document-text-outline"
+                                  size={22}
+                                  color={isMe ? "#fff" : Colors.gray[600]}
+                                  style={{ marginRight: 10 }}
                                 />
+                                <Text
+                                  style={{
+                                    flex: 1,
+                                    fontSize: 14,
+                                    color: isMe ? "#fff" : Colors.gray[800],
+                                  }}
+                                  numberOfLines={2}
+                                >
+                                  {att.name || "Attachment — tap to open"}
+                                </Text>
                               </TouchableOpacity>
-                            )
-                          )}
+                            );
+                          })}
                         </View>
                       )}
                       {msg.content ? (

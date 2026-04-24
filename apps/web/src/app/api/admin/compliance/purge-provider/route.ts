@@ -27,7 +27,24 @@ const bodySchema = z.object({
 });
 
 function normalizeEmail(e: string): string {
-  return e.trim().toLowerCase();
+  return e
+    .trim()
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
+}
+
+function uniqueNonEmptyEmails(emails: (string | null | undefined)[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of emails) {
+    const t = typeof raw === "string" ? raw.trim() : "";
+    if (!t) continue;
+    const key = normalizeEmail(t);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
 }
 
 /**
@@ -83,9 +100,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const allowedEmails = [orgSnap.provider_email, orgSnap.owner_email].filter(
-      (e): e is string => Boolean(e && e.trim()),
-    );
+    let allowedEmails = uniqueNonEmptyEmails([
+      orgSnap.provider_email,
+      orgSnap.provider_billing_email,
+      orgSnap.owner_email,
+    ]);
+
+    if (ownerId) {
+      const { data: authUser, error: authErr } = await admin.auth.admin.getUserById(ownerId);
+      if (!authErr && authUser?.user?.email?.trim()) {
+        allowedEmails = uniqueNonEmptyEmails([...allowedEmails, authUser.user.email.trim()]);
+      }
+    }
+
+    if (allowedEmails.length === 0) {
+      return Response.json(
+        {
+          data: null,
+          error: {
+            message:
+              "No confirmation email on file for this provider (business, billing, owner profile, and Auth are empty). Set an email or use another verification path before purge.",
+            code: "NO_CONFIRM_EMAIL",
+          },
+        },
+        { status: 400 },
+      );
+    }
+
     const typed = normalizeEmail(typed_email_confirmation);
     const emailOk = allowedEmails.some((e) => normalizeEmail(e) === typed);
     if (!emailOk) {
@@ -93,9 +134,9 @@ export async function POST(request: NextRequest) {
         {
           data: null,
           error: {
-            message:
-              "typed_email_confirmation must match the provider business email or the owner account email",
+            message: `typed_email_confirmation must match one of: ${allowedEmails.join(", ")}`,
             code: "EMAIL_CONFIRMATION_MISMATCH",
+            accepted_emails: allowedEmails,
           },
         },
         { status: 400 },

@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BookingService } from "./types";
+import { combineDateAndTime } from "./time-utils";
 
 const SYNTHETIC_OFFERING = "00000000-0000-0000-0000-000000000000";
 
@@ -29,12 +30,18 @@ function syntheticBooking(args: {
   };
 }
 
-function isoAtLocalDateMinutes(dateStr: string, minutes: number): string {
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function isoAtLocalDateMinutes(dateStr: string, minutes: number, timezone?: string | null): string {
   const hh = Math.floor(minutes / 60)
     .toString()
     .padStart(2, "0");
   const mm = (minutes % 60).toString().padStart(2, "0");
-  return new Date(`${dateStr}T${hh}:${mm}:00`).toISOString();
+  return combineDateAndTime(dateStr, `${hh}:${mm}:00`, timezone ?? undefined).toISOString();
 }
 
 /** Same filter as legacy public availability for calendar blocks. */
@@ -70,13 +77,14 @@ export async function loadPublicCalendarParityBookings(
     /** Resolved staff column (may be synthetic `provider-{uuid}`). */
     slotStaffId: string | null;
     staffIdsForTimeOff: string[];
+    providerTimeZone?: string | null;
   }
 ): Promise<BookingService[]> {
-  const { providerId, date, locationId, slotStaffId, staffIdsForTimeOff } = args;
+  const { providerId, date, locationId, slotStaffId, staffIdsForTimeOff, providerTimeZone } = args;
   const out: BookingService[] = [];
 
-  const startOfDayIso = isoAtLocalDateMinutes(date, 0);
-  const endOfDayIso = isoAtLocalDateMinutes(date, 24 * 60 - 1);
+  const startOfDayIso = isoAtLocalDateMinutes(date, 0, providerTimeZone);
+  const endOfDayIso = isoAtLocalDateMinutes(addDays(date, 1), 0, providerTimeZone);
 
   const { data: blocks, error: blocksError } = await db
     .from("availability_blocks")

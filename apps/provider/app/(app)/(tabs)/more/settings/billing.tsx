@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as FileSystem from "expo-file-system/legacy";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -133,27 +134,31 @@ export default function BillingScreen() {
 
   const handleDownloadInvoice = useCallback(
     async (inv: Invoice) => {
-      const base = (APP_URL || "").replace(/\/$/, "");
-      const url = base ? `${base}/api/provider/invoices/${inv.id}/download` : "";
-      if (!url) {
-        Alert.alert("Error", "App URL not configured");
-        return;
-      }
       if (Platform.OS === "web") {
+        const base = (APP_URL || "").replace(/\/$/, "");
+        const url = base ? `${base}/api/provider/invoices/${inv.id}/download` : "";
+        if (!url) {
+          Alert.alert("Error", "App URL not configured");
+          return;
+        }
         Linking.openURL(url).catch(() => {});
         return;
       }
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        if (!token) {
-          Alert.alert("Sign in required", "Please sign in to download invoices.");
+        const res = await api.post<{ url?: string }>(
+          `/api/provider/invoices/${inv.id}/signed-url`,
+          {},
+        );
+        const signedUrl = res.data?.url;
+        if (res.error || !signedUrl) {
+          const msg =
+            (res.error as { message?: string } | null)?.message ??
+            "Could not generate invoice. Please try again.";
+          Alert.alert("Download invoice", msg);
           return;
         }
         const fileUri = `${FileSystem.cacheDirectory}invoice_${inv.invoice_number || inv.id}.pdf`;
-        await FileSystem.downloadAsync(url, fileUri, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await FileSystem.downloadAsync(signedUrl, fileUri);
         await Share.share({
           url: fileUri,
           message: `Invoice ${inv.invoice_number} - ${formatCurrency(inv.total_amount)}`,

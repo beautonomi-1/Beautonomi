@@ -291,8 +291,17 @@ export function useYocoPayment() {
           const msg =
             code === "SUBSCRIPTION_REQUIRED"
               ? "Upgrade your plan to use Yoco card payments."
-              : res.error.message || "Card payment could not be processed";
-          Alert.alert(code === "SUBSCRIPTION_REQUIRED" ? "Yoco not available" : "Payment Failed", msg);
+              : code === "TERMINAL_UNAVAILABLE" || code === "TERMINAL_NOT_FOUND"
+                ? res.error.message ||
+                  "Could not reach your Yoco terminal. Check that it is powered on, online, and paired, then try again."
+                : res.error.message || "Card payment could not be processed";
+          const title =
+            code === "SUBSCRIPTION_REQUIRED"
+              ? "Yoco not available"
+              : code === "TERMINAL_UNAVAILABLE" || code === "TERMINAL_NOT_FOUND"
+                ? "Terminal unavailable"
+                : "Payment Failed";
+          Alert.alert(title, msg);
           return null;
         }
         const raw = res.data;

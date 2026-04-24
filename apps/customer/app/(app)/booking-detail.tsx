@@ -33,6 +33,7 @@ import { supabase } from "@/lib/supabase/client";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as WebBrowser from "expo-web-browser";
+import * as Calendar from "expo-calendar";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
@@ -140,6 +141,7 @@ export default function BookingDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [icsLoading, setIcsLoading] = useState(false);
+  const [nativeCalLoading, setNativeCalLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"tracking" | "receipt" | "details">("tracking");
   const [cancelReasonModalOpen, setCancelReasonModalOpen] = useState(false);
   const [cancelReasonText, setCancelReasonText] = useState("");
@@ -157,7 +159,14 @@ export default function BookingDetailScreen() {
   const referralPostedBookingIds = useRef<Set<string>>(new Set());
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!id) return;
+    if (!id) {
+      if (!opts?.silent) {
+        setLoading(false);
+        setError("Booking not found. Please go back and try again.");
+        setBooking(null);
+      }
+      return;
+    }
     if (!opts?.silent) {
       setLoading(true);
       setError(null);
@@ -177,7 +186,13 @@ export default function BookingDetailScreen() {
             : raw && typeof raw === "object" && "data" in raw && (raw as { data?: unknown }).data
               ? (raw as { data: unknown }).data
               : raw;
-        setBooking(row ?? null);
+        if (row) {
+          setBooking(row);
+          setError(null);
+        } else if (!opts?.silent) {
+          setBooking(null);
+          setError("Booking not found. Please go back and try again.");
+        }
         hasLoadedOnce.current = true;
       }
     } catch (e) {
@@ -655,7 +670,7 @@ export default function BookingDetailScreen() {
       await FileSystem.writeAsStringAsync(fileUri, icsText, { encoding: FileSystem.EncodingType.UTF8 });
       await Share.share({
         url: fileUri,
-        title: "Add to Calendar",
+        title: "Share calendar file",
         message: Platform.OS === "android" ? icsText : undefined,
       });
     } catch (e) {
@@ -665,7 +680,57 @@ export default function BookingDetailScreen() {
     }
   }, [id, booking?.booking_number]);
 
-  const handleResendPin = async () => {
+  const handleSaveToDeviceCalendar = useCallback(
+    async (params: { title: string; description: string; location: string; start: Date; end: Date }) => {
+      if (Platform.OS === "web") {
+        Alert.alert("Not available on web", "Use Google Calendar or download the .ics file from this screen.");
+        return;
+      }
+      haptic.light();
+      setNativeCalLoading(true);
+      try {
+        const { status } = await Calendar.requestCalendarPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert(
+            "Calendar access",
+            "Calendar permission is off. You can enable it in Settings, or use “Share calendar file” to add the booking another way.",
+          );
+          return;
+        }
+        let calendarId: string | null = null;
+        const defaultCal = await Calendar.getDefaultCalendarAsync();
+        if (defaultCal?.id && defaultCal.allowsModifications) {
+          calendarId = defaultCal.id;
+        } else {
+          const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+          const writable = calendars.find((c) => c.allowsModifications);
+          calendarId = writable?.id ?? null;
+        }
+        if (!calendarId) {
+          Alert.alert("No calendar found", "Add a calendar in your device settings, then try again.");
+          return;
+        }
+        const tz = resolveBookingTimezone((booking as { display_time_zone?: string | null })?.display_time_zone);
+        await Calendar.createEventAsync(calendarId, {
+          title: params.title,
+          startDate: params.start,
+          endDate: params.end,
+          location: params.location,
+          notes: params.description,
+          timeZone: tz,
+        });
+        haptic.success();
+        Alert.alert("Saved", "This booking was added to your calendar.");
+      } catch (e) {
+        Alert.alert("Could not save", getApiErrorMessage(e as Error, "Calendar could not be updated."));
+      } finally {
+        setNativeCalLoading(false);
+      }
+    },
+    [booking],
+  );
+
+  const handleRefreshArrivalVerification = async () => {
     if (!id || isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil)) return;
     setIsResending(true);
     try {
@@ -679,6 +744,7 @@ export default function BookingDetailScreen() {
         Alert.alert("Error", msg + retryAfter);
         if (res.error.code === "RATE_LIMITED") setResendCooldownUntil(Date.now() + 90000);
       } else {
+        haptic.success();
         setResendCooldownUntil(Date.now() + 90000);
         await load();
       }
@@ -757,6 +823,238 @@ export default function BookingDetailScreen() {
   const isProviderArrived =
     booking.current_stage === "provider_arrived" || !!(booking as any).provider_arrived_at;
   const estimatedArrival = parseValidDate((booking as any).estimated_arrival);
+
+  const detailAddonRows = Array.isArray((booking as any).addons)
+    ? ((booking as any).addons as Record<string, unknown>[])
+    : Array.isArray((booking as any).booking_addons)
+      ? ((booking as any).booking_addons as Record<string, unknown>[])
+      : [];
+
+  /** Subtotal / tax / fees / total — same figures as Receipt (Details tab parity). */
+  const renderPaymentBreakdownCore = () => (
+    <>
+      {booking.subtotal != null && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Subtotal</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>
+            {booking.currency}{" "}
+            {Math.max(0, Number(booking.subtotal) - Number((booking as any).travel_fee || 0)).toFixed(2)}
+          </Text>
+        </View>
+      )}
+      {booking.tax_amount > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+            Tax{Number((booking as any).tax_rate || 0) > 0 ? ` (${Number((booking as any).tax_rate)}%)` : ""}
+          </Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number(booking.tax_amount).toFixed(2)}</Text>
+        </View>
+      )}
+      {booking.discount_amount > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Discount</Text>
+          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number(booking.discount_amount).toFixed(2)}</Text>
+        </View>
+      )}
+      {Number((booking as any).loyalty_discount_amount) > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+            Loyalty
+            {Number((booking as any).loyalty_points_used || 0) > 0
+              ? ` (${Number((booking as any).loyalty_points_used).toLocaleString()} pts)`
+              : ""}
+          </Text>
+          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).loyalty_discount_amount).toFixed(2)}</Text>
+        </View>
+      )}
+      {Number((booking as any).membership_discount_amount) > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Membership</Text>
+          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).membership_discount_amount).toFixed(2)}</Text>
+        </View>
+      )}
+      {Number((booking as any).promotion_discount_amount) > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Promotion</Text>
+          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).promotion_discount_amount).toFixed(2)}</Text>
+        </View>
+      )}
+      {Number((booking as any).service_fee_amount) > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Service / platform fee</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).service_fee_amount).toFixed(2)}</Text>
+        </View>
+      )}
+      {Number((booking as any).travel_fee) > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Travel fee</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).travel_fee).toFixed(2)}</Text>
+        </View>
+      )}
+      {Number((booking as any).gift_card_amount) > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Gift card</Text>
+          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).gift_card_amount).toFixed(2)}</Text>
+        </View>
+      )}
+      {Number((booking as any).tip_amount) > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Tip</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).tip_amount).toFixed(2)}</Text>
+        </View>
+      )}
+      {Number((booking as any).cancellation_fee) > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Cancellation fee</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).cancellation_fee).toFixed(2)}</Text>
+        </View>
+      )}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 8, marginTop: 4 }}>
+        <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
+        <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{booking.currency} {Number(booking.total_amount || 0).toFixed(2)}</Text>
+      </View>
+      {(booking as any).deposit_required && (booking as any).payment_option === "deposit" && Number((booking as any).deposit_amount || 0) > 0 && (
+        <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
+            Deposit{(booking as any).deposit_percentage ? ` (${(booking as any).deposit_percentage}%)` : ""}
+          </Text>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+            {booking.currency} {Number((booking as any).deposit_amount).toFixed(2)}
+          </Text>
+        </View>
+      )}
+      {Number((booking as any).wallet_amount || 0) > 0 && (
+        <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ fontSize: 13, color: "#059669" }}>Wallet credit applied</Text>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: "#059669" }}>-{booking.currency} {Number((booking as any).wallet_amount).toFixed(2)}</Text>
+        </View>
+      )}
+      {Number((booking as any).total_paid || 0) > 0 && (
+        <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
+            {Number((booking as any).wallet_amount || 0) > 0 ? "Paid via card" : "Amount paid"}
+          </Text>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).total_paid).toFixed(2)}</Text>
+        </View>
+      )}
+      {booking.payment_status && (
+        <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center" }}>
+          <View
+            style={{
+              height: 8,
+              width: 8,
+              borderRadius: 4,
+              marginRight: 8,
+              backgroundColor:
+                booking.payment_status === "paid" ? "#22C55E" : booking.payment_status === "partially_paid" ? "#F59E0B" : "#9CA3AF",
+            }}
+          />
+          <Text style={{ fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>
+            {booking.payment_status === "paid"
+              ? "Paid in full"
+              : booking.payment_status === "partially_paid"
+                ? "Partially paid"
+                : booking.payment_status}
+          </Text>
+        </View>
+      )}
+      {typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
+        <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Outstanding balance</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: "#B45309" }}>
+            {booking.currency} {Number(booking.outstanding_balance).toFixed(2)}
+          </Text>
+        </View>
+      )}
+      {isCashBooking && typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
+        <View style={{ marginTop: 8, backgroundColor: "#FEF3C7", borderRadius: 8, padding: 10 }}>
+          <Text style={{ fontSize: 13, color: "#92400E" }}>
+            {booking.location_type === "at_home"
+              ? "You will pay cash when your provider arrives."
+              : "You will pay cash at the salon."}
+          </Text>
+        </View>
+      )}
+    </>
+  );
+
+  const renderAdditionalChargesSection = () => {
+    const charges = booking?.additional_charges ?? [];
+    if (charges.length === 0) return null;
+    return (
+      <View style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 12 }}>
+        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Additional charges</Text>
+        {charges.map((c: any, idx: number) => {
+          const unpaid = c.status === "pending" || c.status === "approved";
+          const cur = (c.currency as string | undefined) || booking.currency;
+          const statusRaw = typeof c.status === "string" ? c.status : "";
+          const statusLabel = statusRaw.replace(/_/g, " ");
+          return (
+            <View
+              key={String(c.id ?? idx)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 8,
+                borderBottomWidth: idx < charges.length - 1 ? 1 : 0,
+                borderBottomColor: Colors.gray[100],
+              }}
+            >
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.description || "Additional charge"}</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[500] }}>
+                  {cur} {Number(c.amount || 0).toFixed(2)}
+                </Text>
+                {c.paid_at ? (
+                  <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>Paid on {new Date(c.paid_at).toLocaleDateString()}</Text>
+                ) : null}
+              </View>
+              {unpaid ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    haptic.light();
+                    router.push({
+                      pathname: "/(app)/in-app-browser",
+                      params: {
+                        url: encodeURIComponent(`${APP_URL}/account-settings/bookings/${booking.id}/pay-additional/${c.id}`),
+                        title: "Pay additional charge",
+                      },
+                    } as never);
+                  }}
+                  style={{ backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pay additional charge"
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Pay</Text>
+                </TouchableOpacity>
+              ) : (
+                <View
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    backgroundColor: c.status === "paid" ? "#DCFCE7" : c.status === "rejected" ? "#FEE2E2" : Colors.gray[100],
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: "600",
+                      textTransform: "capitalize",
+                      color: c.status === "paid" ? "#15803d" : c.status === "rejected" ? "#B91C1C" : Colors.gray[700],
+                    }}
+                  >
+                    {statusLabel || "—"}
+                  </Text>
+                </View>
+              )}
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
 
   return (
     <>
@@ -921,18 +1219,33 @@ export default function BookingDetailScreen() {
                 </View>
                 {pinSecondsLeft != null && (
                   <Text style={{ fontSize: 13, color: "#1E40AF", marginBottom: 12 }}>
-                    {pinSecondsLeft > 0 ? `Code expires in ${Math.floor(pinSecondsLeft / 60)}:${String(pinSecondsLeft % 60).padStart(2, "0")}` : "Code expired"}
+                    {pinSecondsLeft > 0 ? `Code expires in ${Math.floor(pinSecondsLeft / 60)}:${String(pinSecondsLeft % 60).padStart(2, "0")}` : "Code expired — get a new code below (your QR refreshes too if you use it)."}
                   </Text>
                 )}
                 <TouchableOpacity
-                  onPress={handleResendPin}
-                  disabled={isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil) || (pinSecondsLeft != null && pinSecondsLeft <= 0)}
-                  style={{ backgroundColor: Colors.primary, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, alignSelf: "flex-start" }}
+                  onPress={handleRefreshArrivalVerification}
+                  disabled={isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil)}
+                  style={{
+                    backgroundColor:
+                      isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil)
+                        ? Colors.gray[300]
+                        : Colors.primary,
+                    paddingVertical: 10,
+                    paddingHorizontal: 16,
+                    borderRadius: 12,
+                    alignSelf: "flex-start",
+                  }}
                   accessibilityRole="button"
-                  accessibilityLabel="Resend code"
+                  accessibilityLabel={pinSecondsLeft === 0 ? "Get new verification code" : "Resend verification code"}
                 >
                   <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>
-                    {isResending ? "Sending…" : resendCooldownUntil != null && Date.now() < resendCooldownUntil ? "Resend code (wait)" : "Resend code"}
+                    {isResending
+                      ? "Sending…"
+                      : resendCooldownUntil != null && Date.now() < resendCooldownUntil
+                        ? "Resend (wait)"
+                        : pinSecondsLeft === 0
+                          ? "Get new code & QR"
+                          : "Resend code"}
                   </Text>
                 </TouchableOpacity>
                 {!showFallbackInput ? (
@@ -981,19 +1294,59 @@ export default function BookingDetailScreen() {
                 <Text style={{ fontSize: 14, color: "#6B21A8", marginBottom: 16 }}>
                   {bothArrivalMethodsVisible
                     ? ARRIVAL_QR_CUSTOMER_SUBTITLE_WITH_PIN
-                    : "They will scan it or enter the code on their device to confirm they&apos;ve arrived."}
+                    : "They will scan it or enter the code on their device to confirm they've arrived."}
                 </Text>
-                <View style={{ alignItems: "center", backgroundColor: "#fff", borderRadius: 16, padding: 16, alignSelf: "center" }}>
-                  <QRCode value={qrPayloadForDisplay} size={200} backgroundColor="#FFFFFF" color="#000000" />
-                </View>
+                {qrSecondsLeft != null && qrSecondsLeft <= 0 ? (
+                  <View style={{ alignItems: "center", paddingVertical: 12 }}>
+                    <Text style={{ fontSize: 14, color: "#6B21A8", textAlign: "center", marginBottom: 12 }}>
+                      This QR is no longer valid. Refresh to show a new code for your provider.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ alignItems: "center", backgroundColor: "#fff", borderRadius: 16, padding: 16, alignSelf: "center" }}>
+                    <QRCode value={qrPayloadForDisplay} size={200} backgroundColor="#FFFFFF" color="#000000" />
+                  </View>
+                )}
                 {qrSecondsLeft != null && (
                   <Text style={{ fontSize: 13, color: "#6B21A8", marginTop: 12, textAlign: "center" }}>
                     {qrSecondsLeft > 0
                       ? `QR expires in ${Math.floor(qrSecondsLeft / 60)}:${String(qrSecondsLeft % 60).padStart(2, "0")}`
-                      : "QR expired — ask your provider to refresh if needed"}
+                      : "QR expired"}
                   </Text>
                 )}
-                {qrVerificationCode ? (
+                {qrSecondsLeft != null && qrSecondsLeft <= 0 && !needsPinDisplay ? (
+                  <TouchableOpacity
+                    onPress={handleRefreshArrivalVerification}
+                    disabled={isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil)}
+                    style={{
+                      marginTop: 8,
+                      alignSelf: "center",
+                      backgroundColor:
+                        isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil)
+                          ? Colors.gray[300]
+                          : Colors.primary,
+                      paddingVertical: 10,
+                      paddingHorizontal: 16,
+                      borderRadius: 12,
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Refresh verification QR"
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>
+                      {isResending
+                        ? "Refreshing…"
+                        : resendCooldownUntil != null && Date.now() < resendCooldownUntil
+                          ? "Refresh (wait)"
+                          : "Refresh QR & code"}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+                {qrSecondsLeft != null && qrSecondsLeft <= 0 && needsPinDisplay ? (
+                  <Text style={{ fontSize: 13, color: "#6B21A8", marginTop: 10, textAlign: "center" }}>
+                    Tap “Get new code & QR” above to refresh your PIN and this QR.
+                  </Text>
+                ) : null}
+                {qrVerificationCode && (qrSecondsLeft == null || qrSecondsLeft > 0) ? (
                   <TouchableOpacity
                     onPress={async () => {
                       haptic.light();
@@ -1071,136 +1424,7 @@ export default function BookingDetailScreen() {
           <>
             <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16 }}>
               <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Payment</Text>
-              {booking.subtotal != null && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Subtotal</Text>
-                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Math.max(0, Number(booking.subtotal) - Number((booking as any).travel_fee || 0)).toFixed(2)}</Text>
-                </View>
-              )}
-              {booking.tax_amount > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-                    Tax{Number((booking as any).tax_rate || 0) > 0 ? ` (${Number((booking as any).tax_rate)}%)` : ""}
-                  </Text>
-                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number(booking.tax_amount).toFixed(2)}</Text>
-                </View>
-              )}
-              {booking.discount_amount > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Discount</Text>
-                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number(booking.discount_amount).toFixed(2)}</Text>
-                </View>
-              )}
-              {Number((booking as any).loyalty_discount_amount) > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-                    Loyalty
-                    {Number((booking as any).loyalty_points_used || 0) > 0
-                      ? ` (${Number((booking as any).loyalty_points_used).toLocaleString()} pts)`
-                      : ""}
-                  </Text>
-                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).loyalty_discount_amount).toFixed(2)}</Text>
-                </View>
-              )}
-              {Number((booking as any).membership_discount_amount) > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Membership</Text>
-                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).membership_discount_amount).toFixed(2)}</Text>
-                </View>
-              )}
-              {Number((booking as any).promotion_discount_amount) > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Promotion</Text>
-                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).promotion_discount_amount).toFixed(2)}</Text>
-                </View>
-              )}
-              {Number((booking as any).service_fee_amount) > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Service / platform fee</Text>
-                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).service_fee_amount).toFixed(2)}</Text>
-                </View>
-              )}
-              {Number((booking as any).travel_fee) > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Travel fee</Text>
-                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).travel_fee).toFixed(2)}</Text>
-                </View>
-              )}
-              {Number((booking as any).gift_card_amount) > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Gift card</Text>
-                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).gift_card_amount).toFixed(2)}</Text>
-                </View>
-              )}
-              {Number((booking as any).tip_amount) > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Tip</Text>
-                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).tip_amount).toFixed(2)}</Text>
-                </View>
-              )}
-              {Number((booking as any).cancellation_fee) > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Cancellation fee</Text>
-                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).cancellation_fee).toFixed(2)}</Text>
-                </View>
-              )}
-              <View style={{ flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 8, marginTop: 4 }}>
-                <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
-                <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{booking.currency} {Number(booking.total_amount || 0).toFixed(2)}</Text>
-              </View>
-              {/* Deposit context */}
-              {(booking as any).deposit_required && (booking as any).payment_option === "deposit" && Number((booking as any).deposit_amount || 0) > 0 && (
-                <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
-                    Deposit{(booking as any).deposit_percentage ? ` (${(booking as any).deposit_percentage}%)` : ""}
-                  </Text>
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
-                    {booking.currency} {Number((booking as any).deposit_amount).toFixed(2)}
-                  </Text>
-                </View>
-              )}
-              {/* Wallet credit applied — only shown when wallet was used */}
-              {Number((booking as any).wallet_amount || 0) > 0 && (
-                <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ fontSize: 13, color: "#059669" }}>Wallet credit applied</Text>
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#059669" }}>-{booking.currency} {Number((booking as any).wallet_amount).toFixed(2)}</Text>
-                </View>
-              )}
-              {/* §Customer-audit 2026-04: previously only shown when wallet
-                 credit was applied, so card-only bookings showed no
-                 "Amount paid" row. Always show paid amount when > 0 and
-                 disambiguate from wallet credit via the label. */}
-              {Number((booking as any).total_paid || 0) > 0 && (
-                <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
-                    {Number((booking as any).wallet_amount || 0) > 0 ? "Paid via card" : "Amount paid"}
-                  </Text>
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).total_paid).toFixed(2)}</Text>
-                </View>
-              )}
-              {booking.payment_status && (
-                <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center" }}>
-                  <View style={{ height: 8, width: 8, borderRadius: 4, marginRight: 8, backgroundColor: booking.payment_status === "paid" ? "#22C55E" : booking.payment_status === "partially_paid" ? "#F59E0B" : "#9CA3AF" }} />
-                  <Text style={{ fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>
-                    {booking.payment_status === "paid" ? "Paid in full" : booking.payment_status === "partially_paid" ? "Partially paid" : booking.payment_status}
-                  </Text>
-                </View>
-              )}
-              {typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
-                <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Outstanding balance</Text>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#B45309" }}>{booking.currency} {Number(booking.outstanding_balance).toFixed(2)}</Text>
-                </View>
-              )}
-              {isCashBooking && typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
-                <View style={{ marginTop: 8, backgroundColor: "#FEF3C7", borderRadius: 8, padding: 10 }}>
-                  <Text style={{ fontSize: 13, color: "#92400E" }}>
-                    {booking.location_type === "at_home"
-                      ? "You will pay cash when your provider arrives."
-                      : "You will pay cash at the salon."}
-                  </Text>
-                </View>
-              )}
+              {renderPaymentBreakdownCore()}
             </View>
             {payError && (
               <View style={{ backgroundColor: "#FEF2F2", borderRadius: 12, padding: 12, marginBottom: 16 }}>
@@ -1223,87 +1447,7 @@ export default function BookingDetailScreen() {
                 {payRemainingLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>Pay remaining balance</Text>}
               </Pressable>
             )}
-            {(() => {
-              const charges = booking?.additional_charges ?? [];
-              if (charges.length === 0) return null;
-              return (
-                <View style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 12 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Additional charges</Text>
-                  {charges.map((c: any, idx: number) => {
-                    const unpaid = c.status === "pending" || c.status === "approved";
-                    const cur = (c.currency as string | undefined) || booking.currency;
-                    const statusRaw = typeof c.status === "string" ? c.status : "";
-                    const statusLabel = statusRaw.replace(/_/g, " ");
-                    return (
-                      <View
-                        key={String(c.id ?? idx)}
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          paddingVertical: 8,
-                          borderBottomWidth: idx < charges.length - 1 ? 1 : 0,
-                          borderBottomColor: Colors.gray[100],
-                        }}
-                      >
-                        <View style={{ flex: 1, marginRight: 8 }}>
-                          <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.description || "Additional charge"}</Text>
-                          <Text style={{ fontSize: 13, color: Colors.gray[500] }}>
-                            {cur} {Number(c.amount || 0).toFixed(2)}
-                          </Text>
-                          {c.paid_at ? (
-                            <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>
-                              Paid on {new Date(c.paid_at).toLocaleDateString()}
-                            </Text>
-                          ) : null}
-                        </View>
-                        {unpaid ? (
-                          <TouchableOpacity
-                            onPress={() => {
-                              haptic.light();
-                              router.push({
-                                pathname: "/(app)/in-app-browser",
-                                params: {
-                                  url: encodeURIComponent(`${APP_URL}/account-settings/bookings/${booking.id}/pay-additional/${c.id}`),
-                                  title: "Pay additional charge",
-                                },
-                              } as never);
-                            }}
-                            style={{ backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
-                            accessibilityRole="button"
-                            accessibilityLabel="Pay additional charge"
-                          >
-                            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Pay</Text>
-                          </TouchableOpacity>
-                        ) : (
-                          <View
-                            style={{
-                              paddingHorizontal: 10,
-                              paddingVertical: 6,
-                              borderRadius: 8,
-                              backgroundColor:
-                                c.status === "paid" ? "#DCFCE7" : c.status === "rejected" ? "#FEE2E2" : Colors.gray[100],
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 12,
-                                fontWeight: "600",
-                                textTransform: "capitalize",
-                                color:
-                                  c.status === "paid" ? "#15803d" : c.status === "rejected" ? "#B91C1C" : Colors.gray[700],
-                              }}
-                            >
-                              {statusLabel || "—"}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
-              );
-            })()}
+            {renderAdditionalChargesSection()}
             <View style={{ flexDirection: "row" }}>
               <TouchableOpacity
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
@@ -1405,6 +1549,37 @@ export default function BookingDetailScreen() {
           <>
         {/* Provider & Status */}
         <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16 }}>
+          <View
+            style={{
+              marginBottom: 12,
+              paddingBottom: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: Colors.gray[200],
+            }}
+          >
+            <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>Visit type</Text>
+            {isAtHome ? (
+              <>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>House call</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 4 }}>
+                  Your professional travels to the address below. Tracking and arrival verification (when your provider
+                  arrives) appear on the Tracking tab.
+                </Text>
+                {Number((booking as any).travel_fee || 0) > 0 ? (
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 6 }}>
+                    A travel fee is included in your price breakdown below.
+                  </Text>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>In-salon visit</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 4 }}>
+                  {"You go to the provider's salon or workspace. Use the address below for directions and parking."}
+                </Text>
+              </>
+            )}
+          </View>
           {booking.is_group_booking && booking.group_booking_ref && (
             <View style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[200] }}>
               <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Group booking</Text>
@@ -1470,10 +1645,10 @@ export default function BookingDetailScreen() {
         )}
 
         {/* Add-ons */}
-        {Array.isArray((booking as any).addons) && (booking as any).addons.length > 0 && (
+        {detailAddonRows.length > 0 && (
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Add-ons</Text>
-            {((booking as any).addons as Record<string, unknown>[]).map((addon, i) => {
+            {detailAddonRows.map((addon, i) => {
               const addonName = String(addon.offering_name ?? addon.addon_name ?? "Add-on");
               const qty = Number(addon.quantity ?? 1);
               const price = Number(addon.price ?? 0);
@@ -1510,10 +1685,19 @@ export default function BookingDetailScreen() {
           </View>
         )}
 
+        {/* Price & payment — same breakdown as Receipt for parity */}
+        <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16 }}>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Price & payment</Text>
+          {renderPaymentBreakdownCore()}
+        </View>
+        {renderAdditionalChargesSection()}
+
         {/* Location & Map */}
         {location && (
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Location</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>
+              {isAtHome ? "Provider location" : "Salon location"}
+            </Text>
             <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
               <Ionicons name="location-outline" size={16} color={Colors.gray[600]} style={{ marginTop: 2 }} />
               <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[600], flex: 1 }}>
@@ -1536,6 +1720,15 @@ export default function BookingDetailScreen() {
             )}
           </View>
         )}
+
+        {!isAtHome && !location ? (
+          <View style={{ marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>Salon location</Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
+              Salon address is not loaded in the app yet. Check your confirmation email or message your provider for the exact address.
+            </Text>
+          </View>
+        ) : null}
 
         {isAtHome && !location && (() => {
           const b = booking as Record<string, unknown>;
@@ -1631,6 +1824,31 @@ export default function BookingDetailScreen() {
           </View>
         ) : null}
 
+        {isAtHome &&
+        !location &&
+        !((): boolean => {
+          const b = booking as Record<string, unknown>;
+          const nested = b.address as Record<string, unknown> | undefined;
+          const line1 = nested?.line1 ?? b.address_line1;
+          return Boolean(line1);
+        })() ? (
+          <View style={{ marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: "#FFFBEB", padding: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>Service address</Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
+              Your visit address will appear here once it is saved on the booking. If you are unsure, open this booking on the web or message your provider.
+            </Text>
+          </View>
+        ) : null}
+
+        {(booking as { special_requests?: string | null }).special_requests?.trim() ? (
+          <View style={{ marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], padding: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 6 }}>Notes for your provider</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[700], lineHeight: 22 }}>
+              {(booking as { special_requests?: string }).special_requests}
+            </Text>
+          </View>
+        ) : null}
+
         {booking.status !== "cancelled" && (() => {
           const totalMinutes = (services || []).reduce((sum: number, s: any) => sum + (s.duration_minutes ?? s.offering?.duration_minutes ?? 0), 0);
           const calStart = parseValidDate(booking.selected_datetime);
@@ -1644,11 +1862,17 @@ export default function BookingDetailScreen() {
                 ? [(booking as any).address_line1, (booking as any).address_city, (booking as any).address_country].filter(Boolean).join(", ")
                 : "Address TBD";
           const calTitle = `Appointment with ${provider?.business_name ?? "Beautonomi"}`;
-          const calDesc = `Booking #${booking.booking_number ?? ""}\n${(services || []).map((s: any) => `${s.offering_name ?? s.service_name ?? "Service"} (${s.duration_minutes ?? 0} min)`).join("\n")}`;
+          const visitLine = isAtHome ? "House call" : "In-salon visit";
+          const calDesc = `Booking #${booking.booking_number ?? ""}\n${visitLine}\n${(services || []).map((s: any) => `${s.offering_name ?? s.service_name ?? "Service"} (${s.duration_minutes ?? 0} min)`).join("\n")}`;
           if (!calStart || !calEnd) return null;
           return (
             <View style={{ marginBottom: 16 }}>
               <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Add to calendar</Text>
+              <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 10 }}>
+                {Platform.OS === "web"
+                  ? "Open in Google Calendar or download an .ics file."
+                  : "Save directly to your phone calendar, open Google Calendar in the browser, or share an .ics file (e.g. to Outlook)."}
+              </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 <TouchableOpacity
                   onPress={() => {
@@ -1662,19 +1886,43 @@ export default function BookingDetailScreen() {
                   <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
                   <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Google Calendar</Text>
                 </TouchableOpacity>
+                {Platform.OS !== "web" ? (
+                  <TouchableOpacity
+                    onPress={() =>
+                      void handleSaveToDeviceCalendar({
+                        title: calTitle,
+                        description: calDesc,
+                        location: calLocation,
+                        start: calStart,
+                        end: calEnd,
+                      })
+                    }
+                    disabled={nativeCalLoading}
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Save booking to device calendar"
+                  >
+                    {nativeCalLoading ? (
+                      <ActivityIndicator size="small" color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                    ) : (
+                      <Ionicons name="add-circle-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                    )}
+                    <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Save to calendar</Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity
                   onPress={handleAddToCalendarIcs}
                   disabled={icsLoading}
                   style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
                   accessibilityRole="button"
-                  accessibilityLabel="Download .ics file for Apple Calendar or other apps"
+                  accessibilityLabel="Share or download calendar file"
                 >
                   {icsLoading ? (
                     <ActivityIndicator size="small" color={Colors.gray[700]} style={{ marginRight: 6 }} />
                   ) : (
-                    <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                    <Ionicons name="share-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
                   )}
-                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{Platform.OS === "ios" ? "Apple Calendar" : "Download .ics"}</Text>
+                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Share .ics file</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1803,10 +2051,11 @@ export default function BookingDetailScreen() {
                 `Date: ${formatDate(booking.selected_datetime, booking.display_time_zone)}`,
                 `Time: ${formatTime(booking.selected_datetime, booking.display_time_zone)}`,
                 `Status: ${booking.status}`,
+                isAtHome ? "Visit: House call" : "Visit: In-salon",
                 ``,
                 ...services.map(
                   (svc: any) =>
-                    `• ${svc.service_name || svc.title || svc.name || "Service"} – ${booking.currency} ${Number(svc.price || 0).toFixed(2)}`
+                    `• ${svc.offering_name || svc.service_name || svc.title || svc.name || "Service"} – ${booking.currency} ${Number(svc.price || 0).toFixed(2)}`
                 ),
                 ``,
                 `Total: ${booking.currency} ${Number(booking.total_amount || 0).toFixed(2)}`,

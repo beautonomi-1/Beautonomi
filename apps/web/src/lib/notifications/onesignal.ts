@@ -6,6 +6,8 @@
  */
 
 import { getSupabaseServer } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/database.types";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
 import {
@@ -18,9 +20,119 @@ import {
 const ONESIGNAL_API_BASE = "https://api.onesignal.com";
 
 /**
+ * OneSignal REST auth: `Authorization: Key <app api key>` (see Keys & IDs).
+ * Legacy integrations sometimes stored `Basic …` or `Key …` verbatim — pass through unchanged.
+ */
+export function oneSignalAuthorizationHeader(restApiKey: string): string {
+  const raw = restApiKey.trim();
+  if (!raw) return "";
+  if (/^(basic|key)\s+/i.test(raw)) return raw;
+  return `Key ${raw}`;
+}
+
+function formatOneSignalApiErrors(responseData: unknown): string {
+  if (!responseData || typeof responseData !== "object") return "Unknown error";
+  const o = responseData as Record<string, unknown>;
+  const err = o.errors;
+  if (Array.isArray(err)) {
+    return err
+      .map((x) => (typeof x === "string" ? x : JSON.stringify(x)))
+      .join(", ");
+  }
+  if (typeof err === "string" && err.trim()) return err.trim();
+  const msg = o.message;
+  if (typeof msg === "string" && msg.trim()) return msg.trim();
+  return "Unknown error";
+}
+
+function eventTypeFromPayloadData(data: unknown): string {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const t = (data as { type?: unknown }).type;
+    if (typeof t === "string" && t.trim()) return t;
+  }
+  return "notification";
+}
+
+/**
+ * Map internal payload targeting to OneSignal Create Message fields.
+ * - Push with subscription IDs (Expo `getIdAsync`) → `include_subscription_ids` (no mixing with aliases).
+ * - Single-channel external users (Expo `OneSignal.login(user.id)`) → `include_aliases.external_id` + `target_channel`.
+ * - Multi-channel external sends → legacy `include_external_user_ids` + `channel_for_external_user_ids`.
+ *
+ * @see https://documentation.onesignal.com/reference/create-message
+ */
+function applyOneSignalTargeting(
+  notification: Record<string, unknown>,
+  payload: {
+    include_player_ids?: string[];
+    include_external_user_ids?: string[];
+    filters?: unknown[];
+    channels?: NotificationChannel[];
+  },
+): void {
+  const playerIds = (payload.include_player_ids ?? []).filter(
+    (x): x is string => typeof x === "string" && x.trim().length > 0,
+  );
+  const extIds = (payload.include_external_user_ids ?? []).filter(
+    (x): x is string => typeof x === "string" && x.trim().length > 0,
+  );
+  const chans = (payload.channels?.length ? payload.channels : ["push"]) as string[];
+
+  if (payload.filters && payload.filters.length > 0) {
+    notification.filters = payload.filters;
+  }
+
+  const singleChannel =
+    chans.length === 1 &&
+    (chans[0] === "push" || chans[0] === "email" || chans[0] === "sms")
+      ? chans[0]
+      : null;
+
+  if (playerIds.length > 0 && singleChannel === "push") {
+    notification.include_subscription_ids = playerIds;
+    return;
+  }
+
+  if (extIds.length > 0 && singleChannel) {
+    notification.include_aliases = { external_id: extIds };
+    notification.target_channel = singleChannel;
+    return;
+  }
+
+  if (extIds.length > 0) {
+    notification.include_external_user_ids = extIds;
+    if (chans.length > 0) {
+      notification.channel_for_external_user_ids = chans;
+    }
+  }
+  if (playerIds.length > 0) {
+    notification.include_player_ids = playerIds;
+  }
+}
+
+/**
  * Notification channels supported by OneSignal
  */
 export type NotificationChannel = "push" | "email" | "sms" | "live_activities";
+
+const VALID_NOTIFICATION_CHANNELS: ReadonlySet<string> = new Set([
+  "push",
+  "email",
+  "sms",
+  "live_activities",
+]);
+
+export const DEFAULT_NOTIFICATION_CHANNELS: NotificationChannel[] = ["push"];
+
+/** Coerce template/DB string lists into OneSignal channel literals (invalid entries dropped). */
+export function parseNotificationChannels(
+  input: readonly (string | NotificationChannel)[] | null | undefined,
+  fallback: NotificationChannel[] = DEFAULT_NOTIFICATION_CHANNELS,
+): NotificationChannel[] {
+  const raw = input?.length ? [...input] : [...fallback];
+  const out = raw.filter((c): c is NotificationChannel => VALID_NOTIFICATION_CHANNELS.has(c));
+  return out.length > 0 ? out : [...fallback];
+}
 
 /**
  * Notification payload schema
@@ -34,14 +146,14 @@ export const NotificationPayloadSchema = z.object({
   customerId: z.string().optional(),
   url: z.string().url().optional(),
   image: z.string().url().optional(),
-  data: z.record(z.string(), z.any()).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
 }).passthrough();
 
 export type NotificationPayload = z.infer<typeof NotificationPayloadSchema>;
 
 export interface SendNotificationResult {
   success: boolean;
-  data?: any;
+  data?: Record<string, unknown>;
   error?: string;
   message?: string;
   notification_id?: string;
@@ -50,9 +162,9 @@ export interface SendNotificationResult {
 export interface NotificationLogEntry {
   event_type: string;
   recipients: string[]; // user_ids or player_ids
-  payload: any;
+  payload: unknown;
   status: "sent" | "failed" | "pending";
-  provider_response: any;
+  provider_response: unknown;
   error_message?: string;
   channels?: NotificationChannel[];
 }
@@ -88,7 +200,7 @@ export async function verifyOneSignalConfig(options?: ResolveOneSignalOptions): 
  */
 async function logNotification(entry: NotificationLogEntry) {
   // Use service role if available (webhooks/background jobs don't have a session)
-  let supabase: any;
+  let supabase: SupabaseClient<Database>;
   try {
     supabase = getSupabaseAdmin();
   } catch {
@@ -98,9 +210,9 @@ async function logNotification(entry: NotificationLogEntry) {
   const { error } = await supabase.from("notification_logs").insert({
     event_type: entry.event_type,
     recipients: entry.recipients,
-    payload: entry.payload,
+    payload: entry.payload as Database["public"]["Tables"]["notification_logs"]["Insert"]["payload"],
     status: entry.status,
-    provider_response: entry.provider_response,
+    provider_response: entry.provider_response as Database["public"]["Tables"]["notification_logs"]["Insert"]["provider_response"],
     error_message: entry.error_message,
     channels: entry.channels || ["push"],
     created_at: new Date().toISOString(),
@@ -111,18 +223,20 @@ async function logNotification(entry: NotificationLogEntry) {
   }
 }
 
+type UserScopedSupabase = SupabaseClient<Database>;
+
 /**
  * Register a device for push notifications.
+ * @param supabase — Request-scoped client (must include the caller's JWT, e.g. from `getSupabaseServer(request)`), otherwise mobile Bearer registration hits cookie/anon RLS and fails silently.
  * @param appType - 'customer' | 'provider' for multi-app OneSignal; defaults to 'customer'.
  */
 export async function registerDevice(
+  supabase: UserScopedSupabase,
   userId: string,
   playerId: string,
   platform: "web" | "ios" | "android",
   appType: OneSignalAppType = "customer"
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await getSupabaseServer();
-
   const { error } = await supabase
     .from("user_devices")
     .upsert(
@@ -148,7 +262,7 @@ export async function registerDevice(
 export type OneSignalSendOptions = {
   appType?: OneSignalAppType;
   /** When sending to users who are not the current requester (e.g. provider when customer creates request), pass admin client so device lookup is not blocked by RLS. */
-  supabaseClient?: any;
+  supabaseClient?: SupabaseClient<Database>;
   /** Market tenant: use platform_settings / platform_secrets for this tenant (merged over global), same as admin Settings UI. */
   tenantId?: string | null;
 };
@@ -164,19 +278,19 @@ async function sendOneSignalNotification(
   payload: {
     include_player_ids?: string[];
     include_external_user_ids?: string[];
-    filters?: any[];
+    filters?: unknown[];
     channels?: NotificationChannel[];
     headings?: Record<string, string>;
     contents?: Record<string, string>;
     subtitle?: Record<string, string>;
-    data?: Record<string, any>;
+    data?: Record<string, unknown>;
     url?: string;
     big_picture?: string;
     email_subject?: string;
     email_body?: string;
     sms_from?: string;
     sms_body?: string;
-    live_activities?: any;
+    live_activities?: unknown;
     template_id?: string;
     content_available?: boolean;
     mutable_content?: boolean;
@@ -194,38 +308,24 @@ async function sendOneSignalNotification(
   if (!appId || !restKey) {
     console.warn("OneSignal API keys not configured. Skipping notification send.");
     await logNotification({
-      event_type: payload.data?.type || "notification",
+      event_type: eventTypeFromPayloadData(payload.data),
       recipients: payload.include_player_ids || payload.include_external_user_ids || [],
       payload,
       status: "failed",
       provider_response: { message: "OneSignal API keys not configured" },
       error_message: "OneSignal API keys not configured",
-      channels: payload.channels || ["push"],
+      channels: parseNotificationChannels(payload.channels ?? null),
     });
     return { success: false, message: "OneSignal API keys not configured" };
   }
 
   // Build OneSignal notification payload
   // According to: https://documentation.onesignal.com/reference/create-notification
-  const notification: any = {
+  const notification: Record<string, unknown> = {
     app_id: appId,
   };
 
-  // Targeting
-  if (payload.include_player_ids && payload.include_player_ids.length > 0) {
-    notification.include_player_ids = payload.include_player_ids;
-  }
-  if (payload.include_external_user_ids && payload.include_external_user_ids.length > 0) {
-    notification.include_external_user_ids = payload.include_external_user_ids;
-  }
-  if (payload.filters && payload.filters.length > 0) {
-    notification.filters = payload.filters;
-  }
-
-  // Channels - specify which channels to send to
-  if (payload.channels && payload.channels.length > 0) {
-    notification.channel_for_external_user_ids = payload.channels;
-  }
+  applyOneSignalTargeting(notification, payload);
 
   // Push notification content
   if (payload.headings) {
@@ -286,9 +386,15 @@ async function sendOneSignalNotification(
     notification.ios_attachments = payload.live_activities;
   }
 
-  // Template ID (if using OneSignal templates)
+  // OneSignal dashboard templates: Liquid reads `{{ message.custom_data.* }}` (not `data`).
   if (payload.template_id) {
     notification.template_id = payload.template_id;
+    if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
+      const keys = Object.keys(payload.data as object);
+      if (keys.length > 0) {
+        notification.custom_data = { ...(payload.data as Record<string, unknown>) };
+      }
+    }
   }
 
   try {
@@ -296,54 +402,69 @@ async function sendOneSignalNotification(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-      Authorization: `Basic ${restKey}`,
+        Authorization: oneSignalAuthorizationHeader(restKey),
       },
       body: JSON.stringify(notification),
     });
 
-    const responseData = await response.json();
+    const rawText = await response.text();
+    let responseData: Record<string, unknown> = {};
+    try {
+      responseData = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {};
+    } catch {
+      responseData = { errors: [rawText.slice(0, 500) || `HTTP ${response.status}`] };
+    }
 
     if (!response.ok) {
       console.error("OneSignal API error:", responseData);
+      const errMsg = formatOneSignalApiErrors(responseData);
       await logNotification({
-        event_type: payload.data?.type || "notification",
+        event_type: eventTypeFromPayloadData(payload.data),
         recipients: payload.include_player_ids || payload.include_external_user_ids || [],
         payload,
         status: "failed",
         provider_response: responseData,
-        error_message: responseData.errors?.join(", ") || "Unknown OneSignal error",
-        channels: payload.channels || ["push"],
+        error_message: errMsg,
+        channels: parseNotificationChannels(payload.channels ?? null),
       });
       return {
         success: false,
-        error: responseData.errors?.join(", ") || "Unknown error",
+        error: errMsg,
       };
     }
 
     await logNotification({
-      event_type: payload.data?.type || "notification",
+      event_type: eventTypeFromPayloadData(payload.data),
       recipients: payload.include_player_ids || payload.include_external_user_ids || [],
       payload,
       status: "sent",
       provider_response: responseData,
-      channels: payload.channels || ["push"],
+      channels: parseNotificationChannels(payload.channels ?? null),
     });
+
+    const notificationIdRaw = responseData.id;
+    const notification_id =
+      typeof notificationIdRaw === "string"
+        ? notificationIdRaw
+        : typeof notificationIdRaw === "number"
+          ? String(notificationIdRaw)
+          : "";
 
     return {
       success: true,
       data: responseData,
-      notification_id: responseData.id,
+      notification_id,
     };
   } catch (error) {
     console.error("Error sending OneSignal notification:", error);
     await logNotification({
-      event_type: payload.data?.type || "notification",
+      event_type: eventTypeFromPayloadData(payload.data),
       recipients: payload.include_player_ids || payload.include_external_user_ids || [],
       payload,
       status: "failed",
       provider_response: { message: error instanceof Error ? error.message : "Unknown error" },
       error_message: error instanceof Error ? error.message : "Unknown error",
-      channels: payload.channels || ["push"],
+      channels: parseNotificationChannels(payload.channels ?? null),
     });
     return {
       success: false,
@@ -359,9 +480,10 @@ async function sendOneSignalNotification(
 export async function sendToUser(
   userId: string,
   payload: NotificationPayload,
-  channels: NotificationChannel[] = ["push"],
+  channels: readonly (string | NotificationChannel)[] = DEFAULT_NOTIFICATION_CHANNELS,
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
+  const normalizedChannels = parseNotificationChannels(channels);
   // When sending to provider, device lookup often runs in customer/webhook context; use admin so RLS does not block.
   const supabase =
     options?.supabaseClient ??
@@ -381,26 +503,29 @@ export async function sendToUser(
   }
 
   const { data: devices } = await query;
-  const playerIds = devices?.map((d: any) => d.onesignal_player_id) || [];
+  const playerIds =
+    (devices as { onesignal_player_id?: string | null }[] | null)
+      ?.map((d) => d.onesignal_player_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0) ?? [];
 
-  const notificationPayload: any = {
+  const notificationPayload: Record<string, unknown> = {
     include_external_user_ids: [userId],
-    channels,
+    channels: normalizedChannels,
     headings: { en: payload.title },
     contents: { en: payload.message },
     data: payload.data || {},
   };
 
-  if (channels.includes("email")) {
+  if (normalizedChannels.includes("email")) {
     notificationPayload.email_subject = payload.title;
     notificationPayload.email_body = payload.message;
   }
-  if (channels.includes("sms")) {
+  if (normalizedChannels.includes("sms")) {
     notificationPayload.sms_body = payload.message;
   }
   if (payload.url) notificationPayload.url = payload.url;
   if (payload.image) notificationPayload.big_picture = payload.image;
-  if (playerIds.length > 0 && channels.includes("push")) {
+  if (playerIds.length > 0 && normalizedChannels.includes("push")) {
     notificationPayload.include_player_ids = playerIds;
   }
   const passthrough = payload as Record<string, unknown>;
@@ -419,9 +544,10 @@ export async function sendToUser(
 export async function sendToUsers(
   userIds: string[],
   payload: NotificationPayload,
-  channels: NotificationChannel[] = ["push"],
+  channels: readonly (string | NotificationChannel)[] = DEFAULT_NOTIFICATION_CHANNELS,
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
+  const normalizedChannels = parseNotificationChannels(channels);
   const supabase = options?.supabaseClient ?? (await getSupabaseServer());
 
   let query = supabase
@@ -436,26 +562,29 @@ export async function sendToUsers(
   }
 
   const { data: devices } = await query;
-  const playerIds = devices?.map((d: any) => d.onesignal_player_id) || [];
+  const playerIds =
+    (devices as { onesignal_player_id?: string | null }[] | null)
+      ?.map((d) => d.onesignal_player_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0) ?? [];
 
-  const notificationPayload: any = {
+  const notificationPayload: Record<string, unknown> = {
     include_external_user_ids: userIds,
-    channels,
+    channels: normalizedChannels,
     headings: { en: payload.title },
     contents: { en: payload.message },
     data: payload.data || {},
   };
 
-  if (channels.includes("email")) {
+  if (normalizedChannels.includes("email")) {
     notificationPayload.email_subject = payload.title;
     notificationPayload.email_body = payload.message;
   }
-  if (channels.includes("sms")) {
+  if (normalizedChannels.includes("sms")) {
     notificationPayload.sms_body = payload.message;
   }
   if (payload.url) notificationPayload.url = payload.url;
   if (payload.image) notificationPayload.big_picture = payload.image;
-  if (playerIds.length > 0 && channels.includes("push")) {
+  if (playerIds.length > 0 && normalizedChannels.includes("push")) {
     notificationPayload.include_player_ids = playerIds;
   }
   const passthrough = payload as Record<string, unknown>;
@@ -472,30 +601,31 @@ export async function sendToUsers(
  * @param options.appType - Which OneSignal app to use when using two apps.
  */
 export async function sendToSegment(
-  segmentQuery: Record<string, any>,
+  segmentQuery: Record<string, string | number | boolean>,
   payload: NotificationPayload,
-  channels: NotificationChannel[] = ["push"],
+  channels: readonly (string | NotificationChannel)[] = DEFAULT_NOTIFICATION_CHANNELS,
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
+  const normalizedChannels = parseNotificationChannels(channels);
   const filters = Object.entries(segmentQuery).map(([key, value]) => ({
     field: key,
     relation: "=",
-    value,
+    value: String(value),
   }));
 
-  const notificationPayload: any = {
+  const notificationPayload: Record<string, unknown> = {
     filters,
-    channels,
+    channels: normalizedChannels,
     headings: { en: payload.title },
     contents: { en: payload.message },
     data: payload.data || {},
   };
 
-  if (channels.includes("email")) {
+  if (normalizedChannels.includes("email")) {
     notificationPayload.email_subject = payload.title;
     notificationPayload.email_body = payload.message;
   }
-  if (channels.includes("sms")) {
+  if (normalizedChannels.includes("sms")) {
     notificationPayload.sms_body = payload.message;
   }
   if (payload.url) notificationPayload.url = payload.url;
@@ -513,11 +643,25 @@ export async function sendToSegment(
  * @param supabaseClient - Optional admin/server client for background jobs.
  * @param tenantId - Optional tenant ID to check for tenant-specific overrides first.
  */
+/** Row shape from `notification_templates` (used by template sends). */
+export type NotificationTemplateRow = Record<string, unknown> & {
+  title?: string | null;
+  body?: string | null;
+  email_subject?: string | null;
+  email_body?: string | null;
+  sms_body?: string | null;
+  url?: string | null;
+  image?: string | null;
+  channels?: string[] | null;
+  onesignal_template_id?: string | null;
+  enabled?: boolean | null;
+};
+
 export async function getNotificationTemplate(
   key: string,
-  supabaseClient?: any,
-  tenantId?: string | null
-): Promise<any> {
+  supabaseClient?: SupabaseClient<Database>,
+  tenantId?: string | null,
+): Promise<NotificationTemplateRow | null> {
   const supabase = supabaseClient ?? (await getSupabaseServer());
 
   // 1. If tenantId provided, try tenant-specific template first
@@ -530,7 +674,7 @@ export async function getNotificationTemplate(
       .eq("enabled", true)
       .maybeSingle();
 
-    if (tenantTemplate) return tenantTemplate;
+    if (tenantTemplate) return tenantTemplate as NotificationTemplateRow;
   }
 
   // 2. Fall back to global template (tenant_id IS NULL)
@@ -542,7 +686,7 @@ export async function getNotificationTemplate(
     .eq("enabled", true)
     .maybeSingle();
 
-  return globalTemplate ?? null;
+  return (globalTemplate ?? null) as NotificationTemplateRow | null;
 }
 
 /** Extended send options including tenant scope for template resolution. */
@@ -560,9 +704,10 @@ export async function sendTemplateNotification(
   templateKey: string,
   userIds: string[],
   variables: Record<string, string> = {},
-  channels: NotificationChannel[] = ["push"],
+  channels: readonly (string | NotificationChannel)[] = DEFAULT_NOTIFICATION_CHANNELS,
   options?: SendTemplateOptions
 ): Promise<SendNotificationResult> {
+  const requestedFilter = parseNotificationChannels(channels);
   const templateClient =
     options?.supabaseClient ??
     (options?.appType === "provider" ? getSupabaseAdmin() : undefined);
@@ -613,12 +758,16 @@ export async function sendTemplateNotification(
     templateImage = templateImage.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
   });
 
-  const activeChannels =
+  const activeChannels: NotificationChannel[] =
     template.channels && template.channels.length > 0
-      ? template.channels.filter((ch: string) =>
-          channels.includes(ch as NotificationChannel)
-        )
-      : channels;
+      ? template.channels.filter((ch): ch is NotificationChannel => {
+          const c = ch as NotificationChannel;
+          return (
+            (c === "push" || c === "email" || c === "sms" || c === "live_activities") &&
+            requestedFilter.includes(c)
+          );
+        })
+      : requestedFilter;
 
   let channelsToSend: NotificationChannel[] = [...activeChannels];
   if (options?.appType === "customer" && userIds.length > 0) {
@@ -673,7 +822,7 @@ export async function sendTemplateNotification(
     return { success: true, notification_id: "suppressed-quiet-hours" };
   }
 
-  const notificationPayload: any = {
+  const notificationPayload: Record<string, unknown> = {
     include_external_user_ids: userIds,
     channels: channelsToSend,
     headings: { en: title },
@@ -714,7 +863,10 @@ export async function sendTemplateNotification(
       "booking_number", "provider_name", "customer_name",
     ];
     WELL_KNOWN_VARS.forEach((k) => {
-      if (variables[k]) inAppData[k] = variables[k];
+      const v = variables[k];
+      if (v !== undefined && v !== null && String(v).length > 0) {
+        inAppData[k] = v;
+      }
     });
 
     // Derive a clean action_url from the resolved template URL
@@ -762,7 +914,10 @@ export async function sendTemplateNotification(
       query = query.or("app_type.eq.customer,app_type.is.null");
     }
     const { data: devices } = await query;
-    const playerIds = devices?.map((d: any) => d.onesignal_player_id) || [];
+    const playerIds =
+      (devices as { onesignal_player_id?: string | null }[] | null)
+        ?.map((d) => d.onesignal_player_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0) ?? [];
     if (playerIds.length > 0 && channelsToSend.includes("push")) {
       notificationPayload.include_player_ids = playerIds;
     }
@@ -822,7 +977,6 @@ export async function sendTemplateNotification(
       );
     } catch (enqueueErr) {
       // Never let a retry-queue write break the original response.
-      // eslint-disable-next-line no-console
       console.error(
         "[sendTemplateNotification] failed to enqueue durable retry",
         enqueueErr,

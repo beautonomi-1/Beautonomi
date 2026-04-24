@@ -10,9 +10,11 @@
  *   - `provider_booking_receipt` — provider-facing receipt PDF for a booking
  *   - `customer_booking_receipt` — customer-facing receipt PDF
  *   - `provider_invoice`         — provider invoice PDF
+ *   - `customer_order_receipt`   — customer-facing product order receipt PDF
+ *   - `provider_order_receipt`   — provider-facing product order receipt PDF
  *
- * The token binds: kind + subject id (booking/invoice) + user id (who minted
- * it) + expiry. Tampering with any of those breaks the signature.
+ * The token binds: kind + subject id (booking/invoice/order) + user id (who
+ * minted it) + expiry. Tampering with any of those breaks the signature.
  */
 
 import { createHmac, timingSafeEqual } from "crypto";
@@ -20,7 +22,9 @@ import { createHmac, timingSafeEqual } from "crypto";
 export type ReceiptTokenKind =
   | "provider_booking_receipt"
   | "customer_booking_receipt"
-  | "provider_invoice";
+  | "provider_invoice"
+  | "customer_order_receipt"
+  | "provider_order_receipt";
 
 export interface ReceiptTokenPayload {
   kind: ReceiptTokenKind;

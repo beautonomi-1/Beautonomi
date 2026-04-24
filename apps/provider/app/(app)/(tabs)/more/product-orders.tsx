@@ -9,7 +9,10 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Linking,
+  Share as RNShare,
 } from "react-native";
+import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -523,6 +526,58 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   Total {formatCurrency(Number(activeOrder.total_amount), currency)}
                 </Text>
               </View>
+
+              {/* Download receipt */}
+              <TouchableOpacity
+                onPress={async () => {
+                  try {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    const res = await api.post<{ url?: string }>(
+                      `/api/provider/product-orders/${activeOrder.id}/receipt/signed-url`,
+                      {},
+                    );
+                    const signedUrl = res.data?.url;
+                    if (res.error || !signedUrl) {
+                      const msg =
+                        (res.error as { message?: string } | null)?.message ??
+                        "Could not generate this receipt. Please try again.";
+                      Alert.alert("Download receipt", msg);
+                      return;
+                    }
+                    if (Platform.OS === "web") {
+                      await Linking.openURL(signedUrl);
+                    } else {
+                      if (!cacheDirectory) {
+                        Alert.alert(
+                          "Download receipt",
+                          "File storage is not available on this device.",
+                        );
+                        return;
+                      }
+                      const fileUri = `${cacheDirectory}order_${activeOrder.order_number || activeOrder.id}.pdf`;
+                      await downloadAsync(signedUrl, fileUri);
+                      await RNShare.share({
+                        url: fileUri,
+                        message: `Order ${activeOrder.order_number}`,
+                      });
+                    }
+                  } catch (e) {
+                    Alert.alert(
+                      "Download receipt",
+                      e instanceof Error ? e.message : "Something went wrong.",
+                    );
+                  }
+                }}
+                style={twStyle(
+                  "mb-4 flex-row items-center justify-center rounded-xl border border-gray-200 px-4 py-2.5",
+                )}
+                accessibilityLabel="Download order receipt"
+              >
+                <Ionicons name="download-outline" size={16} color="#374151" />
+                <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>
+                  Download receipt
+                </Text>
+              </TouchableOpacity>
 
               {/* Status action buttons */}
               {getNextStatusOptions(activeOrder.status).length > 0 && (

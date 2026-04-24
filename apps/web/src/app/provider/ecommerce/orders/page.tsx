@@ -281,9 +281,17 @@ export default function ProviderProductOrdersPage() {
                         {new Date(o.created_at).toLocaleDateString()} ·{" "}
                         {o.fulfillment_type === "delivery" ? "Delivery" : "Collection"}
                       </p>
-                      {actions.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-3 justify-start sm:justify-end">
-                          {actions.map((a) => (
+                      <div className="flex flex-wrap gap-2 mt-3 justify-start sm:justify-end">
+                        <a
+                          href={`/api/provider/product-orders/${o.id}/receipt/pdf`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50"
+                        >
+                          Download receipt
+                        </a>
+                        {actions.length > 0 &&
+                          actions.map((a) => (
                             <button
                               key={a.next}
                               onClick={() => handleStatusUpdate(o.id, a.next)}
@@ -293,8 +301,7 @@ export default function ProviderProductOrdersPage() {
                               {updating === o.id ? "..." : a.label}
                             </button>
                           ))}
-                        </div>
-                      )}
+                      </div>
                     </div>
                   </div>
                 </div>

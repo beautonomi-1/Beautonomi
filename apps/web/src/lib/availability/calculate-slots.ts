@@ -10,6 +10,7 @@ import type {
   BookingService,
   TimeSegment,
 } from './types';
+import { formatInTimeZone } from 'date-fns-tz';
 import {
   timeToMinutes,
   minutesToTime,
@@ -116,8 +117,22 @@ function applyGapAvoidance(
   existingBookings: BookingService[],
   workStart: string,
   workEnd: string,
-  _date: string
+  _date: string,
+  timezone?: string
 ): TimeSlot[] {
+  const minutesInBookingZone = (value: string): number => {
+    const d = new Date(value);
+    if (timezone) {
+      try {
+        const [h, m] = formatInTimeZone(d, timezone, 'HH:mm').split(':').map(Number);
+        return h * 60 + m;
+      } catch {
+        // Fall through to historical runtime-local behaviour.
+      }
+    }
+    return d.getHours() * 60 + d.getMinutes();
+  };
+
   if (existingBookings.length === 0) {
     // No appointments: only show start and end of day slots
     const startSlot = slots.find((s) => s.time === workStart);
@@ -136,8 +151,7 @@ function applyGapAvoidance(
 
   // Slots before each appointment
   existingBookings.forEach((booking) => {
-    const bookingStart = new Date(booking.scheduled_start_at);
-    const bookingStartMinutes = bookingStart.getHours() * 60 + bookingStart.getMinutes();
+    const bookingStartMinutes = minutesInBookingZone(booking.scheduled_start_at);
     
     // Find slot 15 minutes before appointment
     const beforeSlot = slots.find((s) => {
@@ -151,9 +165,8 @@ function applyGapAvoidance(
 
   // Slots after each appointment
   existingBookings.forEach((booking) => {
-    const bookingEnd = new Date(booking.scheduled_end_at);
     const bufferMinutes = booking.buffer_minutes || 0;
-    const totalEndMinutes = bookingEnd.getHours() * 60 + bookingEnd.getMinutes() + bufferMinutes;
+    const totalEndMinutes = minutesInBookingZone(booking.scheduled_end_at) + bufferMinutes;
     
     // Find slot 15 minutes after appointment ends (including buffer)
     const afterSlot = slots.find((s) => {
@@ -298,7 +311,7 @@ export function calculateAvailableSlots(
 
   // Apply gap avoidance if enabled
   if (avoidGaps) {
-    return applyGapAvoidance(availableSlots, existingBookings, overallWorkStart, overallWorkEnd, date);
+    return applyGapAvoidance(availableSlots, existingBookings, overallWorkStart, overallWorkEnd, date, timezone);
   }
 
   return availableSlots;

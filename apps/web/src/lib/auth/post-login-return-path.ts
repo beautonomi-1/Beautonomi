@@ -13,7 +13,16 @@ export function isCustomerSkewedPostLoginPath(pathname: string): boolean {
 }
 
 export function resolvePortalAwareReturnPathname(portal: Portal, requestedPathname: string): string {
-  if (portal === "provider" || portal === "provider_onboarding") {
+  if (portal === "provider_onboarding") {
+    const allowedSetupPath =
+      requestedPathname === "/provider/onboarding" ||
+      requestedPathname.startsWith("/provider/onboarding/") ||
+      requestedPathname === "/provider/get-started" ||
+      requestedPathname.startsWith("/provider/get-started/") ||
+      requestedPathname.startsWith("/provider/embed");
+    return allowedSetupPath ? requestedPathname : getDefaultRouteForPortal(portal);
+  }
+  if (portal === "provider") {
     if (isCustomerSkewedPostLoginPath(requestedPathname)) {
       return getDefaultRouteForPortal(portal);
     }

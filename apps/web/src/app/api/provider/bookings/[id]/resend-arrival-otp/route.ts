@@ -12,6 +12,8 @@ import {
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import { generateOTP, getOTPExpiry } from "@/lib/otp/generator";
 import { sendOTPToCustomer } from "@/lib/otp/notifications";
+import { generateVerificationCode, getQRCodeExpiry, type QRCodeData } from "@/lib/qr/generator";
+import { getVerificationSettings } from "@/lib/platform-settings";
 import { NextResponse } from "next/server";
 import type { Booking } from "@/types/beautonomi";
 
@@ -92,18 +94,17 @@ export async function POST(
       );
     }
 
-    // Rate limit: check last otp_sent event
-    const { data: lastOtpEvent } = await supabase
+    const { data: lastRefreshEvent } = await supabase
       .from("booking_events")
       .select("created_at")
       .eq("booking_id", id)
-      .eq("event_type", "otp_sent")
+      .in("event_type", ["otp_sent", "qr_code_generated"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (lastOtpEvent?.created_at) {
-      const lastSent = new Date(lastOtpEvent.created_at).getTime();
+    if (lastRefreshEvent?.created_at) {
+      const lastSent = new Date(lastRefreshEvent.created_at).getTime();
       const now = Date.now();
       if (now - lastSent < RESEND_COOLDOWN_SECONDS * 1000) {
         const retryAfter = Math.ceil(
@@ -122,26 +123,64 @@ export async function POST(
       }
     }
 
-    const otp = generateOTP();
-    const otpExpiresAt = getOTPExpiry();
+    const verificationSettings = await getVerificationSettings();
+    const { otp_enabled, qr_code_enabled } = verificationSettings;
 
-    await supabase
-      .from("bookings")
-      .update({
-        arrival_otp: otp,
-        arrival_otp_expires_at: otpExpiresAt.toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
+    const updatePayload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
 
-    await supabase.from("booking_events").insert({
-      booking_id: id,
-      event_type: "otp_sent",
-      event_data: {
-        expires_at: otpExpiresAt.toISOString(),
-      },
-      created_by: user.id,
-    });
+    let otp: string | null = null;
+    let otpExpiresAt: Date | null = null;
+    if (otp_enabled) {
+      otp = generateOTP();
+      otpExpiresAt = getOTPExpiry();
+      updatePayload.arrival_otp = otp;
+      updatePayload.arrival_otp_expires_at = otpExpiresAt.toISOString();
+      updatePayload.arrival_otp_verified = false;
+    }
+
+    if (qr_code_enabled) {
+      const qrVerificationCode = generateVerificationCode();
+      const qrExpiresAt = getQRCodeExpiry();
+      const qrExpiresAtIso = qrExpiresAt.toISOString();
+      const qrCodeData: QRCodeData = {
+        booking_id: id,
+        booking_number: String(bookingData.booking_number ?? ""),
+        verification_code: qrVerificationCode,
+        expires_at: qrExpiresAtIso,
+        type: "arrival_verification",
+      };
+      updatePayload.qr_code_data = qrCodeData;
+      updatePayload.qr_code_verification_code = qrVerificationCode;
+      updatePayload.qr_code_expires_at = qrExpiresAtIso;
+      updatePayload.qr_code_verified = false;
+    }
+
+    const { error: updateErr } = await supabase.from("bookings").update(updatePayload).eq("id", id);
+    if (updateErr) {
+      throw updateErr;
+    }
+
+    if (otp_enabled && otp && otpExpiresAt) {
+      await supabase.from("booking_events").insert({
+        booking_id: id,
+        event_type: "otp_sent",
+        event_data: {
+          expires_at: otpExpiresAt.toISOString(),
+        },
+        created_by: user.id,
+      });
+    }
+
+    if (qr_code_enabled) {
+      await supabase.from("booking_events").insert({
+        booking_id: id,
+        event_type: "qr_code_generated",
+        event_data: { source: "provider_resend" },
+        created_by: user.id,
+      });
+    }
 
     const { data: provider } = await supabase
       .from("providers")
@@ -150,7 +189,7 @@ export async function POST(
       .single();
 
     const customer = bookingData.customers;
-    if (customer) {
+    if (customer && otp_enabled && otp) {
       try {
         await sendOTPToCustomer({
           customerId: customer.id,

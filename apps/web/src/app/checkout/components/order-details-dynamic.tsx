@@ -145,11 +145,14 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
         {}
       );
       setResendCooldownUntil(Date.now() + 90000);
-      toast.success("New code sent. Check your notifications.");
+      toast.success("New verification ready. Check the app and your notifications.");
       loadBooking();
     } catch (error) {
       if (error instanceof FetchError) {
         toast.error(error.message);
+        if (error.status === 429) {
+          setResendCooldownUntil(Date.now() + 90000);
+        }
       } else {
         toast.error("Failed to resend");
       }
@@ -174,26 +177,32 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
     }
   }, [booking?.arrival_otp_verified, pinExpiresAt]);
 
-  const qrPayloadLive = (() => {
+  /** Raw payload from API (included when QR exists, even if expired — matches mobile + GET /api/me/bookings/:id). */
+  const arrivalQrRaw = (() => {
     if (!booking) return null;
     const row = booking as {
       qr_code_data?: unknown;
-      qr_code_expires_at?: string | null;
       qr_code_verified?: boolean;
     };
-    if (row.qr_code_data == null) return null;
-    if (row.qr_code_verified) return null;
-    if (row.qr_code_expires_at && isQRCodeExpired(row.qr_code_expires_at)) return null;
+    if (row.qr_code_data == null || row.qr_code_verified) return null;
     return row.qr_code_data as QRCodeData;
   })();
 
+  const qrExpired =
+    !!booking &&
+    !!arrivalQrRaw &&
+    !!(booking as { qr_code_expires_at?: string | null }).qr_code_expires_at &&
+    isQRCodeExpired(String((booking as { qr_code_expires_at?: string }).qr_code_expires_at));
+
+  const qrPayloadForImage = qrExpired ? null : arrivalQrRaw;
+
   useEffect(() => {
-    if (!qrPayloadLive?.verification_code) {
+    if (!qrPayloadForImage?.verification_code) {
       setArrivalQrUrl(null);
       return;
     }
     let cancelled = false;
-    generateQRCodeDataURL(qrPayloadLive)
+    generateQRCodeDataURL(qrPayloadForImage)
       .then((url) => {
         if (!cancelled) setArrivalQrUrl(url);
       })
@@ -203,7 +212,7 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
     return () => {
       cancelled = true;
     };
-  }, [qrPayloadLive]);
+  }, [qrPayloadForImage]);
 
   const getSteps = (): BookingStep[] => {
     if (!booking) return [];
@@ -310,7 +319,7 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
                                booking.current_stage === "provider_arrived" && 
                                !booking.arrival_otp_verified;
   const bothArrivalMethodsVisible =
-    Boolean(needsOTPVerification && booking.arrival_otp && qrPayloadLive);
+    Boolean(needsOTPVerification && booking.arrival_otp && arrivalQrRaw);
   const pendingCharges = additionalCharges.filter(c => c.status === "pending" || c.status === "approved");
   const showETA = booking.location_type === "at_home" && 
     (booking.current_stage === "provider_on_way" || booking.provider_en_route_at) && 
@@ -392,16 +401,22 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
                 <p className="text-sm text-blue-700 mb-3">
                   {pinSecondsLeft > 0
                     ? `Code expires in ${Math.floor(pinSecondsLeft / 60)}:${String(pinSecondsLeft % 60).padStart(2, "0")}`
-                    : "Code expired"}
+                    : "Code expired — use the button below for a new code and QR."}
                 </p>
               )}
               <div className="flex gap-2 flex-wrap">
                 <Button
                   onClick={handleResendPin}
-                  disabled={isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil) || (pinSecondsLeft != null && pinSecondsLeft <= 0)}
+                  disabled={isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil)}
                   variant="default"
                 >
-                  {isResending ? "Sending…" : "Resend code"}
+                  {isResending
+                    ? "Sending…"
+                    : resendCooldownUntil != null && Date.now() < resendCooldownUntil
+                      ? "Resend (wait)"
+                      : pinSecondsLeft === 0
+                        ? "Get new code & QR"
+                        : "Resend code"}
                 </Button>
                 {!showOTPInput ? (
                   <Button variant="outline" onClick={() => setShowOTPInput(true)}>
@@ -465,7 +480,7 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
         </div>
       )}
 
-      {needsOTPVerification && qrPayloadLive && (
+      {needsOTPVerification && arrivalQrRaw && (
         <div className="border-t pt-4 mt-4 rounded-lg border border-purple-200 bg-purple-50/80 p-4">
           <h3 className="font-semibold text-purple-900 mb-1">Show this QR to your provider</h3>
           <p className="text-sm text-purple-800 mb-4">
@@ -473,25 +488,40 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
               ? ARRIVAL_QR_CUSTOMER_SUBTITLE_WITH_PIN
               : "They will scan it or enter the code on their device to confirm they've arrived."}
           </p>
-          {arrivalQrUrl ? (
+          {qrExpired ? (
+            <div className="rounded-lg bg-white/90 border border-purple-100 p-4 text-center space-y-3">
+              <p className="text-sm text-purple-800">
+                This QR is no longer valid. Refresh to show a new code for your provider.
+              </p>
+              {booking.arrival_otp ? (
+                <p className="text-xs text-purple-700">
+                  Use the resend button in the blue verification section above — it refreshes your PIN and this QR.
+                </p>
+              ) : (
+                <Button onClick={handleResendPin} disabled={isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil)}>
+                  {isResending ? "Refreshing…" : "Refresh QR & code"}
+                </Button>
+              )}
+            </div>
+          ) : arrivalQrUrl ? (
             <div className="flex flex-col items-center rounded-xl bg-white p-4 border border-purple-100">
               <img src={arrivalQrUrl} alt="Arrival verification QR code" className="h-[200px] w-[200px]" />
             </div>
           ) : (
             <p className="text-sm text-purple-700">Generating QR…</p>
           )}
-          {qrPayloadLive.verification_code ? (
+          {!qrExpired && arrivalQrRaw.verification_code ? (
             <Button
               type="button"
               variant="outline"
               className="mt-4 w-full border-purple-200 text-purple-900"
               onClick={() => {
-                void navigator.clipboard.writeText(qrPayloadLive.verification_code);
+                void navigator.clipboard.writeText(arrivalQrRaw.verification_code);
                 toast.success("Verification code copied");
               }}
             >
               Copy code:{" "}
-              <span className="font-mono font-semibold">{qrPayloadLive.verification_code}</span>
+              <span className="font-mono font-semibold">{arrivalQrRaw.verification_code}</span>
             </Button>
           ) : null}
         </div>

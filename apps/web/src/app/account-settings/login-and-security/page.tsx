@@ -1,14 +1,9 @@
-"use client";
-import React from 'react'
-import LoginAccount from './component/tab'
-import AuthGuard from '@/components/auth/auth-guard'
+import LoginAndSecurityPageClient from "./LoginAndSecurityPageClient";
+import { fetchLoginAndSecurityInitial } from "./fetch-login-and-security-initial";
 
-const page = () => {
-  return (
-    <AuthGuard>
-      <LoginAccount/>
-    </AuthGuard>
-  )
+export const dynamic = "force-dynamic";
+
+export default async function Page() {
+  const initial = await fetchLoginAndSecurityInitial();
+  return <LoginAndSecurityPageClient initial={initial} />;
 }
-
-export default page

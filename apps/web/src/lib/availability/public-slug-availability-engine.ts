@@ -160,6 +160,7 @@ export async function computePublicSlugAvailabilitySlots(args: {
           ...parityBase,
           slotStaffId: staffColumnId,
           staffIdsForTimeOff,
+          providerTimeZone: providerTz,
         },
       }
     );

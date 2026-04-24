@@ -22,6 +22,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
+import { coerceProfileStringList } from "@beautonomi/utils";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 
 const PROFILE_QUESTION_FIELDS = [
@@ -44,6 +45,16 @@ const SKIN_TYPE_OPTIONS = ["Normal", "Oily", "Dry", "Combination", "Sensitive", 
 const THINGS_TO_AVOID_OPTIONS = ["Strong fragrances", "Alcohol-based products", "Sulfates", "Parabens", "Essential oils", "Latex", "Nickel", "Dyes", "Formaldehyde"];
 const APPOINTMENT_STYLE_OPTIONS = ["Quick & efficient", "Relaxed & unhurried", "Social & chatty", "Quiet & minimal", "Flexible"];
 const PRODUCT_PREFERENCE_OPTIONS = ["Vegan", "Cruelty-free", "Natural / organic", "Fragrance-free", "Hypoallergenic", "Luxury", "Budget-friendly", "No preference"];
+
+function stringField(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function thingsOrProductsToCommaField(raw: unknown): string {
+  if (Array.isArray(raw)) return coerceProfileStringList(raw).join(", ");
+  if (typeof raw === "string") return raw;
+  return "";
+}
 
 export default function ProfileDetailsScreen() {
   useScreenTracking("Profile Details");
@@ -87,20 +98,16 @@ export default function ProfileDetailsScreen() {
         q[key] = v != null && v !== "" ? String(v).trim() : "";
       });
       setProfileQuestions(q);
-      const ints = pd?.interests;
-      setInterests(Array.isArray(ints) ? (ints as string[]) : []);
+      setInterests(coerceProfileStringList(pd?.interests));
 
-      const bp = beautyRes.error ? {} : (beautyRes.data ?? {});
+      const bp = beautyRes.error ? {} : ((beautyRes.data ?? {}) as Record<string, unknown>);
       setBeautyPrefs(bp);
-      setHairType((bp.hair_type as string) ?? "");
-      setSkinType((bp.skin_type as string) ?? "");
-      const allergyList = bp.allergies;
-      setAllergies(Array.isArray(allergyList) ? (allergyList as string[]) : []);
-      const rawAvoid = bp.things_to_avoid;
-      setThingsToAvoid(Array.isArray(rawAvoid) ? (rawAvoid as string[]).join(", ") : (rawAvoid as string) ?? "");
-      setAppointmentStyle((bp.appointment_style as string) ?? "");
-      const rawProduct = bp.product_preferences;
-      setProductPreferences(Array.isArray(rawProduct) ? (rawProduct as string[]).join(", ") : (rawProduct as string) ?? "");
+      setHairType(stringField(bp.hair_type));
+      setSkinType(stringField(bp.skin_type));
+      setAllergies(coerceProfileStringList(bp.allergies));
+      setThingsToAvoid(thingsOrProductsToCommaField(bp.things_to_avoid));
+      setAppointmentStyle(stringField(bp.appointment_style));
+      setProductPreferences(thingsOrProductsToCommaField(bp.product_preferences));
     } catch (e) {
       setError(getApiErrorMessage(e, "Failed to load"));
     } finally {
@@ -159,7 +166,7 @@ export default function ProfileDetailsScreen() {
   const answeredCount = Object.values(profileQuestions).filter((v) => v.trim().length > 0).length;
 
   return (
-    <ScreenFrame loading={loading} error={error} onRetry={load}>
+    <ScreenFrame loading={loading} error={error} onRetry={load} scrollable={false}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}

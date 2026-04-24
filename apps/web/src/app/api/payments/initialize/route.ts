@@ -39,7 +39,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = await getSupabaseServer();
+    // §Customer-launch (audit 2026-04): pass `request` so Authorization
+    // Bearer headers (mobile) are honoured — otherwise the RLS check on
+    // the booking row below silently fails for every mobile Paystack
+    // initialization and the user sees "Authentication required".
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const { booking_id, currency, email, callback_url, metadata: clientMetadata } = body;
     const saveCard = clientMetadata?.save_card === true;

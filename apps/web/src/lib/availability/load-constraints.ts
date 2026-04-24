@@ -1007,6 +1007,7 @@ export type LoadAvailabilityConstraintsOptions = {
     date: string;
     slotStaffId: string | null;
     staffIdsForTimeOff: string[];
+    providerTimeZone?: string | null;
   };
 };
 
@@ -1085,7 +1086,7 @@ export async function loadAvailabilityConstraints(
       date,
       excludeHoldId: options?.excludeHoldId,
     }),
-    resolvedProviderId
+    resolvedProviderId && !options?.publicCalendarParity
       ? loadBusinessClosedPeriods(db, resolvedProviderId, date, effectiveStaffId)
       : Promise.resolve([]),
     resolvedProviderId
@@ -1171,6 +1172,7 @@ export async function loadAvailabilityConstraints(
         locationId: pc.locationId,
         slotStaffId: pc.slotStaffId,
         staffIdsForTimeOff: pc.staffIdsForTimeOff,
+        providerTimeZone: pc.providerTimeZone ?? null,
       });
     } catch (e) {
       console.error('loadPublicCalendarParityBookings:', e);

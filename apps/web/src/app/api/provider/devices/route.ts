@@ -1,5 +1,13 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
+import { getSupabaseServer } from "@/lib/supabase/server";
 import { registerDevice } from "@/lib/notifications/onesignal";
 import { z } from "zod";
 
@@ -16,7 +24,8 @@ const deviceSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const providerId = await getProviderIdForUser(user.id);
+    const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) return notFoundResponse("Provider not found");
 
     const body = await request.json();
@@ -33,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     const { player_id, platform } = validationResult.data;
 
-    await registerDevice(user.id, player_id, platform, "provider");
+    await registerDevice(supabase, user.id, player_id, platform, "provider");
 
     return successResponse({ registered: true });
   } catch (error) {

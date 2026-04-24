@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -84,6 +84,13 @@ type VariantRow = {
   retail_price: number;
   low_stock_level: number;
 };
+
+const UNCATEGORIZED_PRODUCT_LABEL = "Uncategorized";
+
+function productCategorySectionTitle(p: Product): string {
+  const t = (p.category ?? "").trim();
+  return t.length > 0 ? t : UNCATEGORIZED_PRODUCT_LABEL;
+}
 
 const defaultForm = {
   name: "",
@@ -427,6 +434,21 @@ export function ProductsContent() {
 
   const displayProducts = productsData?.products ?? [];
 
+  const productSections = useMemo(() => {
+    const map = new Map<string, Product[]>();
+    for (const p of displayProducts) {
+      const label = productCategorySectionTitle(p);
+      if (!map.has(label)) map.set(label, []);
+      map.get(label)!.push(p);
+    }
+    const keys = [...map.keys()].sort((a, b) => {
+      if (a === UNCATEGORIZED_PRODUCT_LABEL) return 1;
+      if (b === UNCATEGORIZED_PRODUCT_LABEL) return -1;
+      return a.localeCompare(b, undefined, { sensitivity: "base" });
+    });
+    return keys.map((title) => ({ title, products: map.get(title)! }));
+  }, [displayProducts]);
+
   const productDisplayPrice = (p: Product): string => {
     const row = {
       has_variants: p.has_variants,
@@ -534,63 +556,127 @@ export function ProductsContent() {
             <Text style={{ marginBottom: 12, fontSize: 14, color: Colors.gray[500] }}>
               {displayProducts.length} product{displayProducts.length !== 1 ? "s" : ""} loaded
             </Text>
-            {displayProducts.map((p) => {
-              const thumb = p.image_urls?.[0];
-              return (
-              <View
-                key={p.id}
-                style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
-              >
-                {thumb ? (
-                  <Image
-                    source={{ uri: thumb }}
-                    style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12, backgroundColor: Colors.gray[100] }}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <View style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12, backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="cube-outline" size={22} color="#9ca3af" />
-                  </View>
-                )}
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-                    <Text style={{ fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>{p.name}</Text>
-                    {p.retail_sales_enabled === false && (
-                      <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: Colors.gray[200] }}>
-                        <Text style={{ fontSize: 10, fontWeight: "600", color: Colors.gray[700] }}>INTERNAL</Text>
-                      </View>
-                    )}
-                    {p.is_active === false && (
-                      <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "#fee2e2" }}>
-                        <Text style={{ fontSize: 10, fontWeight: "600", color: "#b91c1c" }}>INACTIVE</Text>
-                      </View>
-                    )}
-                    {p.has_variants ? (
-                      <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "#ede9fe" }}>
-                        <Text style={{ fontSize: 10, fontWeight: "600", color: "#6d28d9" }}>VARIANTS</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  <Text style={{ marginTop: 2, fontSize: 13, color: Colors.gray[600] }}>
-                    {productDisplayPrice(p)}
-                    {p.category ? ` · ${p.category}` : ""}
+            {productSections.map(({ title, products }) => (
+              <View key={title} style={{ marginBottom: 20 }}>
+                <View
+                  style={{
+                    marginBottom: 10,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    borderLeftWidth: 4,
+                    borderLeftColor: "#8b5cf6",
+                    paddingLeft: 10,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: "700",
+                      letterSpacing: 0.6,
+                      textTransform: "uppercase",
+                      color: Colors.gray[600],
+                    }}
+                    numberOfLines={1}
+                  >
+                    {title}
                   </Text>
-                  <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{productStockLabel(p)}</Text>
+                  <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: "500", color: Colors.gray[400] }}>
+                    {products.length} item{products.length !== 1 ? "s" : ""}
+                  </Text>
                 </View>
-                <TouchableOpacity
-                  onPress={() => openEdit(p)}
-                  style={{ marginRight: 8, height: 36, width: 36, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.gray[100] }}
-                >
-                  <Ionicons name="create-outline" size={18} color="#6b7280" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handleDelete(p)}
-                  style={{ height: 36, width: 36, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#fee2e2" }}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                </TouchableOpacity>
+                {products.map((p) => {
+                  const thumb = p.image_urls?.[0];
+                  return (
+                    <View
+                      key={p.id}
+                      style={{
+                        marginBottom: 12,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: Colors.gray[100],
+                        backgroundColor: Colors.white,
+                        padding: 12,
+                      }}
+                    >
+                      {thumb ? (
+                        <Image
+                          source={{ uri: thumb }}
+                          style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12, backgroundColor: Colors.gray[100] }}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <View
+                          style={{
+                            width: 48,
+                            height: 48,
+                            borderRadius: 8,
+                            marginRight: 12,
+                            backgroundColor: "#f3f4f6",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Ionicons name="cube-outline" size={22} color="#9ca3af" />
+                        </View>
+                      )}
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                          <Text style={{ fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
+                            {p.name}
+                          </Text>
+                          {p.retail_sales_enabled === false && (
+                            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: Colors.gray[200] }}>
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: Colors.gray[700] }}>INTERNAL</Text>
+                            </View>
+                          )}
+                          {p.is_active === false && (
+                            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "#fee2e2" }}>
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#b91c1c" }}>INACTIVE</Text>
+                            </View>
+                          )}
+                          {p.has_variants ? (
+                            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "#ede9fe" }}>
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#6d28d9" }}>VARIANTS</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <Text style={{ marginTop: 2, fontSize: 13, color: Colors.gray[600] }}>{productDisplayPrice(p)}</Text>
+                        <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{productStockLabel(p)}</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => openEdit(p)}
+                        style={{
+                          marginRight: 8,
+                          height: 36,
+                          width: 36,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 8,
+                          backgroundColor: Colors.gray[100],
+                        }}
+                      >
+                        <Ionicons name="create-outline" size={18} color="#6b7280" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDelete(p)}
+                        style={{
+                          height: 36,
+                          width: 36,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 8,
+                          backgroundColor: "#fee2e2",
+                        }}
+                      >
+                        <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
               </View>
-            );})}
+            ))}
           </View>
         )}
       </ScrollView>

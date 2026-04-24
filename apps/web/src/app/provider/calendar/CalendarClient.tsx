@@ -350,6 +350,11 @@ type CheckoutSaleLine = {
   product_variant_id?: string | null;
 };
 
+function rootBookingIdFromAppointment(apt: Appointment): string {
+  const id = String(apt.booking_id ?? apt.id);
+  return id.includes("-svc-") ? id.split("-svc-")[0]! : id;
+}
+
 /** Build POS sale lines from calendar appointment (multi-service + booking products). */
 function buildSaleItemsFromAppointment(apt: Appointment): CheckoutSaleLine[] {
   const items: CheckoutSaleLine[] = [];
@@ -1351,7 +1356,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     }
 
     const apt = selectedAppointment;
-    const bookingIdForRating = String(apt.booking_id ?? apt.id);
+    const bookingIdForRating = rootBookingIdFromAppointment(apt);
     const clientIdForRating = apt.client_id?.trim() || "";
     const clientNameForRating = apt.client_name?.trim() || "Client";
 
@@ -1399,7 +1404,9 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         } as Parameters<typeof providerApi.createSale>[0]);
       } catch (error) {
         console.error("Failed to create sale record:", error);
-        // Don't fail the checkout if sale creation fails
+        throw new Error(
+          "The appointment was completed, but the sale could not be recorded. Please retry checkout before closing this dialog.",
+        );
       }
 
       setIsCheckoutDialogOpen(false);
@@ -2410,36 +2417,42 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
       {/* Checkout Dialog */}
       {isCheckoutDialogOpen && selectedAppointment && (
-        <CheckoutDialog
-          isOpen
-          onClose={() => setIsCheckoutDialogOpen(false)}
-          checkoutData={{
-            appointment_id: selectedAppointment.id,
-            client_id: selectedAppointment.client_id || "",
-            client_name: selectedAppointment.client_name,
-            client_email: selectedAppointment.client_email,
-            team_member_name: selectedAppointment.team_member_name || "Staff",
-            scheduled_date: selectedAppointment.scheduled_date,
-            scheduled_time: selectedAppointment.scheduled_time,
-            services: [
-              {
-                id: selectedAppointment.service_id || "1",
-                name: selectedAppointment.service_name,
-                price: selectedAppointment.price || 0,
-                duration_minutes: selectedAppointment.duration_minutes,
-                quantity: 1,
-              },
-            ],
-            products:
-              (selectedAppointment as any).addons?.map((addon: any) => ({
-                id: addon.id,
-                name: addon.name,
-                price: addon.price,
-                quantity: 1,
-              })) || [],
-          }}
-          onComplete={handleCheckoutComplete}
-        />
+        (() => {
+          const saleItems = buildSaleItemsFromAppointment(selectedAppointment);
+          return (
+            <CheckoutDialog
+              isOpen
+              onClose={() => setIsCheckoutDialogOpen(false)}
+              checkoutData={{
+                appointment_id: rootBookingIdFromAppointment(selectedAppointment),
+                client_id: selectedAppointment.client_id || "",
+                client_name: selectedAppointment.client_name,
+                client_email: selectedAppointment.client_email,
+                team_member_name: selectedAppointment.team_member_name || "Staff",
+                scheduled_date: selectedAppointment.scheduled_date,
+                scheduled_time: selectedAppointment.scheduled_time,
+                services: saleItems
+                  .filter((item) => item.type === "service")
+                  .map((item) => ({
+                    id: item.id,
+                    name: item.name,
+                    price: item.unit_price,
+                    duration_minutes: selectedAppointment.duration_minutes,
+                    quantity: item.quantity,
+                  })),
+                products: saleItems
+                  .filter((item) => item.type === "product")
+                  .map((item) => ({
+                    id: item.id,
+                    name: item.name,
+                    price: item.unit_price,
+                    quantity: item.quantity,
+                  })),
+              }}
+              onComplete={handleCheckoutComplete}
+            />
+          );
+        })()
       )}
 
       {postCheckoutRateBookingId && (

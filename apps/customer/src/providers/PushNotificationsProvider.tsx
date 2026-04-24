@@ -219,6 +219,7 @@ function usePushRegistration() {
         const res = await api.post<{ registered?: boolean }>("/api/me/devices", {
           player_id: playerId,
           platform,
+          app_type: "customer",
         });
         if (!res.error) {
           registeredRef.current = true;
@@ -241,6 +242,7 @@ function usePushRegistration() {
         const isFirstInitForSession = oneSignalInitKeyRef.current !== sessionKey;
         if (isFirstInitForSession) {
           oneSignalInitKeyRef.current = sessionKey;
+          // Must match Supabase users.id — server targets pushes via external_id / include_aliases.
           OneSignal.login(user.id);
 
           OneSignal.Notifications.addEventListener("click", (event: NotificationClickEvent) => {
@@ -305,6 +307,7 @@ function usePushRegistration() {
         const res = await api.post<{ registered?: boolean }>("/api/me/devices", {
           player_id: id,
           platform,
+          app_type: "customer",
         });
         if (!res.error) {
           registeredRef.current = true;

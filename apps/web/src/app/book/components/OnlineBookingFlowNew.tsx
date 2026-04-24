@@ -223,6 +223,7 @@ interface Provider {
   id: string;
   slug: string;
   business_name: string;
+  timezone?: string | null;
 }
 
 interface OnlineBookingSettings {
@@ -1535,6 +1536,7 @@ export default function OnlineBookingFlowNew({
             minNoticeMinutes={settings.min_notice_minutes}
             providerId={provider.id}
             serviceId={bookingData.selectedServices[0]?.offering_id ?? null}
+            providerTimeZone={provider.timezone ?? null}
             waitlistEnabled={settings.allow_online_waitlist !== false}
           />
         )}

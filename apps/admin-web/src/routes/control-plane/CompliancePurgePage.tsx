@@ -26,7 +26,10 @@ type PurgeAuditEntry = {
 };
 
 function normalizeEmail(e: string): string {
-  return e.trim().toLowerCase();
+  return e
+    .trim()
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
 }
 
 export function CompliancePurgePage() {
@@ -146,6 +149,7 @@ export function CompliancePurgePage() {
 
   const [providerId, setProviderId] = useState("");
   const [providerBusinessEmail, setProviderBusinessEmail] = useState("");
+  const [providerBillingEmail, setProviderBillingEmail] = useState("");
   const [providerOwnerEmail, setProviderOwnerEmail] = useState("");
   const [providerReason, setProviderReason] = useState("");
   const [providerEmailTyped, setProviderEmailTyped] = useState("");
@@ -182,6 +186,7 @@ export function CompliancePurgePage() {
       );
     } catch (e) {
       setProviderBusinessEmail("");
+      setProviderBillingEmail("");
       setProviderOwnerEmail("");
       setProviderMsg(e instanceof Error ? e.message : "Could not load provider");
     } finally {
@@ -209,11 +214,15 @@ export function CompliancePurgePage() {
       setProviderMsg(`Type exactly: ${PROVIDER_PHRASE}`);
       return;
     }
-    const allowedEmails = [providerBusinessEmail, providerOwnerEmail].filter((e) => e && e.trim());
+    const allowedEmails = [providerBusinessEmail, providerBillingEmail, providerOwnerEmail].filter(
+      (e) => e && e.trim(),
+    );
     const typed = normalizeEmail(providerEmailTyped);
     const ok = allowedEmails.some((e) => normalizeEmail(e) === typed);
     if (!ok) {
-      setProviderMsg("Typed email must match the provider business email or the owner account email.");
+      setProviderMsg(
+        "Typed email must match business, billing, or owner profile email (server also accepts owner Auth email if it differs).",
+      );
       return;
     }
     setProviderBusy(true);
@@ -398,7 +407,8 @@ export function CompliancePurgePage() {
       <AdminPanel className="space-y-4 border-red-100 bg-red-50/30">
         <h2 className="text-lg font-semibold text-red-900">Purge provider organization</h2>
         <p className="text-sm text-red-800/90">
-          Permanently removes the provider org and related data. Typed email must match business or owner email.
+          Permanently removes the provider org and related data. Typed email must match business, billing, or owner
+          profile email; the API also accepts the owner Supabase Auth email when it differs from profile.
         </p>
         <div className="flex flex-wrap gap-2">
           <CpField label="Provider id (UUID)">
@@ -419,9 +429,11 @@ export function CompliancePurgePage() {
             </button>
           </div>
         </div>
-        {(providerBusinessEmail || providerOwnerEmail) && (
+        {(providerBusinessEmail || providerBillingEmail || providerOwnerEmail) && (
           <p className="text-sm text-gray-700">
             Business: <span className="font-medium">{providerBusinessEmail || "—"}</span>
+            <br />
+            Billing: <span className="font-medium">{providerBillingEmail || "—"}</span>
             <br />
             Owner: <span className="font-medium">{providerOwnerEmail || "—"}</span>
           </p>

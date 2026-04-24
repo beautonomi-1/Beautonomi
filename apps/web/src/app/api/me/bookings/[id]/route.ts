@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
-import { isQRCodeExpired } from "@/lib/qr/generator";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 /**
@@ -335,13 +334,13 @@ export async function GET(
         arrival_otp: bookingData.arrival_otp,
       }),
       // Customer shows QR for provider to scan (same payload as encoded in the QR image)
+      // Include QR payload even when expired so the customer app can show expiry + refresh.
       ...(isCustomer &&
         bookingData.location_type === "at_home" &&
         bookingData.current_stage === "provider_arrived" &&
         !bookingData.arrival_otp_verified &&
         !bookingData.qr_code_verified &&
-        bookingData.qr_code_data != null &&
-        !(bookingData.qr_code_expires_at && isQRCodeExpired(bookingData.qr_code_expires_at)) && {
+        bookingData.qr_code_data != null && {
         qr_code_data: bookingData.qr_code_data as Record<string, unknown>,
         qr_code_expires_at: bookingData.qr_code_expires_at ?? undefined,
       }),

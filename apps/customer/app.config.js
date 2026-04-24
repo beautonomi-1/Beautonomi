@@ -40,7 +40,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.16",
+  version: "1.0.17",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -57,6 +57,8 @@ const BASE_EXPO_CONFIG = {
     buildNumber: "209",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
+      NSCalendarsUsageDescription:
+        "Beautonomi can add your appointment to your calendar when you choose Save to calendar.",
       ITSAppUsesNonExemptEncryption: false,
       // WrongAppScreen: Linking.canOpenURL("provider://") needs the scheme here
       // (iOS blocks undeclared schemes). Must match plugin `scheme` and
@@ -86,7 +88,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 209,
+    versionCode: 210,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -140,6 +142,7 @@ const BASE_EXPO_CONFIG = {
       "onesignal-expo-plugin",
       { mode: oneSignalMode },
     ],
+    "expo-notifications",
     "expo-router",
     "expo-font",
     [
@@ -164,6 +167,13 @@ const BASE_EXPO_CONFIG = {
           "Allow Beautonomi to access your photos for your profile, reviews, and sharing images.",
         cameraPermission:
           "Allow Beautonomi to use the camera for your profile, reviews, and sharing photos.",
+      },
+    ],
+    [
+      "expo-calendar",
+      {
+        calendarPermission:
+          "Beautonomi can add your booking to your calendar when you tap Save to calendar.",
       },
     ],
     [

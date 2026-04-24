@@ -33,6 +33,7 @@ export default function LoginPage() {
   const { t } = useTranslation();
   const { refreshUser, role: contextRole } = useAuth();
   const nextUrl = searchParams.get("next") || searchParams.get("redirect") || "";
+  const initialAuthError = searchParams.get("error")?.trim() || null;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,7 +47,7 @@ export default function LoginPage() {
   const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
   const [otpResending, setOtpResending] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(initialAuthError);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   const getRedirectUrl = () => {
@@ -108,6 +109,15 @@ export default function LoginPage() {
       finalRole === "provider_staff" ||
       finalRole === "provider_onboarding";
 
+    if (finalRole === "provider_onboarding") {
+      const providerSetupTarget =
+        nextPathname?.startsWith("/provider/onboarding") || nextPathname?.startsWith("/provider/get-started")
+          ? next
+          : "/provider/get-started";
+      router.replace(providerSetupTarget);
+      return;
+    }
+
     if (next && next !== "/login" && !next.includes("signup")) {
       if (isProviderFamily) {
         const allowNext =
@@ -129,10 +139,6 @@ export default function LoginPage() {
       return;
     }
     // Redirect by role so provider/customer land in the right place
-    if (finalRole === "provider_onboarding") {
-      router.replace("/provider/get-started");
-      return;
-    }
     if (finalRole === "provider_owner" || finalRole === "provider_staff") {
       router.replace("/provider/dashboard");
       return;
@@ -167,12 +173,6 @@ export default function LoginPage() {
   }, [otpExpiresAt]);
 
   const routeAfterAuth = async (loginResult?: any) => {
-    if (nextUrl.startsWith("/provider")) {
-      toast.success("Logged in successfully!");
-      router.replace("/provider/dashboard");
-      void refreshUser().catch(() => {});
-      return;
-    }
     let userRole =
       (await resolveRoleFast()) ||
       (loginResult?.user?.user_metadata?.role as UserRole | undefined) ||

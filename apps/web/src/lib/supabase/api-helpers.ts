@@ -153,7 +153,9 @@ export function handleApiError(
     if (
       errorMessage.includes("insufficient permissions") ||
       errorMessage.includes("authentication required") ||
-      errorMessage.includes("unauthorized")
+      errorMessage.includes("unauthorized") ||
+      errorMessage.includes("not assigned to this tenant") ||
+      errorMessage.includes("no active tenant assignment")
     ) {
       status = 403;
       code = "FORBIDDEN";
@@ -450,7 +452,11 @@ export async function requireAdminSection(
     throw new Error(`Insufficient permissions: access to section '${section}' required`);
   }
 
-  if (request && (user.role as string) !== 'superadmin') {
+  if (
+    request &&
+    (user.role as string) !== 'superadmin' &&
+    (user.role as string) !== 'admin_platform_config'
+  ) {
     const tenantId = await resolveAdminApiTenantId(request);
     const supabase = getSupabaseAdmin();
     const { data: memberships } = await supabase
@@ -507,7 +513,11 @@ export async function requireAdminSectionAny(
     }
   }
 
-  if (request && (user.role as string) !== "superadmin") {
+  if (
+    request &&
+    (user.role as string) !== "superadmin" &&
+    (user.role as string) !== "admin_platform_config"
+  ) {
     const tenantId = await resolveAdminApiTenantId(request);
     const supabase = getSupabaseAdmin();
     const { data: memberships } = await supabase

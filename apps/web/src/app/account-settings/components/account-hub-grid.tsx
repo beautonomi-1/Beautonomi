@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import React, { useState, lazy, Suspense, useCallback, useRef, memo, useEffect } from "react";
+import React, { useState, lazy, Suspense, memo } from "react";
 import {
   User,
   ShieldCheck,
@@ -60,10 +59,6 @@ export const ACCOUNT_HUB_CARDS: AccountHubCard[] = [
   { icon: Heart, title: "Wishlists & Recently Viewed", description: "Manage your saved wishlists and view recently viewed items", link: "/account-settings/wishlists" },
   { icon: MessageCircle, title: "Messages", description: "View and manage your messages with beauty partners and clients", link: "/account-settings/messages" },
   { icon: Briefcase, title: "Custom Requests", description: "Request custom services and manage offers from providers", link: "/account-settings/custom-requests" },
-  // §Release-audit 2026-04: removed broken "Membership" card — there is no
-  // /account-settings/membership route in the app, so taps resolved to a
-  // slow Next.js 404. Customer-facing memberships are surfaced under the
-  // partner profile and inside /account-settings/payments where applicable.
   { icon: ShieldCheck, title: "Identity Verification", description: "Verify your identity for a trusted experience", link: "/account-settings/verification/embed" },
   { icon: Info, title: "About Us", description: "Learn more about Beautonomi and our mission", link: "#about-us", isAction: true },
   { icon: Share2, title: "Share App", description: "Share Beautonomi with your friends and family", link: "#share-app", isAction: true },
@@ -76,25 +71,12 @@ type AccountHubGridProps = {
 
 type HubLinkCardProps = {
   card: AccountHubCard;
-  warmRoute: (href: string) => void;
 };
 
-const HubLinkCard = memo(function HubLinkCard({ card, warmRoute }: HubLinkCardProps) {
+const HubLinkCard = memo(function HubLinkCard({ card }: HubLinkCardProps) {
   const Icon = card.icon;
   return (
-    <Link
-      href={card.link}
-      prefetch={false}
-      onPointerEnter={() => warmRoute(card.link)}
-      onFocus={() => warmRoute(card.link)}
-      // §Release-audit 2026-04: touch devices never fire pointerEnter,
-      // so without this the route chunk only starts loading AFTER the tap.
-      // Warming on pointerDown gives the navigation a head start while the
-      // tap-up event still has to travel through the gesture layer.
-      onPointerDown={() => warmRoute(card.link)}
-      onTouchStart={() => warmRoute(card.link)}
-      className="block"
-    >
+    <Link href={card.link} className="block">
       <div
         className={`p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border transition-[box-shadow,border-color] duration-200 h-full ${
           card.link === "/account-settings/loyalty"
@@ -143,39 +125,11 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
   const [showAboutUs, setShowAboutUs] = useState(false);
   const [showShareApp, setShowShareApp] = useState(false);
   const { user } = useAuth();
-  const router = useRouter();
-  const prefetchedHrefs = useRef(new Set<string>());
 
-  /** With prefetch={false} on links, warm the route once on hover/focus so clicks feel instant. */
-  const warmRoute = useCallback(
-    (href: string) => {
-      if (prefetchedHrefs.current.has(href)) return;
-      prefetchedHrefs.current.add(href);
-      router.prefetch(href);
-    },
-    [router]
-  );
-
-  // Warm common account routes once the grid is on-screen so the first tap
-  // pays only for the destination RSC payload, not cold chunk discovery.
-  useEffect(() => {
-    const hrefs = ACCOUNT_HUB_CARDS.filter((c) => !c.isAction).map((c) => c.link);
-    const run = () => {
-      hrefs.forEach((h) => warmRoute(h));
-      warmRoute("/provider/onboarding");
-    };
-    if (typeof requestIdleCallback !== "undefined") {
-      const id = requestIdleCallback(run, { timeout: 2500 });
-      return () => cancelIdleCallback(id);
-    }
-    const t = window.setTimeout(run, 300);
-    return () => window.clearTimeout(t);
-  }, [warmRoute]);
-
-  const openActionCard = useCallback((card: AccountHubCard) => {
+  const openActionCard = (card: AccountHubCard) => {
     if (card.link === "#about-us") setShowAboutUs(true);
     else if (card.link === "#share-app") setShowShareApp(true);
-  }, []);
+  };
 
   return (
     <>
@@ -191,25 +145,16 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
           </div>
         ) : null}
 
-        {/* Default Link prefetch would load ~25 routes as cards scroll into view; fetch on click/hover instead. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           {ACCOUNT_HUB_CARDS.map((card, index) =>
             card.isAction ? (
               <HubActionCard key={`${card.link}-${index}`} card={card} onOpen={openActionCard} />
             ) : (
-              <HubLinkCard key={`${card.link}-${index}`} card={card} warmRoute={warmRoute} />
-            )
+              <HubLinkCard key={`${card.link}-${index}`} card={card} />
+            ),
           )}
           {user && user.role === "customer" && (
-            <Link
-              href="/provider/onboarding"
-              prefetch={false}
-              onPointerEnter={() => warmRoute("/provider/onboarding")}
-              onFocus={() => warmRoute("/provider/onboarding")}
-              onPointerDown={() => warmRoute("/provider/onboarding")}
-              onTouchStart={() => warmRoute("/provider/onboarding")}
-              className="block"
-            >
+            <Link href="/provider/onboarding" className="block">
               <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-shadow duration-200 h-full">
                 <Store className="h-6 w-6 md:h-7 md:w-7 mb-3 md:mb-4 text-primary" />
                 <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">Become a Provider</h2>
@@ -220,7 +165,6 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
             </Link>
           )}
         </div>
-
       </div>
 
       {showAboutUs && (
@@ -233,7 +177,6 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
           <ShareAppModal isOpen={showShareApp} onClose={() => setShowShareApp(false)} />
         </Suspense>
       )}
-
     </>
   );
 }

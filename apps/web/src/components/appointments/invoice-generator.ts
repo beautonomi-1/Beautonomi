@@ -1,5 +1,14 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function generateInvoiceHTMLFromData(
   invoiceData: any,
   providerCurrency?: string,
@@ -16,7 +25,7 @@ export function generateInvoiceHTMLFromData(
     <!DOCTYPE html>
     <html>
       <head>
-        <title>Invoice - ${invoiceData.invoice_number}</title>
+        <title>Invoice - ${escapeHtml(invoiceData.invoice_number)}</title>
         <style>
           body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
           .header { text-align: center; margin-bottom: 30px; }
@@ -33,38 +42,38 @@ export function generateInvoiceHTMLFromData(
         </style>
       </head>
       <body>
-        ${invoiceData.receipt_header ? `<div style="text-align: center; margin-bottom: 15px; color: #555; font-size: 14px; white-space: pre-line;">${invoiceData.receipt_header}</div>` : ''}
+        ${invoiceData.receipt_header ? `<div style="text-align: center; margin-bottom: 15px; color: #555; font-size: 14px; white-space: pre-line;">${escapeHtml(invoiceData.receipt_header)}</div>` : ''}
         <div class="header">
           <h1>INVOICE</h1>
-          <p>Invoice #: ${invoiceData.invoice_number}</p>
-          <p>Date: ${invoiceData.invoice_date}</p>
-          ${invoiceData.booking_date ? `<p>Booking Date: ${invoiceData.booking_date}</p>` : ''}
+          <p>Invoice #: ${escapeHtml(invoiceData.invoice_number)}</p>
+          <p>Date: ${escapeHtml(invoiceData.invoice_date)}</p>
+          ${invoiceData.booking_date ? `<p>Booking Date: ${escapeHtml(invoiceData.booking_date)}</p>` : ''}
         </div>
         
         <div class="invoice-details">
           <div>
             <h3>From:</h3>
-            <p><strong>${invoiceData.provider.name}</strong></p>
-            ${invoiceData.provider.email ? `<p>Email: ${invoiceData.provider.email}</p>` : ''}
-            ${invoiceData.provider.phone ? `<p>Phone: ${invoiceData.provider.phone}</p>` : ''}
-            ${invoiceData.provider.address.line1 ? `<p>${invoiceData.provider.address.line1}</p>` : ''}
-            ${invoiceData.provider.address.line2 ? `<p>${invoiceData.provider.address.line2}</p>` : ''}
-            ${invoiceData.provider.address.city ? `<p>${invoiceData.provider.address.city}${invoiceData.provider.address.state ? ', ' + invoiceData.provider.address.state : ''} ${invoiceData.provider.address.postal_code || ''}</p>` : ''}
+            <p><strong>${escapeHtml(invoiceData.provider.name)}</strong></p>
+            ${invoiceData.provider.email ? `<p>Email: ${escapeHtml(invoiceData.provider.email)}</p>` : ''}
+            ${invoiceData.provider.phone ? `<p>Phone: ${escapeHtml(invoiceData.provider.phone)}</p>` : ''}
+            ${invoiceData.provider.address.line1 ? `<p>${escapeHtml(invoiceData.provider.address.line1)}</p>` : ''}
+            ${invoiceData.provider.address.line2 ? `<p>${escapeHtml(invoiceData.provider.address.line2)}</p>` : ''}
+            ${invoiceData.provider.address.city ? `<p>${escapeHtml(invoiceData.provider.address.city)}${invoiceData.provider.address.state ? ', ' + escapeHtml(invoiceData.provider.address.state) : ''} ${escapeHtml(invoiceData.provider.address.postal_code || '')}</p>` : ''}
           </div>
           <div>
             <h3>Bill To:</h3>
-            <p><strong>${invoiceData.customer.name}</strong></p>
-            ${invoiceData.customer.email ? `<p>Email: ${invoiceData.customer.email}</p>` : ''}
-            ${invoiceData.customer.phone ? `<p>Phone: ${invoiceData.customer.phone}</p>` : ''}
+            <p><strong>${escapeHtml(invoiceData.customer.name)}</strong></p>
+            ${invoiceData.customer.email ? `<p>Email: ${escapeHtml(invoiceData.customer.email)}</p>` : ''}
+            ${invoiceData.customer.phone ? `<p>Phone: ${escapeHtml(invoiceData.customer.phone)}</p>` : ''}
           </div>
         </div>
         
         ${invoiceData.location_type === 'at_home' && invoiceData.service_address ? `
           <div class="section" style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
             <h3 style="margin-top: 0;">Service Location:</h3>
-            ${invoiceData.service_address.line1 ? `<p style="margin: 5px 0;">${invoiceData.service_address.line1}</p>` : ''}
-            ${invoiceData.service_address.line2 ? `<p style="margin: 5px 0;">${invoiceData.service_address.line2}</p>` : ''}
-            ${invoiceData.service_address.city ? `<p style="margin: 5px 0;">${invoiceData.service_address.city}${invoiceData.service_address.state ? ', ' + invoiceData.service_address.state : ''} ${invoiceData.service_address.postal_code || ''}</p>` : ''}
+            ${invoiceData.service_address.line1 ? `<p style="margin: 5px 0;">${escapeHtml(invoiceData.service_address.line1)}</p>` : ''}
+            ${invoiceData.service_address.line2 ? `<p style="margin: 5px 0;">${escapeHtml(invoiceData.service_address.line2)}</p>` : ''}
+            ${invoiceData.service_address.city ? `<p style="margin: 5px 0;">${escapeHtml(invoiceData.service_address.city)}${invoiceData.service_address.state ? ', ' + escapeHtml(invoiceData.service_address.state) : ''} ${escapeHtml(invoiceData.service_address.postal_code || '')}</p>` : ''}
           </div>
         ` : ''}
         
@@ -81,7 +90,7 @@ export function generateInvoiceHTMLFromData(
             <tbody>
               ${invoiceData.items.map((item: any) => `
                 <tr>
-                  <td>${item.description}${item.staff ? ` (${item.staff})` : ''}${item.duration ? ` (${item.duration} min)` : ''}</td>
+                  <td>${escapeHtml(item.description)}${item.staff ? ` (${escapeHtml(item.staff)})` : ''}${item.duration ? ` (${escapeHtml(item.duration)} min)` : ''}</td>
                   <td class="text-right">${item.quantity}</td>
                   <td class="text-right">${formatCurrency(item.unit_price)}</td>
                   <td class="text-right">${formatCurrency(item.total)}</td>
@@ -98,7 +107,7 @@ export function generateInvoiceHTMLFromData(
           </div>
           ${invoiceData.discount_amount > 0 ? `
             <div class="summary-row">
-              <span>Discount${invoiceData.discount_reason ? ` (${invoiceData.discount_reason})` : ''}:</span>
+              <span>Discount${invoiceData.discount_reason ? ` (${escapeHtml(invoiceData.discount_reason)})` : ''}:</span>
               <span>-${formatCurrency(invoiceData.discount_amount)}</span>
             </div>
           ` : ''}
@@ -177,7 +186,7 @@ export function generateInvoiceHTMLFromData(
               const statusColor = charge.status === 'paid' ? '#28a745' : '#dc3545';
               return `
               <div class="summary-row">
-                <span>${charge.description || 'Additional charge'} <em style="color: ${statusColor}; font-size: 0.85em;">(${statusLabel})</em></span>
+                <span>${escapeHtml(charge.description || 'Additional charge')} <em style="color: ${statusColor}; font-size: 0.85em;">(${escapeHtml(statusLabel)})</em></span>
                 <span>${formatCurrency(charge.amount || 0)}</span>
               </div>`;
             }).join('')}
@@ -193,7 +202,7 @@ export function generateInvoiceHTMLFromData(
               invoiceData.payment_status === 'paid' ? 'PAID' :
               invoiceData.payment_status === 'pending' ? 'PENDING' :
               invoiceData.payment_status === 'failed' ? 'FAILED' :
-              invoiceData.payment_status.toUpperCase()
+              escapeHtml(invoiceData.payment_status.toUpperCase())
             }</p>
           </div>
         ` : ''}
@@ -201,10 +210,10 @@ export function generateInvoiceHTMLFromData(
         ${invoiceData.notes ? `
           <div class="section">
             <h3>Notes:</h3>
-            <p>${invoiceData.notes}</p>
+            <p>${escapeHtml(invoiceData.notes)}</p>
           </div>
         ` : ''}
-        ${invoiceData.receipt_footer ? `<div style="margin-top: 40px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; color: #666; font-size: 12px; white-space: pre-line;">${invoiceData.receipt_footer}</div>` : ''}
+        ${invoiceData.receipt_footer ? `<div style="margin-top: 40px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; color: #666; font-size: 12px; white-space: pre-line;">${escapeHtml(invoiceData.receipt_footer)}</div>` : ''}
       </body>
     </html>
   `;

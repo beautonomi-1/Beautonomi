@@ -64,6 +64,34 @@ describe("calculateAvailableSlots — timezone option (Africa/Johannesburg, UTC+
     expect(labels).toContain("09:00");
     expect(labels).toContain("10:00");
   });
+
+  it("uses provider-local booking times for gap avoidance adjacency", () => {
+    const constraints = makeConstraints();
+    constraints.staffShifts[0].end_time = "12:00:00";
+    constraints.existingBookings = [
+      {
+        id: "booking-service-a",
+        booking_id: "booking-a",
+        offering_id: "offering-a",
+        staff_id: "staff-a",
+        // 09:00-10:00 in Africa/Johannesburg.
+        scheduled_start_at: "2026-06-10T07:00:00.000Z",
+        scheduled_end_at: "2026-06-10T08:00:00.000Z",
+        duration_minutes: 60,
+        buffer_minutes: 0,
+        processing_minutes: 0,
+        finishing_minutes: 0,
+      },
+    ];
+
+    const result = calculateAvailableSlots(constraints, DURATION, TEST_DATE, {
+      slotInterval: 15,
+      avoidGaps: true,
+      timezone: "Africa/Johannesburg",
+    });
+
+    expect(result.map((s) => s.time)).toContain("10:00");
+  });
 });
 
 describe("availabilitySlotsAsTimeSlots — TZ-aware label extraction", () => {

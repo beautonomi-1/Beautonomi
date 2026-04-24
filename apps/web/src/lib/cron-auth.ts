@@ -2,6 +2,15 @@ import { NextRequest } from "next/server";
 
 const _VERCEL_CRON_USER_AGENT = "vercel-cron/1.0";
 
+/**
+ * Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` when the project
+ * defines `CRON_SECRET` in the Vercel env (recommended). `INTERNAL_API_SECRET`
+ * is accepted as a fallback only if you set the same value as the Bearer token
+ * yourself (Vercel does not auto-inject it for crons).
+ *
+ * When `VERCEL` is set, requests must include `x-vercel-id` so ad-hoc curls
+ * with a leaked secret from outside Vercel still fail.
+ */
 export function verifyCronRequest(request: NextRequest): { valid: boolean; error?: string } {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET || process.env.INTERNAL_API_SECRET;

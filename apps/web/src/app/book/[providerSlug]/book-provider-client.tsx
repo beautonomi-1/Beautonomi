@@ -22,7 +22,12 @@ export default function BookProviderClient({ providerSlug }: Props) {
   const searchParams = useSearchParams();
   const embed = searchParams?.get("embed") === "1";
 
-  const [provider, setProvider] = useState<{ id: string; slug: string; business_name: string } | null>(null);
+  const [provider, setProvider] = useState<{
+    id: string;
+    slug: string;
+    business_name: string;
+    timezone?: string | null;
+  } | null>(null);
   const [onlineBookingDisabled, setOnlineBookingDisabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { track, isReady } = useAmplitude();
@@ -32,7 +37,9 @@ export default function BookProviderClient({ providerSlug }: Props) {
     if (!providerSlug) return;
     const load = async () => {
       try {
-        const provRes = await fetcher.get<{ data: { id: string; slug: string; business_name: string } }>(
+        const provRes = await fetcher.get<{
+          data: { id: string; slug: string; business_name: string; timezone?: string | null };
+        }>(
           `/api/public/providers/${encodeURIComponent(providerSlug)}`,
         );
         setProvider(provRes.data);

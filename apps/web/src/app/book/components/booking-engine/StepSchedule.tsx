@@ -31,15 +31,47 @@ import {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function getSlotPeriod(start: string): "morning" | "afternoon" | "evening" {
-  const hour = new Date(start).getHours();
+function getSlotHour(start: string, timeZone?: string | null): number {
+  const d = new Date(start);
+  if (timeZone) {
+    try {
+      const hour = new Intl.DateTimeFormat("en-GB", {
+        timeZone,
+        hour: "2-digit",
+        hour12: false,
+      }).formatToParts(d).find((p) => p.type === "hour")?.value;
+      return Number(hour === "24" ? "0" : hour);
+    } catch {
+      // Fall through to browser-local display if the provider timezone is invalid.
+    }
+  }
+  return d.getHours();
+}
+
+function getSlotPeriod(start: string, timeZone?: string | null): "morning" | "afternoon" | "evening" {
+  const hour = getSlotHour(start, timeZone);
   if (hour < 12) return "morning";
   if (hour < 17) return "afternoon";
   return "evening";
 }
 
-function isoToHHMM(iso: string): string {
+function isoToHHMM(iso: string, timeZone?: string | null): string {
   const d = new Date(iso);
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).formatToParts(d);
+      const h = parts.find((p) => p.type === "hour")?.value ?? "00";
+      const m = parts.find((p) => p.type === "minute")?.value ?? "00";
+      return `${h === "24" ? "00" : h}:${m}`;
+    } catch {
+      // Fall through to browser-local display if the provider timezone is invalid.
+    }
+  }
   const h = d.getHours();
   const m = d.getMinutes();
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
@@ -84,6 +116,7 @@ interface StepScheduleProps {
   minNoticeMinutes?: number;
   providerId?: string;
   serviceId?: string | null;
+  providerTimeZone?: string | null;
   /** When false, unavailable slots are shown grayed out but without "Join Waitlist" */
   waitlistEnabled?: boolean;
 }
@@ -101,6 +134,7 @@ export function StepSchedule({
   minNoticeMinutes = 60,
   providerId = "",
   serviceId = null,
+  providerTimeZone = null,
   waitlistEnabled = true,
 }: StepScheduleProps) {
   const locale = useTenantLocaleTag();
@@ -134,7 +168,11 @@ export function StepSchedule({
   const formatDay = (d: Date) => d.getDate().toString();
   const formatDayShort = (d: Date) => WEEKDAYS[d.getDay()].slice(0, 2);
   const formatSlot = (start: string) =>
-    new Date(start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    new Date(start).toLocaleTimeString(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+      ...(providerTimeZone ? { timeZone: providerTimeZone } : {}),
+    });
   const hasSelection = data.selectedDate != null && data.selectedSlot != null;
 
   const relevantSlots = useMemo(() => {
@@ -142,9 +180,9 @@ export function StepSchedule({
     return slots.filter((s) => isSlotStartStillSelectable(s.start, selectedDay, minNoticeMinutes));
   }, [slots, selectedDay, minNoticeMinutes]);
 
-  const morningSlots = relevantSlots.filter((s) => getSlotPeriod(s.start) === "morning");
-  const afternoonSlots = relevantSlots.filter((s) => getSlotPeriod(s.start) === "afternoon");
-  const eveningSlots = relevantSlots.filter((s) => getSlotPeriod(s.start) === "evening");
+  const morningSlots = relevantSlots.filter((s) => getSlotPeriod(s.start, providerTimeZone) === "morning");
+  const afternoonSlots = relevantSlots.filter((s) => getSlotPeriod(s.start, providerTimeZone) === "afternoon");
+  const eveningSlots = relevantSlots.filter((s) => getSlotPeriod(s.start, providerTimeZone) === "evening");
   const periodGroups = [
     { key: "morning" as const, label: t("booking.morning"), slots: morningSlots },
     { key: "afternoon" as const, label: t("booking.afternoon"), slots: afternoonSlots },
@@ -177,7 +215,10 @@ export function StepSchedule({
 
   const timezoneLabel =
     typeof Intl !== "undefined"
-      ? new Date().toLocaleTimeString(locale, { timeZoneName: "short" }).split(" ").pop() || "—"
+      ? new Date().toLocaleTimeString(locale, {
+          ...(providerTimeZone ? { timeZone: providerTimeZone } : {}),
+          timeZoneName: "short",
+        }).split(" ").pop() || "—"
       : "—";
 
   const cardStyle = {
@@ -205,8 +246,8 @@ export function StepSchedule({
         customer_email: waitlistForm.email.trim() || undefined,
         customer_phone: phoneE164,
         preferred_date: selectedDay ? formatLocalDateYYYYMMDD(selectedDay) : "",
-        preferred_time_start: isoToHHMM(waitlistSlot.start),
-        preferred_time_end: isoToHHMM(waitlistSlot.end),
+        preferred_time_start: isoToHHMM(waitlistSlot.start, providerTimeZone),
+        preferred_time_end: isoToHHMM(waitlistSlot.end, providerTimeZone),
       };
       if (serviceId && isUuid(serviceId)) body.service_id = serviceId;
       if (waitlistSlot.staff_id && isUuid(waitlistSlot.staff_id)) body.staff_id = waitlistSlot.staff_id;

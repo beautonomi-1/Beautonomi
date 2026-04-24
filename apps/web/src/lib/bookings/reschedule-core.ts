@@ -264,6 +264,7 @@ export async function executeReschedule(
         locationId: undefined,
         slotStaffId: staffId,
         staffIdsForTimeOff: allStaffIds,
+        providerTimeZone: providerTz,
       },
     },
   );

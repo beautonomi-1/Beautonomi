@@ -12,26 +12,43 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
 
+type PlatformBlock = {
+  min_version: string;
+  latest_version: string;
+  force_update: boolean;
+  update_url: string;
+};
+
 interface AppVersionSettings {
-  ios: {
-    min_version: string;
-    latest_version: string;
-    force_update: boolean;
-    update_url: string;
-  };
-  android: {
-    min_version: string;
-    latest_version: string;
-    force_update: boolean;
-    update_url: string;
-  };
+  customer: { ios: PlatformBlock; android: PlatformBlock };
+  provider: { ios: PlatformBlock; android: PlatformBlock };
 }
+
+const emptyPlatform = (): PlatformBlock => ({
+  min_version: "1.0.0",
+  latest_version: "1.0.0",
+  force_update: false,
+  update_url: "https://apps.apple.com/app/beautonomi",
+});
+
+const emptyAndroidDefaults = (): PlatformBlock => ({
+  min_version: "1.0.0",
+  latest_version: "1.0.0",
+  force_update: false,
+  update_url: "https://play.google.com/store/apps/details?id=com.beautonomi",
+});
+
+const defaultSettings = (): AppVersionSettings => ({
+  customer: { ios: emptyPlatform(), android: emptyAndroidDefaults() },
+  provider: { ios: emptyPlatform(), android: emptyAndroidDefaults() },
+});
 
 export default function AppVersionSettingsPage() {
   const [settings, setSettings] = useState<AppVersionSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nativeProduct, setNativeProduct] = useState<"customer" | "provider">("customer");
   const [activeTab, setActiveTab] = useState<"ios" | "android">("ios");
 
   useEffect(() => {
@@ -46,7 +63,17 @@ export default function AppVersionSettingsPage() {
       const response = await fetcher.get<{ data: AppVersionSettings }>(
         "/api/admin/app-version"
       );
-      setSettings(response.data);
+      const d = response.data;
+      setSettings({
+        customer: {
+          ios: { ...defaultSettings().customer.ios, ...d.customer?.ios },
+          android: { ...defaultSettings().customer.android, ...d.customer?.android },
+        },
+        provider: {
+          ios: { ...defaultSettings().provider.ios, ...d.provider?.ios },
+          android: { ...defaultSettings().provider.android, ...d.provider?.android },
+        },
+      });
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -77,14 +104,18 @@ export default function AppVersionSettingsPage() {
   };
 
   const updatePlatformSettings = (
+    product: "customer" | "provider",
     platform: "ios" | "android",
-    updates: Partial<AppVersionSettings["ios"] | AppVersionSettings["android"]>
+    updates: Partial<PlatformBlock>
   ) => {
     setSettings((prev) => {
       if (!prev) return null;
       return {
         ...prev,
-        [platform]: { ...prev[platform], ...updates },
+        [product]: {
+          ...prev[product],
+          [platform]: { ...prev[product][platform], ...updates },
+        },
       };
     });
   };
@@ -126,37 +157,83 @@ export default function AppVersionSettingsPage() {
           <div className="mt-4 p-4 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-700 space-y-2">
             <p className="font-medium text-gray-900">How this works with Expo &amp; OTA</p>
             <ul className="list-disc list-inside space-y-1 text-gray-600">
-              <li><strong>This page</strong> controls <strong>native app version</strong> checks: min required version, latest store version, store URLs, and whether to force an update when the user is below the minimum. The customer and provider Expo apps call <code className="bg-gray-200 px-1 rounded">/api/public/app-version</code> on launch and show &quot;Update required&quot; or &quot;Update available&quot; using these values.</li>
+              <li><strong>This page</strong> sets <strong>customer</strong> and <strong>provider</strong> separately. Each native app calls <code className="bg-gray-200 px-1 rounded">/api/public/app-version?app=customer</code> or <code className="bg-gray-200 px-1 rounded">?app=provider</code> with <code className="bg-gray-200 px-1 rounded">platform=ios|android</code> and reads the matching row.</li>
               <li><strong>OTA (Over-The-Air) updates</strong> are separate: they deliver new JavaScript bundles without a new store build. OTA is configured in EAS (e.g. <code className="bg-gray-200 px-1 rounded">eas update --branch production</code>) and in each app&apos;s <code className="bg-gray-200 px-1 rounded">app.config</code> / <code className="bg-gray-200 px-1 rounded">eas.json</code> (channels: development, preview, production). This admin page does <em>not</em> control OTA—only store version checks and force-update prompts.</li>
               <li>When you release a new <strong>store build</strong>, update the &quot;Latest available version&quot; and optionally the &quot;Minimum required version&quot; and &quot;Force update&quot; here so devices know to prompt users to update.</li>
             </ul>
           </div>
         </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "ios" | "android")}>
-          <TabsList className="mb-4 sm:mb-6">
-            <TabsTrigger value="ios" className="text-xs sm:text-sm">
-              <Smartphone className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              iOS
+        <Tabs
+          value={nativeProduct}
+          onValueChange={(v) => setNativeProduct(v as "customer" | "provider")}
+          className="mb-4"
+        >
+          <TabsList className="mb-4 flex w-full flex-wrap gap-1 sm:mb-6">
+            <TabsTrigger value="customer" className="text-xs sm:text-sm">
+              Customer app
             </TabsTrigger>
-            <TabsTrigger value="android" className="text-xs sm:text-sm">
-              <Smartphone className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              Android
+            <TabsTrigger value="provider" className="text-xs sm:text-sm">
+              Provider app
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="ios">
-            <IOSVersionSettings
-              settings={settings.ios}
-              onChange={(updates) => updatePlatformSettings("ios", updates)}
-            />
+          <TabsContent value="customer">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "ios" | "android")}>
+              <TabsList className="mb-4 sm:mb-6">
+                <TabsTrigger value="ios" className="text-xs sm:text-sm">
+                  <Smartphone className="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
+                  iOS
+                </TabsTrigger>
+                <TabsTrigger value="android" className="text-xs sm:text-sm">
+                  <Smartphone className="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
+                  Android
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="ios">
+                <IOSVersionSettings
+                  idPrefix="customer-ios"
+                  settings={settings.customer.ios}
+                  onChange={(updates) => updatePlatformSettings("customer", "ios", updates)}
+                />
+              </TabsContent>
+              <TabsContent value="android">
+                <AndroidVersionSettings
+                  idPrefix="customer-android"
+                  settings={settings.customer.android}
+                  onChange={(updates) => updatePlatformSettings("customer", "android", updates)}
+                />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
-          <TabsContent value="android">
-            <AndroidVersionSettings
-              settings={settings.android}
-              onChange={(updates) => updatePlatformSettings("android", updates)}
-            />
+          <TabsContent value="provider">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "ios" | "android")}>
+              <TabsList className="mb-4 sm:mb-6">
+                <TabsTrigger value="ios" className="text-xs sm:text-sm">
+                  <Smartphone className="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
+                  iOS
+                </TabsTrigger>
+                <TabsTrigger value="android" className="text-xs sm:text-sm">
+                  <Smartphone className="mr-1 h-3 w-3 sm:mr-2 sm:h-4 sm:w-4" />
+                  Android
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="ios">
+                <IOSVersionSettings
+                  idPrefix="provider-ios"
+                  settings={settings.provider.ios}
+                  onChange={(updates) => updatePlatformSettings("provider", "ios", updates)}
+                />
+              </TabsContent>
+              <TabsContent value="android">
+                <AndroidVersionSettings
+                  idPrefix="provider-android"
+                  settings={settings.provider.android}
+                  onChange={(updates) => updatePlatformSettings("provider", "android", updates)}
+                />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         </Tabs>
 
@@ -176,11 +253,13 @@ export default function AppVersionSettingsPage() {
 }
 
 function IOSVersionSettings({
+  idPrefix,
   settings,
   onChange,
 }: {
-  settings: AppVersionSettings["ios"];
-  onChange: (updates: Partial<AppVersionSettings["ios"]>) => void;
+  idPrefix: string;
+  settings: PlatformBlock;
+  onChange: (updates: Partial<PlatformBlock>) => void;
 }) {
   return (
     <div className="bg-white border rounded-lg p-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -198,11 +277,11 @@ function IOSVersionSettings({
       </div>
 
       <div>
-        <Label htmlFor="ios_min_version" className="text-sm sm:text-base">
+        <Label htmlFor={`${idPrefix}_min_version`} className="text-sm sm:text-base">
           Minimum Required Version *
         </Label>
         <Input
-          id="ios_min_version"
+          id={`${idPrefix}_min_version`}
           value={settings.min_version}
           onChange={(e) => onChange({ min_version: e.target.value })}
           placeholder="1.0.0"
@@ -215,11 +294,11 @@ function IOSVersionSettings({
       </div>
 
       <div>
-        <Label htmlFor="ios_latest_version" className="text-sm sm:text-base">
+        <Label htmlFor={`${idPrefix}_latest_version`} className="text-sm sm:text-base">
           Latest Available Version *
         </Label>
         <Input
-          id="ios_latest_version"
+          id={`${idPrefix}_latest_version`}
           value={settings.latest_version}
           onChange={(e) => onChange({ latest_version: e.target.value })}
           placeholder="1.2.5"
@@ -232,11 +311,11 @@ function IOSVersionSettings({
       </div>
 
       <div>
-        <Label htmlFor="ios_update_url" className="text-sm sm:text-base">
+        <Label htmlFor={`${idPrefix}_update_url`} className="text-sm sm:text-base">
           App Store URL *
         </Label>
         <Input
-          id="ios_update_url"
+          id={`${idPrefix}_update_url`}
           type="url"
           value={settings.update_url}
           onChange={(e) => onChange({ update_url: e.target.value })}
@@ -251,7 +330,7 @@ function IOSVersionSettings({
 
       <div className="flex items-center justify-between border-t pt-4">
         <div>
-          <Label htmlFor="ios_force_update" className="text-sm sm:text-base">
+          <Label htmlFor={`${idPrefix}_force_update`} className="text-sm sm:text-base">
             Force Update
           </Label>
           <p className="text-xs sm:text-sm text-gray-600 mt-1">
@@ -260,7 +339,7 @@ function IOSVersionSettings({
         </div>
         <input
           type="checkbox"
-          id="ios_force_update"
+          id={`${idPrefix}_force_update`}
           checked={settings.force_update}
           onChange={(e) => onChange({ force_update: e.target.checked })}
           className="w-5 h-5"
@@ -271,11 +350,13 @@ function IOSVersionSettings({
 }
 
 function AndroidVersionSettings({
+  idPrefix,
   settings,
   onChange,
 }: {
-  settings: AppVersionSettings["android"];
-  onChange: (updates: Partial<AppVersionSettings["android"]>) => void;
+  idPrefix: string;
+  settings: PlatformBlock;
+  onChange: (updates: Partial<PlatformBlock>) => void;
 }) {
   return (
     <div className="bg-white border rounded-lg p-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -293,11 +374,11 @@ function AndroidVersionSettings({
       </div>
 
       <div>
-        <Label htmlFor="android_min_version" className="text-sm sm:text-base">
+        <Label htmlFor={`${idPrefix}_min_version`} className="text-sm sm:text-base">
           Minimum Required Version *
         </Label>
         <Input
-          id="android_min_version"
+          id={`${idPrefix}_min_version`}
           value={settings.min_version}
           onChange={(e) => onChange({ min_version: e.target.value })}
           placeholder="1.0.0"
@@ -310,11 +391,11 @@ function AndroidVersionSettings({
       </div>
 
       <div>
-        <Label htmlFor="android_latest_version" className="text-sm sm:text-base">
+        <Label htmlFor={`${idPrefix}_latest_version`} className="text-sm sm:text-base">
           Latest Available Version *
         </Label>
         <Input
-          id="android_latest_version"
+          id={`${idPrefix}_latest_version`}
           value={settings.latest_version}
           onChange={(e) => onChange({ latest_version: e.target.value })}
           placeholder="1.2.5"
@@ -327,11 +408,11 @@ function AndroidVersionSettings({
       </div>
 
       <div>
-        <Label htmlFor="android_update_url" className="text-sm sm:text-base">
+        <Label htmlFor={`${idPrefix}_update_url`} className="text-sm sm:text-base">
           Google Play Store URL *
         </Label>
         <Input
-          id="android_update_url"
+          id={`${idPrefix}_update_url`}
           type="url"
           value={settings.update_url}
           onChange={(e) => onChange({ update_url: e.target.value })}
@@ -346,7 +427,7 @@ function AndroidVersionSettings({
 
       <div className="flex items-center justify-between border-t pt-4">
         <div>
-          <Label htmlFor="android_force_update" className="text-sm sm:text-base">
+          <Label htmlFor={`${idPrefix}_force_update`} className="text-sm sm:text-base">
             Force Update
           </Label>
           <p className="text-xs sm:text-sm text-gray-600 mt-1">
@@ -355,7 +436,7 @@ function AndroidVersionSettings({
         </div>
         <input
           type="checkbox"
-          id="android_force_update"
+          id={`${idPrefix}_force_update`}
           checked={settings.force_update}
           onChange={(e) => onChange({ force_update: e.target.checked })}
           className="w-5 h-5"

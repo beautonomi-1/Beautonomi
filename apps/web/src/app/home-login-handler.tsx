@@ -52,6 +52,7 @@ export default function HomeLoginHandler() {
       setOpen={setIsLoginModalOpen}
       initialMode="login"
       redirectContext={redirectContext}
+      redirectUrl={redirectPath ?? undefined}
     />
   );
 }

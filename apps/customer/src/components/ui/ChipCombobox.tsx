@@ -17,6 +17,7 @@ import {
   type TextInputKeyPressEventData,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { coerceChipMultiValue, coerceChipSingleRow } from "@beautonomi/utils";
 
 export interface SuggestionItem {
   value: string;
@@ -101,13 +102,9 @@ export function ChipCombobox(props: ChipComboboxProps) {
   const isSingle = props.singleSelect === true;
   const value = props.value;
   const onChange = props.onChange;
+  /** API / JSONB may return numbers or mixed arrays; `.trim()` on those throws during render. */
   const selectedList = useMemo<string[]>(
-    () =>
-      isSingle
-        ? value != null && value !== ""
-          ? [value as string]
-          : []
-        : (value as string[]),
+    () => (isSingle ? coerceChipSingleRow(value) : coerceChipMultiValue(value)),
     [isSingle, value]
   );
 
@@ -123,7 +120,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
   const inputRef = useRef<TextInput>(null);
 
   const normalize = useCallback(
-    (raw: string) => normalizeValue(raw.trim()),
+    (raw: string) => normalizeValue(String(raw ?? "").trim()),
     [normalizeValue]
   );
 
@@ -245,7 +242,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
         return;
       }
 
-      const next = [...(value as ValueMulti), trimmed];
+      const next = [...selectedList, trimmed];
       (onChange as (v: ValueMulti) => void)(next);
       setInputValue("");
       setHighlightedIndex(-1);
@@ -254,7 +251,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
       isSingle,
       selectedSet,
       normalize,
-      value,
+      selectedList,
       onChange,
       onCreateNew,
     ]
@@ -266,12 +263,12 @@ export function ChipCombobox(props: ChipComboboxProps) {
         (onChange as (v: ValueSingle) => void)(null);
         return;
       }
-      const next = (value as ValueMulti).filter(
+      const next = selectedList.filter(
         (v) => normalize(v) !== normalize(toRemove)
       );
       (onChange as (v: ValueMulti) => void)(next);
     },
-    [isSingle, value, onChange, normalize]
+    [isSingle, selectedList, onChange, normalize]
   );
 
   const removeLastChip = useCallback(() => {
@@ -279,10 +276,9 @@ export function ChipCombobox(props: ChipComboboxProps) {
       if (value) (onChange as (v: ValueSingle) => void)(null);
       return;
     }
-    const arr = value as ValueMulti;
-    if (arr.length > 0)
-      (onChange as (v: ValueMulti) => void)(arr.slice(0, -1));
-  }, [isSingle, value, onChange]);
+    if (selectedList.length > 0)
+      (onChange as (v: ValueMulti) => void)(selectedList.slice(0, -1));
+  }, [isSingle, value, selectedList, onChange]);
 
   const onFocus = useCallback(() => {
     setDropdownOpen(true);
@@ -327,14 +323,8 @@ export function ChipCombobox(props: ChipComboboxProps) {
 
   const showDropdown = dropdownOpen && (options.length > 0 || loading || error);
 
-  const displayValues: string[] = isSingle
-    ? value != null && value !== ""
-      ? [value as string]
-      : []
-    : (value as string[]);
-
   const atMaxChips =
-    maxChips > 0 && displayValues.length >= maxChips && !isSingle;
+    maxChips > 0 && selectedList.length >= maxChips && !isSingle;
 
   return (
     <View style={styles.wrapper}>
@@ -350,7 +340,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
           contentContainerStyle={styles.chipsScroll}
           keyboardShouldPersistTaps="handled"
         >
-          {displayValues.map((v) => (
+          {selectedList.map((v) => (
             <View key={v} style={styles.chip}>
               <Text style={styles.chipText} numberOfLines={1}>
                 {getLabelForValue(v)}

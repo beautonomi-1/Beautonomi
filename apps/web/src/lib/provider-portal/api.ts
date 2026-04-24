@@ -512,6 +512,10 @@ function mapWaitlistPriorityField(p: unknown): "high" | "normal" | "low" {
   return "normal";
 }
 
+function rootBookingId(id: string): string {
+  return id.includes("-svc-") ? id.split("-svc-")[0]! : id;
+}
+
 export class ProviderApiClient implements ProviderApi {
   /**
    * Log + health check. Skips logging for HTML routing failures (e.g. Turbopack dev missing /api/.../[id])
@@ -769,7 +773,7 @@ export class ProviderApiClient implements ProviderApi {
   async getAppointment(id: string): Promise<Appointment> {
     try {
       // When id is composite (e.g. "uuid-svc-0" from expanded calendar), use root booking id
-      const bookingId = id.includes("-svc-") ? id.split("-svc-")[0] : id;
+      const bookingId = rootBookingId(id);
       const { fetcher } = await import("@/lib/http/fetcher");
       const response = await fetcher.get<{ data: any }>(`/api/provider/bookings/${bookingId}`);
       const booking = response.data;
@@ -1055,7 +1059,7 @@ export class ProviderApiClient implements ProviderApi {
   }
 
   async updateAppointment(id: string, data: Partial<Appointment>): Promise<Appointment> {
-    const bookingId = id.includes("-svc-") ? id.split("-svc-")[0] : id;
+    const bookingId = rootBookingId(id);
     const updateData: any = {};
     
     try {
@@ -1321,7 +1325,7 @@ export class ProviderApiClient implements ProviderApi {
   }
 
   async deleteAppointment(id: string): Promise<void> {
-    const bookingId = id.includes("-svc-") ? id.split("-svc-")[0] : id;
+    const bookingId = rootBookingId(id);
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       // Appointments are cancelled, not hard deleted
@@ -4534,8 +4538,9 @@ export class ProviderApiClient implements ProviderApi {
   async markArrived(appointmentId: string, latitude?: number, longitude?: number): Promise<{ appointment: Appointment; otp: string | null; qr_code: any | null }> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
+      const bookingId = rootBookingId(appointmentId);
       const response = await fetcher.post<{ data: { booking: any; otp: string | null; qr_code: any; verification_code?: string } }>(
-        `/api/provider/bookings/${appointmentId}/arrive`,
+        `/api/provider/bookings/${bookingId}/arrive`,
         { latitude, longitude }
       );
       return {
@@ -4552,8 +4557,9 @@ export class ProviderApiClient implements ProviderApi {
   async startService(appointmentId: string): Promise<Appointment> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
+      const bookingId = rootBookingId(appointmentId);
       const response = await fetcher.post<{ data: { booking: any } }>(
-        `/api/provider/bookings/${appointmentId}/start-service`
+        `/api/provider/bookings/${bookingId}/start-service`
       );
       return this.transformBookingToAppointment(response.data.booking);
     } catch (error) {
@@ -4565,8 +4571,9 @@ export class ProviderApiClient implements ProviderApi {
   async completeService(appointmentId: string): Promise<Appointment> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
+      const bookingId = rootBookingId(appointmentId);
       const response = await fetcher.post<{ data: { booking: any } }>(
-        `/api/provider/bookings/${appointmentId}/complete-service`
+        `/api/provider/bookings/${bookingId}/complete-service`
       );
       return this.transformBookingToAppointment(response.data.booking);
     } catch (error) {

@@ -28,6 +28,7 @@ export function resolvePostLoginHref(returnTo: string | string[] | undefined): H
       if (rid) p.reschedule_booking_id = rid;
       return { pathname: "/(app)/book-checkout", params: p };
     }
+    return "/(app)/(tabs)/home";
   }
   if (t.startsWith("/(app)/(tabs)/shop/product-checkout") || t.startsWith("/(app)/product-checkout")) {
     const q = t.includes("?") ? t.split("?")[1] : "";

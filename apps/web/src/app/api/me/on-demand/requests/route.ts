@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { randomUUID } from "crypto";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -87,9 +88,11 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + windowSeconds * 1000);
 
-    const key =
-      idempotency_key ??
-      `od-${user.id}-${provider_id}-${now.toISOString().slice(0, 13)}`;
+    const headerKey =
+      request.headers.get("idempotency-key")?.trim() ||
+      request.headers.get("x-idempotency-key")?.trim() ||
+      null;
+    const key = idempotency_key?.trim() || headerKey || `od-${user.id}-${provider_id}-${randomUUID()}`;
 
     const supabase = await getSupabaseServer(request);
     const { data: existing } = await supabase

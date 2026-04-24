@@ -35,8 +35,9 @@ import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 /* ------------------------------------------------------------------ */
 
 interface CategoryInfo {
+  id?: string;
   name: string;
-  color: string;
+  color?: string | null;
 }
 
 interface ServiceItem {
@@ -49,6 +50,7 @@ interface ServiceItem {
   is_active: boolean;
   supports_at_home: boolean;
   supports_at_salon: boolean;
+  provider_category_id?: string | null;
   /**
    * §Provider-audit 2026-04 (catalogue round 2): the underlying `offerings`
    * table column is `display_order` — the mobile type previously called it
@@ -59,7 +61,8 @@ interface ServiceItem {
   display_order?: number | null;
   service_type?: string;
   parent_service_id?: string | null;
-  provider_categories?: CategoryInfo[];
+  /** PostgREST returns a single joined row as an object; some clients may still send an array. */
+  provider_categories?: CategoryInfo | CategoryInfo[] | null;
 }
 
 interface CategoryOption {
@@ -68,12 +71,32 @@ interface CategoryOption {
   slug?: string;
   color: string | null;
   description?: string | null;
+  display_order?: number | null;
 }
 
 interface CategoriesResponse {
   own_categories: CategoryOption[];
   global_categories: CategoryOption[];
 }
+
+function normalizeNestedProviderCategory(
+  pc: ServiceItem["provider_categories"],
+): CategoryInfo | null {
+  if (!pc) return null;
+  if (Array.isArray(pc)) return pc[0] ?? null;
+  if (typeof pc === "object" && pc !== null && "name" in pc && typeof (pc as CategoryInfo).name === "string") {
+    return pc as CategoryInfo;
+  }
+  return null;
+}
+
+type ServiceSection = {
+  sectionKey: string;
+  title: string;
+  color: string | null;
+  sortOrder: number;
+  items: ServiceItem[];
+};
 
 const EMPTY_FORM = {
   title: "",
@@ -99,7 +122,7 @@ export default function CatalogueScreen() {
 
   // --- Data ---
   const { data: services, loading, error: servicesError, refresh } = useApi<ServiceItem[]>(
-    "/api/provider/services",
+    "/api/provider/services?include_inactive=true",
   );
   const { data: categoriesResponse, refresh: refreshCategories } = useApi<
     CategoriesResponse | CategoryOption[]
@@ -231,21 +254,65 @@ export default function CatalogueScreen() {
     );
   }, [services, filter, search]);
 
-  // --- Grouped by category, respecting category display_order ---
-  const grouped = useMemo(() => {
-    const map = new Map<string, ServiceItem[]>();
+  // --- Grouped by category (matches web: own categories + display_order); PostgREST
+  //     returns `provider_categories` as a single object, not `[0]`.
+  const grouped = useMemo((): ServiceSection[] => {
+    const catById = new Map(categories.map((c) => [c.id, c]));
+
+    const sectionMeta = (item: ServiceItem) => {
+      const nested = normalizeNestedProviderCategory(item.provider_categories);
+      const cid =
+        item.provider_category_id ??
+        (typeof nested?.id === "string" ? nested.id : null);
+      if (cid && catById.has(cid)) {
+        const c = catById.get(cid)!;
+        return {
+          key: cid,
+          title: c.name,
+          color: (c.color ?? nested?.color ?? null) as string | null,
+          sortOrder: c.display_order ?? 0,
+        };
+      }
+      if (nested?.name) {
+        return {
+          key: cid ?? `name:${nested.name}`,
+          title: nested.name,
+          color: (nested.color ?? null) as string | null,
+          sortOrder: 50_000,
+        };
+      }
+      return {
+        key: "__uncategorized__",
+        title: "Uncategorized",
+        color: null,
+        sortOrder: 100_000,
+      };
+    };
+
+    const bucket = new Map<
+      string,
+      { title: string; color: string | null; sortOrder: number; items: ServiceItem[] }
+    >();
     for (const item of filtered) {
-      const cat = item.provider_categories?.[0]?.name ?? "Uncategorized";
-      if (!map.has(cat)) map.set(cat, []);
-      map.get(cat)!.push(item);
+      const m = sectionMeta(item);
+      if (!bucket.has(m.key)) {
+        bucket.set(m.key, { title: m.title, color: m.color, sortOrder: m.sortOrder, items: [] });
+      }
+      bucket.get(m.key)!.items.push(item);
     }
-    // Sort group keys by the category's display_order from the categories list
-    const catOrderMap = new Map(categories.map((c, i) => [c.name, i]));
-    return Array.from(map.entries()).sort(([a], [b]) => {
-      const oa = catOrderMap.has(a) ? catOrderMap.get(a)! : 9999;
-      const ob = catOrderMap.has(b) ? catOrderMap.get(b)! : 9999;
-      return oa - ob;
-    });
+
+    return [...bucket.entries()]
+      .map(([sectionKey, v]) => ({
+        sectionKey,
+        title: v.title,
+        color: v.color,
+        sortOrder: v.sortOrder,
+        items: v.items,
+      }))
+      .sort((a, b) => {
+        if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+        return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+      });
   }, [filtered, categories]);
 
   // --- Handlers ---
@@ -276,11 +343,11 @@ export default function CatalogueScreen() {
     }
   }
 
-  function toggleCollapse(category: string) {
+  function toggleCollapse(sectionKey: string) {
     setCollapsedCategories((prev) => {
       const next = new Set(prev);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
+      if (next.has(sectionKey)) next.delete(sectionKey);
+      else next.add(sectionKey);
       return next;
     });
   }
@@ -582,23 +649,40 @@ export default function CatalogueScreen() {
         <FlatList
           {...verticalFlatListPerf}
           data={grouped}
-          keyExtractor={([cat]: [string, ServiceItem[]]) => cat}
+          keyExtractor={(s: ServiceSection) => s.sectionKey}
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
           contentContainerStyle={{ paddingBottom: listBottomPadding }}
-          renderItem={({ item: [category, items] }: { item: [string, ServiceItem[]] }) => {
-            const isCollapsed = collapsedCategories.has(category);
+          renderItem={({ item: section }: { item: ServiceSection }) => {
+            const { sectionKey, title, color, items } = section;
+            const isCollapsed = collapsedCategories.has(sectionKey);
+            const accent = color && color.trim() ? color : Colors.gray[300];
             return (
               <View style={{ marginBottom: 16 }}>
                 <TouchableOpacity
                   style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
-                  onPress={() => toggleCollapse(category)}
-                  accessibilityLabel={`${isCollapsed ? "Expand" : "Collapse"} ${category}`}
+                  onPress={() => toggleCollapse(sectionKey)}
+                  accessibilityLabel={`${isCollapsed ? "Expand" : "Collapse"} ${title}`}
                 >
-                  <Text style={{ fontSize: 14, fontWeight: "600", letterSpacing: 1, textTransform: "uppercase", color: Colors.gray[400] }}>
-                    {category} ({items.length})
-                  </Text>
+                  <View
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      borderLeftWidth: 4,
+                      borderLeftColor: accent,
+                      paddingLeft: 10,
+                      marginRight: 8,
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[800] }} numberOfLines={1}>
+                      {title}
+                    </Text>
+                    <Text style={{ marginLeft: 8, fontSize: 12, fontWeight: "500", color: Colors.gray[400] }}>
+                      ({items.length})
+                    </Text>
+                  </View>
                   <Ionicons name={isCollapsed ? "chevron-down" : "chevron-up"} size={16} color="#9ca3af" />
                 </TouchableOpacity>
 
