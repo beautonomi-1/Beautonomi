@@ -1,14 +1,9 @@
-"use client";
-import React from 'react'
-import Notificationtabs from './components/tab'
-import AuthGuard from '@/components/auth/auth-guard'
+import NotificationsPageClient from "./NotificationsPageClient";
+import { fetchNotificationPreferencesInitial } from "./fetch-notification-preferences-initial";
 
-const page = () => {
-  return (
-    <AuthGuard>
-      <Notificationtabs/>
-    </AuthGuard>
-  )
+export const dynamic = "force-dynamic";
+
+export default async function Page() {
+  const initialPreferences = await fetchNotificationPreferencesInitial();
+  return <NotificationsPageClient initialPreferences={initialPreferences} />;
 }
-
-export default page

@@ -52,6 +52,7 @@ interface Provider {
   status: string;
   is_verified: boolean;
   email: string;
+  billing_email?: string | null;
   phone: string;
   description: string;
   owner: {
@@ -898,7 +899,8 @@ export default function ProviderDetailPage() {
           onOpenChange={setCompliancePurgeOpen}
           providerId={provider.id}
           providerEmail={provider.email}
-          ownerEmail={provider.owner.email}
+          billingEmail={provider.billing_email ?? ""}
+          ownerEmail={provider.owner?.email ?? ""}
           onComplete={() => router.push("/admin/providers")}
         />
 

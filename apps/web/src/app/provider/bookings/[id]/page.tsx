@@ -1381,7 +1381,7 @@ export default function ProviderBookingDetail() {
                               disabled={isResendingArrivalOtp}
                               className="min-h-[44px]"
                             >
-                              {isResendingArrivalOtp ? "Sending…" : "Resend code"}
+                              {isResendingArrivalOtp ? "Sending…" : "Resend code & QR"}
                             </Button>
                           </div>
                         </div>
@@ -1391,7 +1391,21 @@ export default function ProviderBookingDetail() {
                           <p className="text-sm font-medium text-violet-950">Scan the customer&apos;s QR or enter their code</p>
                           <p className="text-xs text-violet-800">
                             They open this booking on their phone to show the arrival QR, or read the 8-character code aloud.
+                            {arrivalOtpPending
+                              ? " If it expired, use Resend in the PIN section — the customer gets a fresh code and QR."
+                              : " If it expired, use Resend below — the customer gets a fresh code and QR."}
                           </p>
+                          {!arrivalOtpPending && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleResendArrivalOtp}
+                              disabled={isResendingArrivalOtp}
+                              className="min-h-[44px] w-full border-violet-300 text-violet-900"
+                            >
+                              {isResendingArrivalOtp ? "Sending…" : "Resend QR & code to customer"}
+                            </Button>
+                          )}
                           <input
                             type="text"
                             value={qrArrivalCodeInput}

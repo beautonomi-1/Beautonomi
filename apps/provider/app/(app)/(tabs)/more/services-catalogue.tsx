@@ -51,15 +51,18 @@ export default function ServicesCatalogueScreen() {
     "/api/provider/categories"
   );
   const { data: services, loading: loadingSvc, error: errorSvc, refresh: refreshSvc } = useApi<ServiceItem[]>(
-    "/api/provider/services"
+    "/api/provider/services?include_inactive=true"
   );
 
-  const categories =
+  const categoriesRaw =
     categoriesData?.own_categories ??
     (categoriesData && typeof categoriesData === "object" && "data" in categoriesData
       ? (categoriesData as { data?: { own_categories?: ServiceCategory[] } }).data?.own_categories
       : undefined) ??
     [];
+  const categories = [...categoriesRaw].sort(
+    (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0),
+  );
   const rawServices = services;
   const servicesList = Array.isArray(rawServices)
     ? rawServices

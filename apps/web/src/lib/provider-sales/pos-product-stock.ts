@@ -23,7 +23,7 @@ export async function validatePosProductStock(
 
     const { data: prod, error } = await supabase
       .from("products")
-      .select("id, name, quantity, has_variants, provider_id, is_active")
+      .select("id, name, quantity, has_variants, provider_id, is_active, track_stock_quantity")
       .eq("id", productId)
       .eq("provider_id", providerId)
       .maybeSingle();
@@ -48,6 +48,8 @@ export async function validatePosProductStock(
       }
     } else if (Boolean((prod as { has_variants?: boolean }).has_variants)) {
       return `${prod.name} has variants — select a specific option so inventory matches ecommerce / bookings.`;
+    } else if ((prod as { track_stock_quantity?: boolean }).track_stock_quantity === false) {
+      // Unlimited / made-to-order — no base-quantity gate
     } else if (Number(prod.quantity) < qty) {
       return `${prod.name}: only ${prod.quantity} in stock (requested ${qty}).`;
     }
@@ -79,6 +81,15 @@ export async function applyPosProductStockDecrements(
       });
       if (error) throw new Error(error.message || "decrement_product_variant_stock failed");
     } else {
+      const { data: prodRow, error: pe } = await supabase
+        .from("products")
+        .select("track_stock_quantity")
+        .eq("id", productId)
+        .maybeSingle();
+      if (pe) throw new Error(pe.message || "product stock lookup failed");
+      if ((prodRow as { track_stock_quantity?: boolean } | null)?.track_stock_quantity === false) {
+        continue;
+      }
       const { error } = await supabase.rpc("decrement_product_stock", {
         p_product_id: productId,
         p_quantity: qty,

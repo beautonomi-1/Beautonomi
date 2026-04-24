@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  adminScopeGetAppliesToPathname,
   adminScopePathname,
   isScopedAdminCustomizationPath,
   mergeAdminScopeIntoJsonBody,
@@ -36,6 +37,12 @@ describe("adminScope", () => {
     expect(out.foo).toBe(1);
     expect(out.scope).toBe("tenant");
     expect(out.tenant_id).toBe("tid-1");
+  });
+
+  it("adminScopeGetAppliesToPathname skips global app-version GET", () => {
+    expect(adminScopeGetAppliesToPathname("/api/admin/app-version")).toBe(false);
+    expect(adminScopeGetAppliesToPathname("/api/admin/dashboard")).toBe(true);
+    expect(adminScopeGetAppliesToPathname("/api/admin/bootstrap")).toBe(false);
   });
 
   it("mergeAdminScopeIntoJsonBody is no-op for non-scoped routes", () => {

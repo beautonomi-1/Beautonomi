@@ -64,7 +64,10 @@ export async function GET(request: NextRequest) {
 
     if (data.data.status === "success") {
       const metadata = data.data.metadata || {};
-      const supabase = await getSupabaseServer();
+      // §Customer-launch (audit 2026-04): forward the request so Bearer
+      // tokens from the mobile app are honoured during Paystack
+      // verification (RLS was rejecting all mobile verify calls).
+      const supabase = await getSupabaseServer(request);
       const tenantRegion = await getTenantRegionConfig(tenantId);
       const fallbackCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
       const paidCurrency =

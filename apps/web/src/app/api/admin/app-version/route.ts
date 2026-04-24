@@ -1,25 +1,34 @@
-import { NextRequest } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { NextRequest } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
-import { z } from 'zod';
+import { z } from "zod";
 
-const versionSettingsSchema = z.object({
-  ios: z.object({
-    min_version: z.string(),
-    latest_version: z.string(),
-    force_update: z.boolean().optional(),
-    update_url: z.string().url(),
-  }),
-  android: z.object({
-    min_version: z.string(),
-    latest_version: z.string(),
-    force_update: z.boolean().optional(),
-    update_url: z.string().url(),
-  }),
+const APP_KEYS = ["customer", "provider"] as const;
+
+const platformSchema = z.object({
+  min_version: z.string(),
+  latest_version: z.string(),
+  force_update: z.boolean().optional(),
+  update_url: z.string().url(),
 });
 
+const appPairSchema = z.object({
+  ios: platformSchema,
+  android: platformSchema,
+});
+
+const fullBodySchema = z.object({
+  customer: appPairSchema,
+  provider: appPairSchema,
+});
+
+type PlatformVersion = z.infer<typeof platformSchema>;
+type AppPair = z.infer<typeof appPairSchema>;
+type FullPayload = z.infer<typeof fullBodySchema>;
+
 type AppVersionSettingRow = {
+  app?: string;
   platform?: string;
   min_version?: string;
   latest_version?: string;
@@ -27,156 +36,153 @@ type AppVersionSettingRow = {
   update_url?: string;
 };
 
+const DEFAULT_IOS: PlatformVersion = {
+  min_version: "1.0.0",
+  latest_version: "1.0.0",
+  force_update: false,
+  update_url: "https://apps.apple.com/app/beautonomi",
+};
+
+const DEFAULT_ANDROID: PlatformVersion = {
+  min_version: "1.0.0",
+  latest_version: "1.0.0",
+  force_update: false,
+  update_url: "https://play.google.com/store/apps/details?id=com.beautonomi",
+};
+
+function defaultAppPair(): AppPair {
+  return {
+    ios: { ...DEFAULT_IOS },
+    android: { ...DEFAULT_ANDROID },
+  };
+}
+
+function defaultFullPayload(): FullPayload {
+  return {
+    customer: defaultAppPair(),
+    provider: defaultAppPair(),
+  };
+}
+
+function rowToPlatformVersion(row: AppVersionSettingRow | undefined, fallback: PlatformVersion): PlatformVersion {
+  return {
+    min_version: row?.min_version ?? fallback.min_version,
+    latest_version: row?.latest_version ?? fallback.latest_version,
+    force_update: row?.force_update ?? false,
+    update_url: row?.update_url ?? fallback.update_url,
+  };
+}
+
+function payloadFromRows(rows: AppVersionSettingRow[]): FullPayload {
+  const out = defaultFullPayload();
+  for (const app of APP_KEYS) {
+    const subset = rows.filter((r) => String(r.app) === app);
+    const iosRow = subset.find((s) => s.platform === "ios");
+    const androidRow = subset.find((s) => s.platform === "android");
+    out[app] = {
+      ios: rowToPlatformVersion(iosRow, DEFAULT_IOS),
+      android: rowToPlatformVersion(androidRow, DEFAULT_ANDROID),
+    };
+  }
+  return out;
+}
+
 /**
  * GET /api/admin/app-version
- * 
- * Get app version settings
+ *
+ * Returns { customer: { ios, android }, provider: { ios, android } }.
  */
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
-    const { data: versionSettings, error } = await supabase
-      .from("app_version_settings")
-      .select("*");
+    const { data: versionSettings, error } = await supabase.from("app_version_settings").select("*");
 
     if (error) {
-      // Return default structure if table doesn't exist yet
-      return successResponse({
-        ios: {
-          min_version: '1.0.0',
-          latest_version: '1.0.0',
-          force_update: false,
-          update_url: 'https://apps.apple.com/app/beautonomi',
-        },
-        android: {
-          min_version: '1.0.0',
-          latest_version: '1.0.0',
-          force_update: false,
-          update_url: 'https://play.google.com/store/apps/details?id=com.beautonomi',
-        },
-      });
+      return successResponse(defaultFullPayload());
     }
 
     const settings = (versionSettings ?? []) as AppVersionSettingRow[];
-    const iosSettings = settings.find((s) => s.platform === "ios") ?? {
-      platform: "ios",
-      min_version: "1.0.0",
-      latest_version: "1.0.0",
-      force_update: false,
-      update_url: "https://apps.apple.com/app/beautonomi",
-    };
-
-    const androidSettings = settings.find((s) => s.platform === "android") ?? {
-      platform: "android",
-      min_version: "1.0.0",
-      latest_version: "1.0.0",
-      force_update: false,
-      update_url: "https://play.google.com/store/apps/details?id=com.beautonomi",
-    };
-
-    return successResponse({
-      ios: {
-        min_version: iosSettings.min_version,
-        latest_version: iosSettings.latest_version,
-        force_update: iosSettings.force_update || false,
-        update_url: iosSettings.update_url,
-      },
-      android: {
-        min_version: androidSettings.min_version,
-        latest_version: androidSettings.latest_version,
-        force_update: androidSettings.force_update || false,
-        update_url: androidSettings.update_url,
-      },
-    });
+    return successResponse(payloadFromRows(settings));
   } catch (error) {
-    return handleApiError(error, 'Failed to fetch app version settings');
+    return handleApiError(error, "Failed to fetch app version settings");
   }
 }
 
 /**
  * PATCH /api/admin/app-version
- * 
- * Update app version settings
+ *
+ * Body: { customer: { ios, android }, provider: { ios, android } }.
  */
 export async function PATCH(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
-    const { ios, android } = versionSettingsSchema.parse(body);
+    const parsed = fullBodySchema.parse(body);
+    const now = new Date().toISOString();
 
-    const { error: iosError } = await supabase
-      .from("app_version_settings")
-      .upsert(
-        {
-          platform: 'ios',
-          min_version: ios.min_version,
-          latest_version: ios.latest_version,
-          force_update: ios.force_update || false,
-          update_url: ios.update_url,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'platform',
-        }
-      );
-
-    if (iosError) {
-      throw iosError;
-    }
-
-    const { error: androidError } = await supabase
-      .from("app_version_settings")
-      .upsert(
-        {
-          platform: 'android',
-          min_version: android.min_version,
-          latest_version: android.latest_version,
-          force_update: android.force_update || false,
-          update_url: android.update_url,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'platform',
-        }
-      );
-
-    if (androidError) {
-      throw androidError;
-    }
-
-    const { data: updatedSettings } = await supabase
-      .from("app_version_settings")
-      .select("*");
-
-    const updatedRows = (updatedSettings ?? []) as AppVersionSettingRow[];
-    const updatedIos = updatedRows.find((s) => s.platform === "ios") ?? ios;
-    const updatedAndroid = updatedRows.find((s) => s.platform === "android") ?? android;
-
-    return successResponse({
-      ios: {
-        min_version: updatedIos.min_version,
-        latest_version: updatedIos.latest_version,
-        force_update: updatedIos.force_update || false,
-        update_url: updatedIos.update_url,
+    const rows = [
+      {
+        app: "customer" as const,
+        platform: "ios" as const,
+        min_version: parsed.customer.ios.min_version,
+        latest_version: parsed.customer.ios.latest_version,
+        force_update: parsed.customer.ios.force_update ?? false,
+        update_url: parsed.customer.ios.update_url,
+        updated_at: now,
       },
-      android: {
-        min_version: updatedAndroid.min_version,
-        latest_version: updatedAndroid.latest_version,
-        force_update: updatedAndroid.force_update || false,
-        update_url: updatedAndroid.update_url,
+      {
+        app: "customer" as const,
+        platform: "android" as const,
+        min_version: parsed.customer.android.min_version,
+        latest_version: parsed.customer.android.latest_version,
+        force_update: parsed.customer.android.force_update ?? false,
+        update_url: parsed.customer.android.update_url,
+        updated_at: now,
       },
+      {
+        app: "provider" as const,
+        platform: "ios" as const,
+        min_version: parsed.provider.ios.min_version,
+        latest_version: parsed.provider.ios.latest_version,
+        force_update: parsed.provider.ios.force_update ?? false,
+        update_url: parsed.provider.ios.update_url,
+        updated_at: now,
+      },
+      {
+        app: "provider" as const,
+        platform: "android" as const,
+        min_version: parsed.provider.android.min_version,
+        latest_version: parsed.provider.android.latest_version,
+        force_update: parsed.provider.android.force_update ?? false,
+        update_url: parsed.provider.android.update_url,
+        updated_at: now,
+      },
+    ];
+
+    const { error: upsertError } = await supabase.from("app_version_settings").upsert(rows, {
+      onConflict: "app,platform",
     });
+
+    if (upsertError) {
+      throw upsertError;
+    }
+
+    const { data: updatedSettings } = await supabase.from("app_version_settings").select("*");
+    return successResponse(payloadFromRows((updatedSettings ?? []) as AppVersionSettingRow[]));
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(
-        new Error(error.issues.map(e => e.message).join(', ')),
-        'Validation failed'
+        new Error(error.issues.map((e) => e.message).join(", ")),
+        "Validation failed",
+        400
       );
     }
-    return handleApiError(error, 'Failed to update app version settings');
+    return handleApiError(error, "Failed to update app version settings");
   }
 }
+
+export { defaultFullPayload, type FullPayload, APP_KEYS };

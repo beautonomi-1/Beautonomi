@@ -384,6 +384,7 @@ function usePushRegistration() {
         const isFirstInitForSession = oneSignalInitKeyRef.current !== sessionKey;
         if (isFirstInitForSession) {
           oneSignalInitKeyRef.current = sessionKey;
+          // Must match Supabase users.id — server targets pushes via external_id / include_aliases.
           OneSignal.login(user.id);
 
           OneSignal.Notifications.addEventListener(

@@ -8,6 +8,7 @@ import React, {
   useEffect,
   useId,
 } from "react";
+import { coerceChipMultiValue, coerceChipSingleRow } from "@beautonomi/utils";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
 
@@ -90,13 +91,11 @@ export function ChipCombobox(props: ChipComboboxProps) {
   const isSingle = props.singleSelect === true;
   const value = props.value;
   const onChange = props.onChange;
-  const selectedList: string[] = isSingle
-    ? value != null && value !== ""
-      ? [String(value)]
-      : []
-    : Array.isArray(value)
-      ? value.filter((v): v is string => typeof v === "string")
-      : [];
+  /** Form / JSON may include numbers in chip arrays; coerce before `.trim()` in normalize. */
+  const selectedList = useMemo<string[]>(
+    () => (isSingle ? coerceChipSingleRow(value) : coerceChipMultiValue(value)),
+    [isSingle, value]
+  );
   const maxChips =
     !isSingle ? (props as ChipComboboxMultiProps).maxChips ?? 0 : 1;
 
@@ -115,7 +114,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
   const optionId = (i: number) => `${listboxId}-option-${i}`;
 
   const normalize = useCallback(
-    (raw: string) => normalizeValue(raw.trim()),
+    (raw: string) => normalizeValue(String(raw ?? "").trim()),
     [normalizeValue]
   );
 
@@ -239,12 +238,12 @@ export function ChipCombobox(props: ChipComboboxProps) {
         setHighlightedIndex(-1);
         return;
       }
-      const next = [...(value as string[]), trimmed];
+      const next = [...selectedList, trimmed];
       (onChange as (v: string[]) => void)(next);
       setInputValue("");
       setHighlightedIndex(-1);
     },
-    [isSingle, selectedSet, normalize, value, onChange, onCreateNew]
+    [isSingle, selectedSet, normalize, selectedList, onChange, onCreateNew]
   );
 
   const removeValue = useCallback(
@@ -253,12 +252,12 @@ export function ChipCombobox(props: ChipComboboxProps) {
         (onChange as (v: string | null) => void)(null);
         return;
       }
-      const next = (value as string[]).filter(
+      const next = selectedList.filter(
         (v) => normalize(v) !== normalize(toRemove)
       );
       (onChange as (v: string[]) => void)(next);
     },
-    [isSingle, value, onChange, normalize]
+    [isSingle, selectedList, onChange, normalize]
   );
 
   const removeLastChip = useCallback(() => {
@@ -266,19 +265,12 @@ export function ChipCombobox(props: ChipComboboxProps) {
       if (value) (onChange as (v: string | null) => void)(null);
       return;
     }
-    const arr = value as string[];
-    if (arr.length > 0) (onChange as (v: string[]) => void)(arr.slice(0, -1));
-  }, [isSingle, value, onChange]);
+    if (selectedList.length > 0)
+      (onChange as (v: string[]) => void)(selectedList.slice(0, -1));
+  }, [isSingle, value, selectedList, onChange]);
 
-  const displayValues: string[] = isSingle
-    ? value != null && value !== ""
-      ? [String(value)]
-      : []
-    : Array.isArray(value)
-      ? value.filter((v): v is string => typeof v === "string")
-      : [];
   const atMaxChips =
-    maxChips > 0 && displayValues.length >= maxChips && !isSingle;
+    maxChips > 0 && selectedList.length >= maxChips && !isSingle;
   const showDropdown = dropdownOpen;
 
   const handleKeyDown = useCallback(
@@ -340,7 +332,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
           showDropdown && "rounded-b-none border-b-0"
         )}
       >
-        {displayValues.map((v) => (
+        {selectedList.map((v) => (
           <span
             key={v}
             className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-sm"

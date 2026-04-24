@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { getSupabaseServer } from "@/lib/supabase/server";
 import { registerDevice } from "@/lib/notifications/onesignal";
 import { z } from "zod";
 
@@ -32,7 +33,8 @@ export async function POST(request: NextRequest) {
 
     const { player_id, platform, app_type } = validationResult.data;
 
-    await registerDevice(user.id, player_id, platform, app_type ?? "customer");
+    const supabase = await getSupabaseServer(request);
+    await registerDevice(supabase, user.id, player_id, platform, app_type ?? "customer");
 
     return successResponse({ registered: true });
   } catch (error) {
@@ -49,7 +51,6 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
 
-    const { getSupabaseServer } = await import("@/lib/supabase/server");
     const supabase = await getSupabaseServer(request);
 
     const { data: devices, error } = await supabase

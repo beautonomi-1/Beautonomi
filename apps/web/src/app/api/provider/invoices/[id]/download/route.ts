@@ -11,6 +11,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
+import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 
 /**
  * GET /api/provider/invoices/[id]/download
@@ -22,8 +23,46 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const admin = getSupabaseAdmin();
+
+    // Accept the short-lived HMAC `?token=` from the signed-url sibling so
+    // mobile clients can open the PDF in a system viewer without a Bearer.
+    const url = new URL(request.url);
+    const downloadToken = url.searchParams.get("token");
+    let user: { id: string; role: string };
+    if (downloadToken) {
+      const parsed = parseReceiptDownloadToken(downloadToken, {
+        kind: "provider_invoice",
+        subjectId: id,
+      });
+      if (!parsed) {
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 },
+        );
+      }
+      const { data: userRow } = await admin
+        .from("users")
+        .select("id, role")
+        .eq("id", parsed.userId)
+        .maybeSingle();
+      if (!userRow) {
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 },
+        );
+      }
+      user = {
+        id: userRow.id as string,
+        role: (userRow.role as string) || "provider_owner",
+      };
+    } else {
+      const authed = await requireRoleInApi(
+        ["provider_owner", "provider_staff", "superadmin"],
+        request,
+      );
+      user = { id: authed.user.id, role: authed.user.role as string };
+    }
 
     const { data: invoice, error } = await admin
       .from("provider_invoices")

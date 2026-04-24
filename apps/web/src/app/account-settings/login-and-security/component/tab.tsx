@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs";
 import { Shield, Lock, AlertTriangle, ExternalLink, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,17 @@ import {
   isCompleteSupabaseSmsOtp,
 } from "@/lib/supabase/auth-sms-otp";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
+import type { LoginAndSecurityInitial } from "../fetch-login-and-security-initial";
+
+function maskProfileEmail(email: string): string {
+  const parts = email.split("@");
+  return parts[0]?.length > 0 ? `${parts[0].substring(0, 1)}****@${parts[1] || ""}` : email;
+}
+
+function maskProfilePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 4 ? `${digits.substring(0, 3)} *** ***${digits.substring(digits.length - 4)}` : phone;
+}
 
 // §Customer-launch (audit 2026-04): "LOGIN REQUESTS" and "SHARED ACCESS" tabs
 // were placeholder-only ("This feature is coming soon.") and cluttered the
@@ -40,7 +51,7 @@ const tabs = [
   { value: "step1", label: "LOGIN" },
 ];
 
-const LoginAccount = () => {
+const LoginAccount = ({ initial }: { initial: LoginAndSecurityInitial | null }) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("step1");
   const [showPasswordUpdate, setShowPasswordUpdate] = useState(false);
@@ -50,7 +61,9 @@ const LoginAccount = () => {
     confirmPassword: "",
   });
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
-  const [passwordLastUpdated, setPasswordLastUpdated] = useState<string | null>(null);
+  const [passwordLastUpdated, setPasswordLastUpdated] = useState<string | null>(
+    () => initial?.profile?.password_changed_at ?? null,
+  );
   const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
   const [deactivateData, setDeactivateData] = useState({
     password: "",
@@ -62,10 +75,21 @@ const LoginAccount = () => {
     body: string;
     safety_tips_customer: { label: string; url: string };
     safety_tips_provider: { label: string; url: string };
-  } | null>(null);
+  } | null>(() => initial?.securityCopy ?? null);
   // Email & phone (Login tab)
-  const [profileEmail, setProfileEmail] = useState<string>("");
-  const [profilePhone, setProfilePhone] = useState<string>("");
+  const [profileEmail, setProfileEmail] = useState<string>(() => {
+    const e = initial?.profile?.email;
+    if (!e || typeof e !== "string") return "";
+    return maskProfileEmail(e);
+  });
+  const [profilePhone, setProfilePhone] = useState<string>(() => {
+    const p = initial?.profile?.phone;
+    if (!p || typeof p !== "string") return "";
+    return maskProfilePhone(p);
+  });
+  const skipPasswordHydrate = useRef(Boolean(initial?.profile));
+  const skipProfileHydrate = useRef(Boolean(initial?.profile));
+  const skipSecurityCopyHydrate = useRef(Boolean(initial?.securityCopy));
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [showPhoneDialog, setShowPhoneDialog] = useState(false);
   const [newEmail, setNewEmail] = useState("");
@@ -78,33 +102,44 @@ const LoginAccount = () => {
   const [isVerifyingPhoneOtp, setIsVerifyingPhoneOtp] = useState(false);
 
   useEffect(() => {
-    loadPasswordInfo();
+    if (!user) return;
+    if (skipPasswordHydrate.current) {
+      skipPasswordHydrate.current = false;
+      return;
+    }
+    void loadPasswordInfo();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps -- load when user changes
 
   useEffect(() => {
+    if (!user) return;
+    if (skipProfileHydrate.current) {
+      skipProfileHydrate.current = false;
+      return;
+    }
     const loadProfile = async () => {
-      if (!user) return;
       try {
         const res = await fetcher.get<{ data?: { email?: string; phone?: string } }>("/api/me/profile", { staleTimeMs: 30_000 });
         const data = res?.data ?? (res as { email?: string; phone?: string });
         const email = data?.email;
         const phone = data?.phone;
         if (email) {
-          const parts = email.split("@");
-          setProfileEmail(parts[0]?.length > 0 ? `${parts[0].substring(0, 1)}****@${parts[1] || ""}` : email);
+          setProfileEmail(maskProfileEmail(email));
         }
         if (phone) {
-          const digits = phone.replace(/\D/g, "");
-          setProfilePhone(digits.length >= 4 ? `${digits.substring(0, 3)} *** ***${digits.substring(digits.length - 4)}` : phone);
+          setProfilePhone(maskProfilePhone(phone));
         }
       } catch {
         // ignore
       }
     };
-    loadProfile();
+    void loadProfile();
   }, [user]);
 
   useEffect(() => {
+    if (skipSecurityCopyHydrate.current) {
+      skipSecurityCopyHydrate.current = false;
+      return;
+    }
     fetcher.get<{ data: typeof securityCopy }>("/api/public/account-security-copy", { staleTimeMs: 30_000 })
       .then((res: { data?: typeof securityCopy }) => {
         const data = res?.data ?? res;

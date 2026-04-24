@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 
 type OrderItemRow = {
   product_name?: string | null;
@@ -69,11 +71,52 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(
-      ["customer", "provider_owner", "provider_staff", "superadmin"],
-      request
-    );
-    const supabase = await getSupabaseServer(request);
+
+    // Support short-lived HMAC `?token=` so the sibling PDF route (and the
+    // native customer app) can authenticate without a Bearer/session — the
+    // token binds kind + order id + user id + expiry.
+    const url = new URL(request.url);
+    const downloadToken = url.searchParams.get("token");
+    let tokenUserId: string | null = null;
+    if (downloadToken) {
+      const parsed = parseReceiptDownloadToken(downloadToken, {
+        kind: "customer_order_receipt",
+        subjectId: id,
+      });
+      if (!parsed) {
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 },
+        );
+      }
+      tokenUserId = parsed.userId;
+    }
+
+    let user: { id: string; role: string };
+    if (tokenUserId) {
+      const { data: userRow } = await getSupabaseAdmin()
+        .from("users")
+        .select("id, role")
+        .eq("id", tokenUserId)
+        .maybeSingle();
+      if (!userRow) {
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 },
+        );
+      }
+      user = {
+        id: userRow.id as string,
+        role: (userRow.role as string) || "customer",
+      };
+    } else {
+      const authed = await requireRoleInApi(
+        ["customer", "provider_owner", "provider_staff", "superadmin"],
+        request,
+      );
+      user = { id: authed.user.id, role: authed.user.role as string };
+    }
+    const supabase = tokenUserId ? getSupabaseAdmin() : await getSupabaseServer(request);
 
     const { data: orderRaw, error } = await (supabase.from("product_orders") as any)
       .select(

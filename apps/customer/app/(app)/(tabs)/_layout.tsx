@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ComponentProps } from "react";
 import { Tabs, useFocusEffect } from "expo-router";
-import { Platform, TouchableOpacity, View, Text } from "react-native";
+import { Platform, TouchableOpacity, View, Text, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -87,18 +87,15 @@ export default function TabsLayout() {
           alignItems: "center",
         },
         tabBarLabelStyle: {
-          // §UI-audit 2026-04: 10px was below the comfortable-legibility
-          // floor for tab labels (HIG recommends ~11–12). Bumped to 11
-          // which still fits the fixed tab height used across platforms.
+          // §Customer-launch (audit 2026-04): align label metrics with the
+          // provider app tab bar (fontSize 11, marginTop 2) so both apps
+          // feel identical on the bottom nav.
           fontSize: 11,
           fontWeight: "600",
-          marginBottom: 4,
+          marginTop: 2,
           textAlign: "center",
         },
         tabBarStyle: {
-          flexDirection: "row",
-          justifyContent: "space-around",
-          alignItems: "center",
           backgroundColor: Colors.white,
           borderTopWidth: 1,
           borderTopColor: Colors.gray[200],
@@ -107,10 +104,26 @@ export default function TabsLayout() {
           flexShrink: 0,
           paddingTop: 8,
           paddingBottom: safeBottom,
+          elevation: 8,
           ...Shadows.tabBar,
           ...(isTablet ? { paddingHorizontal: 40 } : {}),
-          // On web, avoid position:fixed (broken with RNW flexbox); keep tab bar in flow at bottom.
-          ...(Platform.OS === "web" ? { width: "100%" } : {}),
+          // §Customer-launch (audit 2026-04): pin the tab bar to the
+          // bottom on web (matching the provider app). Previously the
+          // customer bar could drift above the safe area on iPhone with
+          // home-indicator devices because we relied on flex-in-flow
+          // positioning — which also caused the bar to shift when the
+          // body grew short. Native apps keep React Navigation defaults.
+          ...(Platform.OS === "web"
+            ? ({
+                position: "fixed",
+                bottom: 0,
+                left: 0,
+                right: 0,
+                width: "100%",
+                zIndex: 999,
+                boxShadow: "0 -2px 6px rgba(0,0,0,0.06)",
+              } as unknown as ViewStyle)
+            : {}),
         },
         tabBarButton: (props) => {
           const { onPress, ...rest } = props;

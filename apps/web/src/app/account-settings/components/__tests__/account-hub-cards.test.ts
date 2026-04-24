@@ -10,6 +10,9 @@ describe("ACCOUNT_HUB_CARDS", () => {
     expect(links.filter((l) => l.startsWith("/account-settings")).length).toBeGreaterThan(15);
     expect(links).toContain("/account-settings/personal-info");
     expect(links).toContain("/account-settings/wallet");
+    expect(links).toContain("/account-settings/wishlists");
+    expect(links).toContain("/account-settings/messages");
+    expect(links).toContain("/account-settings/returns");
     expect(links).toContain("#about-us");
     expect(links).toContain("#share-app");
     const actions = ACCOUNT_HUB_CARDS.filter((c) => c.isAction);

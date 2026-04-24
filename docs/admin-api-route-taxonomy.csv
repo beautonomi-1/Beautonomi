@@ -12,7 +12,7 @@ path,class,note
 /api/admin/analytics,T,"uses resolveAdminApiTenantId"
 /api/admin/api-keys/[id],T,"review: likely tenant-scoped ops"
 /api/admin/api-keys,T,"review: likely tenant-scoped ops"
-/api/admin/app-version,T,"review: likely tenant-scoped ops"
+/api/admin/app-version,G,"global app_version_settings; getSupabaseAdmin; scope query not used"
 /api/admin/audit-logs,T,"review: likely tenant-scoped ops"
 /api/admin/automations,T,"review: likely tenant-scoped ops"
 /api/admin/automations/stats,T,"needs explicit tenant filter"

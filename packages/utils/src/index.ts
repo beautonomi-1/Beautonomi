@@ -102,6 +102,11 @@ export {
 } from "./booking/calculateBookingPricing";
 export { mapToBookingStatusEnum } from "./booking/mapToBookingStatusEnum";
 export { safeNum } from "./safeNum";
+export {
+  coerceChipMultiValue,
+  coerceChipSingleRow,
+  coerceProfileStringList,
+} from "./coerceChipValues";
 export { buildZonedIsoForWallClock } from "./buildZonedIsoForWallClock";
 export { appendFormDataFileNative, type NativeFormDataFilePart } from "./formDataFileNative";
 export {

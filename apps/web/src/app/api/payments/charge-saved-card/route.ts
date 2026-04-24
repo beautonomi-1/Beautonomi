@@ -55,7 +55,15 @@ const chargeSavedCardSchema = z
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin']);
+    // §Customer-launch (audit 2026-04): previously both requireRoleInApi
+    // and getSupabaseServer were called without `request`, so the Bearer
+    // header that mobile clients send was ignored. That made the saved-
+    // card charge path reject authenticated mobile users with the
+    // generic 401/403 auth error seen on the customer payment flow.
+    const { user } = await requireRoleInApi(
+      ['customer', 'provider_owner', 'provider_staff', 'superadmin'],
+      request,
+    );
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
@@ -63,7 +71,7 @@ export async function POST(request: NextRequest) {
     const body = chargeSavedCardSchema.parse(await request.json());
     const currency = body.currency ?? lastResortCurrency;
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Get the payment method
     const { data: paymentMethod, error: pmError } = await (supabase

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -105,8 +105,10 @@ export function CustomerNotificationsDropdown() {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const { user } = useAuth();
+  const loadAttemptRef = useRef(0);
 
   const loadNotifications = useCallback(async () => {
+    const attempt = ++loadAttemptRef.current;
     try {
       setIsLoading(true);
       // 30 s stale: notifications update every 2 minutes via the polling interval
@@ -118,8 +120,8 @@ export function CustomerNotificationsDropdown() {
       setTotalUnread(data.total_unread || 0);
     } catch (error) {
       console.error('Failed to load notifications:', error);
-      // Don't show error toast on initial load
-      if (!isLoading) {
+      // Avoid noisy toasts on the very first load; show on refresh / later attempts.
+      if (attempt > 1) {
         toast.error('Failed to load notifications');
       }
       setNotifications([]);
@@ -180,6 +182,8 @@ export function CustomerNotificationsDropdown() {
         setTotalUnread((prev) => Math.max(0, prev - 1));
       } catch (error) {
         console.error('Failed to mark notification as read:', error);
+        toast.error('Could not mark as read. Try again.');
+        return;
       }
     }
 
@@ -197,6 +201,9 @@ export function CustomerNotificationsDropdown() {
     } else if (data.request_id) {
       setOpen(false);
       router.push('/account-settings/custom-requests');
+    } else {
+      setOpen(false);
+      router.push('/account-settings/notifications/inbox');
     }
   };
 
@@ -218,140 +225,162 @@ export function CustomerNotificationsDropdown() {
         <Button
           variant="ghost"
           size="icon"
-          className="relative min-h-[44px] min-w-[44px] touch-manipulation"
+          aria-label={totalUnread > 0 ? `Notifications, ${totalUnread} unread` : "Notifications"}
+          className="relative min-h-[44px] min-w-[44px] touch-manipulation rounded-full hover:bg-gray-100/90"
         >
-          <Bell className="w-5 h-5" />
+          <Bell className="w-5 h-5 text-gray-700" />
           {totalUnread > 0 && (
             <Badge
               variant="destructive"
-              className="absolute -top-1 -right-1 h-5 min-w-5 px-1.5 flex items-center justify-center text-xs"
+              className="absolute -top-0.5 -right-0.5 h-5 min-w-5 px-1.5 flex items-center justify-center text-[10px] font-semibold rounded-full border-2 border-white shadow-sm"
             >
               {totalUnread > 99 ? '99+' : totalUnread}
             </Badge>
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[95vw] sm:w-96 p-0 max-h-[85vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-3 sm:p-4 border-b sticky top-0 bg-white z-10">
-          <h3 className="font-semibold text-base sm:text-lg">Notifications</h3>
-          <div className="flex items-center gap-2">
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        className={cn(
+          "w-[min(100vw-1.25rem,22rem)] sm:w-[22rem] p-0 max-h-[min(85vh,32rem)] overflow-hidden flex flex-col",
+          "rounded-2xl border border-gray-200/90 bg-white shadow-xl shadow-gray-300/40",
+        )}
+      >
+        <div className="flex items-start justify-between gap-2 px-4 py-3.5 border-b border-gray-100 bg-gradient-to-b from-gray-50/95 to-white rounded-t-2xl">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-base text-gray-900 tracking-tight">Notifications</h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">Tap an item to open it</p>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
             {totalUnread > 0 && (
               <>
-                <Badge variant="secondary" className="text-xs">
+                <Badge variant="secondary" className="text-[10px] font-medium rounded-full px-2.5 py-0.5 border-0 bg-primary/10 text-primary">
                   {totalUnread} new
                 </Badge>
                 <Button
-                  variant="ghost"
+                  type="button"
+                  variant="outline"
                   size="sm"
-                  onClick={handleMarkAllRead}
-                  className="text-xs h-7 px-2 min-h-[28px] touch-manipulation"
+                  onClick={() => void handleMarkAllRead()}
+                  className="h-8 rounded-full px-3 text-xs font-medium border-gray-200 bg-white hover:bg-gray-50 touch-manipulation"
                 >
                   Mark all read
                 </Button>
               </>
             )}
             <Button
+              type="button"
               variant="ghost"
               size="icon"
+              aria-label="Close notifications"
               onClick={() => setOpen(false)}
-              className="h-7 w-7 min-h-[28px] min-w-[28px] touch-manipulation"
+              className="h-9 w-9 rounded-full touch-manipulation text-gray-500 hover:text-gray-900 hover:bg-gray-100"
             >
               <X className="w-4 h-4" />
             </Button>
           </div>
         </div>
-        
-        <div className="flex-1 overflow-y-auto">
+
+        <div
+          className="flex-1 overflow-y-auto overscroll-contain p-2"
+          aria-busy={isLoading}
+        >
           {isLoading ? (
-            <div className="p-8 text-center text-gray-500">
-              <Clock className="w-8 h-8 mx-auto mb-2 animate-spin" />
-              <p className="text-sm">Loading notifications...</p>
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/60 p-8 text-center text-gray-500">
+              <Clock className="w-8 h-8 mx-auto mb-3 animate-spin text-primary/70" aria-hidden />
+              <p className="text-sm font-medium text-gray-700">Loading…</p>
+              <p className="text-xs text-gray-500 mt-1">Fetching your latest updates</p>
             </div>
           ) : notifications.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-              <p className="text-sm">No new notifications</p>
-              <div className="flex flex-col items-center gap-1 mt-2">
-                <Link
-                  href="/account-settings/notifications/inbox"
-                  className="text-xs text-[#FF0077] hover:underline"
-                  onClick={() => setOpen(false)}
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-gradient-to-b from-gray-50/80 to-white p-6 text-center">
+              <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-emerald-500/80" aria-hidden />
+              <p className="text-sm font-semibold text-gray-900">You&apos;re all caught up</p>
+              <p className="text-xs text-gray-500 mt-1 mb-4">No new notifications right now.</p>
+              <div className="flex flex-col sm:flex-row items-stretch justify-center gap-2">
+                <Button
+                  asChild
+                  className="rounded-full bg-primary hover:bg-primary/90 text-white shadow-sm"
                 >
-                  View all notifications
-                </Link>
-                <Link
-                  href="/account-settings/notifications"
-                  className="text-xs text-gray-500 hover:underline"
-                  onClick={() => setOpen(false)}
-                >
-                  Manage notification preferences
-                </Link>
+                  <Link href="/account-settings/notifications/inbox" onClick={() => setOpen(false)}>
+                    View inbox
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" className="rounded-full border-gray-200">
+                  <Link href="/account-settings/notifications" onClick={() => setOpen(false)}>
+                    Preferences
+                  </Link>
+                </Button>
               </div>
             </div>
           ) : (
-            <div className="divide-y">
+            <ul className="flex flex-col gap-1.5 list-none m-0 p-0">
               {notifications.map((notification) => {
                 const Icon = getNotificationIcon(notification.type);
                 return (
-                  <button
-                    key={notification.id}
-                    onClick={() => handleNotificationClick(notification)}
-                    className={cn(
-                      "w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors",
-                      !notification.read && "bg-blue-50/50"
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={cn(
-                          "p-2 rounded-lg border flex-shrink-0",
-                          getPriorityColor(notification.priority)
-                        )}
-                      >
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <p className={cn(
-                            "font-medium text-sm text-gray-900",
-                            !notification.read && "font-semibold"
-                          )}>
-                            {notification.title}
-                          </p>
-                          {!notification.read && (
-                            <span className="w-2 h-2 bg-[#FF0077] rounded-full flex-shrink-0 mt-1.5" />
+                  <li key={notification.id}>
+                    <button
+                      type="button"
+                      onClick={() => void handleNotificationClick(notification)}
+                      className={cn(
+                        "w-full text-left rounded-2xl border px-3 py-3 sm:px-3.5 sm:py-3.5 transition-all touch-manipulation",
+                        "border-transparent hover:border-gray-200 hover:bg-white hover:shadow-md",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-1",
+                        !notification.read
+                          ? "bg-primary/[0.06] border-primary/10 shadow-sm"
+                          : "bg-gray-50/40",
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={cn(
+                            "p-2.5 rounded-xl border flex-shrink-0",
+                            getPriorityColor(notification.priority),
                           )}
+                        >
+                          <Icon className="w-4 h-4" />
                         </div>
-                        <p className="text-sm text-gray-600 line-clamp-2 mb-1">
-                          {notification.message}
-                        </p>
-                        <span className="text-xs text-gray-500">
-                          {formatTimeAgo(notification.timestamp)}
-                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-0.5">
+                            <p
+                              className={cn(
+                                "font-medium text-sm text-gray-900 leading-snug",
+                                !notification.read && "font-semibold",
+                              )}
+                            >
+                              {notification.title}
+                            </p>
+                            {!notification.read && (
+                              <span className="w-2 h-2 bg-[#FF0077] rounded-full flex-shrink-0 mt-1.5 ring-2 ring-white" />
+                            )}
+                          </div>
+                          <p className="text-xs sm:text-sm text-gray-600 line-clamp-2 leading-relaxed">
+                            {notification.message}
+                          </p>
+                          <span className="text-[11px] text-gray-400 mt-1.5 inline-block">
+                            {formatTimeAgo(notification.timestamp)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
         </div>
-        
-        <div className="p-3 border-t bg-gray-50 sticky bottom-0 flex items-center justify-between gap-2">
-          <Link
-            href="/account-settings/notifications/inbox"
-            className="text-sm text-[#FF0077] hover:underline"
-            onClick={() => setOpen(false)}
-          >
-            View all notifications
-          </Link>
-          <Link
-            href="/account-settings/notifications"
-            className="text-xs text-gray-500 hover:underline"
-            onClick={() => setOpen(false)}
-          >
-            Preferences
-          </Link>
+
+        <div className="px-3 py-3 border-t border-gray-100 bg-gray-50/95 rounded-b-2xl flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Button asChild variant="default" size="sm" className="w-full sm:w-auto rounded-full bg-primary hover:bg-primary/90 shadow-sm">
+            <Link href="/account-settings/notifications/inbox" onClick={() => setOpen(false)}>
+              Open inbox
+            </Link>
+          </Button>
+          <Button asChild variant="ghost" size="sm" className="w-full sm:w-auto rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200/60">
+            <Link href="/account-settings/notifications" onClick={() => setOpen(false)}>
+              Notification settings
+            </Link>
+          </Button>
         </div>
       </PopoverContent>
     </Popover>

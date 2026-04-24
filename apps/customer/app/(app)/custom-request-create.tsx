@@ -21,6 +21,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { haptic } from "@/lib/haptics";
 import { Colors } from "@/constants/colors";
 import { appendFormDataFileNative } from "@beautonomi/utils";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 export default function CustomRequestCreateScreen() {
   useScreenTracking("Custom Request Create");
@@ -51,14 +52,17 @@ export default function CustomRequestCreateScreen() {
       appendFormDataFileNative(formData, "files", {
         uri: result.uri,
         name: result.fileName || "image.jpg",
-        type: "image/jpeg",
+        type: result.mimeType || "image/jpeg",
       });
-      const res = await api.post<{ urls?: string[] }>("/api/me/custom-requests/upload", formData);
+      const res = await api.fetch<{ urls?: string[] }>("/api/me/custom-requests/upload", {
+        method: "POST",
+        body: formData,
+      });
       if (res.error) {
-        Alert.alert("Upload failed", "Could not upload image. Please try again.");
+        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload image. Please try again."));
         return;
       }
-      const urls = res.data?.urls ?? [];
+      const urls = (res.data as { urls?: string[] } | null)?.urls ?? [];
       if (urls.length > 0) {
         setImageUrls((prev) => [...prev, ...urls].slice(0, 6));
       } else {

@@ -30,9 +30,11 @@ function getErrorCause(err: unknown): { code?: string } | undefined {
  * @throws Redirects to login if not authenticated
  */
 export async function requireRole(
-  allowedRoles: UserRole[]
+  allowedRoles: UserRole[],
+  /** When set (e.g. mobile `Authorization: Bearer`), resolves the session from the token instead of cookies only. */
+  request?: Pick<Request, "headers">,
 ): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: Record<string, unknown>; full_name?: string | null } } | null> {
-  const supabase = await getSupabaseServer();
+  const supabase = await getSupabaseServer(request);
 
   try {
     // Get authenticated user (validates with Supabase Auth server)

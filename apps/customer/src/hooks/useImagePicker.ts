@@ -9,6 +9,8 @@ export interface PickImageResult {
   width: number;
   height: number;
   fileName?: string;
+  /** From expo-image-picker asset when available (helps uploads set correct Content-Type). */
+  mimeType?: string;
 }
 
 export function useImagePicker() {
@@ -37,6 +39,7 @@ export function useImagePicker() {
         width: asset.width,
         height: asset.height,
         fileName: asset.fileName ?? `image-${Date.now()}.jpg`,
+        mimeType: asset.mimeType ?? undefined,
       };
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to pick image");
@@ -67,6 +70,7 @@ export function useImagePicker() {
         width: asset.width,
         height: asset.height,
         fileName: asset.fileName ?? `camera-${Date.now()}.jpg`,
+        mimeType: asset.mimeType ?? undefined,
       };
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to take photo");

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -22,6 +22,8 @@ import { useRouter } from "next/navigation";
 interface BookingsListProps {
   status?: "upcoming" | "past" | "cancelled";
   refreshTrigger?: number;
+  /** SSR-hydrated rows for the default upcoming + scheduled_desc view — skips one redundant client fetch. */
+  initialSeed?: Booking[];
 }
 
 type SortMode = "scheduled_desc" | "scheduled_asc" | "created_desc" | "created_asc";
@@ -37,12 +39,24 @@ function sortModeToQuery(m: SortMode): string {
   return `sort_by=${sort_by}&sort_dir=${sort_dir}`;
 }
 
-export default function BookingsList({ status, refreshTrigger }: BookingsListProps) {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export default function BookingsList({
+  status,
+  refreshTrigger,
+  initialSeed,
+}: BookingsListProps) {
+  const [bookings, setBookings] = useState<Booking[]>(() => initialSeed ?? []);
+  const [isLoading, setIsLoading] = useState(() => initialSeed === undefined);
   const [error, setError] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("scheduled_desc");
   const router = useRouter();
+  const skipHydrateFetchOnce = useRef(
+    Boolean(
+      initialSeed &&
+        status === "upcoming" &&
+        sortMode === "scheduled_desc" &&
+        (refreshTrigger ?? 0) === 0,
+    ),
+  );
 
   useEffect(() => {
     const loadBookings = async () => {
@@ -72,8 +86,8 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
           err instanceof FetchTimeoutError
             ? "Request timed out. Please try again."
             : err instanceof FetchError
-            ? err.message
-            : "Failed to load bookings";
+              ? err.message
+              : "Failed to load bookings";
         setError(errorMessage);
         console.error("Error loading bookings:", err);
       } finally {
@@ -81,7 +95,16 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
       }
     };
 
-    loadBookings();
+    if (skipHydrateFetchOnce.current) {
+      skipHydrateFetchOnce.current = false;
+      setBookings(initialSeed ?? []);
+      setIsLoading(false);
+      return;
+    }
+
+    void loadBookings();
+    // initialSeed only used for first hydration; omit from deps to avoid duplicate fetches
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initialSeed is stable for the instance lifetime
   }, [status, refreshTrigger, sortMode]);
 
   const formatDate = (dateString: string) => {

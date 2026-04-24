@@ -20,12 +20,17 @@ type PlatformVersion = {
   update_url: string;
 };
 
-type AppVersionData = {
+type AppPair = {
   ios: PlatformVersion;
   android: PlatformVersion;
 };
 
-const DEFAULTS: AppVersionData = {
+type FullAppVersionData = {
+  customer: AppPair;
+  provider: AppPair;
+};
+
+const DEFAULT_PAIR: AppPair = {
   ios: {
     min_version: "1.0.0",
     latest_version: "1.0.0",
@@ -38,6 +43,11 @@ const DEFAULTS: AppVersionData = {
     force_update: false,
     update_url: "https://play.google.com/store/apps/details?id=com.beautonomi",
   },
+};
+
+const DEFAULTS: FullAppVersionData = {
+  customer: { ios: { ...DEFAULT_PAIR.ios }, android: { ...DEFAULT_PAIR.android } },
+  provider: { ios: { ...DEFAULT_PAIR.ios }, android: { ...DEFAULT_PAIR.android } },
 };
 
 function PlatformForm({
@@ -84,6 +94,39 @@ function PlatformForm({
   );
 }
 
+function AppBlock({
+  title,
+  subtitle,
+  pair,
+  onChange,
+}: {
+  title: string;
+  subtitle: string;
+  pair: AppPair;
+  onChange: (next: AppPair) => void;
+}) {
+  return (
+    <div className="space-y-4 rounded-lg border border-gray-200 bg-gray-50/50 p-4">
+      <div>
+        <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+        <p className="text-xs text-gray-600">{subtitle}</p>
+      </div>
+      <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+        <PlatformForm
+          platform="iOS"
+          value={pair.ios}
+          onChange={(v) => onChange({ ...pair, ios: v })}
+        />
+        <PlatformForm
+          platform="Android"
+          value={pair.android}
+          onChange={(v) => onChange({ ...pair, android: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function AppVersionSettingsPage() {
   useAdminDocumentTitle("App Version");
   const { allowed, denied } = useAdminSectionPage(
@@ -94,17 +137,26 @@ export function AppVersionSettingsPage() {
 
   const q = useQuery({
     queryKey: adminQueryKeys.appVersion(),
-    queryFn: () => adminApi.getJson<AppVersionData>("/api/admin/app-version", { timeoutMs: 30_000 }),
+    queryFn: () => adminApi.getJson<FullAppVersionData>("/api/admin/app-version", { timeoutMs: 30_000 }),
     enabled: allowed,
   });
 
-  const [form, setForm] = useState<AppVersionData>(DEFAULTS);
+  const [form, setForm] = useState<FullAppVersionData>(DEFAULTS);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (q.data) {
-      setForm({ ios: { ...DEFAULTS.ios, ...q.data.ios }, android: { ...DEFAULTS.android, ...q.data.android } });
+      setForm({
+        customer: {
+          ios: { ...DEFAULTS.customer.ios, ...q.data.customer?.ios },
+          android: { ...DEFAULTS.customer.android, ...q.data.customer?.android },
+        },
+        provider: {
+          ios: { ...DEFAULTS.provider.ios, ...q.data.provider?.ios },
+          android: { ...DEFAULTS.provider.android, ...q.data.provider?.android },
+        },
+      });
     }
   }, [q.data]);
 
@@ -125,7 +177,7 @@ export function AppVersionSettingsPage() {
       <div className="space-y-6">
         <AdminPageHeader title="App version" />
         <AdminPanel>
-          <AdminPageSkeleton rows={6} />
+          <AdminPageSkeleton rows={8} />
         </AdminPanel>
       </div>
     );
@@ -139,7 +191,7 @@ export function AppVersionSettingsPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="App version settings"
-        description="Control minimum and latest app versions for iOS and Android."
+        description="Separate minimum / latest versions and store URLs for the customer and provider native apps (iOS and Android each)."
         actions={
           <button
             type="button"
@@ -152,16 +204,18 @@ export function AppVersionSettingsPage() {
         }
       />
       <AdminPanel>
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-          <PlatformForm
-            platform="iOS"
-            value={form.ios}
-            onChange={(v) => setForm((p) => ({ ...p, ios: v }))}
+        <div className="space-y-8">
+          <AppBlock
+            title="Customer app"
+            subtitle="Used when the customer Expo app calls /api/public/app-version?app=customer"
+            pair={form.customer}
+            onChange={(next) => setForm((p) => ({ ...p, customer: next }))}
           />
-          <PlatformForm
-            platform="Android"
-            value={form.android}
-            onChange={(v) => setForm((p) => ({ ...p, android: v }))}
+          <AppBlock
+            title="Provider app"
+            subtitle="Used when the provider Expo app calls /api/public/app-version?app=provider"
+            pair={form.provider}
+            onChange={(next) => setForm((p) => ({ ...p, provider: next }))}
           />
         </div>
 

@@ -1,6 +1,8 @@
 /**
  * Known `section_key` values per `page_slug` for Content → Pages.
  * Used in the CMS UI as quick-picks when creating a row (section key is immutable after create).
+ *
+ * Keep in sync with `apps/web/src/lib/cmsPageSectionPresets.ts` (legacy Next admin uses the same taxonomy).
  */
 export const CMS_PAGE_SECTION_PRESETS: Record<string, { value: string; label: string }[]> = {
   "become-a-partner": [
@@ -67,3 +69,83 @@ export const CMS_PAGE_SECTION_PRESETS: Record<string, { value: string; label: st
     { value: "search_suggestions", label: "Search suggestions (JSON array of strings)" },
   ],
 };
+
+/** High-level buckets for Content → Pages so operators can scan by intent, not one flat list. */
+export type CmsPageContentGroupId = "legal" | "marketing" | "help_account" | "other";
+
+export const CMS_PAGE_CONTENT_GROUP_ORDER: CmsPageContentGroupId[] = [
+  "legal",
+  "marketing",
+  "help_account",
+  "other",
+];
+
+export const CMS_PAGE_CONTENT_GROUP_LABELS: Record<CmsPageContentGroupId, string> = {
+  legal: "Legal & policy",
+  marketing: "Marketing & commerce",
+  help_account: "Help, about & signup",
+  other: "Other page slugs",
+};
+
+const SLUG_TO_GROUP: Record<string, CmsPageContentGroupId> = {
+  "privacy-policy": "legal",
+  "terms-and-condition": "legal",
+  "terms-of-service": "legal",
+  "cookie-policy": "legal",
+  "become-a-partner": "marketing",
+  "gift-card": "marketing",
+  "why-beautonomi": "marketing",
+  pricing: "marketing",
+  resources: "marketing",
+  "beautonomi-friendly": "marketing",
+  release: "marketing",
+  help: "help_account",
+  about: "help_account",
+  signup: "help_account",
+};
+
+export function cmsPageContentGroupForSlug(pageSlug: string): CmsPageContentGroupId {
+  return SLUG_TO_GROUP[pageSlug] ?? "other";
+}
+
+const CMS_PAGE_SLUG_TITLES: Record<string, string> = {
+  "privacy-policy": "Privacy policy",
+  "terms-and-condition": "Terms & conditions",
+  "terms-of-service": "Terms of service",
+  "cookie-policy": "Cookie policy",
+  "become-a-partner": "Become a partner",
+  "gift-card": "Gift cards",
+  "why-beautonomi": "Why Beautonomi",
+  pricing: "Pricing",
+  resources: "Resources hub",
+  help: "Help centre",
+  about: "About",
+  signup: "Customer signup",
+  "beautonomi-friendly": "Beautonomi friendly",
+  release: "Release notes",
+};
+
+/** Human title for UI; falls back to slug with spaces. */
+export function cmsPageSlugTitle(pageSlug: string): string {
+  return CMS_PAGE_SLUG_TITLES[pageSlug] ?? pageSlug.replace(/-/g, " ");
+}
+
+/** Preset label for a section key on a given page, or null if unknown. */
+export function cmsSectionPresetLabel(pageSlug: string, sectionKey: string): string | null {
+  const presets = CMS_PAGE_SECTION_PRESETS[pageSlug];
+  if (!presets) return null;
+  return presets.find((p) => p.value === sectionKey)?.label ?? null;
+}
+
+/** Optional public API hint for legal pages (operators often verify copy against the live route). */
+export function cmsPagePublicApiHint(pageSlug: string): string | null {
+  if (
+    pageSlug === "privacy-policy" ||
+    pageSlug === "terms-and-condition" ||
+    pageSlug === "terms-of-service" ||
+    pageSlug === "cookie-policy"
+  ) {
+    return `GET /api/public/content/pages/${pageSlug}`;
+  }
+  return null;
+}

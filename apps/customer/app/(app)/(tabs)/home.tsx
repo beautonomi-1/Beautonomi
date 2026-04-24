@@ -579,7 +579,7 @@ export default function HomeScreen() {
               accessibilityLabel="Beautonomi home"
               style={{ paddingVertical: 6, paddingHorizontal: 4, marginLeft: -4, borderRadius: 12 }}
             >
-              <BeautonomiWordmark size={28} />
+              <BeautonomiWordmark size={28} showText={false} />
             </TouchableOpacity>
           </View>
 

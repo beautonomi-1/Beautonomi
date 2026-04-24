@@ -509,14 +509,32 @@ function getTopOffset(
   const d = parseApiDateTime(dateStr);
   if (!d) return 0;
   const { h, m } = getHourMinuteForInstantInZone(d, timeZone);
-  return Math.max(0, (h - startHour) * slotHeight + (m / 60) * slotHeight);
+  const slot = Number.isFinite(slotHeight) && slotHeight > 0 ? slotHeight : 60;
+  const safeStart = Number.isFinite(startHour) ? startHour : 0;
+  const hourN = Number.isFinite(h) ? h : 0;
+  const minN = Number.isFinite(m) ? m : 0;
+  const out = (hourN - safeStart) * slot + (minN / 60) * slot;
+  return Math.max(0, Number.isFinite(out) ? out : 0);
 }
 
 function getBlockHeight(booking: Booking, slotHeight: number, compact: boolean): number {
-  const totalMin = booking.services?.reduce((s, svc) => s + svc.duration_minutes, 0) ?? 30;
-  const raw = (totalMin / 60) * slotHeight;
-  const minH = compact ? slotHeight / 6 : slotHeight / 4;
-  return Math.max(raw, minH);
+  // §Provider-launch (audit 2026-04): defensive NaN guard. A service row
+  // with a null/undefined `duration_minutes` (possible when the backend
+  // shape drifts ahead of the client types) used to produce NaN here,
+  // which Yoga rejects and iOS JSC reports as an intermittent layout
+  // crash while the calendar scrolls. Coerce to finite numbers and fall
+  // back to a sensible minimum.
+  const rawTotal =
+    booking.services?.reduce((s, svc) => {
+      const n = Number(svc?.duration_minutes);
+      return s + (Number.isFinite(n) && n > 0 ? n : 0);
+    }, 0) ?? 0;
+  const totalMin = rawTotal > 0 ? rawTotal : 30;
+  const slot = Number.isFinite(slotHeight) && slotHeight > 0 ? slotHeight : 60;
+  const raw = (totalMin / 60) * slot;
+  const minH = compact ? slot / 6 : slot / 4;
+  const out = Math.max(raw, minH);
+  return Number.isFinite(out) ? out : minH;
 }
 
 function isNewBooking(booking: Booking): boolean {

@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     }
 
     const includeVariants = request.nextUrl?.searchParams.get("include_variants") === "true";
+    const includeInactive = request.nextUrl?.searchParams.get("include_inactive") === "true";
 
     let query = supabase
       .from("offerings")
@@ -38,8 +39,11 @@ export async function GET(request: NextRequest) {
           description
         )
       `)
-      .eq("provider_id", providerId)
-      .eq("is_active", true);
+      .eq("provider_id", providerId);
+
+    if (!includeInactive) {
+      query = query.eq("is_active", true);
+    }
 
     if (!includeVariants) {
       // Exclude child variant rows — variants are managed via the service detail screen

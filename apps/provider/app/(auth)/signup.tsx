@@ -156,9 +156,9 @@ export default function SignupScreen() {
       if (signupSource) {
         api.patch("/api/me/profile", { signup_source: signupSource }).catch(() => {});
       }
-      // Same entry as email login: root index runs portal check + profile → onboarding or dashboard.
+      // Send new accounts straight into the setup wizard; index still gates portal for returning sessions.
       await supabase.auth.getSession();
-      router.replace("/" as never);
+      router.replace("/(app)/onboarding" as never);
     } catch (e: any) {
       setLoading(false);
       setFormError(e?.message ?? "Sign up failed. Please try again.");

@@ -18,10 +18,13 @@ export async function GET(request: NextRequest) {
     // Normalize platform for DB (Expo sends "ios" | "android")
     const platformKey = platform === 'ios' || platform === 'android' ? platform : 'ios';
 
-    // Fetch app version settings from Supabase (same settings for all apps; optional: use ?app=customer|provider later for per-app)
+    const appParam = searchParams.get('app');
+    const appKey = appParam === 'provider' ? 'provider' : 'customer';
+
     const { data: versionSettings, error } = await supabase
       .from('app_version_settings')
       .select('*')
+      .eq('app', appKey)
       .eq('platform', platformKey)
       .single();
 
@@ -70,8 +73,7 @@ export async function GET(request: NextRequest) {
       minVersion,
       latestVersion,
       updateUrl,
-      /** Echo ?app= from request for clients (per-app rows may be added later). */
-      app: request.nextUrl.searchParams.get("app") ?? undefined,
+      app: appKey,
       ...(hasVersion && { currentVersion: currentVersion, platform: platformKey }),
     });
   } catch (error) {

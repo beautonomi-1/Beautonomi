@@ -376,34 +376,49 @@ export async function processPayment(
       }
 
       const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
-      const chargeResult = await chargeAuthorization(
-        savedCard.provider_payment_method_id,
-        email,
-        convertToSmallestUnit(amountToCollect),
-        {
-          booking_id: booking.id,
-          customer_id: v.customerId,
-          amount_to_collect: amountToCollect,
-          gift_card_amount_applied: giftCardAmountApplied,
-          gift_card_code: giftCardCode || null,
-          wallet_amount_applied: walletAmountApplied,
-          currency: v.currency,
-          tip_amount: v.tipAmount,
-          tax_amount: v.taxAmount,
-          travel_fee: v.travelFee,
-          service_fee_amount: v.serviceFeeAmount,
-          service_fee_percentage: v.serviceFeePercentage,
-          commission_base: v.commissionBase,
-          payment_method_id: savedPaymentMethodId,
-          hold_id: validatedDraft.hold_id || null,
-          loyalty_points_used: loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : undefined,
-          loyalty_discount_amount: v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
-          ...(recurringSubscribeEligible
-            ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
-            : {}),
-        },
-        { tenantId: flagTenantId }
-      );
+      let chargeResult: Awaited<ReturnType<typeof chargeAuthorization>>;
+      try {
+        chargeResult = await chargeAuthorization(
+          savedCard.provider_payment_method_id,
+          email,
+          convertToSmallestUnit(amountToCollect),
+          {
+            booking_id: booking.id,
+            customer_id: v.customerId,
+            amount_to_collect: amountToCollect,
+            gift_card_amount_applied: giftCardAmountApplied,
+            gift_card_code: giftCardCode || null,
+            wallet_amount_applied: walletAmountApplied,
+            currency: v.currency,
+            tip_amount: v.tipAmount,
+            tax_amount: v.taxAmount,
+            travel_fee: v.travelFee,
+            service_fee_amount: v.serviceFeeAmount,
+            service_fee_percentage: v.serviceFeePercentage,
+            commission_base: v.commissionBase,
+            payment_method_id: savedPaymentMethodId,
+            hold_id: validatedDraft.hold_id || null,
+            loyalty_points_used: loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : undefined,
+            loyalty_discount_amount: v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
+            ...(recurringSubscribeEligible
+              ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
+              : {}),
+          },
+          { tenantId: flagTenantId }
+        );
+      } catch (chargeErr) {
+        // §Risk-hardening 2026-04: Paystack saved-card charge threw before we
+        // got ANY response. Money has NOT moved. Return a clean 4xx/5xx so
+        // the outer route releases the slot and the client shows a payment
+        // error instead of a generic "failed to create booking" 500.
+        console.error("[process-payment] chargeAuthorization threw:", chargeErr);
+        return handleApiError(
+          chargeErr,
+          "Payment provider is temporarily unavailable. Please try again in a moment or use a different card.",
+          "PAYMENT_INIT_FAILED",
+          502,
+        );
+      }
 
       if (!chargeResult.status) {
         return handleApiError(
@@ -416,115 +431,169 @@ export async function processPayment(
 
       paymentUrl = null;
 
-      const chargeData = chargeResult.data as { id?: number; reference?: string; amount?: number };
-      const paystackTxId =
-        chargeData?.id !== undefined && chargeData?.id !== null
-          ? String(chargeData.id)
-          : null;
-      if (paystackTxId) {
-        const { data: existingBp } = await supabaseAdmin
-          .from("booking_payments")
-          .select("id")
-          .eq("payment_provider", "paystack")
-          .eq("payment_provider_id", paystackTxId)
-          .maybeSingle();
-        if (!existingBp) {
-          const amountMajor =
-            typeof chargeData.amount === "number" ? chargeData.amount / 100 : amountToCollect;
-          const bookingTenantId = booking.tenant_id ?? null;
-          await supabaseAdmin.from("booking_payments").insert({
+      // §Risk-hardening 2026-04: Paystack already captured money. Everything
+      // below is reconciliation + ledger bookkeeping. A single DB hiccup here
+      // must NOT be allowed to throw out of the route, because the outer
+      // catch would return a 500 → the mobile/web client will retry the
+      // whole booking flow → DOUBLE CHARGE. The Paystack webhook already
+      // runs the same reconciliation via charge.success, so losing any of
+      // these writes is recoverable; losing idempotency of the caller is
+      // not. Wrap the whole tail in try/catch and log loudly.
+      try {
+        const chargeData = chargeResult.data as { id?: number; reference?: string; amount?: number };
+        const paystackTxId =
+          chargeData?.id !== undefined && chargeData?.id !== null
+            ? String(chargeData.id)
+            : null;
+        if (paystackTxId) {
+          const { data: existingBp } = await supabaseAdmin
+            .from("booking_payments")
+            .select("id")
+            .eq("payment_provider", "paystack")
+            .eq("payment_provider_id", paystackTxId)
+            .maybeSingle();
+          if (!existingBp) {
+            const amountMajor =
+              typeof chargeData.amount === "number" ? chargeData.amount / 100 : amountToCollect;
+            const bookingTenantId = booking.tenant_id ?? null;
+            await supabaseAdmin.from("booking_payments").insert({
+              booking_id: booking.id,
+              ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
+              amount: amountMajor,
+              payment_method: "card",
+              payment_provider: "paystack",
+              payment_provider_id: paystackTxId,
+              status: "completed",
+              notes: `Saved card charge. Ref: ${chargeData.reference ?? ""}`,
+              payment_provider_data: {
+                source: "process_payment_saved_card",
+                reference: chargeData.reference,
+              },
+            });
+          }
+        }
+
+        try {
+          await syncBookingAfterPaystackSuccess(supabaseAdmin, booking.id, {
+            paymentReference: chargeData?.reference,
+            paymentProvider: "paystack",
+          });
+        } catch (syncErr) {
+          console.error(
+            "[process-payment] syncBookingAfterPaystackSuccess threw after successful saved-card charge; webhook will reconcile",
+            { bookingId: booking.id, reference: chargeData?.reference, err: syncErr },
+          );
+        }
+
+        if (recurringSubscribeEligible) {
+          try {
+            const sub = await insertCustomerRecurringSeriesFromPaidBooking({
+              admin: supabaseAdmin,
+              bookingId: booking.id,
+              customerId: v.customerId,
+              frequency: validatedDraft.subscribe_recurring!.frequency,
+              paymentMethod: "card",
+            });
+            if (sub.ok === false) {
+              console.error("[recurring] insert after saved card charge:", sub.message);
+            }
+          } catch (recurringErr) {
+            console.error(
+              "[process-payment] insertCustomerRecurringSeriesFromPaidBooking threw after saved-card charge",
+              { bookingId: booking.id, err: recurringErr },
+            );
+          }
+        }
+
+        try {
+          await (supabase.from("payments") as any).insert({
             booking_id: booking.id,
-            ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
-            amount: amountMajor,
-            payment_method: "card",
-            payment_provider: "paystack",
-            payment_provider_id: paystackTxId,
+            user_id: v.customerId,
+            provider_id: draft.provider_id,
+            payment_number: "",
+            amount: amountToCollect,
+            currency: v.currency,
             status: "completed",
-            notes: `Saved card charge. Ref: ${chargeData.reference ?? ""}`,
-            payment_provider_data: {
-              source: "process_payment_saved_card",
-              reference: chargeData.reference,
+            payment_provider: "paystack",
+            payment_provider_transaction_id: chargeResult.data.reference,
+            payment_provider_response: chargeResult,
+            payment_method_id: savedPaymentMethodId,
+            description: `Payment for booking ${booking.booking_number}`,
+            metadata: {
+              payment_option: v.provider.requires_deposit ? paymentOption : "full",
+              gift_card_amount_applied: giftCardAmountApplied,
+              gift_card_code: giftCardCode || null,
+              wallet_amount_applied: walletAmountApplied,
+              saved_card_used: true,
             },
           });
+        } catch (paymentRowErr) {
+          console.error(
+            "[process-payment] legacy payments insert threw after saved-card charge; webhook will reconcile",
+            { bookingId: booking.id, err: paymentRowErr },
+          );
         }
+      } catch (reconcileErr) {
+        // Catch-all: something outside the inner try/catches above still
+        // threw (e.g. an await we added later forgot its wrapper). Do NOT
+        // bubble; return success so the client doesn't retry.
+        console.error(
+          "[process-payment] post-charge reconcile threw; returning success to prevent double charge",
+          { bookingId: booking.id, err: reconcileErr },
+        );
       }
-
-      await syncBookingAfterPaystackSuccess(supabaseAdmin, booking.id, {
-        paymentReference: chargeData?.reference,
-        paymentProvider: "paystack",
-      });
-
-      if (recurringSubscribeEligible) {
-        const sub = await insertCustomerRecurringSeriesFromPaidBooking({
-          admin: supabaseAdmin,
-          bookingId: booking.id,
-          customerId: v.customerId,
-          frequency: validatedDraft.subscribe_recurring!.frequency,
-          paymentMethod: "card",
-        });
-        if (sub.ok === false) {
-          console.error("[recurring] insert after saved card charge:", sub.message);
-        }
-      }
-
-      await (supabase.from("payments") as any).insert({
-        booking_id: booking.id,
-        user_id: v.customerId,
-        provider_id: draft.provider_id,
-        payment_number: "",
-        amount: amountToCollect,
-        currency: v.currency,
-        status: "completed",
-        payment_provider: "paystack",
-        payment_provider_transaction_id: chargeResult.data.reference,
-        payment_provider_response: chargeResult,
-        payment_method_id: savedPaymentMethodId,
-        description: `Payment for booking ${booking.booking_number}`,
-        metadata: {
-          payment_option: v.provider.requires_deposit ? paymentOption : "full",
-          gift_card_amount_applied: giftCardAmountApplied,
-          gift_card_code: giftCardCode || null,
-          wallet_amount_applied: walletAmountApplied,
-          saved_card_used: true,
-        },
-      });
     } else {
       // ── New card (Paystack redirect) ───────────────────────────────────
       const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
-      const paystackData = await initializePaystackTransaction({
-        email,
-        amountInSmallestUnit: convertToSmallestUnit(amountToCollect),
-        currency: v.currency,
-        reference,
-        callback_url: callbackUrl,
-        metadata: {
-          booking_id: booking.id,
-          customer_id: v.customerId,
-          amount_to_collect: amountToCollect,
-          booking_total_amount: v.totalAmount,
-          payment_option: v.provider.requires_deposit ? paymentOption : "full",
-          requires_deposit: Boolean(v.provider.requires_deposit),
-          gift_card_amount_applied: giftCardAmountApplied,
-          gift_card_code: giftCardCode || null,
-          wallet_amount_applied: walletAmountApplied,
+      let paystackData: Awaited<ReturnType<typeof initializePaystackTransaction>>;
+      try {
+        paystackData = await initializePaystackTransaction({
+          email,
+          amountInSmallestUnit: convertToSmallestUnit(amountToCollect),
           currency: v.currency,
-          tip_amount: v.tipAmount,
-          tax_amount: v.taxAmount,
-          travel_fee: v.travelFee,
-          service_fee_amount: v.serviceFeeAmount,
-          service_fee_percentage: v.serviceFeePercentage,
-          commission_base: v.commissionBase,
-          save_card: saveCard,
-          set_as_default: setAsDefault,
-          hold_id: validatedDraft.hold_id || undefined,
-          loyalty_points_used: loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : undefined,
-          loyalty_discount_amount: v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
-          ...(recurringSubscribeEligible
-            ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
-            : {}),
-        },
-        tenantId: flagTenantId,
-      });
+          reference,
+          callback_url: callbackUrl,
+          metadata: {
+            booking_id: booking.id,
+            customer_id: v.customerId,
+            amount_to_collect: amountToCollect,
+            booking_total_amount: v.totalAmount,
+            payment_option: v.provider.requires_deposit ? paymentOption : "full",
+            requires_deposit: Boolean(v.provider.requires_deposit),
+            gift_card_amount_applied: giftCardAmountApplied,
+            gift_card_code: giftCardCode || null,
+            wallet_amount_applied: walletAmountApplied,
+            currency: v.currency,
+            tip_amount: v.tipAmount,
+            tax_amount: v.taxAmount,
+            travel_fee: v.travelFee,
+            service_fee_amount: v.serviceFeeAmount,
+            service_fee_percentage: v.serviceFeePercentage,
+            commission_base: v.commissionBase,
+            save_card: saveCard,
+            set_as_default: setAsDefault,
+            hold_id: validatedDraft.hold_id || undefined,
+            loyalty_points_used: loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : undefined,
+            loyalty_discount_amount: v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
+            ...(recurringSubscribeEligible
+              ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
+              : {}),
+          },
+          tenantId: flagTenantId,
+        });
+      } catch (initErr) {
+        // §Risk-hardening 2026-04: initialize failed before Paystack issued a
+        // reference. No money moved, no payment row exists. Return a clean
+        // 502 so the outer route releases the slot and the client can
+        // retry without seeing a generic "failed to create booking" 500.
+        console.error("[process-payment] initializePaystackTransaction threw:", initErr);
+        return handleApiError(
+          initErr,
+          "Payment provider is temporarily unavailable. Please try again in a moment.",
+          "PAYMENT_INIT_FAILED",
+          502,
+        );
+      }
 
       paymentUrl = paystackData?.data?.authorization_url || null;
 

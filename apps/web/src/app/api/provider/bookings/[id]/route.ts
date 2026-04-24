@@ -24,8 +24,6 @@ import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
-import { isOTPExpired } from "@/lib/otp/generator";
-import { isQRCodeExpired } from "@/lib/qr/generator";
 import { isValidProviderBookingStatusTransition } from "@/lib/bookings/booking-status-transitions";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
@@ -430,30 +428,28 @@ export async function GET(
       qr_code_verified: Boolean((bookingData as { qr_code_verified?: boolean }).qr_code_verified),
       arrival_otp_expires_at: (bookingData as { arrival_otp_expires_at?: string | null }).arrival_otp_expires_at ?? null,
       qr_code_expires_at: (bookingData as { qr_code_expires_at?: string | null }).qr_code_expires_at ?? null,
+      // Keep true while codes exist but are not verified — even if expired — so provider UIs stay
+      // available (customer can refresh; provider can resend). Expiry is a UX hint, not "pending off".
       arrival_otp_pending: (() => {
         const row = bookingData as {
           location_type?: string;
           arrival_otp?: string | null;
-          arrival_otp_expires_at?: string | null;
           arrival_otp_verified?: boolean | null;
         };
         if (row.location_type !== "at_home") return false;
         if (!row.arrival_otp) return false;
         if (row.arrival_otp_verified) return false;
-        if (row.arrival_otp_expires_at && isOTPExpired(row.arrival_otp_expires_at)) return false;
         return true;
       })(),
       qr_arrival_pending: (() => {
         const row = bookingData as {
           location_type?: string;
           qr_code_data?: unknown;
-          qr_code_expires_at?: string | null;
           qr_code_verified?: boolean | null;
         };
         if (row.location_type !== "at_home") return false;
         if (row.qr_code_data == null) return false;
         if (row.qr_code_verified) return false;
-        if (row.qr_code_expires_at && isQRCodeExpired(row.qr_code_expires_at)) return false;
         return true;
       })(),
     } as unknown as BookingResponse;

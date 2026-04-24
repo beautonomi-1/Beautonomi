@@ -4,6 +4,7 @@
  * Subscribes to notifications table changes so the badge updates in real time.
  */
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { Platform } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -42,6 +43,25 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     refetchUnreadCount();
   }, [refetchUnreadCount]);
+
+  // Home-screen icon badge (iOS / supported Android launchers) — stays in sync with in-app unread count.
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const Notifications = await import("expo-notifications");
+        if (cancelled) return;
+        const n = Math.min(999_999, Math.max(0, Math.floor(unreadCount)));
+        await Notifications.setBadgeCountAsync(n);
+      } catch {
+        // Dev client without native rebuild, or launcher without badge support
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [unreadCount]);
 
   useEffect(() => {
     if (!user?.id) return;

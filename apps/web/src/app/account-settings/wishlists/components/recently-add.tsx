@@ -18,7 +18,11 @@ const RecentlyAdd = ({ thumbnails = [], subtitle }: RecentlyAddProps) => {
   return (
     <div className="mb-6">
       <h3 className="text-lg font-medium text-gray-900 mb-3">Recently viewed</h3>
-      <Link href="/account-settings/wishlists/recently-viewed" className="block">
+      <Link
+        href="/account-settings/wishlists/recently-viewed"
+        className="block"
+        aria-label="View recently viewed providers"
+      >
         <div className="border rounded-3xl grid grid-cols-2 p-2 max-w-sm gap-3 hover:border-[#FF0077] transition-colors cursor-pointer">
           {tiles.map((src, idx) => {
             const corner =

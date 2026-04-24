@@ -67,6 +67,7 @@ export default function ControlPlaneCompliancePage() {
 
   const [providerIdInput, setProviderIdInput] = useState("");
   const [providerBizEmail, setProviderBizEmail] = useState("");
+  const [providerBillingEmail, setProviderBillingEmail] = useState("");
   const [providerOwnerEmail, setProviderOwnerEmail] = useState("");
   const [providerLoadBusy, setProviderLoadBusy] = useState(false);
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
@@ -77,13 +78,19 @@ export default function ControlPlaneCompliancePage() {
     setProviderLoadBusy(true);
     try {
       const res = (await fetcher.get(`/api/admin/providers/${encodeURIComponent(id)}`)) as {
-        data?: { email?: string | null; owner?: { email?: string | null } | null };
+        data?: {
+          email?: string | null;
+          billing_email?: string | null;
+          owner?: { email?: string | null } | null;
+        };
       };
       const d = res.data;
-      setProviderBizEmail(d?.email?.trim() ?? "");
-      setProviderOwnerEmail(d?.owner?.email?.trim() ?? "");
+      setProviderBizEmail(d?.email != null ? String(d.email).trim() : "");
+      setProviderBillingEmail(d?.billing_email != null ? String(d.billing_email).trim() : "");
+      setProviderOwnerEmail(d?.owner?.email != null ? String(d.owner.email).trim() : "");
     } catch {
       setProviderBizEmail("");
+      setProviderBillingEmail("");
       setProviderOwnerEmail("");
     } finally {
       setProviderLoadBusy(false);
@@ -207,14 +214,18 @@ export default function ControlPlaneCompliancePage() {
             <Button
               type="button"
               variant="destructive"
-              disabled={!providerIdInput.trim() || (!providerBizEmail && !providerOwnerEmail)}
+              disabled={
+                !providerIdInput.trim() ||
+                (!providerBizEmail && !providerBillingEmail && !providerOwnerEmail)
+              }
               onClick={() => setProviderDialogOpen(true)}
             >
               Open purge dialog
             </Button>
-            {(providerBizEmail || providerOwnerEmail) && (
+            {(providerBizEmail || providerBillingEmail || providerOwnerEmail) && (
               <p className="w-full text-sm text-muted-foreground">
-                Business: {providerBizEmail || "—"} · Owner: {providerOwnerEmail || "—"}
+                Business: {providerBizEmail || "—"} · Billing: {providerBillingEmail || "—"} · Owner:{" "}
+                {providerOwnerEmail || "—"}
               </p>
             )}
           </CardContent>
@@ -233,6 +244,7 @@ export default function ControlPlaneCompliancePage() {
         onOpenChange={setProviderDialogOpen}
         providerId={providerIdInput.trim()}
         providerEmail={providerBizEmail}
+        billingEmail={providerBillingEmail}
         ownerEmail={providerOwnerEmail}
         onComplete={() => void loadAudit()}
       />

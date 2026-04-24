@@ -39,7 +39,12 @@ export function isScopedAdminCustomizationPath(pathname: string): boolean {
  * effective tenant for superadmin (see `resolveAdminApiTenantId` in apps/web).
  * Exclude bootstrap and tenant list (picker data must not be tenant-filtered).
  */
-const ADMIN_SCOPE_GET_EXCLUDED_PREFIXES: readonly string[] = ["/api/admin/bootstrap", "/api/admin/tenants"];
+const ADMIN_SCOPE_GET_EXCLUDED_PREFIXES: readonly string[] = [
+  "/api/admin/bootstrap",
+  "/api/admin/tenants",
+  /** Global native app version rules — not tenant-scoped; server ignores scope/tenant_id. */
+  "/api/admin/app-version",
+];
 
 export function adminScopeGetAppliesToPathname(pathname: string): boolean {
   if (!pathname.startsWith("/api/admin")) return false;

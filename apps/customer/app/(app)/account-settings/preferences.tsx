@@ -35,6 +35,7 @@ import {
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { changeLanguage } from "@/lib/i18n";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { currencySelectLabel, LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 
 /* ------------------------------------------------------------------ */
@@ -291,7 +292,7 @@ export default function PreferencesScreen() {
       setTimezoneOptions(preferApiOrFallback(mapPreferenceRowsToPicker(tzRes.data), TIMEZONE_OPTIONS));
 
       if (profileRes.error) {
-        setError(profileRes.error.message || "Failed to load preferences");
+        setError(getApiErrorMessage(profileRes.error, "Failed to load preferences"));
         return;
       }
       if (profileRes.data) {
@@ -342,7 +343,7 @@ export default function PreferencesScreen() {
         });
         if (res.error) {
           setProfile(previous);
-          Alert.alert("Error", res.error.message || "Failed to save preference");
+          Alert.alert("Error", getApiErrorMessage(res.error, "Failed to save preference"));
         } else if (field === "preferred_language") {
           const code = value.split(/[-_]/)[0];
           await changeLanguage(code);

@@ -55,8 +55,27 @@ export async function POST(request: NextRequest) {
     "/api/public/bookings",
     "POST",
     async () => {
+      // §Customer-launch (audit 2026-04 — follow-up): Vercel 500s on this
+      // endpoint were landing in Sentry with only "Failed to create booking"
+      // as context. That makes every case look identical. We now track a
+      // `stage` tag so the thrown error carries the step that blew up
+      // (validate / create / forms / payment / post-effects) without
+      // changing the client-facing shape.
+      let stage: "preflight" | "idempotency" | "captcha" | "validate_input" | "auth"
+        | "tenant_resolve" | "market_check" | "ensure_profile" | "reschedule_cancel"
+        | "stale_pending_cancel" | "validate_booking" | "create_booking" | "persist_forms"
+        | "consume_hold" | "process_payment" | "post_effects" | "idempotency_cache" = "preflight";
       try {
-        const supabase = await getSupabaseServer();
+        // §Customer-launch (audit 2026-04): previously called without the
+        // `request` arg, which meant the server client only checked
+        // cookies and completely ignored the `Authorization: Bearer`
+        // header that mobile clients send. Consume (/api/public/booking-
+        // holds/[id]/consume) forwards the Bearer here, but this handler
+        // dropped it on the floor and then returned 401 "Authentication
+        // required" for every authenticated mobile booking — exactly the
+        // bug reported on the customer payment flow. Pass the request
+        // so Bearer is resolved the same way as cookies.
+        const supabase = await getSupabaseServer(request);
         let body: unknown;
         try {
           body = await request.json();
@@ -87,6 +106,7 @@ export async function POST(request: NextRequest) {
         // accounts. We now do a Supabase-server auth check FIRST and only
         // skip CAPTCHA when the user is genuinely authenticated against
         // the auth backend (not just spoofed via headers).
+        stage = "captcha";
         let captchaSkipUserId: string | null = null;
         try {
           const { data: pre } = await supabase.auth.getUser();
@@ -105,6 +125,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
+        stage = "validate_input";
         // 1. Parse & validate input (normalize synthetic staff ids for DB FKs)
         let validatedDraft: PublicBookingValidatedBody;
         try {
@@ -121,6 +142,7 @@ export async function POST(request: NextRequest) {
         }
         const draft = toBookingDraftFromPublicBody(validatedDraft);
 
+        stage = "auth";
         // 2. Authenticate user
         const {
           data: { user },
@@ -138,12 +160,14 @@ export async function POST(request: NextRequest) {
 
         const supabaseAdmin = await getSupabaseAdmin();
 
+        stage = "tenant_resolve";
         const tenantRes = await requirePublicTenant(request);
         if (tenantRes instanceof Response) {
           return tenantRes;
         }
         const { tenantId: marketTenantId } = tenantRes;
 
+        stage = "market_check";
         const marketAvailability = evaluateMarketAvailabilityFromRequest(request);
         if (marketAvailability.status === "restricted") {
           return handleApiError(
@@ -169,9 +193,26 @@ export async function POST(request: NextRequest) {
           );
         }
 
+        stage = "ensure_profile";
         // 2.5. Ensure user has a public profile (handles new sign-ins where trigger hasn't run yet)
-        await ensureUserProfileForAuthUser(supabaseAdmin, user, marketTenantId);
+        try {
+          await ensureUserProfileForAuthUser(supabaseAdmin, user, marketTenantId);
+        } catch (profileErr) {
+          // §Risk-hardening 2026-04: ensureUserProfileForAuthUser raises
+          // user-facing messages as plain Errors ("An account with this
+          // email already exists", "We couldn't save your profile"). The
+          // outer catch would mask them behind a generic 500. Translate
+          // into the correct 4xx so the mobile client can render the real
+          // message and the user can act on it.
+          const msg = profileErr instanceof Error ? profileErr.message : "Failed to prepare profile.";
+          if (/already exists/i.test(msg)) {
+            return errorResponse(msg, "EMAIL_ACCOUNT_EXISTS", 409);
+          }
+          console.error("[public/bookings] ensure_profile failed:", profileErr);
+          return errorResponse(msg, "PROFILE_PREPARE_FAILED", 500);
+        }
 
+        stage = "reschedule_cancel";
         // 2.6. If rescheduling (new booking replacing an existing one), cancel the old booking first
         const rescheduleBookingId = validatedDraft.reschedule_booking_id ?? undefined;
         if (rescheduleBookingId) {
@@ -265,6 +306,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        stage = "stale_pending_cancel";
         // 2.7. Cancel any stale pending/pending_payment bookings by this user for the
         //      same provider and overlapping time window before conflict check runs.
         //      This prevents "slot taken" false positives when the customer retries
@@ -289,6 +331,7 @@ export async function POST(request: NextRequest) {
             .lte("scheduled_at", windowEnd.toISOString());
         }
 
+        stage = "validate_booking";
         // 3. Validate booking (provider, services, pricing, conflicts, resources)
         const validationResult = await validateBooking(
           supabase,
@@ -306,6 +349,7 @@ export async function POST(request: NextRequest) {
 
         const v = validationResult;
 
+        stage = "create_booking";
         // 4. Create booking record (DB insert + addons/products/group)
         const createResult = await createBookingRecord(
           supabase,
@@ -322,6 +366,7 @@ export async function POST(request: NextRequest) {
 
         const { booking } = createResult;
 
+        stage = "persist_forms";
         // 4a.b. B11: persist provider intake/consent/waiver responses and
         // booking-level custom field values now that the booking row exists.
         // Mirrors the /api/public/booking-holds/[id]/consume flow so the
@@ -378,6 +423,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
+        stage = "consume_hold";
         // 4b. Consume the hold so it no longer blocks availability
         if (validatedDraft.hold_id) {
           await supabaseAdmin
@@ -387,6 +433,7 @@ export async function POST(request: NextRequest) {
             .eq("hold_status", "active");
         }
 
+        stage = "process_payment";
         // 5. Process payment (gift card, wallet, Paystack card, cash)
         // If payment setup fails after the row exists, release the slot (cancel) so retry is not a false 409.
         let bookingIdPendingRelease = booking.id;
@@ -410,6 +457,7 @@ export async function POST(request: NextRequest) {
           const { paymentUrl } = paymentResult;
           bookingIdPendingRelease = "";
 
+          stage = "post_effects";
           // 6. Post-booking side effects (cache, waitlist, analytics) — fire & forget
           const savedPaymentMethodId = validatedDraft.payment_method_id ?? null;
           await postBookingEffects({
@@ -467,6 +515,7 @@ export async function POST(request: NextRequest) {
           };
 
           if (idempotencyKey) {
+            stage = "idempotency_cache";
             // §15.4-24: cache the successful response body so repeat calls
             // with the same Idempotency-Key return the same booking_id +
             // payment_url instead of creating duplicates. Match the shape
@@ -500,7 +549,21 @@ export async function POST(request: NextRequest) {
             400
           );
         }
-        return handleApiError(error, "Failed to create booking");
+        // Surface the stage so Vercel logs + Sentry show exactly which step
+        // of the public booking flow blew up, instead of a single opaque
+        // "Failed to create booking" for every 500.
+        console.error(
+          `[public/bookings] 500 at stage=${stage}`,
+          error instanceof Error ? { message: error.message, stack: error.stack } : error,
+        );
+        try {
+          const withStage = error instanceof Error
+            ? Object.assign(error, { bookingStage: stage })
+            : error;
+          return handleApiError(withStage, `Failed to create booking (stage: ${stage})`);
+        } catch {
+          return handleApiError(error, `Failed to create booking (stage: ${stage})`);
+        }
       }
     },
   );

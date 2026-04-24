@@ -1427,8 +1427,16 @@ function TemplateDialog({
               id="onesignal_template_id"
               value={formData.onesignal_template_id}
               onChange={(e) => setFormData({ ...formData, onesignal_template_id: e.target.value })}
-              placeholder="If using OneSignal's template system"
+              placeholder="Dashboard template UUID (Messages → Templates)"
             />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              When set, the server sends this template id to OneSignal and mirrors template variables into{" "}
+              <code className="rounded bg-muted px-1">custom_data</code> so Liquid can use{" "}
+              <code className="rounded bg-muted px-1">{"{{ message.custom_data.variable_name }}"}</code>. Mobile apps
+              must call <code className="rounded bg-muted px-1">OneSignal.login</code> with the same user id as{" "}
+              <code className="rounded bg-muted px-1">include_external_user_ids</code> / Beautonomi{" "}
+              <code className="rounded bg-muted px-1">users.id</code>.
+            </p>
           </div>
           <div>
             <Label htmlFor="description">Description (optional)</Label>

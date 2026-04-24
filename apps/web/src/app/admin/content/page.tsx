@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,15 @@ import { AboutUsModal } from "./components/AboutUsModal";
 import { SignupPageCard } from "./components/SignupPageCard";
 import { SignupPageModal } from "./components/SignupPageModal";
 import WysiwygEditor from "@/components/admin/WysiwygEditor";
+import {
+  CMS_PAGE_CONTENT_GROUP_LABELS,
+  CMS_PAGE_CONTENT_GROUP_ORDER,
+  CMS_PAGE_SECTION_PRESETS,
+  cmsPageContentGroupForSlug,
+  cmsPagePublicApiHint,
+  cmsPageSlugTitle,
+  cmsSectionPresetLabel,
+} from "@/lib/cmsPageSectionPresets";
 
 interface FAQ {
   id: string;
@@ -303,10 +312,16 @@ export default function AdminContent() {
   );
 
   const filteredPages = pages.filter((page) => {
+    const q = searchQuery.toLowerCase();
+    const meta = page.metadata as Record<string, unknown> | undefined;
+    const metaTitle = String(meta?.title ?? "").toLowerCase();
+    const preset = (cmsSectionPresetLabel(page.page_slug, page.section_key) ?? "").toLowerCase();
     const matchesSearch =
-      (page.page_slug ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (page.section_key ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (page.content ?? "").toLowerCase().includes(searchQuery.toLowerCase());
+      (page.page_slug ?? "").toLowerCase().includes(q) ||
+      (page.section_key ?? "").toLowerCase().includes(q) ||
+      metaTitle.includes(q) ||
+      preset.includes(q) ||
+      (page.content ?? "").toLowerCase().includes(q);
     const matchesPageFilter = !pageFilter || page.page_slug === pageFilter;
     return matchesSearch && matchesPageFilter;
   });
@@ -332,8 +347,51 @@ export default function AdminContent() {
     (content.section_key ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Get unique page slugs for filter
-  const pageSlugs = Array.from(new Set(pages.map((p) => p.page_slug))).sort();
+  const pageSlugSelectOptions = useMemo(() => {
+    const fromData = pages.map((p) => p.page_slug);
+    const fromPresets = Object.keys(CMS_PAGE_SECTION_PRESETS);
+    return [...new Set([...fromPresets, ...fromData])].sort((a, b) => {
+      const ga = cmsPageContentGroupForSlug(a);
+      const gb = cmsPageContentGroupForSlug(b);
+      const ia = CMS_PAGE_CONTENT_GROUP_ORDER.indexOf(ga);
+      const ib = CMS_PAGE_CONTENT_GROUP_ORDER.indexOf(gb);
+      if (ia !== ib) return ia - ib;
+      return a.localeCompare(b);
+    });
+  }, [pages]);
+
+  const groupedPageContent = useMemo(() => {
+    const slugMap = new Map<string, PageContent[]>();
+    for (const p of filteredPages) {
+      if (!slugMap.has(p.page_slug)) slugMap.set(p.page_slug, []);
+      slugMap.get(p.page_slug)!.push(p);
+    }
+    for (const list of slugMap.values()) {
+      list.sort((a, b) => {
+        const oa = Number(a.order) || 0;
+        const ob = Number(b.order) || 0;
+        if (oa !== ob) return oa - ob;
+        return (a.section_key || "").localeCompare(b.section_key || "");
+      });
+    }
+    const slugs = [...slugMap.keys()].sort((a, b) => {
+      const ga = cmsPageContentGroupForSlug(a);
+      const gb = cmsPageContentGroupForSlug(b);
+      const ia = CMS_PAGE_CONTENT_GROUP_ORDER.indexOf(ga);
+      const ib = CMS_PAGE_CONTENT_GROUP_ORDER.indexOf(gb);
+      if (ia !== ib) return ia - ib;
+      return a.localeCompare(b);
+    });
+    type GroupId = (typeof CMS_PAGE_CONTENT_GROUP_ORDER)[number];
+    const out: { group: GroupId; panels: { slug: string; rows: PageContent[] }[] }[] = [];
+    for (const gid of CMS_PAGE_CONTENT_GROUP_ORDER) {
+      const panels = slugs
+        .filter((s) => cmsPageContentGroupForSlug(s) === gid)
+        .map((slug) => ({ slug, rows: slugMap.get(slug)! }));
+      if (panels.length) out.push({ group: gid, panels });
+    }
+    return out;
+  }, [filteredPages]);
   
   // Get unique sections for footer links filter
   const footerSections = Array.from(new Set(footerLinks.map((l) => l.section))).sort();
@@ -550,7 +608,7 @@ export default function AdminContent() {
                         : activeTab === "cities"
                         ? "Search cities..."
                         : activeTab === "pages"
-                        ? "Search page content..."
+                        ? "Search slug, section, preset label, title, or body…"
                         : activeTab === "footer"
                         ? "Search footer links..."
                         : activeTab === "about-us"
@@ -563,80 +621,58 @@ export default function AdminContent() {
                   />
                 </div>
               {activeTab === "pages" && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <select
                     value={pageFilter}
                     onChange={(e) => setPageFilter(e.target.value)}
-                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-primary focus:ring-primary min-w-[150px]"
+                    className="min-w-[200px] rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary focus:ring-primary dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                   >
-                    <option value="">All Pages</option>
-                    <optgroup label="Featured Pages">
-                      <option value="become-a-partner">🌟 become-a-partner</option>
-                      <option value="gift-card">🎁 gift-card</option>
-                      <option value="about">📄 about</option>
-                      <option value="help">📄 help</option>
-                      <option value="why-beautonomi">📄 why-beautonomi</option>
-                      <option value="beautonomi-friendly">📄 beautonomi-friendly</option>
-                      <option value="release">📄 release</option>
-                      <option value="pricing">📄 pricing</option>
-                      <option value="signup">📄 signup</option>
-                    </optgroup>
-                    <optgroup label="Footer Pages">
-                      <option value="privacy-policy">📄 privacy-policy</option>
-                      <option value="terms-and-condition">📄 terms-and-condition</option>
-                      <option value="terms-of-service">📄 terms-of-service</option>
-                      <option value="cookie-policy">📄 cookie-policy</option>
-                    </optgroup>
-                    {pageSlugs.filter(slug => 
-                      slug !== "become-a-partner" && 
-                      slug !== "privacy-policy" && 
-                      slug !== "terms-and-condition" && 
-                      slug !== "terms-of-service" &&
-                      slug !== "cookie-policy" &&
-                      slug !== "about" &&
-                      slug !== "help"
-                    ).length > 0 && (
-                      <optgroup label="Other Pages">
-                        {pageSlugs.filter(slug => 
-                          slug !== "become-a-partner" && 
-                          slug !== "privacy-policy" && 
-                          slug !== "terms-and-condition" && 
-                          slug !== "terms-of-service" &&
-                          slug !== "cookie-policy" &&
-                          slug !== "about" &&
-                          slug !== "help"
-                        ).map((slug) => (
-                          <option key={slug} value={slug}>
-                            {slug}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
+                    <option value="">All page slugs</option>
+                    {CMS_PAGE_CONTENT_GROUP_ORDER.map((gid) => {
+                      const slugs = pageSlugSelectOptions.filter((s) => cmsPageContentGroupForSlug(s) === gid);
+                      if (!slugs.length) return null;
+                      return (
+                        <optgroup key={gid} label={CMS_PAGE_CONTENT_GROUP_LABELS[gid]}>
+                          {slugs.map((slug) => (
+                            <option key={slug} value={slug}>
+                              {cmsPageSlugTitle(slug)} ({slug})
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
                   </select>
-                  {pageFilter !== "become-a-partner" && (
+                  {pageFilter ? (
+                    <Button type="button" variant="outline" className="whitespace-nowrap" onClick={() => setPageFilter("")}>
+                      Clear page filter
+                    </Button>
+                  ) : null}
+                  {pageFilter !== "become-a-partner" ? (
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => setPageFilter("become-a-partner")}
                       className="whitespace-nowrap"
                     >
-                      📝 Become a Partner
+                      Become a partner
                     </Button>
-                  )}
-                  {!pageFilter.startsWith("privacy") && !pageFilter.startsWith("terms") && pageFilter !== "cookie-policy" && pageFilter !== "about" && pageFilter !== "help" && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        const footerPages = ["privacy-policy", "terms-and-condition", "terms-of-service", "cookie-policy", "about", "help"];
-                        const firstFooterPage = footerPages.find(p => pageSlugs.includes(p)) || footerPages[0];
-                        setPageFilter(firstFooterPage);
-                      }}
-                      className="whitespace-nowrap"
-                    >
-                      📄 Footer Pages
-                    </Button>
-                  )}
+                  ) : null}
+                  {(() => {
+                    const legalSlugs = [
+                      "privacy-policy",
+                      "terms-and-condition",
+                      "terms-of-service",
+                      "cookie-policy",
+                    ];
+                    const firstLegal = legalSlugs.find((s) => pageSlugSelectOptions.includes(s));
+                    const onLegal = legalSlugs.includes(pageFilter);
+                    if (!firstLegal || onLegal) return null;
+                    return (
+                      <Button type="button" variant="outline" className="whitespace-nowrap" onClick={() => setPageFilter(firstLegal)}>
+                        Legal & policy
+                      </Button>
+                    );
+                  })()}
                 </div>
               )}
               {activeTab === "footer" && (
@@ -752,7 +788,7 @@ export default function AdminContent() {
                 description={error}
                 action={{ label: "Retry", onClick: loadData }}
               />
-            ) : filteredPages.length === 0 ? (
+            ) : pages.length === 0 ? (
               <EmptyState
                 title="No page content yet"
                 description="Create your first page content"
@@ -761,104 +797,68 @@ export default function AdminContent() {
                   onClick: () => setShowPageModal(true),
                 }}
               />
+            ) : filteredPages.length === 0 ? (
+              <EmptyState
+                title="No matching sections"
+                description="Try another search, clear the page slug filter, or add a missing section."
+                action={{
+                  label: "Clear filters",
+                  onClick: () => {
+                    setSearchQuery("");
+                    setPageFilter("");
+                  },
+                }}
+              />
             ) : (
-              <div className="space-y-6">
-                {(() => {
-                  const footerPages = filteredPages.filter(p => 
-                    p.page_slug === "privacy-policy" || 
-                    p.page_slug === "terms-and-condition" || 
-                    p.page_slug === "terms-of-service" ||
-                    p.page_slug === "cookie-policy" ||
-                    p.page_slug === "about" ||
-                    p.page_slug === "help"
-                  );
-                  const otherPages = filteredPages.filter(p => 
-                    p.page_slug !== "privacy-policy" && 
-                    p.page_slug !== "terms-and-condition" && 
-                    p.page_slug !== "terms-of-service" &&
-                    p.page_slug !== "cookie-policy" &&
-                    p.page_slug !== "about" &&
-                    p.page_slug !== "help"
-                  );
-                  
-                  // If filtered, show all filtered pages
-                  if (pageFilter) {
-                    return (
-                      <div className="space-y-3 sm:space-y-4">
-                        {filteredPages.map((page) => (
-                          <PageContentCard
-                            key={page.id}
-                            page={page}
-                            onEdit={() => setEditingPage(page)}
-                            onDelete={() => handleDeletePage(page.id)}
-                          />
-                        ))}
-                      </div>
-                    );
-                  }
-                  
-                  // If not filtered, show grouped by footer pages and other pages
-                  return (
-                    <>
-                      {footerPages.length > 0 && (
-                        <div>
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                              📄 Footer Pages
-                              <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
-                                ({footerPages.length})
-                              </span>
-                            </h3>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const firstFooterPage = footerPages[0]?.page_slug || "privacy-policy";
-                                setPageFilter(firstFooterPage);
-                              }}
-                              className="text-xs"
-                            >
-                              Filter Footer Pages
-                            </Button>
+              <div className="space-y-10">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Sections are grouped by site area, then by page slug. Within each page, blocks follow display order.
+                </p>
+                {groupedPageContent.map(({ group, panels }) => (
+                  <section key={group} className="space-y-4">
+                    <h2 className="border-b border-gray-200 pb-2 text-base font-semibold text-gray-900 dark:border-gray-700 dark:text-white">
+                      {CMS_PAGE_CONTENT_GROUP_LABELS[group]}
+                    </h2>
+                    <div className="space-y-6">
+                      {panels.map(({ slug, rows }) => {
+                        const apiHint = cmsPagePublicApiHint(slug);
+                        return (
+                          <div
+                            key={slug}
+                            className="rounded-xl border border-gray-200/80 bg-white/70 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/40"
+                          >
+                            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                  {cmsPageSlugTitle(slug)}
+                                </h3>
+                                <p className="font-mono text-xs text-gray-500 dark:text-gray-400">{slug}</p>
+                                {apiHint ? (
+                                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    Public: <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">{apiHint}</code>
+                                  </p>
+                                ) : null}
+                              </div>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {rows.length} section{rows.length === 1 ? "" : "s"}
+                              </p>
+                            </div>
+                            <div className="space-y-3 sm:space-y-4">
+                              {rows.map((page) => (
+                                <PageContentCard
+                                  key={page.id}
+                                  page={page}
+                                  onEdit={() => setEditingPage(page)}
+                                  onDelete={() => handleDeletePage(page.id)}
+                                />
+                              ))}
+                            </div>
                           </div>
-                          <div className="space-y-3 sm:space-y-4">
-                            {footerPages.map((page) => (
-                              <PageContentCard
-                                key={page.id}
-                                page={page}
-                                onEdit={() => setEditingPage(page)}
-                                onDelete={() => handleDeletePage(page.id)}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {otherPages.length > 0 && (
-                        <div>
-                          {footerPages.length > 0 && (
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-                              Other Pages
-                              <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
-                                ({otherPages.length})
-                              </span>
-                            </h3>
-                          )}
-                          <div className="space-y-3 sm:space-y-4">
-                            {otherPages.map((page) => (
-                              <PageContentCard
-                                key={page.id}
-                                page={page}
-                                onEdit={() => setEditingPage(page)}
-                                onDelete={() => handleDeletePage(page.id)}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
               </div>
             )}
           </TabsContent>

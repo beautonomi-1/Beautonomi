@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { fetcher } from "@/lib/http/fetcher";
 import { useAuth } from "@/providers/AuthProvider";
 
@@ -27,10 +27,23 @@ export interface SavedAddress {
   location_landmarks?: string | null;
 }
 
-export function useSavedAddresses() {
+/**
+ * @param initialAddresses SSR seed from `/api/me/addresses`. `null` = server fetch failed (client refetches).
+ * `undefined` = no seed (always load on client). An array (including empty) skips one redundant client fetch after auth.
+ */
+export function useSavedAddresses(initialAddresses?: SavedAddress[] | null) {
   const { user, isLoading: authLoading } = useAuth();
-  const [addresses, setAddresses] = useState<SavedAddress[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const initialRef = useRef(initialAddresses);
+  initialRef.current = initialAddresses;
+  const skipHydrateLoadOnce = useRef(
+    initialAddresses !== undefined && initialAddresses !== null,
+  );
+  const [addresses, setAddresses] = useState<SavedAddress[]>(() =>
+    Array.isArray(initialAddresses) ? initialAddresses : [],
+  );
+  const [isLoading, setIsLoading] = useState(
+    () => !(initialAddresses !== undefined && initialAddresses !== null),
+  );
   const [error, setError] = useState<string | null>(null);
 
   const loadAddresses = useCallback(async (attempt = 0) => {
@@ -70,13 +83,20 @@ export function useSavedAddresses() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (user) {
-      void loadAddresses();
-    } else {
+    if (!user) {
       setAddresses([]);
       setIsLoading(false);
       setError(null);
+      return;
     }
+    if (skipHydrateLoadOnce.current) {
+      skipHydrateLoadOnce.current = false;
+      const snap = initialRef.current;
+      setAddresses(Array.isArray(snap) ? snap : []);
+      setIsLoading(false);
+      return;
+    }
+    void loadAddresses();
   }, [user, authLoading, loadAddresses]);
 
   const saveAddress = async (addressData: Omit<SavedAddress, "id" | "created_at" | "updated_at">) => {

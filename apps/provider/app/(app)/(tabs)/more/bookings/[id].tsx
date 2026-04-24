@@ -1859,13 +1859,28 @@ export default function BookingDetailScreen() {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       const result = await api.post<{ id: string }>(
                         "/api/provider/conversations/create",
-                        { customer_id: customerId },
+                        {
+                          customer_id: customerId,
+                          // §Provider-launch (audit 2026-04): pass the booking so
+                          // the server can authorise messaging even before a
+                          // `provider_clients` row exists (first-time web booker).
+                          booking_id: typeof id === "string" ? id : undefined,
+                        },
                       );
                       if (result.error) {
-                        Alert.alert(
-                          "Message",
-                          (result.error as { message?: string }).message ?? "Could not start conversation.",
-                        );
+                        const code = (result.error as { code?: string }).code;
+                        const msg =
+                          (result.error as { message?: string }).message ??
+                          "Could not start conversation.";
+                        if (code === "CUSTOMER_UNREGISTERED") {
+                          Alert.alert("Invite this client first", msg);
+                          return;
+                        }
+                        if (code === "CUSTOMER_NOT_LINKED") {
+                          Alert.alert("Cannot message", msg);
+                          return;
+                        }
+                        Alert.alert("Message", msg);
                         return;
                       }
                       const convId = result.data?.id;
@@ -2075,7 +2090,7 @@ export default function BookingDetailScreen() {
                         {isResendingArrivalOtp ? (
                           <ActivityIndicator size="small" color="#111" />
                         ) : (
-                          <Text style={twStyle("text-gray-700 font-medium")}>Resend code</Text>
+                          <Text style={twStyle("text-gray-700 font-medium")}>Resend code & QR</Text>
                         )}
                       </TouchableOpacity>
                     </View>
@@ -2086,7 +2101,25 @@ export default function BookingDetailScreen() {
                     <Text style={twStyle("text-sm font-medium text-violet-950 mb-1")}>Scan the customer&apos;s QR or enter their code</Text>
                     <Text style={twStyle("text-xs text-violet-800 mb-2")}>
                       Ask them to open this booking — they&apos;ll see an arrival QR. You can scan it or type the 8-character code.
+                      {arrivalOtpPending
+                        ? " If it expired, use Resend in the PIN section — the customer gets a fresh code and QR."
+                        : " If it expired, use Resend below — the customer gets a fresh code and QR."}
                     </Text>
+                    {!arrivalOtpPending ? (
+                      <TouchableOpacity
+                        onPress={handleResendArrivalOtp}
+                        disabled={isResendingArrivalOtp}
+                        style={twStyle("rounded-lg border border-violet-400 py-2.5 px-3 items-center mb-2")}
+                        accessibilityRole="button"
+                        accessibilityLabel="Resend QR and code to customer"
+                      >
+                        {isResendingArrivalOtp ? (
+                          <ActivityIndicator size="small" color="#5B21B6" />
+                        ) : (
+                          <Text style={twStyle("text-violet-900 font-semibold")}>Resend QR & code to customer</Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
                     <TextInput
                       value={qrArrivalCodeInput}
                       onChangeText={(t) => setQrArrivalCodeInput(t.replace(/\s/g, "").toUpperCase().slice(0, 12))}

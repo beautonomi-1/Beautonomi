@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { purgePlatformUserAccountFully } from "@/lib/account/purge-platform-user";
@@ -25,7 +24,10 @@ const bodySchema = z.object({
 });
 
 function normalizeEmail(e: string): string {
-  return e.trim().toLowerCase();
+  return e
+    .trim()
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
 }
 
 /**
@@ -54,17 +56,17 @@ export async function POST(request: NextRequest) {
     }
 
     const { user_id, reason, target_email_confirmation } = parsed.data;
-    const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
 
-    const { data: existingUser, error: fetchError } = await supabase
+    const { data: existingUser, error: fetchError } = await admin
       .from("users")
       .select("id, role, email")
       .eq("id", user_id)
-      .single();
+      .eq("preferred_home_tenant_id", tenantId)
+      .maybeSingle();
 
     if (fetchError || !existingUser) {
-      return notFoundResponse("User not found");
+      return notFoundResponse("User not found in this tenant scope");
     }
 
     if (user_id === actor.id) {
@@ -81,13 +83,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const accountEmail = existingUser.email ?? "";
-    if (!accountEmail || normalizeEmail(target_email_confirmation) !== normalizeEmail(accountEmail)) {
+    let accountEmail = typeof existingUser.email === "string" ? existingUser.email.trim() : "";
+    if (!accountEmail) {
+      const { data: authRow, error: authLookupErr } = await admin.auth.admin.getUserById(user_id);
+      if (authLookupErr) {
+        console.warn("[purge-user] auth.admin.getUserById:", authLookupErr.message);
+      }
+      accountEmail = (authRow?.user?.email ?? "").trim();
+    }
+
+    if (!accountEmail) {
       return Response.json(
         {
           data: null,
           error: {
-            message: "target_email_confirmation must match the user account email exactly",
+            message:
+              "This account has no email on file (users.email and Auth email are empty). Use another verification process or set an email before purge.",
+            code: "NO_ACCOUNT_EMAIL",
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    if (normalizeEmail(target_email_confirmation) !== normalizeEmail(accountEmail)) {
+      return Response.json(
+        {
+          data: null,
+          error: {
+            message: `target_email_confirmation must match the account email (case-insensitive). Expected: ${accountEmail}`,
             code: "EMAIL_CONFIRMATION_MISMATCH",
           },
         },

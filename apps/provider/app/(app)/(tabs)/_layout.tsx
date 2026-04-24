@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import { View, Platform, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
+import { StackActions } from "@react-navigation/native";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
@@ -144,12 +145,34 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "menu" : "menu-outline"} focused={focused} />,
         }}
         listeners={({ navigation }) => ({
-          tabPress: () => {
+          tabPress: (e) => {
+            // §Provider-launch (audit 2026-04): previously we tried to pop
+            // the nested "more" stack via router.replace("/(app)/(tabs)/more")
+            // whenever the More tab was tapped while deeper pages (e.g. a
+            // booking detail under /more/bookings/[id]) were in the stack.
+            // Expo Router treats the same target path as a no-op, so the
+            // user stayed on the inner screen — the exact "clicking More
+            // keeps me on booking details" bug. Dispatching
+            // `StackActions.popToTop()` on the nested navigator reliably
+            // unwinds back to the More hub from any depth.
             const state = navigation.getState();
-            const moreRoute = state.routes.find((r: { name: string }) => r.name === "more");
-            const st = moreRoute?.state as { index?: number } | undefined;
+            const moreRoute = state.routes.find(
+              (r: { name: string }) => r.name === "more",
+            ) as { state?: { index?: number; key?: string } } | undefined;
+            const st = moreRoute?.state;
+            const alreadyOnMoreTab = state.routes[state.index]?.name === "more";
             if (typeof st?.index === "number" && st.index > 0) {
-              router.replace("/(app)/(tabs)/more" as never);
+              if (alreadyOnMoreTab) {
+                e.preventDefault();
+              }
+              if (st.key) {
+                navigation.dispatch({
+                  ...StackActions.popToTop(),
+                  target: st.key,
+                });
+              } else {
+                router.replace("/(app)/(tabs)/more" as never);
+              }
             }
           },
         })}

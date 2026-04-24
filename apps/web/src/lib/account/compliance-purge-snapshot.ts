@@ -23,6 +23,8 @@ export type ProviderOrgPurgeSnapshot = {
   business_name: string | null;
   slug: string | null;
   provider_email: string | null;
+  /** Billing / invoice contact email (may differ from public-facing `email`). */
+  provider_billing_email: string | null;
   owner_user_id: string | null;
   owner_email: string | null;
   tenant_id: string | null;
@@ -100,7 +102,7 @@ export async function collectProviderOrgPurgeSnapshot(
 ): Promise<ProviderOrgPurgeSnapshot | null> {
   const { data: prov, error } = await admin
     .from("providers")
-    .select("id, business_name, slug, email, user_id, tenant_id")
+    .select("id, business_name, slug, email, billing_email, user_id, tenant_id")
     .eq("id", opts.providerId)
     .eq("tenant_id", opts.tenantId)
     .maybeSingle();
@@ -139,6 +141,7 @@ export async function collectProviderOrgPurgeSnapshot(
     business_name: (prov as { business_name?: string }).business_name ?? null,
     slug: (prov as { slug?: string }).slug ?? null,
     provider_email: (prov as { email?: string | null }).email ?? null,
+    provider_billing_email: (prov as { billing_email?: string | null }).billing_email ?? null,
     owner_user_id: ownerId,
     owner_email: owner ? ((owner as { email?: string | null }).email ?? null) : null,
     tenant_id: (prov as { tenant_id?: string | null }).tenant_id ?? null,

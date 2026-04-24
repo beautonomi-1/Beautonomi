@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Bell, Mail, MessageSquare, Gift, FileText, AlertCircle, Clock, HelpCircle } from "lucide-react";
 import Breadcrumb from "../../components/breadcrumb";
@@ -11,24 +13,12 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import type { NotificationPreferences } from "../notification-preferences-types";
 
 const tabs = [
   { value: "offersUpdates", label: "Offers and updates" },
   { value: "account", label: "Account" },
 ];
-
-interface NotificationPreferences {
-  inspiration_and_offers?: { email: boolean; sms: boolean; push: boolean };
-  news_and_programs?: { email: boolean; sms: boolean; push: boolean };
-  feedback?: { email: boolean; sms: boolean; push: boolean };
-  travel_regulations?: { email: boolean; sms: boolean; push: boolean };
-  account_activity?: { email: boolean; sms: boolean; push: boolean };
-  client_policies?: { email: boolean; sms: boolean; push: boolean };
-  reminders?: { email: boolean; sms: boolean; push: boolean };
-  subscription_renewal?: { email: boolean; sms: boolean; push: boolean };
-  messages?: { email: boolean; sms: boolean; push: boolean };
-  unsubscribe_marketing?: boolean;
-}
 
 /** Sections for the "Offers and updates" tab */
 const offersUpdatesSections = [
@@ -152,7 +142,7 @@ const NotificationModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] rounded-3xl sm:rounded-3xl border-gray-200 shadow-2xl">
         <DialogHeader>
           <DialogTitle className="pt-5">{title}</DialogTitle>
           <DialogDescription className="sr-only">{description}</DialogDescription>
@@ -207,17 +197,19 @@ const NotificationModal = ({
               </p>
             </div>
           </div>
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
             <button
+              type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900"
+              className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:text-gray-900 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors touch-manipulation"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary rounded-lg disabled:opacity-50"
+              className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary rounded-full disabled:opacity-50 shadow-sm touch-manipulation"
             >
               {isSaving ? "Saving..." : "Save"}
             </button>
@@ -228,15 +220,22 @@ const NotificationModal = ({
   );
 };
 
-const Page = () => {
+const Page = ({ initialPreferences }: { initialPreferences: NotificationPreferences | null }) => {
   const [activeTab, setActiveTab] = useState("offersUpdates");
   const [activeModal, setActiveModal] = useState<string | null>(null);
-  const [preferences, setPreferences] = useState<NotificationPreferences>({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [preferences, setPreferences] = useState<NotificationPreferences>(() => initialPreferences ?? {});
+  const [isLoading, setIsLoading] = useState(() => initialPreferences === null);
   const [error, setError] = useState<string | null>(null);
-  const [unsubscribeMarketing, setUnsubscribeMarketing] = useState(false);
+  const [unsubscribeMarketing, setUnsubscribeMarketing] = useState(
+    () => initialPreferences?.unsubscribe_marketing ?? false,
+  );
+  const skipHydrateLoadOnce = useRef(initialPreferences !== null);
 
   useEffect(() => {
+    if (skipHydrateLoadOnce.current) {
+      skipHydrateLoadOnce.current = false;
+      return;
+    }
     loadPreferences();
   }, []);
 
@@ -334,7 +333,7 @@ const Page = () => {
     <div className="min-h-screen bg-zinc-50/50">
       <div className="w-full max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
         <div
-          className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mt-8 mb-12"
+          className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-3xl p-6 md:p-8 mt-8 mb-12"
         >
           <BackButton href="/account-settings" />
           <Breadcrumb
@@ -344,19 +343,22 @@ const Page = () => {
             ]}
           />
 
-          <h1
-            className="text-2xl md:text-3xl font-semibold tracking-tighter text-gray-900 border-b border-gray-200 mb-6 pb-4 mt-4 md:mt-6"
-          >
-            Notifications
-          </h1>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between border-b border-gray-200/90 mb-6 pb-5 mt-4 md:mt-6">
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-gray-900">
+              Notifications
+            </h1>
+            <Button asChild variant="outline" size="sm" className="w-full sm:w-auto rounded-full border-gray-200 shrink-0">
+              <Link href="/account-settings/notifications/inbox">View inbox</Link>
+            </Button>
+          </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="mb-6 grid grid-cols-2 w-full h-auto p-1 bg-gray-100 rounded-xl shadow-inner border border-gray-200">
+            <TabsList className="mb-6 grid grid-cols-2 w-full h-auto p-1.5 bg-gray-100/90 rounded-2xl shadow-inner border border-gray-200/80">
               {tabs.map((tab) => (
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="text-sm md:text-base font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-white/40 data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-gray-200 rounded-lg transition-all duration-200"
+                  className="text-sm md:text-base font-medium text-gray-700 min-h-[44px] rounded-xl data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-gray-100 data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-gray-200 transition-all duration-200 touch-manipulation"
                 >
                   {tab.label}
                 </TabsTrigger>
@@ -365,19 +367,19 @@ const Page = () => {
 
             <TabsContent value="offersUpdates">
               <div
-                className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-2xl p-6 md:p-8 space-y-6"
+                className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-3xl p-6 md:p-8 space-y-6"
               >
                 {offersUpdatesSections.map((section) => {
                   const Icon = section.icon;
                   return (
                     <div
                       key={section.id}
-                      className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5"
+                      className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-2xl p-5 shadow-sm"
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3 mb-2">
-                            <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
+                            <div className="p-2.5 bg-pink-50 rounded-2xl border border-pink-100 shrink-0">
                               <Icon className="w-5 h-5 text-primary" />
                             </div>
                             <div>
@@ -391,8 +393,9 @@ const Page = () => {
                           </div>
                         </div>
                         <button
+                          type="button"
                           onClick={() => openModal(section.id)}
-                          className="text-primary hover:text-primary-hover font-medium text-sm underline transition-colors"
+                          className="shrink-0 rounded-full px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors touch-manipulation"
                         >
                           Edit
                         </button>
@@ -415,12 +418,12 @@ const Page = () => {
                     return (
                       <div
                         key={section.id}
-                        className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5 mb-4"
+                        className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-2xl p-5 mb-4 shadow-sm"
                       >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3 mb-2">
-                              <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
+                              <div className="p-2.5 bg-pink-50 rounded-2xl border border-pink-100 shrink-0">
                                 <Icon className="w-5 h-5 text-primary" />
                               </div>
                               <div>
@@ -434,8 +437,9 @@ const Page = () => {
                             </div>
                           </div>
                           <button
+                            type="button"
                             onClick={() => openModal(section.id)}
-                            className="text-primary hover:text-primary-hover font-medium text-sm underline transition-colors"
+                            className="shrink-0 rounded-full px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors touch-manipulation"
                           >
                             Edit
                           </button>
@@ -445,9 +449,9 @@ const Page = () => {
                   })}
 
                   <div
-                    className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5 mt-6"
+                    className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-2xl p-5 mt-6 shadow-sm"
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <h3 className="text-base font-semibold text-gray-900 mb-1">
                           Unsubscribe from all marketing emails
@@ -469,7 +473,7 @@ const Page = () => {
 
             <TabsContent value="account">
               <div
-                className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-2xl p-6 md:p-8 space-y-6"
+                className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-3xl p-6 md:p-8 space-y-6"
               >
                 <div>
                   <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
@@ -487,12 +491,12 @@ const Page = () => {
                       return (
                         <div
                           key={section.id}
-                          className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5 mb-4"
+                          className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-2xl p-5 mb-4 shadow-sm"
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-3 mb-2">
-                                <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
+                                <div className="p-2.5 bg-pink-50 rounded-2xl border border-pink-100 shrink-0">
                                   <Icon className="w-5 h-5 text-primary" />
                                 </div>
                                 <div>
@@ -506,8 +510,9 @@ const Page = () => {
                               </div>
                             </div>
                             <button
+                              type="button"
                               onClick={() => openModal(section.id)}
-                              className="text-primary hover:text-primary-hover font-medium text-sm underline transition-colors"
+                              className="shrink-0 rounded-full px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors touch-manipulation"
                             >
                               Edit
                             </button>
@@ -532,12 +537,12 @@ const Page = () => {
                         return (
                           <div
                             key={section.id}
-                            className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5 mb-4"
+                            className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-2xl p-5 mb-4 shadow-sm"
                           >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-3 mb-2">
-                                  <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
+                                  <div className="p-2.5 bg-pink-50 rounded-2xl border border-pink-100 shrink-0">
                                     <Icon className="w-5 h-5 text-primary" />
                                   </div>
                                   <div>
@@ -551,8 +556,9 @@ const Page = () => {
                                 </div>
                               </div>
                               <button
+                                type="button"
                                 onClick={() => openModal(section.id)}
-                                className="text-primary hover:text-primary-hover font-medium text-sm underline transition-colors"
+                                className="shrink-0 rounded-full px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors touch-manipulation"
                               >
                                 Edit
                               </button>
@@ -577,12 +583,12 @@ const Page = () => {
                         return (
                           <div
                             key={section.id}
-                            className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5"
+                            className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-2xl p-5 shadow-sm"
                           >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-3 mb-2">
-                                  <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
+                                  <div className="p-2.5 bg-pink-50 rounded-2xl border border-pink-100 shrink-0">
                                     <Icon className="w-5 h-5 text-primary" />
                                   </div>
                                   <div>
@@ -596,8 +602,9 @@ const Page = () => {
                                 </div>
                               </div>
                               <button
+                                type="button"
                                 onClick={() => openModal(section.id)}
-                                className="text-primary hover:text-primary-hover font-medium text-sm underline transition-colors"
+                                className="shrink-0 rounded-full px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors touch-manipulation"
                               >
                                 Edit
                               </button>
@@ -612,18 +619,18 @@ const Page = () => {
                 <div
                   className="pt-6 border-t border-gray-200"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
+                  <div className="flex items-start gap-3 rounded-2xl border border-gray-100 bg-gray-50/50 p-4 sm:p-5">
+                    <div className="p-2.5 bg-pink-50 rounded-2xl border border-pink-100 shrink-0">
                       <HelpCircle className="w-5 h-5 text-primary" />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <h3 className="text-base font-semibold text-gray-900 mb-2">Need help?</h3>
                       <p className="text-sm font-light text-gray-600 mb-3">
                         Get answers to questions about notifications in our Help Center.
                       </p>
                       <a
                         href="/help"
-                        className="text-sm font-medium text-primary hover:text-primary-hover underline transition-colors"
+                        className="inline-flex items-center rounded-full border border-primary/20 bg-white px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 transition-colors touch-manipulation"
                       >
                         Visit Help Centre
                       </a>
