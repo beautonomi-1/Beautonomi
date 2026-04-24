@@ -364,9 +364,16 @@ export async function proxy(request: NextRequest) {
           return redirectToHome();
         }
 
+        if (userRole === 'provider_onboarding') {
+          if (pathname.startsWith('/provider/get-started') || pathname.startsWith('/provider/embed')) {
+            return response;
+          }
+          return NextResponse.redirect(new URL('/provider/get-started', request.url));
+        }
+
         // Check if user is provider or admin
         if (!['provider_owner', 'provider_staff', 'superadmin'].includes(userRole)) {
-          // Redirect to provider onboarding if not a provider
+          // Redirect non-provider users to the partner signup/onboarding entry.
           return NextResponse.redirect(new URL('/become-a-partner', request.url));
         }
 

@@ -10,6 +10,39 @@ import { getPortalForUser, getDefaultRouteForPortal } from "@/lib/auth/role";
 import { getUserRoleServer } from "@/lib/auth/role-server";
 import { resolvePortalAwareReturnPathname } from "@/lib/auth/post-login-return-path";
 
+const ALLOWED_NEXT_PREFIXES = [
+  "/",
+  "/login",
+  "/signup",
+  "/portal",
+  "/provider",
+  "/provider/dashboard",
+  "/provider/get-started",
+  "/provider/onboarding",
+  "/booking",
+  "/book",
+  "/checkout",
+  "/account-settings",
+  "/admin/dashboard",
+  "/bookings",
+];
+
+function safeReturnPath(value: string | null, origin: string): string | null {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
+  const url = new URL(value, origin);
+  const pathname = url.pathname;
+  const allowed = ALLOWED_NEXT_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  return allowed ? `${pathname}${url.search}` : null;
+}
+
+function authErrorRedirect(requestUrl: URL, message: string): NextResponse {
+  const next = safeReturnPath(requestUrl.searchParams.get("next"), requestUrl.origin);
+  const loginUrl = new URL("/login", requestUrl.origin);
+  loginUrl.searchParams.set("error", message);
+  if (next) loginUrl.searchParams.set("next", next);
+  return NextResponse.redirect(loginUrl);
+}
+
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
@@ -21,9 +54,7 @@ export async function GET(request: NextRequest) {
   // Handle OAuth errors
   if (error) {
     console.error("OAuth error:", error, errorDescription);
-    return NextResponse.redirect(
-      new URL(`/booking?error=${encodeURIComponent(errorDescription || error)}`, requestUrl.origin)
-    );
+    return authErrorRedirect(requestUrl, errorDescription || error);
   }
 
   const supabase = await getSupabaseServer();
@@ -36,21 +67,17 @@ export async function GET(request: NextRequest) {
     });
     if (verifyError) {
       console.error("Auth verifyOtp error:", verifyError);
-      return NextResponse.redirect(
-        new URL(`/booking?error=${encodeURIComponent(verifyError.message)}`, requestUrl.origin)
-      );
+      return authErrorRedirect(requestUrl, verifyError.message);
     }
     if (type === "recovery") {
       return NextResponse.redirect(new URL("/account-settings/login-and-security/reset-password", requestUrl.origin));
     }
-    const next = requestUrl.searchParams.get("next") || "/";
+    const next = safeReturnPath(requestUrl.searchParams.get("next"), requestUrl.origin) || "/";
     return NextResponse.redirect(new URL(next, requestUrl.origin));
   }
 
   if (!code) {
-    return NextResponse.redirect(
-      new URL("/booking?error=missing_code", requestUrl.origin)
-    );
+    return authErrorRedirect(requestUrl, "missing_code");
   }
 
   // Exchange code for session
@@ -58,9 +85,7 @@ export async function GET(request: NextRequest) {
 
   if (exchangeError || !data.session) {
     console.error("Error exchanging code for session:", exchangeError);
-    return NextResponse.redirect(
-      new URL(`/booking?error=${encodeURIComponent(exchangeError?.message || "authentication_failed")}`, requestUrl.origin)
-    );
+    return authErrorRedirect(requestUrl, exchangeError?.message || "authentication_failed");
   }
 
   // Update user profile with OAuth metadata if available
@@ -129,20 +154,14 @@ export async function GET(request: NextRequest) {
   }
 
   // Redirect: use "next" param if present (e.g. /provider/dashboard when logging in from provider page)
-  const nextParam = requestUrl.searchParams.get("next");
-  const allowedPaths = ["/", "/login", "/signup", "/portal", "/provider/dashboard", "/provider", "/provider/onboarding", "/booking", "/account-settings", "/admin/dashboard", "/bookings"];
-  let normalizedPath: string | null = null;
-  if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
-    normalizedPath = new URL(nextParam, requestUrl.origin).pathname;
-  }
-  const isAllowedNext =
-    normalizedPath !== null &&
-    allowedPaths.some((p) => normalizedPath === p || normalizedPath!.startsWith(p + "/"));
+  const nextPath = safeReturnPath(requestUrl.searchParams.get("next"), requestUrl.origin);
+  const normalizedPath = nextPath ? new URL(nextPath, requestUrl.origin).pathname : null;
+  const isAllowedNext = nextPath !== null && normalizedPath !== null;
 
   // Admin paths: send to dedicated admin login (user is already signed in, so /admin/login will redirect to next)
   if (isAllowedNext && normalizedPath && normalizedPath.startsWith("/admin")) {
     return NextResponse.redirect(
-      new URL(`/admin/login?next=${encodeURIComponent(normalizedPath)}`, requestUrl.origin)
+      new URL(`/admin/login?next=${encodeURIComponent(nextPath!)}`, requestUrl.origin)
     );
   }
   if (isAllowedNext && normalizedPath && normalizedPath !== "/") {
@@ -154,7 +173,8 @@ export async function GET(request: NextRequest) {
         })
       : "customer";
     const pathname = resolvePortalAwareReturnPathname(portal, normalizedPath);
-    return NextResponse.redirect(new URL(pathname, requestUrl.origin));
+    const target = pathname === normalizedPath ? nextPath! : pathname;
+    return NextResponse.redirect(new URL(target, requestUrl.origin));
   }
 
   // When next is "/" or missing, redirect by role so provider/customer land in the right place.

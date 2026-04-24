@@ -78,6 +78,8 @@ export interface PublicProviderDetail {
   categories: string[];
   supports_house_calls: boolean;
   supports_salon: boolean;
+  /** IANA timezone used by booking slots, e.g. Africa/Johannesburg. */
+  timezone?: string | null;
   distance_km?: number | null;
   locations: ProviderLocation[];
   staff_count?: number;

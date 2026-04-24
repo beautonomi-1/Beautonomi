@@ -185,11 +185,12 @@ export async function POST(request: NextRequest) {
         // and starve the calendar (the booking-create CAPTCHA was useless
         // because the slot was already locked by the unprotected hold).
         // We do a real Supabase-server auth check first; only verified
-        // logged-in users skip the captcha — never anyone with a mere
-        // cookie / Bearer header.
+        // logged-in users skip the captcha. Pass the request so mobile
+        // Bearer-authenticated customers are recognized the same as web
+        // cookie-authenticated customers.
         let holdCaptchaSkipUserId: string | null = null;
         try {
-          const sbServer = await getSupabaseServer();
+          const sbServer = await getSupabaseServer(request);
           const { data: pre } = await sbServer.auth.getUser();
           holdCaptchaSkipUserId = pre?.user?.id ?? null;
         } catch {

@@ -25,6 +25,11 @@ vi.mock("next/dynamic", () => ({
   },
 }));
 
+vi.mock("../account-settings-redirect-client", () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
 vi.mock("../components/account-hub-grid", () => ({
   __esModule: true,
   default: () => <div data-testid="account-hub-grid">hub</div>,

@@ -784,10 +784,13 @@ export default function LoginModal({
     try {
       // Callback must be /auth/callback so the code can be exchanged. Add next= for post-login redirect.
       const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const next = redirectUrl && redirectUrl.startsWith("/") && !redirectUrl.startsWith("//")
+        ? redirectUrl
+        : redirectContext === "provider"
+          ? "/provider/dashboard"
+          : "/";
       const callbackUrl =
-        redirectContext === "provider"
-          ? `${origin}/auth/callback?next=/provider/dashboard`
-          : `${origin}/auth/callback`;
+        `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
       await signInWithOAuth(provider, callbackUrl);
       // OAuth will redirect, so we don't need to do anything else here
       toast.info(`Redirecting to ${provider}...`);

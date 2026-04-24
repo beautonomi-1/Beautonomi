@@ -159,7 +159,14 @@ export default function BookingDetailScreen() {
   const referralPostedBookingIds = useRef<Set<string>>(new Set());
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!id) return;
+    if (!id) {
+      if (!opts?.silent) {
+        setLoading(false);
+        setError("Booking not found. Please go back and try again.");
+        setBooking(null);
+      }
+      return;
+    }
     if (!opts?.silent) {
       setLoading(true);
       setError(null);
@@ -179,7 +186,13 @@ export default function BookingDetailScreen() {
             : raw && typeof raw === "object" && "data" in raw && (raw as { data?: unknown }).data
               ? (raw as { data: unknown }).data
               : raw;
-        setBooking(row ?? null);
+        if (row) {
+          setBooking(row);
+          setError(null);
+        } else if (!opts?.silent) {
+          setBooking(null);
+          setError("Booking not found. Please go back and try again.");
+        }
         hasLoadedOnce.current = true;
       }
     } catch (e) {

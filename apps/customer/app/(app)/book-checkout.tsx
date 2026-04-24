@@ -1591,6 +1591,7 @@ export default function BookCheckoutScreen() {
         {
           provider_id: hold.provider_id,
           request_payload: requestPayload,
+          idempotency_key: `on-demand:${hold_id}`,
         },
         { timeout: 120_000 }
       );
@@ -1751,6 +1752,12 @@ export default function BookCheckoutScreen() {
         const errStatus = (res.error as { status?: number }).status;
         const errCode = (res.error as { code?: string }).code;
         if (errStatus === 401) {
+          if (user) {
+            setError(
+              "We couldn't verify your signed-in session for checkout. Please try again; if it repeats, close and reopen the app so your session can refresh.",
+            );
+            return;
+          }
           router.replace({
             pathname: "/(auth)/login",
             params: { return_to: bookContinueReturnTo },

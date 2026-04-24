@@ -1,21 +1,8 @@
-import dynamic from "next/dynamic";
 import { Suspense } from "react";
 import EmailVerificationBanner from "@/components/global/email-verification-banner";
 import AccountHubGrid from "./components/account-hub-grid";
 import AccountSettingsRedirectClient from "./account-settings-redirect-client";
-
-const UpcomingBookingPreview = dynamic(
-  () =>
-    import("./components/upcoming-booking-preview").then((m) => ({
-      default: m.UpcomingBookingPreview,
-    })),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="mb-6 h-28 max-w-full rounded-xl border border-gray-100 bg-gray-50/90 animate-pulse" />
-    ),
-  },
-);
+import AccountHomeUpcomingPreview from "./components/account-home-upcoming-preview";
 
 export default function AccountSettingsPage() {
   return (
@@ -32,9 +19,7 @@ export default function AccountSettingsPage() {
         <EmailVerificationBanner />
       </div>
 
-      <div className="mb-6">
-        <UpcomingBookingPreview />
-      </div>
+      <AccountHomeUpcomingPreview />
 
       <div className="mt-6 md:mt-8" id="account-management">
         <AccountHubGrid />

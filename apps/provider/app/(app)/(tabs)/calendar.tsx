@@ -472,6 +472,24 @@ function parseApiDateTime(value: unknown): Date | null {
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
+function parseCalendarDateParam(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (match) {
+    const y = Number(match[1]);
+    const m = Number(match[2]);
+    const d = Number(match[3]);
+    if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)) {
+      return new Date(y, m - 1, d);
+    }
+  }
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function calendarDateKey(day: Date, timeZone?: string | null): string {
+  return timeZone ? formatDateKeyInTimeZone(day, timeZone) : format(day, "yyyy-MM-dd");
+}
+
 /**
  * Wall-clock hour/minute for an instant in the business IANA zone (matches
  * {@link CurrentTimeIndicator}). Falls back to the device local clock when
@@ -820,12 +838,14 @@ function MonthOverviewModal({
   visible,
   monthAnchor,
   locationParam,
+  timeZone,
   onClose,
   onSelectDate,
 }: {
   visible: boolean;
   monthAnchor: Date;
   locationParam: string;
+  timeZone?: string | null;
   onClose: () => void;
   onSelectDate: (d: Date) => void;
 }) {
@@ -848,11 +868,11 @@ function MonthOverviewModal({
     for (const b of mbBookings) {
       const d = parseApiDateTime(b.scheduled_at);
       if (!d) continue;
-      const key = format(d, "yyyy-MM-dd");
+      const key = calendarDateKey(d, timeZone);
       m.set(key, (m.get(key) ?? 0) + 1);
     }
     return m;
-  }, [mbBookings]);
+  }, [mbBookings, timeZone]);
 
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const firstDayOfWeek = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
@@ -895,7 +915,7 @@ function MonthOverviewModal({
             {cells.map((day, i) => {
               if (day === null) return <View key={`e-${i}`} style={{ width: "14.28%" }} />;
               const date = new Date(month.getFullYear(), month.getMonth(), day);
-              const key = format(date, "yyyy-MM-dd");
+              const key = calendarDateKey(date, timeZone);
               const cnt = countByDate.get(key) ?? 0;
               const isToday = isSameDay(date, new Date());
               return (
@@ -1002,8 +1022,7 @@ function CalendarScreenBody() {
   const searchParams = useLocalSearchParams<{ date?: string; booking_id?: string }>();
   const deepLinkDate = useMemo(() => {
     if (typeof searchParams.date !== "string" || !searchParams.date) return null;
-    const parsed = new Date(searchParams.date);
-    return isNaN(parsed.getTime()) ? null : parsed;
+    return parseCalendarDateParam(searchParams.date);
   }, [searchParams.date]);
   const [isFocused, setIsFocused] = useState(true);
   const [secondaryEnabled, setSecondaryEnabled] = useState(false);
@@ -1088,6 +1107,7 @@ function CalendarScreenBody() {
   const scrollOffsetRef = useRef({ x: 0, y: 0 });
   const gridContainerRef = useRef<View>(null);
   const draggingRef = useRef(false);
+  const draggingBookingIdRef = useRef<string | null>(null);
   const [draggingBooking, setDraggingBooking] = useState<Booking | null>(null);
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
 
@@ -1405,19 +1425,24 @@ function CalendarScreenBody() {
   const filteredBookings = useMemo(() => {
     if (!bookings || !Array.isArray(bookings)) return [];
     let result = bookings;
+    const tz = provider?.timezone ?? null;
+    const selectedKey = calendarDateKey(selectedDate, tz);
     if (!preferences.showCanceled) {
       result = result.filter((b) => b.status !== "cancelled");
     }
     if (viewMode === "day") {
       result = result.filter((b) => {
         const bDate = parseApiDateTime(b.scheduled_at);
-        return bDate ? isSameDay(bDate, selectedDate) : false;
+        return bDate ? calendarDateKey(bDate, tz) === selectedKey : false;
       });
     } else if (viewMode === "3day") {
+      const visibleKeys = new Set(
+        Array.from({ length: 3 }, (_, i) => calendarDateKey(addDays(selectedDate, i), tz)),
+      );
       result = result.filter((b) => {
         const bDate = parseApiDateTime(b.scheduled_at);
         if (!bDate) return false;
-        return bDate >= selectedDate && bDate < addDays(selectedDate, 3);
+        return visibleKeys.has(calendarDateKey(bDate, tz));
       });
     }
     if (staffFilter !== "all") {
@@ -1430,7 +1455,7 @@ function CalendarScreenBody() {
       );
     }
     return result;
-  }, [bookings, selectedDate, viewMode, staffFilter, staffNameToId, preferences.showCanceled]);
+  }, [bookings, selectedDate, viewMode, staffFilter, staffNameToId, preferences.showCanceled, provider?.timezone]);
 
   const buildShareText = useCallback(() => {
     return buildScheduleShareBody(
@@ -1609,10 +1634,11 @@ function CalendarScreenBody() {
 
   const filteredBookingsByDate = useMemo(() => {
     const map = new Map<string, Booking[]>();
+    const tz = provider?.timezone ?? null;
     filteredBookings.forEach((b) => {
       const bDate = parseApiDateTime(b.scheduled_at);
       if (!bDate) return;
-      const key = format(bDate, "yyyy-MM-dd");
+      const key = calendarDateKey(bDate, tz);
       const existing = map.get(key);
       if (existing) {
         existing.push(b);
@@ -1621,7 +1647,7 @@ function CalendarScreenBody() {
       }
     });
     return map;
-  }, [filteredBookings]);
+  }, [filteredBookings, provider?.timezone]);
 
   const bookingsByStaffId = useMemo(() => {
     const byStaffId = new Map<string, Booking[]>();
@@ -1926,7 +1952,17 @@ function CalendarScreenBody() {
         newStaffId = col?.staffId === "unassigned" ? undefined : (col?.staffId ?? newStaffId);
       }
 
-      const durationMinutes = booking.services?.reduce((s, svc) => s + svc.duration_minutes, 0) ?? 60;
+      const serviceDuration = (booking.services ?? []).reduce((sum, svc) => {
+        const minutes = Number(svc.duration_minutes);
+        return sum + (Number.isFinite(minutes) && minutes > 0 ? minutes : 0);
+      }, 0);
+      const bookingDuration = Number((booking as Booking & { duration_minutes?: number }).duration_minutes);
+      const durationMinutes =
+        serviceDuration > 0
+          ? serviceDuration
+          : Number.isFinite(bookingDuration) && bookingDuration > 0
+            ? bookingDuration
+            : 60;
       const staffIdsParam = newStaffId ? newStaffId : "";
       // §Provider-launch (audit 2026-04): include location_id when a
       // specific location filter is active so multi-location providers
@@ -2115,8 +2151,16 @@ function CalendarScreenBody() {
 
   async function handleSaveAvailabilityEdit() {
     if (!availabilityEdit) return;
-    const start = new Date(`${availabilityEdit.date}T${availabilityEdit.start_time}:00`);
-    const end = new Date(`${availabilityEdit.date}T${availabilityEdit.end_time}:00`);
+    const timePattern = /^\d{2}:\d{2}$/;
+    if (!timePattern.test(availabilityEdit.start_time) || !timePattern.test(availabilityEdit.end_time)) {
+      Alert.alert("Invalid time", "Use HH:MM format for start and end.");
+      return;
+    }
+    const providerTimezone = provider?.timezone ?? null;
+    const startIso = buildZonedIsoForWallClock(availabilityEdit.date, availabilityEdit.start_time, providerTimezone);
+    const endIso = buildZonedIsoForWallClock(availabilityEdit.date, availabilityEdit.end_time, providerTimezone);
+    const start = new Date(startIso);
+    const end = new Date(endIso);
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
       Alert.alert("Invalid time", "Use HH:MM format for start and end.");
       return;
@@ -2127,8 +2171,8 @@ function CalendarScreenBody() {
     }
     const { error } = await updateAvailabilityBlock(`/api/provider/availability-blocks/${availabilityEdit.id}`, {
       block_type: availabilityEdit.block_type,
-      start_at: start.toISOString(),
-      end_at: end.toISOString(),
+      start_at: startIso,
+      end_at: endIso,
       staff_id: availabilityEdit.staff_id,
     });
     if (error) {
@@ -2335,6 +2379,7 @@ function CalendarScreenBody() {
         .minDuration(400)
         .onStart(() => {
           draggingRef.current = true;
+          draggingBookingIdRef.current = booking.id;
           setDraggingBooking(booking);
           setDragPosition({ x: 0, y: 0 });
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -2347,7 +2392,7 @@ function CalendarScreenBody() {
           }
         })
         .onEnd((e) => {
-          if (draggingRef.current && draggingBooking?.id === booking.id) {
+          if (draggingRef.current && draggingBookingIdRef.current === booking.id) {
             handleBookingDrop(
               booking,
               e.absoluteX,
@@ -2358,6 +2403,7 @@ function CalendarScreenBody() {
             );
           }
           draggingRef.current = false;
+          draggingBookingIdRef.current = null;
           setDraggingBooking(null);
           setDragPosition(null);
         });
@@ -3035,7 +3081,7 @@ function CalendarScreenBody() {
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     <View style={{ flexDirection: "row" }}>
                       {threeDays.map((day) => {
-                        const key = format(day, "yyyy-MM-dd");
+                        const key = calendarDateKey(day, provider?.timezone ?? null);
                         const dayBookings = filteredBookingsByDate.get(key) ?? [];
                         const isToday = isSameDay(day, new Date());
                         const threeDayColWidth = Math.max(MIN_STAFF_COL_WIDTH, availableWidth / 3);
@@ -3179,7 +3225,7 @@ function CalendarScreenBody() {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={{ flexDirection: "row" }}>
                     {weekDays.map((day) => {
-                      const key = format(day, "yyyy-MM-dd");
+                      const key = calendarDateKey(day, provider?.timezone ?? null);
                       const dayBookings = filteredBookingsByDate.get(key) ?? [];
                       const isToday = isSameDay(day, new Date());
                       return (
@@ -3360,6 +3406,7 @@ function CalendarScreenBody() {
         visible={monthOverviewVisible}
         monthAnchor={selectedDate}
         locationParam={locationParam}
+        timeZone={provider?.timezone ?? null}
         onClose={() => setMonthOverviewVisible(false)}
         onSelectDate={(d) => {
           setSelectedDate(d);

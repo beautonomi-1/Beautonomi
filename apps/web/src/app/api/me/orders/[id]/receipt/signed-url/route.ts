@@ -6,6 +6,9 @@
  * GET). The token binds order id + user id + expiry.
  *
  * Authorization: the caller must be the order owner (or a superadmin).
+ *
+ * @tenant-hint `product_orders` is read with the service role only after
+ * verifying `order.customer_id === authUser.id` or `superadmin`; no cross-tenant slice.
  */
 
 import { NextRequest } from "next/server";

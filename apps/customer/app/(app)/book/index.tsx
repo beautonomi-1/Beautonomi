@@ -247,7 +247,25 @@ function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function formatTimeSafe(value: unknown): string {
+function slotHourInTimeZone(value: string, timeZone?: string | null): number {
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return 12;
+  if (timeZone) {
+    try {
+      const hour = new Intl.DateTimeFormat("en-GB", {
+        timeZone,
+        hour: "2-digit",
+        hour12: false,
+      }).formatToParts(parsed).find((p) => p.type === "hour")?.value;
+      return Number(hour === "24" ? "0" : hour);
+    } catch {
+      // Fall through to device-local time if the provider timezone is invalid.
+    }
+  }
+  return parsed.getHours();
+}
+
+function formatTimeSafe(value: unknown, timeZone?: string | null): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
@@ -257,6 +275,7 @@ function formatTimeSafe(value: unknown): string {
   return parsed.toLocaleTimeString(getTenantLocaleTag(), {
     hour: "2-digit",
     minute: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
   });
 }
 
@@ -1214,7 +1233,7 @@ export default function BookScreen() {
 
   useEffect(() => {
     const getPeriod = (iso: string) => {
-      const h = new Date(iso).getHours();
+      const h = slotHourInTimeZone(iso, provider?.timezone ?? null);
       if (h < 12) return "Morning";
       if (h < 17) return "Afternoon";
       return "Evening";
@@ -1239,7 +1258,7 @@ export default function BookScreen() {
       if (prev && byPeriod[prev].length > 0) return prev;
       return first;
     });
-  }, [selectableSlots]);
+  }, [selectableSlots, provider?.timezone]);
 
   useEffect(() => {
     const prev = prevStepRef.current;
@@ -2965,7 +2984,7 @@ export default function BookScreen() {
                 ) : (
                   (() => {
                     const getPeriod = (iso: string) => {
-                      const h = new Date(iso).getHours();
+                      const h = slotHourInTimeZone(iso, provider?.timezone ?? null);
                       if (h < 12) return "Morning";
                       if (h < 17) return "Afternoon";
                       return "Evening";
@@ -3055,7 +3074,7 @@ export default function BookScreen() {
                                   </View>
                                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                                   {list.map((slot) => {
-                                    const timeStr = formatTimeSafe(slot.start);
+                                    const timeStr = formatTimeSafe(slot.start, provider?.timezone ?? null);
                                     const isSelected = selectedSlot?.start === slot.start;
                                     const isUnavailable = slot.is_available === false;
                                     return (
