@@ -1,27 +1,15 @@
-import { useState } from "react";
-import { View, ActivityIndicator, StyleSheet, TouchableOpacity, Text } from "react-native";
-import { WebView } from "react-native-webview";
+import { View, StyleSheet, TouchableOpacity, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
-import { getBackendUrl } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 
 export default function HelpScreen() {
   useScreenTracking("Help");
   const router = useRouter();
-  const base = getBackendUrl().replace(/\/$/, "");
-  const [webError, setWebError] = useState<string | null>(null);
-
-  const openInAppBrowser = (path: string, title: string) => {
-    router.push({
-      pathname: "/(app)/in-app-browser",
-      params: { url: encodeURIComponent(`${base}${path}`), title: encodeURIComponent(title) },
-    });
-  };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.quickLinks}>
         <TouchableOpacity
           style={[styles.quickLink, styles.quickLinkFirst]}
@@ -54,7 +42,7 @@ export default function HelpScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.quickLink}
-          onPress={() => openInAppBrowser("/privacy-policy", "Privacy policy")}
+          onPress={() => router.push("/(app)/privacy-policy" as never)}
           accessibilityLabel="Open privacy policy"
           accessibilityRole="button"
         >
@@ -65,7 +53,7 @@ export default function HelpScreen() {
       <View style={styles.quickLinksThirdRow}>
         <TouchableOpacity
           style={[styles.quickLink, { flex: 1, marginRight: 0 }]}
-          onPress={() => openInAppBrowser("/terms-and-condition", "Terms of service")}
+          onPress={() => router.push("/(app)/terms-of-service" as never)}
           accessibilityLabel="Open terms of service"
           accessibilityRole="button"
         >
@@ -73,39 +61,30 @@ export default function HelpScreen() {
           <Text style={styles.quickLinkText}>Terms</Text>
         </TouchableOpacity>
       </View>
-      {base ? (
-        webError ? (
-          <View style={styles.webviewError}>
-            <Text style={styles.webviewErrorText}>{webError}</Text>
-            <TouchableOpacity onPress={() => setWebError(null)} accessibilityRole="button">
-              <Text style={styles.webviewRetry}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <WebView
-            source={{ uri: `${base}/help` }}
-            style={styles.webview}
-            startInLoadingState
-            onError={(e) => setWebError(e.nativeEvent.description || "Could not load help")}
-            onHttpError={(e) => setWebError(`HTTP ${e.nativeEvent.statusCode}`)}
-            renderLoading={() => (
-              <View style={styles.loading}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-              </View>
-            )}
-          />
-        )
-      ) : (
-        <View style={styles.webviewError}>
-          <Text style={styles.webviewErrorText}>App URL is not configured.</Text>
-        </View>
-      )}
-    </View>
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Help center</Text>
+        <Text style={styles.sectionBody}>
+          Get support faster by opening a ticket with your booking/order details and screenshots where possible.
+          You can track updates in My tickets and reply directly from the app.
+        </Text>
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Common questions</Text>
+        <Text style={styles.faqTitle}>How long does support take?</Text>
+        <Text style={styles.faqBody}>Most requests are answered within 1-2 business days.</Text>
+        <Text style={styles.faqTitle}>How do I follow up on a ticket?</Text>
+        <Text style={styles.faqBody}>Open My tickets, choose your ticket, and send a reply in the thread.</Text>
+        <Text style={styles.faqTitle}>What should I include?</Text>
+        <Text style={styles.faqBody}>A clear description, affected booking/order id, and screenshots if relevant.</Text>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
+  content: { paddingBottom: 24 },
   quickLinks: {
     flexDirection: "row",
     paddingHorizontal: 16,
@@ -147,23 +126,17 @@ const styles = StyleSheet.create({
   },
   quickLinkIcon: { marginRight: 6 },
   quickLinkText: { fontSize: 14, fontWeight: "500", color: Colors.gray[800] },
-  webview: { flex: 1 },
-  loading: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    justifyContent: "center",
-    alignItems: "center",
+  sectionCard: {
+    marginTop: 12,
+    marginHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
     backgroundColor: "#fff",
+    padding: 16,
   },
-  webviewError: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  webviewErrorText: { color: Colors.gray[600], textAlign: "center" },
-  webviewRetry: { marginTop: 16, color: Colors.primary, fontWeight: "600", fontSize: 16 },
+  sectionTitle: { fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 },
+  sectionBody: { fontSize: 14, lineHeight: 20, color: Colors.gray[600] },
+  faqTitle: { fontSize: 14, fontWeight: "600", color: Colors.gray[800], marginTop: 10 },
+  faqBody: { fontSize: 13, lineHeight: 19, color: Colors.gray[600], marginTop: 4 },
 });

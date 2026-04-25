@@ -3,8 +3,32 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
-import type { PublicProviderDetail } from "@/types/beautonomi";
+import type { PublicProfilePromotion, PublicProviderDetail } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
+function mapPublicProfilePromotions(rows: unknown, currency: string): PublicProfilePromotion[] {
+  if (!Array.isArray(rows)) return [];
+  const now = Date.now();
+  const out: PublicProfilePromotion[] = [];
+  for (const raw of rows) {
+    const r = raw as Record<string, unknown>;
+    if (!r?.code || typeof r.code !== "string") continue;
+    const vf = r.valid_from ? new Date(String(r.valid_from)).getTime() : 0;
+    const vu = r.valid_until ? new Date(String(r.valid_until)).getTime() : Number.POSITIVE_INFINITY;
+    if (now < vf || now > vu) continue;
+    const type = String(r.type || "");
+    const val = Number(r.value ?? 0);
+    const savings =
+      type === "percentage"
+        ? `${Math.min(100, Math.max(0, Number.isFinite(val) ? val : 0))}% off`
+        : `${currency} ${Number.isFinite(val) ? val.toFixed(0) : "0"} off`;
+    const title = typeof r.name === "string" && r.name.trim() ? r.name.trim() : r.code;
+    const desc = typeof r.description === "string" && r.description.trim() ? r.description.trim() : null;
+    out.push({ code: r.code.toUpperCase(), title, description: desc, savings_label: savings });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
 
 // Increase timeout for this route
 export const maxDuration = 30; // 30 seconds
@@ -279,6 +303,7 @@ export async function GET(
       policiesResult,
       pointsResult,
       publicRatings,
+      providerPromotionsResult,
     ] = await Promise.all([
       // Fetch locations
       supabase
@@ -332,6 +357,14 @@ export async function GET(
         .eq("provider_id", providerData.id)
         .maybeSingle(),
       loadPublicRatings(),
+      supabase
+        .from("promotions")
+        .select("code, type, value, description, name, is_active, valid_from, valid_until")
+        .eq("provider_id", providerData.id)
+        .eq("is_active", true)
+        .eq("public_on_profile", true)
+        .order("created_at", { ascending: false })
+        .limit(20),
     ]);
 
     const locations = locationsResult.data || [];
@@ -339,6 +372,11 @@ export async function GET(
     const staffCount = staffCountResult.count || undefined;
     const policies = policiesResult.data;
     const pointsData = pointsResult.data;
+    const profile_promotions = mapPublicProfilePromotions(
+      providerPromotionsResult.data,
+      providerData.currency || defaultCurrency,
+    );
+
     const reviewRows = Array.isArray(publicRatings) ? publicRatings : [];
     const reviewCountLive = reviewRows.length;
     const ratingAverageLive =
@@ -551,6 +589,7 @@ export async function GET(
       tax_rate_percent: providerData.tax_rate_percent ?? 0,
       tips_enabled: providerData.tips_enabled ?? true,
       timezone: providerData.timezone ?? "Africa/Johannesburg",
+      profile_promotions,
     } as PublicProviderDetail;
 
     const response = NextResponse.json({

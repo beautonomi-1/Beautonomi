@@ -10,6 +10,7 @@ import { resolveAdminTenantContext } from '@/lib/tenant/scoped-overrides';
 import { resolveAdminApiTenantId } from '@/lib/tenant/admin-request-tenant';
 import { getTenantRegionConfig } from '@/lib/regions/config';
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 // Complex feature gating structure matching migration 133
 const featureGatingSchema = z.object({
@@ -93,23 +94,29 @@ const updatePlanSchema = createPlanSchema.partial().extend({
   paystack_plan_code_yearly: z.string().nullable().optional(),
 });
 
+function applyScopeFilter(query: any, scopeTenantId: string | null) {
+  return scopeTenantId ? query.or(`tenant_id.eq.${scopeTenantId},tenant_id.is.null`) : query.is("tenant_id", null);
+}
+
 /**
  * GET /api/admin/subscription-plans
  * Get all subscription plans
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
+    const { currentTenantId } = await resolveAdminTenantContext(request, undefined, user.role ?? null);
+    const scopedPlans = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "subscription_plans",
+      tenantId: currentTenantId,
+      select: "*",
+      dedupeKey: (row) => String(row.name ?? row.id ?? ""),
+      orderBy: { column: "display_order", ascending: true },
+    });
 
-    const { data: plans, error } = await supabase
-      .from('subscription_plans')
-      .select('*')
-      .order('display_order', { ascending: true });
-
-    if (error) throw error;
-
-    return successResponse(plans || []);
+    return successResponse(scopedPlans.data || []);
   } catch (error) {
     return handleApiError(error, 'Failed to fetch subscription plans');
   }
@@ -191,6 +198,7 @@ export async function POST(request: NextRequest) {
     const { data: plan, error: planError } = await supabase
       .from('subscription_plans')
       .insert({
+        tenant_id: scopeTenantId,
         name: data.name,
         description: data.description,
         price_monthly: data.price_monthly,
@@ -255,11 +263,11 @@ export async function PUT(request: NextRequest) {
     const data = updatePlanSchema.parse(updates);
 
     // Get existing plan
-    const { data: existingPlan, error: fetchError } = await supabase
-      .from('subscription_plans')
-      .select('*')
-      .eq('id', id)
-      .single();
+    const existingPlanQuery = applyScopeFilter(
+      supabase.from('subscription_plans').select('*').eq('id', id),
+      scopeTenantId
+    );
+    const { data: existingPlan, error: fetchError } = await existingPlanQuery.single();
 
     if (fetchError || !existingPlan) {
       throw new Error('Plan not found');
@@ -321,15 +329,17 @@ export async function PUT(request: NextRequest) {
     }
 
     // Update plan in database
-    const { data: plan, error: planError } = await supabase
-      .from('subscription_plans')
-      .update({
-        ...updateData,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    const planUpdateQuery = applyScopeFilter(
+      supabase
+        .from('subscription_plans')
+        .update({
+          ...updateData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id),
+      scopeTenantId
+    );
+    const { data: plan, error: planError } = await planUpdateQuery.select().single();
 
     if (planError) {
       const detail = (planError as any).message || (planError as any).details || String(planError);

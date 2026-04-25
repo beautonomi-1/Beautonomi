@@ -26,6 +26,8 @@ import { haptic } from "@/lib/haptics";
 import { formatMoney } from "@beautonomi/utils";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useLocation } from "@/hooks/useLocation";
+import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
 
 const PRIMARY = Colors.primary;
 
@@ -51,6 +53,7 @@ interface ShopProduct {
   has_variants?: boolean;
   in_stock?: boolean;
   provider?: { id: string; business_name: string; slug: string };
+  distance_km?: number | null;
 }
 
 function productPrice(p: ShopProduct): number {
@@ -65,6 +68,7 @@ interface ProductsResponse {
   total?: number;
   page?: number;
   has_more?: boolean;
+  pagination?: { page: number; limit: number; total: number; totalPages: number };
 }
 
 export default function ShopScreen() {
@@ -72,6 +76,10 @@ export default function ShopScreen() {
   const { contentPadding } = useResponsive();
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const { user } = useAuth();
+  const { selectedAddress } = useSelectedAddress();
+  const { coords } = useLocation();
+  const effectiveLat = selectedAddress?.latitude ?? coords?.latitude;
+  const effectiveLng = selectedAddress?.longitude ?? coords?.longitude;
   const cart = useCart();
   const fb = getTenantDefaultCurrency();
   const params = useLocalSearchParams<{ q?: string; category?: string }>();
@@ -124,6 +132,11 @@ export default function ShopScreen() {
     const searchParams = new URLSearchParams({ page: String(pageNum), limit: "20" });
     if (q.trim()) searchParams.set("search", q.trim());
     if (params.category?.trim()) searchParams.set("category", params.category.trim());
+    if (typeof effectiveLat === "number" && typeof effectiveLng === "number") {
+      searchParams.set("lat", String(effectiveLat));
+      searchParams.set("lng", String(effectiveLng));
+      searchParams.set("sort", "nearest");
+    }
 
     try {
       const res = await api.get<ProductsResponse>(`/api/public/products?${searchParams}`);
@@ -139,7 +152,7 @@ export default function ShopScreen() {
           setProducts((prev) => [...prev, ...list]);
         }
         setPage(pageNum);
-        setHasMore(data?.has_more ?? false);
+        setHasMore(data?.has_more ?? (data?.pagination ? data.pagination.page < data.pagination.totalPages : false));
       }
     } catch {
       setError("Could not load products.");
@@ -148,7 +161,7 @@ export default function ShopScreen() {
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [query, params.category]);
+  }, [query, params.category, effectiveLat, effectiveLng]);
 
   useEffect(() => {
     fetchProducts({ pageNum: 1 });
@@ -405,6 +418,9 @@ export default function ShopScreen() {
             {p.provider?.business_name ? (
               <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }} numberOfLines={1}>
                 {p.provider.business_name}
+                {typeof p.distance_km === "number" && Number.isFinite(p.distance_km)
+                  ? ` · ${p.distance_km.toFixed(1)} km`
+                  : ""}
               </Text>
             ) : null}
             <Text style={{ fontSize: 14, fontWeight: "700", color: PRIMARY, marginTop: 4 }}>

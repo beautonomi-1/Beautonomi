@@ -4,6 +4,10 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { fetcher } from "@/lib/http/fetcher";
 import Link from "next/link";
 import { Undo2, ChevronRight, AlertTriangle } from "lucide-react";
+import { formatMoney } from "@beautonomi/utils";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { FetchError } from "@/lib/http/fetcher";
 import BackButton from "../components/back-button";
 import Breadcrumb from "../components/breadcrumb";
 import type { ReturnRequestListItem } from "./return-list-types";
@@ -26,9 +30,12 @@ export default function MyReturnsPage({
 }: {
   initialReturns: ReturnRequestListItem[] | null;
 }) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const initialSnapshot = useRef(initialReturns);
   const [returns, setReturns] = useState<ReturnRequest[]>(() => initialReturns ?? []);
   const [loading, setLoading] = useState(() => initialReturns === null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const skipHydrateLoadOnce = useRef(initialReturns !== null);
 
   const fetchReturns = useCallback(async () => {
@@ -50,13 +57,35 @@ export default function MyReturnsPage({
   }, [fetchReturns]);
 
   const handleEscalate = async (id: string) => {
-    await fetcher.patch(`/api/me/returns/${id}`, { action: "escalate" });
-    fetchReturns();
+    setActionError(null);
+    try {
+      await fetcher.patch(`/api/me/returns/${id}`, { action: "escalate" });
+      fetchReturns();
+    } catch (e) {
+      const msg =
+        e instanceof FetchError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "Could not escalate. Try again.";
+      setActionError(msg);
+    }
   };
 
   const handleCancel = async (id: string) => {
-    await fetcher.patch(`/api/me/returns/${id}`, { action: "cancel" });
-    fetchReturns();
+    setActionError(null);
+    try {
+      await fetcher.patch(`/api/me/returns/${id}`, { action: "cancel" });
+      fetchReturns();
+    } catch (e) {
+      const msg =
+        e instanceof FetchError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "Could not cancel. Try again.";
+      setActionError(msg);
+    }
   };
 
   return (
@@ -111,7 +140,12 @@ export default function MyReturnsPage({
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-lg font-bold text-gray-900">R{Number(r.refund_amount).toFixed(2)}</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {formatMoney(
+                      Number(r.refund_amount),
+                      (r.order?.currency && String(r.order.currency).trim()) || tenantCurrency,
+                    )}
+                  </p>
                   <p className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString()}</p>
                 </div>
               </div>

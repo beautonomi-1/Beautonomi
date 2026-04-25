@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { format } from "date-fns";
+import { format, parse, startOfDay, isBefore } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -41,6 +41,11 @@ interface DayOff {
   reason?: string | null;
 }
 
+/** Parse API `yyyy-MM-dd` in local calendar context (avoids UTC midnight shifts). */
+function parseDayOffDate(dateStr: string): Date {
+  return parse(dateStr, "yyyy-MM-dd", new Date());
+}
+
 /** Content-only for use in Schedule hub (Days off tab). */
 export function DaysOffContent() {
   const [daysOff, setDaysOff] = useState<DayOff[]>([]);
@@ -62,7 +67,10 @@ export function DaysOffContent() {
   const { execute: postDayOff } = useApiMutation("post");
   const { execute: deleteDayOff } = useApiMutation("delete");
 
-  const activeStaff = (staff ?? []).filter((s) => s.is_active !== false);
+  const activeStaff = useMemo(
+    () => (staff ?? []).filter((s) => s.is_active !== false),
+    [staff],
+  );
 
   const loadDaysOff = useCallback(async () => {
     if (!activeStaff.length) {
@@ -316,13 +324,12 @@ export function DaysOffContent() {
             {daysOff
               .filter((d) => {
                 if (showPast) return true;
-                const day = new Date(d.date);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                return day >= today;
+                const day = startOfDay(parseDayOffDate(d.date));
+                const today = startOfDay(new Date());
+                return !isBefore(day, today);
               })
               .map((dayOff) => {
-              const isPast = new Date(dayOff.date) < new Date();
+              const isPast = isBefore(startOfDay(parseDayOffDate(dayOff.date)), startOfDay(new Date()));
               return (
                 <View
                   key={dayOff.id}
@@ -332,7 +339,7 @@ export function DaysOffContent() {
                   <View style={twStyle("ml-3 flex-1")}>
                     <Text style={twStyle("font-medium text-gray-900")}>{dayOff.team_member_name}</Text>
                     <Text style={twStyle("text-sm text-gray-600")}>
-                      {format(new Date(dayOff.date), "EEE, MMM d, yyyy")}
+                      {format(parseDayOffDate(dayOff.date), "EEE, MMM d, yyyy")}
                       {dayOff.reason ? ` · ${dayOff.reason}` : ""}
                     </Text>
                     {isPast && (
@@ -393,7 +400,7 @@ export function DaysOffContent() {
                 display={Platform.OS === "ios" ? "spinner" : "default"}
                 minimumDate={new Date()}
                 onChange={(_, d) => {
-                  setShowDatePicker(Platform.OS !== "ios");
+                  setShowDatePicker(Platform.OS === "ios");
                   if (d) {
                     setSelectedDate(d);
                     if (selectedEndDate && d > selectedEndDate) {
@@ -430,7 +437,7 @@ export function DaysOffContent() {
                     display={Platform.OS === "ios" ? "spinner" : "default"}
                     minimumDate={selectedDate}
                     onChange={(_, d) => {
-                      setShowEndDatePicker(Platform.OS !== "ios");
+                      setShowEndDatePicker(Platform.OS === "ios");
                       if (d) setSelectedEndDate(d);
                     }}
                   />

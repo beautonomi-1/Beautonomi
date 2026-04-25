@@ -68,13 +68,42 @@ interface MenuItem {
 
 const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
   {
+    title: "Grow your business",
+    items: [
+      {
+        icon: "megaphone-outline",
+        label: "Buy ads",
+        subtitle: "Sponsored listings, campaigns & reach",
+        route: "/(app)/(tabs)/more/settings/ads",
+        color: "#d97706",
+        bg: "#fffbeb",
+      },
+      {
+        icon: "card-outline",
+        label: "Sell memberships",
+        subtitle: "Plans, benefits, pricing & subscribers",
+        route: "/(app)/(tabs)/more/membership-plans",
+        color: "#7c3aed",
+        bg: "#ede9fe",
+      },
+      {
+        icon: "pricetag-outline",
+        label: "Promo codes",
+        subtitle: "Your discounts—scoped to your bookings only",
+        route: "/(app)/(tabs)/more/promotions",
+        color: "#ea580c",
+        bg: "#fff7ed",
+      },
+    ],
+  },
+  {
     title: "Operations",
     items: [
       { icon: "book-outline", label: "Bookings & calendar", subtitle: "Appointments, waitlist & schedule", route: "/(app)/(tabs)/more/bookings", color: "#6366f1", bg: "#eef2ff" },
       { icon: "people-outline", label: "Group Bookings", subtitle: "Manage group appointments", route: "/(app)/(tabs)/more/group-bookings", color: "#8b5cf6", bg: "#ede9fe" },
       { icon: "construct-outline", label: "Resources & forms", subtitle: "Resources, intake & consent forms", route: "/(app)/(tabs)/more/resources-forms-hub", color: "#0d9488", bg: "#ccfbf1" },
       { icon: "chatbox-ellipses-outline", label: "Custom Requests", subtitle: "Client quotes & offers", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316", bg: "#fff7ed" },
-      { icon: "navigate-outline", label: "Routes", subtitle: "Optimize at-home trips", route: "/(app)/(tabs)/more/routes", color: "#3b82f6", bg: "#eff6ff" },
+      { icon: "navigate-outline", label: "Routes", subtitle: "Optimize at-home trips", route: "/(app)/(tabs)/more/routes", color: "#64748b", bg: "#f8fafc" },
     ],
   },
   {
@@ -98,6 +127,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
     title: "Engagement",
     items: [
       { icon: "chatbubbles-outline", label: "Engagement", subtitle: "Reviews, messaging & marketing", route: "/(app)/(tabs)/more/engagement-hub", color: "#6366f1", bg: "#eef2ff" },
+      { icon: "compass-outline", label: "Explore posts", subtitle: "Your feed posts, views & comments", route: "/(app)/(tabs)/more/explore-posts", color: "#a855f7", bg: "#faf5ff" },
     ],
   },
   {
@@ -115,8 +145,8 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
 const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; route: string; color: string }[] = [
   { icon: "book-outline", label: "Bookings", route: "/(app)/(tabs)/more/bookings", color: "#6366f1" },
   { icon: "layers-outline", label: "Catalogue", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899" },
-  { icon: "cash-outline", label: "Finance", route: "/(app)/(tabs)/more/finance-billing-hub", color: "#22c55e" },
-  { icon: "ribbon-outline", label: "Rewards & badges", route: "/(app)/(tabs)/more/rewards-hub", color: "#059669" },
+  { icon: "megaphone-outline", label: "Buy ads", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
+  { icon: "card-outline", label: "Memberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
 ];
 
 export default function MoreScreen() {
@@ -124,6 +154,7 @@ export default function MoreScreen() {
   const { t } = useTranslation();
   const { user, signOut } = useAuth();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    "Grow your business": true,
     Operations: true,
     "E-Commerce & Products": true,
   });
@@ -256,6 +287,78 @@ export default function MoreScreen() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
         </TouchableOpacity>
+
+        {/* Highlight ads + memberships above the fold (also listed under “Grow your business”) */}
+        <View style={{ marginBottom: 16, flexDirection: "row", gap: 12 }}>
+          <TouchableOpacity
+            onPress={() => handleMenuPress("/(app)/(tabs)/more/settings/ads")}
+            activeOpacity={0.75}
+            style={{
+              flex: 1,
+              borderRadius: 16,
+              padding: 14,
+              backgroundColor: "#fffbeb",
+              borderWidth: 1,
+              borderColor: "#fde68a",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Buy ads: sponsored listings and campaigns"
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  backgroundColor: "rgba(245, 158, 11, 0.25)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="megaphone-outline" size={20} color="#d97706" />
+              </View>
+              <Text style={{ marginLeft: 10, fontSize: 12, fontWeight: "700", color: "#92400e", textTransform: "uppercase", letterSpacing: 0.6 }}>
+                Ads
+              </Text>
+            </View>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#78350f" }}>Buy ads</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: "#a16207", lineHeight: 16 }}>Boost discovery & fill your calendar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => handleMenuPress("/(app)/(tabs)/more/membership-plans")}
+            activeOpacity={0.75}
+            style={{
+              flex: 1,
+              borderRadius: 16,
+              padding: 14,
+              backgroundColor: "#f5f3ff",
+              borderWidth: 1,
+              borderColor: "#ddd6fe",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Sell memberships: plans and subscribers"
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  backgroundColor: "rgba(124, 58, 237, 0.15)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="card-outline" size={20} color="#7c3aed" />
+              </View>
+              <Text style={{ marginLeft: 10, fontSize: 12, fontWeight: "700", color: "#5b21b6", textTransform: "uppercase", letterSpacing: 0.6 }}>
+                Recurring
+              </Text>
+            </View>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#4c1d95" }}>Sell memberships</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: "#6d28d9", lineHeight: 16 }}>Plans, perks & subscriber revenue</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Quick actions - customer-style 2x2 grid (shortens perceived page length) */}
         <View style={{ marginBottom: 20, flexDirection: "row", flexWrap: "wrap" }}>

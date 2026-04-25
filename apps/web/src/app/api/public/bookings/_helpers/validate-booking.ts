@@ -2,7 +2,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { handleApiError } from "@/lib/supabase/api-helpers";
+import { errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ensureProviderFreeSubscriptionRow } from "@/lib/subscriptions/ensure-provider-free-subscription";
 import { checkBookingLimit } from "@/lib/subscriptions/limit-checker";
 import { formatPublicCustomerBookingLimitMessage } from "@/lib/subscriptions/subscription-limit-messages";
@@ -339,6 +339,10 @@ export async function validateBooking(
     );
     offeringIds = [...new Set([...offeringIds, ...groupIds])];
   }
+  offeringIds = offeringIds.filter((id): id is string => typeof id === "string" && id.length > 0);
+  if (offeringIds.length === 0) {
+    return errorResponse("Please select at least one service.", "VALIDATION_ERROR", 400);
+  }
   const { data: offerings, error: offeringsError } = await supabase
     .from("offerings")
     .select(
@@ -346,7 +350,14 @@ export async function validateBooking(
     )
     .in("id", offeringIds);
 
-  if (offeringsError) throw offeringsError;
+  if (offeringsError) {
+    return handleApiError(
+      offeringsError,
+      "We couldn't validate the selected services. Please try again.",
+      "BOOKING_VALIDATION_FAILED",
+      503,
+    );
+  }
 
   const offeringById = new Map<string, any>();
   for (const o of offerings || []) offeringById.set(o.id, o);
@@ -585,7 +596,14 @@ export async function validateBooking(
         "id, provider_id, price, currency, duration_minutes, is_active, online_booking_enabled, service_type, applicable_service_ids, service_id"
       )
       .in("id", addonIds);
-    if (addonsError) throw addonsError;
+    if (addonsError) {
+      return handleApiError(
+        addonsError,
+        "We couldn't validate the selected add-ons. Please try again.",
+        "BOOKING_VALIDATION_FAILED",
+        503,
+      );
+    }
     for (const a of addons || []) addonById.set(a.id, a);
     for (const id of addonIds) {
       const a = addonById.get(id);
@@ -695,7 +713,14 @@ export async function validateBooking(
       )
       .in("id", productIds);
 
-    if (productsError) throw productsError;
+    if (productsError) {
+      return handleApiError(
+        productsError,
+        "We couldn't validate the selected products. Please try again.",
+        "BOOKING_VALIDATION_FAILED",
+        503,
+      );
+    }
 
     for (const p of productRows || []) productById.set(p.id, p);
 
@@ -704,7 +729,14 @@ export async function validateBooking(
         .from("product_variants")
         .select("id, product_id, retail_price, quantity")
         .in("id", variantIds);
-      if (variantError) throw variantError;
+      if (variantError) {
+        return handleApiError(
+          variantError,
+          "We couldn't validate the selected product options. Please try again.",
+          "BOOKING_VALIDATION_FAILED",
+          503,
+        );
+      }
       for (const v of variantRows || []) variantById.set(v.id, v);
     }
 
@@ -997,7 +1029,14 @@ export async function validateBooking(
       .select("offering_id, product_id, quantity")
       .eq("package_id", draft.package_id);
 
-    if (pkgItemsError) throw pkgItemsError;
+    if (pkgItemsError) {
+      return handleApiError(
+        pkgItemsError,
+        "We couldn't validate the selected package. Please try again.",
+        "BOOKING_VALIDATION_FAILED",
+        503,
+      );
+    }
 
     const { entitlementByOffering, entitlementByProduct } = aggregatePackageEntitlements(
       pkgItems as Array<{ offering_id?: string | null; product_id?: string | null; quantity?: unknown }>

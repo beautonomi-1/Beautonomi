@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, Image } from "react-native";
+import { View, Text, TouchableOpacity, Image, TextInput, Alert } from "react-native";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenFrame } from "@/components/ScreenFrame";
@@ -10,6 +11,35 @@ export default function MessagesScreen() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const markConversationRead = async (conversationId: string) => {
+    setData((prev: any) => {
+      if (!Array.isArray(prev)) return prev;
+      return prev.map((row: any) =>
+        row.id === conversationId
+          ? { ...row, unread_count_customer: 0, unread_count: 0 }
+          : row
+      );
+    });
+    const res = await api.post(`/api/me/conversations/${conversationId}/read`, {});
+    if (res.error) {
+      setError(getApiErrorMessage(res.error, "Failed to mark conversation as read"));
+      void load();
+    }
+  };
+
+  const deleteConversation = async (conversationId: string) => {
+    const previous = data;
+    setData((prev: any) => (Array.isArray(prev) ? prev.filter((row: any) => row.id !== conversationId) : prev));
+    const res = await api.fetch<{ deleted?: boolean }>(`/api/me/conversations/${conversationId}`, {
+      method: "DELETE",
+    });
+    if (res.error) {
+      setData(previous);
+      setError(getApiErrorMessage(res.error, "Failed to delete conversation"));
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -53,15 +83,68 @@ export default function MessagesScreen() {
   }, []);
 
   const convos = Array.isArray(data) ? data : [];
+  const filteredConvos = convos.filter((c: any) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    const providerName = (c.provider_name || c.provider?.business_name || "").toLowerCase();
+    const preview = (c.last_message_preview || "").toLowerCase();
+    return providerName.includes(q) || preview.includes(q);
+  });
 
   return (
-    <ScreenFrame loading={loading} error={error} onRetry={load} empty={{ title: "No messages" }} isEmpty={convos.length === 0}>
-      {convos.length > 0 && (
+    <ScreenFrame loading={loading} error={error} onRetry={load} empty={{ title: "No messages" }} isEmpty={filteredConvos.length === 0}>
+      <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 }}>
+        <Text style={{ color: Colors.gray[400], marginRight: 6 }}>🔎</Text>
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search providers or messages"
+          placeholderTextColor={Colors.gray[400]}
+          style={{ flex: 1, fontSize: 14, color: Colors.gray[900] }}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+        {search.length > 0 ? (
+          <TouchableOpacity onPress={() => setSearch("")} accessibilityRole="button" accessibilityLabel="Clear search">
+            <Text style={{ color: Colors.gray[500], fontSize: 14 }}>✕</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      {filteredConvos.length > 0 && (
         <View>
-          {convos.map((c: any, index: number) => (
+          {filteredConvos.map((c: any, index: number) => (
             <TouchableOpacity
               key={c.id}
+              onLongPress={() => {
+                const unread = c.unread_count ?? c.unread_count_customer ?? 0;
+                Alert.alert("Conversation actions", "Choose an action", [
+                  ...(unread > 0 ? [{ text: "Mark as read", onPress: () => void markConversationRead(c.id) }] : []),
+                  {
+                    text: "Delete conversation",
+                    style: "destructive",
+                    onPress: () =>
+                      Alert.alert(
+                        "Delete conversation?",
+                        "This will remove the conversation from your list.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          { text: "Delete", style: "destructive", onPress: () => void deleteConversation(c.id) },
+                        ]
+                      ),
+                  },
+                  { text: "Cancel", style: "cancel" },
+                ]);
+              }}
               onPress={() => {
+                setData((prev: any) => {
+                  if (!Array.isArray(prev)) return prev;
+                  return prev.map((row: any) =>
+                    row.id === c.id
+                      ? { ...row, unread_count_customer: 0, unread_count: 0 }
+                      : row
+                  );
+                });
                 if (c.provider_id) {
                   router.push({ pathname: "/(app)/chat", params: { provider_id: c.provider_id, provider_name: c.provider_name || c.provider?.business_name || "Provider" } });
                 } else {
@@ -70,18 +153,32 @@ export default function MessagesScreen() {
               }}
               style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: Colors.gray[100], marginTop: index === 0 ? 0 : 12 }}
             >
-              {c.avatar || c.provider?.thumbnail_url ? (
-                <Image
-                  source={{ uri: c.avatar || c.provider?.thumbnail_url }}
-                  style={{ width: 48, height: 48, borderRadius: 24, marginRight: 12 }}
-                />
-              ) : (
-                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[300], marginRight: 12, alignItems: "center", justifyContent: "center" }}>
-                  <Text style={{ color: Colors.gray[600], fontWeight: "500" }}>
-                    {(c.provider_name || c.provider?.business_name || "?")[0]}
-                  </Text>
-                </View>
-              )}
+              <TouchableOpacity
+                onPress={() => {
+                  if (c.provider_slug) {
+                    router.push({
+                      pathname: "/(app)/partner-profile",
+                      params: { slug: c.provider_slug, provider_id: c.provider_id || undefined },
+                    });
+                    return;
+                  }
+                }}
+                activeOpacity={0.8}
+                style={{ marginRight: 12 }}
+              >
+                {c.avatar || c.provider?.thumbnail_url ? (
+                  <Image
+                    source={{ uri: c.avatar || c.provider?.thumbnail_url }}
+                    style={{ width: 48, height: 48, borderRadius: 24 }}
+                  />
+                ) : (
+                  <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[300], alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ color: Colors.gray[600], fontWeight: "500" }}>
+                      {(c.provider_name || c.provider?.business_name || "?")[0]}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{c.provider_name || c.provider?.business_name || "Conversation"}</Text>
                 {c.last_message_preview && (
@@ -96,6 +193,33 @@ export default function MessagesScreen() {
                 )}
                 <Text style={{ color: Colors.primary, fontWeight: "600" }}>›</Text>
               </View>
+              <TouchableOpacity
+                onPress={() => {
+                  const unread = c.unread_count ?? c.unread_count_customer ?? 0;
+                  Alert.alert("Conversation actions", "Choose an action", [
+                    ...(unread > 0 ? [{ text: "Mark as read", onPress: () => void markConversationRead(c.id) }] : []),
+                    {
+                      text: "Delete conversation",
+                      style: "destructive",
+                      onPress: () =>
+                        Alert.alert(
+                          "Delete conversation?",
+                          "This will remove the conversation from your list.",
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            { text: "Delete", style: "destructive", onPress: () => void deleteConversation(c.id) },
+                          ]
+                        ),
+                    },
+                    { text: "Cancel", style: "cancel" },
+                  ]);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Conversation actions"
+                style={{ marginLeft: 8, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[100] }}
+              >
+                <Ionicons name="ellipsis-vertical" size={16} color={Colors.gray[600]} />
+              </TouchableOpacity>
             </TouchableOpacity>
           ))}
         </View>

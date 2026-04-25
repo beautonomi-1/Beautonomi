@@ -102,7 +102,7 @@ export default function EngagementHubScreen() {
         {/* Quick actions */}
         <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingTop: 16, gap: 12 }}>
           <TouchableOpacity
-            onPress={() => router.push("/(app)/(tabs)/more/messaging" as never)}
+            onPress={() => router.push("/(app)/(tabs)/chats" as never)}
             style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 14 }}
             accessibilityLabel="Messages"
             accessibilityRole="button"

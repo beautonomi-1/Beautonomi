@@ -50,11 +50,11 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
   }
 
   if (data.booking_id) {
-    router.push(`/(app)/(tabs)/more/bookings/${data.booking_id}` as never);
+    router.push(`/(app)/(tabs)/bookings/${data.booking_id}` as never);
     return;
   }
   if (data.conversation_id) {
-    router.push(`/(app)/(tabs)/more/messaging/${data.conversation_id}` as never);
+    router.push(`/(app)/(tabs)/chats/${data.conversation_id}` as never);
     return;
   }
   if (productOrderIdFromData) {
@@ -66,15 +66,15 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
   if (link) {
     const idMatch = link.match(/\/bookings\/([a-f0-9-]+)/i) || link.match(/\/booking\/([a-f0-9-]+)/i);
     if (idMatch) {
-      router.push(`/(app)/(tabs)/more/bookings/${idMatch[1]}` as never);
+      router.push(`/(app)/(tabs)/bookings/${idMatch[1]}` as never);
       return;
     }
     if (link.includes("messaging") || link.includes("messages")) {
       const convMatch = link.match(/conversation[=:]([a-f0-9-]+)/i) || link.match(/\/([a-f0-9-]+)$/);
       if (convMatch) {
-        router.push(`/(app)/(tabs)/more/messaging/${convMatch[1]}` as never);
+        router.push(`/(app)/(tabs)/chats/${convMatch[1]}` as never);
       } else {
-        router.push("/(app)/(tabs)/more/messaging" as never);
+        router.push("/(app)/(tabs)/chats" as never);
       }
       return;
     }
@@ -117,7 +117,7 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     return;
   }
   if (nType.includes("message") || nType.includes("chat")) {
-    router.push("/(app)/(tabs)/more/messaging" as never);
+    router.push("/(app)/(tabs)/chats" as never);
     return;
   }
   if (nType.includes("review")) {

@@ -30,12 +30,12 @@ export function AppHeader() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { totalUnread: unreadCount } = useNotificationsCount();
 
-  // §UI-audit 2026-04: hide the global brand chrome on focus flows
-  // (currently the chat thread) so the conversation partner's name,
-  // avatar and message composer get the full available vertical space.
-  // The screen's own `ScreenHeader` still renders the back button.
-  const isFocusFlow =
+  // Hide global brand chrome on chat threads (Chats tab or More → Messages)
+  // so the conversation header and composer get full vertical space.
+  const isMessagingThread =
     pathname?.includes("/more/messaging/") && !pathname.endsWith("/messaging");
+  const isChatsThread = Boolean(pathname?.match(/\/chats\/[^/?#]+/));
+  const isFocusFlow = isMessagingThread || isChatsThread;
   if (isFocusFlow) return null;
 
   const iconSize = 22;

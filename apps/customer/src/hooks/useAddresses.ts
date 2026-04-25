@@ -145,7 +145,7 @@ export async function searchAddress(
   query: string,
   options?: SearchAddressOptions
 ): Promise<GeocodeSuggestion[]> {
-  if (!query || query.length < 3) return [];
+  if (!query || query.length < 2) return [];
   const origin = mapboxApiOrigin();
   if (!origin) return [];
   try {

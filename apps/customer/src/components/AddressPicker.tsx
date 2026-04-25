@@ -28,6 +28,7 @@ import {
   type SavedAddress,
   type GeocodeSuggestion,
 } from "@/hooks/useAddresses";
+import { mapGeocodeFeatureToAddressParts } from "@beautonomi/utils";
 import { haptic } from "@/lib/haptics";
 import { useResponsive } from "@/hooks/useResponsive";
 import { RADIUS_INPUT, RADIUS_CARD } from "@/constants/layout";
@@ -107,7 +108,7 @@ export function AddressPicker({
   const handleSearch = useCallback((text: string) => {
     setQuery(text);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (text.length < 3) {
+    if (text.length < 2) {
       setSuggestions([]);
       return;
     }
@@ -156,17 +157,16 @@ export function AddressPicker({
 
   const parseStructuredFromSuggestion = useCallback(
     (s: GeocodeSuggestion): AddressPickerSelection["structured"] => {
-      const context = s.context ?? [];
-      const find = (prefix: string) => context.find((c) => c.id.startsWith(prefix))?.text ?? "";
-      const place = find("place.") || find("locality.") || find("district.");
-      const country = find("country.");
+      const mapped = mapGeocodeFeatureToAddressParts(s, {
+        defaultCountryName: defaultCountryLabel,
+      });
       const parts = (s.place_name || "").split(",").map((p) => p.trim()).filter(Boolean);
       return {
-        address_line1: parts[0] || s.text || "",
-        city: place || parts[1] || "",
-        state: find("region.") || undefined,
-        postal_code: find("postcode.") || undefined,
-        country: country || defaultCountryLabel,
+        address_line1: mapped.address_line1 || parts[0] || s.text || "",
+        city: mapped.city || parts[1] || "—",
+        state: mapped.state || undefined,
+        postal_code: mapped.postal_code || undefined,
+        country: mapped.country || defaultCountryLabel,
       };
     },
     [defaultCountryLabel],
@@ -188,6 +188,25 @@ export function AddressPicker({
     },
     [onSelect, onClose, parseStructuredFromSuggestion],
   );
+
+  const resolveTypedAddress = useCallback(async () => {
+    const q = query.trim();
+    if (q.length < 2) return;
+    const proximity = lastKnownCoordsRef.current
+      ? { longitude: lastKnownCoordsRef.current.longitude, latitude: lastKnownCoordsRef.current.latitude }
+      : undefined;
+    setSearching(true);
+    try {
+      const results = await searchAddress(q, { proximity });
+      if (results.length > 0) {
+        handleSuggestionSelect(results[0]);
+        return;
+      }
+      Alert.alert("No address found", "Try a more specific street/suburb/city query.");
+    } finally {
+      setSearching(false);
+    }
+  }, [query, handleSuggestionSelect]);
 
   const handleUseCurrentLocation = useCallback(async () => {
     if (gettingLocation) return;
@@ -296,7 +315,11 @@ export function AddressPicker({
                 placeholderTextColor={Colors.gray[400]}
                 value={query}
                 onChangeText={handleSearch}
+                onSubmitEditing={() => {
+                  void resolveTypedAddress();
+                }}
                 autoFocus={false}
+                returnKeyType="search"
               />
               {searching && <ActivityIndicator size="small" color={Colors.primary} />}
             </View>

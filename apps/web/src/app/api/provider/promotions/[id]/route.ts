@@ -82,6 +82,7 @@ export async function PATCH(
     if (body.start_date !== undefined) updateData.start_date = body.start_date;
     if (body.end_date !== undefined) updateData.end_date = body.end_date;
     if (body.is_active !== undefined) updateData.is_active = body.is_active;
+    if (body.public_on_profile !== undefined) updateData.public_on_profile = Boolean(body.public_on_profile);
 
     const { data: promotion, error } = await supabase
       .from("promotions")

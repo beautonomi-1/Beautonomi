@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 
@@ -36,8 +37,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const now = new Date().toISOString();
+    const admin = getSupabaseAdmin();
 
-    const { error: msgError } = await supabase
+    const { error: msgError } = await admin
       .from("messages")
       .update({ read_at: now, is_read: true })
       .eq("conversation_id", conversationId)
@@ -46,7 +48,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     if (msgError) throw msgError;
 
-    await supabase
+    await admin
       .from("conversations")
       .update({ unread_count_provider: 0 })
       .eq("id", conversationId);

@@ -140,6 +140,14 @@ export interface PublicProviderCard {
   campaign_id?: string | null;
 }
 
+/** Active provider-authored promo surfaced on public profile (not platform admin coupons). */
+export type PublicProfilePromotion = {
+  code: string;
+  title: string;
+  description: string | null;
+  savings_label: string;
+};
+
 export interface PublicProviderDetail extends PublicProviderCard {
   description: string | null;
   gallery: string[];
@@ -169,6 +177,8 @@ export interface PublicProviderDetail extends PublicProviderCard {
   tips_enabled?: boolean;
   /** IANA timezone for interpreting booking slot wall times (e.g. Africa/Johannesburg). */
   timezone?: string | null;
+  /** Provider-owned discount codes currently valid—shown on profile for customers to use at checkout. */
+  profile_promotions?: PublicProfilePromotion[];
 }
 
 // Service/Offering Types

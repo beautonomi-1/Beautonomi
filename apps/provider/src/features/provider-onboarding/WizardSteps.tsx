@@ -30,6 +30,7 @@ import {
   splitPhoneForNationalInput,
   validateNationalPhoneDigits,
 } from "@/lib/phone-country-codes";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
@@ -505,9 +506,7 @@ function Step7Location() {
     country: DEFAULT_COUNTRY_NAME,
   };
   const mapboxCountry =
-    addr.country === DEFAULT_COUNTRY_NAME || addr.country?.toLowerCase().includes("south africa")
-      ? "ZA"
-      : "ZA";
+    countryFilterIso2FromStorage(addr.country || DEFAULT_COUNTRY_NAME) ?? "ZA";
 
   const onSelect = (p: ParsedAddress) => {
     updateFormData({
@@ -533,7 +532,7 @@ function Step7Location() {
         value={addr.line1 || ""}
         onSelect={onSelect}
         onBlur={(q) => {
-          if (q.trim() && !addr.line1) {
+          if (q.trim()) {
             updateFormData({
               address: { ...addr, line1: q.trim(), country: addr.country || DEFAULT_COUNTRY_NAME },
             });

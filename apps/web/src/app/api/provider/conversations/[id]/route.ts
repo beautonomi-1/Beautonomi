@@ -66,15 +66,17 @@ export async function GET(
 
     if (msgError) throw msgError;
 
-    // Mark unread messages as read
-    await supabase
+    // Mark unread customer messages as read with service role. Provider staff
+    // cannot update customer-owned message rows through RLS, but read receipts
+    // must persist for the customer's double-check UI.
+    await supabaseAdmin
       .from("messages")
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq("conversation_id", conversationId)
       .eq("is_read", false)
       .neq("sender_id", user.id);
 
-    await supabase
+    await supabaseAdmin
       .from("conversations")
       .update({ unread_count_provider: 0 })
       .eq("id", conversationId);

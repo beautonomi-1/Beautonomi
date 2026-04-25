@@ -638,6 +638,61 @@ export default function BookingDetailScreen() {
     Linking.openURL(url);
   };
 
+  const downloadReceiptNative = useCallback(async () => {
+    if (!booking?.id) return;
+    haptic.light();
+    try {
+      if (Platform.OS !== "web") {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (token) {
+          const filename = `booking-${booking.booking_number ?? booking.id}.pdf`.replace(/[^\w.-]+/g, "_");
+          const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+          await FileSystem.downloadAsync(
+            `${APP_URL.replace(/\/$/, "")}/api/bookings/${encodeURIComponent(booking.id)}/receipt/pdf`,
+            fileUri,
+            { headers: { Authorization: `Bearer ${token}` } },
+          );
+          await Share.share({
+            url: fileUri,
+            title: "Booking receipt",
+            message: `Booking ${booking.booking_number ?? booking.id}`,
+          });
+          return;
+        }
+      }
+      const res = await api.post<{ url?: string }>(
+        `/api/bookings/${booking.id}/receipt/signed-url`,
+        {},
+      );
+      const url = res.data?.url;
+      if (res.error || !url) {
+        Alert.alert(
+          "Download receipt",
+          (res.error as { message?: string })?.message ?? "Could not generate receipt. Please try again.",
+        );
+        return;
+      }
+      if (Platform.OS === "web") {
+        await Linking.openURL(url);
+        return;
+      }
+      const filename = `booking-${booking.booking_number ?? booking.id}.pdf`.replace(/[^\w.-]+/g, "_");
+      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+      await FileSystem.downloadAsync(url, fileUri);
+      await Share.share({
+        url: fileUri,
+        title: "Booking receipt",
+        message: `Booking ${booking.booking_number ?? booking.id}`,
+      });
+    } catch (e) {
+      Alert.alert(
+        "Download receipt",
+        e instanceof Error ? e.message : "Something went wrong while preparing the receipt.",
+      );
+    }
+  }, [booking]);
+
   const handleAddToCalendarIcs = useCallback(async () => {
     if (!id) return;
     haptic.light();
@@ -1505,35 +1560,7 @@ export default function BookingDetailScreen() {
                 <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.gray[700] }}>Share</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={async () => {
-                  // §Customer-launch (audit 2026-04): receipt downloads used
-                  // to just deep-link to the web app's print page, which is
-                  // not logged in outside the Expo app. Mint a short-lived
-                  // HMAC-signed URL against the authenticated API and open
-                  // the PDF directly in the system viewer.
-                  haptic.light();
-                  try {
-                    const res = await api.post<{ url?: string }>(
-                      `/api/bookings/${booking.id}/receipt/signed-url`,
-                      {},
-                    );
-                    const url = res.data?.url;
-                    if (res.error || !url) {
-                      Alert.alert(
-                        "Download receipt",
-                        (res.error as { message?: string })?.message ??
-                          "Could not generate receipt. Please try again.",
-                      );
-                      return;
-                    }
-                    await Linking.openURL(url);
-                  } catch {
-                    Alert.alert(
-                      "Download receipt",
-                      "Something went wrong while preparing the receipt.",
-                    );
-                  }
-                }}
+                onPress={downloadReceiptNative}
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
                 accessibilityRole="button"
                 accessibilityLabel="Download"
@@ -2075,10 +2102,7 @@ export default function BookingDetailScreen() {
             <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Share</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => {
-              haptic.light();
-              Linking.openURL(`${APP_URL}/account-settings/bookings/${booking.id}?print=1`);
-            }}
+            onPress={downloadReceiptNative}
             style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
             accessibilityRole="button"
             accessibilityLabel="Download booking receipt"

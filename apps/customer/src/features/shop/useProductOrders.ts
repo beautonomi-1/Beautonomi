@@ -17,6 +17,7 @@ export interface ProductOrder {
   tracking_number: string | null;
   carrier?: string | null;
   tracking_url?: string | null;
+  delivery_instructions?: string | null;
   estimated_delivery_date: string | null;
   created_at: string;
   confirmed_at: string | null;
@@ -34,14 +35,20 @@ export interface ProductOrder {
     id: string;
     label: string | null;
     address_line1: string;
+    address_line2?: string | null;
     city: string;
+    state?: string | null;
     postal_code: string | null;
+    country?: string | null;
   } | null;
   collection_location?: {
     id: string;
     name: string;
     address_line1: string;
+    address_line2?: string | null;
     city: string;
+    state?: string | null;
+    postal_code?: string | null;
     phone: string | null;
     working_hours: Record<string, unknown>;
   } | null;

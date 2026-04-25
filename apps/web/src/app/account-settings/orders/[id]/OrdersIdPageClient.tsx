@@ -13,13 +13,16 @@ interface ProductOrder {
   order_number: string;
   status: string;
   fulfillment_type: string;
+  currency?: string;
   subtotal: number;
   tax_amount: number;
   delivery_fee: number;
+  discount_amount?: number;
   total_amount: number;
   tracking_number: string | null;
   carrier?: string | null;
   tracking_url?: string | null;
+  delivery_instructions?: string | null;
   estimated_delivery_date: string | null;
   created_at: string;
   confirmed_at: string | null;
@@ -39,8 +42,38 @@ interface ProductOrder {
     product_variant?: { id: string; option_values?: Record<string, string> } | null;
   }>;
   provider: { id: string; business_name: string; slug: string; logo_url: string | null };
-  delivery_address?: { label: string | null; address_line1: string; city: string; postal_code: string | null } | null;
-  collection_location?: { name: string; address_line1: string; city: string; phone: string | null } | null;
+  delivery_address?: {
+    label: string | null;
+    address_line1: string;
+    address_line2?: string | null;
+    city: string;
+    state?: string | null;
+    postal_code: string | null;
+    country?: string | null;
+  } | null;
+  collection_location?: {
+    name: string;
+    address_line1: string;
+    address_line2?: string | null;
+    city: string;
+    state?: string | null;
+    postal_code?: string | null;
+    phone: string | null;
+  } | null;
+}
+
+function absoluteTrackingUrl(raw: string | null | undefined): string {
+  const t = (raw ?? "").trim();
+  if (!t) return "#";
+  return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+}
+
+function formatEstimatedDeliveryDate(date: string | null | undefined, locale: string): string | null {
+  if (!date || typeof date !== "string") return null;
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? `${date.trim()}T12:00:00` : date.trim();
+  const parsed = new Date(iso);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  return parsed.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
 }
 
 const TIMELINE = [
@@ -108,8 +141,7 @@ export default function OrderDetailPage() {
 
   const idx = timelineIndex(order.status);
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
-  const cur = order.provider ? (order as unknown as Record<string, unknown>).currency as string | undefined : undefined;
-  const sym = cur || tenantCurrency;
+  const sym = (order.currency && String(order.currency).trim()) || tenantCurrency;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -183,12 +215,9 @@ export default function OrderDetailPage() {
           )}
           {(order.tracking_number || order.tracking_url) && (
             <div className="mt-4 rounded-lg bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-600">
-              {/* §Customer-audit 2026-04 (follow-up): if the provider pasted
-                  a tracking_url, render the whole block as a tappable link so
-                  customers can jump straight to the carrier page. */}
               {order.tracking_url ? (
                 <a
-                  href={order.tracking_url}
+                  href={absoluteTrackingUrl(order.tracking_url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 hover:underline"
@@ -239,11 +268,82 @@ export default function OrderDetailPage() {
           </div>
         </div>
 
+        {/* Fulfillment: address, collection point, delivery notes */}
+        {(() => {
+          const isDel = order.fulfillment_type === "delivery";
+          const addr = order.delivery_address;
+          const coll = order.collection_location;
+          const est = formatEstimatedDeliveryDate(order.estimated_delivery_date, locale);
+          const instr = order.delivery_instructions?.trim();
+          if (!addr && !coll && !(isDel && (est || instr))) return null;
+          return (
+            <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
+              <h2 className="mb-4 font-semibold text-gray-900">
+                {isDel ? "Delivery details" : "Collection details"}
+              </h2>
+              {isDel && addr && (
+                <div className="flex gap-3 text-sm text-gray-700">
+                  <span className="text-gray-400" aria-hidden>
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </span>
+                  <div>
+                    <p className="font-semibold text-gray-900">{addr.label ?? "Delivery address"}</p>
+                    <p className="mt-1 text-gray-600">
+                      {addr.address_line1}
+                      {addr.address_line2 ? `, ${addr.address_line2}` : ""}
+                    </p>
+                    <p className="mt-1 text-gray-600">
+                      {[addr.city, addr.state, addr.postal_code].filter(Boolean).join(", ")}
+                      {addr.country ? ` · ${addr.country}` : ""}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {!isDel && coll && (
+                <div className="flex gap-3 text-sm text-gray-700">
+                  <span className="text-gray-400" aria-hidden>
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                  </span>
+                  <div>
+                    <p className="font-semibold text-gray-900">{coll.name}</p>
+                    <p className="mt-1 text-gray-600">
+                      {coll.address_line1}
+                      {coll.address_line2 ? `, ${coll.address_line2}` : ""}
+                    </p>
+                    <p className="mt-1 text-gray-600">
+                      {[coll.city, coll.state, coll.postal_code].filter(Boolean).join(", ")}
+                    </p>
+                    {coll.phone && <p className="mt-2 text-gray-600">Tel: {coll.phone}</p>}
+                  </div>
+                </div>
+              )}
+              {isDel && (est || instr) && (
+                <div className="mt-5 border-t border-gray-100 pt-5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Delivery notes</p>
+                  {est && <p className="mt-1 text-sm text-gray-600">Estimated delivery: {est}</p>}
+                  {instr && <p className="mt-2 text-sm text-gray-700">{instr}</p>}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Payment summary */}
         <div className="rounded-2xl bg-white p-6 shadow-sm">
           <h2 className="mb-4 font-semibold text-gray-900">Payment Summary</h2>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{sym} {Number(order.subtotal).toFixed(2)}</span></div>
+            {Number(order.discount_amount ?? 0) > 0 && (
+              <div className="flex justify-between text-emerald-700">
+                <span>Discount</span>
+                <span>-{sym} {Number(order.discount_amount).toFixed(2)}</span>
+              </div>
+            )}
             {Number(order.delivery_fee) > 0 && (
               <div className="flex justify-between"><span className="text-gray-500">Delivery</span><span>{sym} {Number(order.delivery_fee).toFixed(2)}</span></div>
             )}

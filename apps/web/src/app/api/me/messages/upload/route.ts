@@ -117,10 +117,11 @@ export async function POST(request: NextRequest) {
       const bucketExists = buckets?.some((b) => b.name === bucketName) ?? false;
 
       if (!bucketExists) {
+        // Omit allowedMimeTypes so the bucket accepts the same wide MIME set as a manually
+        // created "Any" bucket; a restrictive list can cause create/upload mismatches.
         const { error: createError } = await storageClient.storage.createBucket(bucketName, {
           public: true,
           fileSizeLimit: 52428800, // 50MB
-          allowedMimeTypes: allowedTypes,
         });
 
         if (createError) {

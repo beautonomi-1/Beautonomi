@@ -44,6 +44,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 
 type BusinessData = {
   id: string;
@@ -579,6 +580,8 @@ export default function BusinessDetailsScreen() {
                   if (query.trim()) setForm((f) => ({ ...f, address_line1: query.trim() }));
                 }}
                 placeholder="Start typing address…"
+                countryCode={countryFilterIso2FromStorage(form.country ?? "") ?? "ZA"}
+                defaultCountryName={form.country?.trim() || undefined}
               />
             </View>
             <View style={twStyle("mb-4 flex-row")}>

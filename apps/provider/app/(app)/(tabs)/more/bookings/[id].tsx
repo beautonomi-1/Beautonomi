@@ -1885,7 +1885,7 @@ export default function BookingDetailScreen() {
                       }
                       const convId = result.data?.id;
                       if (convId) {
-                        router.push(`/(app)/(tabs)/more/messaging/${convId}` as never);
+                        router.push(`/(app)/(tabs)/chats/${convId}` as never);
                       }
                     } catch {
                       Alert.alert("Message", "Failed to start conversation.");

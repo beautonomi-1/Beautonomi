@@ -8,6 +8,7 @@ import {
   Alert,
   RefreshControl,
   TextInput,
+  Linking,
   type ImageStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -39,6 +40,8 @@ interface ExplorePost {
   comment_count?: number;
   view_count?: number;
   primary_category_id?: string | null;
+  tags?: string[];
+  offering_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -76,9 +79,12 @@ export default function ExplorePostsScreen() {
   const [caption, setCaption] = useState("");
   const [publishNow, setPublishNow] = useState(true);
   const [primaryCategorySlug, setPrimaryCategorySlug] = useState<string | null>(null);
+  const [offeringId, setOfferingId] = useState<string | null>(null);
+  const [tagInput, setTagInput] = useState("");
   const [uploading, setUploading] = useState(false);
 
   const [categories, setCategories] = useState<GlobalCategory[]>([]);
+  const [offerings, setOfferings] = useState<{ id: string; title: string }[]>([]);
   const [viewPost, setViewPost] = useState<ExplorePost | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [editCaption, setEditCaption] = useState("");
@@ -93,7 +99,7 @@ export default function ExplorePostsScreen() {
   const commentsPath = viewPost ? `/api/explore/posts/${viewPost.id}/comments` : "";
   const { data: commentsResp, loading: commentsLoading, refresh: refreshComments } = useApi<{
     data: ExploreComment[];
-  }>(commentsPath || "/api/explore/posts/_/comments", { enabled: !!viewPost && !!commentsPath && !editMode });
+  }>(commentsPath, { enabled: !!viewPost && !editMode });
   const { execute: postComment, loading: postingComment } = useApiMutation<ExploreComment>("post");
 
   const [commentBody, setCommentBody] = useState("");
@@ -120,6 +126,26 @@ export default function ExplorePostsScreen() {
           : [];
       setCategories(list);
     }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api
+      .get<{ id: string; title?: string }[] | { data: { id: string; title?: string }[] }>("/api/provider/services")
+      .then((res) => {
+        const body = res.data;
+        const raw = Array.isArray(body)
+          ? body
+          : body && typeof body === "object" && "data" in body && Array.isArray((body as { data: { id: string; title?: string }[] }).data)
+            ? (body as { data: { id: string; title?: string }[] }).data
+            : [];
+        setOfferings(
+          raw.map((o) => ({
+            id: o.id,
+            title: typeof o.title === "string" && o.title.trim() ? o.title.trim() : "Service",
+          })),
+        );
+      })
+      .catch(() => setOfferings([]));
   }, []);
 
   useEffect(() => {
@@ -206,6 +232,8 @@ export default function ExplorePostsScreen() {
     setCaption("");
     setPublishNow(true);
     setPrimaryCategorySlug(null);
+    setOfferingId(null);
+    setTagInput("");
     setCreateOpen(true);
   }, []);
 
@@ -228,6 +256,31 @@ export default function ExplorePostsScreen() {
       fileName: a.fileName ?? (a.type === "video" ? "video.mp4" : "image.jpg"),
     }));
     setSelectedAssets((prev) => [...prev, ...newAssets].slice(0, 5));
+  }, []);
+
+  const pickFromCamera = useCallback(async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow camera access to capture photos or videos for your post.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images", "videos"],
+      quality: 0.9,
+      videoMaxDuration: 60,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const a = result.assets[0];
+    setSelectedAssets((prev) =>
+      [
+        ...prev,
+        {
+          uri: a.uri,
+          mimeType: a.mimeType ?? (a.type === "video" ? "video/mp4" : "image/jpeg"),
+          fileName: a.fileName ?? (a.type === "video" ? "video.mp4" : "image.jpg"),
+        },
+      ].slice(0, 5),
+    );
   }, []);
 
   const removeAsset = useCallback((index: number) => {
@@ -261,11 +314,17 @@ export default function ExplorePostsScreen() {
         }
         paths.push(res.data.path);
       }
+      const tags = [...new Set(tagInput.split(/[,]+/).map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(
+        0,
+        20,
+      );
       const { error: createErr } = await createPost("/api/explore/posts", {
         caption: caption.trim() || null,
         media_urls: paths,
         status: publishNow ? "published" : "draft",
         ...(primaryCategorySlug ? { primary_category_slug: primaryCategorySlug } : {}),
+        ...(tags.length ? { tags } : {}),
+        ...(offeringId ? { offering_id: offeringId } : {}),
       });
       setUploading(false);
       if (createErr) {
@@ -279,12 +338,29 @@ export default function ExplorePostsScreen() {
       setUploading(false);
       Alert.alert("Error", e instanceof Error ? e.message : "Something went wrong.");
     }
-  }, [selectedAssets, caption, publishNow, primaryCategorySlug, createPost, refresh]);
+  }, [selectedAssets, caption, publishNow, primaryCategorySlug, offeringId, tagInput, createPost, refresh]);
+
+  const createHeaderAction = (
+    <TouchableOpacity
+      onPress={openCreate}
+      style={twStyle("flex-row items-center rounded-xl bg-[#ec4899] px-4 py-2")}
+      accessibilityLabel="Create post"
+      accessibilityRole="button"
+    >
+      <Ionicons name="add" size={18} color="#fff" />
+      <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>Create post</Text>
+    </TouchableOpacity>
+  );
 
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Explore" showBack subtitle="Posts for Explore feed" />
+        <ScreenHeader
+          title="Explore"
+          showBack
+          subtitle="Posts for Explore feed"
+          rightAction={createHeaderAction}
+        />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -295,7 +371,12 @@ export default function ExplorePostsScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Explore" showBack subtitle="Posts for Explore feed" />
+        <ScreenHeader
+          title="Explore"
+          showBack
+          subtitle="Posts for Explore feed"
+          rightAction={createHeaderAction}
+        />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -305,24 +386,7 @@ export default function ExplorePostsScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader
-        title="Explore"
-        showBack
-        subtitle="Posts for Explore feed"
-        rightAction={
-          <TouchableOpacity
-            onPress={openCreate}
-            style={twStyle("flex-row items-center rounded-xl bg-[#ec4899] px-4 py-2")}
-            accessibilityLabel="Create post"
-            accessibilityRole="button"
-          >
-            <Ionicons name="add" size={18} color="#fff" />
-            <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>
-              Create post
-            </Text>
-          </TouchableOpacity>
-        }
-      />
+      <ScreenHeader title="Explore" showBack subtitle="Posts for Explore feed" rightAction={createHeaderAction} />
 
       <ScrollView
         style={twStyle("flex-1")}
@@ -342,11 +406,19 @@ export default function ExplorePostsScreen() {
           />
         ) : (
           <>
-            <View style={twStyle("mb-3 mt-1 flex-row items-center rounded-xl bg-pink-50 p-3")}>
+            <View style={twStyle("mb-3 mt-1 flex-row flex-wrap items-center gap-2 rounded-xl bg-pink-50 p-3")}>
               <Ionicons name="gift-outline" size={20} color="#be185d" />
-              <Text style={twStyle("ml-2 flex-1 text-sm text-pink-900")}>
+              <Text style={twStyle("min-w-[48%] flex-1 text-sm text-pink-900")}>
                 Earn reward points when you post to Explore. Share your work to grow visibility and unlock rewards.
               </Text>
+              <TouchableOpacity
+                onPress={openCreate}
+                style={twStyle("rounded-lg bg-pink-600 px-3 py-2")}
+                accessibilityLabel="Create new post"
+                accessibilityRole="button"
+              >
+                <Text style={twStyle("text-xs font-semibold text-white")}>Post now</Text>
+              </TouchableOpacity>
             </View>
             <View>
               {posts.map((post, idx) => {
@@ -421,19 +493,26 @@ export default function ExplorePostsScreen() {
         visible={createOpen}
         onClose={() => !uploading && setCreateOpen(false)}
         title="New post"
-        subtitle="Add at least one photo or video"
+        subtitle="Add photos or videos from your library or camera (up to 5)"
       >
-        <TouchableOpacity
-          onPress={pickMedia}
-          style={twStyle("mb-4 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-6")}
-        >
-          <Ionicons name="images-outline" size={28} color="#9ca3af" />
-          <Text style={twStyle("ml-2 text-sm font-medium text-gray-600")}>
-            {selectedAssets.length > 0
-              ? `Add more (${selectedAssets.length}/5)`
-              : "Pick photos or videos"}
-          </Text>
-        </TouchableOpacity>
+        <View style={twStyle("mb-4 flex-row gap-2")}>
+          <TouchableOpacity
+            onPress={pickMedia}
+            style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2")}
+          >
+            <Ionicons name="images-outline" size={24} color="#9ca3af" />
+            <Text style={twStyle("ml-2 text-center text-xs font-medium text-gray-600")}>
+              {selectedAssets.length > 0 ? `Library (${selectedAssets.length}/5)` : "Library"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={pickFromCamera}
+            style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 px-2")}
+          >
+            <Ionicons name="camera-outline" size={24} color="#9ca3af" />
+            <Text style={twStyle("ml-2 text-center text-xs font-medium text-gray-600")}>Camera</Text>
+          </TouchableOpacity>
+        </View>
         {selectedAssets.length > 0 ? (
           <ScrollView
             horizontal
@@ -471,6 +550,51 @@ export default function ExplorePostsScreen() {
           onChangeText={setCaption}
           multiline
         />
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Tags (optional)</Text>
+        <TextInput
+          style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+          placeholder="e.g. braids, balayage (comma-separated)"
+          placeholderTextColor="#9ca3af"
+          value={tagInput}
+          onChangeText={setTagInput}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {offerings.length > 0 ? (
+          <>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Link a service (optional)</Text>
+            <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+              Lets customers tap through to book this look, same as on the web portal.
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4 -mx-1")}>
+              <TouchableOpacity
+                onPress={() => setOfferingId(null)}
+                style={[twStyle("rounded-full px-4 py-2 mr-2"), offeringId === null ? twStyle("bg-violet-600") : twStyle("bg-gray-100")]}
+              >
+                <Text style={twStyle(offeringId === null ? "text-white text-sm font-medium" : "text-gray-600 text-sm")}>
+                  None
+                </Text>
+              </TouchableOpacity>
+              {offerings.map((o) => (
+                <TouchableOpacity
+                  key={o.id}
+                  onPress={() => setOfferingId(o.id)}
+                  style={[
+                    twStyle("rounded-full px-4 py-2 mr-2 max-w-[200px]"),
+                    offeringId === o.id ? twStyle("bg-violet-600") : twStyle("bg-gray-100"),
+                  ]}
+                >
+                  <Text
+                    style={twStyle(offeringId === o.id ? "text-white text-sm font-medium" : "text-gray-600 text-sm")}
+                    numberOfLines={1}
+                  >
+                    {o.title}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        ) : null}
         {categories.length > 0 ? (
           <>
             <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Category (optional)</Text>
@@ -621,6 +745,31 @@ export default function ExplorePostsScreen() {
                     style={twStyle("h-full w-full") as ImageStyle}
                     resizeMode="cover"
                   />
+                </View>
+              ) : null}
+              {viewPost.media_urls?.[0] && /\.(mp4|webm|mov)$/i.test(viewPost.media_urls[0]) ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    const u = viewPost.media_urls![0];
+                    void Linking.openURL(u).catch(() => {
+                      Alert.alert("Video", "Could not open this link.");
+                    });
+                  }}
+                  style={twStyle("mb-4 aspect-square items-center justify-center rounded-xl bg-gray-900")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open video"
+                >
+                  <Ionicons name="videocam-outline" size={40} color="#fff" />
+                  <Text style={twStyle("mt-2 text-xs font-medium text-white")}>Tap to open video</Text>
+                </TouchableOpacity>
+              ) : null}
+              {viewPost.primary_category_id ? (
+                <View style={twStyle("mb-3 flex-row flex-wrap")}>
+                  <View style={twStyle("rounded-full bg-indigo-50 px-2.5 py-1")}>
+                    <Text style={twStyle("text-xs font-medium text-indigo-800")}>
+                      {categories.find((c) => c.id === viewPost.primary_category_id)?.name ?? "Category"}
+                    </Text>
+                  </View>
                 </View>
               ) : null}
               <Text style={twStyle("mb-2 text-sm text-gray-700")}>

@@ -49,7 +49,24 @@ export const CMS_PAGE_SECTION_PRESETS: Record<string, { value: string; label: st
   ],
   "why-beautonomi": [
     { value: "hero_title", label: "Hero — title" },
+    { value: "hero_subtitle", label: "Hero — subtitle" },
     { value: "hero_description", label: "Hero — description" },
+    { value: "cta_button_text", label: "Hero — CTA button text" },
+    { value: "cta_url", label: "Hero — CTA URL" },
+    { value: "hero_image", label: "Hero — image URL" },
+    { value: "features_section_title", label: "Features — section title" },
+    { value: "features_list", label: "Features — list (JSON)" },
+    { value: "benefits_title", label: "Benefits — title" },
+    { value: "benefits_description", label: "Benefits — description" },
+    { value: "benefits_list", label: "Benefits — list (JSON)" },
+    { value: "benefits_cta_text", label: "Benefits — CTA text" },
+    { value: "benefits_cta_url", label: "Benefits — CTA URL" },
+    { value: "benefits_image", label: "Benefits — image URL" },
+    { value: "cta_banner_title", label: "CTA banner — title" },
+    { value: "cta_banner_description", label: "CTA banner — description" },
+    { value: "cta_banner_button_text", label: "CTA banner — button text" },
+    { value: "cta_banner_url", label: "CTA banner — URL" },
+    { value: "cta_banner_image", label: "CTA banner — image URL" },
   ],
   pricing: [
     { value: "hero_title", label: "Hero — title" },
@@ -143,7 +160,8 @@ export function cmsPagePublicApiHint(pageSlug: string): string | null {
     pageSlug === "privacy-policy" ||
     pageSlug === "terms-and-condition" ||
     pageSlug === "terms-of-service" ||
-    pageSlug === "cookie-policy"
+    pageSlug === "cookie-policy" ||
+    pageSlug === "why-beautonomi"
   ) {
     return `GET /api/public/content/pages/${pageSlug}`;
   }

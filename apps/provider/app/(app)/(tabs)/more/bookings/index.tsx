@@ -63,6 +63,8 @@ interface Booking {
   scheduled_at: string | null;
   total_amount: number | null;
   location_type?: "at_salon" | "at_home" | null;
+  is_group_booking?: boolean;
+  group_booking_id?: string | null;
   customers?: BookingCustomer | null;
   services?: BookingService[];
 }
@@ -387,7 +389,18 @@ export default function BookingsListScreen() {
 
       return (
         <TouchableOpacity
-          onPress={() => router.push(`/(app)/(tabs)/more/bookings/${b.id}` as never)}
+          onPress={() => {
+            if (b.is_group_booking && b.group_booking_id) {
+              router.push(
+                {
+                  pathname: "/(app)/(tabs)/more/group-bookings",
+                  params: { open_group_id: b.group_booking_id },
+                } as never,
+              );
+              return;
+            }
+            router.push(`/(app)/(tabs)/bookings/${b.id}` as never);
+          }}
           style={twStyle(
             "mb-2.5 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
           )}

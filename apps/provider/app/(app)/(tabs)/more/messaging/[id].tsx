@@ -31,6 +31,7 @@ import { chatFlatListPerf } from "@/lib/flatListPerformance";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import { api } from "@/lib/api-client";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { pushInAppBrowser } from "@/lib/in-app-web";
@@ -272,49 +273,186 @@ export default function ChatScreen() {
     }
   }, [message, conversationId, sending, sendMessage, refresh]);
 
-  const handleAttachImage = useCallback(async () => {
+  const uploadNativeFile = useCallback(
+    async (file: { uri: string; name: string; type: string }) => {
+      if (!conversationId || sending || uploading) return;
+      setUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append("conversation_id", conversationId);
+        appendFormDataFileNative(formData, "files", {
+          uri: file.uri,
+          name: file.name,
+          type: file.type || "application/octet-stream",
+        });
+        const res = await api.fetch<{ attachments?: FileLikeAttachment[] }>("/api/me/messages/upload", {
+          method: "POST",
+          body: formData,
+        });
+        if (res.error) {
+          Alert.alert("Upload failed", res.error.message || "Could not upload file");
+          return;
+        }
+        const payload = res.data as { attachments?: FileLikeAttachment[] } | null;
+        const atts = payload?.attachments ?? [];
+        if (!atts.length) {
+          Alert.alert("Upload failed", "No file was uploaded.");
+          return;
+        }
+        const { error } = await sendMessage({ attachments: atts } as never);
+        if (error) Alert.alert("Error", error);
+        else await refresh();
+      } finally {
+        setUploading(false);
+      }
+    },
+    [conversationId, sending, uploading, sendMessage, refresh],
+  );
+
+  const openAttachmentMenu = useCallback(() => {
     if (!conversationId || sending || uploading) return;
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow photo library access to attach images.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("conversation_id", conversationId);
-      appendFormDataFileNative(formData, "files", {
+
+    const choosePhotoLibrary = async () => {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Allow photo library access to attach images.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.85,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      await uploadNativeFile({
         uri: asset.uri,
         name: asset.fileName || "photo.jpg",
         type: asset.mimeType || "image/jpeg",
       });
-      const res = await api.fetch<{ attachments?: FileLikeAttachment[] }>("/api/me/messages/upload", {
-        method: "POST",
-        body: formData,
+    };
+
+    const chooseVideoLibrary = async () => {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Allow photo library access to attach videos.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
       });
-      if (res.error) {
-        Alert.alert("Upload failed", res.error.message || "Could not upload file");
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const mime =
+        asset.mimeType ||
+        (asset.fileName?.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4");
+      await uploadNativeFile({
+        uri: asset.uri,
+        name: asset.fileName || "video.mp4",
+        type: mime,
+      });
+    };
+
+    const chooseCameraPhoto = async () => {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Allow camera access to take a photo.");
         return;
       }
-      const payload = res.data as { attachments?: FileLikeAttachment[] } | null;
-      const atts = payload?.attachments ?? [];
-      if (!atts.length) {
-        Alert.alert("Upload failed", "No file was uploaded.");
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.85,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      await uploadNativeFile({
+        uri: asset.uri,
+        name: asset.fileName || "photo.jpg",
+        type: asset.mimeType || "image/jpeg",
+      });
+    };
+
+    const chooseCameraVideo = async () => {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Allow camera access to record a video.");
         return;
       }
-      const { error } = await sendMessage({ content: "📎 Attachment", attachments: atts } as never);
-      if (error) Alert.alert("Error", error);
-      else await refresh();
-    } finally {
-      setUploading(false);
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        videoMaxDuration: 120,
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      await uploadNativeFile({
+        uri: asset.uri,
+        name: asset.fileName || "video.mp4",
+        type: asset.mimeType || "video/mp4",
+      });
+    };
+
+    const chooseDocument = async () => {
+      const result = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        copyToCacheDirectory: true,
+        type: [
+          "application/pdf",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ],
+      });
+      if (result.canceled) return;
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+      await uploadNativeFile({
+        uri: asset.uri,
+        name: asset.name || "document.pdf",
+        type: asset.mimeType || "application/pdf",
+      });
+    };
+
+    if (Platform.OS === "web") {
+      Alert.alert("Attach", "Choose a source", [
+        { text: "Photo library", onPress: () => void choosePhotoLibrary() },
+        { text: "Cancel", style: "cancel" },
+      ]);
+      return;
     }
-  }, [conversationId, sending, uploading, sendMessage, refresh]);
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [
+            "Photo library",
+            "Take photo",
+            "Video library",
+            "Record video",
+            "Document (PDF, Word)",
+            "Cancel",
+          ],
+          cancelButtonIndex: 5,
+        },
+        (idx) => {
+          if (idx === 0) void choosePhotoLibrary();
+          else if (idx === 1) void chooseCameraPhoto();
+          else if (idx === 2) void chooseVideoLibrary();
+          else if (idx === 3) void chooseCameraVideo();
+          else if (idx === 4) void chooseDocument();
+        },
+      );
+      return;
+    }
+
+    Alert.alert("Attach file", "Choose a source", [
+      { text: "Photo library", onPress: () => void choosePhotoLibrary() },
+      { text: "Take photo", onPress: () => void chooseCameraPhoto() },
+      { text: "Video library", onPress: () => void chooseVideoLibrary() },
+      { text: "Record video", onPress: () => void chooseCameraVideo() },
+      { text: "Document", onPress: () => void chooseDocument() },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }, [conversationId, sending, uploading, uploadNativeFile]);
 
   const handleWithdrawOffer = useCallback(
     async (offerId: string) => {
@@ -728,15 +866,15 @@ export default function ChatScreen() {
               ]}
             >
               <TouchableOpacity
-                onPress={handleAttachImage}
+                onPress={openAttachmentMenu}
                 disabled={sending || uploading}
                 style={twStyle("w-11 h-11 rounded-full bg-gray-100 items-center justify-center mr-2")}
-                accessibilityLabel="Attach photo"
+                accessibilityLabel="Attach photo, video, or document"
               >
                 {uploading ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
                 ) : (
-                  <Ionicons name="image-outline" size={22} color={Colors.primary} />
+                  <Ionicons name="attach-outline" size={22} color={Colors.primary} />
                 )}
               </TouchableOpacity>
               <TextInput

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
 
 /**
  * GET /api/public/products
@@ -17,6 +18,9 @@ export async function GET(request: NextRequest) {
     const providerId = searchParams.get("provider_id");
     const tags = searchParams.get("tags");
     const sort = searchParams.get("sort") || "newest";
+    const latParam = Number(searchParams.get("lat"));
+    const lngParam = Number(searchParams.get("lng"));
+    const hasUserCoords = Number.isFinite(latParam) && Number.isFinite(lngParam);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = Math.min(parseInt(searchParams.get("limit") || "24"), 50);
     const offset = (page - 1) * limit;
@@ -59,6 +63,9 @@ export async function GET(request: NextRequest) {
     }
 
     switch (sort) {
+      case "nearest":
+        query = query.order("created_at", { ascending: false });
+        break;
       case "price_asc":
         query = query.order("retail_price", { ascending: true });
         break;
@@ -102,7 +109,40 @@ export async function GET(request: NextRequest) {
       // keep uniqueCategories []
     }
 
-    const mapped = (products ?? []).map((p: Record<string, unknown>) => {
+    const providerIds = [
+      ...new Set(
+        (products ?? [])
+          .map((p: Record<string, unknown>) => (p.provider as { id?: string } | null | undefined)?.id)
+          .filter((id): id is string => typeof id === "string"),
+      ),
+    ];
+    const distanceByProvider = new Map<string, number>();
+    if (hasUserCoords && providerIds.length > 0) {
+      try {
+        const { data: locs } = await (supabase.from("provider_locations") as any)
+          .select("provider_id, latitude, longitude")
+          .in("provider_id", providerIds)
+          .not("latitude", "is", null)
+          .not("longitude", "is", null);
+        for (const loc of locs ?? []) {
+          const providerId = String(loc.provider_id);
+          const d = haversineDistanceKmFromCoords(
+            latParam,
+            lngParam,
+            Number(loc.latitude),
+            Number(loc.longitude),
+          );
+          if (!Number.isFinite(d)) continue;
+          const rounded = Math.round(d * 10) / 10;
+          const prev = distanceByProvider.get(providerId);
+          if (prev == null || rounded < prev) distanceByProvider.set(providerId, rounded);
+        }
+      } catch {
+        // Distance is an enhancement; keep product browsing available.
+      }
+    }
+
+    let mapped = (products ?? []).map((p: Record<string, unknown>) => {
       const prov = p.provider as
         | { id: string; business_name: string; slug: string; thumbnail_url?: string | null; avatar_url?: string | null }
         | null
@@ -116,12 +156,20 @@ export async function GET(request: NextRequest) {
           slug: prov.slug,
           logo_url: prov.thumbnail_url ?? prov.avatar_url ?? null,
         },
+        distance_km: distanceByProvider.get(prov.id) ?? null,
       };
     });
+    if (hasUserCoords && sort === "nearest") {
+      mapped = mapped.sort(
+        (a: Record<string, unknown>, b: Record<string, unknown>) =>
+          Number(a.distance_km ?? Infinity) - Number(b.distance_km ?? Infinity),
+      );
+    }
 
     return successResponse({
       products: mapped,
       categories: uniqueCategories,
+      has_more: page < Math.ceil((count ?? 0) / limit),
       pagination: {
         page,
         limit,

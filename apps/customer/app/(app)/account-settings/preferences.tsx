@@ -37,6 +37,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { changeLanguage } from "@/lib/i18n";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { currencySelectLabel, LAST_RESORT_CURRENCY } from "@beautonomi/utils";
+import { supportedLanguages } from "@beautonomi/i18n";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -73,13 +74,31 @@ interface PreferenceOptionRow {
 /*  Fallback lists (used when API empty or unavailable — mirrors web resilience) */
 /* ------------------------------------------------------------------ */
 
-const LANGUAGE_OPTIONS: PickerOption[] = [
-  { value: "en", label: "English" },
-  { value: "af", label: "Afrikaans" },
-  { value: "zu", label: "Zulu" },
-  { value: "xh", label: "Xhosa" },
-  { value: "st", label: "Sotho" },
-];
+/** BCP-47 primary tags that have bundled app copy in `@beautonomi/i18n` (must match `supportedLanguages`). */
+const SUPPORTED_LANG_CODES = new Set<string>(supportedLanguages.map((l) => l.code));
+
+function buildI18nAlignedLanguageOptions(apiRows: PickerOption[]): PickerOption[] {
+  const normalizedApi = apiRows
+    .map((o) => {
+      const code = (o.value.split(/[-_]/)[0] || o.value).toLowerCase();
+      return { value: code, label: o.label };
+    })
+    .filter((o) => SUPPORTED_LANG_CODES.has(o.value));
+
+  const source =
+    normalizedApi.length > 0
+      ? normalizedApi
+      : supportedLanguages.map(({ code, nativeName, name }) => ({
+          value: code,
+          label: `${nativeName} (${name})`,
+        }));
+
+  return source.map((opt) => {
+    const meta = supportedLanguages.find((l) => l.code === opt.value);
+    if (meta) return { value: meta.code, label: `${meta.nativeName} (${meta.name})` };
+    return opt;
+  });
+}
 
 const FALLBACK_CURRENCY_OPTIONS: PickerOption[] = [
   { value: LAST_RESORT_CURRENCY, label: currencySelectLabel(LAST_RESORT_CURRENCY) },
@@ -102,6 +121,16 @@ const TIMEZONE_OPTIONS: PickerOption[] = [
   { value: "America/New_York", label: "America/New_York (EST)" },
   { value: "Europe/London", label: "Europe/London (GMT)" },
 ];
+
+/** Some proxies return `{ data: [...] }` inside an already-unwrapped body — normalise to an array. */
+function coercePreferenceOptionRows(raw: unknown): PreferenceOptionRow[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as PreferenceOptionRow[];
+  if (typeof raw === "object" && raw !== null && "data" in raw && Array.isArray((raw as { data: unknown }).data)) {
+    return (raw as { data: PreferenceOptionRow[] }).data;
+  }
+  return [];
+}
 
 function mapPreferenceRowsToPicker(rows: PreferenceOptionRow[] | null | undefined): PickerOption[] {
   if (!rows?.length) return [];
@@ -208,7 +237,12 @@ function AppearanceSection() {
 export default function PreferencesScreen() {
   const { bundle, refresh: refreshConfigBundle } = useConfigBundle();
 
-  const [languageOptions, setLanguageOptions] = useState<PickerOption[]>(LANGUAGE_OPTIONS);
+  const [languageOptions, setLanguageOptions] = useState<PickerOption[]>(() =>
+    supportedLanguages.map(({ code, nativeName, name }) => ({
+      value: code,
+      label: `${nativeName} (${name})`,
+    })),
+  );
   const [currencyOptions, setCurrencyOptions] = useState<PickerOption[]>(FALLBACK_CURRENCY_OPTIONS);
   const [timezoneOptions, setTimezoneOptions] = useState<PickerOption[]>(TIMEZONE_OPTIONS);
 
@@ -275,10 +309,10 @@ export default function PreferencesScreen() {
         api.get<UserProfile>("/api/me/profile"),
       ]);
 
-      const langs = preferApiOrFallback(mapPreferenceRowsToPicker(langsRes.data), LANGUAGE_OPTIONS);
-      setLanguageOptions(langs);
+      const langsFromApi = mapPreferenceRowsToPicker(coercePreferenceOptionRows(langsRes.data));
+      setLanguageOptions(buildI18nAlignedLanguageOptions(langsFromApi));
 
-      const curFromApi = mapPreferenceRowsToPicker(curRes.data);
+      const curFromApi = mapPreferenceRowsToPicker(coercePreferenceOptionRows(curRes.data));
       setCurrencyOptions(
         preferApiOrFallback(
           curFromApi.map((o) => ({
@@ -289,17 +323,24 @@ export default function PreferencesScreen() {
         ),
       );
 
-      setTimezoneOptions(preferApiOrFallback(mapPreferenceRowsToPicker(tzRes.data), TIMEZONE_OPTIONS));
+      setTimezoneOptions(
+        preferApiOrFallback(mapPreferenceRowsToPicker(coercePreferenceOptionRows(tzRes.data)), TIMEZONE_OPTIONS),
+      );
 
       if (profileRes.error) {
         setError(getApiErrorMessage(profileRes.error, "Failed to load preferences"));
         return;
       }
-      if (profileRes.data) {
+      const rawProfile = profileRes.data as UserProfile | { data?: UserProfile } | null | undefined;
+      const profilePayload =
+        rawProfile && typeof rawProfile === "object" && "data" in rawProfile && rawProfile.data
+          ? rawProfile.data
+          : rawProfile;
+      if (profilePayload && typeof profilePayload === "object" && "preferred_language" in profilePayload) {
         setProfile({
-          preferred_language: profileRes.data.preferred_language ?? null,
-          preferred_currency: profileRes.data.preferred_currency ?? null,
-          timezone: profileRes.data.timezone ?? null,
+          preferred_language: profilePayload.preferred_language ?? null,
+          preferred_currency: profilePayload.preferred_currency ?? null,
+          timezone: profilePayload.timezone ?? null,
         });
       }
     } catch (e) {

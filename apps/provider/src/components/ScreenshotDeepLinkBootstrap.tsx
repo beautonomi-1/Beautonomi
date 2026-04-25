@@ -34,10 +34,10 @@ function resolveScreenshotHref(path: string, query: Record<string, string>): Hre
     case "tabs/more":
       return "/(app)/(tabs)/more";
     case "more/bookings":
-      return "/(app)/(tabs)/more/bookings";
+      return "/(app)/(tabs)/bookings";
     case "more/booking-detail": {
       if (!bookingId) return null;
-      return { pathname: "/(app)/(tabs)/more/bookings/[id]", params: { id: bookingId } };
+      return { pathname: "/(app)/(tabs)/bookings/[id]", params: { id: bookingId } };
     }
     case "more/service-form":
       return "/(app)/(tabs)/more/service-form";

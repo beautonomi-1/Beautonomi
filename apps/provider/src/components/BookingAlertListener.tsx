@@ -94,7 +94,7 @@ export function BookingAlertListener() {
           onPress: () => {
             alertSoundRef.current?.stop();
             router.push({
-              pathname: "/(app)/(tabs)/more/bookings/[id]",
+              pathname: "/(app)/(tabs)/bookings/[id]",
               params: { id: row.id },
             });
           },

@@ -579,7 +579,7 @@ export default function ClientDetailScreen() {
                 const customerId = client.customer_id || client.customer?.id;
                 if (!customerId) return;
                 router.push(
-                  `/(app)/(tabs)/more/bookings/new?clientId=${customerId}` as never,
+                  `/(app)/(tabs)/bookings/new?clientId=${customerId}` as never,
                 );
               }}
               style={twStyle(
@@ -826,7 +826,7 @@ export default function ClientDetailScreen() {
                     key={`${item.type}-${item.id}`}
                     onPress={() => {
                       if (isAppointment) {
-                        router.push(`/(app)/(tabs)/more/bookings/${item.id}` as never);
+                        router.push(`/(app)/(tabs)/bookings/${item.id}` as never);
                       }
                     }}
                     disabled={!isAppointment}

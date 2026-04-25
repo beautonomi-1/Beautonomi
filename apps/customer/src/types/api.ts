@@ -58,6 +58,13 @@ export interface ProviderLocation {
   working_hours?: unknown;
 }
 
+export interface PublicProfilePromotion {
+  code: string;
+  title: string;
+  description: string | null;
+  savings_label: string;
+}
+
 export interface PublicProviderDetail {
   id: string;
   slug: string;
@@ -99,6 +106,7 @@ export interface PublicProviderDetail {
     no_show_fee_amount?: number;
     currency?: string;
   };
+  profile_promotions?: PublicProfilePromotion[];
 }
 
 export interface ProviderService {
@@ -150,7 +158,7 @@ export interface AvailabilitySlot {
   staff_id?: string;
   is_available?: boolean;
   /**
-   * §Final-audit 2026-04: when the engine returned this slot from an
+   * Final-audit 2026-04: when the engine returned this slot from an
    * any-staff union, `available_staff_ids` carries the exact set of
    * professionals who were free. Forward this to the hold endpoint so
    * the server resolves to one of the same candidates the client saw —

@@ -58,6 +58,32 @@ function formatDate(date: string | null) {
   });
 }
 
+/** `estimated_delivery_date` is often a DATE (yyyy-mm-dd) without time. */
+function formatEstimatedDeliveryDate(date: string | null | undefined): string | null {
+  if (!date || typeof date !== "string") return null;
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? `${date.trim()}T12:00:00` : date.trim();
+  const parsed = new Date(iso);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  return parsed.toLocaleDateString(getTenantLocaleTag(), {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+async function openTrackingUrl(raw: string) {
+  const t = raw.trim();
+  if (!t) return;
+  const url = /^https?:\/\//i.test(t) ? t : `https://${t}`;
+  try {
+    const ok = await Linking.canOpenURL(url);
+    if (ok) await Linking.openURL(url);
+    else Alert.alert("Could not open link", "This device cannot open that URL.");
+  } catch {
+    Alert.alert("Could not open link", "Please copy the tracking number manually.");
+  }
+}
+
 function getTimelineIndex(status: string, fulfillmentType?: string): number {
   if (status === "cancelled" || status === "refunded") return -1;
   const timeline = getStatusTimeline(fulfillmentType);
@@ -207,7 +233,17 @@ export default function ProductOrderDetailScreen() {
                 return;
               }
               if (Platform.OS === "web") {
-                await Linking.openURL(signedUrl);
+                router.push({
+                  pathname: "/(app)/in-app-browser",
+                  params: {
+                    url: encodeURIComponent(signedUrl),
+                    title: encodeURIComponent("Receipt"),
+                  },
+                } as never);
+                return;
+              }
+              if (!FileSystem.cacheDirectory) {
+                Alert.alert("Download receipt", "File storage is not available on this device.");
                 return;
               }
               const fileUri = `${FileSystem.cacheDirectory}order_${order.order_number || order.id}.pdf`;
@@ -314,9 +350,7 @@ export default function ProductOrderDetailScreen() {
             })
           )}
 
-          {/* §Customer-audit 2026-04 (follow-up): when the provider records a
-              `tracking_url`, render the whole row as a tappable link. Otherwise
-              fall back to the existing number-only display. */}
+          {/* When the provider sets tracking_url, the row opens the carrier page; otherwise number-only. */}
           {order.tracking_number || order.tracking_url ? (
             (() => {
               const label = [
@@ -331,12 +365,8 @@ export default function ProductOrderDetailScreen() {
                   <TouchableOpacity
                     accessibilityRole="link"
                     accessibilityLabel={`Open tracking${order.carrier ? ` with ${order.carrier}` : ""}`}
-                    onPress={async () => {
-                      try {
-                        await Linking.openURL(order.tracking_url!);
-                      } catch {
-                        Alert.alert("Could not open link", "Please copy the tracking number manually.");
-                      }
+                    onPress={() => {
+                      void openTrackingUrl(order.tracking_url!);
                     }}
                     style={{
                       flexDirection: "row",
@@ -438,12 +468,19 @@ export default function ProductOrderDetailScreen() {
           {order.fulfillment_type === "delivery" && order.delivery_address && (
             <View style={{ flexDirection: "row" }}>
               <Ionicons name="location-outline" size={20} color="#6B7280" />
-              <View style={{ marginLeft: 10 }}>
+              <View style={{ marginLeft: 10, flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
                   {order.delivery_address.label ?? "Delivery Address"}
                 </Text>
                 <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-                  {order.delivery_address.address_line1}, {order.delivery_address.city}
+                  {order.delivery_address.address_line1}
+                  {order.delivery_address.address_line2 ? `, ${order.delivery_address.address_line2}` : ""}
+                </Text>
+                <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
+                  {[order.delivery_address.city, order.delivery_address.state, order.delivery_address.postal_code]
+                    .filter(Boolean)
+                    .join(", ")}
+                  {order.delivery_address.country ? ` · ${order.delivery_address.country}` : ""}
                 </Text>
               </View>
             </View>
@@ -451,12 +488,18 @@ export default function ProductOrderDetailScreen() {
           {order.fulfillment_type === "collection" && order.collection_location && (
             <View style={{ flexDirection: "row" }}>
               <Ionicons name="storefront-outline" size={20} color="#6B7280" />
-              <View style={{ marginLeft: 10 }}>
+              <View style={{ marginLeft: 10, flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
                   {order.collection_location.name}
                 </Text>
                 <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-                  {order.collection_location.address_line1}, {order.collection_location.city}
+                  {order.collection_location.address_line1}
+                  {order.collection_location.address_line2 ? `, ${order.collection_location.address_line2}` : ""}
+                </Text>
+                <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
+                  {[order.collection_location.city, order.collection_location.state, order.collection_location.postal_code]
+                    .filter(Boolean)
+                    .join(", ")}
                 </Text>
                 {order.collection_location.phone && (
                   <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
@@ -466,6 +509,20 @@ export default function ProductOrderDetailScreen() {
               </View>
             </View>
           )}
+          {(formatEstimatedDeliveryDate(order.estimated_delivery_date) || order.delivery_instructions?.trim()) &&
+          order.fulfillment_type === "delivery" ? (
+            <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: "#F3F4F6" }}>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginBottom: 6 }}>Delivery notes</Text>
+              {formatEstimatedDeliveryDate(order.estimated_delivery_date) ? (
+                <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                  Estimated delivery: {formatEstimatedDeliveryDate(order.estimated_delivery_date)}
+                </Text>
+              ) : null}
+              {order.delivery_instructions?.trim() ? (
+                <Text style={{ fontSize: 13, color: "#4B5563", marginTop: 6 }}>{order.delivery_instructions.trim()}</Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         {/* Payment summary — line items above + full breakdown */}

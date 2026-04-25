@@ -23,6 +23,8 @@ interface Location {
   name: string;
   address_line1: string;
   city: string;
+  /** When true, prefer this branch as the default filter (matches web “primary location”). */
+  is_primary?: boolean;
   /** 'salon' = clients can visit; 'base' = distance/travel only (mobile-only) */
   location_type?: "salon" | "base";
 }
@@ -85,6 +87,8 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
   const restoredRef = useRef(false);
   /** Incremented each time a new fetchProfile run starts; guards against stale concurrent responses. */
   const fetchIdRef = useRef(0);
+  /** Latest selected branch so fetchProfile can resolve location without a stale closure. */
+  const selectedLocationIdRef = useRef<string | null>(null);
 
   const setSelectedLocationId = useCallback((id: string | null) => {
     setSelectedLocationIdState(id);
@@ -94,6 +98,10 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       AsyncStorage.setItem(LOCATION_STORAGE_KEY, LOCATION_ALL_SENTINEL).catch(() => {});
     }
   }, []);
+
+  useEffect(() => {
+    selectedLocationIdRef.current = selectedLocationId;
+  }, [selectedLocationId]);
 
   const applyRoleFromResponse = useCallback((roleRes: Awaited<ReturnType<typeof api.get<{ role: string }>>>) => {
     if (roleRes.error) {
@@ -140,7 +148,7 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       const [profileRes, roleResFirst, storedId] = await Promise.all([
         api.get<ProviderProfile>("/api/provider/profile"),
         api.get<{ role: string }>("/api/me/role"),
-        restoredRef.current ? Promise.resolve<string | null>(null) : AsyncStorage.getItem(LOCATION_STORAGE_KEY),
+        AsyncStorage.getItem(LOCATION_STORAGE_KEY),
       ]);
 
       // Discard this response if a newer fetchProfile has already started.
@@ -197,13 +205,24 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
         }
         const locations = profileRes.data.locations ?? [];
         const validIds = locations.map((l) => l.id);
+        const validSet = new Set(validIds);
+        const prev = selectedLocationIdRef.current;
 
-        setSelectedLocationIdState((prev) => {
-          if (storedId === LOCATION_ALL_SENTINEL) return null;
-          if (storedId && validIds.includes(storedId)) return storedId;
-          if (prev && validIds.includes(prev)) return prev;
-          return null;
-        });
+        let nextLocationId: string | null = null;
+        if (storedId === LOCATION_ALL_SENTINEL) {
+          nextLocationId = null;
+        } else if (storedId && validSet.has(storedId)) {
+          nextLocationId = storedId;
+        } else if (prev && validSet.has(prev)) {
+          nextLocationId = prev;
+        } else if (validIds.length > 0) {
+          const primaryLoc = locations.find((l) => l.is_primary === true);
+          nextLocationId = primaryLoc?.id ?? validIds[0] ?? null;
+        } else {
+          nextLocationId = null;
+        }
+
+        setSelectedLocationId(nextLocationId);
         addBreadcrumb("Provider profile loaded", "provider", {
           providerId: profileRes.data.id,
         });
@@ -224,7 +243,7 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId);
       if (fetchIdRef.current === myId) setLoading(false);
     }
-  }, [applyRoleFromResponse, userId]);
+  }, [applyRoleFromResponse, userId, setSelectedLocationId]);
 
   useEffect(() => {
     if (!userId) {

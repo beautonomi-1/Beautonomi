@@ -38,6 +38,18 @@ interface Message {
   is_read?: boolean;
   read_at?: string | null;
 }
+type MessageAttachment = {
+  url?: string;
+  expired?: boolean;
+  type?: string;
+  name?: string;
+  offer_id?: string;
+  currency?: string;
+  price?: number;
+  duration_minutes?: number;
+  preferred_start_at?: string | null;
+  withdrawn?: boolean;
+};
 
 type MessagesListEnvelope = {
   messages?: unknown[];
@@ -104,6 +116,12 @@ function parseRealtimeUpdate(row: unknown): { id: string; is_read?: boolean; rea
 }
 
 type NormalizedAttachment = { url: string; expired?: boolean; name?: string; type?: string };
+type ConversationSummary = {
+  id: string;
+  provider_id?: string | null;
+  provider_slug?: string | null;
+  provider_name?: string | null;
+};
 
 function normalizeAttachmentForPreview(a: string | Record<string, unknown>): NormalizedAttachment {
   if (typeof a === "string") return { url: a };
@@ -170,9 +188,11 @@ export default function ChatScreen() {
   const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [conversationMeta, setConversationMeta] = useState<ConversationSummary | null>(null);
+  const [acceptingOfferId, setAcceptingOfferId] = useState<string | null>(null);
   const initialScrollDone = useRef(false);
   const flatListRef = useRef<FlatList>(null);
-  const { pickFromLibrary } = useImagePicker();
+  const { pickFromLibrary, pickFromCamera } = useImagePicker();
 
   const loadMessages = useCallback(
     async (cursor?: string) => {
@@ -296,6 +316,24 @@ export default function ChatScreen() {
     api.post(`/api/me/conversations/${id}/read`).catch(() => {});
   }, [id, user]);
 
+  // Resolve conversation metadata (provider id/slug/name) when opening by conversation id.
+  useEffect(() => {
+    if (!id || providerId) return;
+    let cancelled = false;
+    (async () => {
+      const res = await api.get<ConversationSummary[] | { data?: ConversationSummary[] }>("/api/me/conversations");
+      if (cancelled || res.error) return;
+      const list = Array.isArray(res.data)
+        ? res.data
+        : ((res.data as { data?: ConversationSummary[] })?.data ?? []);
+      const found = list.find((c) => c.id === id) ?? null;
+      if (!cancelled) setConversationMeta(found);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, providerId]);
+
   // Realtime subscription
   useEffect(() => {
     if (!id) return;
@@ -417,11 +455,11 @@ export default function ChatScreen() {
     }
   };
 
-  const sendImage = async () => {
+  const sendImage = async (source: "camera" | "library") => {
     if (!id || sending || uploading) return;
     setUploading(true);
     try {
-      const result = await pickFromLibrary();
+      const result = source === "camera" ? await pickFromCamera() : await pickFromLibrary();
       if (!result) {
         setUploading(false);
         return;
@@ -453,6 +491,59 @@ export default function ChatScreen() {
     }
   };
 
+  const chooseAttachmentSource = () => {
+    if (Platform.OS === "web") {
+      void sendImage("library");
+      return;
+    }
+    Alert.alert("Send photo", "Choose how you want to attach an image.", [
+      { text: "Camera", onPress: () => void sendImage("camera") },
+      { text: "Photo Library", onPress: () => void sendImage("library") },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+  const acceptCustomOffer = useCallback(
+    async (offerId: string, paymentOption: "full" | "deposit") => {
+      setAcceptingOfferId(offerId);
+      try {
+        const res = await api.post<{ paymentUrl?: string; payment_url?: string }>(
+          `/api/me/custom-offers/${offerId}/accept`,
+          { payment_option: paymentOption }
+        );
+        if (res.error) {
+          Alert.alert("Offer action failed", getApiErrorMessage(res.error, "Could not start payment."));
+          return;
+        }
+        const url = res.data?.paymentUrl || res.data?.payment_url;
+        if (!url) {
+          Alert.alert("Offer action failed", "No payment link was returned.");
+          return;
+        }
+        router.push({
+          pathname: "/(app)/in-app-browser",
+          params: { url: encodeURIComponent(url), title: "Complete payment" },
+        });
+      } catch (e) {
+        Alert.alert("Offer action failed", e instanceof Error ? e.message : "Could not start payment.");
+      } finally {
+        setAcceptingOfferId(null);
+      }
+    },
+    []
+  );
+
+  const openAcceptOfferOptions = useCallback(
+    (offerId: string) => {
+      Alert.alert("Accept offer", "How would you like to pay?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Pay Deposit", onPress: () => void acceptCustomOffer(offerId, "deposit") },
+        { text: "Pay in Full", onPress: () => void acceptCustomOffer(offerId, "full") },
+      ]);
+    },
+    [acceptCustomOffer]
+  );
+
   const formatTime = (iso: string) =>
     (() => {
       const parsed = new Date(iso);
@@ -477,20 +568,30 @@ export default function ChatScreen() {
     return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   };
 
-  type ListItem = { type: "date"; key: string; label: string } | { type: "message"; key: string; message: Message };
+  const currentUserId = user?.id ?? null;
+
+  type ListItem =
+    | { type: "date"; key: string; label: string }
+    | { type: "unread"; key: string }
+    | { type: "message"; key: string; message: Message };
   const listItems = useMemo((): ListItem[] => {
     const out: ListItem[] = [];
     let lastDate = "";
+    let unreadInserted = false;
     for (const m of messages) {
       const dateKey = new Date(m.created_at).toDateString();
       if (dateKey !== lastDate) {
         lastDate = dateKey;
         out.push({ type: "date", key: `date-${dateKey}`, label: formatDateLabel(m.created_at) });
       }
+      if (!unreadInserted && currentUserId && m.sender_id !== currentUserId && m.is_read === false) {
+        out.push({ type: "unread", key: `unread-${m.id}` });
+        unreadInserted = true;
+      }
       out.push({ type: "message", key: m.id, message: m });
     }
     return out;
-  }, [messages]);
+  }, [currentUserId, messages]);
 
   if (authLoading) {
     return (
@@ -515,8 +616,10 @@ export default function ChatScreen() {
   // the first non-self sender's `sender_name` as a reasonable proxy.
   const partnerFromMessages =
     messages.find((m) => m.sender_id && m.sender_id !== user.id)?.sender_name ?? null;
+  const resolvedProviderId = providerId || conversationMeta?.provider_id || null;
+  const resolvedProviderSlug = conversationMeta?.provider_slug || null;
   const chatTitle =
-    providerName || partnerFromMessages || "Chat";
+    providerName || conversationMeta?.provider_name || partnerFromMessages || "Chat";
 
   if (resolveError && messages.length === 0) {
     return (
@@ -554,6 +657,58 @@ export default function ChatScreen() {
           </View>
         ) : (
           <>
+            {(resolvedProviderId || resolvedProviderSlug) && (
+              <View
+                style={{
+                  marginHorizontal: contentPadding,
+                  marginTop: 8,
+                  marginBottom: 4,
+                  padding: 10,
+                  borderRadius: 12,
+                  backgroundColor: Colors.gray[50],
+                  borderWidth: 1,
+                  borderColor: Colors.gray[100],
+                }}
+              >
+                <Text style={{ color: Colors.gray[700], fontSize: 13, marginBottom: 8 }}>
+                  Manage requests and profile details for this provider.
+                </Text>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {resolvedProviderSlug ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(app)/partner-profile",
+                          params: { slug: resolvedProviderSlug, provider_id: resolvedProviderId || undefined },
+                        })
+                      }
+                      style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[200] }}
+                    >
+                      <Text style={{ color: Colors.gray[800], fontSize: 12, fontWeight: "600" }}>View Profile</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {resolvedProviderId ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(app)/custom-request-create",
+                          params: { provider_id: resolvedProviderId },
+                        })
+                      }
+                      style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: Colors.primary }}
+                    >
+                      <Text style={{ color: Colors.white, fontSize: 12, fontWeight: "600" }}>New Request</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity
+                    onPress={() => router.push("/(app)/account-settings/custom-requests")}
+                    style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[200] }}
+                  >
+                    <Text style={{ color: Colors.gray[800], fontSize: 12, fontWeight: "600" }}>My Requests</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
             <FlatList
               {...chatFlatListPerf}
               ref={flatListRef}
@@ -593,14 +748,36 @@ export default function ChatScreen() {
                     </View>
                   );
                 }
+                if (item.type === "unread") {
+                  return (
+                    <View style={{ alignItems: "center", marginVertical: 10 }}>
+                      <View style={{ backgroundColor: "#FEF3C7", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, borderWidth: 1, borderColor: "#FCD34D" }}>
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: "#92400E" }}>Unread messages</Text>
+                      </View>
+                    </View>
+                  );
+                }
                 const msg = item.message;
                 const isMe = msg.sender_id === user.id;
                 type Att = NonNullable<Message["attachments"]>[number];
                 const attachmentItems: NormalizedAttachment[] = Array.isArray(msg.attachments)
-                  ? msg.attachments.map((a: Att) =>
-                      normalizeAttachmentForPreview(typeof a === "string" ? a : (a as Record<string, unknown>)),
-                    )
+                  ? msg.attachments
+                      .filter((a: Att) => {
+                        if (typeof a === "string") return true;
+                        const t = (a as Record<string, unknown>).type;
+                        return t !== "custom_offer" && t !== "custom_request";
+                      })
+                      .map((a: Att) =>
+                        normalizeAttachmentForPreview(typeof a === "string" ? a : (a as Record<string, unknown>)),
+                      )
                   : [];
+                const attachmentRecords: MessageAttachment[] = Array.isArray(msg.attachments)
+                  ? msg.attachments
+                      .map((a: Att) => (typeof a === "string" ? null : (a as MessageAttachment)))
+                      .filter((a: MessageAttachment | null): a is MessageAttachment => !!a)
+                  : [];
+                const customOfferAttachment = attachmentRecords.find((a) => a.type === "custom_offer");
+                const customRequestAttachment = attachmentRecords.find((a) => a.type === "custom_request");
                 const hasRenderableAttachments = attachmentItems.some((a) => a.expired || a.url);
                 return (
                   <View style={{ marginBottom: 12, alignItems: isMe ? "flex-end" : "flex-start" }}>
@@ -747,6 +924,77 @@ export default function ChatScreen() {
                           {msg.content}
                         </Text>
                       ) : null}
+                      {customOfferAttachment ? (
+                        <View
+                          style={{
+                            marginTop: msg.content ? 10 : 0,
+                            borderRadius: 12,
+                            padding: 12,
+                            backgroundColor: customOfferAttachment.withdrawn ? "rgba(107,114,128,0.24)" : "rgba(15,52,96,0.22)",
+                            borderWidth: 1,
+                            borderColor: customOfferAttachment.withdrawn ? "rgba(156,163,175,0.6)" : "rgba(255,255,255,0.18)",
+                          }}
+                        >
+                          <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[700], fontSize: 11, fontWeight: "700", letterSpacing: 0.6 }}>
+                            CUSTOM OFFER
+                          </Text>
+                          <Text style={{ color: isMe ? Colors.white : Colors.gray[900], marginTop: 6, fontSize: 18, fontWeight: "700" }}>
+                            {(customOfferAttachment.currency || "")} {typeof customOfferAttachment.price === "number" ? customOfferAttachment.price.toFixed(2) : "—"}
+                          </Text>
+                          <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[700], fontSize: 12, marginTop: 2 }}>
+                            {customOfferAttachment.duration_minutes ? `${customOfferAttachment.duration_minutes} min` : "Duration not set"}
+                          </Text>
+                          {customOfferAttachment.withdrawn ? (
+                            <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : "#B91C1C", fontSize: 12, marginTop: 8, fontWeight: "600" }}>
+                              This offer was withdrawn.
+                            </Text>
+                          ) : null}
+                          {!isMe && customOfferAttachment.offer_id && !customOfferAttachment.withdrawn ? (
+                            <TouchableOpacity
+                              onPress={() => openAcceptOfferOptions(customOfferAttachment.offer_id!)}
+                              disabled={acceptingOfferId === customOfferAttachment.offer_id}
+                              style={{
+                                marginTop: 10,
+                                borderRadius: 10,
+                                backgroundColor: Colors.primary,
+                                alignItems: "center",
+                                justifyContent: "center",
+                                paddingVertical: 10,
+                              }}
+                            >
+                              {acceptingOfferId === customOfferAttachment.offer_id ? (
+                                <ActivityIndicator size="small" color={Colors.white} />
+                              ) : (
+                                <Text style={{ color: Colors.white, fontSize: 13, fontWeight: "700" }}>Accept & Pay</Text>
+                              )}
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      ) : null}
+                      {customRequestAttachment ? (
+                        <View
+                          style={{
+                            marginTop: msg.content ? 10 : 0,
+                            borderRadius: 12,
+                            padding: 10,
+                            backgroundColor: isMe ? "rgba(255,255,255,0.14)" : Colors.gray[50],
+                            borderWidth: 1,
+                            borderColor: isMe ? "rgba(255,255,255,0.3)" : Colors.gray[200],
+                          }}
+                        >
+                          <Text style={{ color: isMe ? Colors.white : Colors.gray[900], fontSize: 12, fontWeight: "700" }}>
+                            Custom request
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => router.push("/(app)/account-settings/custom-requests")}
+                            style={{ marginTop: 8, alignSelf: "flex-start" }}
+                          >
+                            <Text style={{ color: isMe ? Colors.white : Colors.primary, fontSize: 12, fontWeight: "600" }}>
+                              Open Custom Requests
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
                       <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 4, justifyContent: "flex-end" }}>
                         <Text style={{ fontSize: 11, color: isMe ? "rgba(255,255,255,0.7)" : Colors.gray[500] }}>
                           {formatTime(msg.created_at)}
@@ -776,7 +1024,7 @@ export default function ChatScreen() {
               }}
             >
               <TouchableOpacity
-                onPress={sendImage}
+                onPress={chooseAttachmentSource}
                 disabled={sending || uploading}
                 style={{ marginRight: 8, width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center" }}
               >

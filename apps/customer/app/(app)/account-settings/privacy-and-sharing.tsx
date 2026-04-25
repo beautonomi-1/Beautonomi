@@ -143,7 +143,7 @@ export default function PrivacyAndSharingScreen() {
           <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
             <Text
               style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginRight: 16 }}
-              onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/privacy-policy`).catch(() => {})}
+              onPress={() => router.push("/(app)/privacy-policy")}
             >
               Full Privacy Policy
             </Text>

@@ -146,25 +146,24 @@ export default function TabsLayout() {
         }}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
-            // §Provider-launch (audit 2026-04): previously we tried to pop
-            // the nested "more" stack via router.replace("/(app)/(tabs)/more")
-            // whenever the More tab was tapped while deeper pages (e.g. a
-            // booking detail under /more/bookings/[id]) were in the stack.
-            // Expo Router treats the same target path as a no-op, so the
-            // user stayed on the inner screen — the exact "clicking More
-            // keeps me on booking details" bug. Dispatching
-            // `StackActions.popToTop()` on the nested navigator reliably
-            // unwinds back to the More hub from any depth.
+            // More hub: pop nested stack when re-tapping More, and when
+            // switching from another tab always replace to the hub so a stale
+            // inner screen (e.g. booking detail) is not shown instead of the menu.
             const state = navigation.getState();
             const moreRoute = state.routes.find(
               (r: { name: string }) => r.name === "more",
             ) as { state?: { index?: number; key?: string } } | undefined;
             const st = moreRoute?.state;
             const alreadyOnMoreTab = state.routes[state.index]?.name === "more";
+
+            if (!alreadyOnMoreTab) {
+              e.preventDefault();
+              router.replace("/(app)/(tabs)/more" as never);
+              return;
+            }
+
             if (typeof st?.index === "number" && st.index > 0) {
-              if (alreadyOnMoreTab) {
-                e.preventDefault();
-              }
+              e.preventDefault();
               if (st.key) {
                 navigation.dispatch({
                   ...StackActions.popToTop(),

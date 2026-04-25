@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase.from("product_return_requests")
       .select(
-        `*, order:product_orders(order_number, total_amount, provider:providers(id, business_name))`,
+        `*, order:product_orders(id, order_number, currency, total_amount, provider:providers(id, business_name))`,
       )
       .eq("customer_id", user.id)
       .order("created_at", { ascending: false });

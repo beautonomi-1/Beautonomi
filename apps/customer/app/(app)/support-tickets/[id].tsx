@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   StyleSheet,
+  Linking,
 } from "react-native";
 import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -20,6 +21,8 @@ import { Colors } from "@/constants/colors";
 import { trackSupportTicketDetailView, trackSupportTicketReply } from "@/lib/analytics";
 import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useImagePicker } from "@/hooks/useImagePicker";
+import { appendFormDataFileNative } from "@beautonomi/utils";
 
 type Message = {
   id: string;
@@ -29,6 +32,14 @@ type Message = {
   user_id: string;
   author_name?: string | null;
   is_mine?: boolean;
+  attachments?: SupportAttachment[];
+};
+
+type SupportAttachment = {
+  url: string;
+  name: string;
+  type: string;
+  size?: number;
 };
 
 type Ticket = {
@@ -83,8 +94,11 @@ export default function SupportTicketDetailScreen() {
   const [reply, setReply] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<SupportAttachment[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { pickFromLibrary } = useImagePicker();
 
   const loadTicket = useCallback(async () => {
     if (!id) return;
@@ -130,16 +144,20 @@ export default function SupportTicketDetailScreen() {
 
   const handleReply = async () => {
     const msg = reply.trim();
-    if (!msg || !id) return;
+    if ((!msg && pendingAttachments.length === 0) || !id) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSending(true);
     try {
-      const res = await api.post(`/api/me/support-tickets/${id}/messages`, { message: msg });
+      const res = await api.post(`/api/me/support-tickets/${id}/messages`, {
+        message: msg,
+        attachments: pendingAttachments,
+      });
       if (res.error) {
         Alert.alert("Could not send", getApiErrorMessage(res.error, "Could not send reply"));
         return;
       }
       setReply("");
+      setPendingAttachments([]);
       trackSupportTicketReply(id);
       await loadTicket();
     } catch (e) {
@@ -147,6 +165,45 @@ export default function SupportTicketDetailScreen() {
     } finally {
       setSending(false);
     }
+  };
+
+  const attachImage = async () => {
+    if (!id || uploadingAttachment || pendingAttachments.length >= 6) return;
+    setUploadingAttachment(true);
+    try {
+      const picked = await pickFromLibrary();
+      if (!picked) return;
+      const formData = new FormData();
+      appendFormDataFileNative(formData, "files", {
+        uri: picked.uri,
+        name: picked.fileName || "support-image.jpg",
+        type: picked.mimeType || "image/jpeg",
+      });
+      const res = await api.fetch<{ attachments?: SupportAttachment[] }>(
+        `/api/me/support-tickets/${id}/upload`,
+        { method: "POST", body: formData },
+      );
+      if (res.error) {
+        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload attachment"));
+        return;
+      }
+      const attachments = res.data?.attachments ?? [];
+      if (attachments.length === 0) {
+        Alert.alert("Upload failed", "The file uploaded but no attachment was returned.");
+        return;
+      }
+      setPendingAttachments((prev) => [...prev, ...attachments].slice(0, 6));
+    } catch (e) {
+      Alert.alert("Upload failed", e instanceof Error ? e.message : "Could not upload attachment");
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const openAttachment = (attachment: SupportAttachment) => {
+    Linking.openURL(attachment.url).catch(() => {
+      Alert.alert("Could not open", "This attachment could not be opened on your device.");
+    });
   };
 
   if (!id) {
@@ -246,6 +303,22 @@ export default function SupportTicketDetailScreen() {
                   ]}
                 >
                   <Text style={[styles.bubbleText, isOwn && styles.bubbleTextOwn]}>{m.message}</Text>
+                  {Array.isArray(m.attachments) && m.attachments.length > 0 && (
+                    <View style={styles.attachmentList}>
+                      {m.attachments.map((attachment, index) => (
+                        <TouchableOpacity
+                          key={`${m.id}-att-${index}`}
+                          onPress={() => openAttachment(attachment)}
+                          style={[styles.attachmentPill, isOwn && styles.attachmentPillOwn]}
+                          accessibilityRole="button"
+                        >
+                          <Text style={[styles.attachmentText, isOwn && styles.attachmentTextOwn]} numberOfLines={1}>
+                            📎 {attachment.name || `Attachment ${index + 1}`}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
                   <Text style={[styles.bubbleTime, isOwn && styles.bubbleTimeOwn]}>
                     {formatDateTimeSafe(m.created_at)}
                   </Text>
@@ -266,10 +339,42 @@ export default function SupportTicketDetailScreen() {
                 multiline
                 editable={!sending}
               />
+              {pendingAttachments.length > 0 && (
+                <View style={styles.pendingAttachments}>
+                  {pendingAttachments.map((attachment, index) => (
+                    <View key={`${attachment.url}-${index}`} style={styles.pendingAttachment}>
+                      <Text style={styles.pendingAttachmentText} numberOfLines={1}>
+                        {attachment.name || `Attachment ${index + 1}`}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => setPendingAttachments((prev) => prev.filter((_, i) => i !== index))}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.pendingRemove}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <TouchableOpacity
+                onPress={attachImage}
+                disabled={sending || uploadingAttachment || pendingAttachments.length >= 6}
+                style={styles.attachBtn}
+                accessibilityRole="button"
+              >
+                {uploadingAttachment ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <Text style={styles.attachBtnText}>Attach image</Text>
+                )}
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleReply}
-                disabled={sending || !reply.trim()}
-                style={[styles.sendBtn, (sending || !reply.trim()) && styles.sendBtnDisabled]}
+                disabled={sending || (!reply.trim() && pendingAttachments.length === 0)}
+                style={[
+                  styles.sendBtn,
+                  (sending || (!reply.trim() && pendingAttachments.length === 0)) && styles.sendBtnDisabled,
+                ]}
                 accessibilityRole="button"
               >
                 <Text style={styles.sendBtnText}>{sending ? "Sending…" : "Send reply"}</Text>
@@ -328,6 +433,11 @@ const styles = StyleSheet.create({
   bubbleRadiusOther: { borderRadius: 16, borderBottomLeftRadius: 4 },
   bubbleText: { fontSize: 14, color: "#111827", lineHeight: 20 },
   bubbleTextOwn: { color: "#fff" },
+  attachmentList: { marginTop: 8, gap: 6 },
+  attachmentPill: { borderRadius: 10, backgroundColor: "#E5E7EB", paddingHorizontal: 10, paddingVertical: 7 },
+  attachmentPillOwn: { backgroundColor: "rgba(255,255,255,0.18)" },
+  attachmentText: { fontSize: 12, fontWeight: "600", color: Colors.gray[700] },
+  attachmentTextOwn: { color: "#fff" },
   bubbleTime: { marginTop: 4, fontSize: 10, color: "#9CA3AF" },
   bubbleTimeOwn: { color: "rgba(255,255,255,0.65)", textAlign: "right" },
   replyBlock: { marginTop: 16 },
@@ -344,6 +454,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.gray[900],
   },
+  pendingAttachments: { marginBottom: 10, gap: 6 },
+  pendingAttachment: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: 10,
+    backgroundColor: Colors.gray[100],
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  pendingAttachmentText: { flex: 1, marginRight: 8, fontSize: 12, color: Colors.gray[700] },
+  pendingRemove: { fontSize: 12, fontWeight: "700", color: "#DC2626" },
+  attachBtn: {
+    marginBottom: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  attachBtnText: { fontSize: 14, fontWeight: "600", color: Colors.primary },
   sendBtn: {
     borderRadius: 12,
     backgroundColor: Colors.primary,

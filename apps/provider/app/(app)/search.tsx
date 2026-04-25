@@ -69,7 +69,7 @@ export default function SearchScreen() {
       if (s.type === "client") {
         router.push(`/(app)/(tabs)/more/clients/${s.id}` as never);
       } else if (s.type === "appointment") {
-        router.push(`/(app)/(tabs)/more/bookings/${s.id}` as never);
+        router.push(`/(app)/(tabs)/bookings/${s.id}` as never);
       } else if (s.type === "service") {
         router.push(`/(app)/(tabs)/more/catalogue/${s.id}` as never);
       }

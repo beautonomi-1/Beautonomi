@@ -6,5 +6,5 @@ export type ReturnRequestListItem = {
   refund_amount: number;
   status: string;
   created_at: string;
-  order: { order_number: string; provider: { business_name: string } };
+  order: { id?: string; order_number: string; currency?: string | null; provider: { business_name: string } };
 };

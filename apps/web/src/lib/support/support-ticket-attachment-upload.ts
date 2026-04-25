@@ -75,7 +75,6 @@ export async function uploadSupportTicketFiles(
       const { error: createError } = await client.storage.createBucket(MESSAGE_ATTACHMENTS_BUCKET, {
         public: true,
         fileSizeLimit: 52428800,
-        allowedMimeTypes: allowedTypes,
       });
       if (createError) {
         const msg = createError.message || "";

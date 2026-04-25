@@ -1207,7 +1207,7 @@ export default function NewBookingScreen() {
       paymentMethod === "card" && cardChargeTotal > 0 && newBookingId.length > 0;
 
     const navigateYoco = () => {
-      router.replace(`/(app)/(tabs)/more/bookings/${newBookingId}?collectYoco=1` as never);
+      router.replace(`/(app)/(tabs)/bookings/${newBookingId}?collectYoco=1` as never);
     };
 
     if (goYoco) {

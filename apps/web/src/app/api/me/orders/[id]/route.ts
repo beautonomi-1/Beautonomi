@@ -27,7 +27,7 @@ export async function GET(
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    // §Customer-audit 2026-04: the admin client is used to bypass RLS on
+    // Customer-audit 2026-04: the admin client is used to bypass RLS on
     // the deeply-embedded `product_variants` (deactivated variants were
     // breaking the whole query). Because the row is fetched without a
     // `customer_id` filter first, we still enforce ownership below and

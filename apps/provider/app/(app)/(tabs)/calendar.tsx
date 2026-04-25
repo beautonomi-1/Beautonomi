@@ -49,6 +49,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import type { ColorByMode } from "@/hooks/useCalendarPreferences";
 import { CalendarPreferencesModal } from "@/components/calendar/CalendarPreferencesModal";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { Avatar } from "@/components/ui/Avatar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -114,12 +115,14 @@ interface Booking {
   customers: { full_name: string; phone: string } | null;
   locations: { id: string; name: string } | null;
   is_group_booking?: boolean;
+  group_booking_id?: string | null;
   group_booking_ref?: string | null;
 }
 
 interface StaffMember {
   id: string;
   name: string;
+  avatar_url?: string | null;
   working_hours?: Record<string, { open?: string; close?: string; open_time?: string; close_time?: string; closed?: boolean; is_open?: boolean }> | null;
 }
 
@@ -1039,7 +1042,7 @@ function CalendarScreenBody() {
   }, [deepLinkDate]);
   useEffect(() => {
     if (typeof searchParams.booking_id === "string" && searchParams.booking_id) {
-      router.push(`/(app)/(tabs)/more/bookings/${searchParams.booking_id}` as never);
+      router.push(`/(app)/(tabs)/bookings/${searchParams.booking_id}` as never);
     }
   }, [searchParams.booking_id, router]);
   const [viewMode, setViewMode] = useState<ViewMode>("day");
@@ -1697,9 +1700,10 @@ function CalendarScreenBody() {
     if (staffFilter !== "all") return null;
     if (staffList.length <= 1) return null;
 
-    const cols: { staffId: string; staffName: string; bookings: Booking[] }[] = staffList.map((s) => ({
+    const cols: { staffId: string; staffName: string; staffAvatarUrl?: string | null; bookings: Booking[] }[] = staffList.map((s) => ({
       staffId: s.id,
       staffName: s.name,
+      staffAvatarUrl: s.avatar_url ?? null,
       bookings: bookingsByStaffId.byStaffId.get(s.id) ?? [],
     }));
 
@@ -1707,6 +1711,7 @@ function CalendarScreenBody() {
       cols.push({
         staffId: "unassigned",
         staffName: t("provider.calendarScreen.staffColumn.unassigned"),
+        staffAvatarUrl: null,
         bookings: bookingsByStaffId.unassigned,
       });
     }
@@ -1783,12 +1788,22 @@ function CalendarScreenBody() {
       params.set("location_id", locationFilter);
     }
     router.push(
-      `/(app)/(tabs)/more/bookings/new?${params.toString()}` as never,
+      `/(app)/(tabs)/bookings/new?${params.toString()}` as never,
     );
   }
 
-  function handleTapBooking(bookingId: string) {
-    router.push(`/(app)/(tabs)/more/bookings/${bookingId}` as never);
+  function handleTapBooking(booking: Booking) {
+    const groupId = typeof booking.group_booking_id === "string" ? booking.group_booking_id : null;
+    if (booking.is_group_booking && groupId) {
+      router.push(
+        {
+          pathname: "/(app)/(tabs)/more/group-bookings",
+          params: { open_group_id: groupId },
+        } as never,
+      );
+      return;
+    }
+    router.push(`/(app)/(tabs)/bookings/${booking.id}` as never);
   }
 
   function handleLongPressBooking(booking: Booking) {
@@ -1814,11 +1829,11 @@ function CalendarScreenBody() {
         (buttonIndex) => {
           if (buttonIndex === 0) return;
           if (buttonIndex === 1) {
-            handleTapBooking(booking.id);
+            handleTapBooking(booking);
             return;
           }
           if (buttonIndex === 2) {
-            router.push(`/(app)/(tabs)/more/bookings/${booking.id}?focusPayment=1` as never);
+            router.push(`/(app)/(tabs)/bookings/${booking.id}?focusPayment=1` as never);
             return;
           }
           const actionKey = availableActions[buttonIndex - 3];
@@ -2376,6 +2391,7 @@ function CalendarScreenBody() {
 
     if (canDrag) {
       const longPress = Gesture.LongPress()
+        .runOnJS(true)
         .minDuration(400)
         .onStart(() => {
           draggingRef.current = true;
@@ -2386,6 +2402,7 @@ function CalendarScreenBody() {
         });
 
       const pan = Gesture.Pan()
+        .runOnJS(true)
         .onUpdate((e) => {
           if (draggingRef.current) {
             setDragPosition({ x: e.absoluteX - colWidth / 2, y: e.absoluteY - 24 });
@@ -2415,7 +2432,7 @@ function CalendarScreenBody() {
           <TouchableOpacity
             style={blockStyle}
             activeOpacity={0.7}
-            onPress={() => !draggingRef.current && handleTapBooking(booking.id)}
+            onPress={() => !draggingRef.current && handleTapBooking(booking)}
             onLongPress={() => {
               if (!draggingRef.current) handleLongPressBooking(booking);
             }}
@@ -2437,7 +2454,7 @@ function CalendarScreenBody() {
         key={booking.id}
         style={blockStyle}
         activeOpacity={0.7}
-        onPress={() => handleTapBooking(booking.id)}
+        onPress={() => handleTapBooking(booking)}
         onLongPress={() => handleLongPressBooking(booking)}
         delayLongPress={400}
         accessibilityRole="button"
@@ -3156,7 +3173,6 @@ function CalendarScreenBody() {
                   >
                     <View style={{ flexDirection: "row" }}>
                       {staffColumns.map((col) => {
-                        const initials = col.staffName.split(" ").filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
                         return (
                           <View key={col.staffId} style={{ width: dayColumnWidth, borderRightWidth: 1, borderRightColor: "#e5e7eb" }}>
                             <TouchableOpacity
@@ -3164,8 +3180,8 @@ function CalendarScreenBody() {
                               onPress={() => handleStaffHeaderPress(col)}
                               activeOpacity={0.7}
                             >
-                              <View style={{ marginBottom: 2, height: 24, width: 24, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: TEAL_ACCENT }}>
-                                <Text style={{ fontSize: 9, fontWeight: "700", color: DARK_HEADER }}>{initials}</Text>
+                              <View style={{ marginBottom: 2 }}>
+                                <Avatar name={col.staffName} imageUrl={col.staffAvatarUrl} size="sm" />
                               </View>
                               <Text style={{ fontSize: 10, fontWeight: "600", color: Colors.white }} numberOfLines={1}>{col.staffName.split(" ")[0]}</Text>
                               <Text style={{ fontSize: 9, color: TEAL_ACCENT }}>
@@ -3353,7 +3369,7 @@ function CalendarScreenBody() {
                 onPress={() => {
                   const b = androidBookingMenu;
                   setAndroidBookingMenu(null);
-                  handleTapBooking(b.id);
+                  handleTapBooking(b);
                 }}
               >
                 <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }}>
@@ -3365,7 +3381,7 @@ function CalendarScreenBody() {
                 onPress={() => {
                   const b = androidBookingMenu;
                   setAndroidBookingMenu(null);
-                  router.push(`/(app)/(tabs)/more/bookings/${b.id}?focusPayment=1` as never);
+                  router.push(`/(app)/(tabs)/bookings/${b.id}?focusPayment=1` as never);
                 }}
               >
                 <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }}>
@@ -3487,7 +3503,18 @@ function CalendarScreenBody() {
                 color: "#ec4899",
                 onPress: () => {
                   setFabOpen(false);
-                  router.push("/(app)/(tabs)/more/group-bookings" as never);
+                  const params = new URLSearchParams();
+                  params.set("default_date", format(selectedDate, "yyyy-MM-dd"));
+                  params.set("default_time", format(new Date(), "HH:mm"));
+                  if (staffFilter !== "all") {
+                    params.set("default_staff_id", staffFilter);
+                  } else if (selectedStaff?.id) {
+                    params.set("default_staff_id", selectedStaff.id);
+                  }
+                  if (locationFilter !== "all") {
+                    params.set("default_location_id", locationFilter);
+                  }
+                  router.push(`/(app)/(tabs)/more/group-bookings?${params.toString()}` as never);
                 },
               },
             ].map((action, index) => (

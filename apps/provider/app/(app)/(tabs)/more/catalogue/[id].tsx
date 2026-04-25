@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiMutation, useApiPost } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -44,9 +45,27 @@ interface ServiceDetail {
   at_home_radius_km?: number;
   at_home_price_adjustment?: number;
   provider_categories?: { name: string; color: string; description: string }[];
+  provider_category_id?: string | null;
+  team_member_ids?: string[] | null;
   image_url?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface ServiceCategoryRow {
+  id: string;
+  name: string;
+  color?: string | null;
+}
+
+interface CategoriesApiShape {
+  own_categories?: ServiceCategoryRow[];
+}
+
+interface StaffMemberRow {
+  id: string;
+  name: string;
+  email?: string;
 }
 
 interface AddOn {
@@ -78,6 +97,8 @@ interface FormState {
   at_home_price_adjustment: string;
   at_home_radius_km: string;
   is_active: boolean;
+  category_id: string;
+  team_member_ids: string[];
 }
 
 function initForm(service: ServiceDetail): FormState {
@@ -92,6 +113,8 @@ function initForm(service: ServiceDetail): FormState {
     at_home_price_adjustment: String(service.at_home_price_adjustment ?? 0),
     at_home_radius_km: String(service.at_home_radius_km ?? 0),
     is_active: service.is_active,
+    category_id: service.provider_category_id ?? "",
+    team_member_ids: Array.isArray(service.team_member_ids) ? [...service.team_member_ids] : [],
   };
 }
 
@@ -138,6 +161,52 @@ export default function ServiceDetailScreen() {
   >(`/api/provider/services/${id}/variants`);
   const { execute: updateVariant, loading: updatingVariant } = useApiMutation("patch");
   const { execute: reorderVariant } = useApiMutation("patch");
+
+  const { data: categoriesRes, refresh: refreshCategories } = useApi<
+    CategoriesApiShape | ServiceCategoryRow[] | { data?: CategoriesApiShape }
+  >("/api/provider/categories");
+  const { data: staffData } = useApi<StaffMemberRow[] | { data?: StaffMemberRow[] }>(
+    "/api/provider/staff",
+  );
+  const { execute: createCategoryApi } = useApiPost<Record<string, string>, { id?: string }>(
+    "/api/provider/categories",
+  );
+
+  const categories = useMemo<ServiceCategoryRow[]>(() => {
+    if (!categoriesRes) return [];
+    if (Array.isArray(categoriesRes)) return categoriesRes;
+    const wrapped = categoriesRes as { data?: CategoriesApiShape };
+    if (wrapped.data?.own_categories) return wrapped.data.own_categories;
+    const direct = categoriesRes as CategoriesApiShape;
+    return Array.isArray(direct.own_categories) ? direct.own_categories : [];
+  }, [categoriesRes]);
+
+  const staff = useMemo<StaffMemberRow[]>(() => {
+    if (!staffData) return [];
+    if (Array.isArray(staffData)) return staffData;
+    const w = staffData as { data?: StaffMemberRow[] };
+    return Array.isArray(w.data) ? w.data : [];
+  }, [staffData]);
+
+  const handleCreateCategory = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return null;
+      const { data, error } = await createCategoryApi({ name: trimmed });
+      if (error) {
+        Alert.alert("Error", error);
+        return null;
+      }
+      await refreshCategories();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const newId =
+        data && typeof data === "object" && "id" in data && typeof (data as { id: unknown }).id === "string"
+          ? (data as { id: string }).id
+          : null;
+      return newId ? { value: newId, label: trimmed } : null;
+    },
+    [createCategoryApi, refreshCategories],
+  );
 
   const [form, setForm] = useState<FormState | null>(null);
   const [editing, setEditing] = useState(false);
@@ -231,12 +300,9 @@ export default function ServiceDetailScreen() {
   }
 
   useEffect(() => {
-    if (service && !form) {
-      setForm(initForm(service));
-    }
-    // Only sync when service loads; form intentionally omitted to avoid overwriting user edits
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service]);
+    if (!service) return;
+    if (!editing) setForm(initForm(service));
+  }, [service, editing]);
 
   if (loading && !service) {
     return (
@@ -299,6 +365,8 @@ export default function ServiceDetailScreen() {
         ? Number(form.at_home_radius_km) || 0
         : 0,
       is_active: form.is_active,
+      provider_category_id: form.category_id.trim() || null,
+      team_member_ids: form.team_member_ids,
     };
     const { error } = await updateService(
       `/api/provider/services/${id}`,
@@ -634,7 +702,63 @@ export default function ServiceDetailScreen() {
 
           {/* Service Form */}
           <SectionHeader title="Service Details" />
+          {!editing && typeof id === "string" && id ? (
+            <TouchableOpacity
+              onPress={() =>
+                router.push(`/(app)/(tabs)/more/service-form?id=${encodeURIComponent(id)}` as never)
+              }
+              style={twStyle("mb-3 flex-row items-center rounded-xl border border-indigo-100 bg-indigo-50/80 px-4 py-3")}
+              accessibilityRole="button"
+              accessibilityLabel="Open full service editor"
+            >
+              <Ionicons name="create-outline" size={20} color="#4f46e5" style={{ marginRight: 10 }} />
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("text-sm font-semibold text-indigo-950")}>Full editor</Text>
+                <Text style={twStyle("text-xs text-indigo-800 mt-0.5")}>
+                  Category, staff, tax, online booking, aftercare, and more
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#6366f1" />
+            </TouchableOpacity>
+          ) : null}
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+            {editing && form ? (
+              <>
+                <View style={twStyle("mb-4")}>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Category</Text>
+                  <ChipCombobox
+                    singleSelect
+                    value={form.category_id || null}
+                    onChange={(v) =>
+                      setForm((prev) => (prev ? { ...prev, category_id: v ?? "" } : prev))
+                    }
+                    staticSuggestions={categories.map((c) => ({ value: c.id, label: c.name }))}
+                    onCreateNew={handleCreateCategory}
+                    placeholder="Select or add category"
+                    accessibilityLabel="Service category"
+                  />
+                </View>
+                <View style={twStyle("mb-4")}>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Team members</Text>
+                  <ChipCombobox
+                    value={form.team_member_ids}
+                    onChange={(ids) => {
+                      setForm((prev) => {
+                        if (!prev) return prev;
+                        if (ids.includes("__any__")) return { ...prev, team_member_ids: [] };
+                        return { ...prev, team_member_ids: ids.filter((x) => x !== "__any__") };
+                      });
+                    }}
+                    staticSuggestions={[
+                      { value: "__any__", label: "Any team member" },
+                      ...staff.map((m) => ({ value: m.id, label: m.name })),
+                    ]}
+                    placeholder="Any or select staff"
+                    accessibilityLabel="Staff for this service"
+                  />
+                </View>
+              </>
+            ) : null}
             {renderFormField("Title", "title")}
             {renderFormField("Description", "description", "default", true)}
             <View style={twStyle("flex-row")}>
