@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ComponentProps } from "react";
-import { Tabs, useFocusEffect } from "expo-router";
+import { Tabs, useFocusEffect, useRouter } from "expo-router";
 import { Platform, TouchableOpacity, View, Text, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -38,6 +38,7 @@ function fetchCartCount(setCount: (n: number) => void, isUser: boolean) {
 }
 
 export default function TabsLayout() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const { t } = useTranslation();
@@ -67,6 +68,28 @@ export default function TabsLayout() {
     Platform.OS === "web"
       ? { flex: 1, flexDirection: "column" as const, width: "100%" as const, minHeight: 0 }
       : { flex: 1 };
+
+  const ensureTabRoot =
+    (tabName: string, rootPath: string) =>
+    ({ navigation }: { navigation: any }) => ({
+      tabPress: (e: { preventDefault: () => void }) => {
+        const state = navigation.getState();
+        const tabRoute = state.routes.find((r: any) => r.name === tabName);
+        const st = tabRoute?.state;
+        const alreadyOnTab = state.routes[state.index]?.name === tabName;
+
+        if (!alreadyOnTab) {
+          e.preventDefault();
+          router.replace(rootPath as never);
+          return;
+        }
+
+        if (typeof st?.index === "number" && st.index > 0) {
+          e.preventDefault();
+          router.replace(rootPath as never);
+        }
+      },
+    });
 
   return (
     <View nativeID="tabs-root" style={tabsWrapperStyle} collapsable={false}>
@@ -177,6 +200,7 @@ export default function TabsLayout() {
             </View>
           ),
         }}
+        listeners={ensureTabRoot("bookings", "/(app)/(tabs)/bookings")}
       />
       <Tabs.Screen
         name="cart"
@@ -209,6 +233,7 @@ export default function TabsLayout() {
             </View>
           ),
         }}
+        listeners={ensureTabRoot("cart", "/(app)/(tabs)/cart")}
       />
       <Tabs.Screen
         name="chats"
@@ -220,6 +245,7 @@ export default function TabsLayout() {
             </View>
           ),
         }}
+        listeners={ensureTabRoot("chats", "/(app)/(tabs)/chats")}
       />
       <Tabs.Screen
         name="profile"

@@ -467,7 +467,26 @@ export default function CatalogueScreen() {
         }
       />
 
-      <View style={{ marginBottom: 12, flexDirection: "row", gap: 10 }}>
+      <View style={{ marginBottom: 12, flexDirection: "row", gap: 8 }}>
+        <View
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            paddingVertical: 12,
+            borderRadius: 12,
+            borderWidth: 2,
+            borderColor: Colors.gray[900],
+            backgroundColor: Colors.gray[50],
+          }}
+          accessibilityRole="text"
+          accessibilityLabel="Services catalogue, current section"
+        >
+          <Ionicons name="cut-outline" size={18} color={Colors.gray[900]} />
+          <Text style={{ fontWeight: "700", fontSize: 13, color: Colors.gray[900] }}>Services</Text>
+        </View>
         <TouchableOpacity
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -478,7 +497,7 @@ export default function CatalogueScreen() {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
-            gap: 8,
+            gap: 6,
             paddingVertical: 12,
             borderRadius: 12,
             borderWidth: 1,
@@ -489,7 +508,7 @@ export default function CatalogueScreen() {
           accessibilityLabel="Open products and variants"
         >
           <Ionicons name="cube-outline" size={18} color="#8b5cf6" />
-          <Text style={{ fontWeight: "600", fontSize: 14, color: Colors.gray[800] }}>Products</Text>
+          <Text style={{ fontWeight: "600", fontSize: 13, color: Colors.gray[800] }}>Products</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => {
@@ -501,7 +520,7 @@ export default function CatalogueScreen() {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
-            gap: 8,
+            gap: 6,
             paddingVertical: 12,
             borderRadius: 12,
             borderWidth: 1,
@@ -512,7 +531,7 @@ export default function CatalogueScreen() {
           accessibilityLabel="Open packages"
         >
           <Ionicons name="layers-outline" size={18} color="#4f46e5" />
-          <Text style={{ fontWeight: "600", fontSize: 14, color: Colors.gray[800] }}>Packages</Text>
+          <Text style={{ fontWeight: "600", fontSize: 13, color: Colors.gray[800] }}>Packages</Text>
         </TouchableOpacity>
       </View>
 

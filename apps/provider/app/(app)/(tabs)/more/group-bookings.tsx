@@ -7,10 +7,12 @@ import {
   TextInput,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { addDays, format as formatDateFns, isSameDay, parseISO, startOfDay } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -31,6 +33,7 @@ import { validateE164Phone } from "@/lib/phone-country-codes";
 import { useProvider } from "@/providers/ProviderContext";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { api } from "@/lib/api-client";
 
 // The list endpoint (GET /api/provider/group-bookings) maps participants to
 // { client_name, client_email, client_phone, service_name, checked_in,
@@ -128,6 +131,19 @@ interface GroupBookingsResponse {
   total_pages: number;
 }
 
+interface AvailableSlotsApiRow {
+  time: string;
+  available: boolean;
+  reason?: string;
+}
+
+interface AvailableSlotsApiResponse {
+  slots: string[];
+  date: string;
+  slot_grid?: AvailableSlotsApiRow[];
+  provider_timezone?: string | null;
+}
+
 const STATUS_FILTERS = [
   { label: "All", value: "all" },
   { label: "Confirmed", value: "confirmed" },
@@ -139,6 +155,12 @@ const STATUS_FILTERS = [
 
 type ServiceRow = { id: string; title: string; duration_minutes?: number; price?: number };
 type TeamRow = { id: string; name?: string };
+type ParticipantFormRow = { id: string; name: string; phone: string; email: string };
+type EditingGroupContext = {
+  serviceId: string | null;
+  staffId: string | null;
+  locationId: string | null;
+};
 
 function statusStyle(s: string) {
   if (s === "confirmed") return { bg: "bg-blue-50", text: "text-blue-700" };
@@ -186,6 +208,13 @@ function SelectChip({
 export default function GroupBookingsScreen() {
   useResponsive();
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    open_group_id?: string;
+    default_date?: string;
+    default_time?: string;
+    default_staff_id?: string;
+    default_location_id?: string;
+  }>();
   const { provider, selectedLocationId } = useProvider();
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
@@ -246,6 +275,7 @@ export default function GroupBookingsScreen() {
     originalPackageId: "",
   });
   const [showEditPackagePicker, setShowEditPackagePicker] = useState(false);
+  const [editingGroupContext, setEditingGroupContext] = useState<EditingGroupContext | null>(null);
 
   // B10: create path — minimal form. Participants are added from the detail
   // sheet after the group is created, matching the existing "add participant"
@@ -266,14 +296,32 @@ export default function GroupBookingsScreen() {
     // the web `GroupBookingDialog` does.
     packageId: "" as string,
   });
+  const [createParticipants, setCreateParticipants] = useState<ParticipantFormRow[]>([]);
   const [showPackagePicker, setShowPackagePicker] = useState(false);
+
+  const createDateOptions = useMemo(
+    () => Array.from({ length: 21 }, (_, i) => addDays(startOfDay(new Date()), i)),
+    [],
+  );
+  const editDateOptions = useMemo(() => {
+    const base = editForm.date && YMD_RE.test(editForm.date) ? parseISO(`${editForm.date}T00:00:00`) : new Date();
+    return Array.from({ length: 21 }, (_, i) => addDays(startOfDay(base), i));
+  }, [editForm.date]);
 
   const statusParam = filter !== "all" ? `&status=${filter}` : "";
   const { data: groupData, loading, error: groupError, refresh } = useApi<GroupBookingsResponse>(
     `/api/provider/group-bookings?limit=50${statusParam}`
   );
   const { execute: updateGroup, loading: updatingGroup } = useApiMutation("patch");
-  const { execute: createGroup, loading: creatingGroup } = useApiMutation("post");
+  const { execute: createGroup, loading: creatingGroup } = useApiMutation<{
+    id?: string;
+    data?: { id?: string; ref_number?: string | null };
+    ref_number?: string | null;
+  }>("post");
+  const { execute: createBooking, loading: creatingParticipantBooking } = useApiMutation<{
+    id?: string;
+    data?: { id?: string };
+  }>("post");
   const { execute: cancelGroup } = useApiMutation("delete");
   const { execute: addParticipant, loading: addingParticipant } = useApiMutation("post");
   const { execute: removeParticipant } = useApiMutation("delete");
@@ -287,6 +335,84 @@ export default function GroupBookingsScreen() {
 
   const groups = useMemo(() => groupData?.data ?? [], [groupData?.data]);
 
+  const createSlotParams = useMemo(() => {
+    const serviceIds = createForm.serviceId ? [createForm.serviceId] : [];
+    return {
+      date: createForm.date,
+      duration: Number(createForm.duration) || 60,
+      staffId: createForm.staffId || "",
+      locationId: createForm.locationId || selectedLocationId || "",
+      serviceIds,
+    };
+  }, [createForm.date, createForm.duration, createForm.staffId, createForm.locationId, createForm.serviceId, selectedLocationId]);
+
+  const createSlotsUrl = useMemo(() => {
+    if (!createSlotParams.date || !YMD_RE.test(createSlotParams.date)) return "";
+    let q =
+      `/api/provider/bookings/available-slots?date=${encodeURIComponent(createSlotParams.date)}` +
+      `&duration_minutes=${encodeURIComponent(String(createSlotParams.duration))}`;
+    if (createSlotParams.staffId) q += `&staff_ids=${encodeURIComponent(createSlotParams.staffId)}`;
+    if (createSlotParams.locationId) q += `&location_id=${encodeURIComponent(createSlotParams.locationId)}`;
+    if (createSlotParams.serviceIds.length > 0) {
+      q += `&service_ids=${encodeURIComponent(createSlotParams.serviceIds.join(","))}`;
+    }
+    q += `&mode=salon&travel_buffer=0`;
+    return q;
+  }, [createSlotParams]);
+
+  const { data: createSlotsData, loading: createSlotsLoading } = useApi<AvailableSlotsApiResponse>(
+    createSlotsUrl,
+    { enabled: createSlotsUrl.length > 0 },
+  );
+
+  const createSlotRows = useMemo(() => {
+    if (Array.isArray(createSlotsData?.slot_grid) && createSlotsData.slot_grid.length > 0) {
+      return createSlotsData.slot_grid;
+    }
+    if (Array.isArray(createSlotsData?.slots)) {
+      return createSlotsData.slots.map((time) => ({ time, available: true } as AvailableSlotsApiRow));
+    }
+    return [] as AvailableSlotsApiRow[];
+  }, [createSlotsData]);
+
+  const editSlotParams = useMemo(() => {
+    const duration = Number(editForm.duration) || 60;
+    const staffId = editingGroupContext?.staffId || "";
+    const locationId = editingGroupContext?.locationId || "";
+    const serviceIds = editingGroupContext?.serviceId ? [editingGroupContext.serviceId] : [];
+    return { date: editForm.date, duration, staffId, locationId, serviceIds };
+  }, [editForm.date, editForm.duration, editingGroupContext]);
+
+  const editSlotsUrl = useMemo(() => {
+    if (!showEdit) return "";
+    if (!editSlotParams.date || !YMD_RE.test(editSlotParams.date)) return "";
+    let q =
+      `/api/provider/bookings/available-slots?date=${encodeURIComponent(editSlotParams.date)}` +
+      `&duration_minutes=${encodeURIComponent(String(editSlotParams.duration))}`;
+    if (editSlotParams.staffId) q += `&staff_ids=${encodeURIComponent(editSlotParams.staffId)}`;
+    if (editSlotParams.locationId) q += `&location_id=${encodeURIComponent(editSlotParams.locationId)}`;
+    if (editSlotParams.serviceIds.length > 0) {
+      q += `&service_ids=${encodeURIComponent(editSlotParams.serviceIds.join(","))}`;
+    }
+    q += `&mode=salon&travel_buffer=0`;
+    return q;
+  }, [showEdit, editSlotParams]);
+
+  const { data: editSlotsData, loading: editSlotsLoading } = useApi<AvailableSlotsApiResponse>(
+    editSlotsUrl,
+    { enabled: editSlotsUrl.length > 0 },
+  );
+
+  const editSlotRows = useMemo(() => {
+    if (Array.isArray(editSlotsData?.slot_grid) && editSlotsData.slot_grid.length > 0) {
+      return editSlotsData.slot_grid;
+    }
+    if (Array.isArray(editSlotsData?.slots)) {
+      return editSlotsData.slots.map((time) => ({ time, available: true } as AvailableSlotsApiRow));
+    }
+    return [] as AvailableSlotsApiRow[];
+  }, [editSlotsData]);
+
   // §Provider-audit 2026-04 (round 6): keep `selectedGroup` in sync with
   // the refreshed list. Previously the detail sheet stored a snapshot, so
   // after a check-in / add-participant / cancel the sheet still rendered
@@ -299,6 +425,15 @@ export default function GroupBookingsScreen() {
     }
   }, [groups, selectedGroup]);
 
+  useEffect(() => {
+    const openId = typeof params.open_group_id === "string" ? params.open_group_id : "";
+    if (!openId) return;
+    const group = groups.find((g) => g.id === openId);
+    if (group) {
+      setSelectedGroup(group);
+    }
+  }, [groups, params.open_group_id]);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -307,6 +442,58 @@ export default function GroupBookingsScreen() {
       setRefreshing(false);
     }
   }, [refresh]);
+
+  useEffect(() => {
+    if (!createForm.date || !YMD_RE.test(createForm.date)) return;
+    const available = createSlotRows.filter((s) => s.available).map((s) => s.time);
+    if (available.length === 0) return;
+    setCreateForm((prev) => {
+      if (prev.time && available.includes(prev.time)) return prev;
+      return { ...prev, time: available[0] ?? prev.time };
+    });
+  }, [createForm.date, createSlotRows]);
+
+  useEffect(() => {
+    if (!showEdit) return;
+    if (!editForm.date || !YMD_RE.test(editForm.date)) return;
+    const available = editSlotRows.filter((s) => s.available).map((s) => s.time);
+    if (available.length === 0) return;
+    setEditForm((prev) => {
+      if (prev.time && available.includes(prev.time)) return prev;
+      return { ...prev, time: available[0] ?? prev.time };
+    });
+  }, [showEdit, editForm.date, editSlotRows]);
+
+  async function verifyGroupSlotAvailability(args: {
+    date: string;
+    time: string;
+    durationMinutes: number;
+    staffId?: string | null;
+    locationId?: string | null;
+    serviceId?: string | null;
+  }): Promise<string | null> {
+    const scheduledAt = buildZonedIsoForWallClock(args.date, args.time.substring(0, 5), providerTz);
+    if (!Number.isFinite(Date.parse(scheduledAt))) {
+      return "Invalid schedule date/time.";
+    }
+    const params = new URLSearchParams({
+      scheduled_at: scheduledAt,
+      duration_minutes: String(args.durationMinutes),
+      mode: "salon",
+      travel_buffer: "0",
+    });
+    if (args.staffId) params.set("staff_ids", args.staffId);
+    if (args.locationId) params.set("location_id", args.locationId);
+    if (args.serviceId) params.set("offering_ids", args.serviceId);
+    const res = await api.get<{ available?: boolean; conflicts?: string[] }>(
+      `/api/provider/bookings/check-availability?${params.toString()}`,
+    );
+    if (res.error) return res.error.message || "Could not verify availability.";
+    if (res.data?.available === false) {
+      return (res.data.conflicts ?? ["Selected slot is not available."]).join("\n");
+    }
+    return null;
+  }
 
   const filtered = useMemo(() => {
     if (!search.trim()) return groups;
@@ -373,6 +560,11 @@ export default function GroupBookingsScreen() {
     // B9: capture the id BEFORE clearing selectedGroup so the PATCH has a
     // real target even after the detail sheet closes.
     setEditingGroupId(group.id);
+    setEditingGroupContext({
+      serviceId: group.service_id ?? null,
+      staffId: group.team_member_id ?? null,
+      locationId: group.location_id ?? null,
+    });
     setSelectedGroup(null);
     setShowEdit(true);
   }
@@ -414,6 +606,23 @@ export default function GroupBookingsScreen() {
       Alert.alert("Invalid time", "Time must be in HH:MM format.");
       return;
     }
+    const durationToCheck = editForm.duration ? Number(editForm.duration) : 60;
+    if (!Number.isFinite(durationToCheck) || durationToCheck <= 0) {
+      Alert.alert("Invalid duration", "Duration must be greater than 0 minutes.");
+      return;
+    }
+    const availabilityError = await verifyGroupSlotAvailability({
+      date: editForm.date,
+      time: editForm.time,
+      durationMinutes: durationToCheck,
+      staffId: editingGroupContext?.staffId,
+      locationId: editingGroupContext?.locationId,
+      serviceId: editingGroupContext?.serviceId,
+    });
+    if (availabilityError) {
+      Alert.alert("Time not available", availabilityError);
+      return;
+    }
 
     // §Provider-audit 2026-04 (packages round 4 — mobile edit parity):
     // only include `package_id` when it actually changed. `null` means
@@ -440,6 +649,7 @@ export default function GroupBookingsScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowEdit(false);
     setEditingGroupId(null);
+    setEditingGroupContext(null);
     refresh();
   }
 
@@ -449,20 +659,121 @@ export default function GroupBookingsScreen() {
   function openCreate() {
     const now = new Date();
     const hh = String(Math.min(23, now.getHours() + 1)).padStart(2, "0");
+    const requestedDate =
+      typeof params.default_date === "string" && YMD_RE.test(params.default_date)
+        ? params.default_date
+        : now.toISOString().slice(0, 10);
+    const requestedTime =
+      typeof params.default_time === "string" && HHMM_RE.test(params.default_time)
+        ? params.default_time
+        : `${hh}:00`;
+    const requestedStaffId = typeof params.default_staff_id === "string" ? params.default_staff_id : "";
+    const requestedLocationId = typeof params.default_location_id === "string" ? params.default_location_id : "";
     const defaultLoc = selectedLocationId ?? locations[0]?.id ?? "";
     setCreateForm({
       title: "",
-      date: now.toISOString().slice(0, 10),
-      time: `${hh}:00`,
+      date: requestedDate,
+      time: requestedTime,
       duration: "60",
       maxParticipants: "10",
       notes: "",
       serviceId: "",
-      staffId: "",
-      locationId: defaultLoc,
+      staffId: requestedStaffId,
+      locationId: requestedLocationId || defaultLoc,
       packageId: "",
     });
+    setCreateParticipants([{ id: `participant-${Date.now()}`, name: "", phone: "", email: "" }]);
     setShowCreate(true);
+  }
+
+  function addCreateParticipantRow() {
+    setCreateParticipants((prev) => [
+      ...prev,
+      { id: `participant-${Date.now()}-${prev.length}`, name: "", phone: "", email: "" },
+    ]);
+  }
+
+  function updateCreateParticipantRow(id: string, patch: Partial<ParticipantFormRow>) {
+    setCreateParticipants((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  }
+
+  function removeCreateParticipantRow(id: string) {
+    setCreateParticipants((prev) =>
+      prev.length <= 1 ? [{ id: `participant-${Date.now()}`, name: "", phone: "", email: "" }] : prev.filter((p) => p.id !== id),
+    );
+  }
+
+  async function createParticipantBookingAndLink(args: {
+    groupId: string;
+    groupRef?: string | null;
+    scheduledDate: string;
+    scheduledTime: string;
+    serviceId: string;
+    staffId?: string | null;
+    locationId?: string | null;
+    durationMinutes: number;
+    unitPrice: number;
+    participant: { name: string; phone?: string; email?: string };
+    isPrimary: boolean;
+  }) {
+    const scheduledAt = buildZonedIsoForWallClock(
+      args.scheduledDate,
+      args.scheduledTime.substring(0, 5),
+      providerTz,
+    );
+    if (!Number.isFinite(Date.parse(scheduledAt))) {
+      return { error: "This group booking has an invalid date/time." };
+    }
+
+    const bookingPayload: Record<string, unknown> = {
+      customer_name: args.participant.name.trim(),
+      customer_phone: args.participant.phone?.trim() || undefined,
+      customer_email: args.participant.email?.trim() || undefined,
+      scheduled_at: scheduledAt,
+      location_type: "at_salon",
+      location_id: args.locationId || undefined,
+      staff_id: args.staffId || undefined,
+      team_member_id: args.staffId || undefined,
+      service_id: args.serviceId,
+      offering_id: args.serviceId,
+      services: [
+        {
+          service_id: args.serviceId,
+          offering_id: args.serviceId,
+          serviceId: args.serviceId,
+          staff_id: args.staffId || undefined,
+          price: args.unitPrice,
+          duration_minutes: args.durationMinutes,
+          duration: args.durationMinutes,
+        },
+      ],
+      subtotal: args.unitPrice,
+      total_amount: args.unitPrice,
+      booking_source: "provider",
+      status: "confirmed",
+      special_requests: args.groupRef
+        ? `Group booking ${args.groupRef}`
+        : `Group booking ${args.groupId}`,
+    };
+
+    const bookingRes = await createBooking("/api/provider/bookings", bookingPayload);
+    if (bookingRes.error || !bookingRes.data) {
+      return { error: bookingRes.error || "Could not create participant booking." };
+    }
+    const createdBookingId = bookingRes.data?.id || bookingRes.data?.data?.id || null;
+    if (!createdBookingId) {
+      return { error: "Booking was created without an id response." };
+    }
+
+    const linkRes = await addParticipant(`/api/provider/group-bookings/${args.groupId}/participants`, {
+      booking_id: createdBookingId,
+      participant_name: args.participant.name.trim(),
+      is_primary_contact: args.isPrimary,
+    });
+    if (linkRes.error) {
+      return { error: linkRes.error };
+    }
+    return { error: null };
   }
 
   /**
@@ -538,6 +849,48 @@ export default function GroupBookingsScreen() {
       Alert.alert("Invalid max participants", "Max participants must be greater than 0.");
       return;
     }
+    if (!createForm.serviceId) {
+      Alert.alert("Service required", "Select a service so participant bookings can be created for calendar + accounting.");
+      return;
+    }
+    if (!createForm.staffId) {
+      Alert.alert("Staff required", "Select a team member to schedule this group booking correctly.");
+      return;
+    }
+    const createAvailabilityError = await verifyGroupSlotAvailability({
+      date: createForm.date,
+      time: createForm.time,
+      durationMinutes: duration,
+      staffId: createForm.staffId,
+      locationId: createForm.locationId || selectedLocationId || null,
+      serviceId: createForm.serviceId,
+    });
+    if (createAvailabilityError) {
+      Alert.alert("Time not available", createAvailabilityError);
+      return;
+    }
+    const participantsToCreate = createParticipants
+      .map((p) => ({
+        name: p.name.trim(),
+        phone: p.phone.trim(),
+        email: p.email.trim(),
+      }))
+      .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0);
+    if (participantsToCreate.length === 0) {
+      Alert.alert("Participant required", "Add at least one participant so the group creates booking records.");
+      return;
+    }
+    for (const [idx, p] of participantsToCreate.entries()) {
+      if (!p.name) {
+        Alert.alert("Participant name required", `Participant ${idx + 1} needs a name.`);
+        return;
+      }
+      const phoneErr = validateE164Phone(p.phone);
+      if (phoneErr) {
+        Alert.alert("Invalid phone", `Participant ${idx + 1}: ${phoneErr}`);
+        return;
+      }
+    }
 
     const scheduledAt = buildZonedIsoForWallClock(
       createForm.date,
@@ -568,8 +921,41 @@ export default function GroupBookingsScreen() {
     // matching the web `GroupBookingDialog` submit path.
     if (createForm.packageId) payload.package_id = createForm.packageId;
 
-    const { error } = await createGroup("/api/provider/group-bookings", payload);
+    const { data: createdGroup, error } = await createGroup("/api/provider/group-bookings", payload);
     if (error) { Alert.alert("Error", error); return; }
+    const createdGroupId = createdGroup?.id || createdGroup?.data?.id || null;
+    if (!createdGroupId) {
+      Alert.alert("Created group", "The group was created, but the API did not return an id to attach participants.");
+      setShowCreate(false);
+      refresh();
+      return;
+    }
+
+    const groupRef = createdGroup?.ref_number || createdGroup?.data?.ref_number || null;
+    const unitPrice = Number(svc?.price ?? 0) || 0;
+    for (const [idx, participant] of participantsToCreate.entries()) {
+      const res = await createParticipantBookingAndLink({
+        groupId: createdGroupId,
+        groupRef,
+        scheduledDate: createForm.date,
+        scheduledTime: createForm.time,
+        serviceId: createForm.serviceId,
+        staffId: createForm.staffId,
+        locationId: createForm.locationId,
+        durationMinutes: duration,
+        unitPrice,
+        participant,
+        isPrimary: idx === 0,
+      });
+      if (res.error) {
+        Alert.alert(
+          "Group created, participant failed",
+          `${participant.name}: ${res.error}`,
+        );
+        refresh();
+        return;
+      }
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowCreate(false);
     refresh();
@@ -590,18 +976,39 @@ export default function GroupBookingsScreen() {
       Alert.alert("Invalid phone", phoneErr);
       return;
     }
-    const { error } = await addParticipant(
-      `/api/provider/group-bookings/${selectedGroup.id}/participants`,
-      {
-        participant_name: participantForm.name.trim(),
-        participant_phone: participantForm.phone.trim() || undefined,
-        participant_email: participantForm.email.trim() || undefined,
-        customer_name: participantForm.name.trim(),
-        customer_phone: participantForm.phone.trim() || undefined,
-        customer_email: participantForm.email.trim() || undefined,
-      }
+    const serviceId = selectedGroup.service_id ?? null;
+    if (!serviceId) {
+      Alert.alert(
+        "Service missing",
+        "This group booking has no service. Edit the group booking first to set a service, then add participants.",
+      );
+      return;
+    }
+
+    const matchedService = services.find((s) => s.id === serviceId);
+    const unitPrice = Number(selectedGroup.price_per_person ?? matchedService?.price ?? 0) || 0;
+    const durationMinutes = Number(
+      selectedGroup.duration_minutes || matchedService?.duration_minutes || 60,
     );
-    if (error) { Alert.alert("Error", error); return; }
+
+    const res = await createParticipantBookingAndLink({
+      groupId: selectedGroup.id,
+      groupRef: selectedGroup.ref_number,
+      scheduledDate: selectedGroup.scheduled_date,
+      scheduledTime: selectedGroup.scheduled_time || "",
+      serviceId,
+      staffId: selectedGroup.team_member_id,
+      locationId: selectedGroup.location_id,
+      durationMinutes,
+      unitPrice,
+      participant: participantForm,
+      isPrimary: (selectedGroup.current_participants ?? 0) === 0,
+    });
+    if (res.error) {
+      Alert.alert("Participant creation failed", res.error);
+      return;
+    }
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowAddParticipant(false);
     refresh();
@@ -1042,6 +1449,7 @@ export default function GroupBookingsScreen() {
         onClose={() => {
           setShowEdit(false);
           setEditingGroupId(null);
+          setEditingGroupContext(null);
         }}
         title="Edit Group Booking"
       >
@@ -1108,27 +1516,76 @@ export default function GroupBookingsScreen() {
               ) : null}
             </View>
           ) : null}
-          <View style={twStyle("mb-3 flex-row")}>
-            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date</Text>
-              <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                value={editForm.date}
-                onChangeText={(t) => setEditForm((p) => ({ ...p, date: t }))}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#9ca3af"
-              />
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-3")} contentContainerStyle={{ paddingVertical: 4 }}>
+            {editDateOptions.map((d) => {
+              const dateKey = formatDateFns(d, "yyyy-MM-dd");
+              const isActive = editForm.date === dateKey;
+              return (
+                <TouchableOpacity
+                  key={dateKey}
+                  style={[
+                    twStyle(`items-center rounded-xl px-3 py-2.5 ${isActive ? "bg-gray-900" : "border border-gray-200 bg-white"}`),
+                    { minWidth: 56, marginRight: 8 },
+                  ]}
+                  onPress={() => setEditForm((p) => ({ ...p, date: dateKey }))}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: isActive }}
+                >
+                  <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`)}>
+                    {isSameDay(d, new Date()) ? "Today" : formatDateFns(d, "EEE")}
+                  </Text>
+                  <Text style={twStyle(`text-base font-bold ${isActive ? "text-white" : "text-gray-900"}`)}>
+                    {formatDateFns(d, "d")}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+            <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Time slot</Text>
+              {editSlotsLoading ? <ActivityIndicator size="small" color="#6b7280" /> : null}
             </View>
-            <View style={twStyle("flex-1")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Time</Text>
-              <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                value={editForm.time}
-                onChangeText={(t) => setEditForm((p) => ({ ...p, time: t }))}
-                placeholder="HH:MM"
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
+            {editSlotRows.length > 0 ? (
+              <View style={twStyle("flex-row flex-wrap")}>
+                {editSlotRows.map((slot) => {
+                  const isActive = editForm.time === slot.time;
+                  return (
+                    <TouchableOpacity
+                      key={`edit-slot-${slot.time}`}
+                      disabled={!slot.available}
+                      onPress={() => setEditForm((p) => ({ ...p, time: slot.time }))}
+                      style={[
+                        twStyle(
+                          `mb-2 mr-2 rounded-full border px-3 py-1.5 ${
+                            isActive
+                              ? "border-indigo-600 bg-indigo-50"
+                              : slot.available
+                                ? "border-gray-200 bg-white"
+                                : "border-gray-100 bg-gray-100"
+                          }`,
+                        ),
+                      ]}
+                    >
+                      <Text
+                        style={twStyle(
+                          `text-xs font-medium ${
+                            isActive ? "text-indigo-700" : slot.available ? "text-gray-700" : "text-gray-400"
+                          }`,
+                        )}
+                      >
+                        {slot.time}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={twStyle("text-xs text-gray-500")}>
+                No available slots for this date with current duration/staff.
+              </Text>
+            )}
           </View>
           <View style={twStyle("mb-3 flex-row")}>
             <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
@@ -1330,7 +1787,12 @@ export default function GroupBookingsScreen() {
             placeholderTextColor="#9ca3af"
             keyboardType="email-address"
           />
-          <ActionButton label="Add Participant" onPress={handleAddParticipant} loading={addingParticipant} fullWidth />
+          <ActionButton
+            label="Add Participant"
+            onPress={handleAddParticipant}
+            loading={addingParticipant || creatingParticipantBooking}
+            fullWidth
+          />
         </View>
       </BottomSheet>
 
@@ -1479,27 +1941,76 @@ export default function GroupBookingsScreen() {
             </View>
           ) : null}
 
-          <View style={twStyle("mb-3 flex-row")}>
-            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date *</Text>
-              <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                value={createForm.date}
-                onChangeText={(t) => setCreateForm((p) => ({ ...p, date: t }))}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#9ca3af"
-              />
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date *</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-3")} contentContainerStyle={{ paddingVertical: 4 }}>
+            {createDateOptions.map((d) => {
+              const dateKey = formatDateFns(d, "yyyy-MM-dd");
+              const isActive = createForm.date === dateKey;
+              return (
+                <TouchableOpacity
+                  key={dateKey}
+                  style={[
+                    twStyle(`items-center rounded-xl px-3 py-2.5 ${isActive ? "bg-gray-900" : "border border-gray-200 bg-white"}`),
+                    { minWidth: 56, marginRight: 8 },
+                  ]}
+                  onPress={() => setCreateForm((p) => ({ ...p, date: dateKey }))}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: isActive }}
+                >
+                  <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`)}>
+                    {isSameDay(d, new Date()) ? "Today" : formatDateFns(d, "EEE")}
+                  </Text>
+                  <Text style={twStyle(`text-base font-bold ${isActive ? "text-white" : "text-gray-900"}`)}>
+                    {formatDateFns(d, "d")}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+            <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Time slot *</Text>
+              {createSlotsLoading ? <ActivityIndicator size="small" color="#6b7280" /> : null}
             </View>
-            <View style={twStyle("flex-1")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Time *</Text>
-              <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                value={createForm.time}
-                onChangeText={(t) => setCreateForm((p) => ({ ...p, time: t }))}
-                placeholder="HH:MM"
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
+            {createSlotRows.length > 0 ? (
+              <View style={twStyle("flex-row flex-wrap")}>
+                {createSlotRows.map((slot) => {
+                  const isActive = createForm.time === slot.time;
+                  return (
+                    <TouchableOpacity
+                      key={`create-slot-${slot.time}`}
+                      disabled={!slot.available}
+                      onPress={() => setCreateForm((p) => ({ ...p, time: slot.time }))}
+                      style={[
+                        twStyle(
+                          `mb-2 mr-2 rounded-full border px-3 py-1.5 ${
+                            isActive
+                              ? "border-indigo-600 bg-indigo-50"
+                              : slot.available
+                                ? "border-gray-200 bg-white"
+                                : "border-gray-100 bg-gray-100"
+                          }`,
+                        ),
+                      ]}
+                    >
+                      <Text
+                        style={twStyle(
+                          `text-xs font-medium ${
+                            isActive ? "text-indigo-700" : slot.available ? "text-gray-700" : "text-gray-400"
+                          }`,
+                        )}
+                      >
+                        {slot.time}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={twStyle("text-xs text-gray-500")}>
+                No available slots for this date with current selection.
+              </Text>
+            )}
           </View>
           <View style={twStyle("mb-3 flex-row")}>
             <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
@@ -1534,11 +2045,77 @@ export default function GroupBookingsScreen() {
             placeholderTextColor="#9ca3af"
             multiline
           />
-          <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-            Add participants after creation from the group detail sheet. Service and staff are sent to the
-            server with the same fields as the web portal.
-          </Text>
-          <ActionButton label="Create Group" onPress={handleCreate} loading={creatingGroup} fullWidth />
+
+          <View style={twStyle("mb-4 rounded-2xl border border-purple-100 bg-purple-50 p-3")}>
+            <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+              <View style={twStyle("flex-row items-center")}>
+                <Ionicons name="people-outline" size={16} color="#7c3aed" style={{ marginRight: 6 }} />
+                <Text style={twStyle("text-sm font-semibold text-purple-900")}>Initial participants</Text>
+              </View>
+              <TouchableOpacity
+                onPress={addCreateParticipantRow}
+                style={twStyle("flex-row items-center rounded-full bg-white px-2.5 py-1")}
+                accessibilityRole="button"
+                accessibilityLabel="Add initial participant"
+              >
+                <Ionicons name="add" size={14} color="#7c3aed" />
+                <Text style={twStyle("ml-1 text-xs font-semibold text-purple-700")}>Add</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={twStyle("mb-3 text-xs text-purple-700")}>
+              These people become real bookings immediately, so calendar availability and accounting stay aligned.
+            </Text>
+
+            {createParticipants.map((participant, idx) => (
+              <View key={participant.id} style={twStyle("mb-3 rounded-xl border border-purple-100 bg-white p-3")}>
+                <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+                  <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
+                    Participant {idx + 1}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => removeCreateParticipantRow(participant.id)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove participant ${idx + 1}`}
+                  >
+                    <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Name *</Text>
+                <TextInput
+                  style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
+                  value={participant.name}
+                  onChangeText={(name) => updateCreateParticipantRow(participant.id, { name })}
+                  placeholder="Client name"
+                  placeholderTextColor="#9ca3af"
+                />
+                <E164PhoneField
+                  label="Phone"
+                  valueE164={participant.phone}
+                  onChangeE164={(phone) => updateCreateParticipantRow(participant.id, { phone })}
+                  muted
+                  accessibilityLabel={`Participant ${idx + 1} phone`}
+                />
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Email</Text>
+                <TextInput
+                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
+                  value={participant.email}
+                  onChangeText={(email) => updateCreateParticipantRow(participant.id, { email })}
+                  placeholder="Optional"
+                  placeholderTextColor="#9ca3af"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+            ))}
+          </View>
+
+          <ActionButton
+            label="Create Group"
+            onPress={handleCreate}
+            loading={creatingGroup || creatingParticipantBooking || addingParticipant}
+            fullWidth
+          />
         </ScrollView>
       </BottomSheet>
 

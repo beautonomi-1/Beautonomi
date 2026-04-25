@@ -420,6 +420,8 @@ export default function HomeScreen() {
 
   const [addressPickerVisible, setAddressPickerVisible] = useState(false);
   const [notificationsDropdownVisible, setNotificationsDropdownVisible] = useState(false);
+  const [navLeftWidth, setNavLeftWidth] = useState(0);
+  const [navRightWidth, setNavRightWidth] = useState(0);
 
   const effectiveLat = selectedAddress?.latitude ?? coords?.latitude;
   const effectiveLng = selectedAddress?.longitude ?? coords?.longitude;
@@ -429,18 +431,14 @@ export default function HomeScreen() {
       ? undefined
       : globalCategories.find((c) => c.name === activeCategory)?.slug ?? activeCategory.toLowerCase();
 
-  /** Keeps Home / Explore centred: logo (left), wishlist + notifications (right). Search is in the bottom tab bar. */
+  /** Keeps Home / Explore centred with measured left/right header widths. */
   const navCenterInset = useMemo(() => {
-    const TOOLBAR_BTN = 40;
-    const TOOLBAR_GAP = 8;
-    // Wordmark (B glyph + "beautonomi" text) is wider than the old 40px favicon.
-    const logoReserve = 148;
-    const rightReserve = 2 * TOOLBAR_BTN + 1 * TOOLBAR_GAP;
+    const sideReserve = Math.max(navLeftWidth, navRightWidth);
     return {
-      left: contentPadding + logoReserve,
-      right: contentPadding + rightReserve,
+      left: contentPadding + sideReserve,
+      right: contentPadding + sideReserve,
     };
-  }, [contentPadding]);
+  }, [contentPadding, navLeftWidth, navRightWidth]);
 
   const navTabPadH = windowWidth < 360 ? 6 : 10;
 
@@ -572,7 +570,13 @@ export default function HomeScreen() {
 
         <View style={[styles.navRow, { paddingHorizontal: contentPadding }]}>
           {/* Left: wordmark — prominent brand lockup (D1 §Customer-audit 2026-04) */}
-          <View style={styles.navLeftGroup}>
+          <View
+            style={styles.navLeftGroup}
+            onLayout={(e) => {
+              const width = Math.ceil(e.nativeEvent.layout.width);
+              if (width !== navLeftWidth) setNavLeftWidth(width);
+            }}
+          >
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/home")}
               accessibilityRole="image"
@@ -610,7 +614,13 @@ export default function HomeScreen() {
           </View>
 
           {/* Right: wishlist · notifications (search is in the bottom tab bar) */}
-          <View style={styles.navRightGroup}>
+          <View
+            style={styles.navRightGroup}
+            onLayout={(e) => {
+              const width = Math.ceil(e.nativeEvent.layout.width);
+              if (width !== navRightWidth) setNavRightWidth(width);
+            }}
+          >
             <TouchableOpacity
               onPress={() => {
                 haptic.selection();

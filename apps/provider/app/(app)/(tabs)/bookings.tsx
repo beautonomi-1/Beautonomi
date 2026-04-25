@@ -3,8 +3,8 @@
  *
  * §Provider-audit 2026-04: Replaces the previous "Transaction History" tab
  * (which is now reached via More → Sales history) with a bookings-first
- * tab, matching how providers actually run their day. Behaviour mirrors
- * the screen under `more/bookings/index.tsx` so there's a single source
- * of truth — we re-export its default component here.
+ * tab, matching how providers actually run their day. The nested
+ * `bookings/[id]` route owns booking details so opening an appointment
+ * keeps the Bookings tab selected instead of moving the user into More.
  */
-export { default } from "./more/bookings/index";
+export { default } from "./bookings/index";

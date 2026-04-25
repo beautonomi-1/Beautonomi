@@ -6,6 +6,7 @@
 
 import { Audio } from "expo-av";
 import type { OnDemandModuleConfig } from "@/lib/config-bundle";
+import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 
 export interface RingtoneController {
   stop: () => void;
@@ -19,7 +20,25 @@ export async function playRingtone(
     return { stop: () => {} };
   }
 
-  const source = signedUrl ?? (config.ringtone_asset_path?.startsWith("http") ? config.ringtone_asset_path : null);
+  let source = signedUrl ?? (config.ringtone_asset_path?.startsWith("http") ? config.ringtone_asset_path : null);
+  if (!source && config.ringtone_asset_path) {
+    try {
+      const env = __DEV__ ? "development" : "production";
+      const base = (APP_URL?.trim() || (__DEV__ ? "http://localhost:3000" : "")).replace(/\/$/, "");
+      if (base) {
+        const res = await fetch(
+          `${base}/api/public/on-demand/ringtone-url?environment=${encodeURIComponent(env)}`,
+          withWebApiTenantHeaders(),
+        );
+        if (res.ok) {
+          const data = (await res.json()) as { signed_url?: string };
+          source = data.signed_url ?? null;
+        }
+      }
+    } catch {
+      // Ringing is best effort; the push/foreground UI still shows.
+    }
+  }
   if (!source) {
     return { stop: () => {} };
   }

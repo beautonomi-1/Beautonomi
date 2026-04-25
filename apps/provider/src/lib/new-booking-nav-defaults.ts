@@ -38,7 +38,7 @@ export function newBookingScreenHrefFromCalendarDay(
   if (opts?.status?.trim()) q.set("status", opts.status.trim());
   const loc = opts?.locationId?.trim();
   if (loc) q.set("location_id", loc);
-  return `/(app)/(tabs)/more/bookings/new?${q.toString()}`;
+  return `/(app)/(tabs)/bookings/new?${q.toString()}`;
 }
 
 /** Expo-router path + query for new booking screen (today + next quarter-hour). */

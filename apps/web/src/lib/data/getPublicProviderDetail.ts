@@ -4,7 +4,31 @@ import { haversineDistanceKm } from "@/lib/geo/distance";
 import { resolveTenantIdFromServerHeaders } from "@/lib/tenant/resolve-tenant-from-headers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import type { PublicProviderDetail } from "@/types/beautonomi";
+import type { PublicProfilePromotion, PublicProviderDetail } from "@/types/beautonomi";
+
+function mapPublicProfilePromotions(rows: unknown, currency: string): PublicProfilePromotion[] {
+  if (!Array.isArray(rows)) return [];
+  const now = Date.now();
+  const out: PublicProfilePromotion[] = [];
+  for (const raw of rows) {
+    const r = raw as Record<string, unknown>;
+    if (!r?.code || typeof r.code !== "string") continue;
+    const vf = r.valid_from ? new Date(String(r.valid_from)).getTime() : 0;
+    const vu = r.valid_until ? new Date(String(r.valid_until)).getTime() : Number.POSITIVE_INFINITY;
+    if (now < vf || now > vu) continue;
+    const type = String(r.type || "");
+    const val = Number(r.value ?? 0);
+    const savings =
+      type === "percentage"
+        ? `${Math.min(100, Math.max(0, Number.isFinite(val) ? val : 0))}% off`
+        : `${currency} ${Number.isFinite(val) ? val.toFixed(0) : "0"} off`;
+    const title = typeof r.name === "string" && r.name.trim() ? r.name.trim() : r.code;
+    const desc = typeof r.description === "string" && r.description.trim() ? r.description.trim() : null;
+    out.push({ code: r.code.toUpperCase(), title, description: desc, savings_label: savings });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
 
 /**
  * Server-side data loader for the partner-profile page.
@@ -200,6 +224,17 @@ export const getPublicProviderDetail = cache(
       );
       const supportsSalon = salonLocations.length > 0;
 
+      const { data: promotionRows } = await supabase
+        .from("promotions")
+        .select("code, type, value, description, name, is_active, valid_from, valid_until")
+        .eq("provider_id", providerData.id)
+        .eq("is_active", true)
+        .eq("public_on_profile", true)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      const profile_promotions = mapPublicProfilePromotions(promotionRows, providerData.currency || defaultCurrency);
+
       const result: PublicProviderDetail & { owner_name?: string; operating_hours?: any; seo_indexable?: boolean } = {
         id: providerData.id,
         slug: providerData.slug,
@@ -267,6 +302,7 @@ export const getPublicProviderDetail = cache(
         total_points: pointsData?.total_points || undefined,
         distance_km: distance_km ?? undefined,
         seo_indexable: includeInSearchEngines,
+        profile_promotions,
       };
 
       return { provider: result, seoIndexable: includeInSearchEngines };

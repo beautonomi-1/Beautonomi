@@ -522,7 +522,7 @@ export default function ClientsScreen() {
   }, [router]);
 
   const handleBook = useCallback((client: Client) => {
-    router.push(`/(app)/(tabs)/more/bookings/new?clientId=${client.customer_id}` as never);
+    router.push(`/(app)/(tabs)/bookings/new?clientId=${client.customer_id}` as never);
   }, [router]);
 
   const handleMessage = useCallback(async (client: Client) => {
@@ -557,7 +557,7 @@ export default function ClientsScreen() {
         return;
       }
       if (result.data?.id) {
-        router.push(`/(app)/(tabs)/more/messaging/${result.data.id}` as never);
+        router.push(`/(app)/(tabs)/chats/${result.data.id}` as never);
       }
     } catch {
       Alert.alert("Error", "Failed to start conversation");

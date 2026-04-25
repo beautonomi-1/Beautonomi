@@ -132,7 +132,8 @@ export default function AccountSettingsScreen() {
     if (route.startsWith("/")) {
       router.push(route as any);
     } else {
-      router.push(`/account-settings/${route}` as any);
+      // Must include `/(app)/` — bare `/account-settings/...` does not resolve in the native stack.
+      router.push(`/(app)/account-settings/${route}` as any);
     }
   };
 

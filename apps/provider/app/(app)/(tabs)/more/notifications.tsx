@@ -117,7 +117,7 @@ function getNotificationRoute(notif: Notification): string | null {
   }
 
   if (notif.data?.booking_id) {
-    return `/(app)/(tabs)/more/bookings/${notif.data.booking_id}`;
+    return `/(app)/(tabs)/bookings/${notif.data.booking_id}`;
   }
   if (notif.data?.client_id) {
     return `/(app)/(tabs)/more/clients/${notif.data.client_id}`;
@@ -127,10 +127,10 @@ function getNotificationRoute(notif: Notification): string | null {
     conversationId &&
     (notif.type === "new_message" || notif.type === "provider_new_message")
   ) {
-    return `/(app)/(tabs)/more/messaging/${conversationId}`;
+    return `/(app)/(tabs)/chats/${conversationId}`;
   }
   if (notif.type === "new_message" || notif.type === "provider_new_message") {
-    return "/(app)/(tabs)/more/messaging";
+    return "/(app)/(tabs)/chats";
   }
 
   if (

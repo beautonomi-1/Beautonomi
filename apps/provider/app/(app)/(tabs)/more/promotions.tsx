@@ -29,6 +29,7 @@ interface Promotion {
   value: number;
   description?: string | null;
   is_active: boolean;
+  public_on_profile?: boolean;
   uses_count: number;
   max_uses?: number | null;
   start_date?: string | null;
@@ -45,6 +46,7 @@ export function PromotionsContent() {
   const [promoType, setPromoType] = useState<"percentage" | "fixed_amount">("percentage");
   const [value, setValue] = useState("");
   const [description, setDescription] = useState("");
+  const [publicOnProfile, setPublicOnProfile] = useState(true);
 
   const { data, loading, error, refresh } = useApi<Promotion[]>("/api/provider/promotions");
   const { execute: createPromo, loading: creating } = useApiMutation<Promotion>("post");
@@ -87,6 +89,7 @@ export function PromotionsContent() {
       type: promoType,
       value: numValue,
       description: description.trim() || undefined,
+      public_on_profile: publicOnProfile,
     });
     if (err) {
       Alert.alert("Error", err);
@@ -97,6 +100,7 @@ export function PromotionsContent() {
     setCode("");
     setValue("");
     setDescription("");
+    setPublicOnProfile(true);
     setPromoType("percentage");
     refresh();
   }, [code, value, description, promoType, createPromo, refresh]);
@@ -136,6 +140,23 @@ export function PromotionsContent() {
     [deletePromo, refresh]
   );
 
+  const togglePublicOnProfile = useCallback(
+    async (p: Promotion) => {
+      if (togglingId) return;
+      setTogglingId(p.id);
+      try {
+        const { error: err } = await patchPromo(`/api/provider/promotions/${p.id}`, {
+          public_on_profile: !(p.public_on_profile ?? true),
+        });
+        if (err) Alert.alert("Error", err);
+        else refresh();
+      } finally {
+        setTogglingId(null);
+      }
+    },
+    [patchPromo, refresh, togglingId]
+  );
+
   if (loading && !data) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
@@ -161,6 +182,22 @@ export function PromotionsContent() {
         }
         showsVerticalScrollIndicator={false}
       >
+        <View
+          style={{
+            marginBottom: 16,
+            borderRadius: 14,
+            padding: 14,
+            backgroundColor: "#eff6ff",
+            borderWidth: 1,
+            borderColor: "#bfdbfe",
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: "700", color: "#1e3a8a", marginBottom: 6 }}>Your codes only</Text>
+          <Text style={{ fontSize: 12, color: "#1e40af", lineHeight: 17 }}>
+            Codes created here are tied to your business and apply when customers book you—they are not the same as platform-wide admin coupons.
+            Discounts reduce what you collect on covered bookings; track usage in Finance and reports.
+          </Text>
+        </View>
         {promotions.length === 0 ? (
           <View style={{ alignItems: "center", paddingVertical: 64 }}>
             <View style={{ marginBottom: 16, height: 64, width: 64, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#ffedd5" }}>
@@ -205,7 +242,30 @@ export function PromotionsContent() {
                   Used {p.uses_count}
                   {p.max_uses != null ? ` / ${p.max_uses}` : ""}
                 </Text>
+                <Text style={{ marginTop: 2, fontSize: 12, color: p.public_on_profile === false ? "#9a3412" : "#166534" }}>
+                  {p.public_on_profile === false ? "Hidden on public profile" : "Visible on public profile"}
+                </Text>
               </View>
+              <TouchableOpacity
+                onPress={() => togglePublicOnProfile(p)}
+                style={{
+                  marginRight: 8,
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: p.public_on_profile === false ? "#ffedd5" : "#dcfce7",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "600",
+                    color: p.public_on_profile === false ? "#9a3412" : "#166534",
+                  }}
+                >
+                  {p.public_on_profile === false ? "Hidden" : "Public"}
+                </Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => toggleActive(p)}
                 style={{ marginRight: 8, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: p.is_active ? "#dcfce7" : Colors.gray[100] }}
@@ -279,6 +339,45 @@ export function PromotionsContent() {
           value={description}
           onChangeText={setDescription}
         />
+        <TouchableOpacity
+          onPress={() => setPublicOnProfile((v) => !v)}
+          style={{
+            marginBottom: 16,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+            backgroundColor: Colors.white,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: publicOnProfile }}
+          accessibilityLabel="Show this promo on public profile"
+        >
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Show on public profile</Text>
+            <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
+              Customers can still use this code at checkout even when hidden.
+            </Text>
+          </View>
+          <View
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 999,
+              borderWidth: 1.5,
+              borderColor: publicOnProfile ? "#16a34a" : Colors.gray[300],
+              backgroundColor: publicOnProfile ? "#dcfce7" : "transparent",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {publicOnProfile ? <Ionicons name="checkmark" size={14} color="#166534" /> : null}
+          </View>
+        </TouchableOpacity>
         <ActionButton
           label={creating ? "Creating…" : "Create promo code"}
           onPress={handleCreate}

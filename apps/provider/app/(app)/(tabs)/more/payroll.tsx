@@ -365,7 +365,7 @@ export default function PayrollScreen() {
             mode={periodType === "monthly" ? "date" : "date"}
             display={Platform.OS === "ios" ? "spinner" : "default"}
             onChange={(_, d) => {
-              setShowDatePicker(Platform.OS !== "ios");
+              setShowDatePicker(Platform.OS === "ios");
               if (d) setPeriodDate(d);
             }}
           />

@@ -12,9 +12,12 @@ import {
   Platform,
   TouchableOpacity,
   Switch,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as Location from "expo-location";
+import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
 import { useApi , useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
@@ -28,7 +31,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { twStyle } from "@/lib/twStyle";
-import { countryFilterIso2FromStorage } from "@beautonomi/utils";
+import { countryFilterIso2FromStorage, mapGeocodeFeatureToAddressParts } from "@beautonomi/utils";
 
 type LocationData = {
   id: string;
@@ -71,6 +74,7 @@ export default function EditLocationScreen() {
   const [is_primary, setIsPrimary] = useState(false);
   const [is_active, setIsActive] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [locating, setLocating] = useState(false);
 
   const { t } = useTranslation();
   const FIELD_LABELS: Record<string, string> = {
@@ -179,6 +183,46 @@ export default function EditLocationScreen() {
     );
   }, [locationId, deleteLocation, router]);
 
+  const handleUseCurrentLocationPin = useCallback(async () => {
+    if (locating) return;
+    setLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Location permission", "Allow location access to place a map pin from your current position.");
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const lat = loc.coords.latitude;
+      const lng = loc.coords.longitude;
+      const reverse = await api.post<any>("/api/mapbox/reverse-geocode", {
+        latitude: lat,
+        longitude: lng,
+      });
+      const feature = reverse?.data?.data ?? reverse?.data ?? null;
+      if (feature) {
+        const mapped = mapGeocodeFeatureToAddressParts(feature, {
+          defaultCountryName: country.trim() || "South Africa",
+        });
+        setAddressLine1(mapped.address_line1 || address_line1 || "Current location");
+        setCity(mapped.city || city || "—");
+        setState(mapped.state || "");
+        setPostalCode(mapped.postal_code || "");
+        setCountry(mapped.country || country || "South Africa");
+      }
+      setLatitude(lat);
+      setLongitude(lng);
+      if (errors.address_line1 || errors.city || errors.country) {
+        setErrors((e) => ({ ...e, address_line1: "", city: "", country: "" }));
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (e) {
+      Alert.alert("Location error", e instanceof Error ? e.message : "Could not fetch current location.");
+    } finally {
+      setLocating(false);
+    }
+  }, [locating, country, address_line1, city, errors.address_line1, errors.city, errors.country]);
+
   if (!locationId) {
     return (
       <ScreenContainer scrollable={false}>
@@ -278,6 +322,24 @@ export default function EditLocationScreen() {
                     : undefined
                 }
               />
+              <TouchableOpacity
+                onPress={() => {
+                  void handleUseCurrentLocationPin();
+                }}
+                disabled={locating}
+                style={twStyle("mt-2.5 self-start rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 flex-row items-center")}
+                accessibilityLabel="Use current location pin"
+                accessibilityRole="button"
+              >
+                {locating ? (
+                  <ActivityIndicator size="small" color="#2563eb" />
+                ) : (
+                  <Ionicons name="locate-outline" size={16} color="#2563eb" />
+                )}
+                <Text style={twStyle("ml-1.5 text-xs font-semibold text-blue-700")}>
+                  {locating ? "Locating…" : "Use current location pin"}
+                </Text>
+              </TouchableOpacity>
               {errors.address_line1 ? (
                 <Text style={twStyle("mt-1 text-sm text-red-500")}>
                   {errors.address_line1 === "validation.required"

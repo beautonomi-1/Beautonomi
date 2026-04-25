@@ -5,7 +5,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { Activity } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
-import { adminSpaAbsoluteUrl } from "@/lib/adminSpaPath";
+import { adminSpaAbsoluteUrl, adminSpaTo } from "@/lib/adminSpaPath";
 import { AdminMapContainer } from "@/components/maps/AdminMapContainer";
 
 const POLL_MS = 10_000;
@@ -85,8 +85,10 @@ type MapState = {
 export function GodsEyeLiveMap() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const hasAutoFocusedRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
   const [privacyMode, setPrivacyMode] = useState(false);
+  const [selectedFeature, setSelectedFeature] = useState<Record<string, unknown> | null>(null);
 
   const mapQ = useQuery({
     queryKey: [...adminQueryKeys.godsEye(), "map-state"] as const,
@@ -124,12 +126,65 @@ export function GodsEyeLiveMap() {
     };
   }, []);
 
+  useEffect(() => {
+    // Re-center with fresh bounds after toggling coordinate fuzzing mode.
+    hasAutoFocusedRef.current = false;
+  }, [privacyMode]);
+
+  const focusMapToData = useCallback((map: mapboxgl.Map, points: Array<[number, number]>) => {
+    if (points.length === 0) return;
+    const bounds = points.reduce(
+      (acc, [lng, lat]) => acc.extend([lng, lat]),
+      new mapboxgl.LngLatBounds(points[0], points[0]),
+    );
+    map.fitBounds(bounds, { padding: 64, maxZoom: 13, duration: 800 });
+  }, []);
+
   const renderLayers = useCallback(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !mapState) return;
 
     const apply = () => {
       if (!map.isStyleLoaded()) return;
+
+    /** Non-clustered customer source from older builds — remove so we can recreate with clustering. */
+    const migrateLegacyCustomerSource = () => {
+      if (!map.getLayer("ge-customers-halo") && !map.getLayer("ge-customers-layer")) return;
+      const customerStack = [
+        "ge-customers-cluster-count",
+        "ge-customers-clusters",
+        "ge-customers-point",
+        "ge-customers-point-halo",
+        "ge-customers-layer",
+        "ge-customers-halo",
+        "ge-customers-heat",
+      ];
+      for (const lid of customerStack) {
+        if (map.getLayer(lid)) map.removeLayer(lid);
+      }
+      if (map.getSource("ge-customers")) map.removeSource("ge-customers");
+    };
+    migrateLegacyCustomerSource();
+
+    /** Recreate source if an older session added `ge-customers` without `cluster: true`. */
+    const rebuildCustomerSourceIfNotClustered = () => {
+      const src = map.getSource("ge-customers") as mapboxgl.GeoJSONSource | undefined;
+      if (!src || src._options?.cluster === true) return;
+      const customerLayers = [
+        "ge-customers-cluster-count",
+        "ge-customers-clusters",
+        "ge-customers-point",
+        "ge-customers-point-halo",
+        "ge-customers-layer",
+        "ge-customers-halo",
+        "ge-customers-heat",
+      ];
+      for (const lid of customerLayers) {
+        if (map.getLayer(lid)) map.removeLayer(lid);
+      }
+      map.removeSource("ge-customers");
+    };
+    rebuildCustomerSourceIfNotClustered();
 
     const pos = (lat: number, lng: number) => toMapPosition(lat, lng, privacyMode);
 
@@ -182,6 +237,7 @@ export function GodsEyeLiveMap() {
           phone: c.phone,
           city: c.city,
           country: c.country,
+          address_label: c.address_label,
           source: c.source,
           last_seen_at: c.last_seen_at,
         },
@@ -222,25 +278,125 @@ export function GodsEyeLiveMap() {
     ];
 
     for (const [id, data] of sources) {
+      if (id === "ge-customers") {
+        const existing = map.getSource(id) as mapboxgl.GeoJSONSource | undefined;
+        if (existing) existing.setData(data);
+        else {
+          map.addSource(id, {
+            type: "geojson",
+            data,
+            cluster: true,
+            clusterMaxZoom: 14,
+            clusterRadius: 52,
+            clusterMinPoints: 2,
+          });
+        }
+        continue;
+      }
       if (map.getSource(id)) (map.getSource(id) as mapboxgl.GeoJSONSource).setData(data);
       else map.addSource(id, { type: "geojson", data });
     }
 
-    const ensureLayer = (layerId: string, source: string, layerType: "circle" | "line", paint: Record<string, unknown>) => {
+    const ensureLayer = (
+      layerId: string,
+      source: string,
+      layerType: "circle" | "line" | "heatmap" | "symbol",
+      paint: Record<string, unknown>,
+      opts?: { filter?: mapboxgl.ExpressionSpecification; layout?: Record<string, unknown> },
+    ) => {
       if (!map.getLayer(layerId)) {
-        map.addLayer({ id: layerId, type: layerType, source, paint } as mapboxgl.CircleLayer | mapboxgl.LineLayer);
+        map.addLayer({
+          id: layerId,
+          type: layerType,
+          source,
+          paint,
+          ...(opts?.filter ? { filter: opts.filter } : {}),
+          ...(opts?.layout ? { layout: opts.layout } : {}),
+        } as mapboxgl.AnyLayer);
       }
     };
 
+    ensureLayer("ge-customers-heat", "ge-customers", "heatmap", {
+      "heatmap-weight": 1,
+      "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 4, 0.5, 10, 1.4],
+      "heatmap-color": [
+        "interpolate",
+        ["linear"],
+        ["heatmap-density"],
+        0,
+        "rgba(16,185,129,0)",
+        0.2,
+        "rgba(16,185,129,0.18)",
+        0.45,
+        "rgba(5,150,105,0.35)",
+        0.7,
+        "rgba(13,148,136,0.58)",
+        1,
+        "rgba(2,132,199,0.72)",
+      ],
+      "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 4, 16, 10, 34],
+      "heatmap-opacity": 0.65,
+    });
     ensureLayer("ge-lines-layer", "ge-lines", "line", {
       "line-color": ["case", ["get", "arrived"], "#22c55e", "#3b82f6"],
       "line-width": 2,
     });
-    ensureLayer("ge-customers-layer", "ge-customers", "circle", {
-      "circle-color": "#059669",
-      "circle-radius": 7,
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#fff",
+    ensureLayer(
+      "ge-customers-clusters",
+      "ge-customers",
+      "circle",
+      {
+        "circle-color": "#059669",
+        "circle-radius": ["step", ["get", "point_count"], 18, 10, 22, 50, 28, 200, 36],
+        "circle-opacity": 0.92,
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#fff",
+      },
+      { filter: ["has", "point_count"] },
+    );
+    ensureLayer(
+      "ge-customers-cluster-count",
+      "ge-customers",
+      "symbol",
+      {
+        "text-color": "#ffffff",
+      },
+      {
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-font": ["DIN Offc Pro Medium", "Arial Unicode MS Bold"],
+          "text-size": 12,
+        },
+      },
+    );
+    ensureLayer(
+      "ge-customers-point-halo",
+      "ge-customers",
+      "circle",
+      {
+        "circle-color": "#10b981",
+        "circle-radius": 12,
+        "circle-opacity": 0.16,
+      },
+      { filter: ["!", ["has", "point_count"]] },
+    );
+    ensureLayer(
+      "ge-customers-point",
+      "ge-customers",
+      "circle",
+      {
+        "circle-color": "#059669",
+        "circle-radius": 7,
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#fff",
+      },
+      { filter: ["!", ["has", "point_count"]] },
+    );
+    ensureLayer("ge-targets-halo", "ge-at-home-targets", "circle", {
+      "circle-color": "#6b7280",
+      "circle-radius": 13,
+      "circle-opacity": 0.15,
     });
     ensureLayer("ge-targets-layer", "ge-at-home-targets", "circle", {
       "circle-color": "#6b7280",
@@ -248,18 +404,39 @@ export function GodsEyeLiveMap() {
       "circle-stroke-width": 2,
       "circle-stroke-color": "#fff",
     });
+    ensureLayer("ge-salons-halo", "ge-salons", "circle", {
+      "circle-color": "#a855f7",
+      "circle-radius": 16,
+      "circle-opacity": 0.14,
+    });
     ensureLayer("ge-salons-layer", "ge-salons", "circle", {
       "circle-color": "#a855f7",
-      "circle-radius": 10,
+      "circle-radius": 11,
       "circle-stroke-width": 2,
       "circle-stroke-color": "#fff",
+    });
+    ensureLayer("ge-providers-halo", "ge-providers", "circle", {
+      "circle-color": "#2563eb",
+      "circle-radius": 16,
+      "circle-opacity": 0.14,
     });
     ensureLayer("ge-providers-layer", "ge-providers", "circle", {
       "circle-color": "#2563eb",
-      "circle-radius": 10,
+      "circle-radius": 11,
       "circle-stroke-width": 2,
       "circle-stroke-color": "#fff",
     });
+
+    if (!hasAutoFocusedRef.current) {
+      const allPoints = [
+        ...customers.map((f) => f.geometry.coordinates as [number, number]),
+        ...providerPoints.map((f) => f.geometry.coordinates as [number, number]),
+        ...atHomeTargets.map((f) => f.geometry.coordinates as [number, number]),
+        ...salonPoints.map((f) => f.geometry.coordinates as [number, number]),
+      ];
+      focusMapToData(map, allPoints);
+      hasAutoFocusedRef.current = true;
+    }
     };
 
     if (map.isStyleLoaded()) {
@@ -267,7 +444,7 @@ export function GodsEyeLiveMap() {
     } else {
       map.once("idle", apply);
     }
-  }, [mapReady, mapState, privacyMode]);
+  }, [focusMapToData, mapReady, mapState, privacyMode]);
 
   useEffect(() => {
     renderLayers();
@@ -277,25 +454,67 @@ export function GodsEyeLiveMap() {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
+    const interactiveLayers = [
+      "ge-customers-point",
+      "ge-customers-clusters",
+      "ge-customers-cluster-count",
+      "ge-providers-layer",
+      "ge-targets-layer",
+      "ge-salons-layer",
+    ];
+
+    const onMove = (e: mapboxgl.MapMouseEvent) => {
+      const features = map.queryRenderedFeatures(e.point, { layers: interactiveLayers });
+      map.getCanvas().style.cursor = features.length > 0 ? "pointer" : "";
+    };
+
     const onClick = (e: mapboxgl.MapMouseEvent) => {
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: ["ge-customers-layer", "ge-providers-layer", "ge-targets-layer", "ge-salons-layer"],
-      });
+      const features = map.queryRenderedFeatures(e.point, { layers: interactiveLayers });
       const f = features[0];
       if (!f?.properties) return;
       const props = f.properties as Record<string, unknown>;
       popupRef.current?.remove();
 
+      const clusterIdRaw = props.cluster_id;
+      const pointCount = props.point_count;
+      if (clusterIdRaw != null && pointCount != null) {
+        const clusterId = Number(clusterIdRaw);
+        const count = Number(pointCount);
+        setSelectedFeature({ kind: "customer_cluster", point_count: count, cluster_id: clusterId });
+        const geo = f.geometry as { type: string; coordinates: [number, number] };
+        const center = geo.coordinates;
+        const custSrc = map.getSource("ge-customers") as mapboxgl.GeoJSONSource;
+        custSrc.getClusterExpansionZoom(clusterId, (err, zoom) => {
+          if (!err && zoom != null) {
+            map.easeTo({ center, zoom });
+          }
+        });
+        const html = `
+          <div style="font-size:13px;max-width:220px">
+            <div style="font-weight:600;margin-bottom:4px">${count} customers</div>
+            <div style="color:#64748b;font-size:11px">Click zooms in; repeat until individual pins appear.</div>
+          </div>`;
+        popupRef.current = new mapboxgl.Popup({ closeButton: true }).setLngLat(e.lngLat).setHTML(html).addTo(map);
+        return;
+      }
+
+      setSelectedFeature(props);
+
       if (props.kind === "customer" && props.user_id) {
         const uid = String(props.user_id);
         const name = String(props.display_name ?? "Customer");
         const city = props.city ? String(props.city) : "";
+        const addr = props.address_label ? String(props.address_label) : "";
+        const email = props.email ? String(props.email) : "";
+        const phone = props.phone ? String(props.phone) : "";
         const src = props.source === "saved_address" ? "Saved address" : "Last booking location";
         const profileHref = adminSpaAbsoluteUrl(`/admin/users/${uid}`);
         const html = `
           <div style="font-size:13px;max-width:260px">
             <div style="font-weight:600;margin-bottom:4px">${escapeHtml(name)}</div>
-            <div style="color:#64748b;font-size:11px;margin-bottom:8px">${escapeHtml(src)}${city ? ` · ${escapeHtml(city)}` : ""}</div>
+            <div style="color:#64748b;font-size:11px;margin-bottom:8px">${escapeHtml(src)}${city ? ` · ${escapeHtml(city)}` : ""}${addr ? `<br/>${escapeHtml(addr)}` : ""}</div>
+            ${email ? `<div style="color:#64748b;font-size:11px;margin-bottom:2px">${escapeHtml(email)}</div>` : ""}
+            ${phone ? `<div style="color:#64748b;font-size:11px;margin-bottom:8px">${escapeHtml(phone)}</div>` : ""}
             <a href="${profileHref}" style="color:#2563eb;font-weight:500">Open user profile →</a>
           </div>`;
         popupRef.current = new mapboxgl.Popup({ closeButton: true }).setLngLat(e.lngLat).setHTML(html).addTo(map);
@@ -306,18 +525,23 @@ export function GodsEyeLiveMap() {
         const name = String(props.name ?? "Provider");
         const pid = String(props.id ?? "");
         const href = adminSpaAbsoluteUrl(`/admin/providers/${pid}`);
+        const status = String(props.status ?? "idle").replace(/_/g, " ");
         const html = `
           <div style="font-size:13px;max-width:220px">
             <div style="font-weight:600">${escapeHtml(name)}</div>
+            <div style="color:#64748b;font-size:11px;margin:4px 0 8px">Status: ${escapeHtml(status)}</div>
             <div style="margin-top:8px"><a href="${href}" style="color:#2563eb">Open provider →</a></div>
           </div>`;
         popupRef.current = new mapboxgl.Popup({ closeButton: true }).setLngLat(e.lngLat).setHTML(html).addTo(map);
       }
     };
 
+    map.on("mousemove", onMove);
     map.on("click", onClick);
     return () => {
+      map.off("mousemove", onMove);
       map.off("click", onClick);
+      map.getCanvas().style.cursor = "";
     };
   }, [mapReady]);
 
@@ -367,8 +591,83 @@ export function GodsEyeLiveMap() {
                 <dd className="font-medium tabular-nums">{sum?.at_salon ?? 0}</dd>
               </div>
             </dl>
+            <button
+              type="button"
+              onClick={() => {
+                const map = mapRef.current;
+                if (!map || !mapState) return;
+                const points: Array<[number, number]> = [];
+                for (const c of mapState.customer_markers ?? []) points.push(toMapPosition(c.lat, c.lng, privacyMode));
+                for (const p of mapState.providers) {
+                  if (p.last_lat != null && p.last_lng != null) points.push(toMapPosition(p.last_lat, p.last_lng, privacyMode));
+                }
+                for (const b of mapState.at_home_bookings) {
+                  if (b.customer_target_lat != null && b.customer_target_lng != null) {
+                    points.push(toMapPosition(b.customer_target_lat, b.customer_target_lng, privacyMode));
+                  }
+                }
+                for (const s of mapState.at_salon_bookings) points.push(toMapPosition(s.salon_lat, s.salon_lng, privacyMode));
+                focusMapToData(map, points);
+              }}
+              className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+            >
+              Focus on all markers
+            </button>
           </div>
-          <p className="text-xs text-gray-500">Refreshes every {POLL_MS / 1000}s. Click a marker for details and profile link.</p>
+          {selectedFeature ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-3 text-xs">
+              <h4 className="mb-2 text-[11px] font-semibold uppercase text-gray-500">Selected marker</h4>
+              {selectedFeature.kind === "provider" ? (
+                <div className="space-y-1.5">
+                  <p className="font-medium text-gray-900">{String(selectedFeature.name ?? "Provider")}</p>
+                  <p className="text-gray-600">Status: {String(selectedFeature.status ?? "idle").replace(/_/g, " ")}</p>
+                  <a
+                    href={adminSpaTo(`/admin/providers/${String(selectedFeature.id ?? "")}`)}
+                    className="inline-flex text-xs font-medium text-primary hover:underline"
+                  >
+                    Open provider profile
+                  </a>
+                </div>
+              ) : selectedFeature.kind === "customer" ? (
+                <div className="space-y-1.5">
+                  <p className="font-medium text-gray-900">{String(selectedFeature.display_name ?? "Customer")}</p>
+                  <p className="text-gray-600">
+                    {selectedFeature.source === "saved_address" ? "Saved address" : "Last booking location"}
+                    {selectedFeature.city ? ` · ${String(selectedFeature.city)}` : ""}
+                  </p>
+                  {selectedFeature.address_label ? (
+                    <p className="text-gray-600">{String(selectedFeature.address_label)}</p>
+                  ) : null}
+                  {selectedFeature.email ? <p className="text-gray-600">{String(selectedFeature.email)}</p> : null}
+                  {selectedFeature.phone ? <p className="text-gray-600">{String(selectedFeature.phone)}</p> : null}
+                  <a
+                    href={adminSpaTo(`/admin/users/${String(selectedFeature.user_id ?? "")}`)}
+                    className="inline-flex text-xs font-medium text-primary hover:underline"
+                  >
+                    Open customer profile
+                  </a>
+                </div>
+              ) : selectedFeature.kind === "customer_cluster" ? (
+                <div className="space-y-1.5">
+                  <p className="font-medium text-gray-900">{String(selectedFeature.point_count ?? 0)} customers</p>
+                  <p className="text-gray-600">Clustered at this zoom. Click the map again after zooming to open individual profiles.</p>
+                </div>
+              ) : selectedFeature.kind === "target" ? (
+                <div className="space-y-1.5">
+                  <p className="font-medium text-gray-900">At-home target</p>
+                  <p className="text-gray-600">Booking: {String(selectedFeature.booking_id ?? "—")}</p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <p className="font-medium text-gray-900">Salon location</p>
+                  <p className="text-gray-600">Booking: {String(selectedFeature.booking_id ?? "—")}</p>
+                </div>
+              )}
+            </div>
+          ) : null}
+          <p className="text-xs text-gray-500">
+            Refreshes every {POLL_MS / 1000}s. Customer clusters zoom in on click; single pins open profile links.
+          </p>
         </div>
 
         <div className="relative min-h-[420px] flex-1">

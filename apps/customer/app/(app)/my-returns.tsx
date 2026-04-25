@@ -19,13 +19,19 @@ import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface ReturnItem {
   id: string;
+  order_id?: string;
   product_name: string;
   reason: string;
   quantity: number;
   refund_amount: number;
   status: string;
   created_at: string;
-  order?: { order_number?: string; provider?: { business_name?: string } };
+  order?: {
+    id?: string;
+    order_number?: string;
+    currency?: string | null;
+    provider?: { business_name?: string };
+  };
 }
 
 function formatDateSafe(value: unknown): string {
@@ -205,11 +211,30 @@ export default function MyReturnsScreen() {
             renderItem={({ item: r }) => {
               const statusSt = statusStyle(r.status);
               const busy = actionId === r.id;
+              const orderNavId = r.order_id ?? r.order?.id;
+              const refundCur = (r.order?.currency && String(r.order.currency).trim()) || fb;
               return (
                 <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.gray[100] }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 2 }}>Order {r.order?.order_number ?? "—"}</Text>
+                      {orderNavId ? (
+                        <TouchableOpacity
+                          onPress={() =>
+                            router.push({
+                              pathname: "/(app)/product-order-detail",
+                              params: { id: orderNavId },
+                            } as never)
+                          }
+                          accessibilityRole="button"
+                          accessibilityLabel={`Open order ${r.order?.order_number ?? ""}`}
+                        >
+                          <Text style={{ fontSize: 12, color: Colors.primary, marginBottom: 2, fontWeight: "600" }}>
+                            Order {r.order?.order_number ?? "—"}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 2 }}>Order {r.order?.order_number ?? "—"}</Text>
+                      )}
                       <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>{r.product_name}</Text>
                       <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>
                         {r.order?.provider?.business_name ?? ""} · {r.reason.replace(/_/g, " ")} · Qty {r.quantity}
@@ -220,12 +245,25 @@ export default function MyReturnsScreen() {
                         <Text style={{ fontSize: 11, fontWeight: "600", ...statusSt }}>{formatStatus(r.status)}</Text>
                       </View>
                       <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900], marginTop: 8 }}>
-                        {formatMoney(Number(r.refund_amount), fb)}
+                        {formatMoney(Number(r.refund_amount), refundCur)}
                       </Text>
                       <Text style={{ fontSize: 11, color: Colors.gray[400] }}>{formatDateSafe(r.created_at)}</Text>
                     </View>
                   </View>
-                  <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                    {orderNavId ? (
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push({
+                            pathname: "/(app)/product-order-detail",
+                            params: { id: orderNavId },
+                          } as never)
+                        }
+                        style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[200] }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[800] }}>View order</Text>
+                      </TouchableOpacity>
+                    ) : null}
                     {r.status === "pending" && (
                       <TouchableOpacity
                         onPress={() => handleCancel(r.id)}

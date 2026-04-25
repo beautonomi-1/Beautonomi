@@ -737,13 +737,7 @@ export default function ProfileScreen() {
               } else if (Platform.OS === "android") {
                 Linking.openURL("https://play.google.com/store/apps/details?id=com.beautonomi").catch(() => {});
               } else {
-                router.push({
-                  pathname: "/(app)/in-app-browser",
-                  params: {
-                    url: encodeURIComponent(`${APP_URL}/help-center?topic=feedback`),
-                    title: "Feedback",
-                  },
-                });
+                router.push("/(app)/contact-support");
               }
             }}
           />

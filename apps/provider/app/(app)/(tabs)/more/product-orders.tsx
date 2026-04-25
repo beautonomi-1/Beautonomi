@@ -15,8 +15,10 @@ import {
 import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -41,19 +43,59 @@ interface OrderItem {
   product_variant?: { option_values?: Record<string, string> } | null;
 }
 
+interface OrderAddress {
+  id?: string;
+  label?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+  apartment_unit?: string | null;
+  building_name?: string | null;
+  floor_number?: string | null;
+  parking_instructions?: string | null;
+  location_landmarks?: string | null;
+}
+
+interface OrderCollectionLocation {
+  id?: string;
+  name?: string | null;
+  address_line1?: string | null;
+  city?: string | null;
+}
+
 interface Order {
   id: string;
   order_number: string;
   total_amount: number | string;
+  subtotal?: number | string | null;
+  tax_amount?: number | string | null;
+  delivery_fee?: number | string | null;
+  discount_amount?: number | string | null;
+  currency?: string | null;
   status: string;
   payment_status?: string;
   fulfillment_type?: string;
+  order_source?: string | null;
   tracking_number?: string | null;
   carrier?: string | null;
   tracking_url?: string | null;
+  delivery_instructions?: string | null;
+  estimated_delivery_date?: string | null;
+  confirmed_at?: string | null;
+  shipped_at?: string | null;
+  delivered_at?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
   created_at: string;
   items?: OrderItem[];
-  customer?: { full_name?: string | null; email?: string | null; phone?: string | null };
+  customer?: { full_name?: string | null; email?: string | null; phone?: string | null } | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  delivery_address?: OrderAddress | OrderAddress[] | null;
+  collection_location?: OrderCollectionLocation | OrderCollectionLocation[] | null;
 }
 
 interface OrdersListResponse {
@@ -90,6 +132,17 @@ const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
 /*  Status state machine                                               */
 /* ------------------------------------------------------------------ */
 
+/** Ionicons for status transitions (replaces emoji-only labels). */
+const STATUS_ACTION_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+  confirmed: "checkmark-circle-outline",
+  processing: "construct-outline",
+  ready_for_collection: "storefront-outline",
+  shipped: "cube-outline",
+  delivered: "checkmark-done-outline",
+  refunded: "return-down-back-outline",
+  cancelled: "close-circle-outline",
+};
+
 function getNextStatusOptions(current: string): string[] {
   const map: Record<string, string[]> = {
     pending:              ["confirmed", "cancelled"],
@@ -102,11 +155,57 @@ function getNextStatusOptions(current: string): string[] {
   return map[current] ?? [];
 }
 
+function numOrZero(v: unknown): number {
+  if (v == null) return 0;
+  const n = typeof v === "string" ? parseFloat(v) : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatOrderDateLabel(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return null;
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function unwrapOne<T>(v: T | T[] | null | undefined): T | null {
+  if (v == null) return null;
+  return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+
+function formatAddressLines(addr: OrderAddress | null): string[] {
+  if (!addr) return [];
+  const lines: string[] = [];
+  const line1 = [addr.apartment_unit, addr.building_name, addr.address_line1].filter(Boolean).join(", ").trim();
+  if (line1) lines.push(line1);
+  if (addr.address_line2?.trim()) lines.push(addr.address_line2.trim());
+  const cityLine = [addr.city, addr.state, addr.postal_code].filter(Boolean).join(", ").trim();
+  if (cityLine) lines.push(cityLine);
+  if (addr.country?.trim()) lines.push(addr.country.trim());
+  if (addr.parking_instructions?.trim()) lines.push(`Parking: ${addr.parking_instructions.trim()}`);
+  if (addr.location_landmarks?.trim()) lines.push(`Landmarks: ${addr.location_landmarks.trim()}`);
+  return lines;
+}
+
+async function openExternalUrl(url: string) {
+  const trimmed = url.trim();
+  if (!trimmed) return;
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const ok = await Linking.canOpenURL(withScheme);
+    if (ok) await Linking.openURL(withScheme);
+    else Alert.alert("Open link", "This device cannot open that URL.");
+  } catch {
+    Alert.alert("Open link", "Could not open the tracking page.");
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component (exported for embedding in hub tabs)                     */
 /* ------------------------------------------------------------------ */
 
 export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: string }) {
+  const router = useRouter();
   const { screenPadding } = useResponsive();
   const currency = getTenantDefaultCurrency();
 
@@ -145,7 +244,9 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         return (
           o.order_number.toLowerCase().includes(q) ||
           (o.customer?.full_name ?? "").toLowerCase().includes(q) ||
-          (o.customer?.email ?? "").toLowerCase().includes(q)
+          (o.customer?.email ?? "").toLowerCase().includes(q) ||
+          (o.customer_name ?? "").toLowerCase().includes(q) ||
+          (o.customer_phone ?? "").toLowerCase().includes(q)
         );
       })
     : allOrders;
@@ -399,7 +500,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       </View>
                     </View>
                     <Text style={twStyle("mt-0.5 text-sm text-gray-600")} numberOfLines={1}>
-                      {order.customer?.full_name ?? "Customer"}{" "}
+                      {order.customer?.full_name ?? order.customer_name ?? "Customer"}{" "}
                       · {formatCurrency(Number(order.total_amount), currency)}
                     </Text>
                     {order.tracking_number && (
@@ -422,7 +523,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
           visible={!!viewOrder}
           onClose={() => { setViewOrder(null); setOrderDetail(null); }}
           title={viewOrder.order_number}
-          subtitle={activeOrder?.customer?.full_name ?? "Order details"}
+          subtitle={
+            activeOrder?.customer?.full_name ??
+            activeOrder?.customer_name ??
+            "Order details"
+          }
           snapHeight="full"
         >
           {loadingDetail ? (
@@ -457,19 +562,124 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                     </Text>
                   </View>
                 )}
+                {activeOrder.order_source === "walk_in" && (
+                  <View style={twStyle("rounded-full bg-amber-100 px-3 py-1")}>
+                    <Text style={twStyle("text-xs font-medium text-amber-900")}>Walk-in</Text>
+                  </View>
+                )}
               </View>
 
+              {/* Fulfillment: delivery / collection */}
+              {(() => {
+                const addr = unwrapOne(activeOrder.delivery_address);
+                const coll = unwrapOne(activeOrder.collection_location);
+                const isDelivery = activeOrder.fulfillment_type === "delivery";
+                if (isDelivery && addr) {
+                  const lines = formatAddressLines(addr);
+                  if (lines.length === 0) return null;
+                  return (
+                    <View style={twStyle("mb-3 rounded-xl border border-gray-100 bg-white px-4 py-3")}>
+                      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1")}>
+                        Delivery address{addr.label ? ` · ${addr.label}` : ""}
+                      </Text>
+                      {lines.map((line, i) => (
+                        <Text key={i} style={twStyle("text-sm text-gray-800")}>
+                          {line}
+                        </Text>
+                      ))}
+                    </View>
+                  );
+                }
+                if (!isDelivery && coll && (coll.name || coll.address_line1 || coll.city)) {
+                  return (
+                    <View style={twStyle("mb-3 rounded-xl border border-gray-100 bg-white px-4 py-3")}>
+                      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1")}>
+                        Collection
+                      </Text>
+                      {coll.name ? (
+                        <Text style={twStyle("text-sm font-medium text-gray-900")}>{coll.name}</Text>
+                      ) : null}
+                      <Text style={twStyle("text-sm text-gray-700")}>
+                        {[coll.address_line1, coll.city].filter(Boolean).join(", ")}
+                      </Text>
+                    </View>
+                  );
+                }
+                return null;
+              })()}
+
+              {(activeOrder.estimated_delivery_date || activeOrder.delivery_instructions?.trim()) && (
+                <View style={twStyle("mb-3 rounded-xl bg-slate-50 px-4 py-3")}>
+                  <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1")}>
+                    Delivery notes
+                  </Text>
+                  {activeOrder.estimated_delivery_date ? (
+                    <Text style={twStyle("text-sm text-gray-800")}>
+                      Est. delivery: {formatOrderDateLabel(`${activeOrder.estimated_delivery_date}T12:00:00`) ?? activeOrder.estimated_delivery_date}
+                    </Text>
+                  ) : null}
+                  {activeOrder.delivery_instructions?.trim() ? (
+                    <Text style={twStyle("mt-1 text-sm text-gray-700")}>{activeOrder.delivery_instructions.trim()}</Text>
+                  ) : null}
+                </View>
+              )}
+
+              {(() => {
+                const rows: { label: string; at: string }[] = [];
+                const c1 = formatOrderDateLabel(activeOrder.confirmed_at);
+                if (c1) rows.push({ label: "Confirmed", at: c1 });
+                const c2 = formatOrderDateLabel(activeOrder.shipped_at);
+                if (c2) rows.push({ label: "Shipped", at: c2 });
+                const c3 = formatOrderDateLabel(activeOrder.delivered_at);
+                if (c3) rows.push({ label: "Delivered", at: c3 });
+                const c4 = formatOrderDateLabel(activeOrder.cancelled_at);
+                if (c4) rows.push({ label: "Cancelled", at: c4 });
+                if (rows.length === 0) return null;
+                return (
+                  <View style={twStyle("mb-3 rounded-xl bg-gray-50 px-4 py-3")}>
+                    <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2")}>
+                      Timeline
+                    </Text>
+                    {rows.map((r) => (
+                      <View key={r.label} style={twStyle("mb-1 flex-row justify-between gap-2")}>
+                        <Text style={twStyle("text-xs font-medium text-gray-600")}>{r.label}</Text>
+                        <Text style={twStyle("flex-1 text-right text-xs text-gray-800")}>{r.at}</Text>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })()}
+
+              {activeOrder.status === "cancelled" && activeOrder.cancellation_reason?.trim() ? (
+                <View style={twStyle("mb-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3")}>
+                  <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-red-400 mb-1")}>
+                    Cancellation reason
+                  </Text>
+                  <Text style={twStyle("text-sm text-red-900")}>{activeOrder.cancellation_reason.trim()}</Text>
+                </View>
+              ) : null}
+
               {/* Customer info */}
-              {(activeOrder.customer?.email || activeOrder.customer?.phone) && (
+              {(activeOrder.customer?.email ||
+                activeOrder.customer?.phone ||
+                activeOrder.customer?.full_name?.trim() ||
+                activeOrder.customer_name?.trim() ||
+                activeOrder.customer_phone?.trim()) && (
                 <View style={twStyle("mb-3 rounded-xl bg-gray-50 px-4 py-3")}>
                   <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1")}>
                     Customer
                   </Text>
+                  {(() => {
+                    const nm = (activeOrder.customer?.full_name ?? activeOrder.customer_name ?? "").trim();
+                    return nm ? <Text style={twStyle("text-sm font-medium text-gray-900")}>{nm}</Text> : null;
+                  })()}
+                  {(activeOrder.customer?.phone?.trim() || activeOrder.customer_phone?.trim()) ? (
+                    <Text style={twStyle("text-sm text-gray-700")}>
+                      {(activeOrder.customer?.phone ?? activeOrder.customer_phone ?? "").trim()}
+                    </Text>
+                  ) : null}
                   {activeOrder.customer?.email && (
                     <Text style={twStyle("text-sm text-gray-700")}>{activeOrder.customer.email}</Text>
-                  )}
-                  {activeOrder.customer?.phone && (
-                    <Text style={twStyle("text-sm text-gray-700")}>{activeOrder.customer.phone}</Text>
                   )}
                 </View>
               )}
@@ -486,11 +696,19 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   {activeOrder.tracking_number && (
                     <Text style={twStyle("text-sm text-blue-700")}>{activeOrder.tracking_number}</Text>
                   )}
-                  {activeOrder.tracking_url && (
-                    <Text style={twStyle("mt-0.5 text-xs text-blue-600")} numberOfLines={1}>
-                      {activeOrder.tracking_url}
-                    </Text>
-                  )}
+                  {activeOrder.tracking_url ? (
+                    <TouchableOpacity
+                      onPress={() => void openExternalUrl(activeOrder.tracking_url!)}
+                      style={twStyle("mt-2 flex-row items-center self-start rounded-lg bg-blue-600 px-3 py-2")}
+                      accessibilityRole="link"
+                      accessibilityLabel="Open tracking page"
+                    >
+                      <Ionicons name="open-outline" size={16} color="#fff" />
+                      <Text style={twStyle("ml-2 text-xs font-semibold text-white")} numberOfLines={1}>
+                        Open tracking page
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               )}
 
@@ -521,11 +739,49 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   </View>
                 );
               })}
-              <View style={twStyle("mb-4 flex-row justify-end")}>
-                <Text style={twStyle("text-base font-bold text-gray-900")}>
-                  Total {formatCurrency(Number(activeOrder.total_amount), currency)}
-                </Text>
-              </View>
+              {(() => {
+                const cur = String(activeOrder.currency ?? currency).trim() || currency;
+                const sub = numOrZero(activeOrder.subtotal);
+                const tax = numOrZero(activeOrder.tax_amount);
+                const del = numOrZero(activeOrder.delivery_fee);
+                const disc = numOrZero(activeOrder.discount_amount);
+                const showLines =
+                  activeOrder.subtotal != null ||
+                  tax > 0 ||
+                  del > 0 ||
+                  disc > 0;
+                if (!showLines) {
+                  return (
+                    <View style={twStyle("mb-4 flex-row justify-end")}>
+                      <Text style={twStyle("text-base font-bold text-gray-900")}>
+                        Total {formatCurrency(Number(activeOrder.total_amount), cur)}
+                      </Text>
+                    </View>
+                  );
+                }
+                const row = (label: string, amount: number, muted?: boolean) => (
+                  <View key={label} style={twStyle("mb-1 flex-row justify-between")}>
+                    <Text style={twStyle(`text-sm ${muted ? "text-gray-500" : "text-gray-700"}`)}>{label}</Text>
+                    <Text style={twStyle(`text-sm font-medium ${muted ? "text-gray-500" : "text-gray-900"}`)}>
+                      {formatCurrency(amount, cur)}
+                    </Text>
+                  </View>
+                );
+                return (
+                  <View style={twStyle("mb-4 rounded-xl bg-gray-50 px-3 py-3")}>
+                    {activeOrder.subtotal != null ? row("Subtotal", sub) : null}
+                    {tax > 0 ? row("Tax", tax) : null}
+                    {del > 0 ? row("Delivery", del) : null}
+                    {disc > 0 ? row("Discount", -disc, true) : null}
+                    <View style={twStyle("mt-2 flex-row justify-between border-t border-gray-200 pt-2")}>
+                      <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
+                      <Text style={twStyle("text-base font-bold text-gray-900")}>
+                        {formatCurrency(Number(activeOrder.total_amount), cur)}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })()}
 
               {/* Download receipt */}
               <TouchableOpacity
@@ -545,7 +801,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       return;
                     }
                     if (Platform.OS === "web") {
-                      await Linking.openURL(signedUrl);
+                      pushInAppBrowser(router, signedUrl, "Order receipt");
                     } else {
                       if (!cacheDirectory) {
                         Alert.alert(
@@ -595,15 +851,9 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                         : isShip
                           ? "bg-blue-600"
                           : "bg-pink-600";
-                      const iconMap: Record<string, string> = {
-                        confirmed: "✅",
-                        processing: "🔄",
-                        ready_for_collection: "🏪",
-                        shipped: "📦",
-                        delivered: "🎉",
-                        refunded: "↩️",
-                        cancelled: "✕",
-                      };
+                      const iconName = STATUS_ACTION_ICON[status] ?? "arrow-forward-circle-outline";
+                      const label = `Mark ${status.replace(/_/g, " ")}`;
+                      const iconColor = isCancel || isRefund ? "#dc2626" : "#fff";
                       return (
                         <TouchableOpacity
                           key={status}
@@ -613,17 +863,20 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                             twStyle(`rounded-xl px-4 py-2.5 ${bgClass}`),
                             patching ? { opacity: 0.6 } : undefined,
                           ]}
-                          accessibilityLabel={`Mark as ${status}`}
+                          accessibilityLabel={label}
                         >
-                          <Text
-                            style={twStyle(
-                              `text-sm font-semibold capitalize ${
-                                isCancel || isRefund ? "text-red-600" : "text-white"
-                              }`
-                            )}
-                          >
-                            {iconMap[status] ?? ""} Mark {status.replace(/_/g, " ")}
-                          </Text>
+                          <View style={twStyle("flex-row items-center")}>
+                            <Ionicons name={iconName} size={18} color={iconColor} />
+                            <Text
+                              style={twStyle(
+                                `ml-2 text-sm font-semibold capitalize ${
+                                  isCancel || isRefund ? "text-red-600" : "text-white"
+                                }`
+                              )}
+                            >
+                              {label}
+                            </Text>
+                          </View>
                         </TouchableOpacity>
                       );
                     })}

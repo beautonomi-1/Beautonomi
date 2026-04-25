@@ -29,6 +29,7 @@ const PORTAL_TIMEOUT_MS = 12 * 1000;
 const PROFILE_COMPLETION_DELAY_MS = 0;
 const PROFILE_COMPLETION_TIMEOUT_MS = 8000;
 const ONBOARDING_STATUS_WARN_MS = 25_000;
+const ONBOARDING_STATUS_HARD_TIMEOUT_MS = 15_000;
 
 type PortalState = "idle" | "loading" | "customer" | "wrong_app" | "error";
 
@@ -377,6 +378,8 @@ export default function Index() {
 
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let hardTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+    let settled = false;
     setCustomerOnboardingDone(null);
 
     if (isSentryEnabled()) {
@@ -385,7 +388,21 @@ export default function Index() {
 
     const uid = session.user.id;
 
+    const settle = () => {
+      settled = true;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      if (hardTimeoutTimer) {
+        clearTimeout(hardTimeoutTimer);
+        hardTimeoutTimer = null;
+      }
+    };
+
     const resolveOnboardingAfterFailure = async () => {
+      if (settled || cancelled) return;
+      settle();
       const stored = await AsyncStorage.getItem(onboardingDoneKey(uid));
       if (!cancelled) setCustomerOnboardingDone(stored === "1");
     };
@@ -422,10 +439,12 @@ export default function Index() {
           }
           const completed = res.data?.completed === true;
           if (completed) {
+            settle();
             await AsyncStorage.setItem(onboardingDoneKey(uid), "1");
             if (!cancelled) setCustomerOnboardingDone(true);
             return;
           }
+          settle();
           const key = onboardingDoneKey(uid);
           const stored = await AsyncStorage.getItem(key);
           if (stored === "1") await AsyncStorage.removeItem(key);
@@ -453,11 +472,22 @@ export default function Index() {
         });
     };
 
+    hardTimeoutTimer = setTimeout(() => {
+      if (settled || cancelled) return;
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb(`${IDX}.onboarding_fetch_hard_timeout`, {
+          waitedMs: ONBOARDING_STATUS_HARD_TIMEOUT_MS,
+        });
+      }
+      // Never leave the gate in a pending state indefinitely.
+      void resolveOnboardingAfterFailure();
+    }, ONBOARDING_STATUS_HARD_TIMEOUT_MS);
+
     fetchOnboarding(0);
 
     return () => {
       cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
+      settle();
     };
   }, [portalState, session?.user?.id]);
 

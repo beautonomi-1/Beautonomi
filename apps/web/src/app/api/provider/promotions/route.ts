@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
         usage_limit: body.max_uses ?? null,
         usage_count: 0,
         is_active: body.is_active !== undefined ? body.is_active : true,
+        public_on_profile: body.public_on_profile !== undefined ? Boolean(body.public_on_profile) : true,
       })
       .select()
       .single();

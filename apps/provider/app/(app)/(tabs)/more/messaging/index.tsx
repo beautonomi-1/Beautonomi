@@ -6,7 +6,7 @@ import {
   ScrollView,
   RefreshControl,
 } from "react-native";
-import { useRouter, useLocalSearchParams, useNavigation, useFocusEffect } from "expo-router";
+import { useRouter, useLocalSearchParams, useNavigation, useFocusEffect, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { providerMessagingBaseFromPathname } from "@/lib/provider-messaging-routes";
 
 interface Conversation {
   id: string;
@@ -45,6 +46,8 @@ function formatDateTimeSafe(value: unknown): string {
 
 export default function MessagingListScreen() {
   const router = useRouter();
+  const pathname = usePathname();
+  const threadBase = providerMessagingBaseFromPathname(pathname);
   const navigation = useNavigation();
   const canGoBack = navigation.canGoBack();
   const { screenPadding } = useResponsive();
@@ -107,9 +110,9 @@ export default function MessagingListScreen() {
     const conv = conversations.find((c) => c.customer_id === customerId);
     if (conv) {
       hasRedirected.current = true;
-      router.replace(`/(app)/(tabs)/more/messaging/${conv.id}` as never);
+      router.replace(`${threadBase}/${conv.id}` as never);
     }
-  }, [customerId, loading, conversations, router]);
+  }, [customerId, loading, conversations, router, threadBase]);
 
   useFocusEffect(
     useCallback(() => {
@@ -174,7 +177,7 @@ export default function MessagingListScreen() {
             <TouchableOpacity
               key={conv.id}
               onPress={() =>
-                router.push(`/(app)/(tabs)/more/messaging/${conv.id}` as never)
+                router.push(`${threadBase}/${conv.id}` as never)
               }
               style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}

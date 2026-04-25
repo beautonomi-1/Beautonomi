@@ -15,7 +15,7 @@ async function verifyConversationAccess(
 ): Promise<{ conv: any; role: "customer" | "provider" }> {
   const { data: conv } = await supabase
     .from("conversations")
-    .select("id, customer_id, provider_id")
+    .select("id, customer_id, provider_id, provider:providers(business_name)")
     .eq("id", conversationId)
     .single();
 
@@ -62,7 +62,11 @@ export async function GET(request: NextRequest) {
     const limitParam = request.nextUrl.searchParams.get("limit");
     const limit = Math.min(Math.max(parseInt(limitParam || "50", 10), 1), 100);
 
-    const { conv: _conv, role } = await verifyConversationAccess(supabase, conversationId, user.id);
+    const { conv, role } = await verifyConversationAccess(supabase, conversationId, user.id);
+    const providerBusinessName =
+      typeof (conv as { provider?: { business_name?: unknown } | null }).provider?.business_name === "string"
+        ? ((conv as { provider: { business_name: string } }).provider.business_name.trim() || null)
+        : null;
 
     let query = supabase
       .from("messages")
@@ -92,10 +96,14 @@ export async function GET(request: NextRequest) {
       id: m.id,
       conversation_id: m.conversation_id,
       sender_id: m.sender_id,
-      sender_name: m.sender?.full_name || "User",
+      sender_name:
+        m.sender_role === "provider" && providerBusinessName
+          ? providerBusinessName
+          : m.sender?.full_name || "User",
       sender_role: m.sender_role,
       content: m.content,
       attachments: sanitizeMessageAttachmentsForResponse(m.attachments || [], m.created_at),
+      is_read: Boolean(m.is_read),
       created_at: m.created_at,
       read_at: m.read_at,
     }));

@@ -7,6 +7,7 @@ import {
   FlatList,
   Pressable,
   Linking,
+  Platform,
   useWindowDimensions,
   StatusBar,
   NativeScrollEvent,
@@ -38,8 +39,10 @@ import { formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { haptic } from "@/lib/haptics";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
+import * as Clipboard from "expo-clipboard";
 import type {
   PublicProviderDetail,
+  PublicProfilePromotion,
   ProviderServicesResponse,
   ProviderService,
   ProviderLocation,
@@ -1710,6 +1713,73 @@ export default function PartnerProfileScreen() {
                 haptic.selection();
               }}
             />
+
+            {provider.profile_promotions && provider.profile_promotions.length > 0 ? (
+              <View style={{ paddingHorizontal: contentPadding, marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>
+                  Offers from this provider
+                </Text>
+                {provider.profile_promotions.map((p: PublicProfilePromotion) => (
+                  <View
+                    key={p.code}
+                    style={{
+                      marginBottom: 10,
+                      borderRadius: 14,
+                      padding: 14,
+                      backgroundColor: "#f0fdf4",
+                      borderWidth: 1,
+                      borderColor: "#bbf7d0",
+                    }}
+                  >
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#14532d" }} numberOfLines={2}>
+                      {p.title}
+                    </Text>
+                    <Text style={{ marginTop: 4, fontSize: 13, fontWeight: "600", color: "#166534" }}>{p.savings_label}</Text>
+                    {p.description ? (
+                      <Text style={{ marginTop: 6, fontSize: 12, color: "#15803d", lineHeight: 17 }} numberOfLines={4}>
+                        {p.description}
+                      </Text>
+                    ) : null}
+                    <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <Text
+                        style={{
+                          flex: 1,
+                          fontSize: 16,
+                          fontWeight: "800",
+                          letterSpacing: 1.2,
+                          color: "#166534",
+                          fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+                        }}
+                        selectable
+                      >
+                        {p.code}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={async () => {
+                          try {
+                            await Clipboard.setStringAsync(p.code);
+                            haptic.success();
+                            Alert.alert("Copied", `Use code ${p.code} at checkout when you book with this provider.`);
+                          } catch {
+                            Alert.alert("Copy failed", "Select the code above to copy it manually.");
+                          }
+                        }}
+                        style={{
+                          paddingHorizontal: 14,
+                          paddingVertical: 8,
+                          borderRadius: 10,
+                          backgroundColor: "#16a34a",
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Copy promo code ${p.code}`}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: "#fff" }}>Copy</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
 
             {/* Description */}
             {provider.description?.trim() ? (

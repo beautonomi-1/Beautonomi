@@ -5,11 +5,14 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
+  TextInput,
   RefreshControl,
   Pressable,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -25,6 +28,7 @@ interface Conversation {
   provider_id?: string | null;
   booking_id?: string | null;
   provider?: { business_name?: string; thumbnail_url?: string | null };
+  provider_slug?: string | null;
   last_message_preview?: string | null;
   last_message_at?: string | null;
   unread_count_customer?: number;
@@ -52,6 +56,7 @@ export default function ChatsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -119,9 +124,47 @@ export default function ChatsScreen() {
     refreshSession();
   }, [authLoading, user, refreshSession]);
 
+  const filteredConversations = conversations.filter((item) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    const providerName = (item.provider?.business_name || "").toLowerCase();
+    const preview = (item.last_message_preview || "").toLowerCase();
+    return providerName.includes(q) || preview.includes(q);
+  });
+
+  const markConversationRead = useCallback(async (conversationId: string) => {
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === conversationId ? { ...c, unread_count_customer: 0 } : c
+      )
+    );
+    const res = await api.post(`/api/me/conversations/${conversationId}/read`, {});
+    if (res.error) {
+      setError(getApiErrorMessage(res.error, "Failed to mark conversation as read"));
+      void load(true);
+    }
+  }, [load]);
+
+  const deleteConversation = useCallback(async (conversationId: string) => {
+    const previous = conversations;
+    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    const res = await api.fetch<{ deleted?: boolean }>(`/api/me/conversations/${conversationId}`, {
+      method: "DELETE",
+    });
+    if (res.error) {
+      setConversations(previous);
+      setError(getApiErrorMessage(res.error, "Failed to delete conversation"));
+    }
+  }, [conversations]);
+
   const renderItem = useCallback(
     ({ item }: { item: Conversation }) => {
       const openChat = () => {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === item.id ? { ...c, unread_count_customer: 0 } : c
+          )
+        );
         const name = item.provider?.business_name || "Provider";
         if (item.provider_id) {
           router.push({ pathname: "/(app)/chat", params: { provider_id: item.provider_id, provider_name: name } });
@@ -129,15 +172,51 @@ export default function ChatsScreen() {
           router.push({ pathname: "/(app)/chat", params: { id: item.id } });
         }
       };
+      const openActions = () => {
+        const unread = item.unread_count_customer || 0;
+        Alert.alert("Conversation actions", "Choose an action", [
+          ...(unread > 0
+            ? [{ text: "Mark as read", onPress: () => void markConversationRead(item.id) }]
+            : []),
+          {
+            text: "Delete conversation",
+            style: "destructive",
+            onPress: () =>
+              Alert.alert(
+                "Delete conversation?",
+                "This will remove the conversation from your list.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Delete", style: "destructive", onPress: () => void deleteConversation(item.id) },
+                ]
+              ),
+          },
+          { text: "Cancel", style: "cancel" },
+        ]);
+      };
       return (
       <Pressable
         onPress={openChat}
+        onLongPress={openActions}
         style={{ flexDirection: "row", alignItems: "center", paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
         accessibilityRole="button"
         accessibilityLabel={`Chat with ${item.provider?.business_name || "Provider"}${item.last_message_preview ? `, last message: ${item.last_message_preview}` : ""}`}
-        accessibilityHint="Open conversation"
+        accessibilityHint="Open conversation. Long press for more actions."
       >
-        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[200], overflow: "hidden", marginRight: 16 }}>
+        <TouchableOpacity
+          onPress={() => {
+            if (item.provider_slug) {
+              router.push({
+                pathname: "/(app)/partner-profile",
+                params: { slug: item.provider_slug, provider_id: item.provider_id || undefined },
+              });
+            } else {
+              openChat();
+            }
+          }}
+          activeOpacity={0.8}
+          style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[200], overflow: "hidden", marginRight: 16 }}
+        >
           {item.provider?.thumbnail_url ? (
             <Image
               source={{ uri: item.provider.thumbnail_url }}
@@ -150,7 +229,7 @@ export default function ChatsScreen() {
               <Text style={{ color: Colors.gray[500], fontWeight: "500" }}>{(item.provider?.business_name || "?").charAt(0)}</Text>
             </View>
           )}
-        </View>
+        </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.provider?.business_name || "Provider"}</Text>
           <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }} numberOfLines={1}>{item.last_message_preview || "No messages"}</Text>
@@ -163,10 +242,18 @@ export default function ChatsScreen() {
             </View>
           ) : null}
         </View>
+        <TouchableOpacity
+          onPress={openActions}
+          accessibilityRole="button"
+          accessibilityLabel="Conversation actions"
+          style={{ marginLeft: 10, width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100] }}
+        >
+          <Ionicons name="ellipsis-vertical" size={16} color={Colors.gray[600]} />
+        </TouchableOpacity>
       </Pressable>
       );
     },
-    []
+    [deleteConversation, markConversationRead]
   );
 
   if (authLoading) {
@@ -238,10 +325,40 @@ export default function ChatsScreen() {
       <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.white }} />
       <View style={[contentContainerStyle, { paddingHorizontal: contentPadding, paddingTop: contentPadding, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }]}>
         <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Messages</Text>
+        <View
+          style={{
+            marginTop: 10,
+            flexDirection: "row",
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+            backgroundColor: Colors.gray[50],
+            borderRadius: 12,
+            paddingHorizontal: 10,
+            paddingVertical: 8,
+          }}
+        >
+          <Text style={{ color: Colors.gray[400], marginRight: 6 }}>🔎</Text>
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search providers or messages"
+            placeholderTextColor={Colors.gray[400]}
+            style={{ flex: 1, fontSize: 14, color: Colors.gray[900] }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {search.length > 0 ? (
+            <TouchableOpacity onPress={() => setSearch("")} accessibilityRole="button" accessibilityLabel="Clear search">
+              <Text style={{ color: Colors.gray[500], fontSize: 14 }}>✕</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
       <FlatList
         {...verticalFlatListPerf}
-        data={conversations}
+        data={filteredConversations}
         keyExtractor={(c) => c.id}
         renderItem={renderItem}
         style={{ flex: 1, ...contentContainerStyle }}
@@ -257,7 +374,9 @@ export default function ChatsScreen() {
         accessibilityLabel="Conversations list"
         ListEmptyComponent={
           <View style={{ paddingVertical: 64, alignItems: "center" }}>
-            <Text style={{ color: Colors.gray[500], textAlign: "center" }}>No conversations yet</Text>
+            <Text style={{ color: Colors.gray[500], textAlign: "center" }}>
+              {search.trim() ? "No matching conversations" : "No conversations yet"}
+            </Text>
             <Text style={{ color: Colors.gray[400], fontSize: 14, textAlign: "center", marginTop: 8 }}>
               Start a chat from a provider profile or booking
             </Text>

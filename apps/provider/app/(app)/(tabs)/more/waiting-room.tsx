@@ -243,7 +243,7 @@ export default function WaitingRoomScreen() {
               return (
                 <TouchableOpacity
                   key={b.id}
-                  onPress={() => router.push(`/(app)/(tabs)/more/bookings/${b.id}` as never)}
+                  onPress={() => router.push(`/(app)/(tabs)/bookings/${b.id}` as never)}
                   style={twStyle("mb-2 flex-row items-center rounded-xl border-2 border-amber-300 bg-amber-50/90 p-4")}
                   accessibilityRole="button"
                   accessibilityLabel={`Pending booking ${name} at ${t}`}
@@ -281,7 +281,7 @@ export default function WaitingRoomScreen() {
               return (
                 <TouchableOpacity
                   key={b.id}
-                  onPress={() => router.push(`/(app)/(tabs)/more/bookings/${b.id}` as never)}
+                  onPress={() => router.push(`/(app)/(tabs)/bookings/${b.id}` as never)}
                   style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
                   accessibilityRole="button"
                 >
@@ -317,7 +317,7 @@ export default function WaitingRoomScreen() {
               waitingList.map((entry) => (
                 <View key={entry.id} style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-3")}>
                   <TouchableOpacity
-                    onPress={() => router.push(`/(app)/(tabs)/more/bookings/${entry.id}` as never)}
+                    onPress={() => router.push(`/(app)/(tabs)/bookings/${entry.id}` as never)}
                     style={twStyle("min-w-0 flex-1 flex-row items-center")}
                     accessibilityRole="button"
                   >
@@ -356,7 +356,7 @@ export default function WaitingRoomScreen() {
               inServiceList.map((entry) => (
                 <View key={entry.id} style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-3")}>
                   <TouchableOpacity
-                    onPress={() => router.push(`/(app)/(tabs)/more/bookings/${entry.id}` as never)}
+                    onPress={() => router.push(`/(app)/(tabs)/bookings/${entry.id}` as never)}
                     style={twStyle("min-w-0 flex-1 flex-row items-center")}
                     accessibilityRole="button"
                   >

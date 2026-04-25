@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { fetchScopedListMerged, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/admin/plans
@@ -10,41 +11,71 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
+    const { currentTenantId } = await resolveAdminTenantContext(request, undefined, user.role ?? null);
 
-    const { data: subscriptionPlans, error: subError } = await supabase
-      .from("subscription_plans")
-      .select("*")
-      .order("display_order", { ascending: true });
+    const scopedSubscriptionPlans = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "subscription_plans",
+      tenantId: currentTenantId,
+      select: "*",
+      dedupeKey: (row) => String(row.name ?? row.id ?? ""),
+      orderBy: { column: "display_order", ascending: true },
+    });
+    const subscriptionPlans = scopedSubscriptionPlans.data || [];
 
-    if (subError) throw subError;
+    const scopedPricingPlans = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "pricing_plans",
+      tenantId: currentTenantId,
+      select: "*",
+      dedupeKey: (row) =>
+        String(row.subscription_plan_id ?? row.name ?? row.id ?? ""),
+      orderBy: { column: "display_order", ascending: true },
+    });
+    const pricingPlans = scopedPricingPlans.data || [];
+    const pricingPlanBySubscriptionPlanId = new Map<string, Record<string, unknown>>();
+    for (const plan of pricingPlans) {
+      const subscriptionPlanId = String(plan.subscription_plan_id ?? "");
+      if (subscriptionPlanId) pricingPlanBySubscriptionPlanId.set(subscriptionPlanId, plan);
+    }
 
-    // For each subscription plan, get the pricing_plan that links to it (subscription_plan_id = id)
-    const plansWithPricing = await Promise.all(
-      (subscriptionPlans || []).map(async (sp) => {
-        const { data: pricingPlan } = await supabase
-          .from("pricing_plans")
-          .select("*")
-          .eq("subscription_plan_id", sp.id)
-          .maybeSingle();
-        let feature_lines: string[] = [];
-        if (pricingPlan?.id) {
-          const { data: feats } = await supabase
-            .from("pricing_plan_features")
-            .select("feature_text, display_order")
-            .eq("plan_id", pricingPlan.id)
-            .order("display_order", { ascending: true });
-          feature_lines = feats?.map((f) => f.feature_text) ?? [];
-        }
-        return {
-          ...sp,
-          pricing_plan: pricingPlan
-            ? { ...pricingPlan, feature_lines }
-            : null,
-        };
-      })
-    );
+    const pricingPlanIds = pricingPlans
+      .map((plan) => String(plan.id ?? ""))
+      .filter(Boolean);
+    const featureLinesByPlanId = new Map<string, string[]>();
+    if (pricingPlanIds.length > 0) {
+      const { data: features, error: featureErr } = await supabase
+        .from("pricing_plan_features")
+        .select("plan_id, feature_text, display_order")
+        .in("plan_id", pricingPlanIds)
+        .order("display_order", { ascending: true });
+      if (featureErr) throw featureErr;
+      for (const feature of features || []) {
+        const planId = String(feature.plan_id ?? "");
+        if (!planId) continue;
+        const current = featureLinesByPlanId.get(planId) || [];
+        current.push(String(feature.feature_text ?? ""));
+        featureLinesByPlanId.set(planId, current);
+      }
+    }
+
+    const plansWithPricing = subscriptionPlans.map((subscriptionPlan) => {
+      const planId = String(subscriptionPlan.id ?? "");
+      const pricingPlan = pricingPlanBySubscriptionPlanId.get(planId) || null;
+      if (!pricingPlan) {
+        return { ...subscriptionPlan, pricing_plan: null };
+      }
+      const pricingPlanId = String(pricingPlan.id ?? "");
+      return {
+        ...subscriptionPlan,
+        pricing_plan: {
+          ...pricingPlan,
+          feature_lines: pricingPlanId ? featureLinesByPlanId.get(pricingPlanId) || [] : [],
+        },
+      };
+    });
 
     return successResponse(plansWithPricing);
   } catch (error) {

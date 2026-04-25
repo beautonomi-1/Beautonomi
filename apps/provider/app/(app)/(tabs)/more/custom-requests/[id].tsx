@@ -39,6 +39,10 @@ type CustomRequest = {
   preferred_start_at?: string | null;
   budget_min?: number | null;
   budget_max?: number | null;
+  service_category_id?: string | null;
+  /** Joined from `global_service_categories` (GET detail). */
+  service_category?: { id?: string; name?: string | null; slug?: string | null } | null;
+  service_name?: string | null;
   customer?: { full_name?: string | null; email?: string | null; phone?: string | null } | null;
   attachments?: { id: string; url: string; created_at?: string }[];
   offers?: {
@@ -113,14 +117,19 @@ export default function CustomRequestDetailScreen() {
   const requestCurrency = request?.currency ?? tenantCurrency;
   const canSendOffer =
     !!request && ["pending", "offered"].includes(String(request.status ?? "pending").toLowerCase());
+  const priceNum = price.trim() === "" ? NaN : Number(price);
+  const durationNum = Number(durationMinutes);
+  const expDaysNum = Number(expirationDays);
   const isValid =
     request &&
     canSendOffer &&
-    price !== "" &&
-    Number(price) >= 0 &&
-    Number(durationMinutes) >= 15 &&
-    Number(durationMinutes) <= 480 &&
-    Number(expirationDays) >= 1;
+    Number.isFinite(priceNum) &&
+    priceNum > 0 &&
+    Number.isFinite(durationNum) &&
+    durationNum >= 15 &&
+    durationNum <= 480 &&
+    Number.isFinite(expDaysNum) &&
+    expDaysNum >= 1;
 
   useEffect(() => {
     if (request?.duration_minutes != null && request.duration_minutes > 0) {
@@ -251,6 +260,24 @@ export default function CustomRequestDetailScreen() {
             ) : null}
           </View>
           <Text style={twStyle("mt-1 text-base text-gray-900")}>{request.description ?? "—"}</Text>
+          {(request.service_name || request.service_category?.name) ? (
+            <View style={twStyle("mt-2 flex-row flex-wrap")}>
+              {request.service_category?.name ? (
+                <View style={twStyle("mr-2 mb-2 rounded-full bg-white px-2 py-1")}>
+                  <Text style={twStyle("text-xs font-medium text-gray-800")}>
+                    Category: {request.service_category.name}
+                  </Text>
+                </View>
+              ) : null}
+              {request.service_name ? (
+                <View style={twStyle("mb-2 rounded-full bg-white px-2 py-1")}>
+                  <Text style={twStyle("text-xs font-medium text-gray-800")}>
+                    Service: {request.service_name}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
           {request.customer?.phone ? (
             <Text style={twStyle("mt-2 text-sm text-gray-600")}>Customer phone: {request.customer.phone}</Text>
           ) : null}
@@ -401,9 +428,10 @@ export default function CustomRequestDetailScreen() {
               </>
             )}
 
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Proposed appointment (optional)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Proposed date and time</Text>
             <Text style={twStyle("mb-1 text-xs text-gray-500")}>
-              Sent as ISO time to the server with your offer (matches web).
+              Suggested slot stored on the offer; the customer sees it when reviewing your quote. Adjust to match
+              what you can honour.
             </Text>
             <TouchableOpacity
               onPress={() => setShowDatePicker(true)}
@@ -418,7 +446,7 @@ export default function CustomRequestDetailScreen() {
                 minimumDate={new Date()}
                 onChange={(_, d) => {
                   if (d) setScheduledAt(d);
-                  setShowDatePicker(Platform.OS !== "ios");
+                  setShowDatePicker(Platform.OS === "ios");
                 }}
                 display={Platform.OS === "ios" ? "spinner" : "default"}
               />
@@ -451,6 +479,12 @@ export default function CustomRequestDetailScreen() {
               textAlignVertical="top"
             />
 
+            {!isValid ? (
+              <Text style={twStyle("mb-2 text-xs text-amber-800")}>
+                Enter a price greater than 0, duration between 15 and 480 minutes, and offer expiry of at least 1 day
+                to send an offer.
+              </Text>
+            ) : null}
             <ActionButton
               label="Send offer"
               onPress={sendOffer}

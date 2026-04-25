@@ -211,6 +211,8 @@ export default function AppLayout() {
         <Stack.Screen name="notifications" options={{ headerShown: true, title: "Notifications" }} />
         <Stack.Screen name="booking-detail" options={{ headerShown: true, title: "Booking" }} />
         <Stack.Screen name="help" options={{ headerShown: true, title: "Help" }} />
+        <Stack.Screen name="privacy-policy" options={{ headerShown: true, title: "Privacy policy" }} />
+        <Stack.Screen name="terms-of-service" options={{ headerShown: true, title: "Terms of service" }} />
         <Stack.Screen name="contact-support" options={{ headerShown: true, title: "Contact support" }} />
         <Stack.Screen name="support-tickets" options={{ headerShown: false }} />
         <Stack.Screen name="about" options={{ headerShown: true, title: "About Us" }} />

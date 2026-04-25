@@ -1,9 +1,16 @@
 /**
  * Chat file attachments live in Supabase Storage bucket `message-attachments`
  * (see /api/me/messages/upload). This module defines retention and URL helpers.
+ *
+ * Override with `MESSAGE_ATTACHMENTS_BUCKET` (server) or `NEXT_PUBLIC_MESSAGE_ATTACHMENTS_BUCKET`
+ * if your project uses a different bucket id (must match Supabase Dashboard).
  */
 
-export const MESSAGE_ATTACHMENTS_BUCKET = "message-attachments";
+export const MESSAGE_ATTACHMENTS_BUCKET =
+  (typeof process !== "undefined" &&
+    (process.env.MESSAGE_ATTACHMENTS_BUCKET?.trim() ||
+      process.env.NEXT_PUBLIC_MESSAGE_ATTACHMENTS_BUCKET?.trim())) ||
+  "message-attachments";
 
 export function messageAttachmentRetentionDays(): number {
   const n = parseInt(process.env.MESSAGE_ATTACHMENT_RETENTION_DAYS || "90", 10);

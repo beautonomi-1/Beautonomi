@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         last_message_preview,
         unread_count_customer,
         unread_count_provider,
-        provider:providers(id, business_name, thumbnail_url, avatar_url, phone, email),
+        provider:providers(id, slug, business_name, thumbnail_url, avatar_url, phone, email),
         booking:bookings(id, booking_number)
       `,
         { count: "exact" }
@@ -70,8 +70,14 @@ export async function GET(request: NextRequest) {
       avatar: c.provider?.avatar_url ?? c.provider?.thumbnail_url ?? null,
       last_message_preview: c.last_message_preview || null,
       provider: c.provider
-        ? { business_name: c.provider.business_name, thumbnail_url: c.provider.thumbnail_url, avatar_url: c.provider.avatar_url ?? null }
+        ? {
+            business_name: c.provider.business_name,
+            slug: c.provider.slug ?? null,
+            thumbnail_url: c.provider.thumbnail_url,
+            avatar_url: c.provider.avatar_url ?? null,
+          }
         : undefined,
+      provider_slug: c.provider?.slug ?? null,
       unread_count_customer: c.unread_count_customer ?? 0,
     }));
 

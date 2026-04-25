@@ -86,7 +86,7 @@ export default function OnDemandIncomingScreen() {
     }
     const payload = (res.data ?? {}) as { booking_id?: string };
     if (payload.booking_id) {
-      router.replace(`/(app)/(tabs)/more/bookings/${payload.booking_id}` as never);
+      router.replace(`/(app)/(tabs)/bookings/${payload.booking_id}` as never);
     } else {
       Alert.alert("Accepted", "The request was accepted successfully.");
       router.back();

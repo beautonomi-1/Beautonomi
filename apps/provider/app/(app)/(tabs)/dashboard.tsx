@@ -102,6 +102,7 @@ interface Booking {
   }[];
   customers: { full_name: string; phone: string } | null;
   is_group_booking?: boolean;
+  group_booking_id?: string | null;
   group_booking_ref?: string | null;
   package_name?: string | null;
   products?: { product_name?: string; quantity?: number }[];
@@ -247,6 +248,21 @@ function WeeklyRevenueChart({ data }: { data: WeeklyRevenue[] }) {
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const openBookingSurface = useCallback(
+    (booking: Booking) => {
+      if (booking.is_group_booking && booking.group_booking_id) {
+        router.push(
+          {
+            pathname: "/(app)/(tabs)/more/group-bookings",
+            params: { open_group_id: booking.group_booking_id },
+          } as never,
+        );
+        return;
+      }
+      router.push(`/(app)/(tabs)/bookings/${booking.id}` as never);
+    },
+    [router],
+  );
   const [isFocused, setIsFocused] = useState(true);
   const { provider, selectedLocationId } = useProvider();
   const { isTablet, columns } = useResponsive();
@@ -814,7 +830,7 @@ export default function DashboardScreen() {
         title={`Bookings — ${periodLabel}`}
         actionLabel="View All"
         onAction={() =>
-          router.push("/(app)/(tabs)/more/bookings" as never)
+          router.push("/(app)/(tabs)/bookings" as never)
         }
       />
       <View style={{ flexDirection: "row" }}>
@@ -1061,9 +1077,7 @@ export default function DashboardScreen() {
                 isTablet ? { width: "48%", marginRight: 12, marginBottom: 12 } : { marginBottom: 8 },
               ]}
               onPress={() =>
-                router.push(
-                  `/(app)/(tabs)/more/bookings/${booking.id}` as never,
-                )
+                openBookingSurface(booking)
               }
               accessibilityLabel={`Upcoming: ${booking.customers?.full_name ?? "Walk-in"} at ${formatRelativeDate(booking.scheduled_at)}`}
               accessibilityRole="button"
@@ -1156,7 +1170,7 @@ export default function DashboardScreen() {
                 onPress={() => {
                   if (item.data?.booking_id) {
                     router.push(
-                      `/(app)/(tabs)/more/bookings/${item.data.booking_id}` as never,
+                      `/(app)/(tabs)/bookings/${item.data.booking_id}` as never,
                     );
                   }
                 }}
@@ -1215,9 +1229,7 @@ export default function DashboardScreen() {
                   isTablet ? { width: "48%", marginRight: 12, marginBottom: 12 } : { marginBottom: 8 },
                 ]}
                 onPress={() =>
-                  router.push(
-                    `/(app)/(tabs)/more/bookings/${booking.id}` as never,
-                  )
+                  openBookingSurface(booking)
                 }
                 accessibilityLabel={`Today: ${booking.customers?.full_name ?? "Walk-in"}`}
                 accessibilityRole="button"

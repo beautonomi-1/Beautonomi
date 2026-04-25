@@ -64,11 +64,11 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       const cid = String(data.conversation_id ?? data.chat_id ?? "");
       if (cid) {
         router.push({
-          pathname: "/(app)/(tabs)/more/messaging/[id]",
+          pathname: "/(app)/(tabs)/chats/[id]",
           params: { id: cid },
         });
       } else {
-        router.push("/(app)/(tabs)/more/messaging");
+        router.push("/(app)/(tabs)/chats");
       }
       return;
     }
@@ -84,7 +84,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
     if (templateKey === "provider_new_review") {
       if (bookingId) {
         router.push({
-          pathname: "/(app)/(tabs)/more/bookings/[id]",
+          pathname: "/(app)/(tabs)/bookings/[id]",
           params: { id: bookingId },
         });
       } else {
@@ -138,11 +138,11 @@ function handleNotificationRoute(data: Record<string, unknown>) {
     if (PROVIDER_BOOKING_TEMPLATE_KEYS.has(templateKey)) {
       if (bookingId) {
         router.push({
-          pathname: "/(app)/(tabs)/more/bookings/[id]",
+          pathname: "/(app)/(tabs)/bookings/[id]",
           params: { id: bookingId },
         });
       } else {
-        router.push("/(app)/(tabs)/more/bookings");
+        router.push("/(app)/(tabs)/bookings");
       }
       return;
     }
@@ -150,7 +150,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
     // Template-based pushes: any template with booking_id but no explicit type routing yet
     if (!type && bookingId) {
       router.push({
-        pathname: "/(app)/(tabs)/more/bookings/[id]",
+        pathname: "/(app)/(tabs)/bookings/[id]",
         params: { id: bookingId },
       });
       return;
@@ -164,7 +164,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
             params: { id: onDemandRequestId },
           });
         } else {
-          router.push("/(app)/(tabs)/more/bookings");
+          router.push("/(app)/(tabs)/bookings");
         }
         break;
 
@@ -172,11 +172,11 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       case "on_demand_cancelled":
         if (bookingId) {
           router.push({
-            pathname: "/(app)/(tabs)/more/bookings/[id]",
+            pathname: "/(app)/(tabs)/bookings/[id]",
             params: { id: bookingId },
           });
         } else {
-          router.push("/(app)/(tabs)/more/bookings");
+          router.push("/(app)/(tabs)/bookings");
         }
         break;
 
@@ -190,11 +190,11 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       case "booking_completed":
         if (bookingId || genericId) {
           router.push({
-            pathname: "/(app)/(tabs)/more/bookings/[id]",
+            pathname: "/(app)/(tabs)/bookings/[id]",
             params: { id: bookingId || genericId },
           });
         } else {
-          router.push("/(app)/(tabs)/more/bookings");
+          router.push("/(app)/(tabs)/bookings");
         }
         break;
 
@@ -207,7 +207,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
             params: { id: clientId || genericId },
           });
         } else {
-          router.push("/(app)/(tabs)/more/bookings");
+          router.push("/(app)/(tabs)/bookings");
         }
         break;
 
@@ -216,11 +216,11 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       case "chat_message":
         if (conversationId) {
           router.push({
-            pathname: "/(app)/(tabs)/more/messaging/[id]",
+            pathname: "/(app)/(tabs)/chats/[id]",
             params: { id: conversationId },
           });
         } else {
-          router.push("/(app)/(tabs)/more/messaging");
+          router.push("/(app)/(tabs)/chats");
         }
         break;
 
@@ -229,7 +229,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       case "review_response":
         if (bookingId) {
           router.push({
-            pathname: "/(app)/(tabs)/more/bookings/[id]",
+            pathname: "/(app)/(tabs)/bookings/[id]",
             params: { id: bookingId },
           });
         } else {
@@ -247,7 +247,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       case "custom_order_paid":
         if (bookingId) {
           router.push({
-            pathname: "/(app)/(tabs)/more/bookings/[id]",
+            pathname: "/(app)/(tabs)/bookings/[id]",
             params: { id: bookingId },
           });
         } else {
@@ -312,12 +312,15 @@ function usePushRegistration() {
   const { gate } = useNativePermissionsOnboardingGate();
   const registeredRef = useRef(false);
   const oneSignalInitKeyRef = useRef<string | null>(null);
+  const lastUserIdRef = useRef<string | null>(null);
   const [appId, setAppId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) {
+    const userId = user?.id ?? null;
+    if (lastUserIdRef.current !== userId) {
       registeredRef.current = false;
       oneSignalInitKeyRef.current = null;
+      lastUserIdRef.current = userId;
     }
   }, [user]);
 

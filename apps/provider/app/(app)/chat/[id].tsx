@@ -8,8 +8,7 @@ import { twStyle } from "@/lib/twStyle";
 /**
  * Redirect route: forwards to the full messaging screen so deep links
  * (push notifications, legacy URLs, shared links) pointing at
- * `/(app)/chat/[id]` land in `/(app)/(tabs)/more/messaging/[id]` which
- * hosts the real conversation UI.
+ * `/(app)/chat/[id]` land on the Chats tab thread screen.
  */
 export default function ChatRedirectScreen() {
   const router = useRouter();
@@ -18,10 +17,10 @@ export default function ChatRedirectScreen() {
 
   useEffect(() => {
     if (!conversationId) {
-      router.replace("/(app)/(tabs)/more/messaging" as never);
+      router.replace("/(app)/(tabs)/chats" as never);
       return;
     }
-    router.replace(`/(app)/(tabs)/more/messaging/${conversationId}` as never);
+    router.replace(`/(app)/(tabs)/chats/${conversationId}` as never);
   }, [conversationId, router]);
 
   return (
