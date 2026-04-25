@@ -568,6 +568,8 @@ export default function ChatScreen() {
     return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   };
 
+  const currentUserId = user?.id ?? null;
+
   type ListItem =
     | { type: "date"; key: string; label: string }
     | { type: "unread"; key: string }
@@ -582,14 +584,14 @@ export default function ChatScreen() {
         lastDate = dateKey;
         out.push({ type: "date", key: `date-${dateKey}`, label: formatDateLabel(m.created_at) });
       }
-      if (!unreadInserted && m.sender_id !== user.id && m.is_read === false) {
+      if (!unreadInserted && currentUserId && m.sender_id !== currentUserId && m.is_read === false) {
         out.push({ type: "unread", key: `unread-${m.id}` });
         unreadInserted = true;
       }
       out.push({ type: "message", key: m.id, message: m });
     }
     return out;
-  }, [messages, user.id]);
+  }, [currentUserId, messages]);
 
   if (authLoading) {
     return (
@@ -771,8 +773,8 @@ export default function ChatScreen() {
                   : [];
                 const attachmentRecords: MessageAttachment[] = Array.isArray(msg.attachments)
                   ? msg.attachments
-                      .map((a) => (typeof a === "string" ? null : (a as MessageAttachment)))
-                      .filter((a): a is MessageAttachment => !!a)
+                      .map((a: Att) => (typeof a === "string" ? null : (a as MessageAttachment)))
+                      .filter((a: MessageAttachment | null): a is MessageAttachment => !!a)
                   : [];
                 const customOfferAttachment = attachmentRecords.find((a) => a.type === "custom_offer");
                 const customRequestAttachment = attachmentRecords.find((a) => a.type === "custom_request");

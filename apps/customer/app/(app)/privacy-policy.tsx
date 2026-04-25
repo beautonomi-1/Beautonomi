@@ -27,7 +27,7 @@ export default function PrivacyPolicyScreen() {
         You can update profile details, manage notification settings, and contact support to request account/data assistance where applicable.
       </Section>
       <Section title="Contact">
-        For privacy questions, use Help to Contact support and include "Privacy request" in your subject for faster routing.
+        For privacy questions, use Help to Contact support and include &quot;Privacy request&quot; in your subject for faster routing.
       </Section>
     </ScrollView>
   );
