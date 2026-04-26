@@ -948,16 +948,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setRole(null);
       setIsEmailVerified(false);
 
-      router.push("/");
-      router.refresh();
+      // Hard navigation: `router.refresh()` after `router.push` can revalidate the *current*
+      // URL (e.g. /account-settings) before the transition completes, leaving users on a
+      // protected shell while cookies clear. A full load guarantees the marketing home.
+      if (typeof window !== "undefined") {
+        window.location.assign("/");
+        return;
+      }
+      router.replace("/");
     } catch (error) {
       console.error("Unexpected error signing out:", error);
       setSession(null);
       setUser(null);
       setRole(null);
       setIsEmailVerified(false);
-      router.push("/");
-      router.refresh();
+      if (typeof window !== "undefined") {
+        window.location.assign("/");
+        return;
+      }
+      router.replace("/");
     } finally {
       if (typeof window !== "undefined") endSigningOutSoon();
       else setIsSigningOut(false);

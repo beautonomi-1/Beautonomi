@@ -8,6 +8,7 @@ import { requireAdminSection,
 import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { z } from "zod";
+import { legacyZoneListBbox } from "@/lib/service-zones/legacyZonePreviewGeometry";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .from("platform_zones")
       .select(
-        "id, name, country_code, status, version, geometry, centroid, bbox, created_at, updated_at, published_at, ops_metadata"
+        "id, name, country_code, status, version, geometry, centroid, bbox, created_at, updated_at, published_at, ops_metadata, zone_type, center_latitude, center_longitude, radius_km, polygon_coordinates"
       )
       .in("status", [...statuses])
       .order("updated_at", { ascending: false });
@@ -65,21 +66,36 @@ export async function GET(request: NextRequest) {
       geometry?: unknown;
       published_at?: string | null;
       ops_metadata?: Record<string, unknown> | null;
+      zone_type?: string | null;
+      center_latitude?: number | string | null;
+      center_longitude?: number | string | null;
+      radius_km?: number | string | null;
+      polygon_coordinates?: unknown;
     };
-    const zones = (data || []).map((row: ZoneRow) => ({
-      id: row.id,
-      name: row.name,
-      country_code: row.country_code,
-      status: row.status,
-      version: row.version,
-      bbox: row.bbox,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      has_geometry: !!row.geometry,
-      published_at: row.published_at ?? null,
-      ops_metadata: row.ops_metadata ?? null,
-      inclusion_count: inclusionCountMap.get(row.id) ?? 0,
-    }));
+    const zones = (data || []).map((row: ZoneRow) => {
+      let bbox = row.bbox;
+      if (!bbox && !row.geometry) {
+        const syn = legacyZoneListBbox(row);
+        if (syn) {
+          const [minLng, minLat, maxLng, maxLat] = syn;
+          bbox = { minLng, minLat, maxLng, maxLat };
+        }
+      }
+      return {
+        id: row.id,
+        name: row.name,
+        country_code: row.country_code,
+        status: row.status,
+        version: row.version,
+        bbox,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        has_geometry: !!row.geometry,
+        published_at: row.published_at ?? null,
+        ops_metadata: row.ops_metadata ?? null,
+        inclusion_count: inclusionCountMap.get(row.id) ?? 0,
+      };
+    });
 
     return successResponse(zones);
   } catch (error) {

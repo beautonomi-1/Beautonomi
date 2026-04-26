@@ -185,6 +185,20 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
       await handleAdsBudgetOrderSuccess({ reference, metadata, amount, fees }, supabase);
       return;
     }
+    if (metadata?.kind === "card_verification" && reference) {
+      await handleCustomerCardVerificationSuccess(
+        {
+          reference,
+          metadata,
+          amount: amount || 0,
+          fees: fees || 0,
+          customer,
+          authorization,
+        },
+        supabase,
+      );
+      return;
+    }
     console.error("Missing reference or booking_id in payment data");
     return;
   }
@@ -2333,6 +2347,93 @@ async function handleAdsBudgetOrderSuccess(
     commission: 0,
     net: netAmount,
     description: billingLabel,
+    created_at: new Date().toISOString(),
+  });
+}
+
+// ─── Customer standalone card verification (profile → add card) ─────────────
+
+async function handleCustomerCardVerificationSuccess(
+  payload: {
+    reference: string;
+    metadata: Record<string, unknown>;
+    amount: number;
+    fees: number;
+    customer: PaystackChargeData["customer"];
+    authorization?: PaystackChargeData["authorization"];
+  },
+  supabase: SupabaseClient,
+): Promise<void> {
+  const { reference, metadata, amount, fees, customer, authorization } = payload;
+  const customerId = typeof metadata.customer_id === "string" ? metadata.customer_id : null;
+  if (!customerId) {
+    console.error("[card_verification] missing customer_id in metadata");
+    return;
+  }
+
+  const { data: existingTx } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("reference", reference)
+    .maybeSingle();
+  if (existingTx) {
+    return;
+  }
+
+  const saveCardRequested =
+    metadata.save_card === true ||
+    metadata.save_card === "true" ||
+    String(metadata.save_card ?? "").toLowerCase() === "true";
+  const setAsDefault =
+    metadata.set_as_default === true ||
+    metadata.set_as_default === "true" ||
+    String(metadata.set_as_default ?? "").toLowerCase() === "true";
+
+  const amountInCurrency = convertFromSmallestUnit(amount || 0);
+  const feesInCurrency = convertFromSmallestUnit(fees || 0);
+  const netAmount = amountInCurrency - feesInCurrency;
+  const email = customer?.email;
+  const authCode = authorization?.authorization_code;
+  const reusable = authorization?.reusable === true;
+
+  if (saveCardRequested && authCode && reusable && email) {
+    try {
+      await savePaystackAuthorization({
+        userId: customerId,
+        email,
+        authorizationCode: authCode,
+        lastFour: String(authorization?.last4 ?? "0000"),
+        expiryMonth: parseInt(String(authorization?.exp_month ?? "0"), 10),
+        expiryYear: parseInt(String(authorization?.exp_year ?? "0"), 10),
+        cardBrand: String(authorization?.brand ?? authorization?.card_type ?? "unknown"),
+        isDefault: setAsDefault,
+        supabase,
+      });
+    } catch (e) {
+      console.error("[card_verification] savePaystackAuthorization failed:", e);
+      throw e instanceof Error ? e : new Error(String(e));
+    }
+  } else if (saveCardRequested) {
+    console.warn(
+      "[card_verification] charge succeeded but card not saved (missing reusable auth or email)",
+      { reference, hasAuth: Boolean(authCode), reusable, hasEmail: Boolean(email) },
+    );
+  }
+
+  await supabase.from("payment_transactions").insert({
+    booking_id: null,
+    reference,
+    amount: amountInCurrency,
+    fees: feesInCurrency,
+    net_amount: netAmount,
+    status: "success",
+    provider: "paystack",
+    transaction_type: "charge",
+    metadata: {
+      kind: "card_verification",
+      customer_id: customerId,
+      saved_card: Boolean(saveCardRequested && authCode && reusable && email),
+    },
     created_at: new Date().toISOString(),
   });
 }

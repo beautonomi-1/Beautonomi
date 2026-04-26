@@ -35,7 +35,11 @@
     "settings": "Instellings",
     "more": "Meer",
     "appLanguage": "Apptaal",
-    "appLanguageSubtitle": "Kies die taal vir die app"
+    "appLanguageSubtitle": "Kies die taal vir die app",
+    "rateBeautonomiAppStore": "Gradeer Beautonomi op die App Store",
+    "rateBeautonomiPlayStore": "Gradeer Beautonomi op Google Play",
+    "rateBeautonomiStoreWeb": "Kry die Beautonomi-apps",
+    "rateBeautonomiStoreSubtitle": "Maak die winkel (of aflaai bladsy) oop om 'n resensie te los."
   },
   "authGate": {
     "checkingAccess": "Kontroleer jou rekening…",
@@ -58,7 +62,6 @@
     "dontHaveAccount": "Het jy nie 'n rekening nie?",
     "continueWithGoogle": "Gaan voort met Google",
     "continueWithApple": "Gaan voort met Apple",
-    "continueWithFacebook": "Gaan voort met Facebook",
     "orContinueWith": "of gaan voort met",
     "termsAgreement": "Deur voort te gaan, stem jy in tot ons Diensvoorwaardes en Privaatheidsbeleid",
     "howHearAboutUs": "Hoe het jy van ons gehoor?",
@@ -271,6 +274,9 @@
       "deleteConfirmMessage": "Dit kan nie ongedaan gemaak word nie.",
       "staffPrefix": "Personeel"
     },
+    "moreTab": {
+      "rateStoreHeading": "Hou jy van die app?"
+    },
     "calendarScreen": {
       "calendarActions": "Kalender-aksies",
       "shareSchedule": "Deel skedule",
@@ -349,6 +355,12 @@
     "giftCards": "Geskenkkaarte",
     "wallet": "Beursie",
     "profile": "Profiel",
+    "profileTab": {
+      "clientRatingLabel": "Jou kliëntgradering",
+      "clientRatingEmpty": "Nog geen graderings nie. Sodra verskaffers voltooide besoeke gradeer, verskyn jou gemiddelde hier — goeie besprekings bou jou telling op.",
+      "clientRatingCount": "({{count}} verskaffer-graderings)",
+      "clientRatingA11y": "Jou gemiddelde gradering van verskaffers"
+    },
     "personalInfo": "Persoonlike inligting",
     "loginSecurity": "Aanmelding en sekuriteit",
     "notifications": "Kennisgewings",
@@ -405,6 +417,7 @@
       "logOutConfirm": "Is jy seker jy wil uitteken?",
       "accessibilityScroll": "Rekeninginstellings",
       "accessibilityShare": "Deel Beautonomi. Nooi vriende en familie",
+      "accessibilityRateStore": "Gradeer Beautonomi op die App Store of Google Play",
       "accessibilityHelp": "Hulp en ondersteuning. Gereelde vrae en kontak ons",
       "accessibilityAbout": "Oor Beautonomi. Ons missie en storie",
       "accessibilityProfileBanner": "Voltooi jou profiel",
@@ -508,7 +521,11 @@
       "couponPlaceholder": "Voer koeponkode in",
       "couponCodeA11y": "Koeponkode",
       "redeemA11y": "Gebruik koepon",
-      "redeem": "Gebruik"
+      "redeem": "Gebruik",
+      "cardSavedTitle": "Kaart gestoor",
+      "cardSavedBody": "Jou kaart is gereed om by afreken te gebruik.",
+      "cardVerificationPendingTitle": "Byna daar",
+      "cardVerificationPendingBody": "As jy verifikasie voltooi het, kan dit 'n oomblik neem voordat jou kaart verskyn. Trek af om hierdie skerm te verfris."
     }
   },
   "checkout": {

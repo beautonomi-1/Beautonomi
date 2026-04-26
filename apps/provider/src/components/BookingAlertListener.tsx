@@ -7,8 +7,11 @@ import { useEffect, useRef, useCallback } from "react";
 import { Alert, AppState, Platform, Vibration } from "react-native";
 import { useRouter } from "expo-router";
 import { useProvider } from "@/providers/ProviderContext";
+import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { supabase } from "@/lib/supabase/client";
 import { api } from "@/lib/api-client";
+import { playNormalBookingRingtone } from "@/lib/on-demand/ringtone";
+import type { OnDemandModuleConfig } from "@/lib/config-bundle";
 
 interface BookingRow {
   id: string;
@@ -48,6 +51,7 @@ async function playBookingAlert(): Promise<{ stop: () => void }> {
 export function BookingAlertListener() {
   const router = useRouter();
   const { provider } = useProvider();
+  const onDemandModule = useModuleConfig("on_demand") as OnDemandModuleConfig;
   const seenBookingIds = useRef<Set<string>>(new Set());
   const alertSoundRef = useRef<{ stop: () => void } | null>(null);
   const prefsRef = useRef<{ booking_alert_sound?: boolean }>({ booking_alert_sound: true });
@@ -78,9 +82,16 @@ export function BookingAlertListener() {
       alertSoundRef.current?.stop();
 
       if (prefsRef.current.booking_alert_sound !== false) {
-        playBookingAlert().then((ctrl) => {
-          alertSoundRef.current = ctrl;
-        });
+        const useAsset = Boolean(onDemandModule.normal_booking_ringtone_asset_path?.trim());
+        if (useAsset) {
+          playNormalBookingRingtone(onDemandModule).then((ctrl) => {
+            alertSoundRef.current = ctrl;
+          });
+        } else {
+          playBookingAlert().then((ctrl) => {
+            alertSoundRef.current = ctrl;
+          });
+        }
       }
 
       const title = "New Booking!";
@@ -108,7 +119,7 @@ export function BookingAlertListener() {
         },
       ]);
     },
-    [router],
+    [router, onDemandModule],
   );
 
   // Subscribe to new bookings via Realtime

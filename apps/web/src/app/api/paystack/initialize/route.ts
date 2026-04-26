@@ -19,6 +19,18 @@ const initializeSchema = z
     /** Ignored when paying for a product order or booking — server derives amount. */
     amount: z.number().min(100, "Minimum amount is 100").optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
+    /** Optional mobile/native return target. Must be a trusted app/web URL. */
+    callback_url: z
+      .string()
+      .trim()
+      .optional()
+      .refine(
+        (v) => {
+          if (!v) return true;
+          return v.startsWith("https://") || v.startsWith("http://") || v.startsWith("customer://");
+        },
+        { message: "Invalid callback URL" },
+      ),
   })
   .superRefine((val, ctx) => {
     const m = val.metadata || {};
@@ -68,6 +80,11 @@ export async function POST(request: NextRequest) {
     const body = initializeSchema.parse(await request.json());
 
     const rawMeta = body.metadata || {};
+    const defaultCallbackUrl =
+      rawMeta.type === "product_order"
+        ? `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/shop/payment-callback`
+        : `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/booking/callback`;
+    const callbackUrl = body.callback_url?.trim() || defaultCallbackUrl;
     const supabase = await getSupabaseServer(request);
 
     const productOrderIdRaw =
@@ -231,9 +248,7 @@ export async function POST(request: NextRequest) {
         },
         ...(splitCode ? { split_code: splitCode } : {}),
         ...(subaccount ? { subaccount } : {}),
-        callback_url: rawMeta.type === "product_order"
-          ? `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/shop/payment-callback`
-          : `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/booking/callback`,
+        callback_url: callbackUrl,
       }),
     });
 

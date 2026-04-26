@@ -351,6 +351,12 @@ export function ServiceZoneDetailPage() {
           <MapPin className="h-4 w-4 text-indigo-600" />
           Zone coverage map
         </h3>
+        <p className="mb-3 text-xs text-gray-600">
+          Use <span className="font-medium text-green-700">Draw inclusion</span> /{" "}
+          <span className="font-medium text-red-700">Draw exclusion</span> (or the polygon / trash icons on the map) to sketch areas directly on the map. Inclusions snap to{" "}
+          <span className="font-medium">postal_areas</span> under your drawn shape; exclusions punch holes in that union. For a full-country outline from the dataset, add an inclusion of type{" "}
+          <span className="font-medium">Country</span> with ref <span className="font-mono">{zone.country_code ?? "—"}</span> (large countries use a higher row cap so the map can show the full union). Legacy radius markets (e.g. national seed) show a preview ring from center + radius until you migrate to postal inclusions.
+        </p>
         <ServiceZoneMapEditor
           key={id}
           zoneId={id!}

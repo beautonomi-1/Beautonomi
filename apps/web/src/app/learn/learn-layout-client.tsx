@@ -314,7 +314,7 @@ function LearnLayoutInner({
             href="/"
             className="text-sm font-medium text-zinc-600 hover:text-zinc-900 shrink-0 transition-colors duration-200"
           >
-            Home
+            Site home
           </Link>
           <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden />
           <Link

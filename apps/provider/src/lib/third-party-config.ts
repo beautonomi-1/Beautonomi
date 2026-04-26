@@ -7,12 +7,13 @@ import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 export interface ThirdPartyConfig {
   onesignal?: { app_id: string; enabled: boolean };
   mapbox?: { public_token: string; style_url?: string };
+  social_auth?: { google: boolean; apple: boolean };
 }
 
 let cachedConfig: ThirdPartyConfig | null = null;
 
 export async function getThirdPartyConfig(
-  service?: "onesignal" | "mapbox",
+  service?: "onesignal" | "mapbox" | "social_auth",
   options?: { app?: "customer" | "provider" },
 ): Promise<ThirdPartyConfig> {
   if (cachedConfig && !service) return cachedConfig;
@@ -66,4 +67,14 @@ export async function getMapboxConfig(): Promise<{ token: string; style_url?: st
   } catch {
     return null;
   }
+}
+
+export async function getSocialAuthConfig(): Promise<{ google: boolean; apple: boolean }> {
+  const data = await getThirdPartyConfig("social_auth");
+  const social = (data as Record<string, unknown>)?.social_auth ?? data;
+  const cfg = social as { google?: boolean; apple?: boolean };
+  return {
+    google: cfg?.google !== false,
+    apple: cfg?.apple !== false,
+  };
 }

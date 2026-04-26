@@ -204,10 +204,15 @@ export async function updatePassword(newPassword: string) {
 }
 
 
+export type SocialOAuthProvider = 'google' | 'apple';
+
 /**
- * OAuth sign in
+ * OAuth sign in (Google or Apple). Google-specific `queryParams` are not sent to Apple.
  */
-export async function signInWithOAuth(provider: 'google' | 'facebook' | 'apple', redirectUrl?: string) {
+export async function signInWithOAuth(
+  provider: SocialOAuthProvider,
+  redirectUrl?: string,
+) {
   const supabase = getSupabaseClient();
   
   // Get the current URL for redirect
@@ -230,15 +235,24 @@ export async function signInWithOAuth(provider: 'google' | 'facebook' | 'apple',
     }
   }
 
+  const options: {
+    redirectTo: string;
+    queryParams?: Record<string, string>;
+    scopes?: string;
+  } = { redirectTo };
+  if (provider === 'google') {
+    options.queryParams = {
+      access_type: 'offline',
+      prompt: 'consent',
+    };
+  }
+  if (provider === 'apple') {
+    options.scopes = 'name email';
+  }
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
-    options: {
-      redirectTo,
-      queryParams: {
-        access_type: 'offline',
-        prompt: 'consent',
-      },
-    },
+    options,
   });
 
   if (error) {

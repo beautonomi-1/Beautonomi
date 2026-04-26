@@ -164,6 +164,17 @@ async function loadOneSignalFromDb(tenantId?: string | null): Promise<GlobalOneS
 
 export type ResolveOneSignalOptions = { tenantId?: string | null };
 
+function normalizeOneSignalAppId(value: string | null | undefined): string | null {
+  const t = (value ?? "").replace(/^\uFEFF/, "").trim();
+  return t.length ? t : null;
+}
+
+/** Strip BOM/whitespace so Authorization is never built from invisible padding. */
+function normalizeOneSignalRestKey(value: string | null | undefined): string | null {
+  const t = (value ?? "").replace(/^\uFEFF/, "").trim();
+  return t.length ? t : null;
+}
+
 /**
  * Resolve App ID + REST key: env first, then platform_settings + platform_secrets (tenant row merged over global).
  */
@@ -175,37 +186,83 @@ export async function resolveOneSignalCredentials(
 
   if (appType === "provider") {
     const env = getOneSignalConfig("provider");
-    let appId = env.appId?.trim() || null;
-    let restKey = env.restApiKey?.trim() || null;
+    let appId = normalizeOneSignalAppId(env.appId ?? null);
+    let restKey = normalizeOneSignalRestKey(env.restApiKey ?? null);
     if (!appId) {
-      appId = db.appIdProvider || db.appIdCustomer;
+      appId = normalizeOneSignalAppId(db.appIdProvider) ?? normalizeOneSignalAppId(db.appIdCustomer);
     }
     if (!restKey) {
-      restKey = db.restKeyProvider || db.restKeyCustomer;
+      restKey = normalizeOneSignalRestKey(db.restKeyProvider) ?? normalizeOneSignalRestKey(db.restKeyCustomer);
     }
     return { appId, restKey };
   }
 
   if (appType === "customer") {
     const env = getOneSignalConfig("customer");
-    let appId = env.appId?.trim() || null;
-    let restKey = env.restApiKey?.trim() || null;
+    let appId = normalizeOneSignalAppId(env.appId ?? null);
+    let restKey = normalizeOneSignalRestKey(env.restApiKey ?? null);
     if (!appId) {
-      appId = db.appIdCustomer;
+      appId = normalizeOneSignalAppId(db.appIdCustomer);
     }
     if (!restKey) {
-      restKey = db.restKeyCustomer || db.restKeyProvider;
+      restKey =
+        normalizeOneSignalRestKey(db.restKeyCustomer) ?? normalizeOneSignalRestKey(db.restKeyProvider);
     }
     return { appId, restKey };
   }
 
-  const legacyId = process.env.ONESIGNAL_APP_ID?.trim() || null;
-  const legacyKey = process.env.ONESIGNAL_REST_API_KEY?.trim() || null;
+  const legacyId = normalizeOneSignalAppId(process.env.ONESIGNAL_APP_ID ?? null);
+  const legacyKey = normalizeOneSignalRestKey(process.env.ONESIGNAL_REST_API_KEY ?? null);
   const customer = getOneSignalConfig("customer");
-  const appId = legacyId || customer.appId?.trim() || db.appIdCustomer || null;
+  const appId =
+    legacyId ??
+    normalizeOneSignalAppId(customer.appId ?? null) ??
+    normalizeOneSignalAppId(db.appIdCustomer);
   const restKey =
-    legacyKey || customer.restApiKey?.trim() || db.restKeyCustomer || db.restKeyProvider || null;
+    legacyKey ??
+    normalizeOneSignalRestKey(customer.restApiKey ?? null) ??
+    normalizeOneSignalRestKey(db.restKeyCustomer) ??
+    normalizeOneSignalRestKey(db.restKeyProvider);
   return { appId, restKey };
+}
+
+export function validateOneSignalCredentialPair(input: {
+  appId: string | null | undefined;
+  restKey: string | null | undefined;
+  appType?: OneSignalAppType;
+}): { ok: true } | { ok: false; code: string; message: string } {
+  const appLabel = input.appType ? `${input.appType} ` : "";
+  const appId = normalizeOneSignalAppId(input.appId);
+  const restKey = normalizeOneSignalRestKey(input.restKey);
+  if (!appId) {
+    return {
+      ok: false,
+      code: "ONESIGNAL_APP_ID_MISSING",
+      message: `Missing ${appLabel}OneSignal App ID. Save it in Platform settings or set the matching ONESIGNAL_APP_ID${input.appType ? `_${input.appType.toUpperCase()}` : ""} environment variable.`,
+    };
+  }
+  if (!restKey) {
+    return {
+      ok: false,
+      code: "ONESIGNAL_REST_KEY_MISSING",
+      message: `Missing ${appLabel}OneSignal REST API key. Expo/NEXT_PUBLIC keys are client-side only; the API needs the server REST key in env or platform_secrets.`,
+    };
+  }
+  if (appId === restKey.replace(/^(basic|key)\s+/i, "").trim()) {
+    return {
+      ok: false,
+      code: "ONESIGNAL_KEY_EQUALS_APP_ID",
+      message: `The ${appLabel}OneSignal REST API key appears to be the App ID. Use the REST API key from the same OneSignal app, not the App ID.`,
+    };
+  }
+  if (/^https?:\/\//i.test(restKey)) {
+    return {
+      ok: false,
+      code: "ONESIGNAL_REST_KEY_INVALID_FORMAT",
+      message: `The ${appLabel}OneSignal REST API key looks like a URL. Paste the server REST API key from OneSignal Keys & IDs.`,
+    };
+  }
+  return { ok: true };
 }
 
 /**

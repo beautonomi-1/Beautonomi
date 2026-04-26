@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Switch } from "@/components/ui/switch";
-import { Bell, Mail, MessageSquare, Calendar, DollarSign, Star, Users, AlertCircle, Clock, FileText, TrendingUp, Wallet } from "lucide-react";
+import { Bell, Mail, MessageSquare, Calendar, DollarSign, Star, Users, AlertCircle, Clock, FileText, TrendingUp, Wallet, Volume2 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -23,6 +23,8 @@ interface NotificationPreferences {
   system_updates?: { email: boolean; sms: boolean; push: boolean };
   marketing?: { email: boolean; sms: boolean; push: boolean };
   unsubscribe_marketing?: boolean;
+  /** In-browser sound when a new booking is created (if platform configures a normal-booking ringtone). */
+  booking_alert_sound?: boolean;
 }
 
 const notificationSections = [
@@ -160,6 +162,24 @@ export default function ProviderNotificationPreferences() {
     updatePreference(sectionId, newPrefs);
   };
 
+  const setBookingAlertSound = async (enabled: boolean) => {
+    try {
+      setIsSaving(true);
+      await fetcher.patch("/api/provider/notification-preferences", {
+        booking_alert_sound: enabled,
+      });
+      setPreferences((prev) => ({
+        ...prev,
+        booking_alert_sound: enabled,
+      }));
+      toast.success(enabled ? "Booking alert sound enabled" : "Booking alert sound disabled");
+    } catch {
+      toast.error("Failed to update booking alert preference");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const toggleMarketing = async () => {
     try {
       setIsSaving(true);
@@ -232,6 +252,29 @@ export default function ProviderNotificationPreferences() {
           title="Notification Preferences"
           subtitle="Choose how you want to be notified about important events"
         />
+
+        <div className="bg-white border rounded-lg p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-emerald-500/10 rounded-lg">
+                <Volume2 className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Booking alert sound</h3>
+                <p className="text-sm text-gray-600">
+                  Play a short tone in this browser when a new booking arrives, if your market configures a
+                  normal-booking ringtone in Control Plane.
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={preferences.booking_alert_sound !== false}
+              onCheckedChange={(v) => void setBookingAlertSound(v)}
+              disabled={isSaving}
+              className="data-[state=checked]:bg-emerald-600"
+            />
+          </div>
+        </div>
 
         {/* Marketing Unsubscribe */}
         <div className="bg-white border rounded-lg p-6">

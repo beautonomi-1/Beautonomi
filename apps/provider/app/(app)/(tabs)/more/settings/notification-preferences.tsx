@@ -234,7 +234,8 @@ export default function NotificationPreferencesScreen() {
                 Booking Alert Sound
               </Text>
               <Text style={twStyle("text-xs text-gray-500")}>
-                Play a sound and vibrate when a new booking arrives
+                When on, new booking alerts play audio if your market sets a normal-booking ringtone in Control Plane;
+                otherwise vibration (mobile).
               </Text>
             </View>
           </View>

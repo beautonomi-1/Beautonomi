@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -130,7 +130,13 @@ const COMPLETION_MODAL_STORAGE_KEY = "booking_completion_modal_seen_";
 
 export default function BookingDetailScreen() {
   useScreenTracking("Booking Detail");
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const bookingParams = useLocalSearchParams<{ id?: string | string[] }>();
+  /** Expo Router may pass `id` as a string[]; cancel/PDF must use the real UUID. */
+  const id = useMemo(() => {
+    const raw = bookingParams.id;
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    return typeof v === "string" ? v.trim() : "";
+  }, [bookingParams.id]);
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const { user } = useAuth();
@@ -460,11 +466,20 @@ export default function BookingDetailScreen() {
     setCancelling(true);
     haptic.medium();
     try {
+      const cancelBookingId = String(booking?.id ?? id).trim();
+      if (!cancelBookingId) {
+        Alert.alert("Error", "Missing booking reference. Please go back and open the booking again.");
+        setCancelling(false);
+        return;
+      }
       const pending = cancelPendingRef.current;
-      const res = await api.post<{ booking?: unknown }>(`/api/me/bookings/${id}/cancel`, {
+      const res = await api.post<{ booking?: unknown }>(
+        `/api/me/bookings/${encodeURIComponent(cancelBookingId)}/cancel`,
+        {
         reason: reason.trim() || "Customer request",
         ...(pending?.version !== undefined ? { version: pending.version } : {}),
-      });
+        },
+      );
       if (res.error) {
         const st = (res.error as { status?: number }).status;
         if (st === 409) {
@@ -639,30 +654,12 @@ export default function BookingDetailScreen() {
   };
 
   const downloadReceiptNative = useCallback(async () => {
-    if (!booking?.id) return;
+    const bid = booking?.id;
+    if (!bid) return;
     haptic.light();
     try {
-      if (Platform.OS !== "web") {
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
-        if (token) {
-          const filename = `booking-${booking.booking_number ?? booking.id}.pdf`.replace(/[^\w.-]+/g, "_");
-          const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-          await FileSystem.downloadAsync(
-            `${APP_URL.replace(/\/$/, "")}/api/bookings/${encodeURIComponent(booking.id)}/receipt/pdf`,
-            fileUri,
-            { headers: { Authorization: `Bearer ${token}` } },
-          );
-          await Share.share({
-            url: fileUri,
-            title: "Booking receipt",
-            message: `Booking ${booking.booking_number ?? booking.id}`,
-          });
-          return;
-        }
-      }
       const res = await api.post<{ url?: string }>(
-        `/api/bookings/${booking.id}/receipt/signed-url`,
+        `/api/bookings/${encodeURIComponent(bid)}/receipt/signed-url`,
         {},
       );
       const url = res.data?.url;
@@ -677,13 +674,25 @@ export default function BookingDetailScreen() {
         await Linking.openURL(url);
         return;
       }
-      const filename = `booking-${booking.booking_number ?? booking.id}.pdf`.replace(/[^\w.-]+/g, "_");
+      if (!FileSystem.cacheDirectory) {
+        Alert.alert("Download receipt", "File storage is not available on this device.");
+        return;
+      }
+      const filename = `booking-${booking.booking_number ?? bid}.pdf`.replace(/[^\w.-]+/g, "_");
       const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-      await FileSystem.downloadAsync(url, fileUri);
+      const dl = await FileSystem.downloadAsync(url, fileUri);
+      if (dl.status !== 200) {
+        const hint =
+          dl.status === 401 || dl.status === 403
+            ? "Your session may have expired. Please try again after refreshing the screen."
+            : `The server returned status ${dl.status}.`;
+        Alert.alert("Download receipt", `Could not download the PDF. ${hint}`);
+        return;
+      }
       await Share.share({
         url: fileUri,
         title: "Booking receipt",
-        message: `Booking ${booking.booking_number ?? booking.id}`,
+        message: `Booking ${booking.booking_number ?? bid}`,
       });
     } catch (e) {
       Alert.alert(
@@ -704,7 +713,8 @@ export default function BookingDetailScreen() {
         Alert.alert("Sign in required", "Please sign in to download the calendar file.");
         return;
       }
-      const url = `${APP_URL.replace(/\/$/, "")}/api/me/bookings/${id}/calendar.ics`;
+      const icsBookingId = encodeURIComponent(String(booking?.id ?? id).trim());
+      const url = `${APP_URL.replace(/\/$/, "")}/api/me/bookings/${icsBookingId}/calendar.ics`;
       const response = await fetch(
         url,
         withWebApiTenantHeaders({
@@ -733,7 +743,7 @@ export default function BookingDetailScreen() {
     } finally {
       setIcsLoading(false);
     }
-  }, [id, booking?.booking_number]);
+  }, [id, booking?.id, booking?.booking_number]);
 
   const handleSaveToDeviceCalendar = useCallback(
     async (params: { title: string; description: string; location: string; start: Date; end: Date }) => {

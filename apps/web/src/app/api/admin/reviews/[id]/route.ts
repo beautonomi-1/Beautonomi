@@ -11,6 +11,8 @@ const updateReviewSchema = z.object({
   is_flagged: z.boolean().optional(),
   flagged_reason: z.string().optional().nullable(),
   comment: z.string().optional().nullable(),
+  /** Customer star rating of the provider — admins may correct after the 24h customer edit window. */
+  rating: z.number().int().min(1).max(5).optional(),
 });
 
 /**
@@ -128,6 +130,9 @@ export async function PATCH(
     }
     if (validationResult.data.comment !== undefined) {
       updateData.comment = validationResult.data.comment;
+    }
+    if (validationResult.data.rating !== undefined) {
+      updateData.rating = validationResult.data.rating;
     }
 
     const { data: updatedReview, error } = await supabase

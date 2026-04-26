@@ -147,8 +147,10 @@ function holdStaffIdFromSlotAndSelection(
   sel: StaffMember | null,
   slot: AvailabilitySlot | null
 ): string | null {
-  const raw =
-    slot?.staff_id ?? (sel && sel.id !== ANY_STAFF_BOOKING_ID ? sel.id : null);
+  if (!sel || sel.id === ANY_STAFF_BOOKING_ID || String(sel.id).startsWith("provider-")) {
+    return null;
+  }
+  const raw = slot?.staff_id ?? sel.id;
   if (!raw || raw === "any" || String(raw).startsWith("provider-")) return null;
   return raw;
 }
@@ -1194,11 +1196,11 @@ export default function BookScreen() {
     selectedStaff,
     locationType,
     selectedLocation,
+    travelFeePreview,
     minNoticeMinutes,
     maxAdvanceDays,
     selectedServices,
     excludeHoldIdForSlots,
-    travelFeePreview,
     reschedule_booking_id,
   ]);
 
@@ -1298,7 +1300,11 @@ export default function BookScreen() {
           params.set("excludeHoldId", excludeHoldIdForSlots);
         }
         if (locationType === "at_home") {
-          params.set("travel_buffer_minutes", "30");
+          const dynamicTravel =
+            travelFeePreview.status === "success"
+              ? (travelFeePreview as { travelTimeMinutes?: number }).travelTimeMinutes
+              : undefined;
+          params.set("travel_buffer_minutes", String(dynamicTravel ? Math.ceil(dynamicTravel) : 30));
         }
         if (reschedule_booking_id) {
           params.set("exclude_booking_id", reschedule_booking_id);
@@ -1310,13 +1316,11 @@ export default function BookScreen() {
           if (cancelled) return;
           const data = (res.data ?? {}) as { slots?: AvailabilitySlot[]; data?: AvailabilitySlot[] };
           const list = data.slots ?? data.data ?? [];
-          const isToday = offset === 0;
           const hasBookable = list.some((s) => {
             const start = s.start;
             if (!start) return false;
             if (s.is_available === false) return false;
-            if (isToday) return new Date(start).getTime() > now.getTime();
-            return true;
+            return isSlotStartStillSelectable(start, d, minNoticeMinutes) && new Date(start).getTime() > now.getTime();
           });
           if (hasBookable) {
             setSelectedDate(d);
@@ -1349,6 +1353,7 @@ export default function BookScreen() {
     maxAdvanceDays,
     selectedServices,
     excludeHoldIdForSlots,
+    travelFeePreview,
     reschedule_booking_id,
   ]);
 
@@ -1591,6 +1596,12 @@ export default function BookScreen() {
       const startAt = toIsoUtcTimestamp(selectedSlot.start);
       const endAt = toIsoUtcTimestamp(selectedSlot.end);
       const holdStaffId = holdStaffIdFromSlotAndSelection(selectedStaff, selectedSlot);
+      const availabilityTravelBufferMinutes =
+        locationType === "at_home"
+          ? travelFeePreview.status === "success" && travelFeePreview.travelTimeMinutes
+            ? Math.ceil(travelFeePreview.travelTimeMinutes)
+            : 30
+          : undefined;
 
       // Release any existing hold before creating a new one
       if (excludeHoldIdForSlots) {
@@ -1608,6 +1619,8 @@ export default function BookScreen() {
       const preferredStaffIds =
         selectedSlot?.available_staff_ids && selectedSlot.available_staff_ids.length > 0
           ? selectedSlot.available_staff_ids
+          : selectedStaff?.id === ANY_STAFF_BOOKING_ID && selectedSlot?.staff_id
+            ? [selectedSlot.staff_id]
           : null;
 
       // Wave 2.1 (audit 2026-04 final 100/100): UUIDv4 idempotency key per
@@ -1639,6 +1652,9 @@ export default function BookScreen() {
           previous_hold_id: excludeHoldIdForSlots || null,
           guest_fingerprint_hash: fingerprint,
           preferred_staff_ids: preferredStaffIds,
+          ...(availabilityTravelBufferMinutes != null
+            ? { availability_travel_buffer_minutes: availabilityTravelBufferMinutes }
+            : {}),
           ...(packageIdForCheckout
             ? { package_id: packageIdForCheckout, primary_package_id: packageIdForCheckout }
             : {}),

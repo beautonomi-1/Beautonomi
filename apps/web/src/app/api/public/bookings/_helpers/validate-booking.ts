@@ -346,7 +346,7 @@ export async function validateBooking(
   const { data: offerings, error: offeringsError } = await supabase
     .from("offerings")
     .select(
-      "id, provider_id, title, duration_minutes, buffer_minutes, price, currency, supports_at_home, at_home_price_adjustment, is_active, online_booking_enabled, service_type, service_id"
+      "id, provider_id, title, duration_minutes, buffer_minutes, price, currency, supports_at_home, at_home_price_adjustment, is_active, online_booking_enabled, service_type, master_service_id"
     )
     .in("id", offeringIds);
 
@@ -593,7 +593,7 @@ export async function validateBooking(
     const { data: addons, error: addonsError } = await supabase
       .from("offerings")
       .select(
-        "id, provider_id, price, currency, duration_minutes, is_active, online_booking_enabled, service_type, applicable_service_ids, service_id"
+        "id, provider_id, price, currency, duration_minutes, is_active, online_booking_enabled, service_type, applicable_service_ids, master_service_id"
       )
       .in("id", addonIds);
     if (addonsError) {
@@ -629,7 +629,7 @@ export async function validateBooking(
         );
       }
       // Applicability: `applicable_service_ids` (nullable) may reference
-      // `offerings.id` OR `offerings.service_id`. Mirror the OR-clause
+      // `offerings.id` OR `offerings.master_service_id`. Mirror the OR-clause
       // used in the public addons GET so a scoped addon cannot be
       // attached to a service it wasn't offered for.
       const scope = (a.applicable_service_ids as string[] | null | undefined) ?? null;
@@ -637,7 +637,7 @@ export async function validateBooking(
         const selectedServiceIds = new Set<string>();
         for (const s of draft.services) {
           selectedServiceIds.add(s.offering_id);
-          const masterId = offeringById.get(s.offering_id)?.service_id;
+          const masterId = offeringById.get(s.offering_id)?.master_service_id;
           if (typeof masterId === "string" && masterId.length > 0) {
             selectedServiceIds.add(masterId);
           }

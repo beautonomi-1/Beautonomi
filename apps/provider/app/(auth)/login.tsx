@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -41,6 +41,9 @@ import { trackLogin } from "@/lib/analytics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { supabase } from "@/lib/supabase/client";
 import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
+import { APP_URL } from "@/config/public-env";
+import { pushInAppBrowser } from "@/lib/in-app-web";
+import { getSocialAuthConfig } from "@/lib/third-party-config";
 
 const PRIMARY = Colors.primary;
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
@@ -128,12 +131,23 @@ export default function LoginScreen() {
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [emailOtpCode, setEmailOtpCode] = useState("");
   const [pendingEmailOtp, setPendingEmailOtp] = useState("");
+  const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
+    google: true,
+    apple: true,
+  });
 
   const fullPhone = `${countryCode}${stripLeadingZero(phone.replace(/\D/g, ""))}`.trim();
+  const hasSocialAuth = socialAuth.google || socialAuth.apple;
   const filteredCountries = countrySearch
     ? COUNTRY_CODES.filter((c) => c.label.toLowerCase().includes(countrySearch.toLowerCase()))
     : COUNTRY_CODES;
   const selectedCountry = COUNTRY_CODES.find((c) => c.code === countryCode);
+
+  useEffect(() => {
+    getSocialAuthConfig().then(setSocialAuth).catch(() => {
+      setSocialAuth({ google: true, apple: true });
+    });
+  }, []);
 
   function handlePhoneChange(text: string) {
     const digits = text.replace(/[^\d\s]/g, "");
@@ -202,7 +216,7 @@ export default function LoginScreen() {
     }
   }
 
-  async function handleOAuth(provider: OAuthProvider) {
+  async function handleSocialOAuth(provider: OAuthProvider) {
     setFormError(null);
     setLoading(true);
     try {
@@ -548,7 +562,9 @@ export default function LoginScreen() {
                   {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). Standard rates apply.{" "}
                   <Text
                     style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-                    onPress={() => router.push("/(auth)/privacy" as never)}
+                    onPress={() =>
+                      pushInAppBrowser(router, `${APP_URL.replace(/\/$/, "")}/privacy-policy`, "Privacy Policy")
+                    }
                   >
                     Privacy Policy
                   </Text>
@@ -829,56 +845,62 @@ export default function LoginScreen() {
           </>
         )}
 
-        {/* OAuth separator */}
-        <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 24 }}>
-          <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-          <Text style={{ marginHorizontal: 16, fontSize: 13, color: "#9CA3AF" }}>or</Text>
-          <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-        </View>
+        {hasSocialAuth && (
+          <>
+            {/* OAuth separator */}
+            <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 24 }}>
+              <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
+              <Text style={{ marginHorizontal: 16, fontSize: 13, color: "#9CA3AF" }}>or</Text>
+              <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
+            </View>
 
-        {/* OAuth buttons */}
-        <TouchableOpacity
-          onPress={() => handleOAuth("google")}
-          disabled={loading}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            borderWidth: 1.5,
-            borderColor: "#E5E7EB",
-            borderRadius: 12,
-            paddingVertical: 14,
-            marginBottom: 12,
-            backgroundColor: "#fff",
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Continue with Google"
-        >
-          <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
-          <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
-        </TouchableOpacity>
+            {/* OAuth buttons */}
+            {socialAuth.google && (
+              <TouchableOpacity
+                onPress={() => void handleSocialOAuth("google")}
+                disabled={loading}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1.5,
+                  borderColor: "#E5E7EB",
+                  borderRadius: 12,
+                  paddingVertical: 14,
+                  marginBottom: 12,
+                  backgroundColor: "#fff",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Continue with Google"
+              >
+                <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
+                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
+              </TouchableOpacity>
+            )}
 
-        {Platform.OS === "ios" && (
-          <TouchableOpacity
-            onPress={() => handleOAuth("apple")}
-            disabled={loading}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              borderWidth: 1.5,
-              borderColor: "#E5E7EB",
-              borderRadius: 12,
-              paddingVertical: 14,
-              marginBottom: 12,
-              backgroundColor: "#fff",
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Continue with Apple"
-          >
-            <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
-            <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
-          </TouchableOpacity>
+            {socialAuth.apple && (
+              <TouchableOpacity
+                onPress={() => void handleSocialOAuth("apple")}
+                disabled={loading}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1.5,
+                  borderColor: "#E5E7EB",
+                  borderRadius: 12,
+                  paddingVertical: 14,
+                  marginBottom: 12,
+                  backgroundColor: "#fff",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Continue with Apple"
+              >
+                <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
+                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
 
         {/* Sign up link */}

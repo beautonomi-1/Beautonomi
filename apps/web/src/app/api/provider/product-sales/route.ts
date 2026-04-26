@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
 
     const { data: providerRow, error: provTenantErr } = await supabase
       .from("providers")
-      .select("tenant_id")
+      .select("tenant_id, tax_rate_percent, is_vat_registered")
       .eq("id", providerId)
       .maybeSingle();
     if (provTenantErr) throw provTenantErr;
@@ -127,6 +127,10 @@ export async function POST(request: NextRequest) {
         500,
       );
     }
+    const providerTaxRate = (providerRow as { is_vat_registered?: boolean | null; tax_rate_percent?: number | string | null } | null)
+      ?.is_vat_registered
+      ? Number((providerRow as { tax_rate_percent?: number | string | null }).tax_rate_percent ?? 0)
+      : 0;
 
     if (parsed.customer_id) {
       const { data: clientRow, error: clientLookupErr } = await supabase
@@ -245,7 +249,7 @@ export async function POST(request: NextRequest) {
       }
 
       const lineTotal = unitPrice * item.quantity;
-      const lineTax = percentOf(lineTotal, parseFloat(prod.tax_rate || "0"));
+      const lineTax = percentOf(lineTotal, Number.isFinite(providerTaxRate) ? providerTaxRate : 0);
       subtotal += lineTotal;
       taxAmount += lineTax;
       orderItems.push({

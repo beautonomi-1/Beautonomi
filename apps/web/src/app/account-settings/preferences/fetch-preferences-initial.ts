@@ -8,6 +8,7 @@ import { GET as getPreferenceOptions } from "@/app/api/public/preference-options
 import { GET as getProfile } from "@/app/api/me/profile/route";
 import type { PreferenceOption, PreferencesPageInitial } from "./preferences-initial-types";
 import { buildPreferencesPageInitial } from "./resolve-preferences-display";
+import { expandLanguagePreferenceOptions } from "./expand-language-options";
 
 export async function fetchPreferencesInitial(): Promise<PreferencesPageInitial | null> {
   const tenantReq = await createNextRequestFromHeaders("/api/me/profile");
@@ -36,11 +37,12 @@ export async function fetchPreferencesInitial(): Promise<PreferencesPageInitial 
     return Array.isArray(j.data) ? j.data : [];
   };
 
-  const [languages, currencies, timezones] = await Promise.all([
+  const [languagesRaw, currencies, timezones] = await Promise.all([
     parseOptions(langsRes),
     parseOptions(cursRes),
     parseOptions(tzsRes),
   ]);
+  const languages = expandLanguagePreferenceOptions(languagesRaw);
 
   if (!profileRes.ok) return null;
 

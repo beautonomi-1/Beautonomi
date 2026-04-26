@@ -13,6 +13,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Pressable,
+  ScrollView,
 } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api-client";
@@ -45,6 +46,10 @@ interface RecurringBooking {
   recurrence_rule: string | null;
   simple_frequency: SimpleFrequency;
   location_type?: string;
+  /** From series row: how each auto-booked visit is expected to be paid (cron does not charge). */
+  payment_method?: string | null;
+  /** Last calendar day an occurrence was materialized by the daily job. */
+  last_booking_date?: string | null;
 }
 
 interface RecurringBookingsResponse {
@@ -182,6 +187,13 @@ function normalizeRecurringItem(row: any): RecurringBooking {
         ? row.start_time
         : "10:00:00";
 
+  const lastBooking =
+    typeof row.last_booking_date === "string" && row.last_booking_date.trim()
+      ? String(row.last_booking_date).slice(0, 10)
+      : null;
+  const payment_method =
+    typeof row.payment_method === "string" && row.payment_method.trim() ? row.payment_method.trim() : null;
+
   return {
     id: row.id,
     service_name: serviceName,
@@ -197,8 +209,27 @@ function normalizeRecurringItem(row: any): RecurringBooking {
     recurrence_rule: recurrenceRule,
     simple_frequency: simple,
     location_type: row.location_type,
+    payment_method,
+    last_booking_date: lastBooking,
   };
 }
+
+function paymentMethodLabel(method: string | null | undefined): string {
+  const m = (method || "").toLowerCase();
+  if (m === "cash") return "Pay per visit (cash at salon or as agreed)";
+  if (m === "card") return "Pay per visit (card or in-app when you complete each booking)";
+  return "Pay per visit when each booking is due";
+}
+
+function locationLabel(locationType: string | undefined): string {
+  const t = (locationType || "").toLowerCase();
+  if (t === "at_home") return "At your address (house call)";
+  if (t === "at_salon") return "At the salon";
+  return "—";
+}
+
+const detailLabelStyle = { fontSize: 12, fontWeight: "600" as const, color: Colors.gray[500], marginBottom: 4 };
+const detailValueStyle = { fontSize: 15, color: Colors.gray[900], lineHeight: 22 as const };
 
 /* ------------------------------------------------------------------ */
 /*  Screen                                                             */
@@ -224,6 +255,7 @@ export default function RecurringBookingsScreen() {
   const [editEndDate, setEditEndDate] = useState("");
   const [editSeriesNoEnd, setEditSeriesNoEnd] = useState(false);
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [detailItem, setDetailItem] = useState<RecurringBooking | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -305,20 +337,14 @@ export default function RecurringBookingsScreen() {
       if (res.error) {
         Alert.alert("Error", res.error.message || "Failed to update");
       } else {
-        setBookings((prev) =>
-          prev.map((b) =>
-            b.id === booking.id
-              ? { ...b, status: (booking.status === "paused" ? "active" : "paused") as RecurringBooking["status"] }
-              : b
-          )
-        );
+        await load(true);
       }
     } catch {
       Alert.alert("Error", "Failed to update. Please try again.");
     } finally {
       setTogglingId(null);
     }
-  }, []);
+  }, [load]);
 
   const cancelBooking = useCallback((booking: RecurringBooking) => {
     Alert.alert(
@@ -327,7 +353,7 @@ export default function RecurringBookingsScreen() {
       [
         { text: "Keep", style: "cancel" },
         {
-          text: "Cancel Booking",
+          text: "End series",
           style: "destructive",
           onPress: async () => {
             setCancellingId(booking.id);
@@ -336,7 +362,8 @@ export default function RecurringBookingsScreen() {
               if (res.error) {
                 Alert.alert("Error", res.error.message || "Failed to cancel booking");
               } else {
-                setBookings((prev) => prev.filter((b) => b.id !== booking.id));
+                setDetailItem((d) => (d?.id === booking.id ? null : d));
+                await load(true);
               }
             } catch {
               Alert.alert("Error", "Failed to cancel booking. Please try again.");
@@ -347,7 +374,7 @@ export default function RecurringBookingsScreen() {
         },
       ]
     );
-  }, []);
+  }, [load]);
 
   const renderItem = useCallback(
     ({ item }: { item: RecurringBooking }) => {
@@ -362,54 +389,67 @@ export default function RecurringBookingsScreen() {
           style={{
             backgroundColor: Colors.white,
             borderRadius: 12,
-            padding: 16,
             marginBottom: 12,
             borderWidth: 1,
             borderColor: Colors.gray[100],
+            overflow: "hidden",
           }}
         >
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-            <Text style={{ fontWeight: "600", color: Colors.gray[900], flex: 1, marginRight: 8 }}>{item.service_name}</Text>
-            <View style={{ paddingHorizontal: 10, paddingVertical: 2, borderRadius: 9999, backgroundColor: badge.bg }}>
-              <Text style={{ fontSize: 12, fontWeight: "500", color: badge.text, textTransform: "capitalize" }}>{item.status}</Text>
+          <TouchableOpacity
+            onPress={() => setDetailItem(item)}
+            activeOpacity={0.92}
+            accessibilityRole="button"
+            accessibilityLabel={`Details for ${item.service_name}`}
+            style={{ padding: 16, paddingBottom: 12 }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.service_name}</Text>
+                <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: "600", marginTop: 4 }}>Tap for details</Text>
+              </View>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 2, borderRadius: 9999, backgroundColor: badge.bg }}>
+                <Text style={{ fontSize: 12, fontWeight: "500", color: badge.text, textTransform: "capitalize" }}>{item.status}</Text>
+              </View>
             </View>
-          </View>
-          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 4 }}>{item.provider_name}</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 4 }}>{item.provider_name}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+              <View>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Frequency</Text>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{item.frequency}</Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Next appointment</Text>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{formatDate(item.next_date)}</Text>
+              </View>
+            </View>
+            <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 8 }}>
+              Preferred time · {preferredTimeToInputValue(item.preferred_time)}
+            </Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 4 }}>
+              {item.end_date
+                ? `Ends ${formatDate(item.end_date)}`
+                : "No fixed end date — runs until you pause or cancel."}
+            </Text>
+          </TouchableOpacity>
           {item.provider_slug ? (
-            <TouchableOpacity
-              onPress={() =>
-                router.push({ pathname: "/(app)/partner-profile", params: { slug: item.provider_slug! } })
-              }
-              style={{ marginBottom: 8 }}
-            >
-              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>View salon</Text>
-            </TouchableOpacity>
+            <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+              <TouchableOpacity
+                onPress={() =>
+                  router.push({ pathname: "/(app)/partner-profile", params: { slug: item.provider_slug! } })
+                }
+              >
+                <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>View salon</Text>
+              </TouchableOpacity>
+            </View>
           ) : null}
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-            <View>
-              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Frequency</Text>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{item.frequency}</Text>
-            </View>
-            <View style={{ alignItems: "flex-end" }}>
-              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Next appointment</Text>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{formatDate(item.next_date)}</Text>
-            </View>
-          </View>
-          <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 8 }}>
-            Preferred time · {preferredTimeToInputValue(item.preferred_time)}
-          </Text>
-          <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 4 }}>
-            {item.end_date
-              ? `Ends ${formatDate(item.end_date)}`
-              : "No fixed end date — runs until you pause or cancel."}
-          </Text>
           <View
             style={{
               flexDirection: "row",
               justifyContent: "space-between",
               alignItems: "center",
-              marginTop: 12,
+              paddingHorizontal: 16,
               paddingTop: 12,
+              paddingBottom: 16,
               borderTopWidth: 1,
               borderTopColor: Colors.gray[100],
             }}
@@ -480,7 +520,7 @@ export default function RecurringBookingsScreen() {
         </View>
       );
     },
-    [cancellingId, togglingId, cancelBooking, togglePauseResume, openEdit]
+    [cancellingId, togglingId, cancelBooking, togglePauseResume, openEdit, router]
   );
 
   if (loading && bookings.length === 0) {
@@ -542,7 +582,7 @@ export default function RecurringBookingsScreen() {
             }}
           >
             <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 19 }}>
-              Each visit is booked automatically on the schedule below. You pay per appointment (or as you usually do with this provider)—recurring does not charge your card by itself.
+              Each visit is created by our daily schedule when a slot is due. You pay per booking (card, wallet, or cash as usual)—this repeat plan never auto-charges your card. If the time is no longer free, that visit may be skipped until you reschedule with the salon.
             </Text>
           </View>
         }
@@ -554,6 +594,77 @@ export default function RecurringBookingsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} colors={[Colors.primary]} />}
         showsVerticalScrollIndicator={false}
       />
+
+      <Modal visible={!!detailItem} animationType="fade" transparent onRequestClose={() => setDetailItem(null)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: 20 }} onPress={() => setDetailItem(null)}>
+          <View style={{ backgroundColor: Colors.white, borderRadius: 16, maxHeight: "88%", overflow: "hidden" }}>
+            <ScrollView contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false}>
+              {detailItem ? (
+                <>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>{detailItem.service_name}</Text>
+                  <Text style={{ fontSize: 15, color: Colors.gray[600], marginBottom: 16 }}>{detailItem.provider_name}</Text>
+
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={detailLabelStyle}>Status</Text>
+                    <Text style={detailValueStyle}>{detailItem.status}</Text>
+                  </View>
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={detailLabelStyle}>Schedule</Text>
+                    <Text style={detailValueStyle}>{detailItem.frequency}</Text>
+                    <Text style={[detailValueStyle, { marginTop: 4, fontSize: 13, color: Colors.gray[500] }]}>
+                      Preferred time {preferredTimeToInputValue(detailItem.preferred_time)} · Next {formatDate(detailItem.next_date)}
+                    </Text>
+                  </View>
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={detailLabelStyle}>Series end</Text>
+                    <Text style={detailValueStyle}>
+                      {detailItem.end_date ? formatDate(detailItem.end_date) : "Open-ended until you pause or cancel"}
+                    </Text>
+                  </View>
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={detailLabelStyle}>Last visit booked by schedule</Text>
+                    <Text style={detailValueStyle}>
+                      {detailItem.last_booking_date ? formatDate(detailItem.last_booking_date) : "None yet — starts after your first confirmed visit"}
+                    </Text>
+                  </View>
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={detailLabelStyle}>Location</Text>
+                    <Text style={detailValueStyle}>{locationLabel(detailItem.location_type)}</Text>
+                  </View>
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={detailLabelStyle}>Typical price (per visit)</Text>
+                    <Text style={detailValueStyle}>
+                      {detailItem.currency}{" "}
+                      {detailItem.price != null && detailItem.price > 0 ? detailItem.price.toFixed(2) : "—"}
+                    </Text>
+                  </View>
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={detailLabelStyle}>Payments</Text>
+                    <Text style={detailValueStyle}>{paymentMethodLabel(detailItem.payment_method)}</Text>
+                    <Text style={[detailValueStyle, { marginTop: 8, fontSize: 13, color: Colors.gray[600], lineHeight: 19 }]}>
+                      The repeat plan only remembers your preference. Each future booking stays pending until you pay (or pay at the salon) like any other appointment.
+                    </Text>
+                  </View>
+                  <View style={{ marginBottom: 20, backgroundColor: "#F0F9FF", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#BAE6FD" }}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[800], marginBottom: 6 }}>Calendar & availability</Text>
+                    <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 19 }}>
+                      When a date is due, we try to book the same staff and time. If that slot is taken, the run may skip that day—check Bookings or contact the salon. Pausing stops new visits; cancel ends the whole series.
+                    </Text>
+                  </View>
+                </>
+              ) : null}
+            </ScrollView>
+            <View style={{ paddingHorizontal: 16, paddingBottom: 20, borderTopWidth: 1, borderTopColor: Colors.gray[100] }}>
+              <TouchableOpacity
+                onPress={() => setDetailItem(null)}
+                style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: "center" }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700" }}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal visible={editOpen} animationType="slide" transparent onRequestClose={() => !savingSchedule && setEditOpen(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>

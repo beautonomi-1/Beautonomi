@@ -59,9 +59,8 @@ const LandingNavbar = () => {
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    router.push("/");
     setIsUserDropdownOpen(false);
+    await signOut();
   };
 
   return (

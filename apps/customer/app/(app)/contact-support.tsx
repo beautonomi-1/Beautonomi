@@ -61,7 +61,7 @@ export default function ContactSupportScreen() {
         ? `Your support ticket has been created. Your ticket number is ${ticketNumber}. We'll get back to you soon.`
         : "Your support ticket has been created. We'll get back to you soon.";
       Alert.alert("Ticket sent", alertBody, [
-        { text: "View tickets", onPress: () => router.push("/(app)/support-tickets" as never) },
+        { text: "View tickets", onPress: () => router.push("/(app)/(tabs)/support-tickets" as never) },
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (e) {
@@ -87,7 +87,7 @@ export default function ContactSupportScreen() {
         <TouchableOpacity
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push("/(app)/support-tickets" as never);
+            router.push("/(app)/(tabs)/support-tickets" as never);
           }}
           style={styles.ticketsRow}
           activeOpacity={0.7}

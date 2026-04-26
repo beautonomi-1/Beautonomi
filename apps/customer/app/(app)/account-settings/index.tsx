@@ -11,6 +11,7 @@ import { Colors } from "@/constants/colors";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { api } from "@/lib/api-client";
 import { trackReferralShared } from "@/lib/analytics";
+import { openNativeStoreReview } from "@/lib/open-store-review";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
 interface ProfileCompletion {
@@ -137,6 +138,18 @@ export default function AccountSettingsScreen() {
     }
   };
 
+  const rateStoreTitle =
+    Platform.OS === "ios"
+      ? t("common.rateBeautonomiAppStore")
+      : Platform.OS === "android"
+        ? t("common.rateBeautonomiPlayStore")
+        : t("common.rateBeautonomiStoreWeb");
+
+  const handleRateStore = () => {
+    getAnalyticsClient()?.track("rate_app_store", { source: "account_settings" });
+    void openNativeStoreReview();
+  };
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: Colors.gray[50] }}
@@ -239,6 +252,21 @@ export default function AccountSettingsScreen() {
             <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>{t("customer.accountSettings.shareFooterDesc")}</Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleRateStore}
+          style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
+          accessibilityLabel={t("customer.accountSettings.accessibilityRateStore")}
+          accessibilityRole="button"
+        >
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+            <Ionicons name="star-outline" size={18} color={Colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{rateStoreTitle}</Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>{t("common.rateBeautonomiStoreSubtitle")}</Text>
+          </View>
+          <Ionicons name="open-outline" size={16} color={Colors.gray[300]} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => router.push("/(app)/help")}

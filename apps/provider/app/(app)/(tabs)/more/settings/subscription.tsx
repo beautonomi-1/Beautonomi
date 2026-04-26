@@ -45,6 +45,9 @@ interface Subscription {
   auto_renew: boolean;
   plan_id: string;
   billing_period?: "monthly" | "yearly" | null;
+  /** Set when an admin changed the plan and Paystack needs alignment */
+  paystack_sync_pending?: boolean | null;
+  paystack_sync_note?: string | null;
   plan?: {
     id: string;
     name: string;
@@ -122,7 +125,9 @@ function statusLabel(sub: Subscription): string {
   if (s === "active") return "Active";
   if (s === "expired") return "Expired";
   if (s === "past_due") return "Past due";
-  if (s === "trial") return "Trial";
+  if (s === "trial" || s === "trialing") return "Trial";
+  if (s === "inactive") return "Inactive";
+  if (s === "cancelled") return "Cancelled";
   return s;
 }
 
@@ -137,7 +142,9 @@ export default function SubscriptionScreen() {
     error,
     refresh,
   } = useApi<Subscription | null>("/api/provider/subscription");
-  const { data: plans, error: plansError } = useApi<Plan[]>("/api/provider/subscription/plans");
+  const { data: plans, error: plansError } = useApi<Plan[]>("/api/provider/subscription/plans", {
+    staleTimeMs: 0,
+  });
   const { execute: postAction } = useApiMutation("post");
 
   const [billingSegment, setBillingSegment] = useState<"monthly" | "yearly">("monthly");
@@ -349,7 +356,22 @@ export default function SubscriptionScreen() {
         <Text style={twStyle("text-base leading-6 text-gray-600")}>
           Plans match your region&apos;s public pricing catalog. Use Monthly / Yearly to compare paid tiers without duplicate cards.
         </Text>
+        <Text style={twStyle("mt-2 text-xs leading-5 text-gray-500")}>
+          Marketing lines on the website (e.g. hero text on /pricing) are edited in Admin → Content, not here.
+        </Text>
       </View>
+
+      {subscription?.paystack_sync_pending ? (
+        <View
+          style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}
+        >
+          <Text style={twStyle("text-sm font-semibold text-amber-900")}>Billing sync needed</Text>
+          <Text style={twStyle("mt-1 text-sm leading-5 text-amber-900")}>
+            {subscription.paystack_sync_note?.trim() ||
+              "Your subscription was updated outside Paystack or Paystack could not be updated automatically. Complete payment or confirm billing in Paystack if you use card billing."}
+          </Text>
+        </View>
+      ) : null}
 
       {/* Current plan */}
       <SectionHeader title="Your plan" />

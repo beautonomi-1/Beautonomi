@@ -124,6 +124,7 @@ export default function GeoAnalyticsPage() {
   const [error, setError] = useState<string | null>(null);
   const [providerSearch, setProviderSearch] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
+  const [geoTab, setGeoTab] = useState("geography");
   const { format: fmtMoney } = useReportCurrency();
 
   useEffect(() => {
@@ -244,16 +245,16 @@ export default function GeoAnalyticsPage() {
           />
         </div>
 
-        <Tabs defaultValue="geography" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="geography">
-              <MapPin className="h-4 w-4 mr-2" /> Geography
+        <Tabs value={geoTab} onValueChange={setGeoTab} className="space-y-6">
+          <TabsList className="grid h-auto min-h-10 w-full grid-cols-3 gap-1 p-1">
+            <TabsTrigger value="geography" className="text-xs sm:text-sm">
+              <MapPin className="h-4 w-4 mr-1 sm:mr-2 shrink-0" /> Geography
             </TabsTrigger>
-            <TabsTrigger value="devices">
-              <Smartphone className="h-4 w-4 mr-2" /> Devices
+            <TabsTrigger value="devices" className="text-xs sm:text-sm">
+              <Smartphone className="h-4 w-4 mr-1 sm:mr-2 shrink-0" /> Devices
             </TabsTrigger>
-            <TabsTrigger value="booking-value">
-              <TrendingUp className="h-4 w-4 mr-2" /> Booking Value
+            <TabsTrigger value="booking-value" className="text-xs sm:text-sm">
+              <TrendingUp className="h-4 w-4 mr-1 sm:mr-2 shrink-0" /> Booking Value
             </TabsTrigger>
           </TabsList>
 
@@ -835,7 +836,8 @@ export default function GeoAnalyticsPage() {
               </CardHeader>
               <CardContent>
                 {topBookingCities.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={350}>
+                  <div className="min-h-[360px] w-full" aria-label="Booking value by city chart">
+                    <ResponsiveContainer width="100%" height={350}>
                     <BarChart data={topBookingCities}>
                       <CartesianGrid
                         strokeDasharray="3 3"
@@ -878,7 +880,8 @@ export default function GeoAnalyticsPage() {
                         opacity={0.5}
                       />
                     </BarChart>
-                  </ResponsiveContainer>
+                    </ResponsiveContainer>
+                  </div>
                 ) : (
                   <p className="text-sm text-gray-400 text-center py-8">
                     No booking geo data

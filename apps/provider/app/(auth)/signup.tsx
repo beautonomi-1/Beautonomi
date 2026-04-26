@@ -486,11 +486,19 @@ export default function SignupScreen() {
           </TouchableOpacity>
           <Text style={{ flex: 1, fontSize: 12, color: "#6B7280", lineHeight: 18 }}>
             I agree to the{" "}
-            <Text style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }} onPress={() => router.push("/(auth)/terms" as never)}>
+            <Text
+              style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }}
+              onPress={() =>
+                pushInAppBrowser(router, `${APP_URL.replace(/\/$/, "")}/terms-and-condition`, "Terms of Service")
+              }
+            >
               Terms of Service
             </Text>
             ,{" "}
-            <Text style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }} onPress={() => router.push("/(auth)/privacy" as never)}>
+            <Text
+              style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }}
+              onPress={() => pushInAppBrowser(router, `${APP_URL.replace(/\/$/, "")}/privacy-policy`, "Privacy Policy")}
+            >
               Privacy Policy
             </Text>
             , and{" "}

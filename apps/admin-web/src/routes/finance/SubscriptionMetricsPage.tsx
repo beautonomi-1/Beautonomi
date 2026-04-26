@@ -1,11 +1,10 @@
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
-import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -22,7 +21,9 @@ import {
 type Metrics = Record<string, unknown>;
 
 export function SubscriptionMetricsPage() {
-  const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
+  const { allowed, denied } = useSuperadminPage(
+    "Subscription revenue metrics are restricted to platform superadmins (matches Next.js /admin/subscription-revenue).",
+  );
   const [sp] = useSearchParams();
   const start = sp.get("start_date") ?? "";
   const end = sp.get("end_date") ?? "";

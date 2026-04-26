@@ -43,9 +43,14 @@ const ALL_DAY_KEYS_SET = new Set([
   'saturday',
 ]);
 
-/** When working_hours is empty or unset, all 7 days default to 09:00–18:00. */
-const DEFAULT_OPEN = '09:00';
-const DEFAULT_CLOSE = '18:00';
+/**
+ * Empty working_hours means "no explicit operating-hours constraint".
+ * Do not impose a 09:00 start here: providers can create appointments before
+ * 09:00, and the customer availability view must not hide those early slots
+ * unless real staff/location hours say they are closed.
+ */
+const DEFAULT_OPEN = '00:00';
+const DEFAULT_CLOSE = '23:59';
 
 /**
  * Working hours can be stored in two formats depending on the UI that saved them:
@@ -110,16 +115,22 @@ function resolveWorkingHoursDay(
  */
 async function getPrimaryLocationWorkingHours(
   db: SupabaseClient,
-  providerId: string
+  providerId: string,
+  locationId?: string | null
 ): Promise<Record<string, WorkingHoursDay> | null> {
-  const { data: locs, error } = await db
+  let query = db
     .from('provider_locations')
     .select('id, working_hours')
     .eq('provider_id', providerId)
-    .eq('is_active', true)
-    .order('is_primary', { ascending: false })
-    .order('created_at', { ascending: true })
-    .limit(1);
+    .eq('is_active', true);
+
+  if (locationId) {
+    query = query.eq('id', locationId);
+  } else {
+    query = query.order('is_primary', { ascending: false }).order('created_at', { ascending: true });
+  }
+
+  const { data: locs, error } = await query.limit(1);
 
   if (error || !locs?.length) return null;
 
@@ -182,16 +193,22 @@ async function buildStaffShiftsFromPrimaryLocation(
   db: SupabaseClient,
   providerId: string,
   date: string,
-  staffIdForShift: string
+  staffIdForShift: string,
+  locationId?: string | null
 ): Promise<StaffShift[]> {
-  const { data: locs, error } = await db
+  let query = db
     .from('provider_locations')
     .select('id, working_hours')
     .eq('provider_id', providerId)
-    .eq('is_active', true)
-    .order('is_primary', { ascending: false })
-    .order('created_at', { ascending: true })
-    .limit(1);
+    .eq('is_active', true);
+
+  if (locationId) {
+    query = query.eq('id', locationId);
+  } else {
+    query = query.order('is_primary', { ascending: false }).order('created_at', { ascending: true });
+  }
+
+  const { data: locs, error } = await query.limit(1);
 
   if (error || !locs?.length) {
     return [];
@@ -240,7 +257,8 @@ async function buildStaffShiftsFromWorkingHoursFallback(
   db: SupabaseClient,
   staffId: string,
   date: string,
-  providerId?: string
+  providerId?: string,
+  locationId?: string | null
 ): Promise<StaffShift[]> {
   const { data: row, error } = await supabase
     .from('provider_staff')
@@ -262,7 +280,7 @@ async function buildStaffShiftsFromWorkingHoursFallback(
   const dayKey = DAY_KEYS[new Date(`${date}T12:00:00`).getDay()];
 
   if (!hasAnyKeys && providerId) {
-    const fromLoc = await buildStaffShiftsFromPrimaryLocation(db, providerId, date, staffId);
+    const fromLoc = await buildStaffShiftsFromPrimaryLocation(db, providerId, date, staffId, locationId);
     if (fromLoc.length > 0) {
       return fromLoc;
     }
@@ -1061,6 +1079,7 @@ export async function loadAvailabilityConstraints(
     providerId ??
     syntheticProviderId ??
     (effectiveStaffId ? await resolveProviderIdFromStaff(db, effectiveStaffId) : undefined);
+  const selectedLocationId = options?.publicCalendarParity?.locationId ?? null;
 
   const excludeBookingId = options?.excludeBookingId;
 
@@ -1119,7 +1138,8 @@ export async function loadAvailabilityConstraints(
       db,
       effectiveStaffId,
       date,
-      resolvedProviderId
+      resolvedProviderId,
+      selectedLocationId
     );
   }
 
@@ -1130,7 +1150,8 @@ export async function loadAvailabilityConstraints(
       db,
       resolvedProviderId,
       date,
-      fallbackStaffIdForShift
+      fallbackStaffIdForShift,
+      selectedLocationId
     );
   }
 
@@ -1145,7 +1166,8 @@ export async function loadAvailabilityConstraints(
       db,
       resolvedProviderId,
       date,
-      fallbackStaffIdForShift
+      fallbackStaffIdForShift,
+      selectedLocationId
     );
     if (locationShifts.length > 0) {
       staffShifts = locationShifts;
@@ -1156,7 +1178,7 @@ export async function loadAvailabilityConstraints(
   // Location operating hours act as a hard ceiling — if the location is
   // explicitly closed for this day, no slots regardless of staff-level data.
   if (resolvedProviderId && staffShifts.length > 0) {
-    const locationWh = await getPrimaryLocationWorkingHours(db, resolvedProviderId);
+    const locationWh = await getPrimaryLocationWorkingHours(db, resolvedProviderId, selectedLocationId);
     if (locationWh) {
       staffShifts = constrainShiftsToLocationHours(staffShifts, locationWh, date);
     }

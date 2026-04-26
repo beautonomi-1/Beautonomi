@@ -11,9 +11,18 @@ export interface ProductOrder {
   tax_amount: number;
   delivery_fee: number;
   discount_amount: number;
+  /** Platform service fee on online card payments (0 for pay-on-delivery / walk-in). */
+  platform_fee?: number | null;
+  /** Amount applied from customer wallet at checkout. */
+  wallet_amount?: number | null;
   total_amount: number;
   currency: string;
   payment_status: string;
+  payment_method?: string | null;
+  order_source?: string | null;
+  /** Walk-in / guest checkout name when no linked customer account. */
+  customer_name?: string | null;
+  customer_phone?: string | null;
   tracking_number: string | null;
   carrier?: string | null;
   tracking_url?: string | null;
@@ -31,6 +40,13 @@ export interface ProductOrder {
     business_name: string;
     slug: string;
   };
+  /** Buyer profile (from users) when the order is linked to an account. */
+  customer?: {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
   delivery_address?: {
     id: string;
     label: string | null;

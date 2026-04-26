@@ -7,6 +7,25 @@ import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 
+function escapeLike(value: string): string {
+  return value.replace(/[%_]/g, "");
+}
+
+function parseCategoryIds(searchParams: URLSearchParams): string[] {
+  const raw = [
+    ...searchParams.getAll("category_ids"),
+    ...searchParams.getAll("category_id"),
+  ];
+  const seen = new Set<string>();
+  for (const value of raw) {
+    for (const part of value.split(",")) {
+      const id = part.trim();
+      if (id) seen.add(id);
+    }
+  }
+  return [...seen];
+}
+
 /**
  * GET /api/admin/provider-ops/leads/export
  * Export leads as CSV. Supports same filters as the leads list.
@@ -32,6 +51,26 @@ export async function GET(request: NextRequest) {
     const source = searchParams.get("source");
     const search = searchParams.get("search")?.trim();
     const country = searchParams.get("country");
+    const province = searchParams.get("province")?.trim();
+    const categoryIds = parseCategoryIds(searchParams);
+
+    let categoryLeadIds: string[] | null = null;
+    if (categoryIds.length > 0) {
+      const { data: catRows } = await supabase
+        .from("provider_lead_categories")
+        .select("lead_id")
+        .in("global_category_id", categoryIds);
+      categoryLeadIds = [...new Set((catRows ?? []).map((r: { lead_id: string }) => r.lead_id))];
+      if (categoryLeadIds.length === 0) {
+        const filename = generateCSVFilename("provider-leads-export");
+        return new NextResponse("", {
+          headers: {
+            "Content-Type": "text/csv",
+            "Content-Disposition": `attachment; filename="${filename}"`,
+          },
+        });
+      }
+    }
 
     let query = supabase
       .from("provider_leads")
@@ -48,8 +87,15 @@ export async function GET(request: NextRequest) {
     if (stage && stage !== "all") query = query.eq("commercial_stage", stage);
     if (source && source !== "all") query = query.eq("source", source);
     if (country) query = query.eq("country", country);
+    if (categoryIds.length > 0 && categoryLeadIds) query = query.in("id", categoryLeadIds);
+    if (province) {
+      const safeProvince = escapeLike(province);
+      query = query.or(
+        `resolved_location->>province.ilike.%${safeProvince}%,resolved_location->>state.ilike.%${safeProvince}%,resolved_location->>region.ilike.%${safeProvince}%,suggested_location_text.ilike.%${safeProvince}%`
+      );
+    }
     if (search) {
-      const safe = search.replace(/[%_]/g, "");
+      const safe = escapeLike(search);
       query = query.or(
         `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
       );

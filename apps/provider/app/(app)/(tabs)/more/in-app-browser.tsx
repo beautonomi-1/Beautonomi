@@ -32,7 +32,11 @@ export default function InAppBrowserScreen() {
     (e: WebViewMessageEvent) => {
       try {
         const raw = JSON.parse(e.nativeEvent.data) as { type?: string };
-        if (raw?.type === "BEAUTONOMI_ADS_PAYMENT_DONE") {
+        // Ads budget: `/provider/settings/ads/payment-return` posts BEAUTONOMI_ADS_PAYMENT_DONE.
+        // Provider subscription / renew / initialize-payment: Paystack callback lands on
+        // `/provider/subscription?payment_success=true&in_app=1`, which posts `subscription_success`
+        // (see apps/web `provider/subscription/page.tsx`) so the shell can pop back to native UI.
+        if (raw?.type === "BEAUTONOMI_ADS_PAYMENT_DONE" || raw?.type === "subscription_success") {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           router.back();
         }
@@ -170,6 +174,15 @@ export default function InAppBrowserScreen() {
         <WebView
           source={{ uri: rawUrl }}
           style={styles.webview}
+          originWhitelist={["https://*", "http://*", "provider://*"]}
+          onShouldStartLoadWithRequest={(request) => {
+            const u = request.url;
+            if (u.startsWith("provider://")) {
+              Linking.openURL(u).catch(() => {});
+              return false;
+            }
+            return true;
+          }}
           onMessage={onWebMessage}
           onError={() => {
             setError("Could not load this page.");

@@ -44,14 +44,15 @@ export async function GET(request: NextRequest) {
         )
         .eq("users.preferred_home_tenant_id", tenantId),
 
-      // Bookings with geo data
+      // Bookings with geo data (exclude cancelled so city/value views stay aligned)
       supabase
         .from("bookings")
         .select(
           "id, address_city, address_state, address_postal_code, location_type, total_price, status, scheduled_at"
         )
         .eq("tenant_id", tenantId)
-        .not("address_city", "is", null),
+        .not("address_city", "is", null)
+        .not("status", "eq", "cancelled"),
 
       // Device platform breakdown
       supabase
@@ -61,12 +62,12 @@ export async function GET(request: NextRequest) {
         )
         .eq("users.preferred_home_tenant_id", tenantId),
 
-      // Booking value aggregation (all bookings, even without geo)
+      // Booking value aggregation (all non-cancelled bookings, even without geo)
       supabase
         .from("bookings")
         .select("id, total_price, location_type, status, address_city")
         .eq("tenant_id", tenantId)
-        .in("status", ["confirmed", "completed"]),
+        .not("status", "eq", "cancelled"),
     ]);
 
     // --- Provider Distribution by City ---

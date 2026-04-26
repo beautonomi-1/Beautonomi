@@ -184,7 +184,7 @@ export function ServiceZonesListPage() {
         <AdminPanel>
           <h3 className="mb-2 text-sm font-semibold text-gray-900">Zone overview</h3>
           <p className="mb-3 text-xs text-gray-600">
-            Bounding boxes for each market. Click a region to open zone details — same idea as the Next.js Market Coverage map.
+            Bounding boxes for each market. Click a region, or use <span className="font-medium">Draw areas</span>, to open the detail map with inclusion and exclusion drawing controls.
           </p>
           <ServiceZonesOverviewMap zones={rows} className="min-h-[320px]" />
         </AdminPanel>
@@ -241,7 +241,7 @@ export function ServiceZonesListPage() {
                       className="text-xs text-indigo-600 hover:underline inline-flex items-center gap-0.5"
                     >
                       <Edit2 className="inline h-3 w-3" />
-                      Manage
+                      Manage / draw
                     </Link>
                     <button
                       type="button"

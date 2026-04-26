@@ -29,8 +29,8 @@ const inlineParticipantSchema = z
     customer_phone: z.string().optional().nullable(),
     service_id: z.string().uuid().optional().nullable(),
     service_name: z.string().optional().nullable(),
-    price: z.number().optional(),
-    duration_minutes: z.number().optional(),
+    price: z.coerce.number().min(0).optional(),
+    duration_minutes: z.coerce.number().int().min(0).optional(),
     is_primary_contact: z.boolean().optional(),
     addons: z.array(z.unknown()).optional(),
   })

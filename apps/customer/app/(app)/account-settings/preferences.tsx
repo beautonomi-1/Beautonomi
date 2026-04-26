@@ -37,7 +37,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { changeLanguage } from "@/lib/i18n";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { currencySelectLabel, LAST_RESORT_CURRENCY } from "@beautonomi/utils";
-import { supportedLanguages } from "@beautonomi/i18n";
+import { mergeLanguagePickerOptions, supportedLanguages } from "@beautonomi/i18n";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -74,30 +74,14 @@ interface PreferenceOptionRow {
 /*  Fallback lists (used when API empty or unavailable — mirrors web resilience) */
 /* ------------------------------------------------------------------ */
 
-/** BCP-47 primary tags that have bundled app copy in `@beautonomi/i18n` (must match `supportedLanguages`). */
-const SUPPORTED_LANG_CODES = new Set<string>(supportedLanguages.map((l) => l.code));
-
 function buildI18nAlignedLanguageOptions(apiRows: PickerOption[]): PickerOption[] {
-  const normalizedApi = apiRows
-    .map((o) => {
-      const code = (o.value.split(/[-_]/)[0] || o.value).toLowerCase();
-      return { value: code, label: o.label };
-    })
-    .filter((o) => SUPPORTED_LANG_CODES.has(o.value));
-
-  const source =
-    normalizedApi.length > 0
-      ? normalizedApi
-      : supportedLanguages.map(({ code, nativeName, name }) => ({
-          value: code,
-          label: `${nativeName} (${name})`,
-        }));
-
-  return source.map((opt) => {
-    const meta = supportedLanguages.find((l) => l.code === opt.value);
-    if (meta) return { value: meta.code, label: `${meta.nativeName} (${meta.name})` };
-    return opt;
-  });
+  const merged = mergeLanguagePickerOptions(
+    apiRows.map((o) => ({
+      code: (o.value.split(/[-_]/)[0] || o.value).toLowerCase(),
+      name: o.label,
+    })),
+  );
+  return merged.map((m) => ({ value: m.code, label: m.name }));
 }
 
 const FALLBACK_CURRENCY_OPTIONS: PickerOption[] = [

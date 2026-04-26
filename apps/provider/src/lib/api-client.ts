@@ -22,7 +22,7 @@ import {
 } from "@/lib/active-provider-api-hint";
 
 /** Resolve API base URL with strict production safeguards. Never throws — callers expect sync resolution inside apiFetch try/catch. */
-function getApiBaseUrl(): string {
+export function getApiBaseUrl(): string {
   const configured = APP_URL?.trim() ?? "";
   if (Platform.OS === "web" && typeof window !== "undefined") {
     const origin = window.location.origin;

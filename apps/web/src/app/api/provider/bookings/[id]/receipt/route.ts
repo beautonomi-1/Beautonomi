@@ -85,7 +85,7 @@ export async function GET(
         *,
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
         locations:provider_locations(id, name, address_line1, address_line2, city, state, postal_code),
-        providers:providers!bookings_provider_id_fkey(id, business_name, owner_email, phone, address, receipt_prefix, receipt_next_number, receipt_header, receipt_footer),
+        providers:providers!bookings_provider_id_fkey(id, business_name, user_id, phone, address, receipt_prefix, receipt_next_number, receipt_header, receipt_footer),
         group_bookings!bookings_group_booking_id_fkey(ref_number),
         booking_services(
           id,
@@ -163,6 +163,16 @@ export async function GET(
     const currencyFallback = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const provider = b.providers || {};
+    const providerOwnerId = typeof provider.user_id === "string" ? provider.user_id : null;
+    let providerOwnerEmail = "";
+    if (providerOwnerId) {
+      const { data: ownerRow } = await supabaseAdmin
+        .from("users")
+        .select("email")
+        .eq("id", providerOwnerId)
+        .maybeSingle();
+      providerOwnerEmail = (ownerRow as { email?: string | null } | null)?.email ?? "";
+    }
     const address = provider.address && typeof provider.address === "object"
       ? provider.address
       : { line1: "", line2: "", city: "", state: "", postal_code: "" };
@@ -271,7 +281,7 @@ export async function GET(
         : new Date(b.created_at).toLocaleDateString(),
       provider: {
         name: provider.business_name || "Provider",
-        email: provider.owner_email || "",
+        email: providerOwnerEmail,
         phone: provider.phone || "",
         address: {
           line1: loc?.address_line1 || address?.line1 || "",

@@ -315,7 +315,7 @@ export async function GET(
       // Fetch categories and prices (from offerings) - also get supports_at_home
       supabase
         .from("offerings")
-        .select("category_id, price, currency, category_name, provider_category_id, supports_at_home, service_id")
+        .select("category_id, price, currency, category_name, provider_category_id, supports_at_home, master_service_id")
         .eq("provider_id", providerData.id)
         .eq("is_active", true)
         .limit(100), // Limit to prevent huge queries
@@ -481,25 +481,6 @@ export async function GET(
     // Check if provider supports house calls (normalize boolean-like values)
     if (offerings && offerings.length > 0) {
       supportsHouseCalls = (offerings as any[]).some((o: any) => Boolean(o.supports_at_home));
-    }
-
-    // Also check services table for supports_at_home if no offerings found
-    if (!supportsHouseCalls && offerings && offerings.length > 0) {
-      const serviceIds = (offerings as any[])
-        .map((o: any) => o.service_id)
-        .filter(Boolean);
-      
-      if (serviceIds.length > 0) {
-        const { data: servicesData } = await supabase
-          .from("services")
-          .select("supports_at_home")
-          .in("id", serviceIds)
-          .limit(100);
-        
-        if (servicesData && servicesData.length > 0) {
-          supportsHouseCalls = servicesData.some((s: any) => Boolean(s.supports_at_home));
-        }
-      }
     }
 
     // Keep provider-level capability as a fallback signal when data is partially migrated.

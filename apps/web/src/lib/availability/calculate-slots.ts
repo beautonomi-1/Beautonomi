@@ -104,8 +104,31 @@ function slotOverlapsTimeBlock(
   timezone?: string
 ): boolean {
   const blockStart = combineDateAndTime(date, timeBlock.start_time, timezone);
-  const blockEnd = combineDateAndTime(date, timeBlock.end_time, timezone);
+  let blockEnd = combineDateAndTime(date, timeBlock.end_time, timezone);
+  if (blockEnd <= blockStart) {
+    blockEnd = new Date(blockEnd.getTime() + 24 * 60 * 60 * 1000);
+  }
   return timeRangesOverlap(slotStart, slotEnd, blockStart, blockEnd);
+}
+
+function addDaysToDateKey(date: string, days: number): string {
+  if (days === 0) return date;
+  const d = new Date(`${date}T12:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function shiftMinuteRanges(shift: { start_time: string; end_time: string }): Array<{ start: number; end: number; dayOffset: number }> {
+  const start = timeToMinutes(shift.start_time.substring(0, 5));
+  const end = timeToMinutes(shift.end_time.substring(0, 5));
+  if (end > start) return [{ start, end, dayOffset: 0 }];
+  if (end < start) {
+    return [
+      { start, end: 24 * 60, dayOffset: 0 },
+      { start: 0, end, dayOffset: 1 },
+    ];
+  }
+  return [];
 }
 
 /**
@@ -233,22 +256,22 @@ export function calculateAvailableSlots(
   // Union slots across ALL shifts (supports split shifts like 09:00-12:00 + 14:00-18:00)
   const allSlotTimesSet = new Set<string>();
   for (const shift of staffShifts) {
-    const ws = shift.start_time.substring(0, 5);
-    const we = shift.end_time.substring(0, 5);
-    for (const t of generateTimeSlots(ws, we, slotInterval)) {
-      allSlotTimesSet.add(t);
+    for (const range of shiftMinuteRanges(shift)) {
+      for (const t of generateTimeSlots(minutesToTime(range.start), minutesToTime(range.end), slotInterval)) {
+        allSlotTimesSet.add(t);
+      }
     }
   }
   const allSlots = [...allSlotTimesSet].sort();
 
   // Earliest start / latest end across all shifts (for gap avoidance)
   const overallWorkStart = staffShifts.reduce(
-    (min, s) => { const t = s.start_time.substring(0, 5); return t < min ? t : min; },
-    staffShifts[0].start_time.substring(0, 5)
+    (min, s) => Math.min(min, ...shiftMinuteRanges(s).map((r) => r.start)),
+    24 * 60
   );
   const overallWorkEnd = staffShifts.reduce(
-    (max, s) => { const t = s.end_time.substring(0, 5); return t > max ? t : max; },
-    staffShifts[0].end_time.substring(0, 5)
+    (max, s) => Math.max(max, ...shiftMinuteRanges(s).map((r) => r.end)),
+    0
   );
 
   // Calculate blocked segments from existing bookings
@@ -264,11 +287,10 @@ export function calculateAvailableSlots(
     const slotEndMinutes = slotStartMinutes + duration + travelBuffer;
 
     // Slot + duration must fit entirely within at least one shift
-    const fitsInAnyShift = staffShifts.some((shift) => {
-      const shiftStartMin = timeToMinutes(shift.start_time.substring(0, 5));
-      const shiftEndMin = timeToMinutes(shift.end_time.substring(0, 5));
-      return slotStartMinutes >= shiftStartMin && slotEndMinutes <= shiftEndMin;
-    });
+    const fittingRange = staffShifts
+      .flatMap((shift) => shiftMinuteRanges(shift))
+      .find((range) => slotStartMinutes >= range.start && slotEndMinutes <= range.end);
+    const fitsInAnyShift = Boolean(fittingRange);
 
     if (!fitsInAnyShift) {
       return {
@@ -279,8 +301,9 @@ export function calculateAvailableSlots(
     }
 
     // Convert to Date objects for overlap checking
-    const slotStart = combineDateAndTime(date, slotTime, timezone);
-    const slotEnd = combineDateAndTime(date, minutesToTime(slotEndMinutes), timezone);
+    const slotDate = addDaysToDateKey(date, fittingRange?.dayOffset ?? 0);
+    const slotStart = combineDateAndTime(slotDate, slotTime, timezone);
+    const slotEnd = combineDateAndTime(slotDate, minutesToTime(slotEndMinutes), timezone);
 
     // Check overlap with blocked segments
     if (slotOverlapsBlockedSegments(slotStart, slotEnd, blockedSegments)) {
@@ -311,7 +334,7 @@ export function calculateAvailableSlots(
 
   // Apply gap avoidance if enabled
   if (avoidGaps) {
-    return applyGapAvoidance(availableSlots, existingBookings, overallWorkStart, overallWorkEnd, date, timezone);
+    return applyGapAvoidance(availableSlots, existingBookings, minutesToTime(overallWorkStart), minutesToTime(overallWorkEnd), date, timezone);
   }
 
   return availableSlots;

@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
@@ -19,6 +20,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { useCart } from "@/features/shop/useCart";
 import { useProductOrders } from "@/features/shop/useProductOrders";
 import { useAuth } from "@/providers/AuthProvider";
+import { haptic } from "@/lib/haptics";
 import { trackProductCheckoutStarted, trackProductOrderPlaced } from "@/lib/analytics";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
@@ -99,7 +101,7 @@ export default function ProductCheckoutScreen() {
   const cart = useCart();
   const { fetchCart } = cart;
   const orders = useProductOrders();
-  const { user } = useAuth();
+  const { user, refreshSession } = useAuth();
 
   const [fulfillment, setFulfillment] = useState<"collection" | "delivery">("collection");
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -309,6 +311,10 @@ export default function ProductCheckoutScreen() {
       );
       return;
     }
+    if (providerItems.length === 0) {
+      Alert.alert("Cart is empty", "Add products from this seller before checkout.");
+      return;
+    }
     if (fulfillment === "delivery" && !selectedAddress) {
       Alert.alert("Address Required", "Please select a delivery address");
       return;
@@ -319,6 +325,7 @@ export default function ProductCheckoutScreen() {
     }
 
     setPlacing(true);
+    await refreshSession().catch(() => {});
 
     // 1. Create the order (payment_status = "pending" or "paid" if wallet covers full amount)
     const result = await orders.createOrder({
@@ -388,10 +395,12 @@ export default function ProductCheckoutScreen() {
       {
         email: customerEmail,
         amount: Math.round(amountDue * 100),
+        callback_url: "customer://product-orders",
         metadata: {
           product_order_id: order.id,
           order_number: order.order_number,
           type: "product_order",
+          mobile_app: "customer",
         },
       },
     );
@@ -407,18 +416,57 @@ export default function ProductCheckoutScreen() {
       return;
     }
 
-    // 3. Open Paystack payment page (in-app browser on native so user stays in app)
+    // 3. Open Paystack payment page. Use the native browser flow, not the WebView
+    // callback page, because the web callback depends on web cookies while the app
+    // authenticates API calls with a Bearer token.
     const url = paystackRes.data.authorization_url;
     if (Platform.OS === "web") {
       window.location.href = url;
     } else {
-      router.push({
-        pathname: "/(app)/in-app-browser",
-        params: { url: encodeURIComponent(url), title: "Complete payment" },
+      await WebBrowser.openBrowserAsync(url, {
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
       });
+
+      const reference = paystackRes.data.reference;
+      if (reference) {
+        await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+      }
+
+      let paid = false;
+      const MAX_ATTEMPTS = 10;
+      const POLL_INTERVAL_MS = 2000;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const check = await orders.fetchOrderDetail(order.id);
+        if (check.data?.payment_status === "paid") {
+          paid = true;
+          break;
+        }
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        }
+      }
+
+      if (paid) {
+        await fetchCart();
+        haptic.success();
+        Alert.alert(
+          "Payment successful",
+          `Your order ${order.order_number} has been confirmed.`,
+          [{ text: "View orders", onPress: () => router.replace("/(app)/product-orders" as any) }],
+        );
+      } else {
+        Alert.alert(
+          "Payment pending",
+          "If you completed the card payment, it can take a few moments to confirm. Check Product orders shortly.",
+          [
+            { text: "View orders", onPress: () => router.replace("/(app)/product-orders" as any) },
+            { text: "OK", style: "cancel" },
+          ],
+        );
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- orders/paymentMethod from context
-  }, [provider_id, fulfillment, selectedAddress, selectedLocation, orders.createOrder, router, user, total, useWallet]);
+  }, [provider_id, fulfillment, selectedAddress, selectedLocation, providerItems.length, orders.createOrder, orders.fetchOrderDetail, router, user, total, useWallet, refreshSession, fetchCart]);
 
   if (loading) {
     return (

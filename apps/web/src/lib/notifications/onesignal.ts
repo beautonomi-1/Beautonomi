@@ -24,8 +24,9 @@ const ONESIGNAL_API_BASE = "https://api.onesignal.com";
  * Legacy integrations sometimes stored `Basic …` or `Key …` verbatim — pass through unchanged.
  */
 export function oneSignalAuthorizationHeader(restApiKey: string): string {
-  const raw = restApiKey.trim();
+  const raw = restApiKey.replace(/^\uFEFF/, "").trim();
   if (!raw) return "";
+  // OneSignal accepts `Key <token>` (see Keys & IDs). Pass through if already prefixed.
   if (/^(basic|key)\s+/i.test(raw)) return raw;
   return `Key ${raw}`;
 }
@@ -43,6 +44,17 @@ function formatOneSignalApiErrors(responseData: unknown): string {
   const msg = o.message;
   if (typeof msg === "string" && msg.trim()) return msg.trim();
   return "Unknown error";
+}
+
+function formatOneSignalSendFailure(status: number, responseData: unknown, appId: string): string {
+  const detail = formatOneSignalApiErrors(responseData);
+  if (status === 401 || /authorization|api key|rest api key/i.test(detail)) {
+    return `OneSignal rejected the REST API key for App ID ${appId}. Check that the saved REST API key belongs to this exact OneSignal app and is a server REST API key, not an Expo/NEXT_PUBLIC client value. OneSignal said: ${detail}`;
+  }
+  if (/app_id/i.test(detail) && /not found|invalid|mismatch/i.test(detail)) {
+    return `OneSignal rejected App ID ${appId}. Check the App ID/key pair in Platform settings. OneSignal said: ${detail}`;
+  }
+  return detail;
 }
 
 function eventTypeFromPayloadData(data: unknown): string {
@@ -303,8 +315,8 @@ async function sendOneSignalNotification(
 ): Promise<SendNotificationResult> {
   const appType = options?.appType;
   const resolved = await resolveOneSignalCredentials(appType, { tenantId: options?.tenantId });
-  const appId = resolved.appId;
-  const restKey = resolved.restKey;
+  const appId = resolved.appId?.replace(/^\uFEFF/, "").trim() || null;
+  const restKey = resolved.restKey?.replace(/^\uFEFF/, "").trim() || null;
   if (!appId || !restKey) {
     console.warn("OneSignal API keys not configured. Skipping notification send.");
     await logNotification({
@@ -417,7 +429,7 @@ async function sendOneSignalNotification(
 
     if (!response.ok) {
       console.error("OneSignal API error:", responseData);
-      const errMsg = formatOneSignalApiErrors(responseData);
+      const errMsg = formatOneSignalSendFailure(response.status, responseData, appId);
       await logNotification({
         event_type: eventTypeFromPayloadData(payload.data),
         recipients: payload.include_player_ids || payload.include_external_user_ids || [],

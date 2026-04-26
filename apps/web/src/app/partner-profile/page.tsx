@@ -14,6 +14,7 @@ import PartnerProfileClient from "./partner-profile-client";
 import ProviderJsonLd from "./components/provider-json-ld";
 import { parseCoord, parsePartnerProfileSlug } from "./search-params-helpers";
 import { fetchPublicProviderServicesInitial } from "./fetch-public-provider-services";
+import { resolvePartnerProfileOpenGraphImageUrl } from "@/lib/seo/partner-profile-open-graph";
 
 export const revalidate = 300;
 
@@ -60,15 +61,7 @@ export async function generateMetadata({
       }${provider.review_count ? ` with ${provider.review_count} reviews` : ""}.`;
 
   const profileUrl = `${origin}${path}?slug=${encodeURIComponent(slugDecoded)}`;
-  let ogImage = `${origin}/images/logo-beatonomi.svg`;
-  if (provider.thumbnail_url) {
-    ogImage =
-      provider.thumbnail_url.startsWith("http://") || provider.thumbnail_url.startsWith("https://")
-        ? provider.thumbnail_url
-        : provider.thumbnail_url.startsWith("/")
-          ? `${origin}${provider.thumbnail_url}`
-          : provider.thumbnail_url;
-  }
+  const ogImage = resolvePartnerProfileOpenGraphImageUrl(origin, slugDecoded, provider);
 
   return {
     title,

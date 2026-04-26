@@ -5,6 +5,7 @@
  */
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { DEFAULT_SUPPORTED_LANGUAGE_CODES } from "@/lib/i18n/config";
 
 export interface CurrencyInfo {
   code: string;
@@ -71,7 +72,7 @@ function getDefaultLocale(): LocaleSettings {
     default_language: "en",
     timezone: "Africa/Johannesburg",
     supported_currencies: [LAST_RESORT_CURRENCY, "USD", "EUR"],
-    supported_languages: ["en", "af", "zu"],
+    supported_languages: [...DEFAULT_SUPPORTED_LANGUAGE_CODES],
     currency_info: {
       code: LAST_RESORT_CURRENCY,
       symbol: "R",

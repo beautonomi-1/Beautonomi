@@ -100,7 +100,13 @@ function isSlotStartStillSelectable(startIso: string, day: Date, minNoticeMinute
   return slotTime.getTime() >= cutoff;
 }
 
-export type ScheduleSlot = { start: string; end: string; staff_id?: string; is_available?: boolean };
+export type ScheduleSlot = {
+  start: string;
+  end: string;
+  staff_id?: string;
+  is_available?: boolean;
+  available_staff_ids?: string[];
+};
 
 interface StepScheduleProps {
   data: BookingData;

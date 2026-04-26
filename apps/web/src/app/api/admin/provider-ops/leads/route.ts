@@ -33,6 +33,56 @@ const VALID_SOURCES = [
   "form",
 ] as const;
 
+function escapeLike(value: string): string {
+  return value.replace(/[%_]/g, "");
+}
+
+function parseCategoryIds(searchParams: URLSearchParams): string[] {
+  const raw = [
+    ...searchParams.getAll("category_ids"),
+    ...searchParams.getAll("category_id"),
+  ];
+  const seen = new Set<string>();
+  for (const value of raw) {
+    for (const part of value.split(",")) {
+      const id = part.trim();
+      if (id) seen.add(id);
+    }
+  }
+  return [...seen];
+}
+
+function coerceRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function getProvinceFromLeadRow(row: {
+  resolved_location?: unknown;
+  suggested_location_text?: string | null;
+}): string | null {
+  const resolved = coerceRecord(row.resolved_location);
+  const candidates = [
+    resolved?.province,
+    resolved?.state,
+    resolved?.region,
+    resolved?.administrative_area_level_1,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  const text = typeof row.suggested_location_text === "string" ? row.suggested_location_text.trim() : "";
+  if (!text) return null;
+  const parts = text.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return parts[parts.length - 2] || null;
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
@@ -46,22 +96,21 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")?.trim();
     const assignedTo = searchParams.get("assigned_to");
     const country = searchParams.get("country");
-    const categoryId = searchParams.get("category_id");
+    const categoryIds = parseCategoryIds(searchParams);
+    const province = searchParams.get("province")?.trim();
 
-    // Pre-resolve lead IDs for category filter (join through provider_lead_categories)
+    // Pre-resolve lead IDs for category filter (join through provider_lead_categories).
+    // Multiple selected categories use OR semantics: a lead matching any selected
+    // global category is included.
     let categoryLeadIds: string[] | null = null;
-    if (categoryId) {
+    if (categoryIds.length > 0) {
       const { data: catRows } = await supabase
         .from("provider_lead_categories")
         .select("lead_id")
-        .eq("global_category_id", categoryId);
-      categoryLeadIds = (catRows ?? []).map((r: { lead_id: string }) => r.lead_id);
+        .in("global_category_id", categoryIds);
+      categoryLeadIds = [...new Set((catRows ?? []).map((r: { lead_id: string }) => r.lead_id))];
       if (categoryLeadIds.length === 0) {
-        return successResponse({
-          data: [],
-          meta: { page, limit, total: 0, has_more: false },
-          stage_counts: { all: 0 },
-        });
+        categoryLeadIds = ["00000000-0000-0000-0000-000000000000"];
       }
     }
 
@@ -92,11 +141,17 @@ export async function GET(request: NextRequest) {
     if (country) {
       query = query.eq("country", country);
     }
-    if (categoryId && categoryLeadIds) {
+    if (categoryIds.length > 0 && categoryLeadIds) {
       query = query.in("id", categoryLeadIds);
     }
+    if (province) {
+      const safeProvince = escapeLike(province);
+      query = query.or(
+        `resolved_location->>province.ilike.%${safeProvince}%,resolved_location->>state.ilike.%${safeProvince}%,resolved_location->>region.ilike.%${safeProvince}%,suggested_location_text.ilike.%${safeProvince}%`
+      );
+    }
     if (search) {
-      const safe = search.replace(/[%_]/g, "");
+      const safe = escapeLike(search);
       query = query.or(
         `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
       );
@@ -116,11 +171,17 @@ export async function GET(request: NextRequest) {
       if (source && source !== "all") q = q.eq("source", source);
       if (assignedTo) q = q.eq("assigned_to", assignedTo);
       if (country) q = q.eq("country", country);
-      if (categoryId) {
+      if (province) {
+        const safeProvince = escapeLike(province);
+        q = q.or(
+          `resolved_location->>province.ilike.%${safeProvince}%,resolved_location->>state.ilike.%${safeProvince}%,resolved_location->>region.ilike.%${safeProvince}%,suggested_location_text.ilike.%${safeProvince}%`
+        );
+      }
+      if (categoryIds.length > 0) {
         q = q.in("id", categoryLeadIds!);
       }
       if (search) {
-        const safe = search.replace(/[%_]/g, "");
+        const safe = escapeLike(search);
         q = q.or(
           `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
         );
@@ -142,10 +203,124 @@ export async function GET(request: NextRequest) {
     }
     stageCounts.all = allCount;
 
+    // Dynamic filters for UI faceting based on current search/source/stage scope.
+    // Country/province are intentionally not applied here, so operators can pivot quickly.
+    let optionsQuery = supabase
+      .from("provider_leads")
+      .select("id,country,suggested_location_text,resolved_location")
+      .eq("tenant_id", tenantId);
+    if (stage && stage !== "all") optionsQuery = optionsQuery.eq("commercial_stage", stage);
+    if (source && source !== "all") optionsQuery = optionsQuery.eq("source", source);
+    if (assignedTo) optionsQuery = optionsQuery.eq("assigned_to", assignedTo);
+    if (search) {
+      const safe = escapeLike(search);
+      optionsQuery = optionsQuery.or(
+        `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
+      );
+    }
+    optionsQuery = optionsQuery.limit(5000);
+    const { data: optionLeadRows } = await optionsQuery;
+    const optionRows = (optionLeadRows ?? []) as Array<{
+      id: string;
+      country?: string | null;
+      suggested_location_text?: string | null;
+      resolved_location?: unknown;
+    }>;
+    const countryCounts = new Map<string, number>();
+    const provinceCounts = new Map<string, { count: number; country: string | null }>();
+    for (const row of optionRows) {
+      const countryValue = typeof row.country === "string" ? row.country.trim() : "";
+      if (countryValue) {
+        countryCounts.set(countryValue, (countryCounts.get(countryValue) ?? 0) + 1);
+      }
+      const provinceValue = getProvinceFromLeadRow(row);
+      if (provinceValue) {
+        const prev = provinceCounts.get(provinceValue);
+        provinceCounts.set(provinceValue, {
+          count: (prev?.count ?? 0) + 1,
+          country: countryValue || prev?.country || null,
+        });
+      }
+    }
+
+    const leadIdsForOptions = optionRows.map((row) => row.id).filter(Boolean);
+    const categoryCounts = new Map<string, { id: string; name: string; slug?: string | null; icon?: string | null; count: number; seen: Set<string> }>();
+    const { data: globalCategories } = await supabase
+      .from("global_service_categories")
+      .select("id, name, slug, icon, display_order")
+      .eq("is_active", true)
+      .order("display_order", { ascending: true });
+    for (const cat of (globalCategories ?? []) as Array<{
+      id?: string;
+      name?: string;
+      slug?: string | null;
+      icon?: string | null;
+    }>) {
+      if (!cat.id || !cat.name) continue;
+      categoryCounts.set(cat.id, {
+        id: cat.id,
+        name: cat.name,
+        slug: cat.slug ?? null,
+        icon: cat.icon ?? null,
+        count: 0,
+        seen: new Set(),
+      });
+    }
+    if (leadIdsForOptions.length > 0) {
+      const { data: categoryRows } = await supabase
+        .from("provider_lead_categories")
+        .select("lead_id, global_category_id, global_service_categories:global_category_id(id,name,slug,icon)")
+        .in("lead_id", leadIdsForOptions);
+      for (const row of (categoryRows ?? []) as Array<{
+        lead_id?: string;
+        global_category_id?: string;
+        global_service_categories?: { id?: string; name?: string; slug?: string | null; icon?: string | null } | null;
+      }>) {
+        const leadId = typeof row.lead_id === "string" ? row.lead_id : "";
+        const categoryIdValue =
+          typeof row.global_category_id === "string"
+            ? row.global_category_id
+            : typeof row.global_service_categories?.id === "string"
+              ? row.global_service_categories.id
+              : "";
+        const categoryName = typeof row.global_service_categories?.name === "string"
+          ? row.global_service_categories.name
+          : "";
+        if (!leadId || !categoryIdValue || !categoryName) continue;
+        const existing = categoryCounts.get(categoryIdValue);
+        if (!existing) {
+          categoryCounts.set(categoryIdValue, {
+            id: categoryIdValue,
+            name: categoryName,
+            slug: row.global_service_categories?.slug ?? null,
+            icon: row.global_service_categories?.icon ?? null,
+            count: 1,
+            seen: new Set([leadId]),
+          });
+          continue;
+        }
+        if (!existing.seen.has(leadId)) {
+          existing.seen.add(leadId);
+          existing.count += 1;
+        }
+      }
+    }
+
     return successResponse({
       data: data || [],
       meta: { page, limit, total, has_more: total > page * limit },
       stage_counts: stageCounts,
+      filter_options: {
+        countries: [...countryCounts.entries()]
+          .map(([value, count]) => ({ value, label: value, count }))
+          .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+        provinces: [...provinceCounts.entries()]
+          .map(([value, data]) => ({ value, label: value, count: data.count, country: data.country }))
+          .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+        categories: [...categoryCounts.values()]
+          .map(({ seen: _seen, ...rest }) => rest)
+          .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+      },
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch leads");

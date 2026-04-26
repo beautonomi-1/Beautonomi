@@ -1,15 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { 
-  ChevronDown, 
-  Calendar, 
-  Plus, 
-  Users, 
-  Clock,
-  Wallet,
-  Sparkles
-} from "lucide-react";
+import { ChevronDown, Sparkles } from "lucide-react";
 import { ProviderGlobalSearch } from "./ProviderGlobalSearch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +12,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { ProviderBreadcrumb } from "./ProviderBreadcrumb";
@@ -152,91 +143,7 @@ export function ProviderTopbar() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 lg:gap-4 flex-shrink-0 min-w-0 overflow-x-hidden box-border">
-          {/* Quick Add Button - all viewports */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button 
-                aria-label="Quick actions"
-                className="min-h-[44px] min-w-[44px] h-11 w-11 shrink-0 md:h-9 md:w-auto md:min-h-0 md:min-w-0 md:gap-2 md:px-4 p-0 md:p-2 rounded-full md:rounded-md touch-manipulation"
-                style={{
-                  backgroundColor: branding?.primary_color || "#FF0077",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = branding?.secondary_color || "#D60565";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = branding?.primary_color || "#FF0077";
-                }}
-              >
-                <Plus className="w-4 h-4" />
-                <span className="hidden lg:inline">New</span>
-                <ChevronDown className="w-3 h-3 hidden lg:inline" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="text-xs text-gray-500 uppercase tracking-wide">
-                Quick Actions
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/provider/calendar" className="flex items-center gap-3 cursor-pointer">
-                  <div className="w-8 h-8 rounded-lg bg-[#4fd1c5]/10 flex items-center justify-center">
-                    <Calendar className="w-4 h-4 text-[#4fd1c5]" />
-                  </div>
-                  <div>
-                    <p className="font-medium">New Appointment</p>
-                    <p className="text-xs text-gray-500">Book a client</p>
-                  </div>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/provider/clients" className="flex items-center gap-3 cursor-pointer">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                    <Users className="w-4 h-4 text-blue-500" />
-                  </div>
-                  <div>
-                    <p className="font-medium">New Client</p>
-                    <p className="text-xs text-gray-500">Add to database</p>
-                  </div>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/provider/sales" className="flex items-center gap-3 cursor-pointer">
-                  <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
-                    <Wallet className="w-4 h-4 text-green-500" />
-                  </div>
-                  <div>
-                    <p className="font-medium">New Sale</p>
-                    <p className="text-xs text-gray-500">Record a transaction</p>
-                  </div>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/provider/waitlist" className="flex items-center gap-3 cursor-pointer">
-                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center">
-                    <Clock className="w-4 h-4 text-orange-500" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Add to Waitlist</p>
-                    <p className="text-xs text-gray-500">Queue a client</p>
-                  </div>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/provider/explore/new" className="flex items-center gap-3 cursor-pointer">
-                  <div className="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center">
-                    <Sparkles className="w-4 h-4 text-pink-500" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Create Explore Post</p>
-                    <p className="text-xs text-gray-500">Share to the explore feed</p>
-                  </div>
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Setup Progress - Desktop - Added margin for better separation from New button */}
+          {/* Setup Progress - Desktop */}
           {setupCompletion < 100 && (
             <Link href="/provider/get-started" className="hidden sm:block flex-shrink-0 ml-1">
                 <Badge

@@ -53,10 +53,28 @@ export async function GET(
       return notFoundResponse("Booking link not found");
     }
 
-    const { data: link, error: linkError } = await linkQuery.maybeSingle();
-
-    if (linkError || !link) {
+    const { data: tenantScopedLink, error: linkError } = await linkQuery.maybeSingle();
+    if (linkError) {
       return notFoundResponse("Booking link not found");
+    }
+    let link = tenantScopedLink;
+
+    // Tenant host mapping can be temporarily missing/misaligned in some environments.
+    // Fallback to a global slug lookup only when exactly one active candidate exists.
+    if (!link) {
+      const { data: fallbackLinks, error: fallbackErr } = await supabase
+        .from("express_booking_links")
+        .select("id, provider_id, name, slug, service_ids, staff_ids, location_id, location_type, is_active, expires_at, max_uses, use_count, prefill")
+        .eq("slug", slug)
+        .eq("is_active", true)
+        .limit(2);
+      if (fallbackErr || !fallbackLinks?.length) {
+        return notFoundResponse("Booking link not found");
+      }
+      if (fallbackLinks.length > 1) {
+        return notFoundResponse("Booking link not found");
+      }
+      link = fallbackLinks[0];
     }
 
     if (link.expires_at && new Date(link.expires_at) < new Date()) {
@@ -71,7 +89,6 @@ export async function GET(
       .from("providers")
       .select("id, slug, business_name, is_active")
       .eq("id", link.provider_id)
-      .eq("tenant_id", tenantId)
       .single();
 
     if (providerError || !provider?.slug || provider.is_active === false) {

@@ -42,6 +42,9 @@ type ReceiptPayload = {
     total?: number;
     currency?: string;
     payment_status?: string;
+    provider?: { business_name?: string | null } | null;
+    receipt_header?: string | null;
+    receipt_footer?: string | null;
   };
 };
 
@@ -101,8 +104,17 @@ export async function GET(
     const chunks: Buffer[] = [];
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
 
+    if (receipt.receipt_header) {
+      doc.fontSize(10).fillColor("#555").text(receipt.receipt_header, { align: "center" });
+      doc.moveDown(0.5);
+    }
+
     doc.fontSize(22).fillColor("#333").text("Order receipt", { align: "left" });
     doc.moveDown(0.3);
+    if (receipt.provider?.business_name) {
+      doc.fontSize(11).text(`From: ${receipt.provider.business_name}`);
+      doc.moveDown(0.2);
+    }
     doc.fontSize(11).text(`Order #: ${receipt.order_number || "-"}`);
     doc.text(
       `Date: ${receipt.order_date ? new Date(receipt.order_date).toLocaleDateString("en-ZA") : "-"}`,
@@ -168,6 +180,13 @@ export async function GET(
 
     doc.moveDown(0.3);
     doc.fontSize(10).fillColor("#333").text(`Payment status: ${receipt.payment_status || "-"}`);
+
+    if (receipt.receipt_footer) {
+      doc.moveDown(1);
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#ddd").lineWidth(0.5).stroke();
+      doc.moveDown(0.3);
+      doc.fontSize(9).fillColor("#666").text(receipt.receipt_footer, { align: "center" });
+    }
 
     doc.end();
     const buffer = await new Promise<Buffer>((resolve) => {

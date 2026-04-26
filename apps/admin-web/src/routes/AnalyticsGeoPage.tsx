@@ -320,6 +320,13 @@ export function AnalyticsGeoPage() {
           </div>
           <AdminPanel>
             <h2 className="mb-3 text-sm font-semibold text-gray-900">Bookings by City (top 10)</h2>
+            {data.bookings_by_city.length === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-500">
+                No bookings with a saved city on file. City-level charts only include rows where{" "}
+                <code className="rounded bg-gray-100 px-1 text-xs">address_city</code> is set; totals above include all
+                non-cancelled bookings.
+              </p>
+            ) : null}
             {data.bookings_by_city.slice(0, 10).map((b) => (
               <div key={b.city} className="mb-3">
                 <div className="flex items-center justify-between text-sm">

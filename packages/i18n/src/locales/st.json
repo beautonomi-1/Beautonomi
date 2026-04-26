@@ -35,7 +35,11 @@
     "settings": "Ditlhophiso",
     "more": "Tse ding",
     "appLanguage": "Polelo ya app",
-    "appLanguageSubtitle": "Khetha polelo ya app"
+    "appLanguageSubtitle": "Khetha polelo ya app",
+    "rateBeautonomiAppStore": "Rate Beautonomi on the App Store",
+    "rateBeautonomiPlayStore": "Rate Beautonomi on Google Play",
+    "rateBeautonomiStoreWeb": "Get Beautonomi apps",
+    "rateBeautonomiStoreSubtitle": "Opens the store (or download page) so you can leave a review."
   },
   "authGate": {
     "checkingAccess": "Ho hlahloba akhaonto ea hau…",
@@ -58,7 +62,6 @@
     "dontHaveAccount": "Ha o na ak'haonte?",
     "continueWithGoogle": "Tswela pele ka Google",
     "continueWithApple": "Tswela pele ka Apple",
-    "continueWithFacebook": "Tswela pele ka Facebook",
     "orContinueWith": "kapa tswela pele ka",
     "termsAgreement": "Ka ho tswela pele, o dumela Dipehelo tsa Rona tsa Tshebeletso le Molawana wa Poraefesi",
     "howHearAboutUs": "O utlwile jwang ka rona?",
@@ -271,6 +274,9 @@
       "deleteConfirmMessage": "Hona ha ho ka hlophisoa.",
       "staffPrefix": "Basebetsi"
     },
+    "moreTab": {
+      "rateStoreHeading": "Love the app?"
+    },
     "calendarScreen": {
       "calendarActions": "Liketso tsa khalendara",
       "shareSchedule": "Arolelana le lenaneo",
@@ -349,6 +355,12 @@
     "giftCards": "Dikarete tsa mpho",
     "wallet": "Mokotla wa chelete",
     "profile": "Profaele",
+    "profileTab": {
+      "clientRatingLabel": "Your client rating",
+      "clientRatingEmpty": "No ratings yet. After providers rate completed visits, your average will show here — great bookings help build your score.",
+      "clientRatingCount": "({{count}} provider ratings)",
+      "clientRatingA11y": "Your average rating from providers"
+    },
     "personalInfo": "Tlhahisoleseding ya hao",
     "loginSecurity": "Ho kena le tshireletso",
     "notifications": "Ditsebiso",
@@ -405,6 +417,7 @@
       "logOutConfirm": "Na o netefatsa hore o batla ho tswa?",
       "accessibilityScroll": "Litlhophiso tsa akhaonto",
       "accessibilityShare": "Arolelana Beautonomi. Memella metsoalle le ba lelapeng",
+      "accessibilityRateStore": "Rate Beautonomi on the App Store or Google Play",
       "accessibilityHelp": "Thuso le tshehetso. Lipotso le ho ikopanya le rona",
       "accessibilityAbout": "Ka Beautonomi. Morero le pale",
       "accessibilityProfileBanner": "Qetella profaele ea hao",
@@ -508,7 +521,11 @@
       "couponPlaceholder": "Kenya khoutu ya khupone",
       "couponCodeA11y": "Khoutu ya khupone",
       "redeemA11y": "Sebelisa khupone",
-      "redeem": "Sebelisa"
+      "redeem": "Sebelisa",
+      "cardSavedTitle": "Karete e bolokilwe",
+      "cardSavedBody": "Karete ea hau e loketse ho sebelisoa ha u lefa.",
+      "cardVerificationPendingTitle": "Ho haufi",
+      "cardVerificationPendingBody": "Haeba u phethetse netefatso, ho ka nka nako pele karete ea hau e bonahala. Hlohlletsa tlase ho nchafatsa."
     }
   },
   "checkout": {

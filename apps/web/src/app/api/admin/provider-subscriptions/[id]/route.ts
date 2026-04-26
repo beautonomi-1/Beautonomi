@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import {
   requireAdminSection,
   successResponse,
@@ -11,11 +10,17 @@ import { z } from "zod";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { disableSubscriptionByCode } from "@/lib/payments/paystack-complete";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getMergedSubscriptionPlanIdsForTenant } from "@/lib/subscription/admin-merged-plan-ids";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 const patchSchema = z.object({
   plan_id: z.string().uuid().optional(),
-  status: z.enum(["active", "cancelled", "expired", "past_due"]).optional(),
+  status: z
+    .enum(["active", "cancelled", "expired", "past_due", "trialing", "inactive"])
+    .optional(),
   billing_period: z.enum(["monthly", "yearly"]).optional().nullable(),
+  auto_renew: z.boolean().optional(),
 });
 
 /**
@@ -37,24 +42,22 @@ export async function PATCH(
       return errorResponse("Invalid body", "VALIDATION_ERROR", 400, parsed.error.issues);
     }
 
-    const { plan_id, status, billing_period } = parsed.data;
-    if (plan_id === undefined && status === undefined && billing_period === undefined) {
+    const { plan_id, status, billing_period, auto_renew } = parsed.data;
+    if (
+      plan_id === undefined &&
+      status === undefined &&
+      billing_period === undefined &&
+      auto_renew === undefined
+    ) {
       return errorResponse("Nothing to update", "VALIDATION_ERROR", 400);
     }
 
-    const supabase = await getSupabaseServer(request);
-
-    if (plan_id) {
-      const { data: plan, error: pErr } = await supabase
-        .from("subscription_plans")
-        .select("id")
-        .eq("id", plan_id)
-        .maybeSingle();
-      if (pErr) throw pErr;
-      if (!plan) {
-        return errorResponse("Subscription plan not found", "NOT_FOUND", 404);
-      }
-    }
+    const supabase = getSupabaseAdmin();
+    const role = String(admin.role ?? "").toLowerCase();
+    const isSuperadmin = role === "superadmin";
+    const isPlatformConfig = role === "admin_platform_config";
+    const canCrossTenant = isSuperadmin || isPlatformConfig;
+    const currentHostTenantId = await resolveAdminApiTenantId(request);
 
     const { data: existing, error: existingErr } = await supabase
       .from("provider_subscriptions")
@@ -67,6 +70,35 @@ export async function PATCH(
       return errorResponse("Provider subscription not found", "NOT_FOUND", 404);
     }
 
+    const { data: providerRow, error: provErr } = await supabase
+      .from("providers")
+      .select("id, tenant_id")
+      .eq("id", (existing as { provider_id?: string }).provider_id ?? "")
+      .maybeSingle();
+    if (provErr) throw provErr;
+    const providerTenantId = (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+
+    if (!canCrossTenant) {
+      if (!providerRow || String(providerTenantId ?? "") !== String(currentHostTenantId ?? "")) {
+        return errorResponse(
+          "This subscription belongs to another tenant",
+          "FORBIDDEN",
+          403,
+        );
+      }
+    }
+
+    if (plan_id) {
+      const allowedIds = await getMergedSubscriptionPlanIdsForTenant(providerTenantId);
+      if (!allowedIds.has(String(plan_id))) {
+        return errorResponse(
+          "Subscription plan is not available for this provider's tenant (merge global + tenant catalog)",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
+    }
+
     const planChanging =
       plan_id !== undefined && String(plan_id) !== String((existing as { plan_id?: string }).plan_id ?? "");
 
@@ -74,6 +106,7 @@ export async function PATCH(
     if (plan_id !== undefined) update.plan_id = plan_id;
     if (status !== undefined) update.status = status;
     if (billing_period !== undefined) update.billing_period = billing_period;
+    if (auto_renew !== undefined) update.auto_renew = auto_renew;
 
     if (planChanging) {
       const paystackCode = (existing as { paystack_subscription_code?: string | null })
@@ -137,6 +170,7 @@ export async function PATCH(
         plan_id,
         status,
         billing_period,
+        auto_renew,
         paystack_sync_pending: update.paystack_sync_pending,
         paystack_sync_note: update.paystack_sync_note,
       },

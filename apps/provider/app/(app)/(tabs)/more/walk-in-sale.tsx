@@ -210,6 +210,11 @@ export default function WalkInSaleScreen() {
   const { data: salesData, loading: loadingSales, error, refresh } = useApi<SalesResponse>(
     "/api/provider/product-sales?limit=30",
   );
+  const { data: taxSettingsData } = useApi<{
+    tax_rate_percent?: number;
+    is_vat_registered?: boolean;
+    data?: { tax_rate_percent?: number; is_vat_registered?: boolean };
+  }>("/api/provider/settings/sales/taxes");
   const { execute: postSale, loading: creating } = useApiMutation<{ order: WalkInSale }>("post");
 
   const clientsPickPath = useMemo(() => {
@@ -253,6 +258,10 @@ export default function WalkInSaleScreen() {
   }, [sellableProducts, productSearch]);
 
   const { sales, total: totalSales } = useMemo(() => normalizeSalesPayload(salesData), [salesData]);
+  const walkInTaxRate = useMemo(() => {
+    const raw = (taxSettingsData as any)?.data ?? taxSettingsData;
+    return raw?.is_vat_registered ? Number(raw.tax_rate_percent || 0) : 0;
+  }, [taxSettingsData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -287,7 +296,6 @@ export default function WalkInSaleScreen() {
       Alert.alert("Out of stock", `${name} has no available stock.`);
       return;
     }
-    const tax_rate_percent = parseProductTaxPercent(product);
     setCart((prev) => {
       const existing = prev.find(
         (c) =>
@@ -308,12 +316,12 @@ export default function WalkInSaleScreen() {
           name,
           price: unit,
           quantity: 1,
-          tax_rate_percent,
+          tax_rate_percent: walkInTaxRate,
         },
       ];
     });
     setVariantPickProduct(null);
-  }, []);
+  }, [walkInTaxRate]);
 
   const onProductRowPress = useCallback((p: Product) => {
     if (p.has_variants && (p.variants?.length ?? 0) > 0) {

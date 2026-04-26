@@ -32,6 +32,7 @@ export default function PartnerNavbar() {
   const topBannerEnabled = topBannerEnabledRaw ? TOP_BANNER_ENABLED_VALUES.has(topBannerEnabledRaw) : false;
   const topBannerContent = getSectionContent("top_banner_content")?.trim();
   const topBannerLink = getSectionContent("top_banner_link")?.trim();
+  const topBannerLearnMore = getSectionContent("top_banner_learn_more")?.trim() || "Learn more";
   const defaultBannerText = "Introducing Beautonomi Connect: Phone calls, text messages, and web chats.";
   const defaultBannerLink = "/resources";
   const bannerText = topBannerContent || defaultBannerText;
@@ -59,7 +60,7 @@ export default function PartnerNavbar() {
           <p>
             {bannerText}{" "}
             <Link href={bannerLink} className="underline hover:text-pink-300">
-              Learn more
+              {topBannerLearnMore}
             </Link>
           </p>
         </div>

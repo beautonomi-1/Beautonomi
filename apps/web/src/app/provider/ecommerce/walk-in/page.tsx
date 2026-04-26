@@ -40,13 +40,13 @@ interface CartItem {
   qty: number;
 }
 
-function walkInCartTotals(cart: CartItem[]) {
+function walkInCartTotals(cart: CartItem[], taxRatePercent = 0) {
   let subtotal = 0;
   let taxAmount = 0;
   for (const c of cart) {
     const line = c.product.retail_price * c.qty;
     subtotal += line;
-    taxAmount += percentOf(line, Number(c.product.tax_rate ?? 0));
+    taxAmount += percentOf(line, taxRatePercent);
   }
   return {
     subtotal,
@@ -80,6 +80,7 @@ export default function WalkInSalePage() {
   const [recentSales, setRecentSales] = useState<WalkInOrder[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showYocoDialog, setShowYocoDialog] = useState(false);
+  const [walkInTaxRate, setWalkInTaxRate] = useState(0);
 
   const [loadError, setLoadError] = useState("");
   const fetchProducts = useCallback(async () => {
@@ -113,10 +114,28 @@ export default function WalkInSalePage() {
     if (res?.data?.sales) setRecentSales(res.data.sales);
   }, []);
 
+  const fetchTaxSettings = useCallback(async () => {
+    try {
+      const res = await fetcher.get<{
+        data?: { tax_rate_percent?: number; is_vat_registered?: boolean };
+        tax_rate_percent?: number;
+        is_vat_registered?: boolean;
+      }>("/api/provider/settings/sales/taxes");
+      const raw = (res as any)?.data ?? res;
+      setWalkInTaxRate(raw?.is_vat_registered ? Number(raw.tax_rate_percent || 0) : 0);
+    } catch {
+      setWalkInTaxRate(0);
+    }
+  }, []);
+
   useEffect(() => {
     const id = setTimeout(() => fetchProducts(), 0);
     return () => clearTimeout(id);
   }, [fetchProducts]);
+
+  useEffect(() => {
+    void fetchTaxSettings();
+  }, [fetchTaxSettings]);
 
   const filtered = products.filter(
     (p) =>
@@ -155,7 +174,7 @@ export default function WalkInSalePage() {
     setCart((prev) => prev.filter((c) => c.product.id !== productId));
   };
 
-  const { subtotal, taxAmount, grandTotal } = useMemo(() => walkInCartTotals(cart), [cart]);
+  const { subtotal, taxAmount, grandTotal } = useMemo(() => walkInCartTotals(cart, walkInTaxRate), [cart, walkInTaxRate]);
 
   const submitWalkInOrder = async (paymentReference?: string) => {
     const res = await fetcher.post<{
@@ -174,7 +193,7 @@ export default function WalkInSalePage() {
 
     if (res?.data?.order) {
       const serverTotal = parseFloat(String((res.data.order as { total_amount?: string }).total_amount ?? ""));
-      const fallback = walkInCartTotals(cart).grandTotal;
+      const fallback = walkInCartTotals(cart, walkInTaxRate).grandTotal;
       setSuccess({
         orderNumber: res.data.order.order_number,
         total: Number.isFinite(serverTotal) ? serverTotal : fallback,
@@ -502,12 +521,12 @@ export default function WalkInSalePage() {
                 <div className="border-t px-5 py-4">
                   <div className="mb-3 space-y-1 text-sm text-gray-600">
                     <div className="flex justify-between">
-                      <span>Subtotal (excl. tax)</span>
+                      <span>{walkInTaxRate > 0 ? "Subtotal (excl. VAT)" : "Subtotal"}</span>
                       <span className="font-medium text-gray-900">{formatMoney(subtotal)}</span>
                     </div>
                     {taxAmount > 0 && (
                       <div className="flex justify-between">
-                        <span>Tax</span>
+                        <span>VAT ({walkInTaxRate}%)</span>
                         <span className="font-medium text-gray-900">{formatMoney(taxAmount)}</span>
                       </div>
                     )}

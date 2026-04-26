@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Edit, Check, X, Globe } from "lucide-react";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import type { PreferenceOption, Preferences, PreferencesPageInitial } from "./preferences-initial-types";
+import { expandLanguagePreferenceOptions } from "./expand-language-options";
 
 type PreferenceField = "language" | "currency" | "timezone" | null;
 
@@ -70,7 +71,7 @@ const GlobalPreferences: React.FC<{ initial: PreferencesPageInitial | null }> = 
       ]);
 
       const loadedOptions = {
-        languages: langsRes.data || [],
+        languages: expandLanguagePreferenceOptions(langsRes.data || []),
         currencies: currenciesRes.data || [],
         timezones: timezonesRes.data || [],
       };

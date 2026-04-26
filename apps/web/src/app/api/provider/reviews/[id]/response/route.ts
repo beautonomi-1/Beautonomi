@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  isReviewContentEditBlocked,
+  isSuperadminRole,
+  REVIEW_EDIT_WINDOW_MESSAGE,
+} from "@/lib/reviews/review-edit-window";
 
 /**
  * POST /api/provider/reviews/[id]/response
@@ -66,6 +71,8 @@ export async function POST(
         `
         id,
         booking_id,
+        provider_response,
+        provider_response_at,
         bookings:bookings!reviews_booking_id_fkey(provider_id)
       `
       )
@@ -86,6 +93,19 @@ export async function POST(
       );
     }
 
+    const prAt = (review as { provider_response_at?: string | null }).provider_response_at;
+    if (
+      (review as { provider_response?: string | null }).provider_response &&
+      prAt &&
+      !isSuperadminRole(permissionCheck.user.role) &&
+      isReviewContentEditBlocked(String(prAt), permissionCheck.user.role)
+    ) {
+      return NextResponse.json(
+        { data: null, error: { message: REVIEW_EDIT_WINDOW_MESSAGE, code: "REVIEW_EDIT_CLOSED" } },
+        { status: 403 },
+      );
+    }
+
     // Get customer ID from review
     const { data: reviewWithCustomer } = await supabase
       .from("reviews")
@@ -101,12 +121,13 @@ export async function POST(
       .eq("id", id)
       .single();
 
+    const isFirstResponse = !(review as { provider_response?: string | null }).provider_response;
     // Update review with provider response
     const { data: updatedReview, error: updateError } = await (supabase
       .from("reviews") as any)
       .update({
         provider_response: response,
-        provider_response_at: new Date().toISOString(),
+        ...(isFirstResponse ? { provider_response_at: new Date().toISOString() } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
@@ -233,6 +254,7 @@ export async function PATCH(
         id,
         booking_id,
         provider_response,
+        provider_response_at,
         bookings:bookings!reviews_booking_id_fkey(provider_id)
       `
       )
@@ -250,6 +272,18 @@ export async function PATCH(
           },
         },
         { status: 404 }
+      );
+    }
+
+    const prAtPatch = (review as { provider_response_at?: string | null }).provider_response_at;
+    if (
+      prAtPatch &&
+      !isSuperadminRole(permissionCheck.user.role) &&
+      isReviewContentEditBlocked(String(prAtPatch), permissionCheck.user.role)
+    ) {
+      return NextResponse.json(
+        { data: null, error: { message: REVIEW_EDIT_WINDOW_MESSAGE, code: "REVIEW_EDIT_CLOSED" } },
+        { status: 403 },
       );
     }
 

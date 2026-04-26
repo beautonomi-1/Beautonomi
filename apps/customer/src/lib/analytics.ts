@@ -64,11 +64,11 @@ export function identifyUser(
 
 // ── Auth Events ──────────────────────────────────────────────────────────────
 
-export function trackSignUp(method: "phone" | "email" | "google" | "apple" | "facebook") {
+export function trackSignUp(method: "phone" | "email" | "google" | "apple") {
   track("signup_complete", { method });
 }
 
-export function trackLogin(method: "phone" | "email" | "google" | "apple" | "facebook") {
+export function trackLogin(method: "phone" | "email" | "google" | "apple") {
   track("login_success", { method });
 }
 

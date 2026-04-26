@@ -1038,6 +1038,7 @@ export default function OnlineBookingFlowNew({
             end: s.end ?? s.start ?? s.time,
             staff_id: s.staff_id,
             is_available: s.is_available !== false,
+            available_staff_ids: Array.isArray(s.available_staff_ids) ? s.available_staff_ids : undefined,
           }))
         );
       })
@@ -1171,6 +1172,7 @@ export default function OnlineBookingFlowNew({
             end: s.end ?? s.start ?? s.time,
             staff_id: s.staff_id,
             is_available: s.is_available !== false,
+            available_staff_ids: Array.isArray(s.available_staff_ids) ? s.available_staff_ids : undefined,
           }))
         );
         setStep("schedule");
@@ -1190,8 +1192,14 @@ export default function OnlineBookingFlowNew({
       toast.error("Please accept the cancellation policy to continue.");
       return;
     }
-    // "any" or synthetic "provider-*" => send null so backend assigns staff
-    const rawStaffId = bookingData.selectedSlot.staff_id ?? (bookingData.selectedStaff?.id !== "any" ? bookingData.selectedStaff?.id : null);
+    const isAnyStaffSelection =
+      !bookingData.selectedStaff ||
+      bookingData.selectedStaff.id === "any" ||
+      String(bookingData.selectedStaff.id).startsWith("provider-");
+    // In "any staff" mode keep the hold flexible; the resolver will pick from preferredStaffIds.
+    const rawStaffId = isAnyStaffSelection
+      ? null
+      : bookingData.selectedSlot.staff_id ?? bookingData.selectedStaff?.id ?? null;
     const staffIdForHold =
       !rawStaffId || rawStaffId === "any" || String(rawStaffId).startsWith("provider-") ? null : rawStaffId;
     if (bookingData.venueType === "at_home" && (!bookingData.atHomeAddress.line1?.trim() || !bookingData.atHomeAddress.city?.trim())) {
@@ -1253,6 +1261,15 @@ export default function OnlineBookingFlowNew({
         offering_id: s.offering_id,
         staff_id: staffIdForHold,
       }));
+      const preferredStaffIds =
+        isAnyStaffSelection
+          ? Array.isArray(bookingData.selectedSlot?.available_staff_ids) &&
+            bookingData.selectedSlot.available_staff_ids.length > 0
+            ? bookingData.selectedSlot.available_staff_ids
+            : bookingData.selectedSlot?.staff_id
+              ? [bookingData.selectedSlot.staff_id]
+              : undefined
+          : undefined;
       const pkgForHold =
         bookingData.selectedPackage?.id?.trim() &&
         cartMatchesCatalogPackage(
@@ -1284,6 +1301,10 @@ export default function OnlineBookingFlowNew({
         resource_ids: bookingData.selectedResourceIds?.length ? bookingData.selectedResourceIds : undefined,
         previous_hold_id: holdId || null,
         guest_fingerprint_hash: getGuestFingerprintHash(),
+        preferred_staff_ids: preferredStaffIds,
+        ...(bookingData.venueType === "at_home"
+          ? { availability_travel_buffer_minutes: HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES }
+          : {}),
         ...(pkgForHold ? { package_id: pkgForHold } : {}),
       }, { headers: { "Idempotency-Key": holdIdemKey } });
       const env = res as { data?: { hold_id?: string; id?: string; expires_at?: string }; hold_id?: string; expires_at?: string };

@@ -35,7 +35,8 @@ export async function GET(request: NextRequest) {
       throw profileError;
     }
 
-    // Default privacy settings (analytics_consent true for backward compatibility)
+    // Default privacy settings (analytics_consent true for backward compatibility).
+    // Customer app "Privacy & sharing" toggles live in JSONB under these keys — defaults must match mobile.
     const defaultSettings = {
       accountVisibility: false,
       profileInformation: false,
@@ -48,6 +49,10 @@ export async function GET(request: NextRequest) {
       interests_visible: false,
       questions_visible: false,
       analytics_consent: true,
+      show_profile_publicly: true,
+      allow_providers_see_reviews: true,
+      share_booking_data: true,
+      receive_marketing: false,
     };
 
     // Merge settings from users table (columns) with user_profiles (JSONB)
@@ -101,9 +106,18 @@ export async function PATCH(request: NextRequest) {
       interests_visible: false,
       questions_visible: false,
       analytics_consent: true,
+      show_profile_publicly: true,
+      allow_providers_see_reviews: true,
+      share_booking_data: true,
+      receive_marketing: false,
     };
 
-    const currentSettings = existingProfile?.privacy_settings || defaultSettings;
+    const currentSettings = {
+      ...defaultSettings,
+      ...(existingProfile?.privacy_settings && typeof existingProfile.privacy_settings === "object"
+        ? existingProfile.privacy_settings
+        : {}),
+    };
 
     // Merge with new settings (only update provided fields)
     const updatedSettings: Record<string, any> = {

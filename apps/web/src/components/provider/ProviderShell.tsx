@@ -11,6 +11,7 @@ const ProviderSidebar = dynamic(
 import { ProviderTopbar } from "./ProviderTopbar";
 import { ProviderBottomNav } from "./ProviderBottomNav";
 import { OnDemandIncomingOverlay } from "@/components/provider-portal/OnDemandIncomingOverlay";
+import { ProviderBookingAlertListener } from "@/components/provider-portal/ProviderBookingAlertListener";
 import { useProviderSidebar } from "@/contexts/ProviderSidebarContext";
 import { cn } from "@/lib/utils";
 
@@ -107,6 +108,7 @@ export function ProviderShell({ children }: { children: React.ReactNode }) {
 
       {/* On-demand accept: incoming request overlay + ringtone */}
       <OnDemandIncomingOverlay />
+      <ProviderBookingAlertListener />
     </div>
   );
 }

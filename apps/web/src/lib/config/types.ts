@@ -89,6 +89,10 @@ export interface SafeOnDemandModuleConfig {
   ringtone_asset_path: string | null;
   ring_duration_seconds: number;
   ring_repeat: boolean;
+  /** Standard booking realtime alert (provider app/web); app-assets path, signed URL. */
+  normal_booking_ringtone_asset_path: string | null;
+  normal_booking_ring_duration_seconds: number;
+  normal_booking_ring_repeat: boolean;
   waiting_screen_timeout_seconds: number;
   provider_accept_window_seconds: number;
   ui_copy: Record<string, any>;

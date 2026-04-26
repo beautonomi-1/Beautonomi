@@ -66,7 +66,7 @@
 |---------|---------------|
 | Phone OTP | `supabase.auth.signInWithOtp({ phone })` → verify code |
 | Email/Password | `supabase.auth.signInWithPassword()` and `signUp()` |
-| OAuth | Google, Apple, Facebook via `expo-web-browser` + `expo-auth-session` |
+| OAuth | Google and Apple (native: `expo-web-browser` in-app session; Apple uses `scopes` + ephemeral session options) |
 | Session storage | Supabase AsyncStorage adapter |
 | Auto-refresh | `AppState` listener: starts/stops on foreground/background |
 | Role guard | Client-side only — no server enforcement on screen access |
@@ -79,7 +79,7 @@
 |---------|---------------|
 | Phone OTP | Same as customer |
 | Email/Password | Same as customer |
-| OAuth | **NOT AVAILABLE** — provider app only supports OTP and email |
+| OAuth | Google and Apple via `signInWithOAuth` + in-app browser; `updateUser` sets `role: provider_owner` after OAuth |
 | Role metadata | Sets `role: "provider_owner"` during sign-up |
 
 ---

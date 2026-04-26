@@ -17,7 +17,9 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { api } from "@/lib/api-client";
+import { api, getApiBaseUrl } from "@/lib/api-client";
+import { webApiTenantHeaders } from "@/config/public-env";
+import { supabase } from "@/lib/supabase/client";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -115,6 +117,8 @@ const STATUS_OPTIONS = [
   { value: "ready_for_collection", label: "Ready" },
   { value: "shipped", label: "Shipped" },
   { value: "delivered", label: "Delivered" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "refunded", label: "Refunded" },
 ];
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
@@ -144,15 +148,8 @@ const STATUS_ACTION_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 function getNextStatusOptions(current: string): string[] {
-  const map: Record<string, string[]> = {
-    pending:              ["confirmed", "cancelled"],
-    confirmed:            ["processing", "cancelled"],
-    processing:           ["ready_for_collection", "shipped", "cancelled"],
-    ready_for_collection: ["delivered", "cancelled"],
-    shipped:              ["delivered"],
-    delivered:            ["refunded"],
-  };
-  return map[current] ?? [];
+  if (current === "cancelled" || current === "refunded") return [];
+  return STATUS_OPTIONS.map((x) => x.value).filter((v) => v && v !== current);
 }
 
 function numOrZero(v: unknown): number {
@@ -788,8 +785,45 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 onPress={async () => {
                   try {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    const base = getApiBaseUrl().replace(/\/$/, "");
+                    const safeName = `order_${(activeOrder.order_number || activeOrder.id).replace(/[^\w.-]+/g, "_")}.pdf`;
+                    const pdfPath = `/api/provider/product-orders/${encodeURIComponent(activeOrder.id)}/receipt/pdf`;
+
+                    const tryBearerDownload = async (): Promise<boolean> => {
+                      const { data } = await supabase.auth.getSession();
+                      const token = data.session?.access_token;
+                      if (!token || !base) return false;
+                      const pdfUrl = `${base}${pdfPath}`;
+                      const headers: Record<string, string> = {
+                        Authorization: `Bearer ${token}`,
+                        ...webApiTenantHeaders(),
+                      };
+                      if (Platform.OS === "web") {
+                        const r = await fetch(pdfUrl, { headers, credentials: "omit" });
+                        if (!r.ok) return false;
+                        const blob = await r.blob();
+                        const objUrl = URL.createObjectURL(blob);
+                        if (typeof window !== "undefined") {
+                          window.open(objUrl, "_blank", "noopener,noreferrer");
+                          setTimeout(() => URL.revokeObjectURL(objUrl), 120_000);
+                        }
+                        return true;
+                      }
+                      if (!cacheDirectory) return false;
+                      const fileUri = `${cacheDirectory}${safeName}`;
+                      const dl = await downloadAsync(pdfUrl, fileUri, { headers });
+                      if (dl.status !== 200) return false;
+                      await RNShare.share({
+                        url: fileUri,
+                        message: `Order ${activeOrder.order_number}`,
+                      });
+                      return true;
+                    };
+
+                    if (await tryBearerDownload()) return;
+
                     const res = await api.post<{ url?: string }>(
-                      `/api/provider/product-orders/${activeOrder.id}/receipt/signed-url`,
+                      `${pdfPath.replace("/receipt/pdf", "/receipt/signed-url")}`,
                       {},
                     );
                     const signedUrl = res.data?.url;
@@ -810,8 +844,16 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                         );
                         return;
                       }
-                      const fileUri = `${cacheDirectory}order_${activeOrder.order_number || activeOrder.id}.pdf`;
-                      await downloadAsync(signedUrl, fileUri);
+                      const fileUri = `${cacheDirectory}${safeName}`;
+                      const dl = await downloadAsync(signedUrl, fileUri);
+                      if (dl.status !== 200) {
+                        const hint =
+                          dl.status === 401 || dl.status === 403
+                            ? "Your session may have expired. Please try again after refreshing the screen."
+                            : `The server returned status ${dl.status}.`;
+                        Alert.alert("Download receipt", `Could not download the PDF. ${hint}`);
+                        return;
+                      }
                       await RNShare.share({
                         url: fileUri,
                         message: `Order ${activeOrder.order_number}`,

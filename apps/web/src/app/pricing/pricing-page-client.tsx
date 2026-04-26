@@ -11,6 +11,20 @@ import LoginModal from "@/components/global/login-modal";
 import type { PricingFAQ, PricingPageContent, PricingPlan } from "./pricing-data";
 import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 
+/** Avoid awkward pairs like price "Free" with period "Free /month" from legacy CMS rows. */
+function displayPriceAndPeriod(plan: PricingPlan): { price: string; period: string | null } {
+  const price = (plan.price ?? "").trim();
+  let period = plan.period?.trim() || null;
+  if (!period) return { price, period: null };
+  const pLower = period.toLowerCase();
+  const priceLower = price.toLowerCase();
+  if (priceLower === "free" && pLower.startsWith("free")) {
+    const rest = period.replace(/^free\s*/i, "").trim();
+    period = rest.length ? rest : null;
+  }
+  return { price, period };
+}
+
 interface PricingPageClientProps {
   pricingPlans: PricingPlan[];
   faqs: PricingFAQ[];
@@ -76,60 +90,63 @@ export default function PricingPageClient({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {pricingPlans.map((plan) => (
-              <div
-                key={plan.id}
-                className={`relative rounded-2xl border-2 p-8 ${
-                  plan.is_popular
-                    ? "border-[#FF0077] shadow-xl scale-105 bg-white"
-                    : "border-gray-200 bg-white"
-                }`}
-              >
-                {plan.is_popular && (
-                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                    <span className="bg-[#FF0077] text-white px-4 py-1 rounded-full text-sm font-semibold">
-                      Most Popular
-                    </span>
-                  </div>
-                )}
-
-                <div className="text-center mb-8">
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
-                  {plan.currency ? (
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-1">
-                      {plan.currency}
-                    </p>
-                  ) : null}
-                  <div className="flex items-baseline justify-center gap-1 mb-2">
-                    <span className="text-4xl font-bold text-gray-900">{plan.price}</span>
-                    {plan.period && <span className="text-gray-600">{plan.period}</span>}
-                  </div>
-                  {plan.description && <p className="text-gray-600">{plan.description}</p>}
-                </div>
-
-                <ul className="space-y-4 mb-8">
-                  {plan.features.map((feature, index) => (
-                    <li key={index} className="flex items-start gap-3">
-                      <Check className="w-5 h-5 text-[#FF0077] flex-shrink-0 mt-0.5" />
-                      <div className="min-w-0 flex-1 text-gray-700 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0 [&_ul]:list-disc [&_ul]:pl-5">
-                        <PricingFeatureHtml html={feature} />
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-
-                <Button
-                  onClick={() => handleGetStarted(plan.name, plan.id)}
-                  className={`w-full py-6 text-lg font-semibold rounded-full ${
+            {pricingPlans.map((plan) => {
+              const { price: displayPrice, period: displayPeriod } = displayPriceAndPeriod(plan);
+              return (
+                <div
+                  key={plan.id}
+                  className={`relative rounded-2xl border-2 p-8 ${
                     plan.is_popular
-                      ? "bg-[#FF0077] hover:bg-[#D60565] text-white"
-                      : "bg-gray-900 hover:bg-gray-800 text-white"
+                      ? "border-[#FF0077] shadow-xl scale-105 bg-white"
+                      : "border-gray-200 bg-white"
                   }`}
                 >
-                  {plan.cta_text}
-                </Button>
-              </div>
-            ))}
+                  {plan.is_popular && (
+                    <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                      <span className="bg-[#FF0077] text-white px-4 py-1 rounded-full text-sm font-semibold">
+                        Most Popular
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="text-center mb-8">
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+                    {plan.currency ? (
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-1">
+                        {plan.currency}
+                      </p>
+                    ) : null}
+                    <div className="flex items-baseline justify-center gap-1 mb-2">
+                      <span className="text-4xl font-bold text-gray-900">{displayPrice}</span>
+                      {displayPeriod ? <span className="text-gray-600">{displayPeriod}</span> : null}
+                    </div>
+                    {plan.description && <p className="text-gray-600">{plan.description}</p>}
+                  </div>
+
+                  <ul className="space-y-4 mb-8">
+                    {plan.features.map((feature, index) => (
+                      <li key={index} className="flex items-start gap-3">
+                        <Check className="w-5 h-5 text-[#FF0077] flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1 text-gray-700 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0 [&_ul]:list-disc [&_ul]:pl-5">
+                          <PricingFeatureHtml html={feature} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <Button
+                    onClick={() => handleGetStarted(plan.name, plan.id)}
+                    className={`w-full py-6 text-lg font-semibold rounded-full ${
+                      plan.is_popular
+                        ? "bg-[#FF0077] hover:bg-[#D60565] text-white"
+                        : "bg-gray-900 hover:bg-gray-800 text-white"
+                    }`}
+                  >
+                    {plan.cta_text}
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

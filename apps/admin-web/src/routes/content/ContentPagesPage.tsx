@@ -401,6 +401,51 @@ export function ContentPagesPage() {
         page, with sections sorted by display order.
       </div>
 
+      {pageSlugFilter === "become-a-partner" ? (
+        <AdminPanel className="border-sky-200 bg-sky-50/80">
+          <p className="text-sm font-semibold text-gray-900">Become a partner — same levers as Next.js admin</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-800">
+            <li>
+              Use <strong>HTML</strong> for hero and body copy; <strong>text</strong> for URLs and toggles;{" "}
+              <strong>JSON</strong> for <code className="rounded bg-white px-1">features_list</code> and{" "}
+              <code className="rounded bg-white px-1">hero_feature_tabs</code> (array of tab labels).
+            </li>
+            <li>
+              <code className="rounded bg-white px-1">hero_primary_cta_label</code> overrides the main hero button (default
+              &quot;Sign up&quot;). <code className="rounded bg-white px-1">video_tour_url</code> drives the video modal.
+            </li>
+            <li>
+              Top strip: <code className="rounded bg-white px-1">top_banner_enabled</code> (true/1/yes),{" "}
+              <code className="rounded bg-white px-1">top_banner_content</code>, <code className="rounded bg-white px-1">top_banner_link</code>,{" "}
+              <code className="rounded bg-white px-1">top_banner_learn_more</code> for the link label.
+            </li>
+            <li>
+              Demo booking: <code className="rounded bg-white px-1">demo_booking_type</code> (calendly/zoho) +{" "}
+              <code className="rounded bg-white px-1">demo_booking_embed</code>.
+            </li>
+            <li>Live page loads grouped content from the public API shown on each card header.</li>
+          </ul>
+        </AdminPanel>
+      ) : null}
+
+      {pageSlugFilter === "pricing" ? (
+        <AdminPanel className="border-emerald-200 bg-emerald-50/80">
+          <p className="text-sm font-semibold text-gray-900">Pricing page — two surfaces</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-800">
+            <li>
+              <strong>Hero</strong> (title, intro, currency footnote): this CMS, slug <code className="rounded bg-white px-1">pricing</code> — sections{" "}
+              <code className="rounded bg-white px-1">hero_title</code>, <code className="rounded bg-white px-1">hero_description</code>,{" "}
+              <code className="rounded bg-white px-1">currency_note</code>.
+            </li>
+            <li>
+              <strong>Plan cards &amp; bullets</strong>: Finance → <strong>Plans &amp; subscription products</strong>. Enable
+              &quot;Show on pricing page&quot;, set the public price label, period, CTA, and rich-text feature lines (not the
+              fallback hero text, which is only used when CMS rows are missing).
+            </li>
+          </ul>
+        </AdminPanel>
+      ) : null}
+
       <AdminPanel>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

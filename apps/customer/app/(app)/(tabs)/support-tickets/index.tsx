@@ -1,5 +1,14 @@
 import { useCallback, useState, useEffect, useLayoutEffect } from "react";
-import { View, Text, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, StyleSheet } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  RefreshControl,
+  ActivityIndicator,
+  StyleSheet,
+  Platform,
+} from "react-native";
 import { useRouter, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -77,9 +86,23 @@ export default function SupportTicketsListScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace("/(app)/help" as never);
+          }}
+          hitSlop={{ top: 12, bottom: 12, left: 8, right: 12 }}
+          accessibilityLabel="Go back"
+          accessibilityRole="button"
+          style={{ marginLeft: Platform.OS === "ios" ? 8 : 4, padding: 4 }}
+        >
+          <Ionicons name="chevron-back" size={26} color={Colors.primary} />
+        </TouchableOpacity>
+      ),
       headerRight: () => (
         <TouchableOpacity
-          onPress={() => router.push("/(app)/support-tickets/new" as never)}
+          onPress={() => router.push("/(app)/(tabs)/support-tickets/new" as never)}
           hitSlop={12}
           accessibilityLabel="New support ticket"
           accessibilityRole="button"
@@ -123,7 +146,7 @@ export default function SupportTicketsListScreen() {
           <Text style={styles.emptyTitle}>No support tickets yet</Text>
           <Text style={styles.emptySubtitle}>Submit a ticket from Help → Contact support, or tap below.</Text>
           <TouchableOpacity
-            onPress={() => router.push("/(app)/support-tickets/new" as never)}
+            onPress={() => router.push("/(app)/(tabs)/support-tickets/new" as never)}
             style={styles.emptyCta}
             accessibilityLabel="New support ticket"
             accessibilityRole="button"
@@ -136,7 +159,7 @@ export default function SupportTicketsListScreen() {
           {tickets.map((t) => (
             <TouchableOpacity
               key={t.id}
-              onPress={() => router.push(`/(app)/support-tickets/${t.id}` as never)}
+              onPress={() => router.push(`/(app)/(tabs)/support-tickets/${t.id}` as never)}
               activeOpacity={0.7}
               style={styles.card}
               accessibilityLabel={`Support ticket ${t.ticket_number}, ${t.subject}, ${t.status.replace("_", " ")}`}

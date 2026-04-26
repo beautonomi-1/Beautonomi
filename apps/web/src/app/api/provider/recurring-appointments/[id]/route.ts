@@ -13,7 +13,11 @@ const updateRecurringSchema = z.object({
   recurrence_rule: z.string().min(1).optional(),
   start_date: z.string().date().optional(),
   end_date: z.string().date().optional().nullable(),
-  start_time: z.string().regex(/^\d{2}:\d{2}:\d{2}$/).optional(),
+  start_time: z
+    .string()
+    .regex(/^\d{2}:\d{2}(:\d{2})?$/)
+    .transform((v) => (v.length === 5 ? `${v}:00` : v))
+    .optional(),
   notes: z.string().optional(),
   is_active: z.boolean().optional(),
   location_id: z.string().uuid().nullable().optional(),

@@ -2,7 +2,9 @@
 
 import React, { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { format, isToday } from "date-fns";
+import { format } from "date-fns";
+import { isTodayInTz, resolveTz } from "@/lib/dates/provider-tz";
+import { formatDateKeyInTimeZone } from "@beautonomi/utils";
 import type { Appointment, TeamMember, TimeBlock, AvailabilityBlockDisplay } from "@/lib/provider-portal/types";
 import { GestureLayer } from "./GestureLayer";
 import { BookingBlock } from "./BookingBlock";
@@ -25,6 +27,7 @@ interface DateColumnProps {
   workStart: number;
   workEnd: number;
   locationOperatingHours?: Record<string, { open: string; close: string; closed: boolean }> | null;
+  businessTimezone?: string;
   onAppointmentClick: (apt: Appointment) => void;
   onTimeSlotClick: (date: Date, time: string, staffId: string) => void;
   onTimeBlockClick?: (block: TimeBlock) => void;
@@ -47,12 +50,14 @@ function DateColumnComponent({
   workStart,
   workEnd,
   locationOperatingHours,
+  businessTimezone,
   onAppointmentClick,
   onTimeSlotClick,
   onTimeBlockClick,
   formatPrice,
 }: DateColumnProps) {
-  const dateStr = format(date, "yyyy-MM-dd");
+  const tz = resolveTz(businessTimezone);
+  const dateStr = formatDateKeyInTimeZone(date, tz);
   // In week/3-day view each column is a date, not a staff member.
   // Use a sentinel so the DnD layer can detect "date column" drops
   // and preserve the booking's original staff rather than reassigning.
@@ -98,7 +103,7 @@ function DateColumnComponent({
     <div
       className={cn(
         "flex-1 min-w-[90px] max-w-[200px] border-r border-gray-200 last:border-r-0 relative",
-        isToday(date) && "bg-primary/3",
+        isTodayInTz(date, tz) && "bg-primary/3",
       )}
     >
       <GestureLayer
@@ -163,6 +168,7 @@ export const DateColumn = memo(DateColumnComponent, (prev, next) => {
   if (prev.onAppointmentClick !== next.onAppointmentClick) return false;
   if (prev.onTimeSlotClick !== next.onTimeSlotClick) return false;
   if (prev.locationOperatingHours !== next.locationOperatingHours) return false;
+  if (prev.businessTimezone !== next.businessTimezone) return false;
   if (prev.teamMembers !== next.teamMembers) return false;
 
   return true;

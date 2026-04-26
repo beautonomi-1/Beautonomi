@@ -71,6 +71,8 @@ const createHoldSchema = z.object({
   guest_fingerprint_hash: z.string().optional().nullable(),
   previous_hold_id: z.string().uuid().optional().nullable(),
   resource_ids: z.array(z.string().uuid()).optional(),
+  /** Must match the travel buffer used by availability for at-home slots. */
+  availability_travel_buffer_minutes: z.coerce.number().int().min(0).max(360).optional(),
   /** `service_packages.id` — stored on hold metadata for checkout / edit-booking restore */
   package_id: z.string().uuid().optional().nullable(),
   primary_package_id: z.string().uuid().optional().nullable(),
@@ -219,6 +221,7 @@ export async function POST(request: NextRequest) {
           guest_fingerprint_hash,
           previous_hold_id,
           resource_ids,
+          availability_travel_buffer_minutes,
           package_id: bodyPackageId,
           primary_package_id: bodyPrimaryPackageId,
           preferred_staff_ids: bodyPreferredStaffIds,
@@ -717,6 +720,12 @@ export async function POST(request: NextRequest) {
         }
         if (resource_ids && resource_ids.length > 0) {
           holdMetadata = { ...holdMetadata, resource_ids };
+        }
+        if (location_type === "at_home" && availability_travel_buffer_minutes != null) {
+          holdMetadata = {
+            ...holdMetadata,
+            availability_travel_buffer_minutes,
+          };
         }
         if (syntheticStaffPublicId) {
           holdMetadata = {

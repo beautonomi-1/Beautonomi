@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { Stack, router } from "expo-router";
+import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
@@ -212,6 +213,35 @@ export default function NotificationsScreen() {
     }
   }, [refetchUnreadCount]);
 
+  const deleteNotification = useCallback(async (notificationId: string) => {
+    let snapshot: Notification[] = [];
+    setList((prev) => {
+      snapshot = prev;
+      return prev.filter((n) => n.id !== notificationId);
+    });
+    const res = await api.delete(`/api/me/notifications/${encodeURIComponent(notificationId)}`);
+    if (res.error) {
+      setList(snapshot);
+      Alert.alert("Error", res.error.message || "Could not delete notification.");
+      return;
+    }
+    await refetchUnreadCount();
+  }, [refetchUnreadCount]);
+
+  const confirmDelete = useCallback(
+    (n: Notification) => {
+      Alert.alert("Delete notification?", "This removes it from your list.", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => void deleteNotification(n.id),
+        },
+      ]);
+    },
+    [deleteNotification],
+  );
+
   const onPress = useCallback(
     (n: Notification) => {
       if (!n.is_read) void markRead(n.id);
@@ -234,39 +264,65 @@ export default function NotificationsScreen() {
       const icon = iconNameForNotificationType(item.type) as IonName;
       const unread = !item.is_read;
       return (
-        <Pressable
-          onPress={() => onPress(item)}
-          style={({ pressed }) => [
-            styles.card,
-            unread && styles.cardUnread,
-            pressed && styles.cardPressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={`${item.title}. ${item.message}`}
-          accessibilityHint={unread ? "Unread. Opens related screen." : "Opens related screen."}
-        >
-          <View style={[styles.iconWrap, unread && styles.iconWrapUnread]}>
-            <Ionicons name={icon} size={22} color={unread ? Colors.primary : Colors.gray[500]} />
-          </View>
-          <View style={styles.cardBody}>
-            <View style={styles.titleRow}>
-              {unread ? <View style={styles.dot} /> : null}
-              <Text style={[styles.cardTitle, unread && styles.cardTitleUnread]} numberOfLines={2}>
-                {item.title}
-              </Text>
+        <ReanimatedSwipeable
+          friction={2}
+          overshootRight={false}
+          rightThreshold={40}
+          renderRightActions={() => (
+            <View
+              style={{
+                width: 80,
+                backgroundColor: "#ef4444",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => confirmDelete(item)}
+                accessibilityLabel="Delete notification"
+                accessibilityRole="button"
+                style={{ padding: 16, alignItems: "center" }}
+              >
+                <Ionicons name="trash-outline" size={22} color="#fff" />
+                <Text style={{ marginTop: 4, fontSize: 12, fontWeight: "600", color: "#fff" }}>Delete</Text>
+              </TouchableOpacity>
             </View>
-            {item.message ? (
-              <Text style={styles.cardMessage} numberOfLines={3}>
-                {item.message}
-              </Text>
-            ) : null}
-            <Text style={styles.cardTime}>{formatNotificationTime(item.created_at)}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} style={styles.chevron} />
-        </Pressable>
+          )}
+        >
+          <Pressable
+            onPress={() => onPress(item)}
+            style={({ pressed }) => [
+              styles.card,
+              unread && styles.cardUnread,
+              pressed && styles.cardPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.title}. ${item.message}`}
+            accessibilityHint={unread ? "Unread. Swipe left to delete. Opens related screen." : "Swipe left to delete. Opens related screen."}
+          >
+            <View style={[styles.iconWrap, unread && styles.iconWrapUnread]}>
+              <Ionicons name={icon} size={22} color={unread ? Colors.primary : Colors.gray[500]} />
+            </View>
+            <View style={styles.cardBody}>
+              <View style={styles.titleRow}>
+                {unread ? <View style={styles.dot} /> : null}
+                <Text style={[styles.cardTitle, unread && styles.cardTitleUnread]} numberOfLines={2}>
+                  {item.title}
+                </Text>
+              </View>
+              {item.message ? (
+                <Text style={styles.cardMessage} numberOfLines={3}>
+                  {item.message}
+                </Text>
+              ) : null}
+              <Text style={styles.cardTime}>{formatNotificationTime(item.created_at)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} style={styles.chevron} />
+          </Pressable>
+        </ReanimatedSwipeable>
       );
     },
-    [onPress],
+    [onPress, confirmDelete],
   );
 
   const bottomPad = STACK_CONTENT_PADDING_BOTTOM + Math.max(insets.bottom, 8);

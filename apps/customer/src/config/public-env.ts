@@ -24,6 +24,8 @@ function getEnv(key: string): string {
             ? process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID
             : key === "EXPO_PUBLIC_IOS_APP_STORE_ID"
               ? process.env.EXPO_PUBLIC_IOS_APP_STORE_ID
+              : key === "EXPO_PUBLIC_ANDROID_PLAY_STORE_PACKAGE"
+                ? process.env.EXPO_PUBLIC_ANDROID_PLAY_STORE_PACKAGE
               : key === "EXPO_PUBLIC_WEB_API_TENANT_HOST"
                 ? process.env.EXPO_PUBLIC_WEB_API_TENANT_HOST
                 : key === "EXPO_PUBLIC_GLOBAL_ENTRY_HOST"
@@ -94,6 +96,10 @@ export const ONE_SIGNAL_APP_ID = getEnv("EXPO_PUBLIC_ONESIGNAL_APP_ID");
 
 /** iOS App Store ID (e.g. 1234567890) – optional; used for force-update / "Update" store link. Set when app is published. */
 export const IOS_APP_STORE_ID = getEnv("EXPO_PUBLIC_IOS_APP_STORE_ID") || "0000000000";
+
+/** Android applicationId for Play Store deep links (default matches `app.config.js`). */
+export const ANDROID_PLAY_STORE_PACKAGE =
+  getEnv("EXPO_PUBLIC_ANDROID_PLAY_STORE_PACKAGE").trim() || "com.beautonomi";
 
 /**
  * Hostname that matches a row in `tenant_domains` (no port). When calling the Next.js web API from the app,

@@ -33,6 +33,8 @@ interface Subscription {
   expires_at: string | null;
   cancelled_at?: string | null;
   billing_period?: "monthly" | "yearly" | null;
+  paystack_sync_pending?: boolean | null;
+  paystack_sync_note?: string | null;
   plan?: Plan | null;
 }
 
@@ -71,7 +73,9 @@ function statusLabel(sub: Subscription): string {
   if (s === "active") return "Active";
   if (s === "expired") return "Expired";
   if (s === "past_due") return "Past due";
-  if (s === "trial") return "Trial";
+  if (s === "trial" || s === "trialing") return "Trial";
+  if (s === "inactive") return "Inactive";
+  if (s === "cancelled") return "Cancelled";
   return s;
 }
 
@@ -142,6 +146,20 @@ export function SubscriptionContent() {
       <Text style={{ marginTop: 8, fontSize: 15, lineHeight: 22, color: Colors.gray[600] }}>
         Same plans and features as our public pricing. Open Subscription for upgrades, billing period changes, and renewals.
       </Text>
+
+      {sub?.paystack_sync_pending ? (
+        <View
+          style={[
+            twStyle("mt-4 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 p-4"),
+          ]}
+        >
+          <Text style={twStyle("text-sm font-semibold text-amber-900")}>Billing sync needed</Text>
+          <Text style={twStyle("mt-1 text-xs leading-5 text-amber-900")}>
+            {(sub.paystack_sync_note ?? "").trim() ||
+              "Complete billing alignment in the full subscription screen if you pay by card."}
+          </Text>
+        </View>
+      ) : null}
 
       <TouchableOpacity
         style={[

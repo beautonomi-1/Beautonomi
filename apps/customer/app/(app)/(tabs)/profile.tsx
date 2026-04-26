@@ -7,7 +7,6 @@ import {
   ScrollView,
   Share,
   RefreshControl,
-  Linking,
   Platform,
   Alert,
 } from "react-native";
@@ -29,6 +28,7 @@ import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { useTranslation } from "@beautonomi/i18n";
 import { formatMoney } from "@beautonomi/utils";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { openNativeStoreReview } from "@/lib/open-store-review";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -359,17 +359,29 @@ export default function ProfileScreen() {
                   Member since {memberSince}
                 </Text>
               ) : null}
-              {profileData && profileData.ratingAverage > 0 && (
-                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
-                  <Ionicons name="star" size={14} color="#EAB308" />
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[800], marginLeft: 4 }}>
-                    {profileData.ratingAverage.toFixed(1)}
+              {/* Client rating (provider → customer): always show row so empty state is visible (Uber-style). */}
+              {profileData != null ? (
+                <View style={{ marginTop: 8 }} accessibilityLabel={t("customer.profileTab.clientRatingA11y")}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[600], letterSpacing: 0.2 }}>
+                    {t("customer.profileTab.clientRatingLabel")}
                   </Text>
-                  <Text style={{ fontSize: 13, color: Colors.gray[500], marginLeft: 4 }}>
-                    ({profileData.reviewCount} {profileData.reviewCount === 1 ? "review" : "reviews"})
-                  </Text>
+                  {profileData.reviewCount > 0 ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
+                      <Ionicons name="star" size={15} color="#EAB308" />
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: Colors.gray[900], marginLeft: 5 }}>
+                        {profileData.ratingAverage.toFixed(1)}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: Colors.gray[500], marginLeft: 6 }}>
+                        {t("customer.profileTab.clientRatingCount", { count: profileData.reviewCount })}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 4, lineHeight: 18 }}>
+                      {t("customer.profileTab.clientRatingEmpty")}
+                    </Text>
+                  )}
                 </View>
-              )}
+              ) : null}
               <Text style={{ fontSize: 14, fontWeight: "500", marginTop: 4, color: Colors.primary }}>
                 Show profile
               </Text>
@@ -728,17 +740,14 @@ export default function ProfileScreen() {
             icon="chatbubble-ellipses-outline"
             label="Give us feedback"
             onPress={() => {
-              const iosAppId =
-                IOS_APP_STORE_ID && IOS_APP_STORE_ID !== "0000000000" ? IOS_APP_STORE_ID : "";
-              if (Platform.OS === "ios" && iosAppId) {
-                Linking.openURL(`https://apps.apple.com/app/id${iosAppId}?action=write-review`).catch(() => {
-                  Linking.openURL(`https://apps.apple.com/app/id${iosAppId}`).catch(() => {});
-                });
-              } else if (Platform.OS === "android") {
-                Linking.openURL("https://play.google.com/store/apps/details?id=com.beautonomi").catch(() => {});
-              } else {
-                router.push("/(app)/contact-support");
+              if (Platform.OS === "ios" || Platform.OS === "android") {
+                void openNativeStoreReview();
+                if (Platform.OS === "ios" && (!IOS_APP_STORE_ID || IOS_APP_STORE_ID === "0000000000")) {
+                  router.push("/(app)/contact-support");
+                }
+                return;
               }
+              router.push("/(app)/contact-support");
             }}
           />
           <MenuItem

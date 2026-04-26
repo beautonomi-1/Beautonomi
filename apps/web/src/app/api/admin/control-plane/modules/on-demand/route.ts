@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * PUT /api/admin/control-plane/modules/on-demand
- * Body: { environment, enabled, ringtone_asset_path?, ring_duration_seconds?, ... }
+ * Body: { environment, enabled, ringtone_asset_path?, normal_booking_ringtone_asset_path?, ... }
  */
 export async function PUT(request: NextRequest) {
   try {
@@ -58,6 +58,9 @@ export async function PUT(request: NextRequest) {
       ringtone_asset_path: body.ringtone_asset_path ?? null,
       ring_duration_seconds: body.ring_duration_seconds ?? 20,
       ring_repeat: body.ring_repeat ?? true,
+      normal_booking_ringtone_asset_path: body.normal_booking_ringtone_asset_path ?? null,
+      normal_booking_ring_duration_seconds: body.normal_booking_ring_duration_seconds ?? 20,
+      normal_booking_ring_repeat: body.normal_booking_ring_repeat ?? true,
       waiting_screen_timeout_seconds: body.waiting_screen_timeout_seconds ?? 45,
       provider_accept_window_seconds: body.provider_accept_window_seconds ?? 30,
       ui_copy: body.ui_copy ?? {},

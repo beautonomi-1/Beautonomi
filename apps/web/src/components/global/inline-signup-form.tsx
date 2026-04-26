@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FaApple, FaFacebook, FaGoogle } from "react-icons/fa6";
+import { FaApple, FaGoogle } from "react-icons/fa6";
 import { CiMail } from "react-icons/ci";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
@@ -26,6 +26,7 @@ import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
+import { getSocialAuthConfig } from "@/lib/social-auth-config";
 
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
@@ -78,6 +79,10 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     return "en";
   });
   const [signupSource, setSignupSource] = useState<string | null>(null);
+  const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
+    google: true,
+    apple: true,
+  });
   const { t } = useTranslation();
   const fieldClass = "bg-gray-100 border-gray-200 text-[13px] text-gray-700 placeholder:text-gray-400";
   const labelClass = "text-xs font-medium text-gray-700 mb-2 block";
@@ -96,6 +101,12 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       sessionStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY);
     }).catch(() => {});
   }, [user?.id]);
+
+  useEffect(() => {
+    getSocialAuthConfig().then(setSocialAuth).catch(() => {
+      setSocialAuth({ google: true, apple: true });
+    });
+  }, []);
 
   // Close form and call onAuthSuccess when user becomes authenticated
   useEffect(() => {
@@ -342,18 +353,21 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setShowEmailForm(true);
   };
 
-  const handleSocialLogin = async (provider: "google" | "facebook" | "apple") => {
+  const handleSocialOAuth = async (provider: "google" | "apple") => {
     setIsLoading(true);
     setError(null);
 
     try {
       const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
       await signInWithOAuth(provider, currentUrl);
-      toast.info(`Redirecting to ${provider}...`);
+      toast.info(
+        provider === "google" ? "Redirecting to Google..." : "Redirecting to Apple...",
+      );
     } catch (error: any) {
       console.error("OAuth error:", error);
-      setError(error.message || `Failed to sign in with ${provider}`);
-      toast.error(error.message || `Failed to sign in with ${provider}`);
+      const label = provider === "google" ? "Google" : "Apple";
+      setError(error.message || `Failed to sign in with ${label}`);
+      toast.error(error.message || `Failed to sign in with ${label}`);
       setIsLoading(false);
     }
   };
@@ -477,26 +491,30 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               </div>
 
               {/* Social Login Options */}
-              <Button
-                variant="outline"
-                className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-                onClick={() => handleSocialLogin("google")}
-                disabled={isLoading}
-              >
-                <FaGoogle className="text-lg" />
-                <span>Continue with Google</span>
-              </Button>
-              
-              <Button
-                variant="outline"
-                className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-                onClick={() => handleSocialLogin("apple")}
-                disabled={isLoading}
-              >
-                <FaApple className="text-lg" />
-                <span>Continue with Apple</span>
-              </Button>
-              
+              {socialAuth.google && (
+                <Button
+                  variant="outline"
+                  className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+                  onClick={() => void handleSocialOAuth("google")}
+                  disabled={isLoading}
+                >
+                  <FaGoogle className="text-lg" />
+                  <span>Continue with Google</span>
+                </Button>
+              )}
+
+              {socialAuth.apple && (
+                <Button
+                  variant="outline"
+                  className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+                  onClick={() => void handleSocialOAuth("apple")}
+                  disabled={isLoading}
+                >
+                  <FaApple className="text-lg" />
+                  <span>Continue with Apple</span>
+                </Button>
+              )}
+
               {/*
                 §Customer-launch (audit 2026-04): removed the "Continue with
                 Phone" CTA — the underlying handler (handlePhoneAuth) was a
@@ -504,16 +522,6 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 phone-OTP login still lives on /login for existing accounts.
               */}
               
-              <Button
-                variant="outline"
-                className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-                onClick={() => handleSocialLogin("facebook")}
-                disabled={isLoading}
-              >
-                <FaFacebook className="text-lg text-blue-600" />
-                <span>Continue with Facebook</span>
-              </Button>
-
               {/* Need help link */}
               <div className="text-center mt-6">
                 <button
@@ -653,25 +661,29 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       {/* Social Login Options for phone form */}
       {!showEmailForm && (
         <>
-          <Button
-            variant="outline"
-            className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-            onClick={() => handleSocialLogin("google")}
-            disabled={isLoading}
-          >
-            <FaGoogle className="text-lg" />
-            <span>Continue with Google</span>
-          </Button>
-          
-          <Button
-            variant="outline"
-            className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-            onClick={() => handleSocialLogin("apple")}
-            disabled={isLoading}
-          >
-            <FaApple className="text-lg" />
-            <span>Continue with Apple</span>
-          </Button>
+          {socialAuth.google && (
+            <Button
+              variant="outline"
+              className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+              onClick={() => void handleSocialOAuth("google")}
+              disabled={isLoading}
+            >
+              <FaGoogle className="text-lg" />
+              <span>Continue with Google</span>
+            </Button>
+          )}
+
+          {socialAuth.apple && (
+            <Button
+              variant="outline"
+              className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+              onClick={() => void handleSocialOAuth("apple")}
+              disabled={isLoading}
+            >
+              <FaApple className="text-lg" />
+              <span>Continue with Apple</span>
+            </Button>
+          )}
           
           <Button
             variant="outline"
@@ -684,16 +696,6 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           >
             <CiMail className="text-lg" />
             <span>Continue with email</span>
-          </Button>
-          
-          <Button
-            variant="outline"
-            className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-            onClick={() => handleSocialLogin("facebook")}
-            disabled={isLoading}
-          >
-            <FaFacebook className="text-lg text-blue-600" />
-            <span>Continue with Facebook</span>
           </Button>
         </>
       )}

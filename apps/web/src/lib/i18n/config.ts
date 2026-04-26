@@ -3,12 +3,13 @@
  * Multi-language support for the platform
  */
 
-export type SupportedLanguage = "en" | "af" | "zu" | "xh" | "nso" | "tn" | "ts" | "ve" | "ss";
+export type SupportedLanguage = "en" | "af" | "zu" | "st" | "xh" | "nso" | "tn" | "ts" | "ve" | "ss";
 
 export const SUPPORTED_LANGUAGES: Array<{ code: SupportedLanguage; name: string; nativeName: string }> = [
   { code: "en", name: "English", nativeName: "English" },
   { code: "af", name: "Afrikaans", nativeName: "Afrikaans" },
   { code: "zu", name: "Zulu", nativeName: "isiZulu" },
+  { code: "st", name: "Southern Sotho", nativeName: "Sesotho" },
   { code: "xh", name: "Xhosa", nativeName: "isiXhosa" },
   { code: "nso", name: "Northern Sotho", nativeName: "Sesotho sa Leboa" },
   { code: "tn", name: "Tswana", nativeName: "Setswana" },
@@ -18,6 +19,11 @@ export const SUPPORTED_LANGUAGES: Array<{ code: SupportedLanguage; name: string;
 ];
 
 export const DEFAULT_LANGUAGE: SupportedLanguage = "en";
+
+/** Ordered codes: account preferences, admin platform defaults, and client locale fallbacks stay in sync. */
+export const DEFAULT_SUPPORTED_LANGUAGE_CODES: readonly SupportedLanguage[] = SUPPORTED_LANGUAGES.map(
+  (l) => l.code,
+);
 
 /**
  * Translation keys (simplified - in production, use a proper i18n library like next-intl)
@@ -73,6 +79,23 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
     "review.submit": "Thumela Umbuyekezo",
     "payment.pay_now": "Khokha Manje",
     "payment.success": "Inkokhelo Iphumelele",
+  },
+  st: {
+    "common.welcome": "Rea u amohela",
+    "common.book_now": "Buka jwale",
+    "common.cancel": "Hlakola",
+    "common.save": "Boloka",
+    "booking.title": "Buka kopano",
+    "booking.select_service": "Khetha tshebeletso",
+    "booking.select_date": "Khetha letsatsi",
+    "booking.select_time": "Khetha nako",
+    "booking.confirm": "Netefatsa ho buka",
+    "booking.cancelled": "Ho buka ho hlakotswe",
+    "booking.completed": "E phethetswe",
+    "review.write": "Ngola tekolo",
+    "review.submit": "Romela tekolo",
+    "payment.pay_now": "Lefa jwale",
+    "payment.success": "Tefo e atlehile",
   },
   xh: {
     "common.welcome": "Wamkelekile",

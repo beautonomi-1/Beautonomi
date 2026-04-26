@@ -741,7 +741,7 @@ export function CpRankingScoresPage() {
     setLoading(true);
     try {
       const inner = await adminApi.getJson<{ scores: ScoreRow[] }>(
-        `/api/admin/ranking/scores?limit=${PAGE_SIZE}&offset=0`
+        `/api/admin/ranking/scores?environment=${encodeURIComponent(env)}&limit=${PAGE_SIZE}&offset=0`
       );
       const list = inner?.scores ?? [];
       setScores(list);
@@ -751,7 +751,7 @@ export function CpRankingScoresPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [env]);
 
   useEffect(() => {
     void loadFirst();
@@ -762,7 +762,7 @@ export function CpRankingScoresPage() {
     setLoadingMore(true);
     try {
       const inner = await adminApi.getJson<{ scores: ScoreRow[] }>(
-        `/api/admin/ranking/scores?limit=${PAGE_SIZE}&offset=${scores.length}`
+        `/api/admin/ranking/scores?environment=${encodeURIComponent(env)}&limit=${PAGE_SIZE}&offset=${scores.length}`
       );
       const list = inner?.scores ?? [];
       setScores((prev) => [...prev, ...list]);
@@ -810,6 +810,9 @@ export function CpRankingScoresPage() {
         >
           {recomputing === "all" ? "Recomputing…" : "Recompute all"}
         </button>
+        <span className="text-xs text-gray-500">
+          Recompute uses <strong>{env}</strong> config.
+        </span>
       </div>
       {loading ? (
         <p className="text-sm text-gray-500">Loading…</p>

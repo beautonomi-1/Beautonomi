@@ -23,7 +23,7 @@ import {
 import "@/components/provider-portal/AppointmentDialogMobile";
 import "@/components/provider-portal/AppointmentDetailsModal";
 import { format, startOfWeek, endOfWeek, addDays, parseISO } from "date-fns";
-import { deriveGridHourWindow, type WeeklyHours } from "@beautonomi/utils";
+import { deriveGridHourWindow, formatDateKeyInTimeZone, mergeOperatingHours, type WeeklyHours } from "@beautonomi/utils";
 import { dateRangeBoundsUtc, resolveTz, nowInTz } from "@/lib/dates/provider-tz";
 import { useRoutePerformance } from "@/lib/performance/useRoutePerformance";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -417,7 +417,9 @@ function buildSaleItemsFromAppointment(apt: Appointment): CheckoutSaleLine[] {
 export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarInitialPayload }) {
   const router = useRouter();
   const { dateView, setDateView, provider, isLoading: isLoadingProvider, salons, selectedLocationId } = useProviderPortal();
+  const { preferences: calendarPreferences } = useCalendarPreferences();
   const businessTz = resolveTz(provider?.timezone);
+  const calendarDateKey = useCallback((date: Date) => formatDateKeyInTimeZone(date, businessTz), [businessTz]);
   const [appointments, setAppointments] = useState<Appointment[]>(() => initialCalendar?.appointments ?? []);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => initialCalendar?.teamMembers ?? []);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -481,12 +483,13 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       locationOperatingHours: locationOperatingHours as WeeklyHours | null,
       staffWorkingHours: teamMembers.map((m) => m.working_hours as WeeklyHours | null | undefined),
       events,
-      defaultStartHour: 8,
-      defaultEndHour: 20,
+      defaultStartHour: calendarPreferences.workdayStartHour,
+      defaultEndHour: calendarPreferences.workdayEndHour,
       paddingHours: 1,
+      timeZone: businessTz,
     });
     return { startHour: sh, endHour: eh };
-  }, [locationOperatingHours, selectedDateSafe, dateView, appointments, timeBlocks, teamMembers]);
+  }, [locationOperatingHours, selectedDateSafe, dateView, appointments, timeBlocks, teamMembers, calendarPreferences.workdayStartHour, calendarPreferences.workdayEndHour, businessTz]);
   
   const _timeBlockSidebarState = useTimeBlockSidebar();
   
@@ -624,6 +627,16 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     prevLocationIdRef.current = currentLocationId || null;
 
     const loadLocationHours = async () => {
+      if (!selectedLocationId) {
+        const merged = mergeOperatingHours(
+          salons
+            .map((s) => ((s as any).operating_hours || (s as any).working_hours) as unknown)
+            .filter(Boolean),
+        );
+        setLocationOperatingHours(merged as Record<string, { open: string; close: string; closed: boolean }> | null);
+        return;
+      }
+
       if (!currentLocationId) {
         setLocationOperatingHours(null);
         return;
@@ -858,18 +871,18 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     let dateTo: string;
     
     if (dateView === "day") {
-      dateFrom = format(safeSelectedDate, "yyyy-MM-dd");
+      dateFrom = calendarDateKey(safeSelectedDate);
       dateTo = dateFrom;
     } else if (dateView === "3-days") {
-      dateFrom = format(safeSelectedDate, "yyyy-MM-dd");
+      dateFrom = calendarDateKey(safeSelectedDate);
       const endDate = addDays(safeSelectedDate, 2);
-      dateTo = format(endDate, "yyyy-MM-dd");
+      dateTo = calendarDateKey(endDate);
     } else {
       // Week view
       const weekStart = startOfWeek(safeSelectedDate, { weekStartsOn: 1 });
       const weekEnd = endOfWeek(safeSelectedDate, { weekStartsOn: 1 });
-      dateFrom = format(weekStart, "yyyy-MM-dd");
-      dateTo = format(weekEnd, "yyyy-MM-dd");
+      dateFrom = calendarDateKey(weekStart);
+      dateTo = calendarDateKey(weekEnd);
     }
 
     // Create cache key (include location for location-specific caching)
@@ -881,7 +894,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     
     // Force fresh load
     await loadDataFresh(dateFrom, dateTo, cacheKey, false);
-  }, [selectedDate, businessTz, dateView, selectedTeamMember, selectedLocationId, loadDataFresh]);
+  }, [selectedDate, businessTz, dateView, selectedTeamMember, selectedLocationId, loadDataFresh, calendarDateKey]);
 
   const loadData = useCallback(async (showLoading = false) => {
     // Clear any pending timeouts
@@ -900,18 +913,18 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     let dateTo: string;
 
     if (dateView === "day") {
-      dateFrom = format(safeSelectedDate, "yyyy-MM-dd");
+      dateFrom = calendarDateKey(safeSelectedDate);
       dateTo = dateFrom;
     } else if (dateView === "3-days") {
-      dateFrom = format(safeSelectedDate, "yyyy-MM-dd");
+      dateFrom = calendarDateKey(safeSelectedDate);
       const endDate = addDays(safeSelectedDate, 2);
-      dateTo = format(endDate, "yyyy-MM-dd");
+      dateTo = calendarDateKey(endDate);
     } else {
       // Week view
       const weekStart = startOfWeek(safeSelectedDate, { weekStartsOn: 1 });
       const weekEnd = endOfWeek(safeSelectedDate, { weekStartsOn: 1 });
-      dateFrom = format(weekStart, "yyyy-MM-dd");
-      dateTo = format(weekEnd, "yyyy-MM-dd");
+      dateFrom = calendarDateKey(weekStart);
+      dateTo = calendarDateKey(weekEnd);
     }
 
     // Create cache key (include location for location-specific caching)
@@ -963,7 +976,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     }
 
     await loadDataFresh(dateFrom, dateTo, cacheKey, showLoading);
-  }, [selectedDate, businessTz, dateView, selectedTeamMember, teamMembers.length, selectedLocationId, loadDataFresh, loadTeamMembers]);
+  }, [selectedDate, businessTz, dateView, selectedTeamMember, teamMembers.length, selectedLocationId, loadDataFresh, loadTeamMembers, calendarDateKey]);
 
   // Optimistically update appointments when status/current_stage changes (instant block color change)
   const handleAppointmentUpdated = useCallback(
@@ -997,23 +1010,23 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       let dateFrom: string;
       let dateTo: string;
       if (dateView === "day") {
-        dateFrom = format(safeSelectedDate, "yyyy-MM-dd");
+        dateFrom = calendarDateKey(safeSelectedDate);
         dateTo = dateFrom;
       } else if (dateView === "3-days") {
-        dateFrom = format(safeSelectedDate, "yyyy-MM-dd");
-        dateTo = format(addDays(safeSelectedDate, 2), "yyyy-MM-dd");
+        dateFrom = calendarDateKey(safeSelectedDate);
+        dateTo = calendarDateKey(addDays(safeSelectedDate, 2));
       } else {
         const weekStart = startOfWeek(safeSelectedDate, { weekStartsOn: 1 });
         const weekEnd = endOfWeek(safeSelectedDate, { weekStartsOn: 1 });
-        dateFrom = format(weekStart, "yyyy-MM-dd");
-        dateTo = format(weekEnd, "yyyy-MM-dd");
+        dateFrom = calendarDateKey(weekStart);
+        dateTo = calendarDateKey(weekEnd);
       }
       const locationKey = selectedLocationId || "all";
       const cacheKey = `${dateFrom}-${dateTo}-${selectedTeamMember}-${locationKey}`;
       calendarCacheRef.current.delete(cacheKey);
       void loadData(false);
     },
-    [selectedDate, businessTz, dateView, selectedTeamMember, selectedLocationId, loadData]
+    [selectedDate, businessTz, dateView, selectedTeamMember, selectedLocationId, loadData, calendarDateKey]
   );
 
   const supabaseClient = getSupabaseClient();
@@ -1139,7 +1152,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     openCreateMode({
       staffId: teamMemberId,
       staffName: teamMembers.find(m => m.id === teamMemberId)?.name,
-      date: format(date, "yyyy-MM-dd"),
+      date: calendarDateKey(date),
       startTime: time,
       locationId: currentLocation?.id,
       locationName: currentLocation?.name,
@@ -1196,7 +1209,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     openCreateMode({
       staffId,
       staffName: staffMember?.name,
-      date: format(targetDate, "yyyy-MM-dd"),
+      date: calendarDateKey(targetDate),
       startTime: "",
       locationId: currentLocation.id,
       locationName: currentLocation.name,
@@ -1229,7 +1242,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     const prefillStaffId = searchParams.get("staff_id") || "";
     const staffId = prefillStaffId || (filteredTeamMembers[0]?.id ?? "");
     const staffMember = teamMembers.find(m => m.id === staffId);
-    const prefillDate = searchParams.get("date") || format(nowInTz(businessTz), "yyyy-MM-dd");
+    const prefillDate = searchParams.get("date") || calendarDateKey(nowInTz(businessTz));
     const prefillTime = searchParams.get("time") || "";
 
     const appointmentKind = searchParams.get("walk_in") === "true"
@@ -1877,7 +1890,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                       openCreateMode({
                         staffId,
                         staffName: staffMember?.name,
-                        date: format(bizNow, "yyyy-MM-dd"),
+                        date: calendarDateKey(bizNow),
                         startTime: timeString,
                         locationId: currentLocation?.id,
                         locationName: currentLocation?.name,
@@ -2069,7 +2082,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                 openCreateMode({
                   staffId: teamMemberId,
                   staffName: staffMember?.name,
-                  date: format(date, "yyyy-MM-dd"),
+                  date: calendarDateKey(date),
                   startTime: time,
                   locationId: currentLocation?.id,
                   locationName: currentLocation?.name,
@@ -2115,7 +2128,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             />
 
             {/* Scroll-to-now floating button — only visible when viewing today */}
-            {format(selectedDateSafe, "yyyy-MM-dd") === format(nowInTz(businessTz), "yyyy-MM-dd") && (
+            {calendarDateKey(selectedDateSafe) === calendarDateKey(nowInTz(businessTz)) && (
               <button
                 type="button"
                 onClick={() => window.dispatchEvent(new CustomEvent("calendar-scroll-to-now"))}
@@ -2307,7 +2320,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                     openCreateMode({
                       staffId,
                       staffName: staffMember?.name,
-                      date: format(bizNow, "yyyy-MM-dd"),
+                      date: calendarDateKey(bizNow),
                       startTime: timeString,
                       locationId: currentLocation?.id,
                       locationName: currentLocation?.name,

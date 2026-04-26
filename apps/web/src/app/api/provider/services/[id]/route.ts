@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import type { OfferingCard } from "@/types/beautonomi";
 import { syncVariantOfferings } from "../_helpers/sync-variants";
@@ -63,16 +63,50 @@ export async function PATCH(
     if (!existingService) return notFoundResponse("Service not found");
 
     const updateData: Record<string, unknown> = {};
+    const parseFiniteNumber = (value: unknown, field: string): number | null => {
+      if (value === null || value === "") return null;
+      const n = typeof value === "number" ? value : Number(String(value).trim());
+      if (!Number.isFinite(n)) {
+        throw new Error(`Invalid numeric value for ${field}`);
+      }
+      return n;
+    };
+    const parseFiniteInt = (value: unknown, field: string): number | null => {
+      const n = parseFiniteNumber(value, field);
+      return n == null ? null : Math.trunc(n);
+    };
     if (body.title !== undefined) updateData.title = body.title;
     if (body.name !== undefined) updateData.title = body.name; // Support both title and name
     if (body.service_type !== undefined) updateData.service_type = body.service_type;
     if (body.description !== undefined) updateData.description = body.description;
     if (body.aftercare_description !== undefined) updateData.aftercare_description = body.aftercare_description;
-    if (body.price !== undefined) updateData.price = parseFloat(body.price);
+    if (body.price !== undefined) updateData.price = parseFiniteNumber(body.price, "price");
     if (body.duration_minutes !== undefined)
-      updateData.duration_minutes = parseInt(body.duration_minutes);
-    if (body.category_id !== undefined) updateData.category_id = body.category_id;
-    if (body.provider_category_id !== undefined) updateData.provider_category_id = body.provider_category_id;
+      updateData.duration_minutes = parseFiniteInt(body.duration_minutes, "duration_minutes");
+    // `category_id` is the master/service-category column; provider catalogue categories
+    // must write `provider_category_id`. Older mobile/web clients sent provider category
+    // selection as `category_id`, so normalize it after verifying ownership.
+    const incomingProviderCategory =
+      body.provider_category_id !== undefined ? body.provider_category_id : body.category_id;
+    if (incomingProviderCategory !== undefined) {
+      const categoryId =
+        typeof incomingProviderCategory === "string" && incomingProviderCategory.trim()
+          ? incomingProviderCategory.trim()
+          : null;
+      if (categoryId) {
+        const { data: cat, error: catErr } = await supabase
+          .from("provider_categories")
+          .select("id")
+          .eq("id", categoryId)
+          .eq("provider_id", providerId)
+          .maybeSingle();
+        if (catErr) throw catErr;
+        if (!cat) {
+          return errorResponse("Selected category does not belong to this provider.", "INVALID_CATEGORY", 400);
+        }
+      }
+      updateData.provider_category_id = categoryId;
+    }
     if (body.is_active !== undefined) updateData.is_active = body.is_active;
     if (body.online_booking_enabled !== undefined) updateData.online_booking_enabled = body.online_booking_enabled;
     if (body.service_available_for !== undefined) updateData.service_available_for = body.service_available_for;
@@ -80,24 +114,24 @@ export async function PATCH(
     if (body.price_type !== undefined) updateData.price_type = body.price_type;
     if (body.pricing_name !== undefined) updateData.pricing_name = body.pricing_name;
     if (body.extra_time_enabled !== undefined) updateData.extra_time_enabled = body.extra_time_enabled;
-    if (body.extra_time_duration !== undefined) updateData.extra_time_duration = parseInt(body.extra_time_duration);
+    if (body.extra_time_duration !== undefined) updateData.extra_time_duration = parseFiniteInt(body.extra_time_duration, "extra_time_duration");
     if (body.reminder_to_rebook_enabled !== undefined) updateData.reminder_to_rebook_enabled = body.reminder_to_rebook_enabled;
-    if (body.reminder_to_rebook_weeks !== undefined) updateData.reminder_to_rebook_weeks = parseInt(body.reminder_to_rebook_weeks);
-    if (body.service_cost_percentage !== undefined) updateData.service_cost_percentage = parseFloat(body.service_cost_percentage);
-    if (body.tax_rate !== undefined) updateData.tax_rate = parseFloat(body.tax_rate);
+    if (body.reminder_to_rebook_weeks !== undefined) updateData.reminder_to_rebook_weeks = parseFiniteInt(body.reminder_to_rebook_weeks, "reminder_to_rebook_weeks");
+    if (body.service_cost_percentage !== undefined) updateData.service_cost_percentage = parseFiniteNumber(body.service_cost_percentage, "service_cost_percentage");
+    if (body.tax_rate !== undefined) updateData.tax_rate = parseFiniteNumber(body.tax_rate, "tax_rate");
     if (body.included_services !== undefined) updateData.included_services = body.included_services;
     if (body.team_member_ids !== undefined) updateData.team_member_ids = body.team_member_ids;
     if (body.pricing_options !== undefined) updateData.pricing_options = Array.isArray(body.pricing_options) ? body.pricing_options : [];
-    if (body.display_order !== undefined) updateData.display_order = parseInt(body.display_order);
+    if (body.display_order !== undefined) updateData.display_order = parseFiniteInt(body.display_order, "display_order");
     // Location support fields
     if (body.supports_at_salon !== undefined) updateData.supports_at_salon = body.supports_at_salon;
     if (body.supports_at_home !== undefined) updateData.supports_at_home = body.supports_at_home;
-    if (body.at_home_radius_km !== undefined) updateData.at_home_radius_km = body.at_home_radius_km !== null ? parseFloat(body.at_home_radius_km) : null;
-    if (body.at_home_price_adjustment !== undefined) updateData.at_home_price_adjustment = parseFloat(body.at_home_price_adjustment) || 0;
+    if (body.at_home_radius_km !== undefined) updateData.at_home_radius_km = parseFiniteNumber(body.at_home_radius_km, "at_home_radius_km");
+    if (body.at_home_price_adjustment !== undefined) updateData.at_home_price_adjustment = parseFiniteNumber(body.at_home_price_adjustment, "at_home_price_adjustment") ?? 0;
     // Variant fields
     if (body.parent_service_id !== undefined) updateData.parent_service_id = body.parent_service_id || null;
     if (body.variant_name !== undefined) updateData.variant_name = body.variant_name || null;
-    if (body.variant_sort_order !== undefined) updateData.variant_sort_order = parseInt(body.variant_sort_order) || 0;
+    if (body.variant_sort_order !== undefined) updateData.variant_sort_order = parseFiniteInt(body.variant_sort_order, "variant_sort_order") ?? 0;
     // Add-on fields
     if (body.addon_category !== undefined) updateData.addon_category = body.addon_category || null;
     if (body.applicable_service_ids !== undefined) updateData.applicable_service_ids = body.applicable_service_ids || null;

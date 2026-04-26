@@ -2,11 +2,10 @@ import { useMemo, useState } from "react";
 import { adminToast } from "@/lib/adminToast";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
-import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -32,11 +31,14 @@ type SubRow = Record<string, unknown> & {
 };
 
 type PlanOption = { id: string; name: string };
+type PlansPayload = Record<string, unknown>[] | { plans?: Record<string, unknown>[] };
 
 export function ProviderSubscriptionsPage() {
   useAdminDocumentTitle("Provider Subscriptions");
   const qc = useQueryClient();
-  const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
+  const { allowed, denied } = useSuperadminPage(
+    "Provider subscriptions are restricted to platform superadmins (matches Next.js /admin/provider-subscriptions).",
+  );
   const [sp, setSp] = useSearchParams();
   const status = sp.get("status") || "all";
   const qk = useMemo(() => `status=${status}`, [status]);
@@ -47,21 +49,26 @@ export function ProviderSubscriptionsPage() {
       const p = new URLSearchParams();
       if (status !== "all") p.set("status", status);
       const qs = p.toString();
-      return adminApi.getJson<SubRow[]>(`/api/admin/provider-subscriptions${qs ? `?${qs}` : ""}`, {
-        timeoutMs: 60_000,
-      });
+      return adminApi.getJson<SubRow[] | { subscriptions?: SubRow[] }>(
+        `/api/admin/provider-subscriptions${qs ? `?${qs}` : ""}`,
+        {
+          timeoutMs: 60_000,
+        },
+      );
     },
     enabled: allowed,
+    staleTime: 0,
   });
 
   const plansQ = useQuery({
     queryKey: adminQueryKeys.plans(),
-    queryFn: () => adminApi.getJson<Record<string, unknown>[]>("/api/admin/plans", { timeoutMs: 60_000 }),
+    queryFn: () => adminApi.getJson<PlansPayload>("/api/admin/plans", { timeoutMs: 60_000 }),
     enabled: allowed,
+    staleTime: 0,
   });
 
   const planOptions: PlanOption[] = useMemo(() => {
-    const list = Array.isArray(plansQ.data) ? plansQ.data : [];
+    const list = Array.isArray(plansQ.data) ? plansQ.data : plansQ.data?.plans ?? [];
     return list
       .map((p) => ({
         id: String(p.id ?? ""),
@@ -95,7 +102,7 @@ export function ProviderSubscriptionsPage() {
   /** Draft plan_id per subscription row until user clicks Apply */
   const [planDraft, setPlanDraft] = useState<Record<string, string>>({});
 
-  const rows = Array.isArray(q.data) ? q.data : [];
+  const rows = Array.isArray(q.data) ? q.data : ((q.data as { subscriptions?: SubRow[] })?.subscriptions ?? []);
 
   if (denied) return denied;
   if (q.isLoading) {

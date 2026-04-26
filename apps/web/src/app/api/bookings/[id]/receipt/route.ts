@@ -173,7 +173,7 @@ export async function GET(
         provider:providers!bookings_provider_id_fkey(
           id,
           business_name,
-          owner_email,
+          user_id,
           phone,
           address,
           receipt_header,
@@ -341,6 +341,25 @@ export async function GET(
       paid_at: ac.paid_at || null,
     }));
 
+    const providerRaw = (booking.provider && typeof booking.provider === "object"
+      ? (booking.provider as Record<string, unknown>)
+      : {}) as Record<string, unknown>;
+    const providerOwnerId = typeof providerRaw.user_id === "string" ? providerRaw.user_id : null;
+    let providerOwnerEmail = "";
+    if (providerOwnerId) {
+      const { data: ownerRow } = await supabase
+        .from("users")
+        .select("email")
+        .eq("id", providerOwnerId)
+        .maybeSingle();
+      providerOwnerEmail = (ownerRow as { email?: string | null } | null)?.email ?? "";
+    }
+    const providerForReceipt: Record<string, unknown> = {
+      ...providerRaw,
+      owner_email: providerOwnerEmail,
+      email: providerOwnerEmail,
+    };
+
     const bRaw = bookingRaw as Record<string, unknown>;
     const completedPayments = (booking.booking_payments || []) as Array<{ amount?: number; status?: string }>;
     const paymentsPaid = completedPayments
@@ -372,7 +391,7 @@ export async function GET(
       booking_date: booking.created_at,
       service_date: booking.scheduled_at,
       customer: booking.customer,
-      provider: booking.provider,
+      provider: providerForReceipt,
       services: booking.booking_services?.map((bs: BookingServiceRow) => {
         const title = (bs.offering?.title ?? bs.offerings?.title) || "Service";
         const offeringPrice = bs.offering?.price ?? bs.offerings?.price;
@@ -435,8 +454,8 @@ export async function GET(
       payment_option: paymentOption,
       transactions: booking.booking_payments || [],
       additional_charges: additionalCharges,
-      receipt_header: ((booking.provider as Record<string, unknown>)?.receipt_header as string) || null,
-      receipt_footer: ((booking.provider as Record<string, unknown>)?.receipt_footer as string) || null,
+      receipt_header: (providerForReceipt.receipt_header as string) || null,
+      receipt_footer: (providerForReceipt.receipt_footer as string) || null,
     };
 
     return NextResponse.json({ receipt });

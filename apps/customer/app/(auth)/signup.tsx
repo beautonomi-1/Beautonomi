@@ -23,7 +23,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
-import { APP_URL } from "@/config/public-env";
+import { webCookiePolicyUrl, webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
 import { haptic } from "@/lib/haptics";
 import { api } from "@/lib/api-client";
 import { navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
@@ -33,6 +33,7 @@ import { changeLanguage } from "@/lib/i18n";
 import * as Localization from "expo-localization";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { getSocialAuthConfig } from "@/lib/third-party-config";
 
 const REFERRAL_REF_KEY = "referral_ref";
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
@@ -157,6 +158,10 @@ export default function SignupScreen() {
   );
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
+  const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
+    google: true,
+    apple: true,
+  });
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -210,6 +215,13 @@ export default function SignupScreen() {
   const filteredCountries = countrySearch
     ? COUNTRY_CODES.filter((c) => c.label.toLowerCase().includes(countrySearch.toLowerCase()))
     : COUNTRY_CODES;
+  const hasSocialAuth = socialAuth.google || socialAuth.apple;
+
+  useEffect(() => {
+    getSocialAuthConfig().then(setSocialAuth).catch(() => {
+      setSocialAuth({ google: true, apple: true });
+    });
+  }, []);
   const strength = getPasswordStrength(password);
 
   const handlePhoneChange = useCallback(
@@ -295,7 +307,7 @@ export default function SignupScreen() {
     }
   }
 
-  async function handleOAuth(provider: "google" | "apple" | "facebook") {
+  async function handleSocialOAuth(provider: "google" | "apple") {
     haptic.light();
     setLoading(true);
     try {
@@ -372,55 +384,63 @@ export default function SignupScreen() {
           Join Beautonomi and discover the best beauty services near you
         </Text>
 
-        {/* Social signup */}
-        <TouchableOpacity
-          onPress={() => handleOAuth("google")}
-          disabled={loading}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            borderWidth: 1,
-            borderColor: Colors.gray[200],
-            borderRadius: RADIUS_INPUT,
-            paddingVertical: 14,
-            marginBottom: 12,
-            backgroundColor: Colors.white,
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Continue with Google"
-        >
-          <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
-          <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
-        </TouchableOpacity>
+        {hasSocialAuth && (
+          <>
+            {/* Social signup */}
+            {socialAuth.google && (
+              <TouchableOpacity
+                onPress={() => void handleSocialOAuth("google")}
+                disabled={loading}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: Colors.gray[200],
+                  borderRadius: RADIUS_INPUT,
+                  paddingVertical: 14,
+                  marginBottom: 12,
+                  backgroundColor: Colors.white,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Continue with Google"
+              >
+                <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
+                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
+              </TouchableOpacity>
+            )}
 
-        {Platform.OS === "ios" && (
-          <TouchableOpacity
-            onPress={() => handleOAuth("apple")}
-            disabled={loading}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: RADIUS_INPUT,
-              paddingVertical: 14,
-              marginBottom: 12,
-              backgroundColor: "#000",
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Continue with Apple"
-          >
-            <Ionicons name="logo-apple" size={20} color="#fff" />
-            <Text style={{ fontSize: 15, color: "#fff", fontWeight: "500" }}>Continue with Apple</Text>
-          </TouchableOpacity>
+            {socialAuth.apple && (
+              <TouchableOpacity
+                onPress={() => void handleSocialOAuth("apple")}
+                disabled={loading}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: Colors.gray[200],
+                  borderRadius: RADIUS_INPUT,
+                  paddingVertical: 14,
+                  marginBottom: 12,
+                  backgroundColor: Colors.white,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Continue with Apple"
+              >
+                <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
+                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Divider */}
+            <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 20 }}>
+              <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
+              <Text style={{ marginHorizontal: contentPadding, fontSize: 13, color: "#9CA3AF" }}>or sign up with email</Text>
+              <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
+            </View>
+          </>
         )}
-
-        {/* Divider */}
-        <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 20 }}>
-          <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-          <Text style={{ marginHorizontal: contentPadding, fontSize: 13, color: "#9CA3AF" }}>or sign up with email</Text>
-          <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-        </View>
 
         {/* Preferred language (early) */}
         <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
@@ -737,21 +757,21 @@ export default function SignupScreen() {
             I have read and agree to the{" "}
             <Text
               style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-              onPress={() => Linking.openURL(`${APP_URL}/terms-and-condition`)}
+              onPress={() => Linking.openURL(webTermsOfServiceUrl()).catch(() => {})}
             >
               Terms of Service
             </Text>{" "}
             and{" "}
             <Text
               style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-              onPress={() => Linking.openURL(`${APP_URL}/privacy-policy`)}
+              onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}
             >
               Privacy Policy
             </Text>
             , and{" "}
             <Text
               style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
-              onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/cookie-policy`)}
+              onPress={() => Linking.openURL(webCookiePolicyUrl()).catch(() => {})}
             >
               Cookie Policy
             </Text>

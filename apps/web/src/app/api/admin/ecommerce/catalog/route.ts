@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         has_variants, variant_option_types,
         created_at, updated_at,
         provider:providers!inner(id, business_name, slug, tenant_id, status),
-        variants:product_variants(id)
+        variants:product_variants(id, quantity, retail_price)
       `,
         { count: "exact" },
       )

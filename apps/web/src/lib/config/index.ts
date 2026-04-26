@@ -51,6 +51,9 @@ const DEFAULT_ON_DEMAND: SafeOnDemandModuleConfig = {
   ringtone_asset_path: null,
   ring_duration_seconds: 20,
   ring_repeat: true,
+  normal_booking_ringtone_asset_path: null,
+  normal_booking_ring_duration_seconds: 20,
+  normal_booking_ring_repeat: true,
   waiting_screen_timeout_seconds: 45,
   provider_accept_window_seconds: 30,
   ui_copy: {},
@@ -355,6 +358,12 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
         ringtone_asset_path: (onDemandRow.ringtone_asset_path as string) ?? null,
         ring_duration_seconds: Number(onDemandRow.ring_duration_seconds ?? 20),
         ring_repeat: Boolean(onDemandRow.ring_repeat ?? true),
+        normal_booking_ringtone_asset_path:
+          String(onDemandRow.normal_booking_ringtone_asset_path ?? "").trim() || null,
+        normal_booking_ring_duration_seconds: Number(
+          onDemandRow.normal_booking_ring_duration_seconds ?? 20,
+        ),
+        normal_booking_ring_repeat: Boolean(onDemandRow.normal_booking_ring_repeat ?? true),
         waiting_screen_timeout_seconds: Number(onDemandRow.waiting_screen_timeout_seconds ?? 45),
         provider_accept_window_seconds: Number(onDemandRow.provider_accept_window_seconds ?? 30),
         ui_copy: (typeof onDemandRow.ui_copy === "object" && onDemandRow.ui_copy !== null ? onDemandRow.ui_copy : {}) as Record<string, any>,
