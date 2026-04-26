@@ -54,6 +54,19 @@ type PlanRow = Record<string, unknown> & {
   features?: Record<string, unknown> | unknown[] | null;
 };
 
+type PlansPayload =
+  | PlanRow[]
+  | {
+      plans?: PlanRow[];
+      meta?: {
+        tenant_id?: string | null;
+        subscription_plan_count?: number;
+        pricing_plan_count?: number;
+        source?: string;
+        empty_reason?: string | null;
+      };
+    };
+
 function formatFeaturesJson(row: PlanRow): string {
   const f = row.features;
   if (f && typeof f === "object" && !Array.isArray(f)) {
@@ -72,15 +85,19 @@ export function PlansListPage() {
 
   const q = useQuery({
     queryKey: adminQueryKeys.plans(),
-    queryFn: () => adminApi.getJson<PlanRow[]>("/api/admin/plans", { timeoutMs: 60_000 }),
+    queryFn: () => adminApi.getJson<PlansPayload>("/api/admin/plans", { timeoutMs: 60_000 }),
     enabled: allowed,
   });
 
-  const rows = Array.isArray(q.data) ? q.data : [];
+  const rows = Array.isArray(q.data) ? q.data : q.data?.plans ?? [];
+  const plansMeta = Array.isArray(q.data) ? null : q.data?.meta ?? null;
 
   const webPlansEditorUrl = (() => {
     const base = (publicEnv.siteUrl || publicEnv.appUrl || "").replace(/\/$/, "");
     if (base) return `${base}/admin/plans`;
+    if (typeof window !== "undefined" && window.location.origin) {
+      return `${window.location.origin.replace(/\/$/, "")}/admin/plans`;
+    }
     const host = (publicEnv.defaultMarketHost || "").replace(/\/$/, "").trim();
     if (!host) return "";
     const withScheme = host.includes("://") ? host : `https://${host}`;
@@ -355,6 +372,12 @@ export function PlansListPage() {
             </a>
             . Use this SPA for quick edits; use that page for the full dialog UI.
           </p>
+          {!publicEnv.siteUrl && !publicEnv.appUrl ? (
+            <p className="mt-1 text-xs text-indigo-800">
+              Using the current admin origin because <code className="rounded bg-indigo-100 px-1">VITE_SITE_URL</code> /{" "}
+              <code className="rounded bg-indigo-100 px-1">VITE_APP_URL</code> is not set.
+            </p>
+          ) : null}
         </AdminPanel>
       ) : (
         <AdminPanel className="border-amber-200 bg-amber-50/80">
@@ -788,7 +811,13 @@ export function PlansListPage() {
       ) : null}
 
       {rows.length === 0 ? (
-        <EmptyState title="No plans" />
+        <EmptyState
+          title="No plans"
+          description={
+            plansMeta?.empty_reason ??
+            "No subscription plans were returned for this tenant/global scope. Create one here or check subscription_plans seed data."
+          }
+        />
       ) : (
         <AdminDataTable>
           <AdminTableHead>

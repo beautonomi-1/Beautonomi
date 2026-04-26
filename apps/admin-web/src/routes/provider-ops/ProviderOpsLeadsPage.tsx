@@ -160,6 +160,18 @@ function asLeadCategoryList(raw: unknown): LeadCategory[] {
   return [];
 }
 
+function parseCategoryIdsParam(sp: URLSearchParams): string[] {
+  const values = [...sp.getAll("category_ids"), ...sp.getAll("category_id")];
+  const seen = new Set<string>();
+  values.forEach((value) => {
+    value.split(",").forEach((part) => {
+      const id = part.trim();
+      if (id) seen.add(id);
+    });
+  });
+  return [...seen];
+}
+
 interface LeadsPayload {
   data: Lead[];
   meta: { page: number; limit: number; total: number; has_more: boolean };
@@ -190,7 +202,8 @@ export function ProviderOpsLeadsPage() {
   const search = sp.get("search") || "";
   const country = sp.get("country") || "";
   const province = sp.get("province") || "";
-  const categoryId = sp.get("category_id") || "";
+  const categoryIds = useMemo(() => parseCategoryIdsParam(sp), [sp]);
+  const categoryKey = categoryIds.join(",");
   const sortBy = sp.get("sort") || "created_at";
   const sortDir = sp.get("dir") || "desc";
 
@@ -209,7 +222,7 @@ export function ProviderOpsLeadsPage() {
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
   const [showBulkWhatsApp, setShowBulkWhatsApp] = useState(false);
 
-  const qk = useMemo(() => adminQueryKeys.providerOps.leads(`s=${stage}|p=${page}|q=${search}|c=${country}|prov=${province}|cat=${categoryId}|sb=${sortBy}|sd=${sortDir}`), [stage, page, search, country, province, categoryId, sortBy, sortDir]);
+  const qk = useMemo(() => adminQueryKeys.providerOps.leads(`s=${stage}|p=${page}|q=${search}|c=${country}|prov=${province}|cat=${categoryKey}|sb=${sortBy}|sd=${sortDir}`), [stage, page, search, country, province, categoryKey, sortBy, sortDir]);
 
   const q = useQuery({
     queryKey: qk,
@@ -221,7 +234,7 @@ export function ProviderOpsLeadsPage() {
       if (search) p.set("search", search);
       if (country) p.set("country", country);
       if (province) p.set("province", province);
-      if (categoryId) p.set("category_id", categoryId);
+      categoryIds.forEach((id) => p.append("category_ids", id));
       if (sortBy) p.set("sort", sortBy);
       if (sortDir) p.set("dir", sortDir);
       return adminApi.getJson<LeadsPayload>(`/api/admin/provider-ops/leads?${p}`, { timeoutMs: 60_000 });
@@ -241,6 +254,7 @@ export function ProviderOpsLeadsPage() {
     [filterOptions?.provinces, country],
   );
   const categoryOptions = filterOptions?.categories ?? [];
+  const selectedCategoryNames = categoryIds.map((id) => categoryOptions.find((c) => c.id === id)?.name ?? "selected");
 
   const selectedLead = rows.find((r) => r.id === selectedLeadId) ?? null;
 
@@ -440,7 +454,7 @@ export function ProviderOpsLeadsPage() {
       if (search) p.set("search", search);
       if (country) p.set("country", country);
       if (province) p.set("province", province);
-      if (categoryId) p.set("category_id", categoryId);
+      categoryIds.forEach((id) => p.append("category_ids", id));
       const res = await fetch(`/api/admin/provider-ops/leads/export?${p}`, { credentials: "include" });
       if (!res.ok) {
         adminToast.error("Export failed — please try again");
@@ -456,7 +470,7 @@ export function ProviderOpsLeadsPage() {
     } finally {
       setExporting(false);
     }
-  }, [stage, search, country, province, categoryId]);
+  }, [stage, search, country, province, categoryKey, categoryIds]);
 
   const handleResizeMouseDown = useCallback(() => {
     resizingRef.current = true;
@@ -524,7 +538,7 @@ export function ProviderOpsLeadsPage() {
           }
         />
       </div>
-      {(country || province || categoryId) && (
+      {(country || province || categoryIds.length > 0) && (
         <div className="mx-1 mb-2 flex flex-wrap items-center gap-1.5">
           {country ? (
             <button
@@ -555,18 +569,19 @@ export function ProviderOpsLeadsPage() {
               Province: {province} ×
             </button>
           ) : null}
-          {categoryId ? (
+          {categoryIds.length > 0 ? (
             <button
               type="button"
               onClick={() => {
                 const n = new URLSearchParams(sp);
+                n.delete("category_ids");
                 n.delete("category_id");
                 n.delete("page");
                 setSp(n, { replace: true });
               }}
               className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700"
             >
-              Category: {(categoryOptions.find((c) => c.id === categoryId)?.name ?? "selected")} ×
+              Categories: {selectedCategoryNames.join(", ")} ×
             </button>
           ) : null}
         </div>
@@ -688,16 +703,37 @@ export function ProviderOpsLeadsPage() {
                 </option>
               ))}
             </select>
-            <select
-              value={categoryId}
-              onChange={(e) => { const n = new URLSearchParams(sp); if (e.target.value) n.set("category_id", e.target.value); else n.delete("category_id"); n.delete("page"); setSp(n, { replace: true }); }}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700"
-            >
-              <option value="">All Categories</option>
-              {categoryOptions.map((cat) => <option key={cat.id} value={cat.id}>{cat.name} ({cat.count})</option>)}
-            </select>
-            {(country || province || categoryId) && (
-              <button type="button" onClick={() => { const n = new URLSearchParams(sp); n.delete("country"); n.delete("province"); n.delete("category_id"); n.delete("page"); setSp(n, { replace: true }); }} className="text-xs text-gray-500 hover:text-gray-700 underline">Clear filters</button>
+            <div className="min-w-[240px] rounded-lg border border-gray-300 bg-white p-2">
+              <div className="mb-1 text-xs font-medium text-gray-600">Categories</div>
+              <div className="max-h-44 space-y-1 overflow-auto pr-1">
+                {categoryOptions.map((cat) => {
+                  const checked = categoryIds.includes(cat.id);
+                  return (
+                    <label key={cat.id} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const n = new URLSearchParams(sp);
+                          const next = new Set(categoryIds);
+                          if (e.target.checked) next.add(cat.id);
+                          else next.delete(cat.id);
+                          n.delete("category_id");
+                          n.delete("category_ids");
+                          [...next].forEach((id) => n.append("category_ids", id));
+                          n.delete("page");
+                          setSp(n, { replace: true });
+                        }}
+                      />
+                      <span className="flex-1 truncate">{cat.name}</span>
+                      <span className="text-xs text-gray-400">{cat.count}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            {(country || province || categoryIds.length > 0) && (
+              <button type="button" onClick={() => { const n = new URLSearchParams(sp); n.delete("country"); n.delete("province"); n.delete("category_id"); n.delete("category_ids"); n.delete("page"); setSp(n, { replace: true }); }} className="text-xs text-gray-500 hover:text-gray-700 underline">Clear filters</button>
             )}
           </div>
         )}

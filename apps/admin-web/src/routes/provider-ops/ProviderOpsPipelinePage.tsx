@@ -62,6 +62,18 @@ interface LeadsPayload {
   };
 }
 
+function parseCategoryIdsParam(sp: URLSearchParams): string[] {
+  const values = [...sp.getAll("category_ids"), ...sp.getAll("category_id")];
+  const seen = new Set<string>();
+  values.forEach((value) => {
+    value.split(",").forEach((part) => {
+      const id = part.trim();
+      if (id) seen.add(id);
+    });
+  });
+  return [...seen];
+}
+
 function WhatsAppStatusChip({ status }: { status?: Lead["whatsapp_status"] }) {
   const s = status || "unknown";
   const config: Record<string, { label: string; className: string }> = {
@@ -101,15 +113,16 @@ export function ProviderOpsPipelinePage() {
 
   const country = sp.get("country") || "";
   const province = sp.get("province") || "";
-  const categoryId = sp.get("category_id") || "";
-  const qk = adminQueryKeys.providerOps.leads(`pipeline-board|country=${country}|province=${province}|category=${categoryId}`);
+  const categoryIds = useMemo(() => parseCategoryIdsParam(sp), [sp]);
+  const categoryKey = categoryIds.join(",");
+  const qk = adminQueryKeys.providerOps.leads(`pipeline-board|country=${country}|province=${province}|category=${categoryKey}`);
 
   const q = useInfiniteQuery({
     queryKey: qk,
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
       adminApi.getJson<LeadsPayload>(
-        `/api/admin/provider-ops/leads?page=${pageParam}&limit=${PIPELINE_PAGE_SIZE}${country ? `&country=${encodeURIComponent(country)}` : ""}${province ? `&province=${encodeURIComponent(province)}` : ""}${categoryId ? `&category_id=${encodeURIComponent(categoryId)}` : ""}`,
+        `/api/admin/provider-ops/leads?page=${pageParam}&limit=${PIPELINE_PAGE_SIZE}${country ? `&country=${encodeURIComponent(country)}` : ""}${province ? `&province=${encodeURIComponent(province)}` : ""}${categoryIds.map((id) => `&category_ids=${encodeURIComponent(id)}`).join("")}`,
         { timeoutMs: 60_000 },
       ),
     getNextPageParam: (lastPage) => (lastPage.meta.has_more ? lastPage.meta.page + 1 : undefined),
@@ -125,6 +138,7 @@ export function ProviderOpsPipelinePage() {
     (opt) => !country || !opt.country || opt.country === country,
   );
   const categoryOptions = filterOptions?.categories ?? [];
+  const selectedCategoryNames = categoryIds.map((id) => categoryOptions.find((c) => c.id === id)?.name ?? "selected");
 
   const stageMut = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: string }) =>
@@ -239,7 +253,7 @@ export function ProviderOpsPipelinePage() {
           title="Pipeline Board"
           description={`${totalLeads} leads total · ${loadedCount} loaded across ${PIPELINE_STAGES.length} stages · Drag to update status · Swipe columns on mobile`}
         />
-        {(country || province || categoryId) ? (
+        {(country || province || categoryIds.length > 0) ? (
           <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
             {country ? (
               <button
@@ -268,17 +282,18 @@ export function ProviderOpsPipelinePage() {
                 Province: {province} ×
               </button>
             ) : null}
-            {categoryId ? (
+            {categoryIds.length > 0 ? (
               <button
                 type="button"
                 onClick={() => {
                   const next = new URLSearchParams(sp);
+                  next.delete("category_ids");
                   next.delete("category_id");
                   setSp(next, { replace: true });
                 }}
                 className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700"
               >
-                Category: {(categoryOptions.find((c) => c.id === categoryId)?.name ?? "selected")} ×
+                Categories: {selectedCategoryNames.join(", ")} ×
               </button>
             ) : null}
           </div>
@@ -314,22 +329,36 @@ export function ProviderOpsPipelinePage() {
               <option key={opt.value} value={opt.value}>{opt.label} ({opt.count})</option>
             ))}
           </select>
-          <select
-            value={categoryId}
-            onChange={(e) => {
-              const next = new URLSearchParams(sp);
-              if (e.target.value) next.set("category_id", e.target.value); else next.delete("category_id");
-              next.delete("page");
-              setSp(next, { replace: true });
-            }}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700"
-          >
-            <option value="">All Categories</option>
-            {categoryOptions.map((opt) => (
-              <option key={opt.id} value={opt.id}>{opt.name} ({opt.count})</option>
-            ))}
-          </select>
-          {(country || province || categoryId) ? (
+          <div className="min-w-[220px] rounded-lg border border-gray-300 bg-white p-2">
+            <div className="mb-1 text-[11px] font-medium text-gray-600">Categories</div>
+            <div className="max-h-36 space-y-1 overflow-auto pr-1">
+              {categoryOptions.map((opt) => {
+                const checked = categoryIds.includes(opt.id);
+                return (
+                  <label key={opt.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs text-gray-700 hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const next = new URLSearchParams(sp);
+                        const selected = new Set(categoryIds);
+                        if (e.target.checked) selected.add(opt.id);
+                        else selected.delete(opt.id);
+                        next.delete("category_id");
+                        next.delete("category_ids");
+                        [...selected].forEach((id) => next.append("category_ids", id));
+                        next.delete("page");
+                        setSp(next, { replace: true });
+                      }}
+                    />
+                    <span className="flex-1 truncate">{opt.name}</span>
+                    <span className="text-gray-400">{opt.count}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          {(country || province || categoryIds.length > 0) ? (
             <button
               type="button"
               className="text-xs text-gray-500 underline hover:text-gray-700"
@@ -337,6 +366,7 @@ export function ProviderOpsPipelinePage() {
                 const next = new URLSearchParams(sp);
                 next.delete("country");
                 next.delete("province");
+                next.delete("category_ids");
                 next.delete("category_id");
                 setSp(next, { replace: true });
               }}

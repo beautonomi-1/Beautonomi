@@ -35,6 +35,18 @@ export async function GET(request: NextRequest) {
       orderBy: { column: "display_order", ascending: true },
     });
     const pricingPlans = scopedPricingPlans.data || [];
+    const diagnostics = {
+      tenant_id: currentTenantId,
+      subscription_plan_count: subscriptionPlans.length,
+      pricing_plan_count: pricingPlans.length,
+      source: "tenant_global_merged",
+      empty_reason:
+        subscriptionPlans.length === 0
+          ? currentTenantId
+            ? "No tenant-specific or global subscription_plans are visible for the current admin tenant."
+            : "No global subscription_plans are visible in the current admin scope."
+          : null,
+    };
     const pricingPlanBySubscriptionPlanId = new Map<string, Record<string, unknown>>();
     for (const plan of pricingPlans) {
       const subscriptionPlanId = String(plan.subscription_plan_id ?? "");
@@ -77,7 +89,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return successResponse(plansWithPricing);
+    return successResponse({
+      plans: plansWithPricing,
+      meta: diagnostics,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to fetch plans");
   }

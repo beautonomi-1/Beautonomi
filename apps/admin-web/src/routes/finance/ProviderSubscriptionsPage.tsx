@@ -32,6 +32,7 @@ type SubRow = Record<string, unknown> & {
 };
 
 type PlanOption = { id: string; name: string };
+type PlansPayload = Record<string, unknown>[] | { plans?: Record<string, unknown>[] };
 
 export function ProviderSubscriptionsPage() {
   useAdminDocumentTitle("Provider Subscriptions");
@@ -56,12 +57,12 @@ export function ProviderSubscriptionsPage() {
 
   const plansQ = useQuery({
     queryKey: adminQueryKeys.plans(),
-    queryFn: () => adminApi.getJson<Record<string, unknown>[]>("/api/admin/plans", { timeoutMs: 60_000 }),
+    queryFn: () => adminApi.getJson<PlansPayload>("/api/admin/plans", { timeoutMs: 60_000 }),
     enabled: allowed,
   });
 
   const planOptions: PlanOption[] = useMemo(() => {
-    const list = Array.isArray(plansQ.data) ? plansQ.data : [];
+    const list = Array.isArray(plansQ.data) ? plansQ.data : plansQ.data?.plans ?? [];
     return list
       .map((p) => ({
         id: String(p.id ?? ""),

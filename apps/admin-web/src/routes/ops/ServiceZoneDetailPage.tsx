@@ -351,6 +351,10 @@ export function ServiceZoneDetailPage() {
           <MapPin className="h-4 w-4 text-indigo-600" />
           Zone coverage map
         </h3>
+        <p className="mb-3 text-xs text-gray-600">
+          Use the floating map controls to <span className="font-medium text-green-700">Draw inclusion</span> or{" "}
+          <span className="font-medium text-red-700">Draw exclusion</span>. Draw controls are available while the zone is in draft; published zones must be unpublished before geometry changes.
+        </p>
         <ServiceZoneMapEditor
           key={id}
           zoneId={id!}

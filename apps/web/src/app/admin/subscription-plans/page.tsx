@@ -336,8 +336,9 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
     try {
       setLoading(true);
       const url = useMergedPlans ? "/api/admin/plans" : "/api/admin/subscription-plans";
-      const response = await fetcher.get<{ data: SubscriptionPlan[] }>(url);
-      setPlans(response.data || []);
+      const response = await fetcher.get<{ data: SubscriptionPlan[] | { plans?: SubscriptionPlan[] } }>(url);
+      const payload = response.data;
+      setPlans(Array.isArray(payload) ? payload : payload?.plans ?? []);
     } catch (error) {
       console.error("Error fetching plans:", error);
       toast.error("Failed to load subscription plans");

@@ -122,26 +122,7 @@ export function combineDateAndTime(dateStr: string, timeStr: string, timezone?: 
   if (normalised) {
     try {
       const iso = `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-      const formatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: normalised,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      });
-
-      const utcGuess = new Date(iso + "Z");
-      const parts = formatter.formatToParts(utcGuess);
-      const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
-      const wallHour = get("hour") === 24 ? 0 : get("hour");
-      const diffMs =
-        (wallHour - hours) * 3600000 +
-        (get("minute") - minutes) * 60000 +
-        (get("second") - seconds) * 1000;
-      return new Date(utcGuess.getTime() - diffMs);
+      return fromZonedTime(iso, normalised);
     } catch {
       // Defence-in-depth — fall through to the UTC interpretation below.
     }

@@ -92,6 +92,61 @@ describe("calculateAvailableSlots — timezone option (Africa/Johannesburg, UTC+
 
     expect(result.map((s) => s.time)).toContain("10:00");
   });
+
+  it("supports overnight shifts with midnight slots", () => {
+    const constraints = makeConstraints();
+    constraints.staffShifts = [
+      {
+        id: "overnight",
+        staff_id: "staff-a",
+        date: TEST_DATE,
+        start_time: "22:00:00",
+        end_time: "02:00:00",
+        is_recurring: false,
+      },
+    ];
+
+    const result = calculateAvailableSlots(constraints, DURATION, TEST_DATE, {
+      slotInterval: 60,
+      timezone: "Africa/Johannesburg",
+    });
+
+    const available = result.filter((s) => s.available).map((s) => s.time);
+    expect(available).toEqual(expect.arrayContaining(["00:00", "01:00", "22:00", "23:00"]));
+  });
+
+  it("applies overnight blockers across midnight", () => {
+    const constraints = makeConstraints();
+    constraints.staffShifts = [
+      {
+        id: "overnight",
+        staff_id: "staff-a",
+        date: TEST_DATE,
+        start_time: "22:00:00",
+        end_time: "02:00:00",
+        is_recurring: false,
+      },
+    ];
+    constraints.timeBlocks = [
+      {
+        id: "block-midnight",
+        staff_id: "staff-a",
+        date: TEST_DATE,
+        start_time: "23:30:00",
+        end_time: "00:30:00",
+        is_recurring: false,
+        is_active: true,
+      },
+    ];
+
+    const result = calculateAvailableSlots(constraints, DURATION, TEST_DATE, {
+      slotInterval: 30,
+      timezone: "Africa/Johannesburg",
+    });
+
+    expect(result.find((s) => s.time === "23:30")?.available).toBe(false);
+    expect(result.find((s) => s.time === "00:00")?.available).toBe(false);
+  });
 });
 
 describe("availabilitySlotsAsTimeSlots — TZ-aware label extraction", () => {

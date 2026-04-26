@@ -2,7 +2,8 @@
 
 import React, { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { formatDateKeyInTimeZone } from "@beautonomi/utils";
+import { resolveTz } from "@/lib/dates/provider-tz";
 import type { Appointment, TeamMember, TimeBlock } from "@/lib/provider-portal/types";
 import { mergeTeamWorkingHoursForCalendar } from "./utils";
 import { GestureLayer } from "./GestureLayer";
@@ -28,6 +29,7 @@ interface StaffColumnProps {
   workStart: number;
   workEnd: number;
   locationOperatingHours?: Record<string, { open: string; close: string; closed: boolean }> | null;
+  businessTimezone?: string;
   onAppointmentClick: (apt: Appointment) => void;
   onTimeSlotClick: (date: Date, time: string, staffId: string) => void;
   onTimeBlockClick?: (block: TimeBlock) => void;
@@ -50,12 +52,13 @@ function StaffColumnComponent({
   workStart,
   workEnd,
   locationOperatingHours,
+  businessTimezone,
   onAppointmentClick,
   onTimeSlotClick,
   onTimeBlockClick,
   formatPrice,
 }: StaffColumnProps) {
-  const dateStr = format(date, "yyyy-MM-dd");
+  const dateStr = formatDateKeyInTimeZone(date, resolveTz(businessTimezone));
 
   const staffWorkingHoursEffective = useMemo(() => {
     if (member.working_hours && Object.keys(member.working_hours).length > 0) {
@@ -155,6 +158,7 @@ export const StaffColumn = memo(StaffColumnComponent, (prev, next) => {
   if (prev.onAppointmentClick !== next.onAppointmentClick) return false;
   if (prev.onTimeSlotClick !== next.onTimeSlotClick) return false;
   if (prev.locationOperatingHours !== next.locationOperatingHours) return false;
+  if (prev.businessTimezone !== next.businessTimezone) return false;
   if (prev.member.working_hours !== next.member.working_hours) return false;
 
   return true;

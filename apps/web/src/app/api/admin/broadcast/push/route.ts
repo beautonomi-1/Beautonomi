@@ -7,6 +7,7 @@ import { sendToUsers } from "@/lib/notifications/onesignal";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import {
   resolveOneSignalCredentials,
+  validateOneSignalCredentialPair,
   type OneSignalAppType,
 } from "@/lib/platform/secrets";
 
@@ -97,10 +98,15 @@ export async function POST(request: NextRequest) {
           : undefined;
 
     const osCreds = await resolveOneSignalCredentials(oneSignalAppType, { tenantId });
-    if (!osCreds.appId || !osCreds.restKey) {
+    const validation = validateOneSignalCredentialPair({
+      appId: osCreds.appId,
+      restKey: osCreds.restKey,
+      appType: oneSignalAppType,
+    });
+    if (validation.ok === false) {
       return errorResponse(
-        "Push is not configured for this deployment. Set ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY (or ONESIGNAL_APP_ID_CUSTOMER / _PROVIDER and matching REST keys), or save OneSignal under Platform settings / Superadmin (global or per-market tenant). Expo / NEXT_PUBLIC_* only configure client apps; the API needs REST keys in env or platform_secrets.",
-        "ONESIGNAL_NOT_CONFIGURED",
+        validation.message,
+        validation.code,
         503
       );
     }
@@ -129,7 +135,10 @@ export async function POST(request: NextRequest) {
     if (!result.success) {
       const detail = result.error || result.message || "Failed to send broadcast";
       const notConfigured =
-        typeof detail === "string" && detail.includes("OneSignal API keys not configured");
+        typeof detail === "string" &&
+        (detail.includes("OneSignal API keys not configured") ||
+          detail.includes("OneSignal REST API key") ||
+          detail.includes("OneSignal rejected"));
       return errorResponse(
         detail,
         notConfigured ? "ONESIGNAL_NOT_CONFIGURED" : "BROADCAST_ERROR",

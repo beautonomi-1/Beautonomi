@@ -46,6 +46,17 @@ function formatOneSignalApiErrors(responseData: unknown): string {
   return "Unknown error";
 }
 
+function formatOneSignalSendFailure(status: number, responseData: unknown, appId: string): string {
+  const detail = formatOneSignalApiErrors(responseData);
+  if (status === 401 || /authorization|api key|rest api key/i.test(detail)) {
+    return `OneSignal rejected the REST API key for App ID ${appId}. Check that the saved REST API key belongs to this exact OneSignal app and is a server REST API key, not an Expo/NEXT_PUBLIC client value. OneSignal said: ${detail}`;
+  }
+  if (/app_id/i.test(detail) && /not found|invalid|mismatch/i.test(detail)) {
+    return `OneSignal rejected App ID ${appId}. Check the App ID/key pair in Platform settings. OneSignal said: ${detail}`;
+  }
+  return detail;
+}
+
 function eventTypeFromPayloadData(data: unknown): string {
   if (data && typeof data === "object" && !Array.isArray(data)) {
     const t = (data as { type?: unknown }).type;
@@ -418,7 +429,7 @@ async function sendOneSignalNotification(
 
     if (!response.ok) {
       console.error("OneSignal API error:", responseData);
-      const errMsg = formatOneSignalApiErrors(responseData);
+      const errMsg = formatOneSignalSendFailure(response.status, responseData, appId);
       await logNotification({
         event_type: eventTypeFromPayloadData(payload.data),
         recipients: payload.include_player_ids || payload.include_external_user_ids || [],

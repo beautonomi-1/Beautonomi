@@ -37,6 +37,21 @@ function escapeLike(value: string): string {
   return value.replace(/[%_]/g, "");
 }
 
+function parseCategoryIds(searchParams: URLSearchParams): string[] {
+  const raw = [
+    ...searchParams.getAll("category_ids"),
+    ...searchParams.getAll("category_id"),
+  ];
+  const seen = new Set<string>();
+  for (const value of raw) {
+    for (const part of value.split(",")) {
+      const id = part.trim();
+      if (id) seen.add(id);
+    }
+  }
+  return [...seen];
+}
+
 function coerceRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -81,23 +96,21 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")?.trim();
     const assignedTo = searchParams.get("assigned_to");
     const country = searchParams.get("country");
-    const categoryId = searchParams.get("category_id");
+    const categoryIds = parseCategoryIds(searchParams);
     const province = searchParams.get("province")?.trim();
 
-    // Pre-resolve lead IDs for category filter (join through provider_lead_categories)
+    // Pre-resolve lead IDs for category filter (join through provider_lead_categories).
+    // Multiple selected categories use OR semantics: a lead matching any selected
+    // global category is included.
     let categoryLeadIds: string[] | null = null;
-    if (categoryId) {
+    if (categoryIds.length > 0) {
       const { data: catRows } = await supabase
         .from("provider_lead_categories")
         .select("lead_id")
-        .eq("global_category_id", categoryId);
-      categoryLeadIds = (catRows ?? []).map((r: { lead_id: string }) => r.lead_id);
+        .in("global_category_id", categoryIds);
+      categoryLeadIds = [...new Set((catRows ?? []).map((r: { lead_id: string }) => r.lead_id))];
       if (categoryLeadIds.length === 0) {
-        return successResponse({
-          data: [],
-          meta: { page, limit, total: 0, has_more: false },
-          stage_counts: { all: 0 },
-        });
+        categoryLeadIds = ["00000000-0000-0000-0000-000000000000"];
       }
     }
 
@@ -128,7 +141,7 @@ export async function GET(request: NextRequest) {
     if (country) {
       query = query.eq("country", country);
     }
-    if (categoryId && categoryLeadIds) {
+    if (categoryIds.length > 0 && categoryLeadIds) {
       query = query.in("id", categoryLeadIds);
     }
     if (province) {
@@ -164,7 +177,7 @@ export async function GET(request: NextRequest) {
           `resolved_location->>province.ilike.%${safeProvince}%,resolved_location->>state.ilike.%${safeProvince}%,resolved_location->>region.ilike.%${safeProvince}%,suggested_location_text.ilike.%${safeProvince}%`
         );
       }
-      if (categoryId) {
+      if (categoryIds.length > 0) {
         q = q.in("id", categoryLeadIds!);
       }
       if (search) {
@@ -199,7 +212,6 @@ export async function GET(request: NextRequest) {
     if (stage && stage !== "all") optionsQuery = optionsQuery.eq("commercial_stage", stage);
     if (source && source !== "all") optionsQuery = optionsQuery.eq("source", source);
     if (assignedTo) optionsQuery = optionsQuery.eq("assigned_to", assignedTo);
-    if (categoryId && categoryLeadIds) optionsQuery = optionsQuery.in("id", categoryLeadIds);
     if (search) {
       const safe = escapeLike(search);
       optionsQuery = optionsQuery.or(
@@ -232,16 +244,37 @@ export async function GET(request: NextRequest) {
     }
 
     const leadIdsForOptions = optionRows.map((row) => row.id).filter(Boolean);
-    const categoryCounts = new Map<string, { id: string; name: string; count: number; seen: Set<string> }>();
+    const categoryCounts = new Map<string, { id: string; name: string; slug?: string | null; icon?: string | null; count: number; seen: Set<string> }>();
+    const { data: globalCategories } = await supabase
+      .from("global_service_categories")
+      .select("id, name, slug, icon, display_order")
+      .eq("is_active", true)
+      .order("display_order", { ascending: true });
+    for (const cat of (globalCategories ?? []) as Array<{
+      id?: string;
+      name?: string;
+      slug?: string | null;
+      icon?: string | null;
+    }>) {
+      if (!cat.id || !cat.name) continue;
+      categoryCounts.set(cat.id, {
+        id: cat.id,
+        name: cat.name,
+        slug: cat.slug ?? null,
+        icon: cat.icon ?? null,
+        count: 0,
+        seen: new Set(),
+      });
+    }
     if (leadIdsForOptions.length > 0) {
       const { data: categoryRows } = await supabase
         .from("provider_lead_categories")
-        .select("lead_id, global_category_id, global_service_categories:global_category_id(id,name)")
+        .select("lead_id, global_category_id, global_service_categories:global_category_id(id,name,slug,icon)")
         .in("lead_id", leadIdsForOptions);
       for (const row of (categoryRows ?? []) as Array<{
         lead_id?: string;
         global_category_id?: string;
-        global_service_categories?: { id?: string; name?: string } | null;
+        global_service_categories?: { id?: string; name?: string; slug?: string | null; icon?: string | null } | null;
       }>) {
         const leadId = typeof row.lead_id === "string" ? row.lead_id : "";
         const categoryIdValue =
@@ -259,6 +292,8 @@ export async function GET(request: NextRequest) {
           categoryCounts.set(categoryIdValue, {
             id: categoryIdValue,
             name: categoryName,
+            slug: row.global_service_categories?.slug ?? null,
+            icon: row.global_service_categories?.icon ?? null,
             count: 1,
             seen: new Set([leadId]),
           });

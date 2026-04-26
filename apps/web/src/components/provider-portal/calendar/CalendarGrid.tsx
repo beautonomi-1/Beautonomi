@@ -12,6 +12,7 @@ import { useCalendarPreferences } from "@/lib/settings/calendarPreferences";
 import { DragGhostOverlay } from "@/components/provider-portal/DragDropCalendar";
 import type { Appointment, TeamMember, TimeBlock, AvailabilityBlockDisplay } from "@/lib/provider-portal/types";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { formatDateKeyInTimeZone } from "@beautonomi/utils";
 
 import { HOUR_HEIGHT, TIME_COLUMN_WIDTH, UNASSIGNED_ID } from "./constants";
 import {
@@ -79,6 +80,8 @@ function CalendarGridComponent({
   const useMangomintMode = isMangomintModeEnabled();
   const { format: providerFormatMoney } = useProviderMoneyFormat();
   const stableFormatPrice = useCallback((n: number) => providerFormatMoney(n), [providerFormatMoney]);
+  const tz = resolveTz(businessTimezone);
+  const dateKey = useCallback((date: Date) => formatDateKeyInTimeZone(date, tz), [tz]);
 
   const timeSlots = useMemo(() => generateTimeSlots(startHour, endHour), [startHour, endHour]);
   const isMultiStaffView = view === "day";
@@ -134,13 +137,13 @@ function CalendarGridComponent({
 
   const getAppointmentsForStaff = useCallback(
     (staffId: string, date: Date): Appointment[] =>
-      appointmentsByStaffAndDate.get(`${staffId}-${format(date, "yyyy-MM-dd")}`) || [],
-    [appointmentsByStaffAndDate],
+      appointmentsByStaffAndDate.get(`${staffId}-${dateKey(date)}`) || [],
+    [appointmentsByStaffAndDate, dateKey],
   );
 
   const getBlocksForStaff = useCallback(
     (staffId: string, date: Date): CalendarBlock[] => {
-      const dateStr = format(date, "yyyy-MM-dd");
+      const dateStr = dateKey(date);
       const tbStaff = timeBlocksByStaffAndDate.get(`${staffId}-${dateStr}`) || [];
       const tbAll = timeBlocksByStaffAndDate.get(`__all__-${dateStr}`) || [];
       const tb = [...tbStaff, ...tbAll];
@@ -157,13 +160,13 @@ function CalendarGridComponent({
         })),
       ];
     },
-    [timeBlocksByStaffAndDate, availabilityBlocksByStaffAndDate],
+    [timeBlocksByStaffAndDate, availabilityBlocksByStaffAndDate, dateKey],
   );
 
   // Day view: include Unassigned and orphan staff
   const displayMembers = useMemo(() => {
     if (view !== "day") return teamMembers;
-    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    const dateStr = dateKey(selectedDate);
     const memberIds = new Set(teamMembers.map((m) => m.id));
     const orphans: TeamMember[] = [];
     const hasUnassigned = (appointmentsByStaffAndDate.get(`${UNASSIGNED_ID}-${dateStr}`) ?? []).length > 0;
@@ -191,7 +194,7 @@ function CalendarGridComponent({
     }
     result.push(...teamMembers, ...orphans);
     return result;
-  }, [teamMembers, selectedDate, view, appointmentsByStaffAndDate]);
+  }, [teamMembers, selectedDate, view, appointmentsByStaffAndDate, dateKey]);
 
   // Stable callback references
   const handleAppointmentClick = useCallback(
@@ -204,7 +207,6 @@ function CalendarGridComponent({
   );
 
   // Current time indicator (business timezone-aware)
-  const tz = resolveTz(businessTimezone);
   const now = nowInTz(tz);
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
@@ -213,8 +215,8 @@ function CalendarGridComponent({
   const currentTimeTop = (currentHour - startHour) * HOUR_HEIGHT + (currentMinute / 60) * HOUR_HEIGHT;
 
   const firstAvailableTop = useMemo(() => {
-    const dateStr = format(selectedDate, "yyyy-MM-dd");
-    const d = dates.find((x) => format(x, "yyyy-MM-dd") === dateStr) ?? selectedDate;
+    const dateStr = dateKey(selectedDate);
+    const d = dates.find((x) => dateKey(x) === dateStr) ?? selectedDate;
     const staffPool =
       isMultiStaffView
         ? displayMembers.filter((m) => m.id !== UNASSIGNED_ID)
@@ -236,6 +238,7 @@ function CalendarGridComponent({
     isMultiStaffView,
     displayMembers,
     teamMembers,
+    dateKey,
   ]);
 
   // Scroll: never above first bookable hour; today also bias toward "now" when it's the next meaningful anchor
@@ -244,7 +247,7 @@ function CalendarGridComponent({
     if (!el) return;
 
     const viewingToday = dates.some((d) => isTodayInTz(d, tz));
-    const visibleDateStrs = new Set(dates.map((d) => format(d, "yyyy-MM-dd")));
+    const visibleDateStrs = new Set(dates.map((d) => dateKey(d)));
 
     let earliestAppt = Infinity;
     for (const apt of appointments) {
@@ -284,6 +287,7 @@ function CalendarGridComponent({
     currentTimeTop,
     firstAvailableTop,
     tz,
+    dateKey,
   ]);
 
   /** Keep staff header strip aligned with the day grid when columns overflow horizontally. */
@@ -417,6 +421,7 @@ function CalendarGridComponent({
                       workStart={workStart}
                       workEnd={workEnd}
                       locationOperatingHours={locationOperatingHours}
+                      businessTimezone={tz}
                       onAppointmentClick={handleAppointmentClick}
                       onTimeSlotClick={handleTimeSlotClick}
                       onTimeBlockClick={onTimeBlockClick}
@@ -441,6 +446,7 @@ function CalendarGridComponent({
                       workStart={workStart}
                       workEnd={workEnd}
                       locationOperatingHours={locationOperatingHours}
+                      businessTimezone={tz}
                       onAppointmentClick={handleAppointmentClick}
                       onTimeSlotClick={handleTimeSlotClick}
                       onTimeBlockClick={onTimeBlockClick}

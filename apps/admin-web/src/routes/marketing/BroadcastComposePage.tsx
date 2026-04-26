@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -13,6 +13,16 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type Channel = "push" | "sms" | "email";
 type RecipientType = "all_users" | "all_providers" | "custom";
+type NotificationConfig = {
+  onesignal_apps?: {
+    customer?: { app_id?: string | null; rest_api_key_configured?: boolean };
+    provider?: { app_id?: string | null; rest_api_key_configured?: boolean };
+  };
+  diagnostics?: {
+    onesignal_configured?: boolean;
+    onesignal_missing?: string[];
+  };
+};
 
 function parseUserIds(raw: string): string[] {
   return raw
@@ -23,7 +33,7 @@ function parseUserIds(raw: string): string[] {
 
 export function BroadcastComposePage() {
   useAdminDocumentTitle("Compose Broadcast");
-  const { denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
+  const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
   const [channel, setChannel] = useState<Channel>("push");
   const [recipientType, setRecipientType] = useState<RecipientType>("all_users");
   const [customIds, setCustomIds] = useState("");
@@ -32,6 +42,19 @@ export function BroadcastComposePage() {
   const [message, setMessage] = useState("");
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+
+  const configQ = useQuery({
+    queryKey: ["notifications-config-for-broadcast"],
+    queryFn: () => adminApi.getJson<NotificationConfig>("/api/admin/notifications/config", { timeoutMs: 30_000 }),
+    enabled: allowed && channel === "push",
+  });
+
+  const activeOneSignalConfig =
+    recipientType === "all_providers"
+      ? configQ.data?.onesignal_apps?.provider
+      : recipientType === "all_users"
+        ? configQ.data?.onesignal_apps?.customer
+        : null;
 
   const m = useMutation({
     mutationFn: async () => {
@@ -117,6 +140,34 @@ export function BroadcastComposePage() {
               <option value="custom">Custom user IDs</option>
             </select>
           </div>
+
+          {channel === "push" ? (
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-950">
+              <div className="font-medium">OneSignal configuration check</div>
+              {recipientType === "custom" ? (
+                <p className="mt-1 text-xs">
+                  Custom audiences may contain customer and provider users. Make sure both OneSignal apps have App IDs and REST API keys configured.
+                </p>
+              ) : configQ.isLoading ? (
+                <p className="mt-1 text-xs">Checking saved OneSignal app ID and REST key presence…</p>
+              ) : activeOneSignalConfig ? (
+                <p className="mt-1 text-xs">
+                  {recipientType === "all_providers" ? "Provider" : "Customer"} app ID{" "}
+                  {activeOneSignalConfig.app_id ? "is set" : "is missing"}; REST API key{" "}
+                  {activeOneSignalConfig.rest_api_key_configured ? "is set" : "is missing"}.
+                </p>
+              ) : (
+                <p className="mt-1 text-xs">
+                  OneSignal config could not be checked here. Broadcast API will still validate credentials before sending.
+                </p>
+              )}
+              {configQ.data?.diagnostics?.onesignal_missing?.length ? (
+                <p className="mt-1 text-xs text-blue-900">
+                  Missing: {configQ.data.diagnostics.onesignal_missing.join(", ")}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           {recipientType === "custom" ? (
             <div>

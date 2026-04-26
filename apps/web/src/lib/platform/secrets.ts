@@ -226,6 +226,45 @@ export async function resolveOneSignalCredentials(
   return { appId, restKey };
 }
 
+export function validateOneSignalCredentialPair(input: {
+  appId: string | null | undefined;
+  restKey: string | null | undefined;
+  appType?: OneSignalAppType;
+}): { ok: true } | { ok: false; code: string; message: string } {
+  const appLabel = input.appType ? `${input.appType} ` : "";
+  const appId = normalizeOneSignalAppId(input.appId);
+  const restKey = normalizeOneSignalRestKey(input.restKey);
+  if (!appId) {
+    return {
+      ok: false,
+      code: "ONESIGNAL_APP_ID_MISSING",
+      message: `Missing ${appLabel}OneSignal App ID. Save it in Platform settings or set the matching ONESIGNAL_APP_ID${input.appType ? `_${input.appType.toUpperCase()}` : ""} environment variable.`,
+    };
+  }
+  if (!restKey) {
+    return {
+      ok: false,
+      code: "ONESIGNAL_REST_KEY_MISSING",
+      message: `Missing ${appLabel}OneSignal REST API key. Expo/NEXT_PUBLIC keys are client-side only; the API needs the server REST key in env or platform_secrets.`,
+    };
+  }
+  if (appId === restKey.replace(/^(basic|key)\s+/i, "").trim()) {
+    return {
+      ok: false,
+      code: "ONESIGNAL_KEY_EQUALS_APP_ID",
+      message: `The ${appLabel}OneSignal REST API key appears to be the App ID. Use the REST API key from the same OneSignal app, not the App ID.`,
+    };
+  }
+  if (/^https?:\/\//i.test(restKey)) {
+    return {
+      ok: false,
+      code: "ONESIGNAL_REST_KEY_INVALID_FORMAT",
+      message: `The ${appLabel}OneSignal REST API key looks like a URL. Paste the server REST API key from OneSignal Keys & IDs.`,
+    };
+  }
+  return { ok: true };
+}
+
 /**
  * Token for server-side Mapbox APIs (Geocoding, Directions, etc.).
  * Order: MAPBOX_ACCESS_TOKEN → platform_secrets.mapbox_access_token → mapbox_config.public_access_token
