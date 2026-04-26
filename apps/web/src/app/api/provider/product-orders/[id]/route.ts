@@ -13,6 +13,7 @@ import { z } from "zod";
 const updateSchema = z.object({
   status: z
     .enum([
+      "pending",
       "confirmed",
       "processing",
       "ready_for_collection",
@@ -32,16 +33,7 @@ const updateSchema = z.object({
   cancellation_reason: z.string().max(500).optional(),
 });
 
-const STATUS_TRANSITIONS: Record<string, string[]> = {
-  pending: ["confirmed", "cancelled"],
-  confirmed: ["processing", "cancelled"],
-  processing: ["ready_for_collection", "shipped", "cancelled"],
-  ready_for_collection: ["delivered", "cancelled"],
-  shipped: ["delivered"],
-  delivered: ["refunded"],
-  cancelled: [],
-  refunded: [],
-};
+const TERMINAL_STATUSES = new Set(["cancelled", "refunded"]);
 
 /**
  * GET /api/provider/product-orders/[id]
@@ -111,7 +103,7 @@ export async function PATCH(
 
     // Get current order
     const { data: order, error: fetchErr } = await (supabase.from("product_orders") as any)
-      .select("id, status, provider_id")
+      .select("id, status, provider_id, payment_status, total_amount")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -120,13 +112,26 @@ export async function PATCH(
       return notFoundResponse("Order not found");
     }
 
-    // Validate status transition
+    // Flexible operational status management with guardrails for destructive states.
     if (parsed.status) {
-      const allowed = STATUS_TRANSITIONS[order.status] ?? [];
-      if (!allowed.includes(parsed.status)) {
+      if (TERMINAL_STATUSES.has(order.status) && parsed.status !== order.status) {
         return errorResponse(
-          `Cannot transition from "${order.status}" to "${parsed.status}"`,
+          `Cannot change a ${order.status} order.`,
           "INVALID_TRANSITION",
+          400,
+        );
+      }
+      if (parsed.status === "cancelled" && order.payment_status === "paid" && !parsed.cancellation_reason?.trim()) {
+        return errorResponse(
+          "Please include a cancellation reason for paid orders.",
+          "CANCELLATION_REASON_REQUIRED",
+          400,
+        );
+      }
+      if (parsed.status === "refunded" && order.payment_status !== "paid") {
+        return errorResponse(
+          "Only paid orders can be marked as refunded.",
+          "INVALID_REFUND_STATUS",
           400,
         );
       }
@@ -142,9 +147,6 @@ export async function PATCH(
       if (parsed.status === "cancelled") {
         updatePayload.cancelled_at = new Date().toISOString();
         updatePayload.cancellation_reason = parsed.cancellation_reason ?? null;
-      }
-      if (parsed.status === "delivered" || parsed.status === "shipped") {
-        updatePayload.payment_status = "paid";
       }
       if (parsed.status === "refunded") {
         updatePayload.payment_status = "refunded";

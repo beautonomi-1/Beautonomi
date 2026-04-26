@@ -703,7 +703,26 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
     // Server-side pricing recomputation to prevent client-trusted totals from causing incorrect records.
     // Handles both tax-inclusive (SA VAT model: prices already include tax) and tax-exclusive modes.
-    const serverSubtotal = Number(body.subtotal) || 0;
+    const servicesSubtotal = Array.isArray(body.services)
+      ? body.services.reduce((sum: number, svc: any) => sum + (Number(svc.price) || 0), 0)
+      : 0;
+    const addonsSubtotal = Array.isArray(body.addons)
+      ? body.addons.reduce((sum: number, addon: any) => {
+          const qty = Number(addon.quantity ?? 1) || 1;
+          return sum + (Number(addon.price) || 0) * qty;
+        }, 0)
+      : 0;
+    const productsSubtotal = Array.isArray(body.products)
+      ? body.products.reduce((sum: number, product: any) => {
+          const qty = Number(product.quantity ?? 1) || 1;
+          const line =
+            Number(product.totalPrice ?? product.total_price) ||
+            (Number(product.unitPrice ?? product.unit_price ?? product.price) || 0) * qty;
+          return sum + line;
+        }, 0)
+      : 0;
+    const computedLineSubtotal = servicesSubtotal + addonsSubtotal + productsSubtotal;
+    const serverSubtotal = computedLineSubtotal > 0 ? computedLineSubtotal : Number(body.subtotal) || 0;
     let serverDiscountAmount = Number(body.discount_amount) || 0;
 
     // When a package is linked, compute the package discount from SERVICES-ONLY subtotal
@@ -717,9 +736,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
         .eq("provider_id", providerId)
         .maybeSingle();
       if (pkgRow?.price != null) {
-        const servicesOnlySubtotal = Array.isArray(body.services)
-          ? body.services.reduce((sum: number, svc: any) => sum + (Number(svc.price) || 0), 0)
-          : serverSubtotal;
+        const servicesOnlySubtotal = servicesSubtotal || serverSubtotal;
         if (pkgRow.price < servicesOnlySubtotal) {
           const packageDiscount = servicesOnlySubtotal - pkgRow.price;
           serverDiscountAmount = Math.max(serverDiscountAmount, packageDiscount);

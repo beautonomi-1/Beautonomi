@@ -30,6 +30,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Plus,
   Edit,
@@ -40,8 +48,11 @@ import {
   ArrowUp,
   ArrowDown,
   Trash2,
+  Link2,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
+import Link from "next/link";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
@@ -139,6 +150,25 @@ interface PricingPlanLink {
   subscription_plan_id: string | null;
   currency?: string | null;
   feature_lines?: string[];
+}
+
+interface PlansCatalogMeta {
+  tenant_id?: string | null;
+  subscription_plan_count?: number;
+  pricing_plan_count?: number;
+  active_pricing_plan_count?: number;
+  pricing_only_active_count?: number;
+  unlinked_subscription_plans_count?: number;
+  empty_reason?: string | null;
+  read_client?: string;
+}
+
+interface PricingOnlyRow {
+  row_kind: "pricing_only";
+  reason: "no_subscription_link" | "unknown_subscription_plan" | string;
+  orphan_subscription_plan_id?: string | null;
+  pricing_plan_id: string;
+  pricing_plan: PricingPlanLink & { id?: string; is_active?: boolean; subscription_plan_id?: string | null };
 }
 
 interface SubscriptionPlan {
@@ -265,6 +295,8 @@ type PlansPageProps = { useMergedPlans?: boolean };
 
 export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansPageProps) {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [pricingOnlyRows, setPricingOnlyRows] = useState<PricingOnlyRow[]>([]);
+  const [plansMeta, setPlansMeta] = useState<PlansCatalogMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -298,6 +330,12 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
     pricing_features: [] as string[],
     update_existing_subscriptions: false,
   });
+
+  /** When creating a subscription plan from a pricing-only card, link this pricing row after save. */
+  const [linkPricingPlanId, setLinkPricingPlanId] = useState<string | null>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkTargetPricingId, setLinkTargetPricingId] = useState<string | null>(null);
+  const [linkSelectedSubscriptionId, setLinkSelectedSubscriptionId] = useState<string>("");
 
   // Helper to normalize features from API (handle both legacy array and complex object)
   const normalizeFeatures = (features: any): FeatureGating => {
@@ -336,9 +374,29 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
     try {
       setLoading(true);
       const url = useMergedPlans ? "/api/admin/plans" : "/api/admin/subscription-plans";
-      const response = await fetcher.get<{ data: SubscriptionPlan[] | { plans?: SubscriptionPlan[] } }>(url);
+      const response = await fetcher.get<{
+        data:
+          | SubscriptionPlan[]
+          | {
+              plans?: SubscriptionPlan[];
+              pricing_only?: PricingOnlyRow[];
+              meta?: PlansCatalogMeta;
+            };
+      }>(url, useMergedPlans ? { staleTimeMs: 0 } : undefined);
       const payload = response.data;
-      setPlans(Array.isArray(payload) ? payload : payload?.plans ?? []);
+      if (useMergedPlans && payload && typeof payload === "object" && !Array.isArray(payload)) {
+        setPlans(payload.plans ?? []);
+        setPricingOnlyRows(
+          Array.isArray(payload.pricing_only)
+            ? (payload.pricing_only as PricingOnlyRow[])
+            : [],
+        );
+        setPlansMeta((payload.meta as PlansCatalogMeta) ?? null);
+      } else {
+        setPlans(Array.isArray(payload) ? payload : (payload as { plans?: SubscriptionPlan[] })?.plans ?? []);
+        setPricingOnlyRows([]);
+        setPlansMeta(null);
+      }
     } catch (error) {
       console.error("Error fetching plans:", error);
       toast.error("Failed to load subscription plans");
@@ -349,10 +407,11 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
 
   useEffect(() => {
     fetchPlans();
-  }, []);
+  }, [useMergedPlans]);
 
   const handleCreate = () => {
     setSelectedPlan(null);
+    setLinkPricingPlanId(null);
     setFormData({
       name: "",
       description: "",
@@ -384,6 +443,7 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
 
   const handleEdit = (plan: SubscriptionPlan) => {
     setSelectedPlan(plan);
+    setLinkPricingPlanId(null);
     const normalizedFeatures = normalizeFeatures(plan.features);
     const pp = plan.pricing_plan;
     setFormData({
@@ -450,8 +510,27 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
         toast.success("Plan created successfully");
       }
 
+      // Link orphan pricing card → new subscription plan (pricing-only reconciliation)
+      const linkedExistingPricingId =
+        useMergedPlans && linkPricingPlanId && savedPlan?.id && !selectedPlan ? linkPricingPlanId : null;
+      if (linkedExistingPricingId) {
+        await fetcher.put("/api/admin/pricing-plans", {
+          id: linkedExistingPricingId,
+          subscription_plan_id: savedPlan.id,
+          is_active: true,
+        });
+        setLinkPricingPlanId(null);
+        toast.success("Pricing card linked to the new subscription plan");
+      }
+
       // When consolidated view: sync pricing page entry so public pricing and onboarding use it
-      if (useMergedPlans && formData.show_on_pricing_page && savedPlan?.id) {
+      // Skip creating a second pricing row when we just linked an existing pricing card.
+      if (
+        useMergedPlans &&
+        formData.show_on_pricing_page &&
+        savedPlan?.id &&
+        !linkedExistingPricingId
+      ) {
         const featureLines = formData.pricing_features.filter((s) => !isBlankHtmlContent(s));
         const pricingPayload = {
           ...(selectedPlan?.pricing_plan ? { id: selectedPlan.pricing_plan.id } : {}),
@@ -495,6 +574,89 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
           : "Failed to save plan";
       toast.error(errorMessage);
       console.error("Error saving plan:", error);
+    }
+  };
+
+  const handleCreateFromPricingOnly = (row: PricingOnlyRow) => {
+    setSelectedPlan(null);
+    setLinkPricingPlanId(row.pricing_plan_id);
+    const pp = row.pricing_plan;
+    const rawPrice = String(pp.price ?? "")
+      .replace(/[^\d.,-]/g, "")
+      .replace(",", ".");
+    const num = parseFloat(rawPrice);
+    setFormData({
+      name: String(pp.name ?? ""),
+      description: typeof pp.description === "string" ? pp.description : "",
+      price_monthly: Number.isFinite(num) ? String(num) : "",
+      price_yearly: "",
+      currency: LAST_RESORT_CURRENCY as string,
+      features: getDefaultFeatures(),
+      is_free: false,
+      is_active: true,
+      is_popular: Boolean(pp.is_popular),
+      display_order: plans.length,
+      max_bookings_per_month: "",
+      max_staff_members: "",
+      max_locations: "1",
+      paystack_plan_code_monthly: "",
+      paystack_plan_code_yearly: "",
+      show_on_pricing_page: true,
+      price_display: String(pp.price ?? ""),
+      period_display: pp.period || "month",
+      description_display: typeof pp.description === "string" ? pp.description : "",
+      cta_text: pp.cta_text || "Get started",
+      display_order_pricing: typeof pp.display_order === "number" ? pp.display_order : plans.length,
+      pricing_currency: (pp.currency as string | undefined) ?? LAST_RESORT_CURRENCY,
+      pricing_features: Array.isArray(pp.feature_lines) ? [...(pp.feature_lines as string[])] : [],
+      update_existing_subscriptions: false,
+    });
+    setIsCreateDialogOpen(true);
+  };
+
+  const openLinkPricingDialog = (pricingPlanId: string) => {
+    if (!plans.length) {
+      toast.error("Create a subscription plan first, then link this card.");
+      return;
+    }
+    setLinkTargetPricingId(pricingPlanId);
+    setLinkSelectedSubscriptionId(plans[0]?.id ?? "");
+    setLinkDialogOpen(true);
+  };
+
+  const confirmLinkPricingToSubscription = async () => {
+    if (!linkTargetPricingId || !linkSelectedSubscriptionId) {
+      toast.error("Select a subscription plan to link");
+      return;
+    }
+    try {
+      await fetcher.put("/api/admin/pricing-plans", {
+        id: linkTargetPricingId,
+        subscription_plan_id: linkSelectedSubscriptionId,
+        is_active: true,
+      });
+      toast.success("Pricing card linked");
+      setLinkDialogOpen(false);
+      setLinkTargetPricingId(null);
+      await fetchPlans();
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Failed to link");
+    }
+  };
+
+  const hidePricingCardFromPublic = async (pricingPlanId: string) => {
+    try {
+      await fetcher.put("/api/admin/pricing-plans", {
+        id: pricingPlanId,
+        is_active: false,
+        subscription_plan_id: null,
+      });
+      toast.success("Card hidden from public pricing (deactivated)");
+      await fetchPlans();
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Failed to update pricing card");
     }
   };
 
@@ -573,6 +735,18 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
                 ? "Manage subscription tiers, feature access, and public pricing page in one place"
                 : "Manage subscription tiers and feature access with granular controls"}
             </p>
+            {useMergedPlans && (
+              <p className="text-sm text-muted-foreground mt-2 max-w-3xl">
+                Public <Link className="text-[#FF0077] underline font-medium" href="/pricing">/pricing</Link>{" "}
+                hero line (e.g. free trial wording) is{" "}
+                <strong>not</strong> driven by these rows — edit{" "}
+                <Link className="text-[#FF0077] underline font-medium" href="/admin/content">
+                  Admin → Content
+                </Link>{" "}
+                page slug <code className="text-xs bg-muted px-1 rounded">pricing</code>, section{" "}
+                <code className="text-xs bg-muted px-1 rounded">hero_description</code>.
+              </p>
+            )}
           </div>
           <Button onClick={handleCreate}>
             <Plus className="w-4 h-4 mr-2" />
@@ -580,7 +754,28 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
           </Button>
         </div>
 
-        {plans.length === 0 ? (
+        {useMergedPlans && plansMeta && (
+          <Alert variant={plansMeta.pricing_only_active_count ? "destructive" : "default"}>
+            {plansMeta.pricing_only_active_count ? (
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+            ) : null}
+            <AlertTitle>Catalog diagnostics</AlertTitle>
+            <AlertDescription className="space-y-1 text-sm">
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <span>Reads: {plansMeta.read_client ?? "service_role"}</span>
+                <span>Subscription plans: {plansMeta.subscription_plan_count ?? plans.length}</span>
+                <span>Pricing plans: {plansMeta.pricing_plan_count ?? "—"}</span>
+                <span>Active pricing cards: {plansMeta.active_pricing_plan_count ?? "—"}</span>
+                <span>Pricing-only (unlinked): {plansMeta.pricing_only_active_count ?? pricingOnlyRows.length}</span>
+              </div>
+              {plansMeta.empty_reason ? (
+                <p className="text-amber-800 dark:text-amber-200 mt-2">{plansMeta.empty_reason}</p>
+              ) : null}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {plans.length === 0 && (!useMergedPlans || pricingOnlyRows.length === 0) ? (
           <EmptyState
             title={useMergedPlans ? "No plans" : "No subscription plans"}
             description={useMergedPlans ? "Create your first plan to get started" : "Create your first subscription plan to get started"}
@@ -589,7 +784,9 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
               onClick: handleCreate,
             }}
           />
-        ) : (
+        ) : null}
+
+        {plans.length > 0 ? (
           <div className="bg-white rounded-lg border shadow-sm">
             <Table>
               <TableHeader>
@@ -623,7 +820,9 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
                         {plan.pricing_plan ? (
                           <Badge variant="outline" className="bg-green-50 text-green-800">Yes</Badge>
                         ) : (
-                          <span className="text-gray-400 text-sm">No</span>
+                          <Badge variant="secondary" className="text-amber-900 bg-amber-50">
+                            No public card
+                          </Badge>
                         )}
                       </TableCell>
                     )}
@@ -710,7 +909,110 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
               </TableBody>
             </Table>
           </div>
-        )}
+        ) : null}
+
+        {useMergedPlans && pricingOnlyRows.length > 0 ? (
+          <div className="space-y-3">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" aria-hidden />
+              Pricing-only cards (not linked to a subscription plan)
+            </h2>
+            <p className="text-sm text-muted-foreground max-w-3xl">
+              These active <code className="text-xs bg-muted px-1 rounded">pricing_plans</code> rows can still
+              appear on <Link href="/pricing" className="text-[#FF0077] underline">/pricing</Link> while{" "}
+              <code className="text-xs bg-muted px-1 rounded">subscription_plans</code> is empty or the link is
+              broken. Reconcile so provider billing and marketing stay aligned.
+            </p>
+            <div className="bg-white rounded-lg border shadow-sm overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Public card</TableHead>
+                    <TableHead>Issue</TableHead>
+                    <TableHead>Display</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pricingOnlyRows.map((row) => {
+                    const pp = row.pricing_plan;
+                    return (
+                      <TableRow key={row.pricing_plan_id}>
+                        <TableCell className="font-medium">{pp.name}</TableCell>
+                        <TableCell className="text-sm">
+                          {row.reason === "no_subscription_link"
+                            ? "No subscription_plan_id"
+                            : `Unknown subscription id: ${row.orphan_subscription_plan_id ?? "—"}`}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {pp.price} {pp.period ? `/ ${pp.period}` : ""}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="button" size="sm" variant="default" onClick={() => handleCreateFromPricingOnly(row)}>
+                              Create subscription from card
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => openLinkPricingDialog(row.pricing_plan_id)}>
+                              <Link2 className="w-3 h-3 mr-1" aria-hidden />
+                              Link to existing
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => hidePricingCardFromPublic(row.pricing_plan_id)}
+                            >
+                              Hide from /pricing
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        ) : null}
+
+        <Dialog
+          open={linkDialogOpen}
+          onOpenChange={(open) => {
+            setLinkDialogOpen(open);
+            if (!open) setLinkTargetPricingId(null);
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Link pricing card to subscription plan</DialogTitle>
+              <DialogDescription>
+                Sets <code className="text-xs">subscription_plan_id</code> on the pricing row so /pricing and
+                provider upgrade flows use the same catalog.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <Label>Subscription plan</Label>
+              <Select value={linkSelectedSubscriptionId} onValueChange={setLinkSelectedSubscriptionId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose plan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {plans.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} {p.is_free ? "(free)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setLinkDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => void confirmLinkPricingToSubscription()}>Save link</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Create/Edit Dialog */}
         <Dialog

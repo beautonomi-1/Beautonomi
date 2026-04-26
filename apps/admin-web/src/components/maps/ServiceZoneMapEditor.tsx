@@ -166,6 +166,10 @@ export function ServiceZoneMapEditor({
         const draw = new DrawClass({
           displayControlsDefault: false,
           defaultMode: "simple_select",
+          controls: {
+            polygon: true,
+            trash: true,
+          },
         });
         map.addControl(draw as unknown as mapboxgl.IControl, "top-left");
         drawRef.current = draw;
@@ -556,8 +560,8 @@ export function ServiceZoneMapEditor({
         <div className="absolute bottom-4 left-1/2 z-10 flex w-[calc(100%-1.5rem)] max-w-md -translate-x-1/2 flex-col items-center gap-2 pb-[env(safe-area-inset-bottom,0px)] sm:w-auto sm:pb-0">
           {drawIntent !== "none" && (
             <div className="w-full rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-950 shadow-md">
-              Drawing {drawIntent === "include" ? "included" : "excluded"} area. Click the map to add corners.{" "}
-              <strong>Double-click</strong> to finish.
+              Drawing {drawIntent === "include" ? "included" : "excluded"} area. Click the map to add corners, or use the{" "}
+              <strong>polygon</strong> / <strong>trash</strong> controls on the map. <strong>Double-click</strong> the last vertex to finish.
             </div>
           )}
           <div className="flex flex-wrap justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-lg">

@@ -138,6 +138,9 @@ export function CpModuleOnDemandPage() {
     ringtone_asset_path: "",
     ring_duration_seconds: 20,
     ring_repeat: true,
+    normal_booking_ringtone_asset_path: "",
+    normal_booking_ring_duration_seconds: 20,
+    normal_booking_ring_repeat: true,
     waiting_screen_timeout_seconds: 45,
     provider_accept_window_seconds: 30,
     ui_copy: "{}",
@@ -159,6 +162,9 @@ export function CpModuleOnDemandPage() {
           ringtone_asset_path: String(d.ringtone_asset_path ?? ""),
           ring_duration_seconds: Number(d.ring_duration_seconds ?? 20),
           ring_repeat: Boolean(d.ring_repeat ?? true),
+          normal_booking_ringtone_asset_path: String(d.normal_booking_ringtone_asset_path ?? ""),
+          normal_booking_ring_duration_seconds: Number(d.normal_booking_ring_duration_seconds ?? 20),
+          normal_booking_ring_repeat: Boolean(d.normal_booking_ring_repeat ?? true),
           waiting_screen_timeout_seconds: Number(d.waiting_screen_timeout_seconds ?? 45),
           provider_accept_window_seconds: Number(d.provider_accept_window_seconds ?? 30),
           ui_copy: typeof d.ui_copy === "string" ? d.ui_copy : JSON.stringify(d.ui_copy ?? {}, null, 2),
@@ -185,6 +191,9 @@ export function CpModuleOnDemandPage() {
         ringtone_asset_path: form.ringtone_asset_path || null,
         ring_duration_seconds: form.ring_duration_seconds,
         ring_repeat: form.ring_repeat,
+        normal_booking_ringtone_asset_path: form.normal_booking_ringtone_asset_path || null,
+        normal_booking_ring_duration_seconds: form.normal_booking_ring_duration_seconds,
+        normal_booking_ring_repeat: form.normal_booking_ring_repeat,
         waiting_screen_timeout_seconds: form.waiting_screen_timeout_seconds,
         provider_accept_window_seconds: form.provider_accept_window_seconds,
         ui_copy,
@@ -202,7 +211,10 @@ export function CpModuleOnDemandPage() {
   return (
     <div className="space-y-6">
       <CpBack />
-      <AdminPageHeader title="On-demand module" description="Ringtone, timeouts, UI copy." />
+      <AdminPageHeader
+        title="On-demand module"
+        description="On-demand ringtone, standard booking alert ringtone (provider app/web), timeouts, UI copy."
+      />
       <EnvSelect value={env} onChange={setEnv} />
       {msg ? (
         <AdminPanel>
@@ -242,7 +254,41 @@ export function CpModuleOnDemandPage() {
               checked={form.ring_repeat}
               onChange={(e) => setForm((p) => ({ ...p, ring_repeat: e.target.checked }))}
             />
-            Ring repeat
+            Ring repeat (on-demand)
+          </label>
+          <p className="text-xs text-gray-600 md:col-span-2">
+            Standard bookings (provider mobile + provider web): optional separate asset in app-assets. When set,
+            realtime new-booking alerts play this file when the provider has &quot;Booking alert sound&quot; enabled.
+            Leave empty to keep vibration-only on mobile.
+          </p>
+          <CpField label="Normal booking ringtone path">
+            <input
+              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+              value={form.normal_booking_ringtone_asset_path}
+              onChange={(e) => setForm((p) => ({ ...p, normal_booking_ringtone_asset_path: e.target.value }))}
+              placeholder="ux/ringtones/booking-alert.mp3"
+            />
+          </CpField>
+          <CpField label="Normal booking ring duration (s)">
+            <input
+              type="number"
+              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+              value={form.normal_booking_ring_duration_seconds}
+              onChange={(e) =>
+                setForm((p) => ({
+                  ...p,
+                  normal_booking_ring_duration_seconds: parseInt(e.target.value, 10) || 0,
+                }))
+              }
+            />
+          </CpField>
+          <label className="flex items-center gap-2 text-sm md:col-span-2">
+            <input
+              type="checkbox"
+              checked={form.normal_booking_ring_repeat}
+              onChange={(e) => setForm((p) => ({ ...p, normal_booking_ring_repeat: e.target.checked }))}
+            />
+            Normal booking ring repeat
           </label>
           <CpField label="Waiting screen timeout (s)">
             <input

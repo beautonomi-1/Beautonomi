@@ -22,6 +22,9 @@ export default function OnDemandModulePage() {
     ringtone_asset_path: "",
     ring_duration_seconds: 20,
     ring_repeat: true,
+    normal_booking_ringtone_asset_path: "",
+    normal_booking_ring_duration_seconds: 20,
+    normal_booking_ring_repeat: true,
     waiting_screen_timeout_seconds: 45,
     provider_accept_window_seconds: 30,
     ui_copy: "{}",
@@ -39,6 +42,9 @@ export default function OnDemandModulePage() {
             ringtone_asset_path: String(d.ringtone_asset_path ?? ""),
             ring_duration_seconds: Number(d.ring_duration_seconds ?? 20),
             ring_repeat: Boolean(d.ring_repeat ?? true),
+            normal_booking_ringtone_asset_path: String(d.normal_booking_ringtone_asset_path ?? ""),
+            normal_booking_ring_duration_seconds: Number(d.normal_booking_ring_duration_seconds ?? 20),
+            normal_booking_ring_repeat: Boolean(d.normal_booking_ring_repeat ?? true),
             waiting_screen_timeout_seconds: Number(d.waiting_screen_timeout_seconds ?? 45),
             provider_accept_window_seconds: Number(d.provider_accept_window_seconds ?? 30),
             ui_copy: typeof d.ui_copy === "string" ? d.ui_copy : JSON.stringify(d.ui_copy ?? {}, null, 2),
@@ -69,6 +75,9 @@ export default function OnDemandModulePage() {
         ringtone_asset_path: form.ringtone_asset_path || null,
         ring_duration_seconds: form.ring_duration_seconds,
         ring_repeat: form.ring_repeat,
+        normal_booking_ringtone_asset_path: form.normal_booking_ringtone_asset_path || null,
+        normal_booking_ring_duration_seconds: form.normal_booking_ring_duration_seconds,
+        normal_booking_ring_repeat: form.normal_booking_ring_repeat,
         waiting_screen_timeout_seconds: form.waiting_screen_timeout_seconds,
         provider_accept_window_seconds: form.provider_accept_window_seconds,
         ui_copy: uiCopy,
@@ -88,7 +97,10 @@ export default function OnDemandModulePage() {
         <Link href="/admin/control-plane/overview"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
         <div>
           <h1 className="text-2xl font-bold">On-Demand UX</h1>
-          <p className="text-muted-foreground">Ringtone path, durations, waiting screen, UI copy. Toggle via feature flag.</p>
+          <p className="text-muted-foreground">
+            On-demand ringtone, optional standard-booking ringtone for providers, waiting screen, UI copy. Toggle
+            on-demand via feature flag.
+          </p>
         </div>
       </div>
 
@@ -144,7 +156,43 @@ export default function OnDemandModulePage() {
               </div>
               <div className="flex items-center gap-2">
                 <Switch checked={form.ring_repeat} onCheckedChange={(v) => setForm((p) => ({ ...p, ring_repeat: v }))} />
-                <Label>Ring repeat</Label>
+                <Label>Ring repeat (on-demand)</Label>
+              </div>
+            </div>
+            <div className="rounded-lg border border-dashed p-4 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Standard booking alerts (provider app + provider web): separate app-assets path. When set, providers
+                who enable &quot;Booking alert sound&quot; hear this on new bookings (mobile: replaces vibration-only).
+              </p>
+              <div>
+                <Label>Normal booking ringtone path</Label>
+                <Input
+                  value={form.normal_booking_ringtone_asset_path}
+                  onChange={(e) => setForm((p) => ({ ...p, normal_booking_ringtone_asset_path: e.target.value }))}
+                  placeholder="ux/ringtones/booking-alert.mp3"
+                />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <Label>Normal booking ring duration (seconds)</Label>
+                  <Input
+                    type="number"
+                    value={form.normal_booking_ring_duration_seconds}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        normal_booking_ring_duration_seconds: parseInt(e.target.value, 10) || 20,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={form.normal_booking_ring_repeat}
+                    onCheckedChange={(v) => setForm((p) => ({ ...p, normal_booking_ring_repeat: v }))}
+                  />
+                  <Label>Normal booking ring repeat</Label>
+                </div>
               </div>
             </div>
             <div>

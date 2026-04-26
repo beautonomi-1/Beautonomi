@@ -9,6 +9,7 @@ import { requireAdminSection,
 import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { z } from "zod";
+import { legacyZoneCoverageGeometry } from "@/lib/service-zones/legacyZonePreviewGeometry";
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
@@ -92,7 +93,8 @@ export async function GET(
         out.disconnected_fragments = false;
       }
     } else {
-      out.geometry_geojson = null;
+      const legacy = legacyZoneCoverageGeometry(zone);
+      out.geometry_geojson = legacy ?? null;
       out.fragment_count = 0;
       out.disconnected_fragments = false;
     }

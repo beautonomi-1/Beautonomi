@@ -63,13 +63,31 @@ export function geometryToBounds(
   Mapbox: { LngLatBounds: typeof mapboxgl.LngLatBounds },
   g: GeoJSON.Polygon | GeoJSON.MultiPolygon,
 ): mapboxgl.LngLatBounds | null {
-  const coords: number[][] = [];
-  if (g.type === "Polygon") g.coordinates[0].forEach((c) => coords.push(c));
-  else g.coordinates.forEach((p) => p[0].forEach((c) => coords.push(c)));
+  const coords: [number, number][] = [];
+  const pushRing = (ring: number[][]) => {
+    for (const c of ring) {
+      if (!Array.isArray(c) || c.length < 2) continue;
+      const lng = Number(c[0]);
+      const lat = Number(c[1]);
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+      coords.push([lng, lat]);
+    }
+  };
+  if (g.type === "Polygon") {
+    for (const ring of g.coordinates) {
+      pushRing(ring);
+    }
+  } else {
+    for (const poly of g.coordinates) {
+      for (const ring of poly) {
+        pushRing(ring);
+      }
+    }
+  }
   if (coords.length === 0) return null;
   return coords.reduce(
-    (b, c) => b.extend(c as [number, number]),
-    new Mapbox.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number]),
+    (b, c) => b.extend(c),
+    new Mapbox.LngLatBounds(coords[0], coords[0]),
   );
 }
 
@@ -85,17 +103,7 @@ export function fitMapToZoneDetail(
 ) {
   const { bbox, coverageFeature, geometryGeojson, countryCode } = opts;
 
-  if (bbox) {
-    const f = bboxToPolygonFeature(bbox);
-    if (f?.geometry) {
-      const b = geometryToBounds(Mapbox, f.geometry);
-      if (b) {
-        map.fitBounds(b, { padding: 48, maxZoom: 13 });
-        return;
-      }
-    }
-  }
-
+  /** Prefer real coverage / union geometry over DB bbox so national-scale polygons frame correctly. */
   const cov = coverageFeature?.geometry;
   if (cov && (cov.type === "Polygon" || cov.type === "MultiPolygon")) {
     const b = geometryToBounds(Mapbox, cov);
@@ -111,6 +119,17 @@ export function fitMapToZoneDetail(
     if (b) {
       map.fitBounds(b, { padding: 48, maxZoom: 13 });
       return;
+    }
+  }
+
+  if (bbox) {
+    const f = bboxToPolygonFeature(bbox);
+    if (f?.geometry) {
+      const b = geometryToBounds(Mapbox, f.geometry);
+      if (b) {
+        map.fitBounds(b, { padding: 48, maxZoom: 13 });
+        return;
+      }
     }
   }
 

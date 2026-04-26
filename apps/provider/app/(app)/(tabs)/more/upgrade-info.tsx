@@ -73,7 +73,7 @@ export default function UpgradeInfoScreen() {
         </View>
 
         <Text style={twStyle("text-base text-gray-700 leading-6")}>
-          Upgrade your plan from Freelancer to Salon directly in the app. Compare plans and continue to secure checkout from the subscription screen.
+          Compare plans in the app and continue to secure checkout from the subscription screen. Paid tiers match the public pricing catalog for your region.
         </Text>
 
         <TouchableOpacity

@@ -13,6 +13,8 @@ import { z } from "zod";
 
 /** Max postal area rows per include request (large metros need headroom). */
 const MAX_INCLUDE = 12_000;
+/** Country-wide includes can match every postal polygon — allow a higher cap than metro batches. */
+const MAX_INCLUDE_COUNTRY = 60_000;
 const INSERT_CHUNK = 500;
 
 const bodySchema = z.object({
@@ -63,22 +65,21 @@ export async function POST(
       return errorResponse("Zone has no country_code", "VALIDATION_ERROR", 400);
     }
 
+    const { type, ref_code, ref_name } = parse.data;
+    const maxInclude = type === "country" ? MAX_INCLUDE_COUNTRY : MAX_INCLUDE;
+    const ref = ref_code.trim();
+
     let query = admin
       .from("postal_areas")
       .select("id, postal_code, province_name, city_name, town_name, geom")
       .eq("country_code", country)
       .not("geom", "is", null)
-      .limit(MAX_INCLUDE);
+      .limit(maxInclude);
 
-    const { type, ref_code, ref_name } = parse.data;
-    const ref = ref_code.trim();
     if (type === "province") query = query.ilike("province_name", ref);
     else if (type === "city") query = query.ilike("city_name", ref);
     else if (type === "town") query = query.ilike("town_name", ref);
     else if (type === "postal_code") query = query.eq("postal_code", ref);
-    else if (type === "country") {
-      query = query.limit(MAX_INCLUDE);
-    }
 
     let { data: areas, error: fetchError } = await query;
     // Some postal datasets carry trailing spaces or minor label variance.
@@ -89,7 +90,7 @@ export async function POST(
         .select("id, postal_code, province_name, city_name, town_name, geom")
         .eq("country_code", country)
         .not("geom", "is", null)
-        .limit(MAX_INCLUDE);
+        .limit(maxInclude);
       const fuzzy = `%${ref}%`;
       if (type === "province") fallback = fallback.ilike("province_name", fuzzy);
       else if (type === "city") fallback = fallback.ilike("city_name", fuzzy);
@@ -164,7 +165,7 @@ export async function POST(
         message: "All matching postal areas were already included",
         skipped_existing: (areas || []).length,
         matched_areas: (areas || []).length,
-        truncated: (areas || []).length >= MAX_INCLUDE,
+        truncated: (areas || []).length >= maxInclude,
       });
     }
 
@@ -198,7 +199,7 @@ export async function POST(
     return successResponse({
       included: toInsert.length,
       matched_areas: (areas || []).length,
-      truncated: (areas || []).length >= MAX_INCLUDE,
+      truncated: (areas || []).length >= maxInclude,
       version: updatedRow?.version,
       has_geometry: !!updatedRow?.geometry,
     });

@@ -6,9 +6,9 @@ const DEFAULT_EXPIRY_SEC = 300; // 5 minutes
 
 /**
  * GET /api/public/on-demand/ringtone-url
- * Returns a short-lived signed URL for the on-demand ringtone asset.
+ * Returns a short-lived signed URL for a ringtone asset in app-assets.
  * Query: environment (production|staging|development). Default: production.
- * Config is read from on_demand_module_config; path from ringtone_asset_path.
+ * Query: scope = on_demand (default) | normal_booking — selects which path column to use.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
     const environment =
       (searchParams.get("environment") as "production" | "staging" | "development") ??
       "production";
+    const scopeRaw = (searchParams.get("scope") ?? "on_demand").toLowerCase();
+    const scope = scopeRaw === "normal_booking" ? "normal_booking" : "on_demand";
     const expirySec = Math.min(
       3600,
       Math.max(60, parseInt(searchParams.get("expires_in") ?? String(DEFAULT_EXPIRY_SEC), 10) || DEFAULT_EXPIRY_SEC)
@@ -25,7 +27,7 @@ export async function GET(request: NextRequest) {
 
     const { data: row, error: configError } = await supabase
       .from("on_demand_module_config")
-      .select("ringtone_asset_path")
+      .select("ringtone_asset_path, normal_booking_ringtone_asset_path")
       .eq("environment", environment)
       .maybeSingle();
 
@@ -37,10 +39,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const path = (row?.ringtone_asset_path as string)?.trim() || null;
+    const path =
+      scope === "normal_booking"
+        ? ((row?.normal_booking_ringtone_asset_path as string) ?? "").trim() || null
+        : ((row?.ringtone_asset_path as string) ?? "").trim() || null;
     if (!path) {
       return NextResponse.json(
-        { error: "No ringtone path configured for this environment" },
+        {
+          error:
+            scope === "normal_booking"
+              ? "No normal booking ringtone path configured for this environment"
+              : "No ringtone path configured for this environment",
+        },
         { status: 404 }
       );
     }

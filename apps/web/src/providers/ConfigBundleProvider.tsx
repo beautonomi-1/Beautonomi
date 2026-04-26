@@ -23,6 +23,9 @@ export interface OnDemandModuleConfig {
   ringtone_asset_path: string | null;
   ring_duration_seconds: number;
   ring_repeat: boolean;
+  normal_booking_ringtone_asset_path: string | null;
+  normal_booking_ring_duration_seconds: number;
+  normal_booking_ring_repeat: boolean;
   waiting_screen_timeout_seconds: number;
   provider_accept_window_seconds: number;
   ui_copy: Record<string, any>;
@@ -72,6 +75,9 @@ const defaultBundle: PublicConfigBundle = {
       ringtone_asset_path: null,
       ring_duration_seconds: 20,
       ring_repeat: true,
+      normal_booking_ringtone_asset_path: null,
+      normal_booking_ring_duration_seconds: 20,
+      normal_booking_ring_repeat: true,
       waiting_screen_timeout_seconds: 45,
       provider_accept_window_seconds: 30,
       ui_copy: {},

@@ -21,19 +21,6 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
 
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
       ? new Date(searchParams.get("from")!)
@@ -42,9 +29,8 @@ export async function GET(request: NextRequest) {
       ? new Date(searchParams.get("to")!)
       : new Date();
 
-    // Get bookings with product sales in date range
-    // Only include completed/confirmed bookings - cancelled/no_show shouldn't count as revenue
-    // Also get sales (POS) with product sales
+    // Get bookings with product add-ons and paid product orders in date range.
+    // Product orders cover online product checkout and provider walk-in/new-sale flows.
     const [bookingsResult, salesResult] = await Promise.all([
       supabaseAdmin
         .from('bookings')
@@ -74,23 +60,28 @@ export async function GET(request: NextRequest) {
         .gte('scheduled_at', fromDate.toISOString())
         .lte('scheduled_at', toDate.toISOString()),
       supabaseAdmin
-        .from('sales')
+        .from('product_orders')
         .select(`
           id,
-          sale_items (
+          product_order_items (
             id,
-            item_id,
-            item_name,
-            item_type,
+            product_id,
+            product_name,
             quantity,
             unit_price,
-            total_price
+            total_price,
+            products (
+              id,
+              name,
+              category,
+              supply_price
+            )
           )
         `)
         .eq('provider_id', providerId)
-        .eq('payment_status', 'completed')
-        .gte('sale_date', fromDate.toISOString())
-        .lte('sale_date', toDate.toISOString())
+        .eq('payment_status', 'paid')
+        .gte('created_at', fromDate.toISOString())
+        .lte('created_at', toDate.toISOString())
     ]);
 
     const { data: bookings, error: bookingsError } = bookingsResult;
@@ -170,57 +161,23 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    // Get product details for sale items
-    const saleItemProductIds = new Set<string>();
-    (sales || []).forEach((sale: any) => {
-      if (sale.sale_items && Array.isArray(sale.sale_items)) {
-        sale.sale_items.forEach((item: any) => {
-          if (item.item_type === 'product' && item.item_id) {
-            saleItemProductIds.add(item.item_id);
-          }
-        });
-      }
-    });
-
-    const productMap = new Map<string, { name: string; category: string; supplyPrice: number }>();
-    if (saleItemProductIds.size > 0) {
-      const { data: productsData } = await supabaseAdmin
-        .from('products')
-        .select('id, name, category, supply_price')
-        .in('id', Array.from(saleItemProductIds));
-      
-      productsData?.forEach((p: any) => {
-        productMap.set(p.id, {
-          name: p.name || 'Unknown',
-          category: p.category || 'Uncategorized',
-          supplyPrice: Number(p.supply_price || 0),
-        });
-      });
-    }
-
-    // Process sales (POS) products
+    // Process product orders (online checkout + walk-in/new sale) products
     // Revenue: use total_price (line total) when available, else quantity * unit_price
     (sales || []).forEach((sale: any) => {
-      if (!sale.sale_items || !Array.isArray(sale.sale_items)) {
+      if (!sale.product_order_items || !Array.isArray(sale.product_order_items)) {
         return;
       }
       
-      sale.sale_items.forEach((item: any) => {
-        // Only process product items (not services)
-        if (item.item_type !== 'product' || !item.item_id) {
-          return;
-        }
-        
-        const productId = item.item_id;
-        const productInfo = productMap.get(productId);
-        const productName = productInfo?.name || item.item_name || 'Unknown Product';
-        const category = productInfo?.category || 'Uncategorized';
+      sale.product_order_items.forEach((item: any) => {
+        const productId = item.product_id;
+        const productName = item.products?.name || item.product_name || 'Unknown Product';
+        const category = item.products?.category || 'Uncategorized';
         const quantity = Number(item.quantity || 0);
         const unitPrice = Number(item.unit_price || 0);
         const totalPrice = Number(item.total_price || 0);
         // Use total_price directly (line total) - avoids undercounting when unit_price is 0
         const revenue = totalPrice > 0 ? totalPrice : quantity * unitPrice;
-        const supplyPrice = productInfo?.supplyPrice ?? 0;
+        const supplyPrice = Number(item.products?.supply_price || 0);
         const cost = quantity * supplyPrice;
         const profit = revenue - cost;
 

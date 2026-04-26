@@ -18,6 +18,11 @@ interface ProductOrder {
   id: string;
   order_number: string;
   status: string;
+  subtotal?: number;
+  tax_amount?: number;
+  delivery_fee?: number;
+  discount_amount?: number;
+  platform_fee?: number;
   total_amount: number;
   payment_status: string;
   fulfillment_type: string;
@@ -52,6 +57,17 @@ const STATUS_ACTIONS: Record<string, { next: string; label: string; color: strin
     { next: "delivered", label: "Collected", color: "bg-green-600 hover:bg-green-700" },
   ],
 };
+
+const STATUS_OPTIONS = [
+  "pending",
+  "confirmed",
+  "processing",
+  "ready_for_collection",
+  "shipped",
+  "delivered",
+  "cancelled",
+  "refunded",
+];
 
 const STATUS_BADGE: Record<string, "default" | "destructive" | "outline" | "secondary"> = {
   pending: "outline",
@@ -232,6 +248,13 @@ export default function ProviderProductOrdersPage() {
             {displayOrders.map((o) => {
               const actions = STATUS_ACTIONS[o.status] ?? [];
               const isFocus = Boolean(focusOrderId && o.id === focusOrderId);
+              const subtotal = Number(o.subtotal ?? 0);
+              const taxAmount = Number(o.tax_amount ?? 0);
+              const deliveryFee = Number(o.delivery_fee ?? 0);
+              const discountAmount = Number(o.discount_amount ?? 0);
+              const platformFee = Number(o.platform_fee ?? 0);
+              const totalAmount = Number(o.total_amount ?? 0);
+              const providerEarnings = Math.max(0, totalAmount - platformFee);
               return (
                 <div
                   key={o.id}
@@ -276,11 +299,32 @@ export default function ProviderProductOrdersPage() {
                       )}
                     </div>
                     <div className="text-left sm:text-right shrink-0 w-full sm:w-auto border-t sm:border-t-0 border-gray-100 pt-3 sm:pt-0">
-                      <p className="text-xl font-bold text-gray-900">{formatMoney(Number(o.total_amount))}</p>
+                      <p className="text-xl font-bold text-gray-900">{formatMoney(totalAmount)}</p>
+                      <div className="mt-2 space-y-0.5 text-xs text-gray-500">
+                        {subtotal > 0 && <p>Items: {formatMoney(subtotal)}</p>}
+                        {taxAmount > 0 && <p>Tax/VAT: {formatMoney(taxAmount)}</p>}
+                        {deliveryFee > 0 && <p>Delivery: {formatMoney(deliveryFee)}</p>}
+                        {discountAmount > 0 && <p>Discount: -{formatMoney(discountAmount)}</p>}
+                        {platformFee > 0 && <p>Platform fee: -{formatMoney(platformFee)}</p>}
+                        <p className="font-medium text-gray-700">Provider earnings: {formatMoney(providerEarnings)}</p>
+                      </div>
                       <p className="text-xs text-gray-500 mt-1">
                         {new Date(o.created_at).toLocaleDateString()} ·{" "}
                         {o.fulfillment_type === "delivery" ? "Delivery" : "Collection"}
                       </p>
+                      <select
+                        value={o.status}
+                        onChange={(e) => handleStatusUpdate(o.id, e.target.value)}
+                        disabled={updating === o.id || o.status === "cancelled" || o.status === "refunded"}
+                        className="mt-3 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:opacity-50"
+                        aria-label={`Update order ${o.order_number} status`}
+                      >
+                        {STATUS_OPTIONS.map((status) => (
+                          <option key={status} value={status}>
+                            {status.replace(/_/g, " ")}
+                          </option>
+                        ))}
+                      </select>
                       <div className="flex flex-wrap gap-2 mt-3 justify-start sm:justify-end">
                         <a
                           href={`/api/provider/product-orders/${o.id}/receipt/pdf`}

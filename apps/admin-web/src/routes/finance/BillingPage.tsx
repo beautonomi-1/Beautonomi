@@ -2,11 +2,10 @@ import { useMemo } from "react";
 import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
-import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -61,7 +60,9 @@ const SUB_STATUS_BADGE: Record<string, string> = {
 
 export function BillingPage() {
   useAdminDocumentTitle("Billing");
-  const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
+  const { allowed, denied } = useSuperadminPage(
+    "Platform billing is restricted to superadmins (matches Next.js /admin/billing).",
+  );
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
@@ -84,11 +85,15 @@ export function BillingPage() {
 
   const subsQuery = useQuery({
     queryKey: adminQueryKeys.providerSubscriptions(subQk),
+    staleTime: 0,
     queryFn: async () => {
       const p = new URLSearchParams();
       if (subStatus !== "all") p.set("status", subStatus);
       const qs = p.toString();
-      return adminApi.getJson<SubRow[]>(`/api/admin/provider-subscriptions${qs ? `?${qs}` : ""}`, { timeoutMs: 60_000 });
+      return adminApi.getJson<SubRow[] | { subscriptions?: SubRow[] }>(
+        `/api/admin/provider-subscriptions${qs ? `?${qs}` : ""}`,
+        { timeoutMs: 60_000 },
+      );
     },
     enabled: allowed,
   });
@@ -104,7 +109,9 @@ export function BillingPage() {
   });
 
   const rows = q.data?.invoices ?? [];
-  const subRows = Array.isArray(subsQuery.data) ? subsQuery.data : [];
+  const subRows = Array.isArray(subsQuery.data)
+    ? subsQuery.data
+    : ((subsQuery.data as { subscriptions?: SubRow[] })?.subscriptions ?? []);
 
   function setPage(n: number) {
     const next = new URLSearchParams(sp);

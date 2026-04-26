@@ -1103,9 +1103,18 @@ function Step14Plan() {
 
   useEffect(() => {
     (async () => {
-      const res = await api.get<PlanRow[]>("/api/public/pricing/plans");
-      setPlans(Array.isArray(res.data) ? res.data : []);
-      setLoading(false);
+      try {
+        const res = await api.get<PlanRow[] | { plans?: PlanRow[] }>("/api/public/pricing/plans");
+        const raw = res.data as PlanRow[] | { plans?: PlanRow[] } | null | undefined;
+        const list = Array.isArray(raw)
+          ? raw
+          : raw && typeof raw === "object" && Array.isArray((raw as { plans?: PlanRow[] }).plans)
+            ? (raw as { plans: PlanRow[] }).plans
+            : [];
+        setPlans(list);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 

@@ -104,7 +104,6 @@ const navigationSections = [
       { icon: Store, label: "E-Commerce", href: "/provider/ecommerce", permission: "view_products" as keyof StaffPermissions },
       { icon: Store, label: "Products", href: "/provider/ecommerce/products", permission: "view_products" as keyof StaffPermissions },
       { icon: Truck, label: "Shipping & Collection", href: "/provider/ecommerce/shipping", permission: "edit_settings" as keyof StaffPermissions },
-      { icon: Store, label: "Walk-in Sale", href: "/provider/ecommerce/walk-in", permission: "view_sales" as keyof StaffPermissions },
     ],
   },
   {

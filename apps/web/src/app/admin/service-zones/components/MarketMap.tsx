@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { PlatformMarketDetail, PlatformMarketListItem } from "../lib/platform-types";
+import { fitBoundsCornersFromPolygonLike } from "@/lib/service-zones/geoLngLatExtents";
 
 const DEFAULT_CENTER: [number, number] = [18.4241, -33.9249];
 const DEFAULT_ZOOM = 10;
@@ -273,6 +274,10 @@ export default function MarketMap({
       const draw = new MapboxDraw({
         displayControlsDefault: false,
         defaultMode: "simple_select",
+        controls: {
+          polygon: true,
+          trash: true,
+        },
       });
       map.addControl(draw as unknown as IControl, "top-left");
       drawRef.current = draw;
@@ -590,29 +595,35 @@ export default function MarketMap({
       }
     }
 
-    // Fit bounds
-    const bbox = market.bbox;
-    if (bbox && typeof bbox === "object" && !Array.isArray(bbox) && "minLng" in bbox) {
-      const { minLng, minLat, maxLng, maxLat } = bbox as {
-        minLng: number; minLat: number; maxLng: number; maxLat: number;
-      };
-      map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 48, maxZoom: 13 });
-    } else if (Array.isArray(bbox) && bbox.length >= 4) {
-      const [w, s, e, n] = bbox;
-      map.fitBounds([[w, s], [e, n]], { padding: 48, maxZoom: 13 });
-    } else if (covF?.geometry) {
+    // Fit bounds — prefer union/coverage geometry over bbox (national / legacy radius previews).
+    if (covF?.geometry) {
       const g = covF.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon;
-      const coords = g.type === "MultiPolygon" ? g.coordinates.flat(2) : g.coordinates[0] ?? [];
-      if (coords.length) {
-        const lngs = coords.map((c) => c[0]);
-        const lats = coords.map((c) => c[1]);
-        map.fitBounds(
-          [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-          { padding: 48, maxZoom: 13 }
-        );
+      const corners = fitBoundsCornersFromPolygonLike(g);
+      if (corners) {
+        map.fitBounds(corners, { padding: 48, maxZoom: 13 });
       }
-    } else if (market.country_code) {
-      map.flyTo({ center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM });
+    } else if (market.geometry_geojson) {
+      const raw = asGeomFeature(market.geometry_geojson);
+      const g = raw?.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon | undefined;
+      if (g && (g.type === "Polygon" || g.type === "MultiPolygon")) {
+        const corners = fitBoundsCornersFromPolygonLike(g);
+        if (corners) {
+          map.fitBounds(corners, { padding: 48, maxZoom: 13 });
+        }
+      }
+    } else {
+      const bbox = market.bbox;
+      if (bbox && typeof bbox === "object" && !Array.isArray(bbox) && "minLng" in bbox) {
+        const { minLng, minLat, maxLng, maxLat } = bbox as {
+          minLng: number; minLat: number; maxLng: number; maxLat: number;
+        };
+        map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 48, maxZoom: 13 });
+      } else if (Array.isArray(bbox) && bbox.length >= 4) {
+        const [w, s, e, n] = bbox;
+        map.fitBounds([[w, s], [e, n]], { padding: 48, maxZoom: 13 });
+      } else if (market.country_code) {
+        map.flyTo({ center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM });
+      }
     }
 
     // Return cleanup for the per-market path (overview path returns its own cleanup above)
@@ -906,8 +917,8 @@ export default function MarketMap({
         <div className="pointer-events-auto absolute bottom-4 left-1/2 z-10 flex w-[calc(100%-1.5rem)] max-w-md -translate-x-1/2 flex-col items-center gap-2 pb-[env(safe-area-inset-bottom,0px)] sm:w-auto sm:pb-0">
           {drawIntent !== "none" && (
             <div className="w-full rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-center text-xs font-medium text-amber-950 shadow-md">
-              Drawing {drawIntent === "include" ? "included" : "excluded"} area. Tap the map to add corners.{" "}
-              <strong>Double-click</strong> the last point to finish.
+              Drawing {drawIntent === "include" ? "included" : "excluded"} area. Tap the map to add corners, or use the{" "}
+              <strong>polygon</strong> / <strong>trash</strong> controls on the map. <strong>Double-click</strong> the last point to finish.
             </div>
           )}
           <div className="flex flex-wrap justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 shadow-lg">

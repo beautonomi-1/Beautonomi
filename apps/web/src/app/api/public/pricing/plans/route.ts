@@ -1,22 +1,26 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * GET /api/public/pricing/plans
  *
  * Active pricing plans with feature lines for marketing / native onboarding.
  * Does not expose Paystack plan codes.
+ *
+ * Uses the service-role client for reads so anonymous / cookie-less clients
+ * (e.g. provider app onboarding) still see tenant + global merged cards,
+ * consistent with /pricing and admin catalog visibility.
  */
 export async function GET(request: Request) {
   try {
-    const supabase = await getSupabaseServer();
+    const supabaseAdmin = getSupabaseAdmin();
     const tenant = await resolveTenantFromRequest(request);
     const tenantId = tenant?.id ?? "";
 
     const scopedPlans = await fetchScopedListMerged<Record<string, unknown>>({
-      supabase,
+      supabase: supabaseAdmin,
       table: "pricing_plans",
       tenantId,
       select: "id, name, price, period, description, cta_text, is_popular, display_order, currency",
@@ -42,7 +46,7 @@ export async function GET(request: Request) {
 
     const withFeatures = await Promise.all(
       plans.map(async (plan) => {
-        const { data: features } = await supabase
+        const { data: features } = await supabaseAdmin
           .from("pricing_plan_features")
           .select("feature_text")
           .eq("plan_id", plan.id)

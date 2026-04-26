@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
-import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -58,11 +57,15 @@ type PlansPayload =
   | PlanRow[]
   | {
       plans?: PlanRow[];
+      pricing_only?: Array<Record<string, unknown> & { pricing_plan_id?: string; reason?: string }>;
       meta?: {
         tenant_id?: string | null;
         subscription_plan_count?: number;
         pricing_plan_count?: number;
+        active_pricing_plan_count?: number;
+        pricing_only_active_count?: number;
         source?: string;
+        read_client?: string;
         empty_reason?: string | null;
       };
     };
@@ -76,7 +79,9 @@ function formatFeaturesJson(row: PlanRow): string {
 }
 
 export function PlansListPage() {
-  const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
+  const { allowed, denied } = useSuperadminPage(
+    "Plans & pricing management is restricted to platform superadmins (matches Next.js /admin/plans).",
+  );
   const qc = useQueryClient();
   const paystackQ = useTenantFeatureFlags([TENANT_PAYMENT_FEATURE_KEYS.PAYMENT_PAYSTACK], allowed);
   const showPaystackOffBanner =
@@ -87,10 +92,12 @@ export function PlansListPage() {
     queryKey: adminQueryKeys.plans(),
     queryFn: () => adminApi.getJson<PlansPayload>("/api/admin/plans", { timeoutMs: 60_000 }),
     enabled: allowed,
+    staleTime: 0,
   });
 
   const rows = Array.isArray(q.data) ? q.data : q.data?.plans ?? [];
   const plansMeta = Array.isArray(q.data) ? null : q.data?.meta ?? null;
+  const pricingOnlyRows = Array.isArray(q.data) ? [] : (q.data?.pricing_only ?? []);
 
   const webPlansEditorUrl = (() => {
     const base = (publicEnv.siteUrl || publicEnv.appUrl || "").replace(/\/$/, "");
@@ -807,6 +814,15 @@ export function PlansListPage() {
             </button>
           </div>
           {saveErr ? <p className="mt-2 text-sm text-red-600">{saveErr}</p> : null}
+        </AdminPanel>
+      ) : null}
+
+      {pricingOnlyRows.length > 0 ? (
+        <AdminPanel>
+          <p className="text-sm font-medium text-amber-900">
+            {pricingOnlyRows.length} active pricing card(s) are not linked to a subscription plan (they can still
+            appear on /pricing). Reconcile in the full Next.js admin at {webPlansEditorUrl || "/admin/plans"}.
+          </p>
         </AdminPanel>
       ) : null}
 

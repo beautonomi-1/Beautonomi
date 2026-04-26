@@ -21,7 +21,8 @@ const bodySchema = z.object({
   version: z.number().int().optional(),
 });
 
-const MAX_INCLUDE = 12_000;
+/** Match country-wide include cap so a drawn rectangle over most of ZA can still resolve. */
+const MAX_INCLUDE = 60_000;
 
 /**
  * POST /api/admin/service-zones/[id]/include-drawn

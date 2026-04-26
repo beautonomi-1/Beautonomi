@@ -117,6 +117,8 @@ const STATUS_OPTIONS = [
   { value: "ready_for_collection", label: "Ready" },
   { value: "shipped", label: "Shipped" },
   { value: "delivered", label: "Delivered" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "refunded", label: "Refunded" },
 ];
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
@@ -146,15 +148,8 @@ const STATUS_ACTION_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 function getNextStatusOptions(current: string): string[] {
-  const map: Record<string, string[]> = {
-    pending:              ["confirmed", "cancelled"],
-    confirmed:            ["processing", "cancelled"],
-    processing:           ["ready_for_collection", "shipped", "cancelled"],
-    ready_for_collection: ["delivered", "cancelled"],
-    shipped:              ["delivered"],
-    delivered:            ["refunded"],
-  };
-  return map[current] ?? [];
+  if (current === "cancelled" || current === "refunded") return [];
+  return STATUS_OPTIONS.map((x) => x.value).filter((v) => v && v !== current);
 }
 
 function numOrZero(v: unknown): number {
