@@ -263,6 +263,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="shop" options={{ href: null }} />
       <Tabs.Screen name="explore" options={{ href: null }} />
       <Tabs.Screen name="saved" options={{ href: null }} />
+      <Tabs.Screen name="support-tickets" options={{ href: null, title: "Support" }} />
       </Tabs>
     </View>
   );

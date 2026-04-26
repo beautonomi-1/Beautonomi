@@ -410,6 +410,10 @@ export async function POST(
 
     const holdMeta = (hold.metadata as Record<string, any>) || {};
     const travelFeeFromHold = holdMeta.travel_fee != null ? Number(holdMeta.travel_fee) : 0;
+    const availabilityTravelBufferFromHold =
+      holdMeta.availability_travel_buffer_minutes != null
+        ? Number(holdMeta.availability_travel_buffer_minutes)
+        : undefined;
     const resourceIdsFromHold = Array.isArray(holdMeta.resource_ids)
       ? (holdMeta.resource_ids as string[]).filter((id) => typeof id === "string")
       : undefined;
@@ -434,6 +438,10 @@ export async function POST(
       location_id: hold.location_id,
       address: addressFormatted,
       travel_fee: travelFeeFromHold,
+      availability_travel_buffer_minutes:
+        Number.isFinite(availabilityTravelBufferFromHold)
+          ? availabilityTravelBufferFromHold
+          : undefined,
       client_info: normalizedClientInfo ?? {
         firstName: user.user_metadata?.full_name?.split(" ")[0] ?? "Guest",
         lastName: user.user_metadata?.full_name?.split(" ").slice(1).join(" ") ?? "User",

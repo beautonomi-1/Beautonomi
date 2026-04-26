@@ -22,6 +22,9 @@ export const CMS_PAGE_SECTION_PRESETS: Record<string, { value: string; label: st
     { value: "top_banner_link", label: "Top banner — link URL (text)" },
     { value: "demo_booking_type", label: "Demo booking — type (text)" },
     { value: "demo_booking_embed", label: "Demo booking — embed URL/HTML" },
+    { value: "hero_primary_cta_label", label: "Hero — primary button label (text, default: Sign up)" },
+    { value: "hero_feature_tabs", label: "Hero — feature tab chips (JSON array of strings, e.g. [\"CALENDAR\",\"ONLINE BOOKING\"])" },
+    { value: "top_banner_learn_more", label: "Top banner — “Learn more” link label (text)" },
   ],
   "gift-card": [
     { value: "hero_title", label: "Hero — title" },
@@ -71,6 +74,7 @@ export const CMS_PAGE_SECTION_PRESETS: Record<string, { value: string; label: st
   pricing: [
     { value: "hero_title", label: "Hero — title" },
     { value: "hero_description", label: "Hero — description" },
+    { value: "currency_note", label: "Hero — currency / footnote (e.g. All prices in ZAR)" },
   ],
   signup: [
     { value: "hero_title", label: "Hero — title" },
@@ -164,6 +168,15 @@ export function cmsPagePublicApiHint(pageSlug: string): string | null {
     pageSlug === "why-beautonomi"
   ) {
     return `GET /api/public/content/pages/${pageSlug}`;
+  }
+  if (pageSlug === "become-a-partner" || pageSlug === "career") {
+    return `GET /api/public/pages/${pageSlug}`;
+  }
+  if (pageSlug === "pricing") {
+    return `Hero copy: GET /api/public/pages/pricing · Plan cards: pricing_plans + pricing_plan_features (Admin → Plans)`;
+  }
+  if (pageSlug === "resources" || pageSlug === "help" || pageSlug === "signup") {
+    return `GET /api/public/page-content?page_slug=${pageSlug}`;
   }
   return null;
 }

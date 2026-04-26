@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "@beautonomi/i18n";
 import { Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
-import { FaGoogle, FaApple, FaFacebook } from "react-icons/fa6";
+import { FaApple, FaGoogle } from "react-icons/fa6";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -300,14 +300,19 @@ export default function LoginPage() {
     }
   }
 
-  async function handleOAuth(provider: "google" | "apple" | "facebook") {
+  async function handleSocialOAuth(provider: "google" | "apple") {
     setFormError(null);
     setLoading(true);
     try {
       await signInWithOAuth(provider, getRedirectUrl());
-      toast.info(`Redirecting to ${provider}…`);
+      toast.info(
+        provider === "google" ? "Redirecting to Google…" : "Redirecting to Apple…",
+      );
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : `Sign in with ${provider} failed.`;
+      const msg =
+        err instanceof Error
+          ? err.message
+          : `Sign in with ${provider === "google" ? "Google" : "Apple"} failed.`;
       setFormError(msg);
       toast.error(msg);
     } finally {
@@ -512,7 +517,7 @@ export default function LoginPage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => handleOAuth("google")}
+            onClick={() => void handleSocialOAuth("google")}
             disabled={loading}
             className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
           >
@@ -522,7 +527,7 @@ export default function LoginPage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => handleOAuth("apple")}
+            onClick={() => void handleSocialOAuth("apple")}
             disabled={loading}
             className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
           >
@@ -537,16 +542,6 @@ export default function LoginPage() {
           >
             <Mail className="h-4 w-4" aria-hidden />
             <span>{showEmailLogin ? "Back to phone OTP" : "Continue with Email & Password"}</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleOAuth("facebook")}
-            disabled={loading}
-            className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
-          >
-            <FaFacebook className="text-lg text-[#1877F2]" aria-hidden />
-            <span>{t("auth.continueWithFacebook") ?? "Continue with Facebook"}</span>
           </Button>
         </div>
         <p className="text-center text-sm text-gray-500 mt-6">

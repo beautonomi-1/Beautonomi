@@ -3,6 +3,10 @@
 import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { openGraphLocaleTagForHost } from "@/lib/seo/host-config";
+import {
+  resolvePartnerProfileOpenGraphImageUrl,
+  type PartnerProfileOgMedia,
+} from "@/lib/seo/partner-profile-open-graph";
 
 /**
  * Client component to inject dynamic Open Graph meta tags for provider profiles
@@ -11,17 +15,15 @@ import { openGraphLocaleTagForHost } from "@/lib/seo/host-config";
 export default function ProviderMetadata({ 
   provider 
 }: { 
-  provider: {
+  provider: (PartnerProfileOgMedia & {
     business_name?: string;
     description?: string | null;
-    thumbnail_url?: string | null;
-    avatar_url?: string | null;
     slug?: string;
     rating?: number;
     review_count?: number;
     city?: string;
     country?: string;
-  } | null 
+  }) | null;
 }) {
   const searchParams = useSearchParams();
   const slug = searchParams.get("slug");
@@ -34,20 +36,14 @@ export default function ProviderMetadata({
         ? window.location.origin
         : (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://beautonomi.com");
     const profileUrl = `${siteUrl}/partner-profile?slug=${encodeURIComponent(slug)}`;
-    
-    // Get thumbnail image - use absolute URL for Open Graph
-    let ogImage = `${siteUrl}/images/logo-beatonomi.svg`; // Default fallback
-    if (provider.thumbnail_url) {
-      // If thumbnail_url is already absolute, use it; otherwise make it absolute
-      if (provider.thumbnail_url.startsWith("http://") || provider.thumbnail_url.startsWith("https://")) {
-        ogImage = provider.thumbnail_url;
-      } else if (provider.thumbnail_url.startsWith("/")) {
-        ogImage = `${siteUrl}${provider.thumbnail_url}`;
-      } else {
-        // If it's a Supabase storage URL, it should already be absolute
-        ogImage = provider.thumbnail_url;
-      }
+
+    let slugDecoded = slug;
+    try {
+      slugDecoded = decodeURIComponent(slug);
+    } catch {
+      slugDecoded = slug;
     }
+    const ogImage = resolvePartnerProfileOpenGraphImageUrl(siteUrl, slugDecoded, provider);
 
     const title = `${provider.business_name || "Provider"} | Beautonomi`;
     const locationText = provider.city && provider.country 
@@ -113,7 +109,7 @@ export default function ProviderMetadata({
       if (url.startsWith("/")) return `${siteUrl}${url}`;
       return url;
     };
-    const schema: Record<string, any> = {
+    const schema: Record<string, unknown> = {
       "@context": "https://schema.org",
       "@type": "LocalBusiness",
       name: provider.business_name || "Provider",
@@ -124,7 +120,13 @@ export default function ProviderMetadata({
     if (provider.avatar_url) {
       schema.logo = toAbsolute(provider.avatar_url);
     }
-    if (provider.rating != null) schema.aggregateRating = { "@type": "AggregateRating", ratingValue: provider.rating, reviewCount: provider.review_count ?? 0 };
+    if (provider.rating != null) {
+      schema.aggregateRating = {
+        "@type": "AggregateRating",
+        ratingValue: provider.rating,
+        reviewCount: provider.review_count ?? 0,
+      };
+    }
     let schemaEl = document.getElementById("provider-jsonld") as HTMLScriptElement | null;
     if (!schemaEl) {
       schemaEl = document.createElement("script");

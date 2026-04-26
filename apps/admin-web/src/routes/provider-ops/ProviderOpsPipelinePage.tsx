@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -43,9 +43,11 @@ interface Lead {
   phone_e164: string | null;
   commercial_stage: string;
   source: string;
+  country?: string | null;
   suggested_location_text: string | null;
   created_at: string;
   tags?: string[];
+  whatsapp_status?: "unknown" | "verified" | "not_found" | "check_failed" | null;
   provider_lead_categories?: LeadCategory[];
 }
 
@@ -53,6 +55,23 @@ interface LeadsPayload {
   data: Lead[];
   meta: { page: number; limit: number; total: number; has_more: boolean };
   stage_counts: Record<string, number>;
+  filter_options?: {
+    countries?: Array<{ value: string; label: string; count: number }>;
+    provinces?: Array<{ value: string; label: string; count: number; country?: string | null }>;
+    categories?: Array<{ id: string; name: string; count: number }>;
+  };
+}
+
+function WhatsAppStatusChip({ status }: { status?: Lead["whatsapp_status"] }) {
+  const s = status || "unknown";
+  const config: Record<string, { label: string; className: string }> = {
+    verified: { label: "WA verified", className: "bg-emerald-50 text-emerald-700" },
+    not_found: { label: "No WhatsApp", className: "bg-amber-50 text-amber-700" },
+    check_failed: { label: "WA check failed", className: "bg-rose-50 text-rose-700" },
+    unknown: { label: "WA not checked", className: "bg-zinc-100 text-zinc-600" },
+  };
+  const item = config[s] || config.unknown;
+  return <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-medium", item.className)}>{item.label}</span>;
 }
 
 function applyLeadStageInCache(
@@ -72,6 +91,7 @@ function applyLeadStageInCache(
 
 export function ProviderOpsPipelinePage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_PROVIDER_OPS, "Provider Ops access is required.");
+  const [sp, setSp] = useSearchParams();
   const qc = useQueryClient();
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
@@ -79,14 +99,17 @@ export function ProviderOpsPipelinePage() {
   const dragPreviewNodeRef = useRef<HTMLElement | null>(null);
   const suppressCardClickRef = useRef(false);
 
-  const qk = adminQueryKeys.providerOps.leads("pipeline-board");
+  const country = sp.get("country") || "";
+  const province = sp.get("province") || "";
+  const categoryId = sp.get("category_id") || "";
+  const qk = adminQueryKeys.providerOps.leads(`pipeline-board|country=${country}|province=${province}|category=${categoryId}`);
 
   const q = useInfiniteQuery({
     queryKey: qk,
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
       adminApi.getJson<LeadsPayload>(
-        `/api/admin/provider-ops/leads?page=${pageParam}&limit=${PIPELINE_PAGE_SIZE}`,
+        `/api/admin/provider-ops/leads?page=${pageParam}&limit=${PIPELINE_PAGE_SIZE}${country ? `&country=${encodeURIComponent(country)}` : ""}${province ? `&province=${encodeURIComponent(province)}` : ""}${categoryId ? `&category_id=${encodeURIComponent(categoryId)}` : ""}`,
         { timeoutMs: 60_000 },
       ),
     getNextPageParam: (lastPage) => (lastPage.meta.has_more ? lastPage.meta.page + 1 : undefined),
@@ -96,6 +119,12 @@ export function ProviderOpsPipelinePage() {
   const leads = useMemo(() => q.data?.pages.flatMap((p) => p.data) ?? [], [q.data]);
   const totalLeads = q.data?.pages[0]?.meta.total ?? leads.length;
   const loadedCount = leads.length;
+  const filterOptions = q.data?.pages[0]?.filter_options;
+  const countryOptions = filterOptions?.countries ?? [];
+  const provinceOptions = (filterOptions?.provinces ?? []).filter(
+    (opt) => !country || !opt.country || opt.country === country,
+  );
+  const categoryOptions = filterOptions?.categories ?? [];
 
   const stageMut = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: string }) =>
@@ -210,6 +239,112 @@ export function ProviderOpsPipelinePage() {
           title="Pipeline Board"
           description={`${totalLeads} leads total · ${loadedCount} loaded across ${PIPELINE_STAGES.length} stages · Drag to update status · Swipe columns on mobile`}
         />
+        {(country || province || categoryId) ? (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
+            {country ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = new URLSearchParams(sp);
+                  next.delete("country");
+                  next.delete("province");
+                  setSp(next, { replace: true });
+                }}
+                className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+              >
+                Country: {country} ×
+              </button>
+            ) : null}
+            {province ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = new URLSearchParams(sp);
+                  next.delete("province");
+                  setSp(next, { replace: true });
+                }}
+                className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700"
+              >
+                Province: {province} ×
+              </button>
+            ) : null}
+            {categoryId ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = new URLSearchParams(sp);
+                  next.delete("category_id");
+                  setSp(next, { replace: true });
+                }}
+                className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700"
+              >
+                Category: {(categoryOptions.find((c) => c.id === categoryId)?.name ?? "selected")} ×
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="mt-2 flex flex-wrap items-center gap-2 px-1 pb-1">
+          <select
+            value={country}
+            onChange={(e) => {
+              const next = new URLSearchParams(sp);
+              if (e.target.value) next.set("country", e.target.value); else next.delete("country");
+              next.delete("page");
+              setSp(next, { replace: true });
+            }}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700"
+          >
+            <option value="">All Countries</option>
+            {countryOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label} ({opt.count})</option>
+            ))}
+          </select>
+          <select
+            value={province}
+            onChange={(e) => {
+              const next = new URLSearchParams(sp);
+              if (e.target.value) next.set("province", e.target.value); else next.delete("province");
+              next.delete("page");
+              setSp(next, { replace: true });
+            }}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700"
+          >
+            <option value="">All Provinces / States</option>
+            {provinceOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label} ({opt.count})</option>
+            ))}
+          </select>
+          <select
+            value={categoryId}
+            onChange={(e) => {
+              const next = new URLSearchParams(sp);
+              if (e.target.value) next.set("category_id", e.target.value); else next.delete("category_id");
+              next.delete("page");
+              setSp(next, { replace: true });
+            }}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700"
+          >
+            <option value="">All Categories</option>
+            {categoryOptions.map((opt) => (
+              <option key={opt.id} value={opt.id}>{opt.name} ({opt.count})</option>
+            ))}
+          </select>
+          {(country || province || categoryId) ? (
+            <button
+              type="button"
+              className="text-xs text-gray-500 underline hover:text-gray-700"
+              onClick={() => {
+                const next = new URLSearchParams(sp);
+                next.delete("country");
+                next.delete("province");
+                next.delete("category_id");
+                setSp(next, { replace: true });
+              }}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
         {q.hasNextPage && (
           <div className="mt-2 flex items-center gap-3 px-1 pb-1">
             <button
@@ -318,6 +453,7 @@ export function ProviderOpsPipelinePage() {
                               {lead.phone_e164 && (
                                 <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
                                   <Phone className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.phone_e164}
+                                  <WhatsAppStatusChip status={lead.whatsapp_status} />
                                 </div>
                               )}
                               {lead.suggested_location_text && (

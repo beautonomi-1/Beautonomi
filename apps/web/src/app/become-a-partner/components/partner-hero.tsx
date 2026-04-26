@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Play } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -11,6 +11,14 @@ import { CmsHtml } from "@/components/cms/CmsHtml";
 import { cmsContentLooksLikeHtml } from "@/lib/html/cms-page-html";
 import { getVideoEmbedUrl } from "../lib/video-embed";
 import { VideoTourModal } from "./video-tour-modal";
+
+const DEFAULT_PARTNER_FEATURE_TABS = [
+  "CALENDAR",
+  "ONLINE BOOKING",
+  "CUSTOM SERVICES",
+  "CALLS & TEXTS",
+  "HOUSE CALLS",
+] as const;
 
 interface PartnerHeroProps {
   activeTab: string;
@@ -23,14 +31,35 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalMode, _setLoginModalMode] = useState<"login" | "signup">("login");
   const [showVideoModal, setShowVideoModal] = useState(false);
-  const { getSectionContent } = usePageContent("become-a-partner");
+  const { content, getSectionContent } = usePageContent("become-a-partner");
 
   const heroTitle = getSectionContent("hero_title") || "Everything you need to grow your beauty business";
   const heroDescription =
     getSectionContent("hero_description") ||
     "Manage bookings, accept payments, automate your workflow, and more. A complete platform built for beauty professionals—fast, beautiful, intuitive, and works on any device.";
+  const primaryCtaLabel = getSectionContent("hero_primary_cta_label")?.trim() || "Sign up";
+  const featureTabs = useMemo(() => {
+    const featureTabsRaw = content["hero_feature_tabs"]?.[0]?.content?.trim();
+    if (!featureTabsRaw) return [...DEFAULT_PARTNER_FEATURE_TABS];
+    try {
+      const parsed = JSON.parse(featureTabsRaw) as unknown;
+      if (Array.isArray(parsed)) {
+        const next = parsed.map((x) => String(x).trim()).filter(Boolean);
+        if (next.length) return next;
+      }
+    } catch {
+      /* keep defaults */
+    }
+    return [...DEFAULT_PARTNER_FEATURE_TABS];
+  }, [content]);
   const videoTourUrl = getSectionContent("video_tour_url")?.trim() || null;
   const videoEmbedUrl = videoTourUrl ? getVideoEmbedUrl(videoTourUrl) : null;
+
+  useEffect(() => {
+    if (featureTabs.length && !featureTabs.includes(activeTab)) {
+      setActiveTab(featureTabs[0]);
+    }
+  }, [featureTabs, activeTab, setActiveTab]);
 
   const handleVideoTour = () => {
     if (videoEmbedUrl) {
@@ -93,7 +122,7 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
                 onClick={handleSignUp}
                 className="bg-primary hover:bg-primary-hover text-white px-6 md:px-8 py-4 md:py-6 text-base md:text-lg font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
               >
-                Sign up
+                {primaryCtaLabel}
               </Button>
             </div>
 
@@ -111,13 +140,7 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
             </div>
 
             <div className="flex flex-wrap justify-center gap-2 sm:gap-3 md:gap-4 px-4 mb-8 md:mb-12">
-              {[
-                "CALENDAR",
-                "ONLINE BOOKING",
-                "CUSTOM SERVICES",
-                "CALLS & TEXTS",
-                "HOUSE CALLS",
-              ].map((feature) => (
+              {featureTabs.map((feature) => (
                 <button
                   key={feature}
                   type="button"

@@ -88,6 +88,22 @@ export function buildCustomerRoute(params: SingularLinkParams): { pathname: stri
   if (screen === "help" || path === "help") {
     return { pathname: "/(app)/help" };
   }
+  if (
+    screen === "support-tickets" ||
+    path === "support-tickets" ||
+    screen === "my-tickets" ||
+    path === "my-tickets" ||
+    path.startsWith("support-tickets/")
+  ) {
+    const fromPath = path.startsWith("support-tickets/")
+      ? path.slice("support-tickets/".length).split("/")[0]?.trim() ?? ""
+      : "";
+    const ticketId = String(fromPath || q.id || q.ticket_id || "").trim();
+    if (ticketId) {
+      return { pathname: "/(app)/(tabs)/support-tickets/[id]", params: { id: ticketId } };
+    }
+    return { pathname: "/(app)/(tabs)/support-tickets" };
+  }
   if (screen === "about" || path === "about") {
     return { pathname: "/(app)/about" };
   }

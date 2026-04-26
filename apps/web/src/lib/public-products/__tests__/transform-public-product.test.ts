@@ -1,7 +1,7 @@
 /**
  * Regression tests for `transformPublicProduct` — the pure transform shared
- * by `GET /api/public/providers/[slug]/products` and the customer-facing
- * product cards.
+ * by `GET /api/public/providers/[slug]/products`, `GET /api/public/products`,
+ * and the customer-facing product cards.
  *
  * These lock in the §Release-audit 2026-04 fixes for variant pricing + stock
  * parity so they can't silently regress:

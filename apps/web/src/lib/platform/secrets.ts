@@ -164,6 +164,17 @@ async function loadOneSignalFromDb(tenantId?: string | null): Promise<GlobalOneS
 
 export type ResolveOneSignalOptions = { tenantId?: string | null };
 
+function normalizeOneSignalAppId(value: string | null | undefined): string | null {
+  const t = (value ?? "").replace(/^\uFEFF/, "").trim();
+  return t.length ? t : null;
+}
+
+/** Strip BOM/whitespace so Authorization is never built from invisible padding. */
+function normalizeOneSignalRestKey(value: string | null | undefined): string | null {
+  const t = (value ?? "").replace(/^\uFEFF/, "").trim();
+  return t.length ? t : null;
+}
+
 /**
  * Resolve App ID + REST key: env first, then platform_settings + platform_secrets (tenant row merged over global).
  */
@@ -175,36 +186,43 @@ export async function resolveOneSignalCredentials(
 
   if (appType === "provider") {
     const env = getOneSignalConfig("provider");
-    let appId = env.appId?.trim() || null;
-    let restKey = env.restApiKey?.trim() || null;
+    let appId = normalizeOneSignalAppId(env.appId ?? null);
+    let restKey = normalizeOneSignalRestKey(env.restApiKey ?? null);
     if (!appId) {
-      appId = db.appIdProvider || db.appIdCustomer;
+      appId = normalizeOneSignalAppId(db.appIdProvider) ?? normalizeOneSignalAppId(db.appIdCustomer);
     }
     if (!restKey) {
-      restKey = db.restKeyProvider || db.restKeyCustomer;
+      restKey = normalizeOneSignalRestKey(db.restKeyProvider) ?? normalizeOneSignalRestKey(db.restKeyCustomer);
     }
     return { appId, restKey };
   }
 
   if (appType === "customer") {
     const env = getOneSignalConfig("customer");
-    let appId = env.appId?.trim() || null;
-    let restKey = env.restApiKey?.trim() || null;
+    let appId = normalizeOneSignalAppId(env.appId ?? null);
+    let restKey = normalizeOneSignalRestKey(env.restApiKey ?? null);
     if (!appId) {
-      appId = db.appIdCustomer;
+      appId = normalizeOneSignalAppId(db.appIdCustomer);
     }
     if (!restKey) {
-      restKey = db.restKeyCustomer || db.restKeyProvider;
+      restKey =
+        normalizeOneSignalRestKey(db.restKeyCustomer) ?? normalizeOneSignalRestKey(db.restKeyProvider);
     }
     return { appId, restKey };
   }
 
-  const legacyId = process.env.ONESIGNAL_APP_ID?.trim() || null;
-  const legacyKey = process.env.ONESIGNAL_REST_API_KEY?.trim() || null;
+  const legacyId = normalizeOneSignalAppId(process.env.ONESIGNAL_APP_ID ?? null);
+  const legacyKey = normalizeOneSignalRestKey(process.env.ONESIGNAL_REST_API_KEY ?? null);
   const customer = getOneSignalConfig("customer");
-  const appId = legacyId || customer.appId?.trim() || db.appIdCustomer || null;
+  const appId =
+    legacyId ??
+    normalizeOneSignalAppId(customer.appId ?? null) ??
+    normalizeOneSignalAppId(db.appIdCustomer);
   const restKey =
-    legacyKey || customer.restApiKey?.trim() || db.restKeyCustomer || db.restKeyProvider || null;
+    legacyKey ??
+    normalizeOneSignalRestKey(customer.restApiKey ?? null) ??
+    normalizeOneSignalRestKey(db.restKeyCustomer) ??
+    normalizeOneSignalRestKey(db.restKeyProvider);
   return { appId, restKey };
 }
 

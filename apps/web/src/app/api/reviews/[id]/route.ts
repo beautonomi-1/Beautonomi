@@ -1,6 +1,18 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError, notFoundResponse, requireAuthInApi } from '@/lib/supabase/api-helpers';
+import {
+  requireRoleInApi,
+  successResponse,
+  handleApiError,
+  notFoundResponse,
+  requireAuthInApi,
+  errorResponse,
+} from '@/lib/supabase/api-helpers';
+import {
+  isReviewContentEditBlocked,
+  isSuperadminRole,
+  REVIEW_EDIT_WINDOW_MESSAGE,
+} from '@/lib/reviews/review-edit-window';
 
 /**
  * PATCH /api/reviews/[id]
@@ -20,12 +32,37 @@ export async function PATCH(
     // Verify review exists
     const { data: review, error: reviewError } = await supabase
       .from('reviews')
-      .select('id, provider_id, booking_id, customer_rating')
+      .select(
+        'id, provider_id, booking_id, customer_rating, customer_comment, customer_rating_created_at, created_at, updated_at',
+      )
       .eq('id', reviewId)
       .single();
 
     if (reviewError || !review) {
       return notFoundResponse('Review not found');
+    }
+
+    const role = (user as { role?: string }).role;
+    const providerAnchorIso: string | null =
+      (review as { customer_rating_created_at?: string | null }).customer_rating_created_at ??
+      ((review as { customer_rating?: number | null }).customer_rating != null
+        ? String(
+            (review as { updated_at?: string; created_at?: string }).updated_at ??
+              (review as { created_at?: string }).created_at ??
+              '',
+          )
+        : null);
+
+    const touchesProviderFeedback =
+      body.customer_rating !== undefined || body.customer_comment !== undefined;
+
+    if (touchesProviderFeedback && !isSuperadminRole(role)) {
+      if (
+        providerAnchorIso &&
+        isReviewContentEditBlocked(providerAnchorIso, role)
+      ) {
+        return errorResponse(REVIEW_EDIT_WINDOW_MESSAGE, 'REVIEW_EDIT_CLOSED', 403);
+      }
     }
 
     // Check if user is a provider and owns this review
@@ -62,11 +99,16 @@ export async function PATCH(
         return handleApiError(new Error('Invalid rating'), 'Rating must be between 1 and 5');
       }
       updateData.customer_rating = body.customer_rating;
-      updateData.customer_rating_created_at = new Date().toISOString();
+      if (!(review as { customer_rating_created_at?: string | null }).customer_rating_created_at) {
+        updateData.customer_rating_created_at = new Date().toISOString();
+      }
     }
 
     if (body.customer_comment !== undefined) {
       updateData.customer_comment = body.customer_comment || null;
+      if (!(review as { customer_rating_created_at?: string | null }).customer_rating_created_at) {
+        updateData.customer_rating_created_at = new Date().toISOString();
+      }
     }
 
     // Update review

@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { awardPointsForReview, checkProviderMilestones } from "@/lib/services/provider-gamification";
+import {
+  isReviewContentEditBlocked,
+  isSuperadminRole,
+  REVIEW_EDIT_WINDOW_MESSAGE,
+} from "@/lib/reviews/review-edit-window";
 
 export async function POST(
   request: NextRequest,
@@ -251,6 +256,11 @@ export async function PATCH(
       );
     }
 
+    const role = (user as { role?: string }).role;
+    if (!isSuperadminRole(role) && isReviewContentEditBlocked(review.created_at as string, role)) {
+      return NextResponse.json({ error: REVIEW_EDIT_WINDOW_MESSAGE }, { status: 403 });
+    }
+
     const updateData: Record<string, unknown> = {};
     if (rating !== undefined) {
       if (rating < 1 || rating > 5) {
@@ -346,6 +356,11 @@ export async function DELETE(
         { error: "Review not found" },
         { status: 404 }
       );
+    }
+
+    const role = (user as { role?: string }).role;
+    if (!isSuperadminRole(role) && isReviewContentEditBlocked(review.created_at as string, role)) {
+      return NextResponse.json({ error: REVIEW_EDIT_WINDOW_MESSAGE }, { status: 403 });
     }
 
     // Delete review

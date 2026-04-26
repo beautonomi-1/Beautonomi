@@ -52,11 +52,22 @@ export default function LearnTopicPage() {
 
   if (!data?.category) {
     return (
-      <div>
-        <p className="text-sm text-zinc-600">Topic not found.</p>
-        <Link href="/learn" className="text-[#ff0077] underline mt-2 inline-block text-sm">
-          Back to Learning Center
-        </Link>
+      <div className="space-y-3">
+        <p className="text-sm text-zinc-600">We couldn&apos;t find that topic. Try the Learning Center home or site home.</p>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/"
+            className="inline-flex min-h-[44px] items-center rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 hover:border-[#ff0077]/40 hover:text-[#ff0077]"
+          >
+            Beautonomi home
+          </Link>
+          <Link
+            href="/learn"
+            className="inline-flex min-h-[44px] items-center rounded-full bg-[#ff0077] px-4 text-sm font-medium text-white hover:bg-[#ff0077]/90"
+          >
+            Learning Center topics
+          </Link>
+        </div>
       </div>
     );
   }

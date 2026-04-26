@@ -9,6 +9,8 @@ import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { Colors } from "@/constants/colors";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { openNativeStoreReview } from "@/lib/open-store-review";
+import { getAnalyticsClient } from "@/lib/analytics-rn";
 /** Profile completion API response (GET /api/provider/profile-completion) */
 type ProfileCompletionItem = {
   id: string;
@@ -224,6 +226,13 @@ export default function MoreScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push(route as never);
   }
+
+  const rateStoreTitle =
+    Platform.OS === "ios"
+      ? t("common.rateBeautonomiAppStore")
+      : Platform.OS === "android"
+        ? t("common.rateBeautonomiPlayStore")
+        : t("common.rateBeautonomiStoreWeb");
 
   function handleSignOut() {
     const goToLogin = () => router.replace("/(auth)/login" as never);
@@ -567,6 +576,51 @@ export default function MoreScreen() {
             </View>
           );
         })}
+
+        <View style={{ marginBottom: 8, marginLeft: 4 }}>
+          <Text style={{ fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 1, color: Colors.gray[400] }}>
+            {t("provider.moreTab.rateStoreHeading")}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={{
+            marginBottom: 20,
+            flexDirection: "row",
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: Colors.gray[100],
+            backgroundColor: Colors.white,
+            borderRadius: 16,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+          }}
+          onPress={() => {
+            getAnalyticsClient()?.track("rate_app_store", { source: "more_tab" });
+            void openNativeStoreReview();
+          }}
+          activeOpacity={0.7}
+          accessibilityLabel={rateStoreTitle}
+          accessibilityRole="button"
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              backgroundColor: Colors.gray[50],
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: 12,
+            }}
+          >
+            <Ionicons name="star-outline" size={18} color={Colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{rateStoreTitle}</Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>{t("common.rateBeautonomiStoreSubtitle")}</Text>
+          </View>
+          <Ionicons name="open-outline" size={16} color="#d1d5db" />
+        </TouchableOpacity>
 
         {/* Sign Out - Revolut minimal style */}
         <TouchableOpacity

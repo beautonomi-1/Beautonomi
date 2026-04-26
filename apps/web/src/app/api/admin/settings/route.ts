@@ -9,6 +9,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getDefaultPublicAppsResponse } from "@/lib/store/native-app-store";
+import { DEFAULT_SUPPORTED_LANGUAGE_CODES } from "@/lib/i18n/config";
 
 interface PlatformSettings {
   branding: {
@@ -51,6 +52,10 @@ interface PlatformSettings {
   };
   features: {
     auto_approve_providers: boolean;
+  };
+  social_auth: {
+    google: boolean;
+    apple: boolean;
   };
   paystack: {
     secret_key: string;
@@ -180,7 +185,7 @@ function getDefaultPlatformSettings(): PlatformSettings {
       },
       localization: {
         default_language: "en",
-        supported_languages: ["en", "af", "zu"],
+        supported_languages: [...DEFAULT_SUPPORTED_LANGUAGE_CODES],
         default_currency: LAST_RESORT_CURRENCY,
         supported_currencies: [LAST_RESORT_CURRENCY, "USD", "EUR"],
         timezone: "Africa/Johannesburg",
@@ -210,6 +215,10 @@ function getDefaultPlatformSettings(): PlatformSettings {
       },
       features: {
         auto_approve_providers: false,
+      },
+      social_auth: {
+        google: true,
+        apple: true,
       },
       paystack: {
         secret_key: process.env.PAYSTACK_SECRET_KEY || "",
@@ -458,8 +467,8 @@ export async function PATCH(request: NextRequest) {
     const settings: PlatformSettings = { ...defaults, ...existing, ...body } as PlatformSettings;
 
     // Validate required top-level sections after merge
-    if (!settings.branding || !settings.localization || !settings.payouts || !settings.notifications || !settings.payment_types || !settings.paystack || !settings.onesignal || !settings.mapbox || !settings.amplitude || !settings.google || !settings.calendar_integrations || !settings.apps || !settings.features) {
-      return errorResponse("Invalid settings structure: missing required section (branding, localization, payouts, notifications, payment_types, paystack, onesignal, mapbox, amplitude, google, calendar_integrations, apps, features)", "VALIDATION_ERROR", 400);
+    if (!settings.branding || !settings.localization || !settings.payouts || !settings.notifications || !settings.payment_types || !settings.paystack || !settings.onesignal || !settings.mapbox || !settings.amplitude || !settings.google || !settings.calendar_integrations || !settings.apps || !settings.features || !settings.social_auth) {
+      return errorResponse("Invalid settings structure: missing required section (branding, localization, payouts, notifications, payment_types, paystack, onesignal, mapbox, amplitude, google, calendar_integrations, apps, features, social_auth)", "VALIDATION_ERROR", 400);
     }
 
     // Store sensitive secrets in platform_secrets (NOT in public platform_settings JSON)

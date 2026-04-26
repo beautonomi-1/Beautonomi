@@ -207,6 +207,8 @@ export async function createBookingFromRecurringSeries(
   const bookingData: Record<string, unknown> = {
     customer_id: row.customer_id,
     provider_id: row.provider_id,
+    /** Links this visit to `recurring_appointments` for list/detail queries (cron + RPC insert). */
+    recurring_series_id: row.id,
     tenant_id: (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
     booking_number: "",
     scheduled_at: scheduledAtLocal.toISOString(),

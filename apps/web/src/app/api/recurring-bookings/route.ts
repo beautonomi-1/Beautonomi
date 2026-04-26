@@ -216,9 +216,10 @@ export async function GET(request: NextRequest) {
           },
           todayStr
         );
+      // Treat end_date on or before today as ended (matches DELETE cancel which sets end_date to today).
       let status: "active" | "paused" | "cancelled" = "active";
-      if (!isActive) status = endDate && endDate < todayStr ? "cancelled" : "paused";
-      else if (endDate && endDate < todayStr) status = "cancelled";
+      if (!isActive) status = endDate && endDate <= todayStr ? "cancelled" : "paused";
+      else if (endDate && endDate <= todayStr) status = "cancelled";
 
       return {
         ...row,

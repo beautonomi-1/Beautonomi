@@ -162,7 +162,12 @@ export interface BookingData {
 
   // Schedule
   selectedDate: Date | null;
-  selectedSlot: { start: string; end: string; staff_id?: string } | null;
+  selectedSlot: {
+    start: string;
+    end: string;
+    staff_id?: string;
+    available_staff_ids?: string[];
+  } | null;
 
   // Resources (when services require rooms/equipment)
   selectedResourceIds: string[];

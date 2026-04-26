@@ -35,7 +35,11 @@
     "settings": "Settings",
     "more": "More",
     "appLanguage": "App language",
-    "appLanguageSubtitle": "Choose the language for the app"
+    "appLanguageSubtitle": "Choose the language for the app",
+    "rateBeautonomiAppStore": "Rate Beautonomi on the App Store",
+    "rateBeautonomiPlayStore": "Rate Beautonomi on Google Play",
+    "rateBeautonomiStoreWeb": "Get Beautonomi apps",
+    "rateBeautonomiStoreSubtitle": "Opens the store (or download page) so you can leave a review."
   },
   "authGate": {
     "checkingAccess": "Checking your account…",
@@ -58,7 +62,6 @@
     "dontHaveAccount": "Don't have an account?",
     "continueWithGoogle": "Continue with Google",
     "continueWithApple": "Continue with Apple",
-    "continueWithFacebook": "Continue with Facebook",
     "orContinueWith": "or continue with",
     "termsAgreement": "By continuing, you agree to our Terms of Service and Privacy Policy",
     "howHearAboutUs": "How did you hear about us?",
@@ -283,6 +286,9 @@
       "deleteConfirmMessage": "This cannot be undone.",
       "staffPrefix": "Staff"
     },
+    "moreTab": {
+      "rateStoreHeading": "Love the app?"
+    },
     "calendarScreen": {
       "calendarActions": "Calendar actions",
       "shareSchedule": "Share schedule",
@@ -362,6 +368,12 @@
     "giftCards": "Gift cards",
     "wallet": "Wallet",
     "profile": "Profile",
+    "profileTab": {
+      "clientRatingLabel": "Your client rating",
+      "clientRatingEmpty": "No ratings yet. After providers rate completed visits, your average will show here — great bookings help build your score.",
+      "clientRatingCount": "({{count}} provider ratings)",
+      "clientRatingA11y": "Your average rating from providers"
+    },
     "personalInfo": "Personal information",
     "loginSecurity": "Login & security",
     "notifications": "Notifications",
@@ -418,6 +430,7 @@
       "logOutConfirm": "Are you sure you want to log out?",
       "accessibilityScroll": "Account settings",
       "accessibilityShare": "Share Beautonomi. Invite friends and family",
+      "accessibilityRateStore": "Rate Beautonomi on the app store or Google Play",
       "accessibilityHelp": "Help and support. FAQs and contact us",
       "accessibilityAbout": "About Beautonomi. Our mission and story",
       "accessibilityProfileBanner": "Complete your profile",
@@ -521,7 +534,11 @@
       "couponPlaceholder": "Enter coupon code",
       "couponCodeA11y": "Coupon code",
       "redeemA11y": "Redeem coupon",
-      "redeem": "Redeem"
+      "redeem": "Redeem",
+      "cardSavedTitle": "Card saved",
+      "cardSavedBody": "Your card is ready to use at checkout.",
+      "cardVerificationPendingTitle": "Almost there",
+      "cardVerificationPendingBody": "If you completed verification, your card can take a moment to appear. Pull down to refresh this screen."
     }
   },
   "checkout": {

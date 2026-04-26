@@ -2,13 +2,22 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAuthInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
-import type { SupportedLanguage } from "@/lib/i18n/config";
+import {
+  DEFAULT_LANGUAGE,
+  DEFAULT_SUPPORTED_LANGUAGE_CODES,
+  SUPPORTED_LANGUAGES,
+  type SupportedLanguage,
+} from "@/lib/i18n/config";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
+const preferenceLanguageZodEnum = z.enum(
+  DEFAULT_SUPPORTED_LANGUAGE_CODES as unknown as [SupportedLanguage, ...SupportedLanguage[]],
+);
+
 const preferencesSchema = z.object({
-  language: z.enum(["en", "af", "zu", "xh", "nso", "tn", "ts", "ve", "ss"]).optional(),
+  language: preferenceLanguageZodEnum.optional(),
   currency: z.string().optional(),
   timezone: z.string().optional(),
 });
@@ -38,8 +47,9 @@ export async function GET(request: NextRequest) {
       preferences: {
         language: (() => {
           const raw = String(userData?.preferred_language || "en").trim() || "en";
-          const base = raw.split(/[-_]/)[0] as SupportedLanguage;
-          return base || "en";
+          const baseRaw = (raw.split(/[-_]/)[0] || "en").toLowerCase();
+          const supported = SUPPORTED_LANGUAGES.some((l) => l.code === baseRaw);
+          return (supported ? baseRaw : DEFAULT_LANGUAGE) as SupportedLanguage;
         })(),
         currency: userData?.preferred_currency || lastResortCurrency,
         timezone: userData?.timezone || "Africa/Johannesburg",

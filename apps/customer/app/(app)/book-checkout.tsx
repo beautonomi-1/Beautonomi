@@ -37,6 +37,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import type { SavedPaymentMethod } from "@/types/api";
 import { APP_URL } from "@/config/public-env";
+import { webTermsOfServiceUrl } from "@/lib/legal-web";
 
 /* ─── Types ─── */
 
@@ -546,7 +547,7 @@ export default function BookCheckoutScreen() {
   }, [hold_id, routeRescheduleBookingId]);
   const initialPackageIdFromRoute =
     pickRouteParam(routePackageId)?.trim() || pickRouteParam(routePrimaryPackageId)?.trim() || undefined;
-  const { user } = useAuth();
+  const { user, refreshSession } = useAuth();
   const [hold, setHold] = useState<HoldData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1677,6 +1678,7 @@ export default function BookCheckoutScreen() {
     setError(null);
 
     try {
+      await refreshSession().catch(() => {});
       const fingerprint = await getGuestFingerprintHash();
 
       const payload: Record<string, unknown> = {
@@ -1684,8 +1686,7 @@ export default function BookCheckoutScreen() {
         payment_option: paymentOption,
         use_wallet:
           paymentMethod === "wallet" ||
-          (paymentMethod === "card" && useWallet) ||
-          loyaltyPointsApplied > 0,
+          (paymentMethod === "card" && useWallet),
         save_card: paymentMethod === "card" && (useNewCard || savedCards.length === 0) ? saveCard : false,
         guest_fingerprint_hash: fingerprint,
       };
@@ -1903,7 +1904,7 @@ export default function BookCheckoutScreen() {
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
-  }, [hold_id, hold, user, bookContinueReturnTo, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied, cancellationPolicyAccepted, t]);
+  }, [hold_id, hold, user, bookContinueReturnTo, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied, cancellationPolicyAccepted, refreshSession, t]);
 
   /* ─── Loading skeleton ─── */
   if (loading) {
@@ -3411,7 +3412,7 @@ export default function BookCheckoutScreen() {
                 <Text
                   style={{ color: Colors.primary, fontWeight: "600" }}
                   onPress={() => {
-                    Linking.openURL(`${APP_URL.replace(/\/$/, "")}/terms-and-condition`).catch(() => {});
+                    Linking.openURL(webTermsOfServiceUrl()).catch(() => {});
                   }}
                 >
                   {t("checkout.platformTermsLink")}

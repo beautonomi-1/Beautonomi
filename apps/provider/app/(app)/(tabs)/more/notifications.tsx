@@ -1,14 +1,8 @@
-import { useState, useCallback, useMemo, useRef } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Animated,
-  Alert,
-  PanResponder,
-} from "react-native";
+import { useState, useCallback, useMemo } from "react";
+import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
+import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
@@ -234,130 +228,69 @@ function SwipeableNotificationItem({
   onDelete: () => void;
   isUnread?: boolean;
 }) {
-  const translateX = useRef(new Animated.Value(0)).current;
   const iconInfo = getNotificationIcon(notif.type);
   const isUnread = isUnreadProp ?? !(notif.read_at || notif.read === true || notif.is_read === true);
 
-  // §Provider-audit 2026-04 (round 3): real swipe-to-reveal gesture.
-  // Previously the delete slot was only exposed via long-press, which
-  // iOS/Android users don't discover. Now a horizontal pan past -40px
-  // snaps to the exposed state; a gentler drag snaps closed. Tapping
-  // anywhere while exposed closes the row (see outer TouchableWithoutFeedback
-  // below is avoided because nested TouchableOpacity already handles the
-  // press gesture — we just reset on onPress).
-  const SWIPE_THRESHOLD = -40;
-  const OPEN_POSITION = -80;
-  const lastOffset = useRef(0);
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
-      onPanResponderGrant: () => {
-        translateX.stopAnimation((v: number) => {
-          lastOffset.current = v;
-        });
-      },
-      onPanResponderMove: (_, g) => {
-        const next = Math.min(0, lastOffset.current + g.dx);
-        translateX.setValue(Math.max(next, OPEN_POSITION * 1.25));
-      },
-      onPanResponderRelease: (_, g) => {
-        const projected = lastOffset.current + g.dx;
-        const shouldOpen = projected < SWIPE_THRESHOLD || g.vx < -0.5;
-        const target = shouldOpen ? OPEN_POSITION : 0;
-        lastOffset.current = target;
-        Animated.spring(translateX, {
-          toValue: target,
-          useNativeDriver: true,
-          bounciness: 4,
-        }).start();
-      },
-      onPanResponderTerminate: () => {
-        Animated.spring(translateX, {
-          toValue: 0,
-          useNativeDriver: true,
-        }).start();
-        lastOffset.current = 0;
-      },
-    }),
-  ).current;
-
-  function handlePressRow() {
-    if (lastOffset.current !== 0) {
-      // If swipe was open, a tap should close it rather than navigate.
-      Animated.spring(translateX, {
-        toValue: 0,
-        useNativeDriver: true,
-      }).start();
-      lastOffset.current = 0;
-      return;
-    }
-    onPress();
-  }
-
-  function handleSwipeRelease() {
-    lastOffset.current = OPEN_POSITION;
-    Animated.spring(translateX, {
-      toValue: OPEN_POSITION,
-      useNativeDriver: true,
-    }).start();
-  }
-
   return (
-    <View style={{ overflow: "hidden" }}>
-      <View style={{ position: "absolute", bottom: 0, right: 0, top: 0, width: 80, alignItems: "center", justifyContent: "center", backgroundColor: "#ef4444" }}>
-        <TouchableOpacity
-          onPress={onDelete}
-          style={{ alignItems: "center", justifyContent: "center", padding: 12 }}
-          accessibilityLabel="Delete notification"
-          accessibilityRole="button"
+    <ReanimatedSwipeable
+      friction={2}
+      overshootRight={false}
+      rightThreshold={40}
+      renderRightActions={() => (
+        <View
+          style={{
+            width: 80,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "#ef4444",
+          }}
         >
-          <Ionicons name="trash-outline" size={20} color="#fff" />
-          <Text style={{ marginTop: 2, fontSize: 12, color: Colors.white }}>Delete</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Animated.View
-        style={{ transform: [{ translateX }], backgroundColor: Colors.white }}
-        {...panResponder.panHandlers}
+          <TouchableOpacity
+            onPress={onDelete}
+            style={{ alignItems: "center", justifyContent: "center", padding: 12 }}
+            accessibilityLabel="Delete notification"
+            accessibilityRole="button"
+          >
+            <Ionicons name="trash-outline" size={20} color="#fff" />
+            <Text style={{ marginTop: 2, fontSize: 12, color: Colors.white }}>Delete</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    >
+      <TouchableOpacity
+        style={[
+          { flexDirection: "row", alignItems: "flex-start", borderBottomWidth: 1, borderBottomColor: Colors.gray[50], paddingHorizontal: 4, paddingVertical: 14 },
+          isUnread ? { backgroundColor: "rgba(238,242,255,0.5)" } : { backgroundColor: Colors.white },
+        ]}
+        onPress={onPress}
+        accessibilityLabel={`${isUnread ? "Unread notification: " : ""}${notif.title}. ${notif.message}`}
+        accessibilityRole="button"
+        accessibilityHint="Swipe left to delete, or tap to open"
       >
-        <TouchableOpacity
-          style={[
-            { flexDirection: "row", alignItems: "flex-start", borderBottomWidth: 1, borderBottomColor: Colors.gray[50], paddingHorizontal: 4, paddingVertical: 14 },
-            isUnread ? { backgroundColor: "rgba(238,242,255,0.5)" } : { backgroundColor: Colors.white },
-          ]}
-          onPress={handlePressRow}
-          onLongPress={handleSwipeRelease}
-          accessibilityLabel={`${isUnread ? "Unread notification: " : ""}${notif.title}. ${notif.message}`}
-          accessibilityRole="button"
-          accessibilityHint="Tap to view, swipe left or long press to reveal delete"
-        >
-          <View style={{ backgroundColor: iconInfo.bg, height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>
-            <Ionicons name={iconInfo.name} size={18} color={iconInfo.color} />
-          </View>
-          <View style={{ marginLeft: 12, flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-              <Text
-                style={[ { flex: 1, fontSize: 14 }, isUnread ? { fontWeight: "600", color: Colors.gray[900] } : { fontWeight: "500", color: Colors.gray[700] } ]}
-                numberOfLines={2}
-              >
-                {notif.title}
-              </Text>
-              <Text style={{ marginLeft: 8, fontSize: 12, color: Colors.gray[400] }}>
-                {formatTimeAgo(notif.created_at)}
-              </Text>
-            </View>
-            <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>
-              {notif.message}
+        <View style={{ backgroundColor: iconInfo.bg, height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>
+          <Ionicons name={iconInfo.name} size={18} color={iconInfo.color} />
+        </View>
+        <View style={{ marginLeft: 12, flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+            <Text
+              style={[ { flex: 1, fontSize: 14 }, isUnread ? { fontWeight: "600", color: Colors.gray[900] } : { fontWeight: "500", color: Colors.gray[700] } ]}
+              numberOfLines={2}
+            >
+              {notif.title}
+            </Text>
+            <Text style={{ marginLeft: 8, fontSize: 12, color: Colors.gray[400] }}>
+              {formatTimeAgo(notif.created_at)}
             </Text>
           </View>
-          {isUnread && (
-            <View style={{ marginLeft: 8, marginTop: 4, height: 10, width: 10, borderRadius: 5, backgroundColor: "#6366f1" }} />
-          )}
-        </TouchableOpacity>
-      </Animated.View>
-    </View>
+          <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>
+            {notif.message}
+          </Text>
+        </View>
+        {isUnread && (
+          <View style={{ marginLeft: 8, marginTop: 4, height: 10, width: 10, borderRadius: 5, backgroundColor: "#6366f1" }} />
+        )}
+      </TouchableOpacity>
+    </ReanimatedSwipeable>
   );
 }
 

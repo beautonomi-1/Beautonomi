@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantFromRequest, resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { DEFAULT_SUPPORTED_LANGUAGE_CODES } from "@/lib/i18n/config";
 
 /**
  * GET /api/public/platform-settings
@@ -132,7 +133,7 @@ export async function GET(request: Request) {
           default_language: "en",
           timezone: "Africa/Johannesburg",
           supported_currencies: [fallbackCurrency, "USD", "EUR"],
-          supported_languages: ["en"],
+          supported_languages: [...DEFAULT_SUPPORTED_LANGUAGE_CODES],
           languages_meta: undefined,
           currency_info: {
             code: fallbackCurrency,

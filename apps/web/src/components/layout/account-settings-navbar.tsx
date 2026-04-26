@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Menu, User, Settings } from "lucide-react";
 import PlatformLogo from "../platform/PlatformLogo";
 import {
@@ -17,7 +17,6 @@ import LoginModal from "@/components/global/login-modal";
 import { CustomerNotificationsDropdown } from "@/components/customer/CustomerNotificationsDropdown";
 
 const AccountSettingsNavbar: React.FC = () => {
-  const pathname = usePathname();
   const router = useRouter();
   const { user, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -32,16 +31,11 @@ const AccountSettingsNavbar: React.FC = () => {
   const handleSignOut = async () => {
     try {
       await signOut();
-      // signOut already handles redirect, but ensure we navigate if needed
-      if (pathname !== "/") {
-        router.push("/");
-      }
-      router.refresh(); // Refresh to clear any cached data
+      // AuthProvider uses a hard navigation to `/` so the account-settings layout cannot "win" a soft refresh race.
     } catch (error) {
       console.error("Error signing out:", error);
-      // Even if there's an error, try to redirect and clear local state
-      router.push("/");
-      router.refresh();
+      if (typeof window !== "undefined") window.location.assign("/");
+      else router.replace("/");
     }
   };
 

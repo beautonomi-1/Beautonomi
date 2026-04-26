@@ -164,6 +164,11 @@ interface LeadsPayload {
   data: Lead[];
   meta: { page: number; limit: number; total: number; has_more: boolean };
   stage_counts: Record<string, number>;
+  filter_options?: {
+    countries?: Array<{ value: string; label: string; count: number }>;
+    provinces?: Array<{ value: string; label: string; count: number; country?: string | null }>;
+    categories?: Array<{ id: string; name: string; count: number }>;
+  };
 }
 
 interface Activity {
@@ -184,6 +189,7 @@ export function ProviderOpsLeadsPage() {
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10));
   const search = sp.get("search") || "";
   const country = sp.get("country") || "";
+  const province = sp.get("province") || "";
   const categoryId = sp.get("category_id") || "";
   const sortBy = sp.get("sort") || "created_at";
   const sortDir = sp.get("dir") || "desc";
@@ -203,15 +209,7 @@ export function ProviderOpsLeadsPage() {
   const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
   const [showBulkWhatsApp, setShowBulkWhatsApp] = useState(false);
 
-  const categoriesQ = useQuery({
-    queryKey: adminQueryKeys.globalCategories(),
-    queryFn: () => adminApi.getJson<{ data: { id: string; name: string }[] }>("/api/admin/catalog/global-categories?limit=200"),
-    enabled: allowed,
-    staleTime: 5 * 60_000,
-  });
-  const globalCategories = categoriesQ.data?.data ?? [];
-
-  const qk = useMemo(() => adminQueryKeys.providerOps.leads(`s=${stage}|p=${page}|q=${search}|c=${country}|cat=${categoryId}|sb=${sortBy}|sd=${sortDir}`), [stage, page, search, country, categoryId, sortBy, sortDir]);
+  const qk = useMemo(() => adminQueryKeys.providerOps.leads(`s=${stage}|p=${page}|q=${search}|c=${country}|prov=${province}|cat=${categoryId}|sb=${sortBy}|sd=${sortDir}`), [stage, page, search, country, province, categoryId, sortBy, sortDir]);
 
   const q = useQuery({
     queryKey: qk,
@@ -222,6 +220,7 @@ export function ProviderOpsLeadsPage() {
       p.set("limit", String(PAGE_SIZE));
       if (search) p.set("search", search);
       if (country) p.set("country", country);
+      if (province) p.set("province", province);
       if (categoryId) p.set("category_id", categoryId);
       if (sortBy) p.set("sort", sortBy);
       if (sortDir) p.set("dir", sortDir);
@@ -234,6 +233,14 @@ export function ProviderOpsLeadsPage() {
   const total = q.data?.meta?.total ?? 0;
   const hasMore = q.data?.meta?.has_more ?? false;
   const stageCounts = q.data?.stage_counts ?? {};
+  const filterOptions = q.data?.filter_options;
+  const countryOptions = filterOptions?.countries ?? [];
+  const provinceOptions = useMemo(
+    () =>
+      (filterOptions?.provinces ?? []).filter((opt) => !country || !opt.country || opt.country === country),
+    [filterOptions?.provinces, country],
+  );
+  const categoryOptions = filterOptions?.categories ?? [];
 
   const selectedLead = rows.find((r) => r.id === selectedLeadId) ?? null;
 
@@ -431,6 +438,9 @@ export function ProviderOpsLeadsPage() {
       const p = new URLSearchParams();
       if (stage !== "all") p.set("stage", stage);
       if (search) p.set("search", search);
+      if (country) p.set("country", country);
+      if (province) p.set("province", province);
+      if (categoryId) p.set("category_id", categoryId);
       const res = await fetch(`/api/admin/provider-ops/leads/export?${p}`, { credentials: "include" });
       if (!res.ok) {
         adminToast.error("Export failed — please try again");
@@ -446,7 +456,7 @@ export function ProviderOpsLeadsPage() {
     } finally {
       setExporting(false);
     }
-  }, [stage, search]);
+  }, [stage, search, country, province, categoryId]);
 
   const handleResizeMouseDown = useCallback(() => {
     resizingRef.current = true;
@@ -514,6 +524,53 @@ export function ProviderOpsLeadsPage() {
           }
         />
       </div>
+      {(country || province || categoryId) && (
+        <div className="mx-1 mb-2 flex flex-wrap items-center gap-1.5">
+          {country ? (
+            <button
+              type="button"
+              onClick={() => {
+                const n = new URLSearchParams(sp);
+                n.delete("country");
+                n.delete("province");
+                n.delete("page");
+                setSp(n, { replace: true });
+              }}
+              className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+            >
+              Country: {country} ×
+            </button>
+          ) : null}
+          {province ? (
+            <button
+              type="button"
+              onClick={() => {
+                const n = new URLSearchParams(sp);
+                n.delete("province");
+                n.delete("page");
+                setSp(n, { replace: true });
+              }}
+              className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700"
+            >
+              Province: {province} ×
+            </button>
+          ) : null}
+          {categoryId ? (
+            <button
+              type="button"
+              onClick={() => {
+                const n = new URLSearchParams(sp);
+                n.delete("category_id");
+                n.delete("page");
+                setSp(n, { replace: true });
+              }}
+              className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700"
+            >
+              Category: {(categoryOptions.find((c) => c.id === categoryId)?.name ?? "selected")} ×
+            </button>
+          ) : null}
+        </div>
+      )}
 
       {importResult && (
         <div className="mx-1 mb-2 flex-shrink-0">
@@ -613,12 +670,23 @@ export function ProviderOpsLeadsPage() {
               className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700"
             >
               <option value="">All Countries</option>
-              <option value="ZA">South Africa</option>
-              <option value="US">United States</option>
-              <option value="GB">United Kingdom</option>
-              <option value="NG">Nigeria</option>
-              <option value="KE">Kenya</option>
-              <option value="GH">Ghana</option>
+              {countryOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label} ({opt.count})
+                </option>
+              ))}
+            </select>
+            <select
+              value={province}
+              onChange={(e) => { const n = new URLSearchParams(sp); if (e.target.value) n.set("province", e.target.value); else n.delete("province"); n.delete("page"); setSp(n, { replace: true }); }}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700"
+            >
+              <option value="">All Provinces / States</option>
+              {provinceOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label} ({opt.count})
+                </option>
+              ))}
             </select>
             <select
               value={categoryId}
@@ -626,10 +694,10 @@ export function ProviderOpsLeadsPage() {
               className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700"
             >
               <option value="">All Categories</option>
-              {globalCategories.map((cat) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+              {categoryOptions.map((cat) => <option key={cat.id} value={cat.id}>{cat.name} ({cat.count})</option>)}
             </select>
-            {(country || categoryId) && (
-              <button type="button" onClick={() => { const n = new URLSearchParams(sp); n.delete("country"); n.delete("category_id"); n.delete("page"); setSp(n, { replace: true }); }} className="text-xs text-gray-500 hover:text-gray-700 underline">Clear filters</button>
+            {(country || province || categoryId) && (
+              <button type="button" onClick={() => { const n = new URLSearchParams(sp); n.delete("country"); n.delete("province"); n.delete("category_id"); n.delete("page"); setSp(n, { replace: true }); }} className="text-xs text-gray-500 hover:text-gray-700 underline">Clear filters</button>
             )}
           </div>
         )}

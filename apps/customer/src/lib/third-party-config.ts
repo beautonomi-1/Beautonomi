@@ -14,12 +14,13 @@ export interface MapboxConfig {
 export interface ThirdPartyConfig {
   mapbox?: MapboxConfig;
   onesignal?: { app_id: string; enabled: boolean };
+  social_auth?: { google: boolean; apple: boolean };
 }
 
 let cachedConfig: ThirdPartyConfig | null = null;
 
 export async function getThirdPartyConfig(
-  service?: "mapbox" | "onesignal"
+  service?: "mapbox" | "onesignal" | "social_auth"
 ): Promise<ThirdPartyConfig> {
   if (cachedConfig && !service) return cachedConfig;
 
@@ -62,4 +63,13 @@ export async function getOneSignalAppId(): Promise<string | null> {
   const data = await getThirdPartyConfig("onesignal");
   const onesignal = (data as any)?.onesignal ?? data;
   return onesignal?.enabled && onesignal?.app_id ? onesignal.app_id : null;
+}
+
+export async function getSocialAuthConfig(): Promise<{ google: boolean; apple: boolean }> {
+  const data = await getThirdPartyConfig("social_auth");
+  const social = (data as any)?.social_auth ?? data;
+  return {
+    google: social?.google !== false,
+    apple: social?.apple !== false,
+  };
 }

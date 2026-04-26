@@ -1085,7 +1085,6 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     <DropdownMenuItem
                       onClick={async () => {
                         await signOut();
-                        router.push("/");
                       }}
                       className="cursor-pointer text-red-600 focus:text-red-600"
                     >

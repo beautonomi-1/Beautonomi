@@ -280,21 +280,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (provider: OAuthProvider): Promise<{ error: Error | null }> => {
       try {
         const redirectTo = getRedirectUrl();
+        const oauthOptions: {
+          redirectTo: string;
+          skipBrowserRedirect: true;
+          scopes?: string;
+        } = {
+          redirectTo,
+          skipBrowserRedirect: true,
+        };
+        if (provider === "apple") {
+          oauthOptions.scopes = "name email";
+        }
+
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider,
-          options: {
-            redirectTo,
-            skipBrowserRedirect: true,
-          },
+          options: oauthOptions,
         });
 
         if (error) return { error: new Error(error.message) };
         if (!data?.url) return { error: new Error("No OAuth URL returned") };
 
-        const result = await WebBrowser.openAuthSessionAsync(
-          data.url,
-          redirectTo,
-        );
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo, {
+          preferEphemeralSession: true,
+        });
 
         if (result.type === "success" && result.url) {
           const url = result.url;

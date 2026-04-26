@@ -51,6 +51,9 @@ export async function GET(
         ),
         collection_location:provider_locations (
           id, name, address_line1, address_line2, city, state, postal_code, phone, working_hours
+        ),
+        customer:users!product_orders_customer_id_fkey (
+          id, full_name, email, phone
         )
       `,
       )

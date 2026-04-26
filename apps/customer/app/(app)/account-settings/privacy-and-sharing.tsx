@@ -1,16 +1,17 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, Switch, ActivityIndicator, TouchableOpacity, Linking, Alert } from "react-native";
-import { router } from "expo-router";
+import { View, Text, Switch, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
+import { useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
-import { APP_URL } from "@/config/public-env";
+import { pushWebCookiePolicy, pushWebPrivacyPolicy, pushWebTermsOfService } from "@/lib/legal-web";
 
 interface PrivacySettings {
   show_profile_publicly: boolean;
   allow_providers_see_reviews: boolean;
   share_booking_data: boolean;
   receive_marketing: boolean;
+  analytics_consent: boolean;
 }
 
 const PRIVACY_TOGGLES: {
@@ -38,6 +39,12 @@ const PRIVACY_TOGGLES: {
     label: "Receive marketing communications",
     description: "Get emails and notifications about promotions and new features",
   },
+  {
+    key: "analytics_consent",
+    label: "Product analytics",
+    description:
+      "Help improve the app with usage analytics and optional session diagnostics while you are signed in. You can turn this off anytime.",
+  },
 ];
 
 const DEFAULT_SETTINGS: PrivacySettings = {
@@ -45,9 +52,21 @@ const DEFAULT_SETTINGS: PrivacySettings = {
   allow_providers_see_reviews: true,
   share_booking_data: true,
   receive_marketing: false,
+  analytics_consent: true,
 };
 
+function mergeServerPrivacyPayload(raw: unknown): Partial<PrivacySettings> {
+  if (!raw || typeof raw !== "object") return {};
+  const d = raw as Record<string, unknown>;
+  const out: Partial<PrivacySettings> = {};
+  (Object.keys(DEFAULT_SETTINGS) as (keyof PrivacySettings)[]).forEach((k) => {
+    if (typeof d[k] === "boolean") out[k] = d[k];
+  });
+  return out;
+}
+
 export default function PrivacyAndSharingScreen() {
+  const router = useRouter();
   const [settings, setSettings] = useState<PrivacySettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +80,7 @@ export default function PrivacyAndSharingScreen() {
       if (res.error) {
         setError(res.error.message || "Failed to load privacy settings");
       } else if (res.data) {
-        setSettings({ ...DEFAULT_SETTINGS, ...res.data });
+        setSettings({ ...DEFAULT_SETTINGS, ...mergeServerPrivacyPayload(res.data) });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load privacy settings");
@@ -81,12 +100,17 @@ export default function PrivacyAndSharingScreen() {
       setSettings(next);
       setSavingKey(key);
       try {
-        const res = await api.patch<PrivacySettings>("/api/me/privacy-settings", {
+        const res = await api.patch<Record<string, unknown>>("/api/me/privacy-settings", {
           [key]: value,
         });
         if (res.error) {
           setSettings(previous);
           Alert.alert("Error", res.error.message || "Could not update setting. Please try again.");
+        } else if (res.data) {
+          const merged = mergeServerPrivacyPayload(res.data);
+          if (Object.keys(merged).length) {
+            setSettings((s) => ({ ...s, ...merged }));
+          }
         }
       } catch {
         setSettings(previous);
@@ -140,18 +164,24 @@ export default function PrivacyAndSharingScreen() {
             Act (POPIA) and our Privacy Policy. You can change these settings at any time.
             Disabling data sharing may limit personalised recommendations.
           </Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12, alignItems: "center" }}>
             <Text
-              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginRight: 16 }}
-              onPress={() => router.push("/(app)/privacy-policy")}
+              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginRight: 8 }}
+              onPress={() => pushWebPrivacyPolicy(router)}
             >
-              Full Privacy Policy
+              Privacy policy
+            </Text>
+            <Text
+              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginRight: 8 }}
+              onPress={() => pushWebTermsOfService(router)}
+            >
+              Terms of service
             </Text>
             <Text
               style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline" }}
-              onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/cookie-policy`).catch(() => {})}
+              onPress={() => pushWebCookiePolicy(router)}
             >
-              Cookie Policy
+              Cookie policy
             </Text>
           </View>
         </View>
@@ -165,7 +195,7 @@ export default function PrivacyAndSharingScreen() {
             DELETE.
           </Text>
           <TouchableOpacity
-            onPress={() => router.push("/(app)/account-settings/delete-account")}
+            onPress={() => router.push("/(app)/account-settings/delete-account" as never)}
             style={{
               borderWidth: 1,
               borderColor: "#fecaca",

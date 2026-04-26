@@ -133,20 +133,56 @@ export default function PaymentsScreen() {
 
   const addCard = async () => {
     setAddingCard(true);
+    const countBefore = methods.length;
     try {
-      const res = await api.post<{ data?: { authorization_url: string } }>("/api/me/payment-methods/initialize-verification", {
-        set_as_default: methods.length === 0,
-      });
-      const data = res?.data as { authorization_url?: string } | undefined;
-      const url = data?.authorization_url;
+      const res = await api.post<{ authorization_url?: string; data?: { authorization_url?: string } }>(
+        "/api/me/payment-methods/initialize-verification",
+        {
+          set_as_default: methods.length === 0,
+          /** Paystack redirects here after checkout — must be in-app scheme so Safari returns to the customer app (not the web account page). */
+          callback_url: "customer://account-settings/payments",
+        },
+      );
+      if (res.error) {
+        Alert.alert(t("common.error"), res.error.message ?? t("customer.paymentsScreen.couldNotStartVerification"));
+        return;
+      }
+      const payload = res.data as { authorization_url?: string; data?: { authorization_url?: string } } | null | undefined;
+      const url = payload?.authorization_url ?? payload?.data?.authorization_url;
       if (!url) {
-        Alert.alert(t("common.error"), res?.error?.message ?? t("customer.paymentsScreen.couldNotStartVerification"));
+        Alert.alert(t("common.error"), t("customer.paymentsScreen.couldNotStartVerification"));
         return;
       }
       await WebBrowser.openBrowserAsync(url, {
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
       });
+
+      const MAX_POLL = 12;
+      const POLL_MS = 2000;
+      for (let i = 0; i < MAX_POLL; i++) {
+        const check = await api.get<any>("/api/me/payment-methods");
+        if (!check.error) {
+          const raw = check.data;
+          const list = Array.isArray(raw) ? raw : raw?.data ?? [];
+          if (Array.isArray(list) && list.length > countBefore) {
+            setMethods(list);
+            Alert.alert(
+              t("customer.paymentsScreen.cardSavedTitle"),
+              t("customer.paymentsScreen.cardSavedBody"),
+            );
+            return;
+          }
+        }
+        if (i < MAX_POLL - 1) {
+          await new Promise((r) => setTimeout(r, POLL_MS));
+        }
+      }
+
       await load();
+      Alert.alert(
+        t("customer.paymentsScreen.cardVerificationPendingTitle"),
+        t("customer.paymentsScreen.cardVerificationPendingBody"),
+      );
     } catch (e) {
       Alert.alert(t("common.error"), e instanceof Error ? e.message : t("customer.paymentsScreen.couldNotAddCard"));
     } finally {

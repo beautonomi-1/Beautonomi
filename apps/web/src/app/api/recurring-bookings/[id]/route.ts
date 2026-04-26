@@ -3,6 +3,60 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAuthInApi, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 
+/**
+ * GET /api/recurring-bookings/[id]
+ *
+ * Returns the recurring series row plus all bookings linked via `bookings.recurring_series_id`
+ * (cron-generated visits and the checkout “source” visit when created via Paystack metadata).
+ */
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { user } = await requireAuthInApi(request);
+    const supabase = await getSupabaseServer(request);
+    const { id } = await params;
+
+    const { data: recurring, error: recErr } = await supabase
+      .from("recurring_appointments")
+      .select(
+        `
+        *,
+        provider:providers!inner(
+          id,
+          business_name,
+          slug
+        )
+      `
+      )
+      .eq("id", id)
+      .eq("customer_id", user.id)
+      .maybeSingle();
+
+    if (recErr) {
+      throw recErr;
+    }
+    if (!recurring) {
+      return notFoundResponse("Recurring booking not found");
+    }
+
+    const { data: seriesBookings, error: bErr } = await supabase
+      .from("bookings")
+      .select("id, scheduled_at, status, payment_status, total_amount, currency, booking_number")
+      .eq("recurring_series_id", id)
+      .order("scheduled_at", { ascending: true });
+
+    if (bErr) {
+      throw bErr;
+    }
+
+    return successResponse({
+      recurring,
+      series_bookings: seriesBookings ?? [],
+    });
+  } catch (error) {
+    return handleApiError(error, "Failed to load recurring booking");
+  }
+}
+
 const updateRecurringSchema = z.object({
   is_active: z.boolean().optional(),
   end_date: z.string().date().optional().nullable(),
@@ -115,10 +169,25 @@ export async function DELETE(
       return notFoundResponse("Recurring booking not found");
     }
 
-    // Deactivate instead of delete
+    // Soft-cancel: stop cron from picking this row (`is_active` + `end_date` window in process-recurring-bookings).
+    const todayYmd = new Date().toISOString().split("T")[0];
+    const { data: prevRow } = await supabase
+      .from("recurring_appointments")
+      .select("metadata")
+      .eq("id", id)
+      .maybeSingle();
+    const prevMeta =
+      prevRow?.metadata && typeof prevRow.metadata === "object" && !Array.isArray(prevRow.metadata)
+        ? (prevRow.metadata as Record<string, unknown>)
+        : {};
     const { error } = await supabase
       .from("recurring_appointments")
-      .update({ is_active: false, end_date: new Date().toISOString().split("T")[0] })
+      .update({
+        is_active: false,
+        end_date: todayYmd,
+        metadata: { ...prevMeta, cancelled_by_customer_at: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", id);
 
     if (error) {

@@ -17,6 +17,8 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
+import { openNativeStoreReview } from "@/lib/open-store-review";
+import { getAnalyticsClient } from "@/lib/analytics-rn";
 
 type SettingsItem = {
   title: string;
@@ -26,7 +28,7 @@ type SettingsItem = {
   mobileRoute?: string;
   isUpgrade?: boolean;
   /** Special action instead of navigation (e.g. signOut, globalSignOut) */
-  action?: "signOut" | "globalSignOut";
+  action?: "signOut" | "globalSignOut" | "rateStore";
   /** Style as destructive (e.g. deactivate) */
   isDestructive?: boolean;
   /** Style as subtle/muted (e.g. delete account – less prominent) */
@@ -46,7 +48,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     title: "App",
     description: "Language and display",
     items: [
-      { title: "Language", description: "App language (English, Afrikaans, isiZulu, Sesotho)", href: "/provider/settings/language", mobileRoute: "/(app)/(tabs)/more/settings/language" },
+      { title: "Language", description: "App language (English, Afrikaans, isiZulu, Sesotho, and more)", href: "/provider/settings/language", mobileRoute: "/(app)/(tabs)/more/settings/language" },
     ],
   },
   {
@@ -153,6 +155,12 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
       { title: "Notification preferences", description: "How you receive notifications", href: "/provider/settings/notifications", mobileRoute: "/(app)/(tabs)/more/settings/notification-preferences" },
       { title: "My tickets", description: "View and reply to your support tickets", href: "/help/my-tickets", mobileRoute: "/(app)/(tabs)/more/support-tickets" },
       { title: "Contact support", description: "Submit a support ticket or get help", href: "/help/submit-ticket", mobileRoute: "/(app)/(tabs)/more/contact-support" },
+      {
+        title: "Rate Beautonomi on the App Store",
+        description: "Opens the App Store or Google Play so you can leave a review",
+        href: "#",
+        action: "rateStore" as const,
+      },
       { title: "Change password", description: "Update your account password", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-change-password" },
       { title: "Privacy Policy", description: "How we use your data", href: "/privacy-policy", mobileRoute: "/(auth)/privacy" },
       { title: "Terms of Service", description: "Terms and conditions", href: "/terms-and-condition", mobileRoute: "/(auth)/terms" },
@@ -231,6 +239,11 @@ export default function SettingsAccountHubScreen() {
       }
       if (item.action === "globalSignOut") {
         handleGlobalSignOut();
+        return;
+      }
+      if (item.action === "rateStore") {
+        getAnalyticsClient()?.track("rate_app_store", { source: "settings_account_hub" });
+        void openNativeStoreReview();
         return;
       }
       // §Provider-launch (audit 2026-04): the dynamically-injected

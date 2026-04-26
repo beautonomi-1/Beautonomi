@@ -8,9 +8,17 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { z } from "zod";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
+const callbackUrlSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (s) => /^https?:\/\//i.test(s) || s.startsWith("customer://"),
+    { message: "callback_url must be an http(s) URL or customer:// deep link" },
+  );
+
 const bodySchema = z.object({
   set_as_default: z.boolean().optional(),
-  callback_url: z.string().url().optional(),
+  callback_url: callbackUrlSchema.optional(),
 });
 
 /**

@@ -27,6 +27,8 @@ type ProductOrderRow = {
   tax_amount?: number | null;
   delivery_fee?: number | null;
   discount_amount?: number | null;
+  platform_fee?: number | null;
+  wallet_amount?: number | null;
   total_amount: number;
   currency: string;
   payment_status: string;
@@ -40,6 +42,8 @@ type ProductOrderRow = {
     slug?: string | null;
     thumbnail_url?: string | null;
     logo_url?: string | null;
+    receipt_header?: string | null;
+    receipt_footer?: string | null;
   } | null;
   delivery_address?: {
     id: string;
@@ -127,7 +131,7 @@ export async function GET(
           product_variant:product_variants (id, option_values)
         ),
         provider:providers (
-          id, business_name, slug, thumbnail_url
+          id, business_name, slug, thumbnail_url, receipt_header, receipt_footer
         ),
         delivery_address:user_addresses (
           id, label, address_line1, address_line2, city, state, postal_code, country
@@ -149,12 +153,13 @@ export async function GET(
     }
 
     const order = orderRaw as ProductOrderRow;
-    const prov = order.provider;
+    let prov = order.provider;
     if (prov && "thumbnail_url" in prov) {
-      order.provider = {
+      prov = {
         ...prov,
         logo_url: prov.thumbnail_url ?? prov.logo_url ?? null,
       };
+      order.provider = prov;
     }
 
     const tenantRegion = order.tenant_id
@@ -166,10 +171,12 @@ export async function GET(
     const tax = Number(order.tax_amount || 0);
     const deliveryFee = Number(order.delivery_fee || 0);
     const discount = Number(order.discount_amount || 0);
+    const platformFee = Number(order.platform_fee || 0);
+    const walletPaid = Number(order.wallet_amount || 0);
     const totalFromRow =
       order.total_amount != null && !Number.isNaN(Number(order.total_amount))
         ? Number(order.total_amount)
-        : subtotal + tax + deliveryFee - discount;
+        : subtotal + tax + deliveryFee + platformFee - discount;
 
     const items =
       order.items?.map((it: OrderItemRow) => {
@@ -188,13 +195,27 @@ export async function GET(
         };
       }) || [];
 
+    const headerText = prov?.receipt_header ?? null;
+    const footerText = prov?.receipt_footer ?? null;
+    const providerPublic = prov
+      ? {
+          id: prov.id,
+          business_name: prov.business_name ?? null,
+          slug: prov.slug ?? null,
+          thumbnail_url: prov.thumbnail_url ?? null,
+          logo_url: prov.logo_url ?? prov.thumbnail_url ?? null,
+        }
+      : null;
+
     const receipt = {
       order_number: order.order_number,
       order_date: order.created_at,
       status: order.status,
       fulfillment_type: order.fulfillment_type,
       customer_id: order.customer_id,
-      provider: order.provider,
+      provider: providerPublic,
+      receipt_header: headerText,
+      receipt_footer: footerText,
       delivery_address: order.fulfillment_type === "delivery" ? order.delivery_address : null,
       collection_location:
         order.fulfillment_type === "collection" ? order.collection_location : null,
@@ -203,6 +224,8 @@ export async function GET(
       tax,
       delivery_fee: deliveryFee,
       discount,
+      platform_fee: platformFee,
+      wallet_amount: walletPaid,
       total: totalFromRow,
       currency: order.currency || currencyFallback,
       payment_status: order.payment_status,

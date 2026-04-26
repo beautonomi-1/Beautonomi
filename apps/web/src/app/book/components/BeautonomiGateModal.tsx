@@ -39,6 +39,7 @@ import {
   isCompleteSupabaseSmsOtp,
 } from "@/lib/supabase/auth-sms-otp";
 import { clearBeautonomiHoldIdCookie } from "@/lib/booking/clear-hold-client-markers";
+import { getSocialAuthConfig } from "@/lib/social-auth-config";
 
 function holdSecondsRemaining(iso: string): number {
   const ms = new Date(iso).getTime() - Date.now();
@@ -71,6 +72,10 @@ export function BeautonomiGateModal({
   const [otpSent, setOtpSent] = useState<"email" | "phone" | null>(null);
   const [otpCode, setOtpCode] = useState("");
   const [sentPhoneE164, setSentPhoneE164] = useState<string>("");
+  const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
+    google: true,
+    apple: true,
+  });
 
   const validEmail = email.trim() !== "" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
@@ -85,11 +90,17 @@ export function BeautonomiGateModal({
     return () => clearInterval(id);
   }, [open, holdExpiresAt]);
 
+  useEffect(() => {
+    getSocialAuthConfig().then(setSocialAuth).catch(() => {
+      setSocialAuth({ google: true, apple: true });
+    });
+  }, []);
+
   const redirectUrl =
     customRedirectUrl ||
     `${typeof window !== "undefined" ? window.location.origin : ""}/book/continue?hold_id=${holdId}`;
 
-  const handleOAuth = async (provider: "google" | "facebook" | "apple") => {
+  const handleSocialOAuth = async (provider: "google" | "apple") => {
     setLoading(provider);
     try {
       if (typeof document !== "undefined" && holdId) {
@@ -268,61 +279,46 @@ export function BeautonomiGateModal({
           )}
         </DialogHeader>
         <div className="flex flex-col gap-4">
-          <Button
-            variant="outline"
-            className={`w-full rounded-2xl h-12 font-medium ${MIN_TAP} ${BOOKING_ACTIVE_SCALE} flex items-center justify-center gap-3`}
-            style={{
-              borderColor: BOOKING_BORDER,
-              color: BOOKING_TEXT_PRIMARY,
-              backgroundColor: "#fff",
-            }}
-            onClick={() => handleOAuth("google")}
-            disabled={!!loading}
-          >
-            {loading === "google" ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Image src="/images/google.svg" alt="" width={20} height={20} className="shrink-0" />
-            )}
-            Continue with Google
-          </Button>
-          <Button
-            variant="outline"
-            className={`w-full rounded-2xl h-12 font-medium ${MIN_TAP} ${BOOKING_ACTIVE_SCALE} flex items-center justify-center gap-3`}
-            style={{
-              borderColor: BOOKING_BORDER,
-              color: BOOKING_TEXT_PRIMARY,
-              backgroundColor: "#fff",
-            }}
-            onClick={() => handleOAuth("apple")}
-            disabled={!!loading}
-          >
-            {loading === "apple" ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Image src="/images/apple-icon.svg" alt="" width={20} height={20} className="shrink-0" />
-            )}
-            Continue with Apple
-          </Button>
-          <Button
-            variant="outline"
-            className={`w-full rounded-2xl h-12 font-medium ${MIN_TAP} ${BOOKING_ACTIVE_SCALE} flex items-center justify-center gap-3`}
-            style={{
-              borderColor: BOOKING_BORDER,
-              color: BOOKING_TEXT_PRIMARY,
-              backgroundColor: "#fff",
-            }}
-            onClick={() => handleOAuth("facebook")}
-            disabled={!!loading}
-          >
-            {loading === "facebook" ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Image src="/images/facebook-icon.svg" alt="" width={20} height={20} className="shrink-0" />
-            )}
-            Continue with Facebook
-          </Button>
-
+          {socialAuth.google && (
+            <Button
+              variant="outline"
+              className={`w-full rounded-2xl h-12 font-medium ${MIN_TAP} ${BOOKING_ACTIVE_SCALE} flex items-center justify-center gap-3`}
+              style={{
+                borderColor: BOOKING_BORDER,
+                color: BOOKING_TEXT_PRIMARY,
+                backgroundColor: "#fff",
+              }}
+              onClick={() => void handleSocialOAuth("google")}
+              disabled={!!loading}
+            >
+              {loading === "google" ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Image src="/images/google.svg" alt="" width={20} height={20} className="shrink-0" />
+              )}
+              Continue with Google
+            </Button>
+          )}
+          {socialAuth.apple && (
+            <Button
+              variant="outline"
+              className={`w-full rounded-2xl h-12 font-medium ${MIN_TAP} ${BOOKING_ACTIVE_SCALE} flex items-center justify-center gap-3`}
+              style={{
+                borderColor: BOOKING_BORDER,
+                color: BOOKING_TEXT_PRIMARY,
+                backgroundColor: "#fff",
+              }}
+              onClick={() => void handleSocialOAuth("apple")}
+              disabled={!!loading}
+            >
+              {loading === "apple" ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Image src="/images/apple-icon.svg" alt="" width={20} height={20} className="shrink-0" />
+              )}
+              Continue with Apple
+            </Button>
+          )}
           {!otpSent ? (
             <>
               <div className="relative py-1">

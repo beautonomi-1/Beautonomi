@@ -16,14 +16,30 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as FileSystem from "expo-file-system/legacy";
 import { api } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase/client";
+import { getBackendUrl, webApiTenantHeaders } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
+import { useAuth } from "@/providers/AuthProvider";
 
 const PRIMARY = Colors.primary;
+
+function formatPaymentMethod(method: string | null | undefined): string | null {
+  if (!method || typeof method !== "string") return null;
+  const m = method.toLowerCase().trim();
+  const labels: Record<string, string> = {
+    paystack: "Card (Pay online)",
+    wallet: "Wallet",
+    cash: "Cash",
+    yoco: "Yoco",
+    card_on_delivery: "Card on delivery / collection",
+  };
+  return labels[m] ?? method.replace(/_/g, " ");
+}
 const RETURN_WINDOW_DAYS = 14;
 
 function isWithinReturnWindow(order: ProductOrder): boolean {
@@ -94,6 +110,7 @@ function getTimelineIndex(status: string, fulfillmentType?: string): number {
 
 export default function ProductOrderDetailScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const rawId = useLocalSearchParams<{ id?: string | string[] }>().id;
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
@@ -152,6 +169,20 @@ export default function ProductOrderDetailScreen() {
   const fb = getTenantDefaultCurrency();
   const cur = order.currency;
   const fmt = (amount: number) => formatMoney(amount, cur ?? fb);
+  const platformFee = Number(order.platform_fee ?? 0);
+  const walletAmt = Number(order.wallet_amount ?? 0);
+  const buyerName =
+    order.customer?.full_name?.trim() ||
+    order.customer_name?.trim() ||
+    (typeof user?.user_metadata?.full_name === "string" ? user.user_metadata.full_name.trim() : "") ||
+    null;
+  const buyerEmail = order.customer?.email?.trim() || user?.email?.trim() || null;
+  const buyerPhone =
+    order.customer?.phone?.trim() ||
+    order.customer_phone?.trim() ||
+    user?.phone?.trim() ||
+    null;
+  const paymentMethodLabel = formatPaymentMethod(order.payment_method ?? undefined);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
@@ -189,7 +220,11 @@ export default function ProductOrderDetailScreen() {
                 `Order #${order.order_number}`,
                 order.created_at ? `Placed: ${formatDate(order.created_at)}` : null,
                 order.provider?.business_name ? `Seller: ${order.provider.business_name}` : null,
+                buyerName ? `Name: ${buyerName}` : null,
+                buyerEmail ? `Email: ${buyerEmail}` : null,
+                buyerPhone ? `Phone: ${buyerPhone}` : null,
                 `Status: ${order.status}`,
+                paymentMethodLabel ? `Payment: ${paymentMethodLabel}` : null,
                 ``,
                 ...(order.items ?? []).map((it) => {
                   const variant = it.product_variant?.option_values
@@ -199,8 +234,11 @@ export default function ProductOrderDetailScreen() {
                 }),
                 ``,
                 `Subtotal: ${fmt(Number(order.subtotal ?? 0))}`,
+                Number(order.discount_amount ?? 0) > 0 ? `Discount: -${fmt(Number(order.discount_amount ?? 0))}` : null,
                 Number(order.delivery_fee ?? 0) > 0 ? `Delivery: ${fmt(Number(order.delivery_fee ?? 0))}` : null,
                 Number(order.tax_amount ?? 0) > 0 ? `Tax: ${fmt(Number(order.tax_amount ?? 0))}` : null,
+                platformFee > 0 ? `Platform fee: ${fmt(platformFee)}` : null,
+                walletAmt > 0 ? `Paid from wallet: ${fmt(walletAmt)}` : null,
                 `Total: ${fmt(Number(order.total_amount ?? 0))}`,
               ].filter(Boolean);
               await Share.share({
@@ -220,8 +258,51 @@ export default function ProductOrderDetailScreen() {
         <TouchableOpacity
           onPress={async () => {
             try {
+              const base = getBackendUrl().replace(/\/$/, "");
+              const safeName = `order_${(order.order_number || order.id).replace(/[^\w.-]+/g, "_")}.pdf`;
+              const pdfPath = `/api/me/orders/${encodeURIComponent(order.id)}/receipt/pdf`;
+
+              const tryBearerDownload = async (): Promise<boolean> => {
+                const { data } = await supabase.auth.getSession();
+                const token = data.session?.access_token;
+                if (!token || !base) return false;
+                const pdfUrl = `${base}${pdfPath}`;
+                const headers: Record<string, string> = {
+                  Authorization: `Bearer ${token}`,
+                  ...webApiTenantHeaders(),
+                };
+                if (Platform.OS === "web") {
+                  const r = await fetch(pdfUrl, { headers, credentials: "omit" });
+                  if (!r.ok) return false;
+                  const blob = await r.blob();
+                  const objUrl = URL.createObjectURL(blob);
+                  if (typeof window !== "undefined") {
+                    const a = document.createElement("a");
+                    a.href = objUrl;
+                    a.download = safeName;
+                    a.rel = "noopener";
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
+                  }
+                  return true;
+                }
+                if (!FileSystem.cacheDirectory) return false;
+                const fileUri = `${FileSystem.cacheDirectory}${safeName}`;
+                const dl = await FileSystem.downloadAsync(pdfUrl, fileUri, { headers });
+                if (dl.status !== 200) return false;
+                await Share.share({
+                  url: fileUri,
+                  message: `Order ${order.order_number}`,
+                });
+                return true;
+              };
+
+              if (await tryBearerDownload()) return;
+
               const res = await api.post<{ url?: string }>(
-                `/api/me/orders/${order.id}/receipt/signed-url`,
+                `${pdfPath.replace("/receipt/pdf", "/receipt/signed-url")}`,
                 {},
               );
               const signedUrl = res.data?.url;
@@ -246,8 +327,16 @@ export default function ProductOrderDetailScreen() {
                 Alert.alert("Download receipt", "File storage is not available on this device.");
                 return;
               }
-              const fileUri = `${FileSystem.cacheDirectory}order_${order.order_number || order.id}.pdf`;
-              await FileSystem.downloadAsync(signedUrl, fileUri);
+              const fileUri = `${FileSystem.cacheDirectory}${safeName}`;
+              const dl = await FileSystem.downloadAsync(signedUrl, fileUri);
+              if (dl.status !== 200) {
+                const hint =
+                  dl.status === 401 || dl.status === 403
+                    ? "Your session may have expired. Please try again after refreshing the screen."
+                    : `The server returned status ${dl.status}.`;
+                Alert.alert("Download receipt", `Could not download the PDF. ${hint}`);
+                return;
+              }
               await Share.share({
                 url: fileUri,
                 message: `Order ${order.order_number}`,
@@ -460,6 +549,40 @@ export default function ProductOrderDetailScreen() {
           ))}
         </View>
 
+        {/* Buyer / contact on this order */}
+        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
+            Your details
+          </Text>
+          {buyerName ? (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>Name</Text>
+              <Text style={{ fontSize: 14, color: "#111827", fontWeight: "600" }}>{buyerName}</Text>
+            </View>
+          ) : null}
+          {buyerEmail ? (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>Email</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{buyerEmail}</Text>
+            </View>
+          ) : null}
+          {buyerPhone ? (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>Phone</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{buyerPhone}</Text>
+            </View>
+          ) : null}
+          {!buyerName && !buyerEmail && !buyerPhone ? (
+            <Text style={{ fontSize: 13, color: "#6B7280" }}>No contact details on file for this order.</Text>
+          ) : null}
+          {paymentMethodLabel ? (
+            <View style={{ marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: "#F3F4F6" }}>
+              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>Payment method</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{paymentMethodLabel}</Text>
+            </View>
+          ) : null}
+        </View>
+
         {/* Fulfillment details */}
         <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
@@ -552,6 +675,18 @@ export default function ProductOrderDetailScreen() {
               <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.tax_amount ?? 0))}</Text>
             </View>
           )}
+          {platformFee > 0 && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>Platform fee</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(platformFee)}</Text>
+            </View>
+          )}
+          {walletAmt > 0 && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>Paid from wallet</Text>
+              <Text style={{ fontSize: 14, color: "#059669" }}>{fmt(walletAmt)}</Text>
+            </View>
+          )}
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
             <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Calculated total</Text>
             <Text style={{ fontSize: 13, fontWeight: "700", color: "#111827" }}>
@@ -561,7 +696,8 @@ export default function ProductOrderDetailScreen() {
                   Number(order.subtotal ?? 0) -
                     Number(order.discount_amount ?? 0) +
                     Number(order.delivery_fee ?? 0) +
-                    Number(order.tax_amount ?? 0),
+                    Number(order.tax_amount ?? 0) +
+                    platformFee,
                 ),
               )}
             </Text>
@@ -575,10 +711,11 @@ export default function ProductOrderDetailScreen() {
               (Number(order.subtotal ?? 0) -
                 Number(order.discount_amount ?? 0) +
                 Number(order.delivery_fee ?? 0) +
-                Number(order.tax_amount ?? 0)),
+                Number(order.tax_amount ?? 0) +
+                platformFee),
           ) > 0.02 && (
             <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 8 }}>
-              Small differences can come from rounding or wallet/promotions applied at checkout.
+              Small differences can come from rounding or promotions applied at checkout.
             </Text>
           )}
         </View>

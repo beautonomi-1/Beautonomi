@@ -33,6 +33,41 @@ const VALID_SOURCES = [
   "form",
 ] as const;
 
+function escapeLike(value: string): string {
+  return value.replace(/[%_]/g, "");
+}
+
+function coerceRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function getProvinceFromLeadRow(row: {
+  resolved_location?: unknown;
+  suggested_location_text?: string | null;
+}): string | null {
+  const resolved = coerceRecord(row.resolved_location);
+  const candidates = [
+    resolved?.province,
+    resolved?.state,
+    resolved?.region,
+    resolved?.administrative_area_level_1,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  const text = typeof row.suggested_location_text === "string" ? row.suggested_location_text.trim() : "";
+  if (!text) return null;
+  const parts = text.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return parts[parts.length - 2] || null;
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
@@ -47,6 +82,7 @@ export async function GET(request: NextRequest) {
     const assignedTo = searchParams.get("assigned_to");
     const country = searchParams.get("country");
     const categoryId = searchParams.get("category_id");
+    const province = searchParams.get("province")?.trim();
 
     // Pre-resolve lead IDs for category filter (join through provider_lead_categories)
     let categoryLeadIds: string[] | null = null;
@@ -95,8 +131,14 @@ export async function GET(request: NextRequest) {
     if (categoryId && categoryLeadIds) {
       query = query.in("id", categoryLeadIds);
     }
+    if (province) {
+      const safeProvince = escapeLike(province);
+      query = query.or(
+        `resolved_location->>province.ilike.%${safeProvince}%,resolved_location->>state.ilike.%${safeProvince}%,resolved_location->>region.ilike.%${safeProvince}%,suggested_location_text.ilike.%${safeProvince}%`
+      );
+    }
     if (search) {
-      const safe = search.replace(/[%_]/g, "");
+      const safe = escapeLike(search);
       query = query.or(
         `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
       );
@@ -116,11 +158,17 @@ export async function GET(request: NextRequest) {
       if (source && source !== "all") q = q.eq("source", source);
       if (assignedTo) q = q.eq("assigned_to", assignedTo);
       if (country) q = q.eq("country", country);
+      if (province) {
+        const safeProvince = escapeLike(province);
+        q = q.or(
+          `resolved_location->>province.ilike.%${safeProvince}%,resolved_location->>state.ilike.%${safeProvince}%,resolved_location->>region.ilike.%${safeProvince}%,suggested_location_text.ilike.%${safeProvince}%`
+        );
+      }
       if (categoryId) {
         q = q.in("id", categoryLeadIds!);
       }
       if (search) {
-        const safe = search.replace(/[%_]/g, "");
+        const safe = escapeLike(search);
         q = q.or(
           `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
         );
@@ -142,10 +190,102 @@ export async function GET(request: NextRequest) {
     }
     stageCounts.all = allCount;
 
+    // Dynamic filters for UI faceting based on current search/source/stage scope.
+    // Country/province are intentionally not applied here, so operators can pivot quickly.
+    let optionsQuery = supabase
+      .from("provider_leads")
+      .select("id,country,suggested_location_text,resolved_location")
+      .eq("tenant_id", tenantId);
+    if (stage && stage !== "all") optionsQuery = optionsQuery.eq("commercial_stage", stage);
+    if (source && source !== "all") optionsQuery = optionsQuery.eq("source", source);
+    if (assignedTo) optionsQuery = optionsQuery.eq("assigned_to", assignedTo);
+    if (categoryId && categoryLeadIds) optionsQuery = optionsQuery.in("id", categoryLeadIds);
+    if (search) {
+      const safe = escapeLike(search);
+      optionsQuery = optionsQuery.or(
+        `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
+      );
+    }
+    optionsQuery = optionsQuery.limit(5000);
+    const { data: optionLeadRows } = await optionsQuery;
+    const optionRows = (optionLeadRows ?? []) as Array<{
+      id: string;
+      country?: string | null;
+      suggested_location_text?: string | null;
+      resolved_location?: unknown;
+    }>;
+    const countryCounts = new Map<string, number>();
+    const provinceCounts = new Map<string, { count: number; country: string | null }>();
+    for (const row of optionRows) {
+      const countryValue = typeof row.country === "string" ? row.country.trim() : "";
+      if (countryValue) {
+        countryCounts.set(countryValue, (countryCounts.get(countryValue) ?? 0) + 1);
+      }
+      const provinceValue = getProvinceFromLeadRow(row);
+      if (provinceValue) {
+        const prev = provinceCounts.get(provinceValue);
+        provinceCounts.set(provinceValue, {
+          count: (prev?.count ?? 0) + 1,
+          country: countryValue || prev?.country || null,
+        });
+      }
+    }
+
+    const leadIdsForOptions = optionRows.map((row) => row.id).filter(Boolean);
+    const categoryCounts = new Map<string, { id: string; name: string; count: number; seen: Set<string> }>();
+    if (leadIdsForOptions.length > 0) {
+      const { data: categoryRows } = await supabase
+        .from("provider_lead_categories")
+        .select("lead_id, global_category_id, global_service_categories:global_category_id(id,name)")
+        .in("lead_id", leadIdsForOptions);
+      for (const row of (categoryRows ?? []) as Array<{
+        lead_id?: string;
+        global_category_id?: string;
+        global_service_categories?: { id?: string; name?: string } | null;
+      }>) {
+        const leadId = typeof row.lead_id === "string" ? row.lead_id : "";
+        const categoryIdValue =
+          typeof row.global_category_id === "string"
+            ? row.global_category_id
+            : typeof row.global_service_categories?.id === "string"
+              ? row.global_service_categories.id
+              : "";
+        const categoryName = typeof row.global_service_categories?.name === "string"
+          ? row.global_service_categories.name
+          : "";
+        if (!leadId || !categoryIdValue || !categoryName) continue;
+        const existing = categoryCounts.get(categoryIdValue);
+        if (!existing) {
+          categoryCounts.set(categoryIdValue, {
+            id: categoryIdValue,
+            name: categoryName,
+            count: 1,
+            seen: new Set([leadId]),
+          });
+          continue;
+        }
+        if (!existing.seen.has(leadId)) {
+          existing.seen.add(leadId);
+          existing.count += 1;
+        }
+      }
+    }
+
     return successResponse({
       data: data || [],
       meta: { page, limit, total, has_more: total > page * limit },
       stage_counts: stageCounts,
+      filter_options: {
+        countries: [...countryCounts.entries()]
+          .map(([value, count]) => ({ value, label: value, count }))
+          .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+        provinces: [...provinceCounts.entries()]
+          .map(([value, data]) => ({ value, label: value, count: data.count, country: data.country }))
+          .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+        categories: [...categoryCounts.values()]
+          .map(({ seen: _seen, ...rest }) => rest)
+          .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+      },
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch leads");

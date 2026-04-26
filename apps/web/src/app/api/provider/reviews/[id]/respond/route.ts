@@ -2,6 +2,11 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import {
+  isReviewContentEditBlocked,
+  isSuperadminRole,
+  REVIEW_EDIT_WINDOW_MESSAGE,
+} from "@/lib/reviews/review-edit-window";
 
 const respondSchema = z.object({
   response: z.string().min(1, "Response is required").max(1000, "Response must be less than 1000 characters"),
@@ -34,7 +39,7 @@ export async function POST(
     // Get review
     const { data: review, error: reviewError } = await supabase
       .from("reviews")
-      .select("id, provider_id, provider_response")
+      .select("id, provider_id, provider_response, provider_response_at")
       .eq("id", reviewId)
       .single();
 
@@ -49,6 +54,18 @@ export async function POST(
         "UNAUTHORIZED",
         403
       );
+    }
+
+    if (
+      review.provider_response &&
+      (review as { provider_response_at?: string | null }).provider_response_at &&
+      !isSuperadminRole(user.role) &&
+      isReviewContentEditBlocked(
+        String((review as { provider_response_at?: string | null }).provider_response_at),
+        user.role,
+      )
+    ) {
+      return errorResponse(REVIEW_EDIT_WINDOW_MESSAGE, "REVIEW_EDIT_CLOSED", 403);
     }
 
     // Check if already responded
@@ -144,7 +161,7 @@ export async function PATCH(
     // Get review
     const { data: review, error: reviewError } = await supabase
       .from("reviews")
-      .select("id, provider_id, provider_response")
+      .select("id, provider_id, provider_response, provider_response_at")
       .eq("id", reviewId)
       .single();
 
@@ -161,12 +178,23 @@ export async function PATCH(
       );
     }
 
+    if (
+      (review as { provider_response_at?: string | null }).provider_response_at &&
+      !isSuperadminRole(user.role) &&
+      isReviewContentEditBlocked(
+        String((review as { provider_response_at?: string | null }).provider_response_at),
+        user.role,
+      )
+    ) {
+      return errorResponse(REVIEW_EDIT_WINDOW_MESSAGE, "REVIEW_EDIT_CLOSED", 403);
+    }
+
     // Update review with edited response
     const { data: updatedReview, error: updateError } = await supabase
       .from("reviews")
       .update({
         provider_response: validated.response,
-        provider_response_at: new Date().toISOString(), // Update timestamp
+        updated_at: new Date().toISOString(),
       })
       .eq("id", reviewId)
       .select()

@@ -100,7 +100,8 @@ function formatVariantLabel(optionValues?: Record<string, string>): string {
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
-  const { addToCart } = useCart();
+  const cart = useCart();
+  const { addToCart } = cart;
   const { contentPadding } = useResponsive();
   const { width: screenWidth } = useWindowDimensions();
 
@@ -392,6 +393,9 @@ export default function ProductDetailScreen() {
 
   const fb = getTenantDefaultCurrency();
   const priceLabel = (amount: number) => formatMoney(amount, product.currency ?? fb);
+  const providerCart = product.provider?.id ? cart.groupedByProvider[product.provider.id] : null;
+  const providerCartItemCount = providerCart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+  const canCheckoutProviderCart = providerCartItemCount > 0;
 
   // Build image gallery: prefer variant image when selected, then all product images
   const allImages: string[] = [];
@@ -851,15 +855,19 @@ export default function ProductDetailScreen() {
               }}
               style={{
                 flex: 1,
-                backgroundColor: "#fff",
-                borderColor: Colors.primary,
+                backgroundColor: canCheckoutProviderCart ? "#fff" : "#F3F4F6",
+                borderColor: canCheckoutProviderCart ? Colors.primary : "#E5E7EB",
                 borderWidth: 2,
                 borderRadius: 12,
                 paddingVertical: 13,
                 alignItems: "center",
               }}
+              disabled={!canCheckoutProviderCart}
+              accessibilityState={{ disabled: !canCheckoutProviderCart }}
             >
-              <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 14 }}>Checkout now</Text>
+              <Text style={{ color: canCheckoutProviderCart ? Colors.primary : "#9CA3AF", fontWeight: "700", fontSize: 14 }}>
+                {canCheckoutProviderCart ? `Checkout cart (${providerCartItemCount})` : "Add to cart first"}
+              </Text>
             </TouchableOpacity>
           </View>
 

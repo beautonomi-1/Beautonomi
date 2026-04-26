@@ -1,5 +1,6 @@
 import { View, StyleSheet, TouchableOpacity, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
+import { pushWebPrivacyPolicy, pushWebTermsOfService } from "@/lib/legal-web";
 import { Ionicons } from "@expo/vector-icons";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
@@ -22,7 +23,7 @@ export default function HelpScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.quickLink}
-          onPress={() => router.push("/(app)/support-tickets" as never)}
+          onPress={() => router.push("/(app)/(tabs)/support-tickets" as never)}
           accessibilityLabel="View my support tickets"
           accessibilityRole="button"
         >
@@ -33,7 +34,7 @@ export default function HelpScreen() {
       <View style={styles.quickLinksSecondRow}>
         <TouchableOpacity
           style={[styles.quickLink, styles.quickLinkFirst]}
-          onPress={() => router.push("/(app)/support-tickets/new" as never)}
+          onPress={() => router.push("/(app)/(tabs)/support-tickets/new" as never)}
           accessibilityLabel="Submit a new support ticket"
           accessibilityRole="button"
         >
@@ -42,7 +43,7 @@ export default function HelpScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.quickLink}
-          onPress={() => router.push("/(app)/privacy-policy" as never)}
+          onPress={() => pushWebPrivacyPolicy(router)}
           accessibilityLabel="Open privacy policy"
           accessibilityRole="button"
         >
@@ -53,7 +54,7 @@ export default function HelpScreen() {
       <View style={styles.quickLinksThirdRow}>
         <TouchableOpacity
           style={[styles.quickLink, { flex: 1, marginRight: 0 }]}
-          onPress={() => router.push("/(app)/terms-of-service" as never)}
+          onPress={() => pushWebTermsOfService(router)}
           accessibilityLabel="Open terms of service"
           accessibilityRole="button"
         >

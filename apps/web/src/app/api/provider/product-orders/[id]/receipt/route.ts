@@ -62,6 +62,12 @@ type ProductOrderRow = {
     country?: string | null;
   } | null;
   items?: OrderItemRow[] | null;
+  provider?: {
+    id: string;
+    business_name?: string | null;
+    receipt_header?: string | null;
+    receipt_footer?: string | null;
+  } | null;
 };
 
 export async function GET(
@@ -125,6 +131,9 @@ export async function GET(
         ),
         collection_location:provider_locations (
           id, name, address_line1, city
+        ),
+        provider:providers (
+          id, business_name, receipt_header, receipt_footer
         )
       `
       )
@@ -181,6 +190,7 @@ export async function GET(
         };
       }) || [];
 
+    const prov = order.provider;
     const receipt = {
       order_number: order.order_number,
       order_date: order.created_at,
@@ -188,6 +198,11 @@ export async function GET(
       fulfillment_type: order.fulfillment_type,
       customer: order.customer,
       provider_id: order.provider_id,
+      provider: prov
+        ? { business_name: prov.business_name ?? null }
+        : null,
+      receipt_header: prov?.receipt_header ?? null,
+      receipt_footer: prov?.receipt_footer ?? null,
       delivery_address: order.fulfillment_type === "delivery" ? order.delivery_address : null,
       collection_location:
         order.fulfillment_type === "collection" ? order.collection_location : null,

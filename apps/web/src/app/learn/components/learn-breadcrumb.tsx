@@ -45,11 +45,12 @@ export function LearnBreadcrumb({
 
   const content = (
     <>
-      <Link
-        href="/learn"
-        className="text-zinc-500 hover:text-black transition-colors duration-200"
-      >
-        Home
+      <Link href="/" className="text-zinc-500 hover:text-black transition-colors duration-200">
+        Beautonomi
+      </Link>
+      <ChevronRight className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+      <Link href="/learn" className="text-zinc-500 hover:text-black transition-colors duration-200">
+        Learning Center
       </Link>
       {parents.map((title, i) => {
         const slug = parentSlugs[i];

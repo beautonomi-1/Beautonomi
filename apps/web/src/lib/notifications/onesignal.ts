@@ -24,8 +24,9 @@ const ONESIGNAL_API_BASE = "https://api.onesignal.com";
  * Legacy integrations sometimes stored `Basic …` or `Key …` verbatim — pass through unchanged.
  */
 export function oneSignalAuthorizationHeader(restApiKey: string): string {
-  const raw = restApiKey.trim();
+  const raw = restApiKey.replace(/^\uFEFF/, "").trim();
   if (!raw) return "";
+  // OneSignal accepts `Key <token>` (see Keys & IDs). Pass through if already prefixed.
   if (/^(basic|key)\s+/i.test(raw)) return raw;
   return `Key ${raw}`;
 }
@@ -303,8 +304,8 @@ async function sendOneSignalNotification(
 ): Promise<SendNotificationResult> {
   const appType = options?.appType;
   const resolved = await resolveOneSignalCredentials(appType, { tenantId: options?.tenantId });
-  const appId = resolved.appId;
-  const restKey = resolved.restKey;
+  const appId = resolved.appId?.replace(/^\uFEFF/, "").trim() || null;
+  const restKey = resolved.restKey?.replace(/^\uFEFF/, "").trim() || null;
   if (!appId || !restKey) {
     console.warn("OneSignal API keys not configured. Skipping notification send.");
     await logNotification({

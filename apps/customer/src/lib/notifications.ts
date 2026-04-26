@@ -10,6 +10,7 @@ export interface Notification {
   data?: {
     conversation_id?: string;
     booking_id?: string;
+    ticket_id?: string;
     order_id?: string;
     request_id?: string;
     review_id?: string;
@@ -82,8 +83,11 @@ export function navigateFromNotification(n: Notification): void {
 
   // ── Support tickets ────────────────────────────────────────────────────
   if (data.ticket_id) {
-    router.push("/(app)/help" as never);
-    return;
+    const tid = String(data.ticket_id).trim();
+    if (tid) {
+      router.push(`/(app)/(tabs)/support-tickets/${tid}` as never);
+      return;
+    }
   }
 
   // ── Conversations / messages ─────────────────────────────────────────────
@@ -161,7 +165,12 @@ export function navigateFromNotification(n: Notification): void {
     return;
   }
   if (nType === "support_ticket" || nType === "ticket_update" || nType === "ticket_reply") {
-    router.push("/(app)/help" as never);
+    const tid = data.ticket_id != null ? String(data.ticket_id).trim() : "";
+    if (tid) {
+      router.push(`/(app)/(tabs)/support-tickets/${tid}` as never);
+    } else {
+      router.push("/(app)/(tabs)/support-tickets" as never);
+    }
     return;
   }
   if (nType === "waitlist_available" || nType === "waitlist_update") {
@@ -189,7 +198,17 @@ export function navigateFromNotification(n: Notification): void {
     if (link.includes("payments")) { router.push("/(app)/account-settings/payments"); return; }
     if (link.includes("messaging") || link.includes("messages")) { router.push("/(app)/(tabs)/chats" as never); return; }
     if (link.includes("bookings")) { router.push("/(app)/account-settings/bookings"); return; }
-    if (link.includes("my-tickets") || link.includes("support")) { router.push("/(app)/help" as never); return; }
+    if (link.includes("my-tickets") || link.includes("/help/my-tickets")) {
+      const m = link.match(/my-tickets\/([a-f0-9-]{36})/i) || link.match(/ticket[s]?\/([a-f0-9-]{36})/i);
+      const tid = m?.[1];
+      if (tid) router.push(`/(app)/(tabs)/support-tickets/${tid}` as never);
+      else router.push("/(app)/(tabs)/support-tickets" as never);
+      return;
+    }
+    if (link.includes("support-ticket") && !link.includes("admin")) {
+      router.push("/(app)/(tabs)/support-tickets" as never);
+      return;
+    }
   }
 
   router.push("/(app)/notifications" as never);

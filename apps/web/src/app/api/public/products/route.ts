@@ -2,6 +2,14 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  transformPublicProduct,
+  type RawProductRow,
+  type RawProductVariantRow,
+} from "@/lib/public-products/transform-public-product";
 
 /**
  * GET /api/public/products
@@ -10,6 +18,12 @@ import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
  */
 export async function GET(request: NextRequest) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const supabase = await getSupabaseServer();
     const { searchParams } = new URL(request.url);
 
@@ -36,7 +50,7 @@ export async function GET(request: NextRequest) {
       .select(
         `
         id, name, slug, brand, category, retail_price, image_urls, short_description,
-        quantity, tags, created_at, has_variants, track_stock_quantity,
+        quantity, tags, created_at, has_variants, track_stock_quantity, variant_option_types,
         provider:providers (
           id, business_name, slug, thumbnail_url, avatar_url
         )
@@ -109,6 +123,29 @@ export async function GET(request: NextRequest) {
       // keep uniqueCategories []
     }
 
+    const productIds = [
+      ...new Set(
+        (products ?? [])
+          .map((p: Record<string, unknown>) => p.id)
+          .filter((id): id is string => typeof id === "string"),
+      ),
+    ];
+    const variantsByProduct = new Map<string, RawProductVariantRow[]>();
+    if (productIds.length > 0) {
+      const { data: variantRows } = await (supabase.from("product_variants") as any)
+        .select("id, product_id, option_values, sort_order, retail_price, quantity, sku")
+        .in("product_id", productIds)
+        .order("sort_order");
+      for (const row of variantRows ?? []) {
+        const v = row as RawProductVariantRow & { product_id?: string };
+        const pid = typeof v.product_id === "string" ? v.product_id : null;
+        if (!pid) continue;
+        const list = variantsByProduct.get(pid) ?? [];
+        list.push(v);
+        variantsByProduct.set(pid, list);
+      }
+    }
+
     const providerIds = [
       ...new Set(
         (products ?? [])
@@ -143,13 +180,38 @@ export async function GET(request: NextRequest) {
     }
 
     let mapped = (products ?? []).map((p: Record<string, unknown>) => {
+      const productId = typeof p.id === "string" ? p.id : "";
+      const rawRow: RawProductRow = {
+        id: productId,
+        name: typeof p.name === "string" ? p.name : "",
+        short_description: (p.short_description as string | null | undefined) ?? null,
+        description: null,
+        retail_price: p.retail_price as RawProductRow["retail_price"],
+        image_urls: (p.image_urls as string[] | null | undefined) ?? null,
+        quantity: p.quantity as number | null | undefined,
+        track_stock_quantity: p.track_stock_quantity as boolean | null | undefined,
+        has_variants: p.has_variants as boolean | null | undefined,
+        variant_option_types: p.variant_option_types,
+        category: (p.category as string | null | undefined) ?? null,
+      };
+      const card = transformPublicProduct(
+        rawRow,
+        productId ? variantsByProduct.get(productId) : undefined,
+        defaultCurrency,
+      );
+      const withListPrice = {
+        ...p,
+        retail_price: card.price,
+        price: card.price,
+        currency: card.currency,
+      };
       const prov = p.provider as
         | { id: string; business_name: string; slug: string; thumbnail_url?: string | null; avatar_url?: string | null }
         | null
         | undefined;
-      if (!prov) return p;
+      if (!prov) return withListPrice;
       return {
-        ...p,
+        ...withListPrice,
         provider: {
           id: prov.id,
           business_name: prov.business_name,

@@ -48,6 +48,31 @@ function handleCustomerDeepLink(url: string): boolean {
     router.replace("/(app)/product-orders" as never);
     return true;
   }
+  if (path === "account-settings/payments") {
+    router.replace("/(app)/account-settings/payments" as never);
+    return true;
+  }
+  if (path.startsWith("support-tickets/")) {
+    const ticketId = path.slice("support-tickets/".length).split("/")[0]?.trim();
+    if (ticketId) {
+      router.replace({
+        pathname: "/(app)/(tabs)/support-tickets/[id]",
+        params: { id: ticketId },
+      } as never);
+      return true;
+    }
+  }
+  if (path === "support-tickets") {
+    if (params.id) {
+      router.replace({
+        pathname: "/(app)/(tabs)/support-tickets/[id]",
+        params: { id: params.id },
+      } as never);
+    } else {
+      router.replace("/(app)/(tabs)/support-tickets" as never);
+    }
+    return true;
+  }
   if (path === "signup" && params.ref) {
     router.replace({ pathname: "/(auth)/signup", params: { ref: params.ref } } as never);
     return true;
@@ -214,7 +239,6 @@ export default function AppLayout() {
         <Stack.Screen name="privacy-policy" options={{ headerShown: true, title: "Privacy policy" }} />
         <Stack.Screen name="terms-of-service" options={{ headerShown: true, title: "Terms of service" }} />
         <Stack.Screen name="contact-support" options={{ headerShown: true, title: "Contact support" }} />
-        <Stack.Screen name="support-tickets" options={{ headerShown: false }} />
         <Stack.Screen name="about" options={{ headerShown: true, title: "About Us" }} />
         <Stack.Screen name="gift-card-purchase" options={{ headerShown: true, title: "Buy Gift Card" }} />
         <Stack.Screen name="review-write" options={{ headerShown: true, title: "Write Review" }} />

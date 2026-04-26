@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "50", 10) || 50));
     const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10) || 0);
+    const environment = parseEnv(searchParams.get("environment"));
 
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
@@ -67,6 +68,7 @@ export async function GET(request: NextRequest) {
       scores,
       limit,
       offset,
+      environment,
     });
   } catch (error) {
     return handleApiError(error as Error, "Failed to fetch ranking scores");

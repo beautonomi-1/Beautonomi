@@ -8,6 +8,7 @@ import { ChevronRight, Search, Users, Briefcase, ArrowRight } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LearnHomePayload } from "@/lib/learn/public-queries";
+import { normalizeLearnCtaHref } from "@/lib/learn/normalize-learn-cta-href";
 
 export default function LearnHomeClient({ initialData }: { initialData: LearnHomePayload }) {
   const { setSearchHeroVisible, setSearchOverlayOpen } = useLearnContext();
@@ -33,12 +34,13 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
             {cards.map((card, i) => {
               const isProvider =
                 card.title.toLowerCase().includes("provider") ||
-                card.link.toLowerCase().includes("provider");
+                (card.link ?? "").toLowerCase().includes("provider");
               const Icon = isProvider ? Briefcase : Users;
+              const href = normalizeLearnCtaHref(card.link, isProvider);
               return (
                 <Link
                   key={i}
-                  href={card.link}
+                  href={href}
                   className={cn(
                     "group flex flex-col rounded-[24px] border border-zinc-200/50 bg-white p-6",
                     "transition-all duration-200 ease-in-out",
@@ -56,13 +58,16 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
                     </div>
                   </div>
                   <div className="mt-6">
-                    <Button
-                      size="sm"
-                      className="rounded-full gap-1.5 font-medium bg-[#ff0077] hover:bg-[#ff0077]/90 text-white transition-all duration-200 ease-in-out active:scale-[0.97]"
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium",
+                        "bg-[#ff0077] text-white shadow-sm",
+                        "transition-all duration-200 ease-in-out group-hover:bg-[#ff0077]/90 group-active:scale-[0.97]"
+                      )}
                     >
-                      {isProvider ? "Explore" : "Let's go!"}
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
+                      {isProvider ? "Explore topics" : "Browse topics"}
+                      <ArrowRight className="h-4 w-4" aria-hidden />
+                    </span>
                   </div>
                 </Link>
               );

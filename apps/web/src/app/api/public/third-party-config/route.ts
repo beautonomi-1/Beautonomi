@@ -7,7 +7,7 @@ import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
  * GET /api/public/third-party-config
  *
  * Public endpoint to get third-party service configuration (safe keys only).
- * Query: service=onesignal|mapbox|amplitude|google, app=customer|provider (for OneSignal two-app).
+ * Query: service=onesignal|mapbox|amplitude|google|social_auth, app=customer|provider (for OneSignal two-app).
  * Cache key includes service and app so customer vs provider get correct OneSignal app_id.
  */
 export async function GET(request: Request) {
@@ -54,7 +54,7 @@ async function getCachedThirdPartyConfig(service: string, app: string, tenantId:
         .is("tenant_id", null)
         .maybeSingle();
 
-      type SettingsRow = { settings?: { onesignal?: { enabled?: boolean; app_id?: string; app_id_provider?: string; safari_web_id?: string }; mapbox?: { enabled?: boolean; public_token?: string }; amplitude?: { enabled?: boolean; api_key?: string }; google?: { enabled?: boolean; maps_api_key?: string; places_api_key?: string; analytics_id?: string } } };
+      type SettingsRow = { settings?: { onesignal?: { enabled?: boolean; app_id?: string; app_id_provider?: string; safari_web_id?: string }; mapbox?: { enabled?: boolean; public_token?: string }; amplitude?: { enabled?: boolean; api_key?: string }; google?: { enabled?: boolean; maps_api_key?: string; places_api_key?: string; analytics_id?: string }; social_auth?: { google?: boolean; apple?: boolean } } };
       const s = (tenantSettings ?? globalSettings) as SettingsRow | null;
       if (s?.settings) {
         const config: Record<string, unknown> = {};
@@ -136,6 +136,14 @@ async function getCachedThirdPartyConfig(service: string, app: string, tenantId:
               enabled: true,
             };
           }
+        }
+
+        if (!svc || svc === "social_auth") {
+          const social = s.settings.social_auth;
+          config.social_auth = {
+            google: social?.google !== false,
+            apple: social?.apple !== false,
+          };
         }
 
         return { data: svc ? config[svc] : config, error: null };

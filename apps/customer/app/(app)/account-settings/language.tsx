@@ -8,14 +8,20 @@ import { View, Text, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useTranslation, supportedLanguages, i18n } from "@beautonomi/i18n";
+import {
+  useTranslation,
+  supportedLanguages as i18nSupportedLanguages,
+  i18n,
+  type SupportedLanguage,
+} from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { changeLanguage } from "@/lib/i18n";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 
-const API_LANGUAGE_CODES = new Set(["en", "af", "zu", "xh", "nso", "tn", "ts", "ve", "ss"]);
+/** Sync to account when the code is a bundled @beautonomi/i18n locale (matches /api/me/preferences). */
+const API_LANGUAGE_CODES = new Set<string>(i18nSupportedLanguages.map((l) => l.code));
 
 interface PreferencesResponse {
   preferences: { language: string; currency?: string; timezone?: string };
@@ -30,8 +36,12 @@ export default function LanguageSettings() {
 
   const serverLang = preferences?.preferences?.language ?? null;
   useEffect(() => {
-    if (serverLang && supportedLanguages.some((l) => l.code === serverLang) && serverLang !== (i18n.language || "en").split("-")[0]) {
-      changeLanguage(serverLang);
+    if (
+      serverLang &&
+      API_LANGUAGE_CODES.has(serverLang) &&
+      serverLang !== (i18n.language || "en").split("-")[0]
+    ) {
+      void changeLanguage(serverLang as SupportedLanguage);
       setCurrentCode(serverLang);
     }
   }, [serverLang]);
@@ -45,7 +55,7 @@ export default function LanguageSettings() {
   }, []);
 
   const handleSelect = useCallback(
-    async (code: string) => {
+    async (code: SupportedLanguage) => {
       if (code === currentCode) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await changeLanguage(code);
@@ -106,7 +116,7 @@ export default function LanguageSettings() {
       </Text>
 
       <View>
-        {supportedLanguages.map((lang, index) => {
+        {i18nSupportedLanguages.map((lang, index) => {
           const isActive = currentCode === lang.code;
           return (
             <TouchableOpacity

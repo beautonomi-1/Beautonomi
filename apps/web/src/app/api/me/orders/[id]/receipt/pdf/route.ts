@@ -40,9 +40,13 @@ type OrderReceiptPayload = {
     tax?: number;
     delivery_fee?: number;
     discount?: number;
+    platform_fee?: number;
+    wallet_amount?: number;
     total?: number;
     currency?: string;
     payment_status?: string;
+    receipt_header?: string | null;
+    receipt_footer?: string | null;
   };
 };
 
@@ -101,6 +105,11 @@ export async function GET(
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     const chunks: Buffer[] = [];
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+    if (receipt.receipt_header) {
+      doc.fontSize(10).fillColor("#555").text(receipt.receipt_header, { align: "center" });
+      doc.moveDown(0.5);
+    }
 
     doc.fontSize(22).fillColor("#333").text("Order receipt", { align: "left" });
     doc.moveDown(0.3);
@@ -162,11 +171,24 @@ export async function GET(
     if (Number(receipt.tax || 0) > 0) {
       doc.text(`Tax: ${money(receipt.tax, currency)}`);
     }
+    if (Number(receipt.platform_fee || 0) > 0) {
+      doc.text(`Platform fee: ${money(receipt.platform_fee, currency)}`);
+    }
+    if (Number(receipt.wallet_amount || 0) > 0) {
+      doc.text(`Paid from wallet: ${money(receipt.wallet_amount, currency)}`);
+    }
     doc.moveDown(0.4);
     doc.fontSize(13).text(`Total: ${money(receipt.total, currency)}`);
 
     doc.moveDown(0.3);
     doc.fontSize(10).fillColor("#333").text(`Payment status: ${receipt.payment_status || "-"}`);
+
+    if (receipt.receipt_footer) {
+      doc.moveDown(1);
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#ddd").lineWidth(0.5).stroke();
+      doc.moveDown(0.3);
+      doc.fontSize(9).fillColor("#666").text(receipt.receipt_footer, { align: "center" });
+    }
 
     doc.end();
     const buffer = await new Promise<Buffer>((resolve) => {

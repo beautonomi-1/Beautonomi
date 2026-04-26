@@ -12,7 +12,7 @@ This checklist covers what’s required (or recommended) for the **provider** Ex
 | **Terms of Service** link | ✅ | Settings → Account → Terms of Service (opens web). Signup: “Terms of Service” link. |
 | **Account deactivation** | ✅ | Settings → Account → Deactivate account (in-app screen, password + optional reason, calls `POST /api/me/deactivate`). Destructive styling. See [Account deactivation and deletion](../account-deactivation-and-deletion.md) for super admin and platform behaviour. |
 | **Account deletion** | ✅ | Settings → Account → Delete account (opens web `/account-settings/privacy-and-sharing` where user can request permanent deletion). Destructive styling. |
-| **Sign in with Apple** | ✅ | Offered alongside Google/email/phone (Apple requires this if you offer other third-party sign-in). |
+| **Sign in with Apple** | ✅ | Offered on **login** (iOS, Android, Expo web) alongside Google + email/phone (Supabase OAuth + in-app browser). Enable the capability on the **iOS** App ID; configure Apple in Supabase (Services ID, key, redirect allowlist). |
 | **Email verification** | ✅ | Banner when unverified, resend, auth callback for confirmation links. |
 
 ---
@@ -29,7 +29,7 @@ This checklist covers what’s required (or recommended) for the **provider** Ex
   Declare data collection and usage (identifiers, usage data, etc.) in App Store Connect → App Privacy. Align with your Privacy Policy.
 
 - **Sign in with Apple**  
-  Already in the app; ensure the capability is enabled in the Apple Developer account and in the app’s entitlements (Expo/EAS handles this when using the Apple sign-in config).
+  Offered on iOS login with Google; ensure the capability is enabled on the App ID and Apple provider is configured in Supabase (Services ID, key, return URL to `https://<project>.supabase.co/auth/v1/callback`).
 
 - **Account deletion**  
   Apple expects users to be able to find account deletion. The provider app exposes “Delete account” in Settings → Account (opens web flow). Optionally mention in App Review notes: “Account deletion: Settings → Account → Delete account (opens web).”
@@ -81,7 +81,7 @@ This checklist covers what’s required (or recommended) for the **provider** Ex
 
 ## Summary
 
-- **In-app:** Privacy & Terms links (signup + settings), Deactivate account (in-app), Delete account (web), Sign in with Apple, email verification – all in place.
+- **In-app:** Privacy & Terms links (signup + settings), Deactivate account (in-app), Delete account (web), Sign in with Apple + Google OAuth, email verification – all in place.
 - **Apple:** Set Privacy Policy (and optionally Terms) URL in App Store Connect; fill App Privacy; note account deletion path for App Review if needed.
 - **Google:** Set Privacy Policy in Play Console; complete Data safety; provide test access if required.
 - **Expo/EAS:** Use app versioning and EAS metadata as needed; store URLs are configured in each store’s console.

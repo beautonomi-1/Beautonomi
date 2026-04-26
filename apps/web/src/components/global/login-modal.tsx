@@ -12,7 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { FaApple, FaFacebook, FaGoogle } from "react-icons/fa6";
+import { FaApple, FaGoogle } from "react-icons/fa6";
 import { CiMail } from "react-icons/ci";
 import { X, AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
 import {
@@ -44,6 +44,7 @@ import {
 } from "@/lib/supabase/auth-sms-otp";
 import type { UserRole } from "@/types/beautonomi";
 import { resolvePostLoginPathnameFromRole } from "@/lib/auth/post-login-return-path";
+import { getSocialAuthConfig } from "@/lib/social-auth-config";
 
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
@@ -128,9 +129,14 @@ export default function LoginModal({
     return "en";
   });
   const [signupSource, setSignupSource] = useState<string | null>(null);
+  const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
+    google: true,
+    apple: true,
+  });
   const t = (key: string) => LOGIN_MODAL_I18N_LABELS[key] ?? key;
   const fieldClass = "bg-gray-100 border-gray-200 text-[13px] text-gray-700 placeholder:text-gray-400";
   const labelClass = "text-xs font-medium text-gray-700 mb-2 block";
+  const hasSocialAuth = socialAuth.google || socialAuth.apple;
 
   useEffect(() => {
     if (isReady && open && isSignup) track(EVENT_SIGNUP_START);
@@ -184,6 +190,12 @@ export default function LoginModal({
       setSignupSource(null);
     }
   }, [open, initialMode]);
+
+  useEffect(() => {
+    getSocialAuthConfig().then(setSocialAuth).catch(() => {
+      setSocialAuth({ google: true, apple: true });
+    });
+  }, []);
 
   useEffect(() => {
     if (!otpExpiresAt) {
@@ -777,7 +789,7 @@ export default function LoginModal({
     }
   };
 
-  const handleSocialLogin = async (provider: "google" | "facebook" | "apple") => {
+  const handleSocialOAuth = async (provider: "google" | "apple") => {
     setIsLoading(true);
     setError(null);
 
@@ -793,10 +805,13 @@ export default function LoginModal({
         `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
       await signInWithOAuth(provider, callbackUrl);
       // OAuth will redirect, so we don't need to do anything else here
-      toast.info(`Redirecting to ${provider}...`);
+      toast.info(
+        provider === "google" ? "Redirecting to Google..." : "Redirecting to Apple...",
+      );
     } catch (error: unknown) {
       console.error("OAuth error:", error);
-      const msg = error instanceof Error ? error.message : `Failed to sign in with ${provider}`;
+      const label = provider === "google" ? "Google" : "Apple";
+      const msg = error instanceof Error ? error.message : `Failed to sign in with ${label}`;
       setError(msg);
       toast.error(msg);
       setIsLoading(false);
@@ -1230,33 +1245,41 @@ export default function LoginModal({
 
                   {!( !isSignup && emailOtpSent) && (
                     <>
-                  {/* Separator */}
-                  <div className="flex items-center my-6">
-                    <div className="flex-grow border-t border-gray-200 rounded-full"></div>
-                    <span className="flex-shrink mx-4 text-[13px] text-gray-400 font-medium">or</span>
-                    <div className="flex-grow border-t border-gray-200 rounded-full"></div>
-                  </div>
+                  {hasSocialAuth && (
+                    <>
+                      {/* Separator */}
+                      <div className="flex items-center my-6">
+                        <div className="flex-grow border-t border-gray-200 rounded-full"></div>
+                        <span className="flex-shrink mx-4 text-[13px] text-gray-400 font-medium">or</span>
+                        <div className="flex-grow border-t border-gray-200 rounded-full"></div>
+                      </div>
 
-                  {/* Social Login Options */}
-                  <Button
-                    variant="outline"
-                    className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
-                    onClick={() => handleSocialLogin("google")}
-                    disabled={isLoading}
-                  >
-                    <FaGoogle className="text-lg shrink-0" />
-                    <span>Continue with Google</span>
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
-                    onClick={() => handleSocialLogin("apple")}
-                    disabled={isLoading}
-                  >
-                    <FaApple className="text-lg shrink-0" />
-                    <span>Continue with Apple</span>
-                  </Button>
+                      {/* Social Login Options */}
+                      {socialAuth.google && (
+                        <Button
+                          variant="outline"
+                          className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
+                          onClick={() => void handleSocialOAuth("google")}
+                          disabled={isLoading}
+                        >
+                          <FaGoogle className="text-lg shrink-0" />
+                          <span>Continue with Google</span>
+                        </Button>
+                      )}
+
+                      {socialAuth.apple && (
+                        <Button
+                          variant="outline"
+                          className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
+                          onClick={() => void handleSocialOAuth("apple")}
+                          disabled={isLoading}
+                        >
+                          <FaApple className="text-lg shrink-0" />
+                          <span>Continue with Apple</span>
+                        </Button>
+                      )}
+                    </>
+                  )}
                   
                   <Button
                     variant="outline"
@@ -1275,16 +1298,6 @@ export default function LoginModal({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                     </svg>
                     <span>Continue with Phone</span>
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
-                    onClick={() => handleSocialLogin("facebook")}
-                    disabled={isLoading}
-                  >
-                    <FaFacebook className="text-lg text-blue-600 shrink-0" />
-                    <span>Continue with Facebook</span>
                   </Button>
 
                   {/* Need help link */}
@@ -1448,28 +1461,32 @@ export default function LoginModal({
             </div>
           )}
 
-          {/* Social Login Options - order: Google, Apple, Continue with email, Facebook */}
+          {/* Social Login Options - order: Google, Apple, Continue with email */}
           {!showEmailForm && !otpSent && (
             <>
-              <Button
-                variant="outline"
-                className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
-                onClick={() => handleSocialLogin("google")}
-                disabled={isLoading}
-              >
-                <FaGoogle className="text-lg shrink-0" />
-                <span>Continue with Google</span>
-              </Button>
-              
-              <Button
-                variant="outline"
-                className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
-                onClick={() => handleSocialLogin("apple")}
-                disabled={isLoading}
-              >
-                <FaApple className="text-lg shrink-0" />
-                <span>Continue with Apple</span>
-              </Button>
+              {socialAuth.google && (
+                <Button
+                  variant="outline"
+                  className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
+                  onClick={() => void handleSocialOAuth("google")}
+                  disabled={isLoading}
+                >
+                  <FaGoogle className="text-lg shrink-0" />
+                  <span>Continue with Google</span>
+                </Button>
+              )}
+
+              {socialAuth.apple && (
+                <Button
+                  variant="outline"
+                  className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
+                  onClick={() => void handleSocialOAuth("apple")}
+                  disabled={isLoading}
+                >
+                  <FaApple className="text-lg shrink-0" />
+                  <span>Continue with Apple</span>
+                </Button>
+              )}
               
               <Button
                 variant="outline"
@@ -1479,16 +1496,6 @@ export default function LoginModal({
               >
                 <CiMail className="text-lg shrink-0" />
                 <span>Continue with email</span>
-              </Button>
-              
-              <Button
-                variant="outline"
-                className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
-                onClick={() => handleSocialLogin("facebook")}
-                disabled={isLoading}
-              >
-                <FaFacebook className="text-lg text-blue-600 shrink-0" />
-                <span>Continue with Facebook</span>
               </Button>
             </>
           )}

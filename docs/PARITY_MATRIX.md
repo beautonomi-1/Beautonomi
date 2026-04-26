@@ -25,7 +25,7 @@ web-push verification. Every row is now shipped (✅) or explicitly N/A.
 | --------------------------------------------- | --- | --------------- | ------------------- |
 | Email + password sign-up                      | ✅  | ✅              | `app/(auth)/signup-email.tsx` / web `signup/` |
 | Phone OTP sign-up / sign-in                   | ✅  | ✅              | OTP start + verify screens on both |
-| Social OAuth (Google / Apple)                 | ✅  | ✅              | Apple on iOS only; Google on both |
+| Social OAuth (Google / Apple)                | ✅  | ✅              | Web + mobile: Google + Apple (`signInWithOAuth` + in-app browser on native) |
 | Profile completion wizard                     | ✅  | ✅              | Shared API `/api/me/profile` |
 | Global sign-out of all devices                | ✅  | ✅              | Security Settings → "Sign out all devices" (Wave 2.4) |
 | Change password / reset password              | ✅  | ✅              | Shared Supabase auth recovery flow |

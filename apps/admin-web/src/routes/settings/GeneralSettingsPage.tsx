@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -12,6 +13,7 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type FullSettings = Record<string, unknown>;
 
@@ -31,6 +33,19 @@ type LocalizationForm = {
 
 type FeaturesForm = {
   auto_approve_providers: boolean;
+};
+
+type SocialAuthForm = {
+  google: boolean;
+  apple: boolean;
+};
+
+type OnesignalForm = {
+  enabled: boolean;
+  app_id: string;
+  app_id_provider: string;
+  rest_api_key: string;
+  rest_api_key_provider: string;
 };
 
 function inp(
@@ -81,6 +96,17 @@ export function GeneralSettingsPage() {
   const [features, setFeatures] = useState<FeaturesForm>({
     auto_approve_providers: false,
   });
+  const [socialAuth, setSocialAuth] = useState<SocialAuthForm>({
+    google: true,
+    apple: true,
+  });
+  const [onesignal, setOnesignal] = useState<OnesignalForm>({
+    enabled: true,
+    app_id: "",
+    app_id_provider: "",
+    rest_api_key: "",
+    rest_api_key_provider: "",
+  });
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -104,6 +130,19 @@ export function GeneralSettingsPage() {
     setFeatures({
       auto_approve_providers: f.auto_approve_providers ?? false,
     });
+    const sa = (q.data.social_auth ?? {}) as Partial<SocialAuthForm>;
+    setSocialAuth({
+      google: sa.google !== false,
+      apple: sa.apple !== false,
+    });
+    const o = (q.data.onesignal ?? {}) as Partial<OnesignalForm>;
+    setOnesignal({
+      enabled: o.enabled !== false,
+      app_id: o.app_id ?? "",
+      app_id_provider: o.app_id_provider ?? "",
+      rest_api_key: "",
+      rest_api_key_provider: "",
+    });
   }, [q.data]);
 
   const saveMut = useMutation({
@@ -115,11 +154,27 @@ export function GeneralSettingsPage() {
         branding: { ...((existing.branding as Record<string, unknown>) ?? {}), ...branding },
         localization: { ...((existing.localization as Record<string, unknown>) ?? {}), ...localization },
         features: { ...((existing.features as Record<string, unknown>) ?? {}), ...features },
+        social_auth: {
+          ...((existing.social_auth as Record<string, unknown>) ?? {}),
+          google: socialAuth.google,
+          apple: socialAuth.apple,
+        } as Record<string, unknown>,
+        onesignal: {
+          ...((existing.onesignal as Record<string, unknown>) ?? {}),
+          enabled: onesignal.enabled,
+          app_id: onesignal.app_id.trim(),
+          app_id_provider: onesignal.app_id_provider.trim(),
+          ...(onesignal.rest_api_key.trim() ? { rest_api_key: onesignal.rest_api_key.trim() } : {}),
+          ...(onesignal.rest_api_key_provider.trim()
+            ? { rest_api_key_provider: onesignal.rest_api_key_provider.trim() }
+            : {}),
+        } as Record<string, unknown>,
       };
       return adminApi.patchJson("/api/admin/settings", merged);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.settings() });
+      setOnesignal((p) => ({ ...p, rest_api_key: "", rest_api_key_provider: "" }));
       setSaved(true);
       setSaveError(null);
       setTimeout(() => setSaved(false), 3000);
@@ -242,6 +297,82 @@ export function GeneralSettingsPage() {
           />
           <span className="text-sm text-gray-700">Auto-approve new providers (skip manual review)</span>
         </label>
+      </AdminPanel>
+
+      <AdminPanel>
+        <h3 className="mb-2 text-sm font-semibold text-gray-900">Social login availability</h3>
+        <p className="mb-4 text-xs text-gray-600">
+          Controls whether social sign-in buttons are shown in first-party apps. Provider credentials are still managed in
+          Supabase and provider dashboards.
+        </p>
+        <div className="space-y-3">
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={socialAuth.google}
+              onChange={(e) => setSocialAuth((p) => ({ ...p, google: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+            />
+            <span className="text-sm text-gray-700">Enable Google login/signup</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={socialAuth.apple}
+              onChange={(e) => setSocialAuth((p) => ({ ...p, apple: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+            />
+            <span className="text-sm text-gray-700">Enable Apple login/signup</span>
+          </label>
+        </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <h3 className="mb-1 text-sm font-semibold text-gray-900">OneSignal (push / email / SMS)</h3>
+        <p className="mb-4 text-xs text-gray-600">
+          Same fields as the legacy Next.js platform settings. REST keys are stored only in{" "}
+          <code className="rounded bg-gray-100 px-1">platform_secrets</code> — leave blank to keep the current key. For
+          channel toggles and tests, also use{" "}
+          <Link to={adminSpaTo("/admin/notifications")} className="font-medium text-indigo-700 underline">
+            Notifications
+          </Link>
+          .
+        </p>
+        <label className="mb-3 flex cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            checked={onesignal.enabled}
+            onChange={(e) => setOnesignal((p) => ({ ...p, enabled: e.target.checked }))}
+            className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+          />
+          <span className="text-sm text-gray-700">Enable OneSignal for server-side sends</span>
+        </label>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {inp("Customer app ID", onesignal.app_id, (v) => setOnesignal((p) => ({ ...p, app_id: v })))}
+          {inp("Provider app ID", onesignal.app_id_provider, (v) => setOnesignal((p) => ({ ...p, app_id_provider: v })))}
+          <div>
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">Customer REST API key</label>
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder="Leave blank to keep saved key"
+              value={onesignal.rest_api_key}
+              onChange={(e) => setOnesignal((p) => ({ ...p, rest_api_key: e.target.value }))}
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">Provider REST API key</label>
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder="Leave blank to keep saved key"
+              value={onesignal.rest_api_key_provider}
+              onChange={(e) => setOnesignal((p) => ({ ...p, rest_api_key_provider: e.target.value }))}
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
       </AdminPanel>
 
       {saveError && (

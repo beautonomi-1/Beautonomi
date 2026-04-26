@@ -131,31 +131,41 @@ export async function insertCustomerRecurringSeriesFromPaidBooking(params: {
 
   const recurrenceRule = customerFrequencyToRrule(frequency);
 
-  const { error } = await admin.from("recurring_appointments").insert({
-    provider_id: b.provider_id,
-    customer_id: customerId,
-    service_id: offeringId,
-    staff_id: first.staff_id ?? null,
-    recurrence_rule: recurrenceRule,
-    start_time: startTime,
-    frequency,
-    start_date: startYmd,
-    end_date: null,
-    preferred_time: prefHhmm,
-    location_type: locationType,
-    location_id: b.location_id,
-    payment_method: paymentMethod,
-    is_active: true,
-    last_booking_date: startYmd,
-    metadata: {
-      services,
-      address: addrPayload,
-      source_booking_id: bookingId,
-    },
-  });
+  const { data: insertedSeries, error } = await admin
+    .from("recurring_appointments")
+    .insert({
+      provider_id: b.provider_id,
+      customer_id: customerId,
+      service_id: offeringId,
+      staff_id: first.staff_id ?? null,
+      recurrence_rule: recurrenceRule,
+      start_time: startTime,
+      frequency,
+      start_date: startYmd,
+      end_date: null,
+      preferred_time: prefHhmm,
+      location_type: locationType,
+      location_id: b.location_id,
+      payment_method: paymentMethod,
+      is_active: true,
+      last_booking_date: startYmd,
+      metadata: {
+        services,
+        address: addrPayload,
+        source_booking_id: bookingId,
+      },
+    })
+    .select("id")
+    .single();
 
   if (error) {
     return { ok: false as const, message: error.message || "Insert failed" };
   }
+
+  const seriesId = (insertedSeries as { id?: string } | null)?.id;
+  if (seriesId) {
+    await admin.from("bookings").update({ recurring_series_id: seriesId }).eq("id", bookingId);
+  }
+
   return { ok: true as const };
 }

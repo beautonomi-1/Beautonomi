@@ -35,7 +35,11 @@
     "settings": "Izilungiselelo",
     "more": "Okuningi",
     "appLanguage": "Ulimi lwe-app",
-    "appLanguageSubtitle": "Khetha ulimi lwe-app"
+    "appLanguageSubtitle": "Khetha ulimi lwe-app",
+    "rateBeautonomiAppStore": "Rate Beautonomi on the App Store",
+    "rateBeautonomiPlayStore": "Rate Beautonomi on Google Play",
+    "rateBeautonomiStoreWeb": "Get Beautonomi apps",
+    "rateBeautonomiStoreSubtitle": "Opens the store (or download page) so you can leave a review."
   },
   "authGate": {
     "checkingAccess": "Kubheka i-akhawunti yakho…",
@@ -58,7 +62,6 @@
     "dontHaveAccount": "Awunayo i-akhawunti?",
     "continueWithGoogle": "Qhubeka nge-Google",
     "continueWithApple": "Qhubeka nge-Apple",
-    "continueWithFacebook": "Qhubeka nge-Facebook",
     "orContinueWith": "noma qhubeka nge",
     "termsAgreement": "Ngokuqhubeka, uyavuma Imigomo Yethu Yesevisi Nenqubomgomo Yobumfihlo",
     "howHearAboutUs": "Usizwe kanjani ngathi?",
@@ -271,6 +274,9 @@
       "deleteConfirmMessage": "Lokhu akukwazi ukuhlehliswa.",
       "staffPrefix": "Abasebenzi"
     },
+    "moreTab": {
+      "rateStoreHeading": "Love the app?"
+    },
     "calendarScreen": {
       "calendarActions": "Izenzo zekhalenda",
       "shareSchedule": "Yabelana ngesheduli",
@@ -349,6 +355,12 @@
     "giftCards": "Amakhadi esipho",
     "wallet": "Isikhwama",
     "profile": "Iphrofayela",
+    "profileTab": {
+      "clientRatingLabel": "Your client rating",
+      "clientRatingEmpty": "No ratings yet. After providers rate completed visits, your average will show here — great bookings help build your score.",
+      "clientRatingCount": "({{count}} provider ratings)",
+      "clientRatingA11y": "Your average rating from providers"
+    },
     "personalInfo": "Ulwazi lwakho",
     "loginSecurity": "Ukungena nokuphepha",
     "notifications": "Izaziso",
@@ -405,6 +417,7 @@
       "logOutConfirm": "Uqinisekile ukuthi ufuna ukuphuma?",
       "accessibilityScroll": "Izilungiselelo ze-akhawunti",
       "accessibilityShare": "Yabelana nge-Beautonomi. Mema abangane nomndeni",
+      "accessibilityRateStore": "Rate Beautonomi on the App Store or Google Play",
       "accessibilityHelp": "Usizo nokwesekwa. Imibuzo nokuxhumana nathi",
       "accessibilityAbout": "Mayelana ne-Beautonomi. Isifiso nendaba",
       "accessibilityProfileBanner": "Qedela iphrofayela yakho",
@@ -508,7 +521,11 @@
       "couponPlaceholder": "Faka ikhodi yekhuphoni",
       "couponCodeA11y": "Ikhodi yekhuphoni",
       "redeemA11y": "Sebenzisa ikhuphoni",
-      "redeem": "Sebenzisa"
+      "redeem": "Sebenzisa",
+      "cardSavedTitle": "Ikhadi ligciniwe",
+      "cardSavedBody": "Ikhadi lakho lilungele ukusetshenziswa uma ukhokha.",
+      "cardVerificationPendingTitle": "Kuseduze",
+      "cardVerificationPendingBody": "Uma uqedile ukuqinisekisa, ikhadi lingathatha isikhashana ukuvela. Donisha ukwehlisa ukuze uvise kabusha leli sikrini."
     }
   },
   "checkout": {

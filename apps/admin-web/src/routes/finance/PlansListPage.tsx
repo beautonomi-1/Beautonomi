@@ -80,7 +80,11 @@ export function PlansListPage() {
 
   const webPlansEditorUrl = (() => {
     const base = (publicEnv.siteUrl || publicEnv.appUrl || "").replace(/\/$/, "");
-    return base ? `${base}/admin/plans` : "";
+    if (base) return `${base}/admin/plans`;
+    const host = (publicEnv.defaultMarketHost || "").replace(/\/$/, "").trim();
+    if (!host) return "";
+    const withScheme = host.includes("://") ? host : `https://${host}`;
+    return `${withScheme}/admin/plans`;
   })();
 
   const [showCreate, setShowCreate] = useState(false);

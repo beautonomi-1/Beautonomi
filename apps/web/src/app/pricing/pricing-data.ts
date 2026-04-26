@@ -37,7 +37,7 @@ export async function getPricingPageData(): Promise<{
   const fallbackContent: PricingPageContent = {
     heroTitle: "Simple, transparent pricing",
     heroDescription:
-      "Choose the plan that's right for your business. All plans include a 14-day free trial.",
+      "Choose the plan that fits your team. Edit this line in Admin → Content → slug \"pricing\" → section hero_description.",
     currencyNote: null,
   };
 

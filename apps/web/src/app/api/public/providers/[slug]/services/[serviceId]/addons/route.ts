@@ -19,7 +19,7 @@ function emptyAddonsResponse(serviceId: string) {
  * GET /api/public/providers/[slug]/services/[serviceId]/addons
  *
  * Get all add-ons applicable to a specific service (public endpoint for checkout).
- * Accepts either an offering id or a service id. Returns 200 with empty addons when
+ * Accepts either an offering id or master service id. Returns 200 with empty addons when
  * the service is not found so the booking flow does not break.
  */
 export async function GET(
@@ -46,11 +46,11 @@ export async function GET(
       return notFoundResponse("Provider not found");
     }
 
-    // Resolve service: try as offering id first, then as service_id on offerings
-    let service: { id: string; title: string; provider_id: string; service_id?: string | null } | null = null;
+    // Resolve service: try as offering id first, then as master_service_id on offerings.
+    let service: { id: string; title: string; provider_id: string; master_service_id?: string | null } | null = null;
     const byOfferingId = await supabase
       .from("offerings")
-      .select("id, title, provider_id, service_id")
+      .select("id, title, provider_id, master_service_id")
       .eq("id", serviceId)
       .eq("provider_id", provider.id)
       .single();
@@ -58,24 +58,24 @@ export async function GET(
     if (byOfferingId.data) {
       service = byOfferingId.data;
     } else {
-      const byServiceId = await supabase
+      const byMasterServiceId = await supabase
         .from("offerings")
-        .select("id, title, provider_id, service_id")
-        .eq("service_id", serviceId)
+        .select("id, title, provider_id, master_service_id")
+        .eq("master_service_id", serviceId)
         .eq("provider_id", provider.id)
         .limit(1)
         .maybeSingle();
-      if (byServiceId.data) service = byServiceId.data;
+      if (byMasterServiceId.data) service = byMasterServiceId.data;
     }
 
     if (!service) {
       return emptyAddonsResponse(serviceId);
     }
 
-    // applicable_service_ids may reference service_id or offering id; match both when available
+    // applicable_service_ids may reference master_service_id or offering id; match both when available
     const orClause =
-      service.service_id && service.service_id !== serviceId
-        ? `applicable_service_ids.is.null,applicable_service_ids.cs.{${serviceId}},applicable_service_ids.cs.{${service.service_id}}`
+      service.master_service_id && service.master_service_id !== serviceId
+        ? `applicable_service_ids.is.null,applicable_service_ids.cs.{${serviceId}},applicable_service_ids.cs.{${service.master_service_id}}`
         : `applicable_service_ids.is.null,applicable_service_ids.cs.{${serviceId}}`;
 
     const { data: addons, error } = await supabase
