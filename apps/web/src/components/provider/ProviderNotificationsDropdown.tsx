@@ -122,6 +122,11 @@ const formatTimeAgo = (timestamp: string) => {
   return time.toLocaleDateString();
 };
 
+const realtimeChannelKey = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 function deriveNotificationUrl(notification: Notification): string | undefined {
   return deriveProviderPortalNotificationUrl({
     link: notification.link,
@@ -155,18 +160,19 @@ export function ProviderNotificationsDropdown() {
     let subscription: any = null;
 
     if (user?.id && process.env.NODE_ENV === "production") {
-      // Subscribe to new notifications for this user
-      subscription = supabase
-        .channel(`notifications:${user.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
+      try {
+        // Subscribe to new notifications for this user
+        subscription = supabase
+          .channel(`notifications:${user.id}:${realtimeChannelKey()}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_id=eq.${user.id}`,
+            },
+            (payload) => {
             // New notification received
             const newNotification = payload.new as any;
             setNotifications((prev) => {
@@ -197,17 +203,17 @@ export function ProviderNotificationsDropdown() {
                 });
               }
             }
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_id=eq.${user.id}`,
+            },
+            (payload) => {
             // Notification updated (e.g., marked as read)
             const updatedNotification = payload.new as any;
             setNotifications((prev) =>
@@ -224,9 +230,12 @@ export function ProviderNotificationsDropdown() {
             if (updatedNotification.is_read) {
               setTotalUnread((prev) => Math.max(0, prev - 1));
             }
-          }
-        )
-        .subscribe();
+            }
+          )
+          .subscribe();
+      } catch (error) {
+        console.warn("Provider notification realtime subscription failed:", error);
+      }
     }
 
     const pollMs =
@@ -349,8 +358,11 @@ export function ProviderNotificationsDropdown() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[95vw] sm:w-96 p-0 max-h-[85vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-3 sm:p-4 border-b sticky top-0 bg-white z-10">
-          <h3 className="font-semibold text-base sm:text-lg">Notifications</h3>
+        <div className="flex items-center justify-between gap-3 p-3 sm:p-4 border-b sticky top-0 bg-white z-10">
+          <div>
+            <h3 className="font-semibold text-base sm:text-lg">Notifications</h3>
+            <p className="mt-0.5 text-xs text-gray-500">Tap a notification to mark it read, or use Mark all read.</p>
+          </div>
           <div className="flex items-center gap-2">
             {totalUnread > 0 && (
               <>

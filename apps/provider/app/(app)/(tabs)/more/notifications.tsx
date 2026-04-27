@@ -471,6 +471,9 @@ export default function NotificationsScreen() {
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
+      <Text style={{ marginBottom: 12, fontSize: 12, color: Colors.gray[500] }}>
+        Tap a notification to mark it read and lower the counter.
+      </Text>
       <View style={{ marginBottom: 12 }}>
         <FilterChipGroup
           options={FILTER_OPTIONS}

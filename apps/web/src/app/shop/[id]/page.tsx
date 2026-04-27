@@ -97,7 +97,7 @@ function ProductDetailContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, session, isLoading: authLoading } = useAuth();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
 
@@ -147,7 +147,8 @@ function ProductDetailContent() {
   }, [selectedVariantId]);
 
   useEffect(() => {
-    if (!user || !productId) {
+    if (authLoading) return;
+    if (!user || !session || !productId) {
       setIsInWishlist(false);
       return;
     }
@@ -171,11 +172,11 @@ function ProductDetailContent() {
     return () => {
       cancelled = true;
     };
-  }, [user, productId]);
+  }, [authLoading, session, user, productId]);
 
   const handleToggleWishlist = useCallback(async () => {
     if (!productId || isWishlistLoading) return;
-    if (!user) {
+    if (!user || !session) {
       const q = providerSlugParam ? `?provider=${encodeURIComponent(providerSlugParam)}` : "";
       router.push(`/account-settings?redirect=${encodeURIComponent(`/shop/${productId}${q}`)}`);
       return;
@@ -184,7 +185,7 @@ function ProductDetailContent() {
     try {
       const res = await fetch("/api/me/wishlists/toggle", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify({ item_type: "product", item_id: productId }),
       });
       const json = await res.json().catch(() => ({}));
@@ -205,7 +206,7 @@ function ProductDetailContent() {
     } finally {
       setIsWishlistLoading(false);
     }
-  }, [productId, isWishlistLoading, user, providerSlugParam, router]);
+  }, [productId, isWishlistLoading, user, session, providerSlugParam, router]);
 
   const handleAddToCart = useCallback(async (): Promise<boolean> => {
     if (!product || addingToCart) return false;
@@ -213,7 +214,7 @@ function ProductDetailContent() {
       setCartMessage({ text: "Please select a variant", type: "error" });
       return false;
     }
-    if (!user) {
+    if (!user || !session) {
       const q = providerSlugParam ? `?provider=${encodeURIComponent(providerSlugParam)}` : "";
       router.push(`/account-settings?redirect=${encodeURIComponent(`/shop/${product.id}${q}`)}`);
       return false;
@@ -223,7 +224,7 @@ function ProductDetailContent() {
     try {
       const res = await fetch("/api/me/cart", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify({
           product_id: product.id,
           quantity,
@@ -254,7 +255,7 @@ function ProductDetailContent() {
       setAddingToCart(false);
     }
     return false;
-  }, [product, quantity, addingToCart, user, router, hasVariants, selectedVariantId, providerSlugParam]);
+  }, [product, quantity, addingToCart, user, session, router, hasVariants, selectedVariantId, providerSlugParam]);
 
   const handleCheckoutNow = useCallback(async () => {
     if (!product || addingToCart) return;

@@ -30,50 +30,61 @@ export function subscribeToBookings(
   providerId: string,
   handler: RealtimeEventHandler
 ): () => void {
-  const channel = supabase
-    .channel(`bookings:${providerId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'bookings',
-        filter: `provider_id=eq.${providerId}`,
-      },
-      (payload) => {
-        const eventType: RealtimeEventType = 
-          payload.eventType === 'INSERT' ? 'booking_created' :
-          payload.eventType === 'UPDATE' ? 'booking_updated' :
-          payload.eventType === 'DELETE' ? 'booking_cancelled' :
-          'booking_updated';
+  const channelKey =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  let channel: ReturnType<SupabaseClient['channel']> | null = null;
+  try {
+    channel = supabase
+      .channel(`bookings:${providerId}:${channelKey}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bookings',
+          filter: `provider_id=eq.${providerId}`,
+        },
+        (payload) => {
+          const eventType: RealtimeEventType =
+            payload.eventType === 'INSERT' ? 'booking_created' :
+            payload.eventType === 'UPDATE' ? 'booking_updated' :
+            payload.eventType === 'DELETE' ? 'booking_cancelled' :
+            'booking_updated';
 
-        handler({
-          type: eventType,
-          data: payload.new || payload.old,
-          timestamp: new Date().toISOString(),
-        });
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'booking_services',
-        filter: `bookings!inner(provider_id=eq.${providerId})`,
-      },
-      (payload) => {
-        handler({
-          type: 'booking_services_changed',
-          data: payload.new || payload.old,
-          timestamp: new Date().toISOString(),
-        });
-      }
-    )
-    .subscribe();
+          handler({
+            type: eventType,
+            data: payload.new || payload.old,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'booking_services',
+          filter: `bookings!inner(provider_id=eq.${providerId})`,
+        },
+        (payload) => {
+          handler({
+            type: 'booking_services_changed',
+            data: payload.new || payload.old,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      )
+      .subscribe();
+  } catch (error) {
+    console.warn('Supabase bookings realtime subscription failed:', error);
+    return () => {};
+  }
 
   // Return unsubscribe function
   return () => {
+    if (!channel) return;
     try {
       supabase.removeChannel(channel);
     } catch {

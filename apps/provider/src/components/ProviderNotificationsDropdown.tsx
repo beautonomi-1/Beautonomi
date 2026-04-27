@@ -125,7 +125,10 @@ export function ProviderNotificationsDropdown({ visible, onClose, onSeeAll }: Pr
             onPress={(e) => e.stopPropagation()}
           >
             <View style={twStyle("flex-row items-center justify-between border-b border-gray-100 px-4 py-3")}>
-              <Text style={twStyle("text-lg font-semibold text-gray-900")}>Notifications</Text>
+              <View style={twStyle("flex-1 pr-3")}>
+                <Text style={twStyle("text-lg font-semibold text-gray-900")}>Notifications</Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Tap one to mark it read, or use Mark all read.</Text>
+              </View>
               <View style={twStyle("flex-row items-center")}>
                 {hasUnread && (
                   <TouchableOpacity

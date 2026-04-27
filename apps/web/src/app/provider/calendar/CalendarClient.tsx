@@ -308,6 +308,7 @@ const parseTimeFromUnknown = (
 
 const isValidDateValue = (value: Date): boolean => !Number.isNaN(value.getTime());
 const YMD_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const HYDRATION_FALLBACK_DATE = "2000-01-01";
 
 const normalizeTimeForCalendar = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -526,6 +527,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const { preferences: calendarPreferences } = useCalendarPreferences();
   const businessTz = resolveTz(provider?.timezone);
   const calendarDateKey = useCallback((date: Date) => formatDateKeyInTimeZone(date, businessTz), [businessTz]);
+  const [hasMounted, setHasMounted] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>(() => initialCalendar?.appointments ?? []);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => initialCalendar?.teamMembers ?? []);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -541,7 +543,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         if (isValidDateValue(d)) return d;
       } catch { /* ignore */ }
     }
-    return new Date();
+    return parseISO(HYDRATION_FALLBACK_DATE);
   });
   const selectedDateSafe = isValidDateValue(selectedDate) ? selectedDate : nowInTz(businessTz);
   const [locationOperatingHours, setLocationOperatingHours] = useState<Record<string, { open: string; close: string; closed: boolean }> | null>(null);
@@ -648,6 +650,15 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
   // Swipe detection for mobile navigation
   const minSwipeDistance = 50;
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasMounted || initialCalendar?.dateFrom) return;
+    setSelectedDate(nowInTz(businessTz));
+  }, [hasMounted, initialCalendar?.dateFrom, businessTz]);
 
   const _handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
@@ -2244,7 +2255,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             />
 
             {/* Scroll-to-now floating button — only visible when viewing today */}
-            {calendarDateKey(selectedDateSafe) === calendarDateKey(nowInTz(businessTz)) && (
+            {hasMounted && calendarDateKey(selectedDateSafe) === calendarDateKey(nowInTz(businessTz)) && (
               <button
                 type="button"
                 onClick={() => window.dispatchEvent(new CustomEvent("calendar-scroll-to-now"))}

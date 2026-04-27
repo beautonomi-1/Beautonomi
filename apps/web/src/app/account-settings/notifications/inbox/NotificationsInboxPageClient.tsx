@@ -96,6 +96,11 @@ const formatTimeAgo = (ts: string) => {
   return time.toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" });
 };
 
+const realtimeChannelKey = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 type Filter = "all" | "unread";
 
 function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInboxInitial | null }) {
@@ -155,17 +160,23 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
   useEffect(() => {
     if (!user?.id) return;
     const supabase = getSupabaseClient();
-    const channel = supabase
-      .channel(`notifications:inbox:${user.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
-        () => {
-          loadRef.current?.(true);
-        }
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel(`notifications:inbox:${user.id}:${realtimeChannelKey()}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+          () => {
+            loadRef.current?.(true);
+          }
+        )
+        .subscribe();
+    } catch (error) {
+      console.warn("Customer notifications inbox realtime subscription failed:", error);
+    }
     return () => {
+      if (!channel) return;
       try { supabase.removeChannel(channel); } catch { /* ignore */ }
     };
   }, [user?.id]);

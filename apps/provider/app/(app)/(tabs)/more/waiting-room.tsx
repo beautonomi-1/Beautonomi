@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useCallback } from "react";
+import { useEffect, useRef, useMemo, useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -34,6 +34,54 @@ interface TodayBookingRow {
   services?: { name?: string; offering_name?: string; duration_minutes?: number }[];
 }
 
+type FrontDeskMetricRange = "all" | "today" | "week" | "month" | "year";
+
+const METRIC_RANGES: Array<{ id: FrontDeskMetricRange; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "today", label: "Today" },
+  { id: "week", label: "Week" },
+  { id: "month", label: "Month" },
+  { id: "year", label: "Year" },
+];
+
+function formatYmd(date: Date): string {
+  return format(date, "yyyy-MM-dd");
+}
+
+function getMetricRangeParams(range: FrontDeskMetricRange, anchorDate: Date): { start?: string; end?: string } {
+  if (range === "all") return {};
+
+  const start = new Date(anchorDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+
+  if (range === "week") {
+    const day = start.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    start.setDate(start.getDate() + mondayOffset);
+    end.setTime(start.getTime());
+    end.setDate(start.getDate() + 6);
+  } else if (range === "month") {
+    start.setDate(1);
+    end.setFullYear(start.getFullYear(), start.getMonth() + 1, 0);
+  } else if (range === "year") {
+    start.setMonth(0, 1);
+    end.setFullYear(start.getFullYear(), 11, 31);
+  }
+
+  return { start: formatYmd(start), end: formatYmd(end) };
+}
+
+function buildBookingsUrl(range: FrontDeskMetricRange, locationId?: string | null): string {
+  const params = new URLSearchParams();
+  const dates = getMetricRangeParams(range, new Date());
+  if (dates.start) params.set("start_date", dates.start);
+  if (dates.end) params.set("end_date", dates.end);
+  params.set("limit", "1000");
+  if (locationId != null) params.set("location_id", locationId);
+  return `/api/provider/bookings?${params.toString()}`;
+}
+
 function serviceLine(s?: { name?: string; offering_name?: string; duration_minutes?: number }): string {
   const n = s?.name || s?.offering_name || "Service";
   const d = s?.duration_minutes;
@@ -49,6 +97,7 @@ export default function WaitingRoomScreen() {
   const { isTablet } = useResponsive();
   const { selectedLocationId } = useProvider();
   const onDemandConfig = useModuleConfig("on_demand");
+  const [metricRange, setMetricRange] = useState<FrontDeskMetricRange>("today");
   const prevWaitingQueueCountRef = useRef<number | null>(null);
   const prevPendingConfirmCountRef = useRef<number | null>(null);
   const ringtoneStopRef = useRef<(() => void) | null>(null);
@@ -70,13 +119,20 @@ export default function WaitingRoomScreen() {
     error: bookingsError,
     refresh: refreshBookings,
   } = useApi<TodayBookingRow[]>(bookingsUrl);
+  const metricBookingsUrl = buildBookingsUrl(metricRange, selectedLocationId);
+  const {
+    data: metricBookings,
+    loading: metricBookingsLoading,
+    refresh: refreshMetricBookings,
+  } = useApi<TodayBookingRow[]>(metricBookingsUrl);
 
   const { execute: patchWaitingRoom } = useApiMutation("patch");
 
   const onRefresh = useCallback(() => {
     refreshWaiting();
     refreshBookings();
-  }, [refreshWaiting, refreshBookings]);
+    refreshMetricBookings();
+  }, [refreshWaiting, refreshBookings, refreshMetricBookings]);
 
   useEffect(() => {
     return () => {
@@ -104,7 +160,7 @@ export default function WaitingRoomScreen() {
   const waitingList = (entries ?? []).filter((e) => e.status === "waiting");
   const inServiceList = (entries ?? []).filter((e) => e.status === "in_service");
 
-  const { pendingToday, scheduleToday, bookedCount, pendingCount } = useMemo(() => {
+  const { pendingToday, scheduleToday, pendingCount } = useMemo(() => {
     const list = Array.isArray(rawBookings) ? rawBookings : [];
     const today = new Date();
     const onToday = list.filter((b) => {
@@ -118,10 +174,20 @@ export default function WaitingRoomScreen() {
     return {
       pendingToday: pending,
       scheduleToday: schedule,
-      bookedCount: onToday.filter(isActiveScheduleBooking).length,
       pendingCount: pending.length,
     };
   }, [rawBookings]);
+
+  const metricSummary = useMemo(() => {
+    const list = Array.isArray(metricBookings) ? metricBookings : [];
+    return {
+      pendingCount: list.filter((b) => b.db_status === "pending").length,
+      bookedCount: list.filter(isActiveScheduleBooking).length,
+      completedCount: list.filter((b) => b.status === "completed").length,
+    };
+  }, [metricBookings]);
+
+  const metricRangeLabel = METRIC_RANGES.find((range) => range.id === metricRange)?.label ?? "Today";
 
   useEffect(() => {
     if (
@@ -184,25 +250,55 @@ export default function WaitingRoomScreen() {
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshControl={
-          <RefreshControl refreshing={waitingLoading || bookingsLoading} onRefresh={onRefresh} tintColor="#1a1f3c" />
+          <RefreshControl refreshing={waitingLoading || bookingsLoading || metricBookingsLoading} onRefresh={onRefresh} tintColor="#1a1f3c" />
         }
       >
+        <View style={twStyle("mx-4 mb-3")}>
+          <Text style={twStyle("mb-2 text-[10px] font-black uppercase tracking-widest text-gray-500")}>Metrics</Text>
+          <View style={twStyle("flex-row flex-wrap")}>
+            {METRIC_RANGES.map((range) => {
+              const active = metricRange === range.id;
+              return (
+                <TouchableOpacity
+                  key={range.id}
+                  onPress={() => setMetricRange(range.id)}
+                  style={[
+                    twStyle(active ? "mb-2 mr-2 rounded-full bg-gray-900 px-3 py-2" : "mb-2 mr-2 rounded-full border border-gray-200 bg-white px-3 py-2"),
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Show ${range.label.toLowerCase()} front desk metrics`}
+                >
+                  <Text style={twStyle(active ? "text-xs font-bold text-white" : "text-xs font-semibold text-gray-700")}>
+                    {range.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
         {/* Attention row */}
         <View style={twStyle("mx-4 mb-4 flex-row flex-wrap")}>
           <View style={[twStyle("min-w-[30%] flex-1 rounded-xl border border-amber-200 bg-amber-50 p-3"), { marginRight: 8, marginBottom: 8 }]}>
             <Text style={twStyle("text-xs font-semibold text-amber-800")}>Needs action</Text>
-            <Text style={twStyle("text-2xl font-bold text-amber-900")}>{pendingCount}</Text>
-            <Text style={twStyle("text-[10px] text-amber-700")}>Pending confirm</Text>
+            <Text style={twStyle("text-2xl font-bold text-amber-900")}>{metricSummary.pendingCount}</Text>
+            <Text style={twStyle("text-[10px] text-amber-700")}>Pending · {metricRangeLabel}</Text>
           </View>
           <View style={[twStyle("min-w-[30%] flex-1 rounded-xl border border-teal-200 bg-teal-50 p-3"), { marginRight: 8, marginBottom: 8 }]}>
-            <Text style={twStyle("text-xs font-semibold text-teal-800")}>Booked today</Text>
-            <Text style={twStyle("text-2xl font-bold text-teal-900")}>{bookedCount}</Text>
-            <Text style={twStyle("text-[10px] text-teal-700")}>Active appts</Text>
+            <Text style={twStyle("text-xs font-semibold text-teal-800")}>Booked</Text>
+            <Text style={twStyle("text-2xl font-bold text-teal-900")}>{metricSummary.bookedCount}</Text>
+            <Text style={twStyle("text-[10px] text-teal-700")}>Active · {metricRangeLabel}</Text>
           </View>
           <View style={[twStyle("min-w-[30%] flex-1 rounded-xl border border-gray-200 bg-gray-50 p-3"), { marginBottom: 8 }]}>
             <Text style={twStyle("text-xs font-semibold text-gray-700")}>Check-in queue</Text>
             <Text style={twStyle("text-2xl font-bold text-gray-900")}>{waitingList.length}</Text>
             <Text style={twStyle("text-[10px] text-gray-600")}>Waiting now</Text>
+          </View>
+          <View style={[twStyle("min-w-[30%] flex-1 rounded-xl border border-emerald-200 bg-emerald-50 p-3"), { marginBottom: 8 }]}>
+            <Text style={twStyle("text-xs font-semibold text-emerald-800")}>Completed</Text>
+            <Text style={twStyle("text-2xl font-bold text-emerald-900")}>{metricSummary.completedCount}</Text>
+            <Text style={twStyle("text-[10px] text-emerald-700")}>Done · {metricRangeLabel}</Text>
           </View>
         </View>
 

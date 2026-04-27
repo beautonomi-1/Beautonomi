@@ -313,7 +313,6 @@ export function ProviderSidebar() {
 
   const navCountByHref = React.useMemo<Record<string, number>>(
     () => ({
-      "/provider/dashboard": navCounts.critical_total,
       "/provider/bookings": navCounts.pending_bookings,
       "/provider/ecommerce/orders": navCounts.active_product_orders,
       "/provider/messaging": navCounts.unread_messages,

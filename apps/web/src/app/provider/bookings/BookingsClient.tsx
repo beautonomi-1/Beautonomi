@@ -376,6 +376,9 @@ export function BookingsClient({
   // live pending/in-progress tallies. Computed over the full bookings set
   // so the strip stays useful even while the list below is filtered.
   const statsSnapshot = useMemo(() => {
+    if (!hasMounted) {
+      return { count: 0, revenue: 0, pendingCount: 0, inProgressCount: 0 };
+    }
     const now = new Date();
     let rangeStart = 0;
     let rangeEnd = Number.POSITIVE_INFINITY;
@@ -411,7 +414,7 @@ export function BookingsClient({
       }
     }
     return { count, revenue, pendingCount, inProgressCount };
-  }, [bookings, statsRange]);
+  }, [bookings, hasMounted, statsRange]);
 
   const statsRangeLabel = useMemo(() => {
     if (statsRange === "today") return "Today";

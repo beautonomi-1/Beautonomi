@@ -98,16 +98,27 @@ const formatTimeAgo = (timestamp: string) => {
   return time.toLocaleDateString();
 };
 
+const realtimeChannelKey = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 export function CustomerNotificationsDropdown() {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [totalUnread, setTotalUnread] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, session, isLoading: authLoading } = useAuth();
   const loadAttemptRef = useRef(0);
 
   const loadNotifications = useCallback(async () => {
+    if (!user?.id || !session) {
+      setNotifications([]);
+      setTotalUnread(0);
+      setIsLoading(false);
+      return;
+    }
     const attempt = ++loadAttemptRef.current;
     try {
       setIsLoading(true);
@@ -118,8 +129,11 @@ export function CustomerNotificationsDropdown() {
       const data = response.data ?? response;
       setNotifications(data.notifications || []);
       setTotalUnread(data.total_unread || 0);
-    } catch (error) {
-      console.error('Failed to load notifications:', error);
+    } catch (error: any) {
+      const status = error?.status;
+      if (status !== 401 && status !== 403) {
+        console.error('Failed to load notifications:', error);
+      }
       // Avoid noisy toasts on the very first load; show on refresh / later attempts.
       if (attempt > 1) {
         toast.error('Failed to load notifications');
@@ -129,10 +143,11 @@ export function CustomerNotificationsDropdown() {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id]);
+  }, [session, user?.id]);
 
   useEffect(() => {
-    if (!user?.id) {
+    if (authLoading) return;
+    if (!user?.id || !session) {
       setIsLoading(false);
       setNotifications([]);
       setTotalUnread(0);
@@ -142,9 +157,11 @@ export function CustomerNotificationsDropdown() {
 
     const supabase = getSupabaseClient();
     const enableRealtime = process.env.NODE_ENV === "production";
-    const channel = enableRealtime
-      ? supabase
-          .channel(`notifications:customer:${user.id}`)
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    if (enableRealtime) {
+      try {
+        channel = supabase
+          .channel(`notifications:customer:${user.id}:${realtimeChannelKey()}`)
           .on(
             "postgres_changes",
             { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
@@ -152,8 +169,11 @@ export function CustomerNotificationsDropdown() {
               loadNotifications();
             }
           )
-          .subscribe()
-      : null;
+          .subscribe();
+      } catch (error) {
+        console.warn("Customer notification realtime subscription failed:", error);
+      }
+    }
 
     const interval = setInterval(loadNotifications, 120000);
 
@@ -167,7 +187,7 @@ export function CustomerNotificationsDropdown() {
       }
       clearInterval(interval);
     };
-  }, [user?.id, loadNotifications]);
+  }, [authLoading, session, user?.id, loadNotifications]);
 
   const handleNotificationClick = async (notification: Notification) => {
     // Mark as read

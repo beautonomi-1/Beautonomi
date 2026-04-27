@@ -37,6 +37,8 @@ export function AppHeader() {
   const isChatsThread = Boolean(pathname?.match(/\/chats\/[^/?#]+/));
   const isFocusFlow = isMessagingThread || isChatsThread;
   if (isFocusFlow) return null;
+  const isDashboard = pathname === "/" || pathname?.endsWith("/dashboard");
+  const showNotificationBadge = !isDashboard && unreadCount > 0;
 
   const iconSize = 22;
   const iconColor = "#374151";
@@ -120,12 +122,12 @@ export function AppHeader() {
               setNotificationsOpen(true);
             }}
             hitSlop={hitSlop}
-            accessibilityLabel={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
+            accessibilityLabel={showNotificationBadge ? `${unreadCount} unread notifications` : "Notifications"}
             accessibilityRole="button"
             style={{ position: "relative", marginRight: Platform.OS === "web" ? 16 : 12 }}
           >
             <Ionicons name="notifications-outline" size={iconSize} color={iconColor} />
-            {unreadCount > 0 && (
+            {showNotificationBadge && (
               <View
                 style={{
                   position: "absolute",

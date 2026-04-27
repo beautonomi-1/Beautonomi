@@ -27,7 +27,7 @@ import {
 const Navbar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, session, isLoading: authLoading } = useAuth();
   const [isPopupVisible, setIsPopupVisible] = useState<boolean>(false);
   const [isSticky, setIsSticky] = useState<boolean>(false);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
@@ -51,7 +51,7 @@ const Navbar: React.FC = () => {
 
   // Cart count for authenticated users; refresh on cart-updated event (e.g. after add-to-cart)
   const refreshCartCount = useCallback(() => {
-    if (!user) return;
+    if (authLoading || !user || !session) return;
     fetch("/api/me/cart")
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
@@ -60,10 +60,11 @@ const Navbar: React.FC = () => {
         setCartCount(total);
       })
       .catch(() => {});
-  }, [user]);
+  }, [authLoading, session, user]);
 
   useEffect(() => {
-    if (!user) {
+    if (authLoading) return;
+    if (!user || !session) {
       setCartCount(0);
       return;
     }
@@ -79,7 +80,7 @@ const Navbar: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [authLoading, session, user]);
 
   useEffect(() => {
     const handler = () => refreshCartCount();

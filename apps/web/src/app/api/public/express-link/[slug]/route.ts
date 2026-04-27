@@ -4,6 +4,32 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { successResponse, notFoundResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
 
+const EXPRESS_LINK_SELECT =
+  "id, provider_id, name, slug, service_ids, staff_ids, location_id, location_type, is_active, expires_at, max_uses, use_count, prefill, created_at, updated_at";
+
+type ExpressBookingLinkRow = {
+  id: string;
+  provider_id: string;
+  name: string;
+  slug: string;
+  service_ids?: string[] | null;
+  staff_ids?: string[] | null;
+  location_id?: string | null;
+  location_type?: string | null;
+  is_active?: boolean | null;
+  expires_at?: string | null;
+  max_uses?: number | null;
+  use_count?: number | null;
+  prefill?: unknown;
+};
+
+function isUsableLink(link: ExpressBookingLinkRow): boolean {
+  if (link.is_active === false) return false;
+  if (link.expires_at && new Date(link.expires_at) < new Date()) return false;
+  if (link.max_uses != null && (link.use_count ?? 0) >= link.max_uses) return false;
+  return true;
+}
+
 /**
  * GET /api/public/express-link/[slug]
  *
@@ -42,9 +68,12 @@ export async function GET(
 
     const linkQuery = supabase
       .from("express_booking_links")
-      .select("id, provider_id, name, slug, service_ids, staff_ids, location_id, location_type, is_active, expires_at, max_uses, use_count, prefill")
-      .eq("slug", slug)
-      .eq("is_active", true);
+      .select(EXPRESS_LINK_SELECT)
+      .ilike("slug", slug)
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(10);
 
     if (tenantProviderIds.length > 0) {
       linkQuery.in("provider_id", tenantProviderIds);
@@ -53,28 +82,33 @@ export async function GET(
       return notFoundResponse("Booking link not found");
     }
 
-    const { data: tenantScopedLink, error: linkError } = await linkQuery.maybeSingle();
+    const { data: tenantScopedLinks, error: linkError } = await linkQuery;
     if (linkError) {
       return notFoundResponse("Booking link not found");
     }
-    let link = tenantScopedLink;
+    let link = ((tenantScopedLinks ?? []) as ExpressBookingLinkRow[]).find(isUsableLink) ?? null;
 
     // Tenant host mapping can be temporarily missing/misaligned in some environments.
-    // Fallback to a global slug lookup only when exactly one active candidate exists.
+    // Fallback to the newest globally usable candidate so legacy duplicate short
+    // codes do not make every matching link 404. New active links are still
+    // guarded against global duplicates at creation time.
     if (!link) {
       const { data: fallbackLinks, error: fallbackErr } = await supabase
         .from("express_booking_links")
-        .select("id, provider_id, name, slug, service_ids, staff_ids, location_id, location_type, is_active, expires_at, max_uses, use_count, prefill")
-        .eq("slug", slug)
+        .select(EXPRESS_LINK_SELECT)
+        .ilike("slug", slug)
         .eq("is_active", true)
-        .limit(2);
+        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(10);
       if (fallbackErr || !fallbackLinks?.length) {
         return notFoundResponse("Booking link not found");
       }
-      if (fallbackLinks.length > 1) {
-        return notFoundResponse("Booking link not found");
-      }
-      link = fallbackLinks[0];
+      link = ((fallbackLinks ?? []) as ExpressBookingLinkRow[]).find(isUsableLink) ?? null;
+    }
+
+    if (!link) {
+      return notFoundResponse("Booking link not found or unavailable");
     }
 
     if (link.expires_at && new Date(link.expires_at) < new Date()) {
