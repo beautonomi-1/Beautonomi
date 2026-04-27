@@ -76,9 +76,10 @@ export async function getProviderRevenue(
 
   // Filter transactions by location if needed
   const validTransactions = (financeTransactions || []).filter((t: any) => {
-    if (!t.booking_id) return true; // Include non-booking transactions
-    if (locationId && bookingMap[t.booking_id]?.location_id !== locationId)
-      return false;
+    if (locationId) {
+      if (!t.booking_id) return false;
+      if (bookingMap[t.booking_id]?.location_id !== locationId) return false;
+    }
     return true;
   });
 

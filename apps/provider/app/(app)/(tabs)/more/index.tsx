@@ -56,6 +56,19 @@ type TeamAccessData = {
   can_process_payments?: boolean;
 };
 
+type ProviderNavCounts = {
+  pending_bookings: number;
+  active_product_orders: number;
+  unread_messages: number;
+  waiting_room: number;
+  critical_total: number;
+};
+
+function formatBadgeCount(count: number): string | null {
+  if (count <= 0) return null;
+  return count > 99 ? "99+" : String(count);
+}
+
 /**
  * Map API routes to app routes. Use dedicated screens when they exist so the card deep-links
  * straight to business, locations, or operating hours. Gallery maps to its hub; catalogue uses `/(app)/…/catalogue` directly from the API when present.
@@ -209,6 +222,7 @@ export default function MoreScreen() {
   const { data: payoutAccounts, loading: payoutAccountsLoading, refresh: refreshPayoutAccounts } = useApi<PayoutAccountSummary[]>("/api/provider/payout-accounts", { staleTimeMs: 30_000 });
   const { data: payoutSchedule, refresh: refreshPayoutSchedule } = useApi<PayoutScheduleData>("/api/provider/payouts/next-date", { staleTimeMs: 60_000 });
   const { data: teamAccess } = useApi<TeamAccessData>("/api/provider/team-access", { staleTimeMs: 60_000 });
+  const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>("/api/provider/nav-counts", { staleTimeMs: 30_000 });
   const completion = completionData ?? null;
   const completionItems = completion?.items ?? [];
   const completionPct = completion?.percentage ?? 0;
@@ -248,7 +262,8 @@ export default function MoreScreen() {
       void refreshFinanceSummary();
       void refreshPayoutAccounts();
       void refreshPayoutSchedule();
-    }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule])
+      void refreshNavCounts();
+    }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule, refreshNavCounts])
   );
 
   const onRefresh = useCallback(async () => {
@@ -260,11 +275,28 @@ export default function MoreScreen() {
         refreshFinanceSummary(),
         refreshPayoutAccounts(),
         refreshPayoutSchedule(),
+        refreshNavCounts(),
       ]);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule]);
+  }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule, refreshNavCounts]);
+
+  const getRouteBadgeCount = useCallback(
+    (route: string): number => {
+      if (route.includes("/bookings")) {
+        return Number(navCounts?.pending_bookings ?? 0) + Number(navCounts?.waiting_room ?? 0);
+      }
+      if (route.includes("products-ecommerce-hub") || route.includes("product-orders") || route.includes("orders-hub")) {
+        return Number(navCounts?.active_product_orders ?? 0);
+      }
+      if (route.includes("engagement-hub") || route.includes("messaging")) {
+        return Number(navCounts?.unread_messages ?? 0);
+      }
+      return 0;
+    },
+    [navCounts],
+  );
 
   const headerInitials = useMemo(() => {
     const n = (meProfile?.full_name || user?.email || "").trim();
@@ -588,25 +620,33 @@ export default function MoreScreen() {
 
         {/* Quick actions - customer-style 2x2 grid (shortens perceived page length) */}
         <View style={{ marginBottom: 20, flexDirection: "row", flexWrap: "wrap" }}>
-          {QUICK_ACTIONS.map((action) => (
-            <TouchableOpacity
-              key={action.route}
-              onPress={() => handleMenuPress(action.route)}
-              activeOpacity={0.7}
-              style={{ flex: 1, minWidth: "45%", marginRight: 12, marginBottom: 12, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], alignItems: "center", paddingVertical: 16 }}
-              accessibilityRole="button"
-              accessibilityLabel={action.label}
-            >
-              <View
-                style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, marginBottom: 8, backgroundColor: `${action.color}20` }}
+          {QUICK_ACTIONS.map((action) => {
+            const badge = formatBadgeCount(getRouteBadgeCount(action.route));
+            return (
+              <TouchableOpacity
+                key={action.route}
+                onPress={() => handleMenuPress(action.route)}
+                activeOpacity={0.7}
+                style={{ flex: 1, minWidth: "45%", marginRight: 12, marginBottom: 12, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], alignItems: "center", paddingVertical: 16 }}
+                accessibilityRole="button"
+                accessibilityLabel={badge ? `${action.label}, ${badge} alerts` : action.label}
               >
-                <Ionicons name={action.icon} size={20} color={action.color} />
-              </View>
-              <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700], textAlign: "center" }} numberOfLines={2}>
-                {action.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <View
+                  style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, marginBottom: 8, backgroundColor: `${action.color}20` }}
+                >
+                  <Ionicons name={action.icon} size={20} color={action.color} />
+                  {badge ? (
+                    <View style={{ position: "absolute", right: -8, top: -8, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center", paddingHorizontal: 5 }}>
+                      <Text style={{ fontSize: 10, fontWeight: "800", color: "#fff" }}>{badge}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700], textAlign: "center" }} numberOfLines={2}>
+                  {action.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Profile completion load error - non-blocking message with retry */}
@@ -755,39 +795,47 @@ export default function MoreScreen() {
               </TouchableOpacity>
               {isExpanded && (
                 <View style={{ overflow: "hidden", borderBottomLeftRadius: 16, borderBottomRightRadius: 16, borderWidth: 1, borderTopWidth: 0, borderColor: Colors.gray[100], backgroundColor: Colors.white }}>
-                  {section.items.map((item, idx) => (
-                    <TouchableOpacity
-                      key={item.route}
-                      style={{
-                        minHeight: 52,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        paddingHorizontal: 16,
-                        paddingVertical: 10,
-                        borderBottomWidth: idx < section.items.length - 1 ? 1 : 0,
-                        borderBottomColor: Colors.gray[50],
-                      }}
-                      onPress={() => handleMenuPress(item.route)}
-                      activeOpacity={0.6}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${item.label}: ${item.subtitle}`}
-                    >
-                      <View
-                        style={{ minHeight: 32, minWidth: 32, backgroundColor: item.bg, alignItems: "center", justifyContent: "center", borderRadius: 8 }}
+                  {section.items.map((item, idx) => {
+                    const badge = formatBadgeCount(getRouteBadgeCount(item.route));
+                    return (
+                      <TouchableOpacity
+                        key={item.route}
+                        style={{
+                          minHeight: 52,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          paddingHorizontal: 16,
+                          paddingVertical: 10,
+                          borderBottomWidth: idx < section.items.length - 1 ? 1 : 0,
+                          borderBottomColor: Colors.gray[50],
+                        }}
+                        onPress={() => handleMenuPress(item.route)}
+                        activeOpacity={0.6}
+                        accessibilityRole="button"
+                        accessibilityLabel={badge ? `${item.label}: ${item.subtitle}. ${badge} alerts.` : `${item.label}: ${item.subtitle}`}
                       >
-                        <Ionicons name={item.icon} size={16} color={item.color} />
-                      </View>
-                      <View style={{ marginLeft: 12, flex: 1 }}>
-                        <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
-                          {item.label}
-                        </Text>
-                        <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-                          {item.subtitle}
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
-                    </TouchableOpacity>
-                  ))}
+                        <View
+                          style={{ minHeight: 32, minWidth: 32, backgroundColor: item.bg, alignItems: "center", justifyContent: "center", borderRadius: 8 }}
+                        >
+                          <Ionicons name={item.icon} size={16} color={item.color} />
+                        </View>
+                        <View style={{ marginLeft: 12, flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
+                            {item.label}
+                          </Text>
+                          <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
+                            {item.subtitle}
+                          </Text>
+                        </View>
+                        {badge ? (
+                          <View style={{ marginRight: 8, minWidth: 22, height: 22, borderRadius: 11, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center", paddingHorizontal: 6 }}>
+                            <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>{badge}</Text>
+                          </View>
+                        ) : null}
+                        <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               )}
             </View>

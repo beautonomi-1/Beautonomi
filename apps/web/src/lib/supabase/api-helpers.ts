@@ -28,6 +28,24 @@ export interface ApiError {
   details?: any;
 }
 
+export const ADMIN_MFA_REQUIRED_CODE = "MFA_REQUIRED";
+
+type AdminTwoFactorPolicy = {
+  enabled: boolean;
+  required_for_admins: boolean;
+};
+
+type SupabaseMfaApi = {
+  auth?: {
+    mfa?: {
+      getAuthenticatorAssuranceLevel?: () => Promise<{
+        data: { currentLevel?: string | null; nextLevel?: string | null } | null;
+        error: Error | null;
+      }>;
+    };
+  };
+};
+
 export interface ApiResponse<T> {
   data: T | null;
   error: ApiError | null;
@@ -82,6 +100,13 @@ export function forbiddenResponse(message = 'Forbidden') {
   return errorResponse(message, 'FORBIDDEN', 403);
 }
 
+function adminMfaRequiredError(message = "Multi-factor authentication is required for admin access.") {
+  return Object.assign(new Error(message), {
+    status: 403,
+    code: ADMIN_MFA_REQUIRED_CODE,
+  });
+}
+
 /**
  * Create a not found response
  */
@@ -121,6 +146,18 @@ export function handleApiError(
   let code = typeof _codeOrStatus === "string" ? _codeOrStatus : "INTERNAL_ERROR";
 
   if (error instanceof Error) {
+    // Supabase Auth (and similar) attach `status` (4xx) for user-facing validation — don't map to 500.
+    const maybeStatus = (error as { status?: unknown }).status;
+    if (typeof maybeStatus === "number" && maybeStatus >= 400 && maybeStatus < 500) {
+      const code = (error as { code?: string }).code ?? "AUTH_ERROR";
+      return errorResponse(
+        error.message || defaultMessage,
+        code,
+        maybeStatus,
+        process.env.NODE_ENV === "development" ? error.stack : undefined
+      );
+    }
+
     const errorMessage = error.message.toLowerCase();
     const errorCause =
       "cause" in error && error.cause && typeof error.cause === "object" && "code" in error.cause
@@ -211,6 +248,61 @@ export async function requireAuthInApi(request?: NextRequest | Request) {
 type RequireRoleResult = Awaited<ReturnType<typeof requireRoleInApiImpl>>;
 const REQUIRE_ROLE_CACHE = new WeakMap<object, RequireRoleResult>();
 
+function isAdminApiRequest(request?: NextRequest | Request): boolean {
+  if (!request) return false;
+  try {
+    return new URL(request.url).pathname.startsWith("/api/admin/");
+  } catch {
+    return false;
+  }
+}
+
+function rolesIncludeAdmin(roles: UserRole[]): boolean {
+  return roles.some((role) => (ALL_ADMIN_ROLES as readonly string[]).includes(role as string));
+}
+
+async function getAdminTwoFactorPolicy(): Promise<AdminTwoFactorPolicy> {
+  const supabase = getSupabaseAdmin();
+  const { data: row } = await supabase
+    .from("platform_settings")
+    .select("settings")
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const settings = (row as { settings?: Record<string, unknown> } | null)?.settings ?? {};
+  const security = (settings.security as Record<string, unknown> | undefined) ?? {};
+  const twoFactor = (security.two_factor as { enabled?: unknown; required_for_admins?: unknown } | undefined) ?? {};
+
+  return {
+    enabled: twoFactor.enabled === true,
+    required_for_admins: twoFactor.required_for_admins === true,
+  };
+}
+
+export async function requireAdminMfaIfRequired(
+  request?: NextRequest | Request,
+  userRole?: UserRole | string | null
+): Promise<void> {
+  if (!request || !isAdminApiRequest(request)) return;
+  if (userRole && !(ALL_ADMIN_ROLES as readonly string[]).includes(String(userRole))) return;
+
+  const policy = await getAdminTwoFactorPolicy();
+  if (!policy.enabled || !policy.required_for_admins) return;
+
+  const supabase = await getSupabaseServer(request);
+  const mfa = (supabase as unknown as SupabaseMfaApi).auth?.mfa;
+  if (!mfa?.getAuthenticatorAssuranceLevel) {
+    throw adminMfaRequiredError("Multi-factor authentication is unavailable. Sign in again and complete MFA.");
+  }
+
+  const { data, error } = await mfa.getAuthenticatorAssuranceLevel();
+  if (error || data?.currentLevel !== "aal2") {
+    throw adminMfaRequiredError();
+  }
+}
+
 export async function requireRoleInApi(
   role: UserRole | UserRole[],
   request?: NextRequest | Request
@@ -224,11 +316,19 @@ export async function requireRoleInApi(
       const cacheMatches = userRole && roles.includes(userRole);
       // Only reuse when the role authorized the first caller is also in the
       // role list for this caller — guarantees we never widen permissions.
-      if (cacheMatches) return cached;
+      if (cacheMatches) {
+        if (isAdminApiRequest(request) && rolesIncludeAdmin(roles)) {
+          await requireAdminMfaIfRequired(request, cached.user?.role);
+        }
+        return cached;
+      }
     }
   }
 
   const result = await requireRoleInApiImpl(roles, request);
+  if (isAdminApiRequest(request) && rolesIncludeAdmin(roles)) {
+    await requireAdminMfaIfRequired(request, result.user?.role);
+  }
   if (request) REQUIRE_ROLE_CACHE.set(request, result);
   return result;
 }

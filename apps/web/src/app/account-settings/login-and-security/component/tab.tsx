@@ -261,7 +261,9 @@ const LoginAccount = ({ initial }: { initial: LoginAndSecurityInitial | null }) 
       if (profile?.email_change_pending) {
         setShowEmailDialog(false);
         setNewEmail("");
-        toast.success("Check your new email and click the confirmation link to complete the change.");
+        toast.success(
+          "We sent confirmation links to your current email and your new address. Open each link to finish the change (both may be required).",
+        );
       } else {
         toast.success("Verification email sent.");
         setShowEmailDialog(false);
@@ -640,7 +642,8 @@ const LoginAccount = ({ initial }: { initial: LoginAndSecurityInitial | null }) 
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">Change email</DialogTitle>
             <DialogDescription className="text-sm text-gray-600 font-light">
-              Enter your new email address. We&apos;ll send a verification link to confirm.
+              Enter your new email. We&apos;ll email confirmation links—you may need to confirm from your current
+              address and the new one.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

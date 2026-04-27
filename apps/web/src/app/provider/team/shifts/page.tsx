@@ -127,9 +127,10 @@ export default function ProviderShifts() {
     isAlternating: boolean;
     alternatingWeek: string;
   }) => {
+    const isRecurring = formData.isRepeating || formData.isAlternating;
     const recurringPattern: Record<string, unknown> = {};
-    if (formData.isRepeating) {
-      recurringPattern.pattern = formData.repeatPattern;
+    if (isRecurring) {
+      recurringPattern.pattern = formData.isAlternating ? "biweekly" : formData.repeatPattern;
       if (formData.repeatEndDate) recurringPattern.end_date = formData.repeatEndDate;
       if (formData.repeatEndsAfter) recurringPattern.ends_after = Number(formData.repeatEndsAfter);
     }
@@ -144,8 +145,8 @@ export default function ProviderShifts() {
           date: formData.date,
           start_time: formData.startTime,
           end_time: formData.endTime,
-          is_recurring: formData.isRepeating,
-          recurring_pattern: Object.keys(recurringPattern).length > 0 ? recurringPattern : undefined,
+          is_recurring: isRecurring,
+          recurring_pattern: isRecurring ? recurringPattern : null,
         });
         toast.success("Shift updated");
       } else {
@@ -154,8 +155,8 @@ export default function ProviderShifts() {
           date: formData.date,
           start_time: formData.startTime,
           end_time: formData.endTime,
-          is_recurring: formData.isRepeating,
-          recurring_pattern: Object.keys(recurringPattern).length > 0 ? recurringPattern : undefined,
+          is_recurring: isRecurring,
+          recurring_pattern: isRecurring ? recurringPattern : null,
         });
         toast.success("Shift created");
       }
@@ -186,7 +187,7 @@ export default function ProviderShifts() {
       <div className="mt-4 mb-2 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
         <p className="text-sm text-indigo-800">
           <strong>How shifts work:</strong> Shifts define when each staff member is available for bookings.
-          You can create split shifts (e.g. 08:00–12:00 and 14:00–18:00) for the same day.
+          You can create split shifts (e.g. 08:00–12:00 and 14:00–18:00), one-off date overrides, or repeating shifts.
           Staff with <strong>Custom Work Hours</strong> disabled in their settings will use the location&apos;s operating hours instead.
         </p>
         <div className="flex items-center gap-4 mt-2 text-xs text-indigo-700">
@@ -196,6 +197,7 @@ export default function ProviderShifts() {
           <span className="inline-flex items-center gap-1">
             <span className="inline-block w-3 h-3 rounded bg-blue-50 border border-blue-200" /> Weekly schedule
           </span>
+          <span>Repeating shifts show on every matching future week until their end rule.</span>
         </div>
       </div>
 
@@ -267,7 +269,7 @@ export default function ProviderShifts() {
                               {dayShifts.map((shift) => {
                                 const isSchedule = shift.source === "schedule";
                                 return (
-                                  <div key={shift.id} className="flex items-center justify-center gap-1">
+                                  <div key={`${shift.id}-${shift.date}`} className="flex items-center justify-center gap-1">
                                     <Badge
                                       variant="outline"
                                       className={

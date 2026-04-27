@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkExpressBookingFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
@@ -117,17 +118,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if slug already exists for this provider
-    const { data: existingLink } = await supabase
-      .from("express_booking_links")
-      .select("id")
-      .eq("provider_id", providerId)
-      .eq("slug", validatedRow.slug)
-      .maybeSingle();
+    // Public URLs only contain the short code, so active codes must resolve to one link.
+    const { data: existingLinks } =
+      validatedRow.is_active === false
+        ? { data: [] }
+        : await getSupabaseAdmin()
+            .from("express_booking_links")
+            .select("id")
+            .eq("slug", validatedRow.slug)
+            .eq("is_active", true)
+            .limit(1);
 
-    if (existingLink) {
+    if (existingLinks?.length) {
       return errorResponse(
-        "A booking link with this slug already exists. Please choose a different slug.",
+        "A booking link with this short code already exists. Please choose a different code.",
         "DUPLICATE_SLUG",
         400
       );

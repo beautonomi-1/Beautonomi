@@ -18,10 +18,12 @@ let lastEnableSessionReplay: boolean | undefined = undefined;
  * (e.g. after switching anonymous → authenticated session replay policy).
  */
 export function hardResetAmplitudeBrowser(): void {
-  try {
-    amplitude.reset();
-  } catch {
-    /* ignore */
+  if (isInitialized || pluginPipeline) {
+    try {
+      amplitude.reset();
+    } catch {
+      /* ignore */
+    }
   }
   pluginPipeline = null;
   isInitialized = false;

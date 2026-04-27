@@ -48,7 +48,6 @@ export async function GET(request: NextRequest) {
     if (locationId && paymentsData && paymentsData.length > 0) {
       const bookingIds = new Set((bookingsResult.data || []).map((b: { id: string }) => b.id));
       const filtered = paymentsData.filter((p: { booking_id?: string | null; transaction_type?: string }) => {
-        if (p.transaction_type === "payout") return true;
         return p.booking_id && bookingIds.has(p.booking_id);
       });
       paymentsResult.data = filtered.slice(0, limit);

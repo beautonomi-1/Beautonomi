@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import "./globals.css";
 // Country restriction modal removed - not needed
 import SuppressConsoleWarningsWrapper from "@/components/global/suppress-console-warnings-wrapper";
-import { OrganizationSchema } from "@/components/seo/structured-data";
+import { OrganizationSchema, WebSiteSchema } from "@/components/seo/structured-data";
 import { RootErrorBoundary } from "@/components/global/RootErrorBoundary";
 import GlobalErrorLogger from "@/components/global/GlobalErrorLogger";
 import ClientAppShellLoader from "@/components/global/ClientAppShellLoader";
@@ -12,6 +12,7 @@ import {
   getPublicSiteOriginFromHeaders,
   openGraphLocaleForHost,
 } from "@/lib/seo/public-site-origin";
+import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -19,10 +20,25 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  colorScheme: "light",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#111827" },
+  ],
   viewportFit: "cover",
   /** Chrome/Android virtual keyboard: resize layout so fixed footers stay usable */
   interactiveWidget: "resizes-content",
 };
+
+function getSupabaseStorageOrigin(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!raw?.startsWith("https://")) return null;
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return null;
+  }
+}
 
 export async function generateMetadata(): Promise<Metadata> {
   const h = await headers();
@@ -30,6 +46,17 @@ export async function generateMetadata(): Promise<Metadata> {
     (h.get("x-forwarded-host") || h.get("host") || "").split(":")[0] || "";
   const metadataBaseUrl = await getPublicSiteOriginFromHeaders();
   const ogLocale = openGraphLocaleForHost(hostRaw);
+  const verification: Metadata["verification"] = {
+    ...(process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION
+      ? { google: process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION }
+      : {}),
+    ...(process.env.NEXT_PUBLIC_BING_VERIFICATION
+      ? { other: { "msvalidate.01": process.env.NEXT_PUBLIC_BING_VERIFICATION } }
+      : {}),
+  };
+  const hasVerification = Boolean(
+    process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION || process.env.NEXT_PUBLIC_BING_VERIFICATION,
+  );
 
   return {
     /** Same mark as navbar (`/images/logo.svg`); App Router also serves `src/app/icon.svg` at `/icon.svg`. */
@@ -38,12 +65,13 @@ export async function generateMetadata(): Promise<Metadata> {
       shortcut: "/icon.svg",
       apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
     },
+    manifest: "/manifest.webmanifest",
     title: {
-      default: "Beautonomi - Beauty Service Marketplace",
+      default: "Beautonomi | Book Beauty Services, Salons & Mobile Pros",
       template: "%s | Beautonomi",
     },
     description:
-      "Discover and book beauty services from verified providers across Africa. Find top-rated salons, spas, barbershops, and beauty professionals near you.",
+      "Book trusted beauty services near you. Compare verified salons, spas, barbers, nail techs, makeup artists, and mobile beauty professionals on Beautonomi.",
     keywords: [
       "beauty services",
       "salon booking",
@@ -60,26 +88,41 @@ export async function generateMetadata(): Promise<Metadata> {
     creator: "Beautonomi",
     publisher: "Beautonomi",
     metadataBase: new URL(metadataBaseUrl),
+    alternates: {
+      canonical: metadataBaseUrl,
+      languages: getHreflangAlternateUrls("/"),
+    },
+    appleWebApp: {
+      capable: true,
+      title: "Beautonomi",
+      statusBarStyle: "default",
+    },
+    formatDetection: {
+      telephone: false,
+      address: false,
+      email: false,
+    },
+    category: "beauty",
     openGraph: {
       type: "website",
       locale: ogLocale,
       url: "/",
       siteName: "Beautonomi",
-      title: "Beautonomi - Beauty Service Marketplace",
-      description: "Discover and book beauty services from verified providers across Africa",
+      title: "Beautonomi | Book Beauty Services, Salons & Mobile Pros",
+      description: "Find and book verified salons, spas, barbers, nail techs, makeup artists, and mobile beauty professionals near you.",
       images: [
         {
           url: "/og-image.jpg",
           width: 1200,
           height: 630,
-          alt: "Beautonomi - Beauty Service Marketplace",
+          alt: "Beautonomi - Book Beauty Services",
         },
       ],
     },
     twitter: {
       card: "summary_large_image",
-      title: "Beautonomi - Beauty Service Marketplace",
-      description: "Discover and book beauty services from verified providers",
+      title: "Beautonomi | Book Beauty Services, Salons & Mobile Pros",
+      description: "Find and book verified salons, spas, barbers, nail techs, makeup artists, and mobile beauty professionals near you.",
       images: ["/twitter-image.jpg"],
     },
     robots: {
@@ -93,11 +136,7 @@ export async function generateMetadata(): Promise<Metadata> {
         "max-snippet": -1,
       },
     },
-    ...(process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION && {
-      verification: {
-        google: process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION,
-      },
-    }),
+    ...(hasVerification ? { verification } : {}),
   };
 }
 
@@ -127,11 +166,21 @@ export default async function RootLayout({
   const osType = getOsTypeFromUserAgent(ua);
   const organizationBaseUrl = await getPublicSiteOriginFromHeaders();
   const lang = await resolveTenantLang(headersList);
+  const supabaseStorageOrigin = getSupabaseStorageOrigin();
 
   return (
     <html lang={lang} className="overflow-x-hidden max-w-full">
+      <head>
+        {supabaseStorageOrigin ? (
+          <>
+            <link rel="preconnect" href={supabaseStorageOrigin} crossOrigin="anonymous" />
+            <link rel="dns-prefetch" href={supabaseStorageOrigin} />
+          </>
+        ) : null}
+      </head>
       <body className="font-beautonomi overflow-x-hidden max-w-full" suppressHydrationWarning>
         <OrganizationSchema baseUrl={organizationBaseUrl} />
+        <WebSiteSchema baseUrl={organizationBaseUrl} />
         <GlobalErrorLogger />
         {process.env.NODE_ENV !== "production" ? (
           <SuppressConsoleWarningsWrapper />

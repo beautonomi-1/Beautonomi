@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkExpressBookingFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
@@ -51,7 +52,7 @@ export async function PATCH(
     // Verify link belongs to provider
     const { data: link, error: fetchError } = await supabase
       .from("express_booking_links")
-      .select("id, provider_id")
+      .select("id, provider_id, slug, is_active")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -84,19 +85,22 @@ export async function PATCH(
       }
     }
 
-    // If slug is being updated, check for duplicates
-    if (validated.slug) {
-      const { data: existingLink } = await supabase
+    const effectiveSlug = validated.slug ?? link.slug;
+    const effectiveIsActive = validated.is_active ?? link.is_active ?? true;
+
+    // Public URLs only contain the short code, so active codes must resolve to one link.
+    if (effectiveIsActive && effectiveSlug) {
+      const { data: existingLinks } = await getSupabaseAdmin()
         .from("express_booking_links")
         .select("id")
-        .eq("provider_id", providerId)
-        .eq("slug", validated.slug)
+        .eq("slug", effectiveSlug)
+        .eq("is_active", true)
         .neq("id", id)
-        .maybeSingle();
+        .limit(1);
 
-      if (existingLink) {
+      if (existingLinks?.length) {
         return errorResponse(
-          "A booking link with this slug already exists. Please choose a different slug.",
+          "A booking link with this short code already exists. Please choose a different code.",
           "DUPLICATE_SLUG",
           400
         );

@@ -247,7 +247,9 @@ export function PersonalInfoClient({ initial }: { initial: PersonalInfoInitialPa
         const profile = json?.data;
         if (profile?.email_change_pending) {
           closeModal();
-          toast.success("Check your new email and click the confirmation link to complete the change.");
+          toast.success(
+            "We sent confirmation links to your current email and your new address. Open each link to finish the change (both may be required).",
+          );
           router.refresh();
           return;
         }
@@ -903,7 +905,7 @@ const getModalContent = (type: keyof PersonalInfoData, countries: Country[] = []
       return {
         type: 'email',
         title: 'Email address',
-        description: 'Use an address you\'ll always have access to. We\'ll send a confirmation link to the new address—you must click it to complete the change.',
+        description: "Use an address you'll always have access to. We email confirmation links to your current and new address—you may need to open both to complete the change.",
         fields: [
           { name: 'email', label: 'Email address', type: 'email' },
         ],

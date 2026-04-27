@@ -145,7 +145,7 @@ export default function LoginAndSecurityScreen() {
         setNewEmail("");
         Alert.alert(
           "Check your email",
-          "We sent a confirmation link to your new email. Open it to complete the change."
+          "We sent confirmation links to your current email and your new address. Open each to finish the change (both may be required).",
         );
       }
     } catch (e) {
@@ -319,7 +319,7 @@ export default function LoginAndSecurityScreen() {
               {emailChangePending ? (
                 <View style={{ backgroundColor: "#FEF3C7", padding: 12, borderRadius: 12 }}>
                   <Text style={{ fontSize: 14, color: "#92400E" }}>
-                    Check your new email and open the confirmation link to complete the change.
+                    Check your current and new email for links to confirm the change (both may be required).
                   </Text>
                 </View>
               ) : (

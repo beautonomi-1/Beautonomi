@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
-import type { Appointment, TeamMember } from "@/lib/provider-portal/types";
+import type { Appointment, Shift, TeamMember } from "@/lib/provider-portal/types";
 import { fetcher, PROVIDER_BOOTSTRAP_TIMEOUT_MS } from "@/lib/http/fetcher";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Plus, Settings, Users, RefreshCw, SlidersHorizontal, Printer, PersonStanding, X } from "lucide-react";
@@ -339,6 +339,112 @@ const sanitizeAvailabilityBlocks = (blocks: AvailabilityBlockDisplay[]): Availab
     .filter((block): block is AvailabilityBlockDisplay => block !== null);
 };
 
+const CALENDAR_DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+
+const datesInRange = (dateFrom: string, dateTo: string): string[] => {
+  const start = parseISO(dateFrom);
+  const end = parseISO(dateTo);
+  if (!isValidDateValue(start) || !isValidDateValue(end)) return [];
+
+  const dates: string[] = [];
+  for (let cursor = start; cursor <= end; cursor = addDays(cursor, 1)) {
+    dates.push(format(cursor, "yyyy-MM-dd"));
+  }
+  return dates;
+};
+
+const weekStartsInRange = (dateFrom: string, dateTo: string): string[] => {
+  const start = parseISO(dateFrom);
+  const end = parseISO(dateTo);
+  if (!isValidDateValue(start) || !isValidDateValue(end)) return [];
+
+  const starts: string[] = [];
+  for (
+    let cursor = startOfWeek(start, { weekStartsOn: 1 });
+    cursor <= end;
+    cursor = addDays(cursor, 7)
+  ) {
+    starts.push(format(cursor, "yyyy-MM-dd"));
+  }
+  return starts;
+};
+
+const minutesFromTime = (time: string): number => {
+  const [hourRaw, minuteRaw] = time.split(":");
+  const hour = Number(hourRaw);
+  const minute = Number(minuteRaw ?? "0");
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return 0;
+  return hour * 60 + minute;
+};
+
+const applyEffectiveShiftHours = (
+  members: TeamMember[],
+  shifts: Shift[],
+  dateFrom: string,
+  dateTo: string,
+  selectedStaffId: string,
+): TeamMember[] => {
+  const rangeDates = datesInRange(dateFrom, dateTo);
+  if (rangeDates.length === 0) return members;
+
+  const dateToDayKey = new Map(
+    rangeDates.map((date) => [date, CALENDAR_DAY_KEYS[parseISO(date).getDay()]] as const),
+  );
+  const byStaffDay = new Map<string, { open: string; close: string }>();
+
+  for (const shift of shifts) {
+    if (!shift.date || shift.date < dateFrom || shift.date > dateTo) continue;
+    if (selectedStaffId !== "all" && shift.team_member_id !== selectedStaffId) continue;
+
+    const dayKey = dateToDayKey.get(shift.date);
+    const open = normalizeTimeForCalendar(shift.start_time);
+    const close = normalizeTimeForCalendar(shift.end_time);
+    if (!dayKey || !open || !close) continue;
+
+    const key = `${shift.team_member_id}::${dayKey}`;
+    const existing = byStaffDay.get(key);
+    if (!existing) {
+      byStaffDay.set(key, { open, close });
+      continue;
+    }
+
+    byStaffDay.set(key, {
+      open: minutesFromTime(open) < minutesFromTime(existing.open) ? open : existing.open,
+      close: minutesFromTime(close) > minutesFromTime(existing.close) ? close : existing.close,
+    });
+  }
+
+  return members.map((member) => {
+    const workingHours: NonNullable<TeamMember["working_hours"]> = { ...(member.working_hours ?? {}) };
+    for (const [date, dayKey] of dateToDayKey) {
+      const shiftHours = byStaffDay.get(`${member.id}::${dayKey}`);
+      if (!shiftHours) continue;
+
+      const existing = workingHours[dayKey];
+      const existingRaw = existing as
+        | (NonNullable<TeamMember["working_hours"]>[string] & {
+            open_time?: string;
+            close_time?: string;
+            is_open?: boolean;
+          })
+        | undefined;
+      const existingOpen = normalizeTimeForCalendar(existingRaw?.open ?? existingRaw?.open_time);
+      const existingClose = normalizeTimeForCalendar(existingRaw?.close ?? existingRaw?.close_time);
+      if (existingRaw && existingRaw.closed !== true && existingRaw.is_open !== false && existingOpen && existingClose) {
+        workingHours[dayKey] = {
+          open: minutesFromTime(shiftHours.open) < minutesFromTime(existingOpen) ? shiftHours.open : existingOpen,
+          close: minutesFromTime(shiftHours.close) > minutesFromTime(existingClose) ? shiftHours.close : existingClose,
+          closed: false,
+        };
+      } else {
+        workingHours[dayKey] = { ...shiftHours, closed: false };
+      }
+    }
+
+    return { ...member, working_hours: workingHours };
+  });
+};
+
 type CheckoutSaleLine = {
   id: string;
   type: "service" | "product";
@@ -569,7 +675,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   };
 
   // Cache for calendar data (appointments + blocks)
-  const calendarCacheRef = useRef<Map<string, { data: Appointment[]; timeBlocks: TimeBlock[]; availabilityBlocks: AvailabilityBlockDisplay[]; timestamp: number }>>(new Map());
+  const calendarCacheRef = useRef<Map<string, { data: Appointment[]; timeBlocks: TimeBlock[]; availabilityBlocks: AvailabilityBlockDisplay[]; teamMembers?: TeamMember[]; timestamp: number }>>(new Map());
   const CALENDAR_CACHE_DURATION = 60 * 1000; // 60 seconds (increased from 10s for better perf)
   const pendingCalendarRequests = useRef<Map<string, Promise<any>>>(new Map());
 
@@ -579,13 +685,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const pendingTeamMembersRequest = useRef<Promise<TeamMember[]> | null>(null);
 
   useEffect(() => {
-    if (!initialCalendar.cacheKey || initialCalendar.error) return;
-    calendarCacheRef.current.set(initialCalendar.cacheKey, {
-      data: initialCalendar.appointments,
-      timeBlocks: initialCalendar.timeBlocks ?? [],
-      availabilityBlocks: initialCalendar.availabilityBlocks ?? [],
-      timestamp: Date.now(),
-    });
+    if (initialCalendar.error) return;
     if (initialCalendar.teamMembers.length > 0) {
       teamMembersCacheRef.current = {
         data: initialCalendar.teamMembers,
@@ -747,6 +847,9 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         
         const { fromIso, toIso } = dateRangeBoundsUtc(dateFrom, dateTo, businessTz);
 
+        const shiftWeeks = weekStartsInRange(dateFrom, dateTo);
+        const shiftsPromise = Promise.all(shiftWeeks.map((weekStart) => providerApi.listShifts(weekStart)));
+
         const [
           apptsResponse,
           membersResult,
@@ -754,6 +857,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           availBlocks,
           staffUnavail,
           bookingHolds,
+          shiftWeeksResult,
         ] = await Promise.all([
           providerApi.listAppointments(
             {
@@ -780,9 +884,17 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             date_from: dateFrom,
             date_to: dateTo,
           }),
+          shiftsPromise,
         ]);
 
-        const members = membersResult;
+        const effectiveShifts = shiftWeeksResult.flat();
+        const members = applyEffectiveShiftHours(
+          membersResult,
+          effectiveShifts,
+          dateFrom,
+          dateTo,
+          selectedTeamMember,
+        );
 
         // Filter availability blocks by current location when set (block applies to all locations or this location)
         const filteredAvailBlocks = selectedLocationId
@@ -817,6 +929,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           data: apptsResponse.data,
           timeBlocks: expandedBlocks,
           availabilityBlocks: mergedAvailOverlay,
+          teamMembers: members,
           timestamp: Date.now(),
         });
 
@@ -937,8 +1050,11 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       setAppointments(cached.data);
       if (cached.timeBlocks) setTimeBlocks(cached.timeBlocks);
       if (cached.availabilityBlocks) setAvailabilityBlocks(cached.availabilityBlocks);
+      if (cached.teamMembers) {
+        setTeamMembers(cached.teamMembers);
+      }
       // Load team members if needed (using cached version if available)
-      if (teamMembers.length === 0) {
+      if (!cached.teamMembers && teamMembers.length === 0) {
         loadTeamMembers(selectedLocationId || undefined)
           .then((members) => {
             setTeamMembers((prevMembers) => {

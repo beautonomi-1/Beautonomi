@@ -20,6 +20,70 @@ function formatDateLocal(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function parseDateLocal(value: string): Date {
+  return new Date(`${value}T00:00:00`);
+}
+
+function daysBetween(start: Date, end: Date): number {
+  return Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+function monthsBetween(start: Date, end: Date): number {
+  return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+}
+
+function shiftAppliesOnDate(shift: any, date: string): boolean {
+  if (!shift.is_recurring) return shift.date === date;
+
+  const rule = shift.recurring_pattern && typeof shift.recurring_pattern === "object"
+    ? shift.recurring_pattern
+    : {};
+  const pattern = String(rule.pattern || rule.frequency || (rule.type === "alternating" ? "biweekly" : "weekly"));
+  const anchor = parseDateLocal(shift.date);
+  const target = parseDateLocal(date);
+  if (target < anchor) return false;
+
+  if (rule.end_date && date > String(rule.end_date)) return false;
+
+  const intervalRaw = Number(rule.interval || (pattern === "biweekly" ? 2 : 1));
+  const interval = Number.isFinite(intervalRaw) && intervalRaw > 0 ? intervalRaw : 1;
+  const diffDays = daysBetween(anchor, target);
+  let occurrenceIndex: number | null = null;
+  let applies = false;
+
+  if (pattern === "daily") {
+    applies = diffDays % interval === 0;
+    occurrenceIndex = Math.floor(diffDays / interval) + 1;
+  } else if (pattern === "weekly" || pattern === "biweekly") {
+    const explicitDays = Array.isArray(rule.days) ? rule.days : Array.isArray(rule.days_of_week) ? rule.days_of_week : null;
+    if (explicitDays && explicitDays.length > 0) {
+      applies = explicitDays.includes(target.getDay()) && Math.floor(diffDays / 7) % interval === 0;
+      if (applies) {
+        // Multiple-days-per-week rules are uncommon for shifts; count conservatively by scanning.
+        let count = 0;
+        for (let d = new Date(anchor); d <= target; d.setDate(d.getDate() + 1)) {
+          if (explicitDays.includes(d.getDay()) && Math.floor(daysBetween(anchor, d) / 7) % interval === 0) {
+            count += 1;
+          }
+        }
+        occurrenceIndex = count;
+      }
+    } else {
+      const weeks = Math.floor(diffDays / 7);
+      applies = target.getDay() === anchor.getDay() && weeks % interval === 0;
+      occurrenceIndex = applies ? Math.floor(weeks / interval) + 1 : null;
+    }
+  } else if (pattern === "monthly") {
+    const months = monthsBetween(anchor, target);
+    applies = target.getDate() === anchor.getDate() && months >= 0 && months % interval === 0;
+    occurrenceIndex = applies ? Math.floor(months / interval) + 1 : null;
+  }
+
+  const endsAfter = Number(rule.ends_after || rule.occurrences || 0);
+  if (applies && endsAfter > 0 && occurrenceIndex && occurrenceIndex > endsAfter) return false;
+  return applies;
+}
+
 /**
  * GET /api/provider/shifts
  * 
@@ -64,12 +128,19 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .order("date", { ascending: true });
 
+    let weekDates: string[] = [];
     if (weekStart) {
-      const start = new Date(weekStart + "T00:00:00");
+      const start = parseDateLocal(weekStart);
       const end = new Date(start);
       end.setDate(end.getDate() + 6);
-      shiftQuery = shiftQuery.gte("date", formatDateLocal(start))
-                             .lte("date", formatDateLocal(end));
+      weekDates = Array.from({ length: 7 }, (_, index) => {
+        const d = new Date(start);
+        d.setDate(d.getDate() + index);
+        return formatDateLocal(d);
+      });
+      // Include one-off rows in the week and recurring anchors that started
+      // before this week ends; expand/filter in application code below.
+      shiftQuery = shiftQuery.lte("date", formatDateLocal(end));
     }
 
     if (staffId) {
@@ -92,19 +163,24 @@ export async function GET(request: NextRequest) {
     if (shiftErr) throw shiftErr;
     if (schedErr) throw schedErr;
 
-    const transformedShifts = (shifts || []).map((shift: any) => ({
-      id: shift.id,
-      team_member_id: shift.staff_id,
-      team_member_name: shift.provider_staff?.name?.full_name || "Staff",
-      date: shift.date,
-      start_time: shift.start_time.substring(0, 5),
-      end_time: shift.end_time.substring(0, 5),
-      notes: shift.notes,
-      is_recurring: shift.is_recurring,
-      recurring_pattern: shift.recurring_pattern,
-      source: "shift" as const,
-      is_synthetic: false,
-    }));
+    const transformedShifts = (shifts || []).flatMap((shift: any) => {
+      const dates = weekDates.length > 0 ? weekDates : [shift.date];
+      return dates
+        .filter((dateStr) => shiftAppliesOnDate(shift, dateStr))
+        .map((dateStr) => ({
+          id: shift.id,
+          team_member_id: shift.staff_id,
+          team_member_name: shift.provider_staff?.name?.full_name || "Staff",
+          date: dateStr,
+          start_time: shift.start_time.substring(0, 5),
+          end_time: shift.end_time.substring(0, 5),
+          notes: shift.notes,
+          is_recurring: shift.is_recurring,
+          recurring_pattern: shift.recurring_pattern,
+          source: "shift" as const,
+          is_synthetic: false,
+        }));
+    });
 
     const shiftDateKeys = new Set(
       transformedShifts.map((s: any) => `${s.team_member_id}::${s.date}`)

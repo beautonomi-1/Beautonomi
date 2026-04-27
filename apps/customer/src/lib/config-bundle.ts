@@ -41,6 +41,41 @@ export interface ResolvedFlag {
   environments_allowed?: string[] | null;
 }
 
+/** Aligned with `platform_settings.settings.auth` (config bundle / admin). */
+export interface PublicAuthPolicy {
+  email_provider_enabled: boolean;
+  secure_email_change: boolean;
+  secure_password_change: boolean;
+  require_current_password: boolean;
+  prevent_leaked_passwords: boolean;
+  minimum_password_length: number;
+  password_requirements: "none" | "letters_and_digits" | "lowercase_uppercase_number";
+  email_otp_expiration_seconds: number;
+  email_otp_length: number;
+  phone_provider_enabled: boolean;
+  phone_confirmations_enabled: boolean;
+  sms_provider: "twilio";
+  sms_otp_expiration_seconds: number;
+  sms_otp_length: number;
+}
+
+export const DEFAULT_AUTH: PublicAuthPolicy = {
+  email_provider_enabled: true,
+  secure_email_change: true,
+  secure_password_change: true,
+  require_current_password: true,
+  prevent_leaked_passwords: true,
+  minimum_password_length: 8,
+  password_requirements: "none",
+  email_otp_expiration_seconds: 3600,
+  email_otp_length: 6,
+  phone_provider_enabled: true,
+  phone_confirmations_enabled: true,
+  sms_provider: "twilio",
+  sms_otp_expiration_seconds: 120,
+  sms_otp_length: 6,
+};
+
 export interface OnDemandModuleConfig {
   enabled: boolean;
   ringtone_asset_path: string | null;
@@ -59,6 +94,7 @@ export interface PublicConfigBundle {
   amplitude: Record<string, unknown>;
   third_party: Record<string, unknown>;
   branding: Record<string, unknown>;
+  auth: PublicAuthPolicy;
   flags: Record<string, ResolvedFlag>;
   modules: {
     on_demand: OnDemandModuleConfig;
@@ -82,6 +118,7 @@ function defaultStubBundle(environment: Environment, platform: Platform): Public
     amplitude: {},
     third_party: {},
     branding: {},
+    auth: { ...DEFAULT_AUTH },
     flags: {},
     modules: {
       on_demand: {

@@ -212,6 +212,9 @@ export async function POST(request: NextRequest) {
 
     if (freshCartErr) throw freshCartErr;
     const validatedCartItems = freshCartItems || cartItems;
+    if (!validatedCartItems || validatedCartItems.length === 0) {
+      return errorResponse("No cart items found for this provider", "EMPTY_CART", 400);
+    }
 
     const stockErrors: string[] = [];
     for (const item of validatedCartItems) {

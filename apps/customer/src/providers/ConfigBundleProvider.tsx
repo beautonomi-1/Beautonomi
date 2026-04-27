@@ -3,6 +3,7 @@ import {
   fetchConfigBundle,
   getCachedConfigBundle,
   clearConfigBundleCache,
+  DEFAULT_AUTH,
   type PublicConfigBundle,
 } from "@/lib/config-bundle";
 
@@ -18,6 +19,7 @@ const defaultBundle: PublicConfigBundle = {
   amplitude: {},
   third_party: {},
   branding: {},
+  auth: { ...DEFAULT_AUTH },
   flags: {},
   modules: {
     on_demand: {

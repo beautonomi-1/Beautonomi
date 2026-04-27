@@ -437,9 +437,9 @@ export interface Shift {
   location_id?: string;
   notes?: string;
   is_recurring?: boolean;
-  recurring_pattern?: { type?: "alternating" | "weekly" | string; [key: string]: unknown };
-  /** "shift" = date-specific staff_shifts row; "schedule" = derived from weekly staff_schedules */
-  source?: "shift" | "schedule";
+  recurring_pattern?: { type?: "alternating" | "weekly" | string; [key: string]: unknown } | null;
+  /** "shift" = staff_shifts row; "schedule"/"location" = derived weekly template/fallback row */
+  source?: "shift" | "schedule" | "location";
 }
 
 export interface Campaign {

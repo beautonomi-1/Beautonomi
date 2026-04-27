@@ -111,7 +111,7 @@ export default function ExpressBookingScreen() {
     "/api/provider/booking-link"
   );
   const { execute: updateLink, loading: saving } = useApiMutation("patch");
-  const { execute: patchExpressLink, loading: savingPrefill } = useApiMutation("patch");
+  const { execute: patchExpressLink, loading: savingPrefill } = useApiMutation<ExpressLinkRow>("patch");
   const [copied, setCopied] = useState(false);
   const [copiedShortId, setCopiedShortId] = useState<string | null>(null);
   const [customSlug, setCustomSlug] = useState("");
@@ -258,14 +258,21 @@ export default function ExpressBookingScreen() {
     if (prefillGift.trim()) prefill.gift_card_code = prefillGift.trim();
     if (parsedCart.lines.length > 0) prefill.product_cart = parsedCart.lines;
 
-    const { error } = await patchExpressLink(`/api/provider/express-booking/${prefillModalLink.id}`, { prefill });
+    const { data: updatedLink, error } = await patchExpressLink(`/api/provider/express-booking/${prefillModalLink.id}`, { prefill });
     if (error) {
       Alert.alert("Error", error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setExpressLinks((current) =>
+      current.map((link) =>
+        link.id === prefillModalLink.id
+          ? { ...link, ...(updatedLink ?? {}), prefill }
+          : link
+      )
+    );
     setPrefillModalLink(null);
-    await loadExpressLinks();
+    void loadExpressLinks();
   }
 
   async function handleCreateExpressLink() {
@@ -285,11 +292,14 @@ export default function ExpressBookingScreen() {
         setCreateError(getApiErrorMessage(res.error, "Failed to create express link"));
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        if (res.data) {
+          setExpressLinks((current) => [res.data as ExpressLinkRow, ...current]);
+        }
         setShowCreateForm(false);
         setNewLinkName("");
         setNewLinkSlug("");
         setCreateError(null);
-        await loadExpressLinks();
+        void loadExpressLinks();
       }
     } catch (e) {
       setCreateError(getApiErrorMessage(e, "Failed to create express link"));
@@ -309,7 +319,7 @@ export default function ExpressBookingScreen() {
           style: "destructive",
           onPress: () => {
             void (async () => {
-              const { error } = await patchExpressLink(`/api/provider/express-booking/${prefillModalLink.id}`, {
+              const { data: updatedLink, error } = await patchExpressLink(`/api/provider/express-booking/${prefillModalLink.id}`, {
                 prefill: {},
               });
               if (error) {
@@ -317,8 +327,15 @@ export default function ExpressBookingScreen() {
                 return;
               }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setExpressLinks((current) =>
+                current.map((link) =>
+                  link.id === prefillModalLink.id
+                    ? { ...link, ...(updatedLink ?? {}), prefill: {} }
+                    : link
+                )
+              );
               setPrefillModalLink(null);
-              await loadExpressLinks();
+              void loadExpressLinks();
             })();
           },
         },

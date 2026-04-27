@@ -2274,7 +2274,13 @@ async function handleProviderSubscriptionOrderFailed(
 ) {
   const orderId = payload.metadata.provider_subscription_order_id as string;
   await supabase.from("provider_subscription_orders")
-    .update({ status: "failed", updated_at: new Date().toISOString() })
+    .update({
+      status: "failed",
+      paystack_reference: payload.reference,
+      failed_at: new Date().toISOString(),
+      failure_reason: payload.message || "Payment failed",
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", orderId);
 }
 

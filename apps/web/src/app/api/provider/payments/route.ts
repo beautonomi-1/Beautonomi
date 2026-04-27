@@ -2,6 +2,33 @@ import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 
+type BookingPaymentRow = {
+  id: string;
+  booking_id: string;
+  amount: number | string | null;
+  payment_method: string | null;
+  payment_provider: string | null;
+  status: string | null;
+  notes: string | null;
+  created_at: string;
+  created_by: string | null;
+  booking?: {
+    id: string;
+    provider_id?: string | null;
+    scheduled_at: string | null;
+    duration_minutes: number | null;
+    ref_number: string | null;
+    booking_number: string | null;
+  } | Array<{
+    id: string;
+    provider_id?: string | null;
+    scheduled_at: string | null;
+    duration_minutes: number | null;
+    ref_number: string | null;
+    booking_number: string | null;
+  }> | null;
+};
+
 /**
  * GET /api/provider/payments
  * 
@@ -25,58 +52,22 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const { data: providerRow } = await supabaseAdmin
-      .from("providers")
-      .select("tenant_id")
-      .eq("id", providerId)
-      .maybeSingle();
-    const providerTenantId = (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
-
     const { searchParams } = new URL(request.url);
     
     // Parse query parameters
     const search = searchParams.get('search');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const parsedPage = Number.parseInt(searchParams.get('page') || '1', 10);
+    const parsedLimit = Number.parseInt(searchParams.get('limit') || '20', 10);
+    const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 20;
     const offset = (page - 1) * limit;
     const dateFrom = searchParams.get('date_from');
     const dateTo = searchParams.get('date_to');
     const paymentMethod = searchParams.get('payment_method');
     const teamMemberId = searchParams.get('team_member_id');
 
-    // Get bookings for this provider
-    let bookingsQuery = supabaseAdmin
-      .from('bookings')
-      .select('id, scheduled_at, ref_number, booking_number')
-      .eq('provider_id', providerId);
-
-    if (dateFrom) {
-      bookingsQuery = bookingsQuery.gte('scheduled_at', `${dateFrom}T00:00:00`);
-    }
-    if (dateTo) {
-      bookingsQuery = bookingsQuery.lte('scheduled_at', `${dateTo}T23:59:59`);
-    }
-
-    const { data: bookings, error: bookingsError } = await bookingsQuery;
-
-    if (bookingsError) {
-      throw bookingsError;
-    }
-
-    const bookingIds = bookings?.map(b => b.id) || [];
-    const bookingMap = new Map(bookings?.map(b => [b.id, b]) || []);
-
-    if (bookingIds.length === 0) {
-      return successResponse({
-        data: [],
-        total: 0,
-        page,
-        limit,
-        total_pages: 1,
-      });
-    }
-
-    // Get booking payments (scope by tenant_id when present — defense in depth vs booking_id list)
+    // Scope through the booking join. This avoids oversized `.in(booking_id, ...)`
+    // queries and does not depend on optional booking_payments.tenant_id rollout state.
     let paymentsQuery = supabaseAdmin
       .from('booking_payments')
       .select(`
@@ -89,23 +80,30 @@ export async function GET(request: NextRequest) {
         notes,
         created_at,
         created_by,
-        bookings!inner(
+        booking:bookings!inner(
           id,
+          provider_id,
           scheduled_at,
           duration_minutes,
           ref_number,
           booking_number
         )
       `, { count: 'exact' })
-      .in('booking_id', bookingIds);
-    if (providerTenantId) {
-      paymentsQuery = paymentsQuery.eq('tenant_id', providerTenantId);
-    }
+      .eq('booking.provider_id', providerId);
     paymentsQuery = paymentsQuery.order('created_at', { ascending: false });
 
     // Apply filters
+    if (dateFrom) {
+      paymentsQuery = paymentsQuery.gte('created_at', `${dateFrom}T00:00:00`);
+    }
+    if (dateTo) {
+      paymentsQuery = paymentsQuery.lte('created_at', `${dateTo}T23:59:59.999`);
+    }
     if (paymentMethod) {
       paymentsQuery = paymentsQuery.eq('payment_method', paymentMethod);
+    }
+    if (teamMemberId) {
+      paymentsQuery = paymentsQuery.eq('created_by', teamMemberId);
     }
 
     // Apply pagination
@@ -119,7 +117,8 @@ export async function GET(request: NextRequest) {
 
     // Get team member info if needed
     const teamMemberIds = new Set<string>();
-    payments?.forEach((p: any) => {
+    const paymentRows = (payments || []) as unknown as BookingPaymentRow[];
+    paymentRows.forEach((p) => {
       if (p.created_by) {
         teamMemberIds.add(p.created_by);
       }
@@ -128,16 +127,16 @@ export async function GET(request: NextRequest) {
     let teamMembersMap = new Map();
     if (teamMemberIds.size > 0) {
       const { data: teamMembers } = await supabaseAdmin
-        .from('provider_staff')
-        .select('id, name')
+        .from('users')
+        .select('id, full_name')
         .in('id', Array.from(teamMemberIds));
       
-      teamMembersMap = new Map(teamMembers?.map(tm => [tm.id, tm.name]) || []);
+      teamMembersMap = new Map(teamMembers?.map(tm => [tm.id, tm.full_name]) || []);
     }
 
     // Map to PaymentTransaction format
-    const transactions = (payments || []).map((p: any) => {
-      const booking = p.bookings || bookingMap.get(p.booking_id);
+    const transactions = paymentRows.map((p) => {
+      const booking = Array.isArray(p.booking) ? p.booking[0] : p.booking;
       const teamMemberName = p.created_by ? teamMembersMap.get(p.created_by) : undefined;
 
       return {
@@ -171,11 +170,6 @@ export async function GET(request: NextRequest) {
         t.team_member_name?.toLowerCase().includes(searchLower) ||
         t.method.toLowerCase().includes(searchLower)
       );
-    }
-
-    // Apply team member filter if provided
-    if (teamMemberId) {
-      filteredTransactions = filteredTransactions.filter(t => t.team_member_id === teamMemberId);
     }
 
     const totalPages = count ? Math.ceil(count / limit) : 1;

@@ -143,6 +143,9 @@ export async function PATCH(
     if (validationResult.data.notes !== undefined) updateData.notes = validationResult.data.notes;
     if (validationResult.data.is_recurring !== undefined) updateData.is_recurring = validationResult.data.is_recurring;
     if (validationResult.data.recurring_pattern !== undefined) updateData.recurring_pattern = validationResult.data.recurring_pattern;
+    if (validationResult.data.is_recurring === false && validationResult.data.recurring_pattern === undefined) {
+      updateData.recurring_pattern = null;
+    }
 
     // Update shift
     const { data: updatedShift, error: updateError } = await (supabase

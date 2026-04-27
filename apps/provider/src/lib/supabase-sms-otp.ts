@@ -9,12 +9,19 @@ export const SUPABASE_AUTH_SMS_OTP_LENGTH = SUPABASE_AUTH_OTP_LENGTH;
 /** Default hosted Supabase SMS / phone_change OTP lifetime (seconds); match Auth dashboard “OTP expiry”. */
 export const SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS = 120;
 
+/** Supabase “Email OTP expiration” (seconds) — for email code login copy only. */
+export const SUPABASE_AUTH_EMAIL_OTP_EXPIRY_SECONDS = 3600;
+
 export function normalizeSupabaseSmsOtpToken(raw: string): string {
   return raw.replace(/\D/g, "");
 }
 
 export function isCompleteSupabaseSmsOtp(raw: string): boolean {
   return normalizeSupabaseSmsOtpToken(raw).length === SUPABASE_AUTH_OTP_LENGTH;
+}
+
+export function isCompleteOtpForLength(raw: string, length: number): boolean {
+  return length > 0 && normalizeSupabaseSmsOtpToken(raw).length === length;
 }
 
 export function normalizeSupabaseAuthPhone(phone: string): string {

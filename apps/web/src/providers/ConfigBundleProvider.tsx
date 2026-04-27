@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useCallback, useEffect, useState } from "react";
 import { fetcher } from "@/lib/http/fetcher";
-import type { ConfigBundleMeta } from "@/lib/config/types";
+import type { ConfigBundleMeta, PublicAuthPolicy } from "@/lib/config/types";
+import { DEFAULT_PUBLIC_AUTH } from "@/lib/config/auth-policy-public";
 
 export type Platform = "web" | "customer" | "provider";
 export type Environment = "production" | "staging" | "development";
@@ -36,6 +37,7 @@ export interface PublicConfigBundle {
   amplitude: Record<string, any>;
   third_party: Record<string, any>;
   branding: Record<string, any>;
+  auth: PublicAuthPolicy;
   flags: Record<string, ResolvedFlag>;
   modules: {
     on_demand: OnDemandModuleConfig;
@@ -68,6 +70,7 @@ const defaultBundle: PublicConfigBundle = {
   amplitude: {},
   third_party: {},
   branding: {},
+  auth: { ...DEFAULT_PUBLIC_AUTH },
   flags: {},
   modules: {
     on_demand: {

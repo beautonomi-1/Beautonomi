@@ -52,6 +52,20 @@ interface ProviderSubscription {
     currency?: string;
     is_free?: boolean;
   };
+  paystack_sync_pending?: boolean | null;
+  paystack_sync_note?: string | null;
+  latest_order?: {
+    id: string;
+    plan_id?: string | null;
+    billing_period?: "monthly" | "yearly" | string | null;
+    status?: "pending" | "paid" | "failed" | string | null;
+    failure_reason?: string | null;
+  } | null;
+  billing_issue?: {
+    type: "past_due" | "sync_pending" | "payment_failed" | "payment_pending" | string;
+    message: string;
+    action: "pay_now" | "update_payment" | "retry_payment" | "complete_payment" | string;
+  } | null;
 }
 
 function planDisplayPrice(plan: SubscriptionPlan): number {
@@ -76,6 +90,22 @@ function isInProviderAppWebView(): boolean {
   return Boolean((window as Window & { ReactNativeWebView?: unknown }).ReactNativeWebView);
 }
 
+function isPaidCurrentPlan(plan: SubscriptionPlan | null): boolean {
+  return Boolean(plan && !plan.is_free && planDisplayPrice(plan) > 0);
+}
+
+function billingActionLabel(subscription: ProviderSubscription, isPaidPlan: boolean): string | null {
+  if (!isPaidPlan) return null;
+  if (subscription.status === "past_due") return "Pay now / update card";
+  if (subscription.paystack_sync_pending) return "Complete billing";
+  if (subscription.billing_issue?.action === "retry_payment") return "Retry payment";
+  if (subscription.billing_issue?.action === "complete_payment") return "Complete payment";
+  if (subscription.cancelled_at) return "Resume billing";
+  if (subscription.status === "expired" || subscription.status === "cancelled") return "Reactivate plan";
+  if (subscription.status === "active" && subscription.auto_renew === false) return "Extend plan";
+  return null;
+}
+
 export default function SubscriptionPage() {
   const [subscription, setSubscription] = useState<ProviderSubscription | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
@@ -84,6 +114,7 @@ export default function SubscriptionPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [showInAppReturnBanner, setShowInAppReturnBanner] = useState(false);
+  const [inAppReturnStatus, setInAppReturnStatus] = useState<"success" | "failed" | "pending" | null>(null);
   const [billingTab, setBillingTab] = useState<"monthly" | "yearly">("monthly");
 
   const visiblePlans = useMemo(() => {
@@ -94,34 +125,55 @@ export default function SubscriptionPage() {
   }, [plans, billingTab]);
 
   useEffect(() => {
-    loadData();
-
     const urlParams = new URLSearchParams(window.location.search);
     const isPaymentSuccess = urlParams.get("payment_success") === "true";
     const inApp = urlParams.get("in_app") === "1";
 
-    if (isPaymentSuccess) {
-      toast.success("Payment successful! Your subscription is being activated...");
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    async function init() {
+      const loaded = await loadData();
+      if (!isPaymentSuccess) return;
+
+      const latestStatus = loaded?.latest_order?.status;
+      const failed = latestStatus === "failed" || loaded?.billing_issue?.type === "payment_failed";
+      const pending = latestStatus === "pending" || loaded?.billing_issue?.type === "payment_pending";
+      const status = failed ? "failed" : pending ? "pending" : "success";
+
+      setInAppReturnStatus(status);
       if (inApp) setShowInAppReturnBanner(true);
-      setTimeout(() => loadData(), 2000);
+
+      if (status === "success") {
+        toast.success("Payment successful! Your subscription is being activated...");
+        timeout = setTimeout(() => loadData(), 2000);
+      } else if (status === "failed") {
+        toast.error(loaded?.billing_issue?.message ?? "Payment was not completed. Please try another card or add funds.");
+      } else {
+        toast.info("Payment is still pending. We'll update your subscription once the bank confirms it.");
+      }
+
       const cleanSearch = inApp ? "?in_app=1" : "";
       window.history.replaceState({}, "", window.location.pathname + cleanSearch);
 
-      // When loaded inside the provider app WebView: tell the app to close WebView and show native subscription (automatic return)
       if (inApp && typeof window !== "undefined") {
         const win = window as Window & { ReactNativeWebView?: { postMessage: (data: string) => void } };
-        if (win.ReactNativeWebView?.postMessage) {
-          const delay = 1500;
-          const t = setTimeout(() => {
-            win.ReactNativeWebView?.postMessage(JSON.stringify({ type: "subscription_success" }));
-          }, delay);
-          return () => clearTimeout(t);
+        if (win.ReactNativeWebView?.postMessage && status !== "pending") {
+          timeout = setTimeout(() => {
+            win.ReactNativeWebView?.postMessage(
+              JSON.stringify({ type: status === "success" ? "subscription_success" : "subscription_failed" })
+            );
+          }, 1500);
         }
       }
     }
+
+    init();
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (): Promise<ProviderSubscription | null> => {
     try {
       setIsLoading(true);
       setError(null);
@@ -136,6 +188,7 @@ export default function SubscriptionPage() {
       setSubscription(sub);
       const rawPlans = (plansRes as { data?: SubscriptionPlan[] })?.data ?? [];
       setPlans(Array.isArray(rawPlans) ? rawPlans : []);
+      return sub;
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -145,6 +198,7 @@ export default function SubscriptionPage() {
           : "Failed to load subscription data";
       setError(errorMessage);
       console.error("Error loading subscription:", err);
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -268,6 +322,24 @@ export default function SubscriptionPage() {
     }
   };
 
+  const handleBillingAction = async () => {
+    const latest = subscription?.latest_order;
+    const retryPlan = latest?.plan_id
+      ? plans.find(
+          (p) =>
+            p.plan_id === latest.plan_id &&
+            (!latest.billing_period || p.billing_period === latest.billing_period)
+        )
+      : null;
+
+    if (retryPlan && (subscription?.billing_issue?.action === "retry_payment" || subscription?.billing_issue?.action === "complete_payment")) {
+      await handleUpgrade(retryPlan.id);
+      return;
+    }
+
+    await handleRenew();
+  };
+
   if (isLoading) {
     return (
       <SettingsDetailLayout>
@@ -321,6 +393,10 @@ export default function SubscriptionPage() {
     plans.find((p) => p.plan_id === subscription?.plan_id || p.id === subscription?.plan_id) ||
     null;
   const expiresAt = subscription?.expires_at ? new Date(subscription.expires_at) : null;
+  const isPaidPlan = Boolean(subscription && isPaidCurrentPlan(currentPlan));
+  const billingLabel = subscription ? billingActionLabel(subscription, isPaidPlan) : null;
+  const showCancel =
+    Boolean(subscription && subscription.status === "active" && !subscription.cancelled_at && isPaidPlan);
 
   return (
     <SettingsDetailLayout>
@@ -342,9 +418,29 @@ export default function SubscriptionPage() {
       </div>
 
       {showInAppReturnBanner && (
-        <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-4 text-center text-sm text-green-800">
-          <p className="font-medium">Payment complete.</p>
-          <p className="mt-1">Tap the button below to return to the app.</p>
+        <div
+          className={`mb-4 rounded-lg border p-4 text-center text-sm ${
+            inAppReturnStatus === "failed"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : inAppReturnStatus === "pending"
+                ? "border-amber-200 bg-amber-50 text-amber-900"
+                : "border-green-200 bg-green-50 text-green-800"
+          }`}
+        >
+          <p className="font-medium">
+            {inAppReturnStatus === "failed"
+              ? "Payment not completed."
+              : inAppReturnStatus === "pending"
+                ? "Payment pending."
+                : "Payment complete."}
+          </p>
+          <p className="mt-1">
+            {inAppReturnStatus === "failed"
+              ? "Return to the app and try another card or add funds before retrying."
+              : inAppReturnStatus === "pending"
+                ? "Return to the app and refresh this screen in a moment."
+                : "Tap the button below to return to the app."}
+          </p>
           <a
             href="provider://subscription/success"
             className="mt-3 inline-block rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
@@ -397,6 +493,13 @@ export default function SubscriptionPage() {
                   <CardDescription className="text-base text-gray-600">
                     {currentPlan?.description || currentPlan?.name || "No plan selected"}
                   </CardDescription>
+                  {isPaidPlan && subscription.status === "active" && !subscription.cancelled_at ? (
+                    <p className="mt-2 text-sm text-gray-600">
+                      {subscription.auto_renew
+                        ? `Auto-renews${expiresAt ? ` on ${expiresAt.toLocaleDateString()}` : ""}.`
+                        : `Paid until${expiresAt ? ` ${expiresAt.toLocaleDateString()}` : " the end of the period"}. Manual extension is available when you need it.`}
+                    </p>
+                  ) : null}
                   {currentPlan?.is_free ? (
                     <p className="mt-3 text-sm leading-relaxed text-amber-900/90">
                       You are on the free tier. Premium tools (recurring appointments, automations, calendar sync, etc.)
@@ -416,6 +519,19 @@ export default function SubscriptionPage() {
                   </span>
                 </div>
               )}
+
+              {subscription.billing_issue ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                  <p className="font-semibold">
+                    {subscription.billing_issue.type === "payment_failed"
+                      ? "Payment was not completed"
+                      : subscription.billing_issue.type === "past_due"
+                        ? "Payment action needed"
+                        : "Billing action needed"}
+                  </p>
+                  <p className="mt-1 leading-relaxed">{subscription.billing_issue.message}</p>
+                </div>
+              ) : null}
 
               {currentPlan && (
                 <div>
@@ -442,22 +558,22 @@ export default function SubscriptionPage() {
               )}
 
               <div className="flex flex-wrap gap-2 border-t pt-4">
-                {subscription.status !== "active" && (
+                {subscription.status !== "active" && !billingLabel && (
                   <Button onClick={() => setShowUpgradeDialog(true)}>
                     <CreditCard className="mr-2 h-4 w-4" />
                     Choose Plan
                   </Button>
                 )}
-                {subscription.status === "active" && (
-                  <>
-                    <Button onClick={handleRenew} variant="outline">
-                      Renew
-                    </Button>
-                    <Button onClick={handleCancel} variant="outline" className="text-red-600">
-                      Cancel Subscription
-                    </Button>
-                  </>
-                )}
+                {billingLabel ? (
+                  <Button onClick={handleBillingAction} variant={subscription.status === "past_due" ? "default" : "outline"}>
+                    {billingLabel}
+                  </Button>
+                ) : null}
+                {showCancel ? (
+                  <Button onClick={handleCancel} variant="outline" className="text-red-600">
+                    Cancel Subscription
+                  </Button>
+                ) : null}
               </div>
             </CardContent>
           </Card>

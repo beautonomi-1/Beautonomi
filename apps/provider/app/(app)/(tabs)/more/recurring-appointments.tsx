@@ -191,9 +191,25 @@ export default function RecurringAppointmentsScreen() {
   const recurringUrl = selectedLocationId
     ? `/api/provider/recurring-appointments?limit=100&location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/recurring-appointments?limit=100";
-  const { data, loading, error, errorCode, refresh } = useApi<RecurringListResponse>(recurringUrl);
-  const { execute: patchRecurring, loading: patching } = useApiMutation("patch");
-  const { execute: deleteRecurring } = useApiMutation("delete");
+  const { data, loading, error, errorCode, refresh, mutate } = useApi<RecurringListResponse>(
+    recurringUrl,
+    { staleTimeMs: 0 },
+  );
+  const { execute: patchRecurring, loading: patching } = useApiMutation<RecurringAppointment>("patch");
+  const { execute: deleteRecurring } = useApiMutation<{ deleted: boolean; deleted_series?: boolean }>("delete");
+
+  const mutateRecurringItems = useCallback(
+    (updater: (items: RecurringAppointment[]) => RecurringAppointment[]) => {
+      if (!data) return;
+      const nextItems = updater(data.data ?? []);
+      mutate({
+        ...data,
+        data: nextItems,
+        total: nextItems.length,
+      });
+    },
+    [data, mutate],
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -270,7 +286,7 @@ export default function RecurringAppointmentsScreen() {
     };
     if (editNoEnd) body.end_date = null;
     else body.end_date = editEnd.trim();
-    const { error: err, errorCode: patchCode } = await patchRecurring(
+    const { data: updated, error: err, errorCode: patchCode } = await patchRecurring(
       `/api/provider/recurring-appointments/${viewItem.id}`,
       body
     );
@@ -278,29 +294,49 @@ export default function RecurringAppointmentsScreen() {
     if (err) {
       alertApiError("Could not save", err, patchCode, router);
     } else {
+      const nextItem: RecurringAppointment = {
+        ...viewItem,
+        ...(updated ?? {}),
+        recurrence_rule: String(body.recurrence_rule ?? updated?.recurrence_rule ?? viewItem.recurrence_rule ?? ""),
+        frequency: editFreq,
+        preferred_time: editTime,
+        start_time: timeToHhMmSs(editTime),
+        end_date: editNoEnd ? null : editEnd.trim(),
+      };
+      mutateRecurringItems((items) =>
+        items.map((item) => (item.id === viewItem.id ? nextItem : item))
+      );
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setViewItem(null);
-      refresh();
+      void refresh();
     }
-  }, [viewItem, editFreq, editTime, editEnd, editNoEnd, patchRecurring, refresh, router]);
+  }, [viewItem, editFreq, editTime, editEnd, editNoEnd, patchRecurring, mutateRecurringItems, refresh, router]);
 
   const handleToggleActive = useCallback(
     async (item: RecurringAppointment) => {
       const newActive = !item.is_active;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const { error: err, errorCode: patchCode } = await patchRecurring(
+      const { data: updated, error: err, errorCode: patchCode } = await patchRecurring(
         `/api/provider/recurring-appointments/${item.id}`,
         { is_active: newActive }
       );
       if (err) {
         alertApiError("Could not update", err, patchCode, router);
       } else {
+        const nextItem = {
+          ...item,
+          ...(updated ?? {}),
+          is_active: newActive,
+        };
+        mutateRecurringItems((items) =>
+          items.map((current) => (current.id === item.id ? nextItem : current))
+        );
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setViewItem(null);
-        refresh();
+        void refresh();
       }
     },
-    [patchRecurring, refresh, router]
+    [patchRecurring, mutateRecurringItems, refresh, router]
   );
 
   const handleDelete = useCallback(
@@ -316,22 +352,29 @@ export default function RecurringAppointmentsScreen() {
             onPress: async () => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
               const { error: err, errorCode: delCode } = await deleteRecurring(
-                `/api/provider/recurring-appointments/${item.id}`,
+                `/api/provider/recurring-appointments/${item.id}?series=true`,
                 {}
               );
               if (err) {
                 alertApiError("Could not delete", err, delCode, router);
               } else {
+                mutateRecurringItems((items) =>
+                  items.filter(
+                    (current) =>
+                      current.customer_id !== item.customer_id ||
+                      current.service_id !== item.service_id
+                  )
+                );
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 setViewItem(null);
-                refresh();
+                void refresh();
               }
             },
           },
         ]
       );
     },
-    [deleteRecurring, refresh, router]
+    [deleteRecurring, mutateRecurringItems, refresh, router]
   );
 
   if (loading && !data) {

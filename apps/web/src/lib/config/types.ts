@@ -3,6 +3,10 @@
  * Never expose secret keys or server-only fields.
  */
 
+import type { PublicAuthPolicy } from "./auth-policy-public";
+
+export type { PublicAuthPolicy } from "./auth-policy-public";
+
 export type Platform = "web" | "customer" | "provider";
 export type Environment = "production" | "staging" | "development";
 
@@ -151,6 +155,11 @@ export interface PublicConfigBundle {
   amplitude: SafeAmplitudeConfig;
   third_party: SafeThirdPartyConfig;
   branding: SafeBrandingConfig;
+  /**
+   * Supabase / platform email policy (from `platform_settings.settings.auth`);
+   * drives public login + account copy when clients refresh the bundle.
+   */
+  auth: PublicAuthPolicy;
   flags: Record<string, ResolvedFlag>;
   modules: {
     on_demand: SafeOnDemandModuleConfig;

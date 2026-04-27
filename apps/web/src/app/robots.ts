@@ -21,6 +21,8 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
           "/booking/",
           "/portal/",
           "/checkout/",
+          "/*?payment_success=",
+          "/*?in_app=",
         ],
       },
     ],

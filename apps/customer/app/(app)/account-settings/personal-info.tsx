@@ -115,7 +115,7 @@ export default function PersonalInfoScreen() {
         setShowEmailModal(false);
         Alert.alert(
           "Check your email",
-          "We sent a confirmation link to your new email. Open it to complete the change."
+          "We sent confirmation links to your current email and your new address. Open each to finish the change (both may be required).",
         );
         load();
       }
@@ -332,7 +332,9 @@ export default function PersonalInfoScreen() {
               </View>
               {emailChangePending && (
                 <View style={{ backgroundColor: "#FEF3C7", padding: 12, borderRadius: RADIUS_INPUT, marginTop: 8 }}>
-                  <Text style={{ fontSize: 13, color: "#92400E" }}>Check your new email and open the confirmation link to complete the change.</Text>
+                  <Text style={{ fontSize: 13, color: "#92400E" }}>
+                    Check your current and new email for links to confirm the change (both may be required).
+                  </Text>
                 </View>
               )}
             </View>
@@ -436,7 +438,9 @@ export default function PersonalInfoScreen() {
                 <Ionicons name="close" size={24} color={Colors.gray[500]} />
               </TouchableOpacity>
             </View>
-            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>We&apos;ll send a confirmation link to your new email. Open it to complete the change.</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
+              We&apos;ll email confirmation links—you may need to confirm from your current address and the new one.
+            </Text>
             <TextInput
               style={{ borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: Colors.gray[900], marginBottom: 16 }}
               value={newEmail}

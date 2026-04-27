@@ -20,6 +20,12 @@ export const SUPABASE_AUTH_SMS_OTP_LENGTH = SUPABASE_AUTH_OTP_LENGTH;
  */
 export const SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS = 120;
 
+/**
+ * Email OTP / magic code lifetime — matches Supabase Auth “Email OTP expiration” (seconds).
+ * Use for user-facing “code valid for…” copy on email sign-in, not for SMS/phone.
+ */
+export const SUPABASE_AUTH_EMAIL_OTP_EXPIRY_SECONDS = 3600;
+
 /** Strip non-digits from the user-entered code before `verifyOtp`. */
 export function normalizeSupabaseSmsOtpToken(raw: string): string {
   return raw.replace(/\D/g, "");
@@ -27,6 +33,11 @@ export function normalizeSupabaseSmsOtpToken(raw: string): string {
 
 export function isCompleteSupabaseSmsOtp(raw: string): boolean {
   return normalizeSupabaseSmsOtpToken(raw).length === SUPABASE_AUTH_OTP_LENGTH;
+}
+
+/** Use with platform `settings.auth.email_otp_length` for email OTP (SMS stays on {@link isCompleteSupabaseSmsOtp}). */
+export function isCompleteOtpForLength(raw: string, length: number): boolean {
+  return length > 0 && normalizeSupabaseSmsOtpToken(raw).length === length;
 }
 
 /** Match formatting only — keep leading + and country/national digits. */

@@ -24,6 +24,21 @@ import { AdminModal } from "@/components/admin/AdminModal";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 
+/** `reviews.staff_rating` is JSONB `{ staff_id, rating }` — not a plain number. */
+function formatReviewStaffRatingCell(value: unknown): string {
+  if (value == null) return "—";
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "object" && !Array.isArray(value) && value !== null) {
+    const r = (value as { rating?: unknown }).rating;
+    if (typeof r === "number" && Number.isFinite(r)) return String(r);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "—";
+  }
+}
+
 type ReviewsPayload = {
   reviews: Record<string, unknown>[];
   pagination: { page: number; limit: number; total: number; total_pages: number };
@@ -265,7 +280,7 @@ export function ReviewsListPage() {
                 <tr key={String(row.id ?? "")}>
                   <AdminTd className="tabular-nums font-medium">{String(row.rating ?? "—")}</AdminTd>
                   <AdminTd className="tabular-nums">{String(row.customer_rating ?? "—")}</AdminTd>
-                  <AdminTd className="tabular-nums">{String(row.staff_rating ?? "—")}</AdminTd>
+                  <AdminTd className="tabular-nums">{formatReviewStaffRatingCell(row.staff_rating)}</AdminTd>
                   <AdminTd className="max-w-xs truncate text-xs">{String(row.comment ?? "")}</AdminTd>
                   <AdminTd className="text-xs">
                     {prov?.id ? (

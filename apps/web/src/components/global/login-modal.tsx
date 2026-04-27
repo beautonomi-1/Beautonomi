@@ -36,15 +36,15 @@ import { supportedLanguages, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
 import { EVENT_SIGNUP_START, EVENT_SIGNUP_COMPLETE, EVENT_LOGIN_SUCCESS } from "@/lib/analytics/amplitude/types";
 import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
 import {
-  SUPABASE_AUTH_OTP_LENGTH,
-  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
-  isCompleteSupabaseSmsOtp,
+  isCompleteOtpForLength,
 } from "@/lib/supabase/auth-sms-otp";
 import type { UserRole } from "@/types/beautonomi";
 import { resolvePostLoginPathnameFromRole } from "@/lib/auth/post-login-return-path";
 import { getSocialAuthConfig } from "@/lib/social-auth-config";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { DEFAULT_PUBLIC_AUTH } from "@/lib/config/auth-policy-public";
 
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
@@ -87,6 +87,12 @@ export default function LoginModal({
   const router = useRouter();
   const { refreshUser, role: contextRole, user } = useAuth();
   const { track, isReady } = useAmplitude();
+  const { bundle: configBundle } = useConfigBundle();
+  const authPolicy = configBundle?.auth ?? DEFAULT_PUBLIC_AUTH;
+  const emailOtpLen = authPolicy.email_otp_length;
+  const emailOtpExpiryMin = Math.max(1, Math.round(authPolicy.email_otp_expiration_seconds / 60));
+  const smsOtpLen = authPolicy.sms_otp_length;
+  const smsOtpExpiryMin = Math.max(1, Math.round(authPolicy.sms_otp_expiration_seconds / 60));
   
   // Close modal and call onAuthSuccess when user becomes authenticated
   useEffect(() => {
@@ -137,6 +143,31 @@ export default function LoginModal({
   const fieldClass = "bg-gray-100 border-gray-200 text-[13px] text-gray-700 placeholder:text-gray-400";
   const labelClass = "text-xs font-medium text-gray-700 mb-2 block";
   const hasSocialAuth = socialAuth.google || socialAuth.apple;
+  const showAltAfterPhone =
+    hasSocialAuth || authPolicy.email_provider_enabled || !authPolicy.phone_provider_enabled;
+
+  useEffect(() => {
+    if (authPolicy.phone_provider_enabled) return;
+    if (!otpSent) return;
+    if (showEmailForm) return;
+    setOtpSent(false);
+    setOtpCode("");
+    setSentPhoneE164("");
+    setOtpExpiresAt(null);
+    setOtpSecondsLeft(0);
+  }, [authPolicy.phone_provider_enabled, otpSent, showEmailForm]);
+
+  useEffect(() => {
+    if (!authPolicy.email_provider_enabled && showEmailForm) {
+      setShowEmailForm(false);
+      setShowPasswordField(false);
+      setEmailOtpMode(false);
+      setEmailOtpSent(false);
+      setEmailOtpCode("");
+      setPendingEmailOtp("");
+      setError(null);
+    }
+  }, [authPolicy.email_provider_enabled, showEmailForm]);
 
   useEffect(() => {
     if (isReady && open && isSignup) track(EVENT_SIGNUP_START);
@@ -161,8 +192,10 @@ export default function LoginModal({
   useEffect(() => {
     if (open) {
       // If initialMode is provided (login or signup), show email form directly
-      // Otherwise, show phone input first
-      setShowEmailForm(initialMode === "login" || initialMode === "signup");
+      // Otherwise, show phone input first (only when email provider is enabled in platform policy).
+      setShowEmailForm(
+        authPolicy.email_provider_enabled && (initialMode === "login" || initialMode === "signup"),
+      );
       setIsSignup(initialMode === "signup");
       // Don't show password field separately for login mode - we'll show it inline
       setShowPasswordField(false);
@@ -189,7 +222,7 @@ export default function LoginModal({
       setPreferredLanguage(langCode);
       setSignupSource(null);
     }
-  }, [open, initialMode]);
+  }, [open, initialMode, authPolicy.email_provider_enabled]);
 
   useEffect(() => {
     getSocialAuthConfig().then(setSocialAuth).catch(() => {
@@ -557,6 +590,7 @@ export default function LoginModal({
   };
 
   const handleEmailButtonClick = () => {
+    if (!authPolicy.email_provider_enabled) return;
     setShowEmailForm(true);
     // Default to login unless initialMode is explicitly signup
     setIsSignup(initialMode === "signup");
@@ -647,6 +681,10 @@ export default function LoginModal({
   const isValidE164 = fullPhoneE164.startsWith("+") && fullPhoneE164.length >= 11;
 
   const handlePhoneSendOtp = async () => {
+    if (!authPolicy.phone_provider_enabled) {
+      setError("Phone sign-in is not available for this platform.");
+      return;
+    }
     if (!isValidE164) {
       setError("Please enter a valid phone number with country code (e.g. +27 82 345 6789)");
       return;
@@ -663,7 +701,7 @@ export default function LoginModal({
       setSentPhoneE164(normalizeSupabaseAuthPhone(fullPhoneE164));
       setOtpSent(true);
       setOtpCode("");
-      const expiresAt = Date.now() + SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS * 1000;
+      const expiresAt = Date.now() + authPolicy.sms_otp_expiration_seconds * 1000;
       setOtpExpiresAt(expiresAt);
       toast.success("Check your phone for the verification code");
     } catch (err: unknown) {
@@ -687,7 +725,7 @@ export default function LoginModal({
       });
       if (otpError) throw otpError;
       setOtpCode("");
-      const expiresAt = Date.now() + SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS * 1000;
+      const expiresAt = Date.now() + authPolicy.sms_otp_expiration_seconds * 1000;
       setOtpExpiresAt(expiresAt);
       toast.success("A new verification code has been sent");
     } catch (err: unknown) {
@@ -701,7 +739,7 @@ export default function LoginModal({
 
   const handleVerifyOtp = async (codeOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(codeOverride ?? otpCode);
-    if (!sentPhoneE164 || !isCompleteSupabaseSmsOtp(token)) return;
+    if (!sentPhoneE164 || !isCompleteOtpForLength(token, smsOtpLen)) return;
     setIsLoading(true);
     setError(null);
     try {
@@ -728,6 +766,10 @@ export default function LoginModal({
   };
 
   const handleSendEmailOtp = async () => {
+    if (!authPolicy.email_provider_enabled) {
+      setError("Email sign-in is not available for this platform.");
+      return;
+    }
     const trimmed = email.trim();
     if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       setError("Please enter a valid email address");
@@ -750,7 +792,9 @@ export default function LoginModal({
       setPendingEmailOtp(trimmed);
       setEmailOtpSent(true);
       setEmailOtpCode("");
-      toast.success(`Check your email for the ${SUPABASE_AUTH_OTP_LENGTH}-digit code`);
+      toast.success(
+        `Check your email for the ${emailOtpLen}-digit code (valid about ${emailOtpExpiryMin} minutes).`,
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send code";
       setError(msg);
@@ -763,7 +807,7 @@ export default function LoginModal({
   const handleVerifyEmailOtp = async (codeOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(codeOverride ?? emailOtpCode);
     const addr = pendingEmailOtp || email.trim();
-    if (!addr || !isCompleteSupabaseSmsOtp(token)) return;
+    if (!addr || !isCompleteOtpForLength(token, emailOtpLen)) return;
     setIsLoading(true);
     setError(null);
     try {
@@ -866,7 +910,7 @@ export default function LoginModal({
           )}
 
           {/* Phone Input or OTP step (Default) */}
-          {!showEmailForm && !otpSent && (
+          {!showEmailForm && !otpSent && authPolicy.phone_provider_enabled && (
             <>
               <div className="mb-5">
                 <PhoneInput
@@ -879,9 +923,9 @@ export default function LoginModal({
               </div>
               
               <p className="mb-6 text-[13px] leading-relaxed text-gray-500">
-                We&apos;ll text a {SUPABASE_AUTH_OTP_LENGTH}-digit code (about{" "}
-                {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
-                {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). Msg &amp; data rates may apply. By continuing you agree to our{" "}
+                We&apos;ll text a {smsOtpLen}-digit code (about{" "}
+                {smsOtpExpiryMin}{" "}
+                {smsOtpExpiryMin === 1 ? "minute" : "minutes"}). Msg &amp; data rates may apply. By continuing you agree to our{" "}
                 <Link href="/terms-and-condition" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900" onClick={() => setOpen(false)}>
                   Terms
                 </Link>
@@ -911,14 +955,14 @@ export default function LoginModal({
           )}
 
           {/* OTP verification step (after phone OTP sent) */}
-          {!showEmailForm && otpSent && (
+          {!showEmailForm && otpSent && authPolicy.phone_provider_enabled && (
             <>
               <p className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Enter verification code</p>
               <p className="mb-5 text-[13px] leading-relaxed text-gray-600 sm:text-sm">
-                We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit code to{" "}
+                We sent a {smsOtpLen}-digit code to{" "}
                 <span className="font-semibold text-gray-900">{sentPhoneE164}</span> (valid about{" "}
-                {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
-                {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
+                {smsOtpExpiryMin}{" "}
+                {smsOtpExpiryMin === 1 ? "minute" : "minutes"}).
               </p>
               <OtpDigitInput
                 value={otpCode}
@@ -927,13 +971,13 @@ export default function LoginModal({
                   if (error) setError(null);
                 }}
                 onComplete={(code) => {
-                  if (!isLoading && isCompleteSupabaseSmsOtp(code)) void handleVerifyOtp(code);
+                  if (!isLoading && isCompleteOtpForLength(code, smsOtpLen)) void handleVerifyOtp(code);
                 }}
                 disabled={isLoading}
                 autoFocus
                 label="Phone verification code"
                 className="mb-5"
-                length={SUPABASE_AUTH_OTP_LENGTH}
+                length={smsOtpLen}
               />
               <div className="mb-4 flex items-center justify-between gap-3 text-xs">
                 <span className="text-gray-500">
@@ -954,7 +998,7 @@ export default function LoginModal({
               <Button
                 className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-4 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                 onClick={() => void handleVerifyOtp()}
-                disabled={isLoading || !isCompleteSupabaseSmsOtp(otpCode)}
+                disabled={isLoading || !isCompleteOtpForLength(otpCode, smsOtpLen)}
                 aria-busy={isLoading}
               >
                 {isLoading ? (
@@ -999,7 +1043,7 @@ export default function LoginModal({
                 className="flex items-center gap-2 text-[15px] text-gray-500 hover:text-gray-900 font-medium mb-5 -mx-1 px-1 py-2 rounded-xl active:bg-gray-100 touch-manipulation"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                Back to phone or social
+                Back to {authPolicy.phone_provider_enabled ? "phone or social" : "social"}
               </button>
               {/* Step 1: Email Input (or both email and password for login mode) */}
               {!showPasswordField && (
@@ -1058,8 +1102,10 @@ export default function LoginModal({
                     <>
                       <p className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Enter verification code</p>
                       <p className="mb-5 text-[13px] leading-relaxed text-gray-600 sm:text-sm">
-                        Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code we sent to{" "}
+                        Enter the {emailOtpLen}-digit code we sent to{" "}
                         <span className="font-semibold text-gray-900">{pendingEmailOtp || email.trim()}</span>
+                        {" "}
+                        (valid about {emailOtpExpiryMin} minutes)
                       </p>
                       <OtpDigitInput
                         value={emailOtpCode}
@@ -1068,18 +1114,18 @@ export default function LoginModal({
                           if (error) setError(null);
                         }}
                         onComplete={(code) => {
-                          if (!isLoading && isCompleteSupabaseSmsOtp(code)) void handleVerifyEmailOtp(code);
+                          if (!isLoading && isCompleteOtpForLength(code, emailOtpLen)) void handleVerifyEmailOtp(code);
                         }}
                         disabled={isLoading}
                         autoFocus
                         label="Email verification code"
                         className="mb-5"
-                        length={SUPABASE_AUTH_OTP_LENGTH}
+                        length={emailOtpLen}
                       />
                       <Button
                         className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-4 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                         onClick={() => void handleVerifyEmailOtp()}
-                        disabled={isLoading || !isCompleteSupabaseSmsOtp(emailOtpCode)}
+                        disabled={isLoading || !isCompleteOtpForLength(emailOtpCode, emailOtpLen)}
                         aria-busy={isLoading}
                       >
                         {isLoading ? (
@@ -1108,7 +1154,8 @@ export default function LoginModal({
 
                   {!isSignup && emailOtpMode && !emailOtpSent && (
                     <p className="mb-5 text-[13px] leading-relaxed text-gray-600">
-                      We&apos;ll email you a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code.
+                      We&apos;ll email you a {emailOtpLen}-digit verification code (valid about{" "}
+                      {emailOtpExpiryMin} minutes).
                     </p>
                   )}
 
@@ -1163,7 +1210,7 @@ export default function LoginModal({
                       </Link>
                     </div>
                   )}
-                  {!isSignup && !emailOtpMode && !emailOtpSent && (
+                  {!isSignup && !emailOtpMode && !emailOtpSent && authPolicy.email_provider_enabled && (
                     <div className="mb-5 text-center">
                       <button
                         type="button"
@@ -1453,7 +1500,7 @@ export default function LoginModal({
           )}
 
           {/* Separator - same as mobile: between phone block and social/email */}
-          {!showEmailForm && !otpSent && (
+          {!showEmailForm && !otpSent && showAltAfterPhone && authPolicy.phone_provider_enabled && (
             <div className="flex items-center my-6">
               <div className="flex-grow border-t border-gray-200 rounded-full"></div>
               <span className="flex-shrink mx-4 text-[13px] text-gray-400 font-medium">or</span>
@@ -1462,7 +1509,7 @@ export default function LoginModal({
           )}
 
           {/* Social Login Options - order: Google, Apple, Continue with email */}
-          {!showEmailForm && !otpSent && (
+          {!showEmailForm && !otpSent && showAltAfterPhone && (
             <>
               {socialAuth.google && (
                 <Button
@@ -1488,15 +1535,17 @@ export default function LoginModal({
                 </Button>
               )}
               
-              <Button
-                variant="outline"
-                className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
-                onClick={handleEmailButtonClick}
-                disabled={isLoading}
-              >
-                <CiMail className="text-lg shrink-0" />
-                <span>Continue with email</span>
-              </Button>
+              {authPolicy.email_provider_enabled && (
+                <Button
+                  variant="outline"
+                  className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
+                  onClick={handleEmailButtonClick}
+                  disabled={isLoading}
+                >
+                  <CiMail className="text-lg shrink-0" />
+                  <span>Continue with email</span>
+                </Button>
+              )}
             </>
           )}
         </div>

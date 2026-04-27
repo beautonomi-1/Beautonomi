@@ -11,10 +11,24 @@ import { Colors } from "@/constants/colors";
 import { TAB_BAR_MIN_BOTTOM_INSET, tabBarOuterHeight } from "@/constants/layout";
 import { AppHeader } from "@/components/AppHeader";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
+import { useApi } from "@/hooks/useApi";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
 type HubTab = "bookings" | "chats" | "more";
+
+type ProviderNavCounts = {
+  pending_bookings: number;
+  active_product_orders: number;
+  unread_messages: number;
+  waiting_room: number;
+  critical_total: number;
+};
+
+const formatTabBadge = (count: number): string | undefined => {
+  if (count <= 0) return undefined;
+  return count > 99 ? "99+" : String(count);
+};
 
 /**
  * Tapping a tab that hosts a stack should (1) go to the hub when switching
@@ -66,11 +80,28 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const { t } = useTranslation();
+  const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>(
+    "/api/provider/nav-counts",
+    { staleTimeMs: 30_000 },
+  );
+
+  const bookingsBadge = formatTabBadge(
+    Number(navCounts?.pending_bookings ?? 0) + Number(navCounts?.waiting_room ?? 0),
+  );
+  const chatsBadge = formatTabBadge(Number(navCounts?.unread_messages ?? 0));
+  const moreBadge = formatTabBadge(Number(navCounts?.active_product_orders ?? 0));
 
   useEffect(() => {
     if (!isSentryEnabled()) return;
     authFlowBreadcrumb("authenticated_tabs_layout_mount", { app: "provider" });
   }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void refreshNavCounts();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [refreshNavCounts]);
 
   const safeBottom = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
   const TAB_BAR_HEIGHT = tabBarOuterHeight(insets.bottom);
@@ -164,6 +195,7 @@ export default function TabsLayout() {
         name="chats"
         options={{
           title: t("provider.chats"),
+          tabBarBadge: chatsBadge,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "chatbubbles" : "chatbubbles-outline"} focused={focused} />,
         }}
         listeners={makeHubTabListener("chats", "/(app)/(tabs)/chats", router)}
@@ -177,6 +209,7 @@ export default function TabsLayout() {
         name="bookings"
         options={{
           title: t("provider.bookings"),
+          tabBarBadge: bookingsBadge,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "calendar-clear" : "calendar-clear-outline"} focused={focused} />,
         }}
         listeners={makeHubTabListener("bookings", "/(app)/(tabs)/bookings", router)}
@@ -187,6 +220,7 @@ export default function TabsLayout() {
         name="more"
         options={{
           title: t("common.more"),
+          tabBarBadge: moreBadge,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "menu" : "menu-outline"} focused={focused} />,
         }}
         listeners={makeHubTabListener("more", "/(app)/(tabs)/more", router)}

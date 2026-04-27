@@ -75,7 +75,7 @@ export function DashboardClient({
     const locationSegment = selectedLocationId ?? "all";
     return `provider_dashboard_stats:${host}:${providerId}:${locationSegment}`;
   }, [provider?.id, selectedLocationId]);
-  const DASHBOARD_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes - longer for stability
+  const DASHBOARD_CACHE_DURATION = 30 * 1000;
   const clearLegacyDashboardCacheKeys = useCallback(() => {
     if (typeof window === "undefined") return;
     try {
@@ -103,13 +103,13 @@ export function DashboardClient({
       setIsMissingProfile(false);
 
       const url = selectedLocationId
-        ? `/api/provider/dashboard?location_id=${selectedLocationId}&include=insights`
+        ? `/api/provider/dashboard?location_id=${encodeURIComponent(selectedLocationId)}&include=insights`
         : "/api/provider/dashboard?include=insights";
       
       const response = await withRetry(
         () => fetcher.get<{ data: ProviderDashboardStats }>(
           url,
-          { timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS }
+          { timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS, staleTimeMs: 0 }
         ),
         {
           maxRetries: 1,
@@ -222,6 +222,24 @@ export function DashboardClient({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoadingProvider, provider?.id, providerError, stats, selectedLocationId, dashboardCacheKey, clearLegacyDashboardCacheKeys, loadDashboardFresh]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!provider) return;
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        loadDashboardFresh(false).catch(() => {});
+      }
+    };
+
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [provider, loadDashboardFresh]);
 
   useEffect(() => {
     if (hasPrefetchedRoutesRef.current) return;

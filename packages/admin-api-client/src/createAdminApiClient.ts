@@ -68,7 +68,14 @@ export function createAdminApiClient(options: AdminApiClientOptions = {}) {
               : typeof (json as { message?: string }).message === "string"
                 ? (json as { message: string }).message
                 : `Request failed (${res.status})`;
-        throw new AdminApiError(msg, res.status);
+        const nestedCode =
+          errField &&
+          typeof errField === "object" &&
+          "code" in errField &&
+          typeof (errField as { code: unknown }).code === "string"
+            ? (errField as { code: string }).code
+            : undefined;
+        throw new AdminApiError(msg, res.status, nestedCode);
       }
 
       if (json.error) {
@@ -82,7 +89,14 @@ export function createAdminApiClient(options: AdminApiClientOptions = {}) {
                 typeof (errField as { message: unknown }).message === "string"
               ? (errField as { message: string }).message
               : String(errField);
-        throw new AdminApiError(msg, res.status);
+        const code =
+          errField &&
+          typeof errField === "object" &&
+          "code" in errField &&
+          typeof (errField as { code: unknown }).code === "string"
+            ? (errField as { code: string }).code
+            : undefined;
+        throw new AdminApiError(msg, res.status, code);
       }
 
       if (unwrapData && json.data !== undefined) {

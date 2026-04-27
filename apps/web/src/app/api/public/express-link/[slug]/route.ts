@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { successResponse, notFoundResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
@@ -16,7 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     let tenantId: string;
     try {
       tenantId = await resolveTenantIdWithZaFallback(request);

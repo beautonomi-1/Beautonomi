@@ -207,16 +207,16 @@ function ProductDetailContent() {
     }
   }, [productId, isWishlistLoading, user, providerSlugParam, router]);
 
-  const handleAddToCart = useCallback(async () => {
-    if (!product || addingToCart) return;
+  const handleAddToCart = useCallback(async (): Promise<boolean> => {
+    if (!product || addingToCart) return false;
     if (hasVariants && !selectedVariantId) {
       setCartMessage({ text: "Please select a variant", type: "error" });
-      return;
+      return false;
     }
     if (!user) {
       const q = providerSlugParam ? `?provider=${encodeURIComponent(providerSlugParam)}` : "";
       router.push(`/account-settings?redirect=${encodeURIComponent(`/shop/${product.id}${q}`)}`);
-      return;
+      return false;
     }
     setAddingToCart(true);
     setCartMessage(null);
@@ -237,6 +237,7 @@ function ProductDetailContent() {
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
         }
+        return true;
       } else if (res.status === 401) {
         setCartMessage({
           text: "Please sign in to add to cart.",
@@ -249,9 +250,19 @@ function ProductDetailContent() {
       }
     } catch {
       setCartMessage({ text: "Something went wrong", type: "error" });
+    } finally {
+      setAddingToCart(false);
     }
-    setAddingToCart(false);
+    return false;
   }, [product, quantity, addingToCart, user, router, hasVariants, selectedVariantId, providerSlugParam]);
+
+  const handleCheckoutNow = useCallback(async () => {
+    if (!product || addingToCart) return;
+    const added = await handleAddToCart();
+    if (added) {
+      router.push(`/shop/checkout?provider_id=${encodeURIComponent(product.provider.id)}`);
+    }
+  }, [product, addingToCart, handleAddToCart, router]);
 
   useEffect(() => {
     if (!productId) {
@@ -635,12 +646,14 @@ function ProductDetailContent() {
                   >
                     View cart
                   </Link>
-                  <Link
-                    href={`/shop/checkout?provider_id=${encodeURIComponent(product.provider.id)}`}
-                    className="inline-flex items-center justify-center rounded-xl border-2 border-pink-600 bg-white px-4 py-3 text-sm font-semibold text-pink-700 transition hover:bg-pink-50"
+                  <button
+                    type="button"
+                    onClick={handleCheckoutNow}
+                    disabled={addingToCart || maxQty <= 0}
+                    className="inline-flex items-center justify-center rounded-xl border-2 border-pink-600 bg-white px-4 py-3 text-sm font-semibold text-pink-700 transition hover:bg-pink-50 disabled:opacity-50"
                   >
-                    Checkout now
-                  </Link>
+                    {addingToCart ? "Adding…" : "Add & checkout"}
+                  </button>
                 </div>
                 {cartMessage && (
                   <div

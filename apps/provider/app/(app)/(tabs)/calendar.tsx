@@ -78,7 +78,10 @@ import {
   deriveGridHourWindow,
   formatDateKeyInTimeZone,
   mergeOperatingHours,
+  mergeRanges,
+  mergeStaffWorkingHours,
   timeStringToMinutes as sharedTimeStringToMinutes,
+  type MinuteRange,
   type WeeklyHours,
 } from "@beautonomi/utils";
 
@@ -122,6 +125,15 @@ interface StaffMember {
   name: string;
   avatar_url?: string | null;
   working_hours?: Record<string, { open?: string; close?: string; open_time?: string; close_time?: string; closed?: boolean; is_open?: boolean }> | null;
+}
+
+interface ProviderShift {
+  id: string;
+  team_member_id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  source?: "shift" | "schedule" | "location";
 }
 
 interface TimeBlock {
@@ -222,6 +234,110 @@ function availabilitySegmentToTimeBlock(seg: AvailabilitySegment): TimeBlock {
     availability_block_id: isStaff ? undefined : seg.parent_block_id,
     calendar_overlay_kind: isStaff ? "staff_off" : "availability",
   };
+}
+
+const CALENDAR_DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+
+function normalizeCalendarTime(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^(\d{1,2}):(\d{1,2})/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return `${Math.max(0, Math.min(23, hour)).toString().padStart(2, "0")}:${Math.max(0, Math.min(59, minute)).toString().padStart(2, "0")}`;
+}
+
+function datesInRange(dateFrom: string, dateTo: string): string[] {
+  const start = parseISO(dateFrom);
+  const end = parseISO(dateTo);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return [];
+
+  const dates: string[] = [];
+  for (let cursor = start; cursor <= end; cursor = addDays(cursor, 1)) {
+    dates.push(format(cursor, "yyyy-MM-dd"));
+  }
+  return dates;
+}
+
+function weekStartsInRange(dateFrom: string, dateTo: string): string[] {
+  const start = parseISO(dateFrom);
+  const end = parseISO(dateTo);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return [];
+
+  const starts: string[] = [];
+  for (
+    let cursor = startOfWeek(start, { weekStartsOn: 1 });
+    cursor <= end;
+    cursor = addDays(cursor, 7)
+  ) {
+    starts.push(format(cursor, "yyyy-MM-dd"));
+  }
+  return starts;
+}
+
+function applyEffectiveShiftHours(
+  members: StaffMember[],
+  shifts: ProviderShift[] | null,
+  dateFrom: string,
+  dateTo: string,
+  selectedStaffId: string,
+): StaffMember[] {
+  if (shifts == null) return members;
+
+  const rangeDates = datesInRange(dateFrom, dateTo);
+  if (rangeDates.length === 0) return members;
+
+  const dateToDayKey = new Map(
+    rangeDates.map((date) => [date, CALENDAR_DAY_KEYS[parseISO(date).getDay()]] as const),
+  );
+  const byStaffDay = new Map<string, { open: string; close: string }>();
+
+  for (const shift of shifts) {
+    if (!shift.date || shift.date < dateFrom || shift.date > dateTo) continue;
+    if (selectedStaffId !== "all" && shift.team_member_id !== selectedStaffId) continue;
+
+    const dayKey = dateToDayKey.get(shift.date);
+    const open = normalizeCalendarTime(shift.start_time);
+    const close = normalizeCalendarTime(shift.end_time);
+    if (!dayKey || !open || !close) continue;
+
+    const key = `${shift.team_member_id}::${dayKey}`;
+    const existing = byStaffDay.get(key);
+    if (!existing) {
+      byStaffDay.set(key, { open, close });
+      continue;
+    }
+
+    byStaffDay.set(key, {
+      open: timeStringToMinutes(open) < timeStringToMinutes(existing.open) ? open : existing.open,
+      close: timeStringToMinutes(close) > timeStringToMinutes(existing.close) ? close : existing.close,
+    });
+  }
+
+  return members.map((member) => {
+    const workingHours: NonNullable<StaffMember["working_hours"]> = { ...(member.working_hours ?? {}) };
+    for (const [, dayKey] of dateToDayKey) {
+      const shiftHours = byStaffDay.get(`${member.id}::${dayKey}`);
+      if (!shiftHours) continue;
+
+      const existing = workingHours[dayKey];
+      const existingOpen = normalizeCalendarTime(existing?.open ?? existing?.open_time);
+      const existingClose = normalizeCalendarTime(existing?.close ?? existing?.close_time);
+      if (existing && existing.closed !== true && existing.is_open !== false && existingOpen && existingClose) {
+        workingHours[dayKey] = {
+          open: timeStringToMinutes(shiftHours.open) < timeStringToMinutes(existingOpen) ? shiftHours.open : existingOpen,
+          close: timeStringToMinutes(shiftHours.close) > timeStringToMinutes(existingClose) ? shiftHours.close : existingClose,
+          closed: false,
+          is_open: true,
+        };
+      } else {
+        workingHours[dayKey] = { ...shiftHours, closed: false, is_open: true };
+      }
+    }
+
+    return { ...member, working_hours: workingHours };
+  });
 }
 
 interface DaySchedule {
@@ -1114,6 +1230,10 @@ function CalendarScreenBody() {
   const startDate = viewMode === "week" ? weekStartStr : viewMode === "3day" ? dateStr : weekStartStr;
   const endDate = viewMode === "week" ? weekEnd : viewMode === "3day" ? threeDayEnd : weekEnd;
   const locationParam = locationFilter !== "all" ? `&location_id=${locationFilter}` : "";
+  const shiftWeekStarts = useMemo(() => weekStartsInRange(startDate, endDate), [startDate, endDate]);
+  const primaryShiftWeekStart = shiftWeekStarts[0] ?? weekStartStr;
+  const secondaryShiftWeekStart = shiftWeekStarts[1] ?? primaryShiftWeekStart;
+  const needsSecondaryShiftWeek = secondaryShiftWeekStart !== primaryShiftWeekStart;
 
   const calendarBookingsPath = useMemo(
     () => `/api/provider/bookings?start_date=${startDate}&end_date=${endDate}${locationParam}`,
@@ -1132,6 +1252,14 @@ function CalendarScreenBody() {
 
   const teamUrl = locationFilter !== "all" ? `/api/provider/team?location_id=${encodeURIComponent(locationFilter)}` : "/api/provider/team";
   const { data: staff } = useApi<StaffMember[]>(teamUrl, { enabled: isFocused, staleTimeMs: 30_000 });
+  const { data: primaryShifts, refresh: refreshPrimaryShifts } = useApi<ProviderShift[]>(
+    `/api/provider/shifts?week_start=${encodeURIComponent(primaryShiftWeekStart)}`,
+    { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
+  );
+  const { data: secondaryShifts, refresh: refreshSecondaryShifts } = useApi<ProviderShift[]>(
+    `/api/provider/shifts?week_start=${encodeURIComponent(secondaryShiftWeekStart)}`,
+    { enabled: isFocused && secondaryEnabled && needsSecondaryShiftWeek, staleTimeMs: 10_000 },
+  );
   const timeBlocksLocationParam = locationFilter !== "all" ? `&location_id=${encodeURIComponent(locationFilter)}` : "";
   const { data: timeBlocks, error: timeBlocksError, refresh: refreshTimeBlocks } = useApi<TimeBlock[]>(
     `/api/provider/time-blocks?date_from=${startDate}&date_to=${endDate}${timeBlocksLocationParam}`,
@@ -1268,6 +1396,8 @@ function CalendarScreenBody() {
       const tasks = [refresh()];
       if (secondaryEnabled) {
         tasks.push(
+          refreshPrimaryShifts(),
+          ...(needsSecondaryShiftWeek ? [refreshSecondaryShifts()] : []),
           refreshTimeBlocks(),
           refreshAvailabilityBlocks(),
           refreshStaffUnavail(),
@@ -1278,7 +1408,17 @@ function CalendarScreenBody() {
     } finally {
       setRefreshing(false);
     }
-  }, [refresh, refreshTimeBlocks, refreshAvailabilityBlocks, refreshStaffUnavail, refreshBookingHolds, secondaryEnabled]);
+  }, [
+    refresh,
+    refreshPrimaryShifts,
+    refreshSecondaryShifts,
+    needsSecondaryShiftWeek,
+    refreshTimeBlocks,
+    refreshAvailabilityBlocks,
+    refreshStaffUnavail,
+    refreshBookingHolds,
+    secondaryEnabled,
+  ]);
 
   const weekDays = useMemo(() => {
     const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -1307,16 +1447,24 @@ function CalendarScreenBody() {
   // computation. iOS JSC reports TDZ access as `TypeError: Cannot convert
   // undefined value to object` inside the hours calculator.
   const staffList = useMemo(() => staff ?? [], [staff]);
+  const effectiveShifts = useMemo(() => {
+    if (!primaryShifts && !(needsSecondaryShiftWeek && secondaryShifts)) return null;
+    return [...(primaryShifts ?? []), ...(needsSecondaryShiftWeek ? (secondaryShifts ?? []) : [])];
+  }, [primaryShifts, secondaryShifts, needsSecondaryShiftWeek]);
+  const effectiveStaffList = useMemo(
+    () => applyEffectiveShiftHours(staffList, effectiveShifts, startDate, endDate, staffFilter),
+    [staffList, effectiveShifts, startDate, endDate, staffFilter],
+  );
   const staffNameToId = useMemo(() => {
     const map = new Map<string, string>();
-    staffList.forEach((s) => map.set(s.name, s.id));
+    effectiveStaffList.forEach((s) => map.set(s.name, s.id));
     return map;
-  }, [staffList]);
+  }, [effectiveStaffList]);
   const staffOptions = useMemo(() => {
     const opts: { label: string; value: string }[] = [{ label: "All", value: "all" }];
-    staffList.forEach((s) => opts.push({ label: s.name, value: s.id }));
+    effectiveStaffList.forEach((s) => opts.push({ label: s.name, value: s.id }));
     return opts;
-  }, [staffList]);
+  }, [effectiveStaffList]);
 
   // All views use operating hours; week/3-day views union hours across visible days.
   const { startHour, endHour } = useMemo(() => {
@@ -1332,7 +1480,7 @@ function CalendarScreenBody() {
         visibleDates.push(d);
       }
     }
-    const staffWorkingHours = (staffList ?? [])
+    const staffWorkingHours = (effectiveStaffList ?? [])
       .map((m) => (m?.working_hours ?? null) as WeeklyHours | null);
     const { startHour: sh, endHour: eh } = deriveGridHourWindow({
       visibleDates,
@@ -1348,7 +1496,7 @@ function CalendarScreenBody() {
     viewMode,
     selectedDate,
     operatingHours,
-    staffList,
+    effectiveStaffList,
     preferences.workdayStartHour,
     preferences.workdayEndHour,
     provider?.timezone,
@@ -2507,21 +2655,44 @@ function CalendarScreenBody() {
 
   /* ═══════════════ Operating hours shading ═══════════════ */
 
-  function renderHoursShading(day: Date) {
+  function getOpenRangesForCalendarShading(
+    day: Date,
+    blockContext?: { staffColumnId?: string | null } | null,
+  ): MinuteRange[] | null {
+    let schedule: WeeklyHours | null = null;
+    const columnStaffId = blockContext?.staffColumnId;
+
+    if (columnStaffId && columnStaffId !== "unassigned") {
+      schedule = (effectiveStaffList.find((s) => s.id === columnStaffId)?.working_hours ?? null) as WeeklyHours | null;
+    } else if (staffFilter !== "all") {
+      schedule = (effectiveStaffList.find((s) => s.id === staffFilter)?.working_hours ?? null) as WeeklyHours | null;
+    } else if (effectiveStaffList.some((s) => s.working_hours && Object.keys(s.working_hours).length > 0)) {
+      schedule = mergeStaffWorkingHours(
+        effectiveStaffList.map((s) => ({ working_hours: s.working_hours as WeeklyHours | null | undefined })),
+      ) as WeeklyHours | null;
+    }
+
+    const staffRanges = schedule
+      ? dayMinuteRanges(day, schedule, provider?.timezone ?? null)
+      : null;
+    if (staffRanges) return staffRanges;
     if (!operatingHours) return null;
+    return dayMinuteRanges(
+      day,
+      operatingHours as WeeklyHours,
+      provider?.timezone ?? null,
+    );
+  }
+
+  function renderHoursShading(day: Date, blockContext?: { staffColumnId?: string | null } | null) {
     const shadeBg = preferences.highContrast ? Colors.gray[700] : Colors.gray[200];
 
     // §Calendar-hours: use the shared engine so overnight shifts (22:00-02:00)
     // render correctly on BOTH days — the grid gets an open range on the
     // opening day and another on the wrap-around day, with the non-open
     // portions shaded in between.
-    const openRanges = dayMinuteRanges(
-      day,
-      operatingHours as WeeklyHours,
-      provider?.timezone ?? null,
-    );
-
-    if (openRanges.length === 0) return null;
+    const openRanges = getOpenRangesForCalendarShading(day, blockContext);
+    if (openRanges == null) return null;
 
     const gridStartMin = startHour * 60;
     const gridEndMin = (endHour + 1) * 60;
@@ -2530,7 +2701,7 @@ function CalendarScreenBody() {
 
     const elements: React.ReactNode[] = [];
     let cursor = gridStartMin;
-    openRanges.forEach((range, idx) => {
+    mergeRanges(openRanges).forEach((range, idx) => {
       if (range.endMin <= gridStartMin || range.startMin >= gridEndMin) return;
       if (range.startMin > cursor) {
         const top = minToTop(cursor);
@@ -2582,7 +2753,7 @@ function CalendarScreenBody() {
     const dayBlocks = getCalendarBlocksForDay(day, blockContext);
     return (
       <View style={{ width: colWidth, height: totalGridHeight + GRID_TOP_PADDING, paddingTop: GRID_TOP_PADDING, position: "relative" }}>
-        {renderHoursShading(day)}
+        {renderHoursShading(day, blockContext)}
 
         {/* Grid rows + half-hour dashed lines */}
         <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 1 }}>

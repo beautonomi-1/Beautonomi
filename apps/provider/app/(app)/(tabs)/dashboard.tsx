@@ -270,8 +270,9 @@ export default function DashboardScreen() {
   const [dateRange, setDateRange] = useState("today");
   const [secondaryEnabled, setSecondaryEnabled] = useState(false);
 
-  const locQFirst = selectedLocationId ? `?location_id=${selectedLocationId}` : "";
-  const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
+  const encodedLocationId = selectedLocationId ? encodeURIComponent(selectedLocationId) : "";
+  const locQFirst = encodedLocationId ? `?location_id=${encodedLocationId}` : "";
+  const locQ = encodedLocationId ? `&location_id=${encodedLocationId}` : "";
 
   const {
     data: metrics,
@@ -282,9 +283,9 @@ export default function DashboardScreen() {
   } = useApi<DashboardMetrics>(
     `/api/provider/dashboard${locQFirst}${locQFirst ? "&" : "?"}include=insights`,
     {
-    enabled: isFocused,
-    timeoutMs: 15000,
-    staleTimeMs: 10_000,
+      enabled: isFocused,
+      timeoutMs: 15000,
+      staleTimeMs: 0,
     },
   );
 
@@ -825,9 +826,9 @@ export default function DashboardScreen() {
         <WeeklyRevenueChart data={chartData} />
       )}
 
-      {/* Bookings Overview - filter responsive */}
+      {/* Bookings Overview - schedule count is period-scoped; status counts are all-time */}
       <SectionHeader
-        title={`Bookings — ${periodLabel}`}
+        title="Booking Status"
         actionLabel="View All"
         onAction={() =>
           router.push("/(app)/(tabs)/bookings" as never)
@@ -836,7 +837,7 @@ export default function DashboardScreen() {
       <View style={{ flexDirection: "row" }}>
         <View
           style={{ flex: 1, marginRight: 12, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
-          accessibilityLabel={`${displayAppointments} bookings ${periodLabel.toLowerCase()}`}
+          accessibilityLabel={`${displayAppointments} scheduled bookings ${periodLabel.toLowerCase()}`}
         >
           <Text
             style={{ fontSize: dashMetricLg, fontWeight: "700", color: Colors.gray[900] }}
@@ -846,7 +847,7 @@ export default function DashboardScreen() {
           >
             {displayAppointments}
           </Text>
-          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Scheduled</Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>{periodLabel}</Text>
         </View>
         <View
           style={{ flex: 1, marginRight: 12, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}

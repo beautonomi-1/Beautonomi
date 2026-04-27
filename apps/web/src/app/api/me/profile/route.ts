@@ -545,15 +545,16 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    // Update email in auth: Supabase sends a confirmation link to the new email;
-    // the email is only updated after the user verifies. Do not write to users table until then.
+    // Update email in auth: with “Secure email change”, Supabase emails both addresses;
+    // the new email is applied only after the required confirmations. Do not write users.email until then.
     let emailChangePending = false;
     if (body.email !== undefined) {
       const { error: emailError } = await supabase.auth.updateUser({
         email: body.email,
       });
       if (emailError) {
-        throw new Error(`Failed to update email: ${emailError.message}`);
+        // Preserve AuthError.status so handleApiError can return 4xx (rate limits, weak email, etc.)
+        throw emailError;
       }
       emailChangePending = true;
       // Do not set updates.email – sync from auth after user confirms (see GET profile)
