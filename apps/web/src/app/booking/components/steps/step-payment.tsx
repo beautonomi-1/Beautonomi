@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, CreditCard, Calendar, MapPin, Wallet, Gift, Banknote, Check, Plus, Shield, ArrowLeft, Lock, Info, Heart, Repeat, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -182,6 +182,7 @@ export default function StepPayment({
   const adCampaignId = searchParams.get("campaign_id")?.trim() || null;
   const { user, isLoading: authLoading } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
+  const paymentInFlightRef = useRef(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [tipAmount, setTipAmount] = useState(bookingState.tipAmount || 0);
   const [tipPercentSelection, setTipPercentSelection] = useState<number | null>(
@@ -737,6 +738,10 @@ export default function StepPayment({
   };
 
   const handlePayment = async () => {
+    if (paymentInFlightRef.current) {
+      return;
+    }
+
     // Check authentication before proceeding
     if (!user && !authLoading) {
       setIsLoginModalOpen(true);
@@ -791,6 +796,7 @@ export default function StepPayment({
       return;
     }
 
+    paymentInFlightRef.current = true;
     setIsProcessing(true);
     let bookingResult: PublicBookingCreateResult | null = null;
 
@@ -970,6 +976,7 @@ export default function StepPayment({
         });
       }
     } finally {
+      paymentInFlightRef.current = false;
       setIsProcessing(false);
     }
   };

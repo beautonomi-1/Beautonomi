@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
 import { GET as getProviderOrderReceiptJson } from "../route";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
+import {
+  drawPdfFooter,
+  drawPdfHeader,
+  drawPdfInfoGrid,
+  drawPdfLineItems,
+  drawPdfSectionTitle,
+  drawPdfTotals,
+  formatPdfDate,
+  moneyPdf,
+} from "@/lib/receipts/pdf-design";
 
 export const maxDuration = 60;
 
@@ -48,14 +58,6 @@ type ReceiptPayload = {
   };
 };
 
-function money(amount: number | undefined, currency = "ZAR") {
-  return new Intl.NumberFormat("en-ZA", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(Number(amount || 0));
-}
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -100,40 +102,32 @@ export async function GET(
 
     const currency = receipt.currency || "ZAR";
 
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const doc = new PDFDocument({ size: "A4", margin: 50, bufferPages: true });
     const chunks: Buffer[] = [];
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
 
-    if (receipt.receipt_header) {
-      doc.fontSize(10).fillColor("#555").text(receipt.receipt_header, { align: "center" });
-      doc.moveDown(0.5);
-    }
+    drawPdfHeader(doc, {
+      title: "Order receipt",
+      subtitle: "Provider copy for product order payment records",
+      documentNumber: receipt.order_number || id,
+      status: receipt.payment_status || receipt.status || "pending",
+      note: receipt.receipt_header,
+    });
 
-    doc.fontSize(22).fillColor("#333").text("Order receipt", { align: "left" });
-    doc.moveDown(0.3);
-    if (receipt.provider?.business_name) {
-      doc.fontSize(11).text(`From: ${receipt.provider.business_name}`);
-      doc.moveDown(0.2);
-    }
-    doc.fontSize(11).text(`Order #: ${receipt.order_number || "-"}`);
-    doc.text(
-      `Date: ${receipt.order_date ? new Date(receipt.order_date).toLocaleDateString("en-ZA") : "-"}`,
-    );
-    if (receipt.status) doc.text(`Status: ${receipt.status}`);
-    if (receipt.fulfillment_type) {
-      doc.text(
-        `Fulfillment: ${receipt.fulfillment_type === "delivery" ? "Delivery" : "Collection"}`,
-      );
-    }
-    doc.moveDown();
-    if (receipt.customer?.full_name) doc.text(`Customer: ${receipt.customer.full_name}`);
-    if (receipt.customer?.email) doc.text(`  ${receipt.customer.email}`);
-    if (receipt.customer?.phone) doc.text(`  ${receipt.customer.phone}`);
+    drawPdfInfoGrid(doc, [
+      { label: "From", lines: [receipt.provider?.business_name || "-"] },
+      { label: "Customer", lines: [receipt.customer?.full_name || "-", receipt.customer?.email, receipt.customer?.phone] },
+      {
+        label: "Order",
+        lines: [
+          `Placed ${formatPdfDate(receipt.order_date)}`,
+          receipt.fulfillment_type ? `Fulfillment: ${receipt.fulfillment_type === "delivery" ? "Delivery" : "Collection"}` : null,
+        ],
+      },
+    ]);
 
     if (receipt.fulfillment_type === "delivery" && receipt.delivery_address) {
-      doc.moveDown(0.4);
-      doc.fontSize(11).text("Delivery address", { underline: true });
-      doc.fontSize(10);
+      drawPdfSectionTitle(doc, "Delivery address");
       if (receipt.delivery_address.address_line1) doc.text(receipt.delivery_address.address_line1);
       if (receipt.delivery_address.address_line2) doc.text(receipt.delivery_address.address_line2);
       const cityLine = [
@@ -146,9 +140,7 @@ export async function GET(
       if (cityLine) doc.text(cityLine);
       if (receipt.delivery_address.country) doc.text(receipt.delivery_address.country);
     } else if (receipt.fulfillment_type === "collection" && receipt.collection_location) {
-      doc.moveDown(0.4);
-      doc.fontSize(11).text("Collection at", { underline: true });
-      doc.fontSize(10);
+      drawPdfSectionTitle(doc, "Collection at");
       if (receipt.collection_location.name) doc.text(receipt.collection_location.name);
       if (receipt.collection_location.address_line1)
         doc.text(receipt.collection_location.address_line1);
@@ -156,37 +148,28 @@ export async function GET(
     }
 
     doc.moveDown();
-    doc.fontSize(12).text("Items", { underline: true });
-    doc.moveDown(0.4);
-    for (const item of receipt.items || []) {
-      const quantity = Number(item.quantity || 1);
-      doc.fontSize(10).text(`${item.name || "Item"} x${quantity}`, { continued: true });
-      doc.text(money(item.total, currency), { align: "right" });
-    }
+    drawPdfLineItems(
+      doc,
+      (receipt.items || []).map((item) => ({
+        description: item.name || "Item",
+        detail: `Quantity ${Number(item.quantity || 1)}${item.price ? ` · Unit ${moneyPdf(item.price, currency)}` : ""}`,
+        amount: moneyPdf(item.total, currency),
+      })),
+      { title: "Items" },
+    );
 
-    doc.moveDown();
-    doc.fontSize(11).text(`Subtotal: ${money(receipt.subtotal, currency)}`);
-    if (Number(receipt.discount || 0) > 0) {
-      doc.text(`Discount: -${money(receipt.discount, currency)}`);
-    }
-    if (Number(receipt.delivery_fee || 0) > 0) {
-      doc.text(`Delivery: ${money(receipt.delivery_fee, currency)}`);
-    }
-    if (Number(receipt.tax || 0) > 0) {
-      doc.text(`Tax: ${money(receipt.tax, currency)}`);
-    }
-    doc.moveDown(0.4);
-    doc.fontSize(13).text(`Total: ${money(receipt.total, currency)}`);
+    drawPdfTotals(
+      doc,
+      [
+        { label: "Subtotal", value: moneyPdf(receipt.subtotal, currency) },
+        ...(Number(receipt.discount || 0) > 0 ? [{ label: "Discount", value: `-${moneyPdf(receipt.discount, currency)}`, tone: "success" as const }] : []),
+        ...(Number(receipt.delivery_fee || 0) > 0 ? [{ label: "Delivery", value: moneyPdf(receipt.delivery_fee, currency) }] : []),
+        ...(Number(receipt.tax || 0) > 0 ? [{ label: "Tax", value: moneyPdf(receipt.tax, currency) }] : []),
+      ],
+      { label: "Total", value: moneyPdf(receipt.total, currency) },
+    );
 
-    doc.moveDown(0.3);
-    doc.fontSize(10).fillColor("#333").text(`Payment status: ${receipt.payment_status || "-"}`);
-
-    if (receipt.receipt_footer) {
-      doc.moveDown(1);
-      doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#ddd").lineWidth(0.5).stroke();
-      doc.moveDown(0.3);
-      doc.fontSize(9).fillColor("#666").text(receipt.receipt_footer, { align: "center" });
-    }
+    drawPdfFooter(doc, receipt.receipt_footer);
 
     doc.end();
     const buffer = await new Promise<Buffer>((resolve) => {

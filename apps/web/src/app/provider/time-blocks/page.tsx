@@ -438,6 +438,11 @@ export default function TimeBlocksPage() {
         onOpenChange={setIsBlockDialogOpen}
         block={selectedBlock}
         blockedTimeTypes={blockedTimeTypes}
+          onTypeCreated={(type) => {
+            setBlockedTimeTypes((current) =>
+              current.some((existing) => existing.id === type.id) ? current : [type, ...current],
+            );
+          }}
         onSuccess={loadData}
       />
 

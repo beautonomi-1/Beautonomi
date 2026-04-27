@@ -1640,6 +1640,7 @@ export default function NewBookingScreen() {
                     label="Search address"
                     value={addressSearchValue}
                     countryCode={mapboxCountryIso}
+                    geocodeTypes={["address"]}
                     placeholder="Start typing street or place…"
                     onSelect={(parsed) => {
                       setAddressSearchValue(parsed.full_address);

@@ -806,6 +806,7 @@ export default function StepVenueChoice({
                   }}
                   onInputChange={(value) => setAddressInput(value)}
                   placeholder="Enter your full address"
+                  geocodeTypes={["address"]}
                   required
                   disabled={isValidating}
                 />

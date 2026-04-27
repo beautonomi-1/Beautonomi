@@ -15,13 +15,14 @@ export async function GET(
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    const { data: groupBooking, error } = await supabase
+    const { data: groupBooking, error } = await admin
       .from("group_bookings")
       .select(`
         *,
@@ -56,6 +57,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
 
     if (!providerId) {
@@ -104,7 +106,7 @@ export async function PATCH(
       "service_id" in sanitized;
     const allowOverride = body?.allow_override === true;
     if (movingSlot && !allowOverride) {
-      const { data: existing } = await supabase
+      const { data: existing } = await admin
         .from("group_bookings")
         .select("scheduled_at, duration_minutes, staff_id, location_id, service_id")
         .eq("id", id)
@@ -130,7 +132,6 @@ export async function PATCH(
       if (nextScheduledAt) {
         const d = new Date(nextScheduledAt);
         if (!Number.isNaN(d.getTime())) {
-          const admin = getSupabaseAdmin();
           const check = await evaluateProviderSlotAgainstGrid(admin, {
             providerId,
             scheduledAt: d,
@@ -156,7 +157,7 @@ export async function PATCH(
       }
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from("group_bookings")
       .update(sanitized)
       .eq("id", id)
@@ -185,31 +186,63 @@ export async function DELETE(
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    // Fetch booking IDs before cancelling so we can trigger waitlist
-    const { data: groupBookings } = await supabase
+    const { data: groupBooking, error: groupError } = await admin
+      .from("group_bookings")
+      .select("id, status")
+      .eq("id", id)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+
+    if (groupError) {
+      throw groupError;
+    }
+    if (!groupBooking) {
+      return notFoundResponse("Group booking not found");
+    }
+
+    // Fetch booking IDs before cancelling so we can trigger waitlist.
+    // Use the admin client for the write path: provider staff can manage
+    // groups through this API, while legacy RLS only allowed provider owners.
+    const { data: groupBookings, error: bookingFetchError } = await admin
       .from("bookings")
       .select("id")
       .eq("group_booking_id", id)
       .eq("provider_id", providerId)
       .not("status", "in", "(cancelled,no_show)");
 
+    if (bookingFetchError) {
+      throw bookingFetchError;
+    }
+
     // Cancel all associated bookings first
-    await supabase
+    const now = new Date().toISOString();
+    const { error: bookingsCancelError } = await admin
       .from("bookings")
-      .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
+      .update({
+        status: "cancelled",
+        cancelled_at: now,
+        cancellation_reason: "Group booking cancelled by provider",
+        updated_at: now,
+      })
       .eq("group_booking_id", id)
-      .eq("provider_id", providerId);
+      .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)");
+
+    if (bookingsCancelError) {
+      throw bookingsCancelError;
+    }
 
     // Then cancel the group booking
-    const { error } = await supabase
+    const { error } = await admin
       .from("group_bookings")
-      .update({ status: "cancelled" })
+      .update({ status: "cancelled", updated_at: now })
       .eq("id", id)
       .eq("provider_id", providerId);
 

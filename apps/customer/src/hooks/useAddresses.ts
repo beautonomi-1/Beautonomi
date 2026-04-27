@@ -45,6 +45,11 @@ export interface GeocodeSuggestion {
   place_name: string;
   center: [number, number];
   text: string;
+  address?: string;
+  properties?: {
+    address?: string;
+    full_address?: string;
+  };
   context?: { id: string; text: string }[];
 }
 
@@ -63,6 +68,8 @@ function normalizeGeocodeFeature(f: any): GeocodeSuggestion {
     place_name: typeof f?.place_name === "string" ? f.place_name : "",
     center,
     text: typeof f?.text === "string" ? f.text : (f?.place_name ?? ""),
+    address: typeof f?.address === "string" ? f.address : undefined,
+    properties: f?.properties && typeof f.properties === "object" ? f.properties : undefined,
     context: Array.isArray(f?.context) ? f.context : undefined,
   };
 }
@@ -152,7 +159,7 @@ export async function searchAddress(
     const body: Record<string, unknown> = {
       query: query.trim(),
       country: options?.country ?? getDeviceRegionCountryIso(),
-      types: ["address", "place", "poi"],
+      types: ["address"],
       limit: 5,
     };
     if (options?.proximity) {

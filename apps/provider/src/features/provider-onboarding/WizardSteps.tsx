@@ -541,6 +541,7 @@ function Step7Location() {
         label="Street address"
         countryCode={mapboxCountry}
         defaultCountryName={DEFAULT_COUNTRY_NAME}
+        geocodeTypes={["address"]}
         proximity={
           addr.latitude && addr.longitude
             ? { latitude: addr.latitude, longitude: addr.longitude }

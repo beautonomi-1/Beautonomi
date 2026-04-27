@@ -232,17 +232,15 @@ export function AddressPicker({
       const feature = await reverseGeocode(lat, lng);
       if (feature?.place_name && feature?.center) {
         displayName = feature.place_name;
-        const context = feature.context ?? [];
-        const find = (prefix: string) => context.find((c) => c.id?.startsWith(prefix))?.text ?? "";
-        const place = find("place.") || find("locality.") || find("district.");
-        const country = find("country.");
-        const parts = (feature.place_name || "").split(",").map((p) => p.trim()).filter(Boolean);
+        const mapped = mapGeocodeFeatureToAddressParts(feature, {
+          defaultCountryName: defaultCountryLabel,
+        });
         structured = {
-          address_line1: parts[0] || feature.text || "Current location",
-          city: place || parts[1] || "—",
-          state: find("region.") || undefined,
-          postal_code: find("postcode.") || undefined,
-          country: country || defaultCountryLabel,
+          address_line1: mapped.address_line1 || "Current location",
+          city: mapped.city || "—",
+          state: mapped.state || undefined,
+          postal_code: mapped.postal_code || undefined,
+          country: mapped.country || defaultCountryLabel,
         };
       } else {
         structured = {

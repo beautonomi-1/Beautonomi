@@ -3025,6 +3025,7 @@ function Step7Location({
             country={mapboxCountryIso}
             defaultCountryName={defaultCountryDisplay}
             proximity={proximity}
+            geocodeTypes={["address"]}
             inputClassName={cn(fieldClass, "h-12 sm:h-14 pl-10")}
             required
           />

@@ -794,7 +794,7 @@ export default function DashboardScreen() {
         </View>
         <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
           <StatCard
-            title="Available Balance"
+            title="Available to Withdraw"
             value={formatCurrency(m?.available_balance ?? 0)}
             icon="cash-outline"
             iconColor="#f59e0b"

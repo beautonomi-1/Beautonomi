@@ -47,6 +47,34 @@ interface StaffMember {
   is_active?: boolean;
 }
 
+interface BlockedTimeType {
+  id: string;
+  name: string;
+  color?: string | null;
+  is_active?: boolean;
+}
+
+const QUICK_TYPES = [
+  { name: "Lunch Break", color: "#F59E0B" },
+  { name: "Team Meeting", color: "#6366F1" },
+  { name: "Training", color: "#10B981" },
+  { name: "Personal Time", color: "#EC4899" },
+  { name: "Admin Time", color: "#64748B" },
+];
+
+const QUICK_DURATIONS = [15, 30, 45, 60, 90, 120];
+
+function addMinutesToTime(time: string, minutes: number): string {
+  const [h = "0", m = "0"] = time.split(":");
+  const total = Math.max(0, Math.min(23 * 60 + 59, Number(h) * 60 + Number(m) + minutes));
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function timeToMinutes(time: string): number {
+  const [h = "0", m = "0"] = time.split(":");
+  return Number(h) * 60 + Number(m);
+}
+
 /** Content-only for use in Schedule hub (Time blocks tab). */
 export function TimeBlocksContent() {
   const { screenPadding } = useResponsive();
@@ -54,6 +82,8 @@ export function TimeBlocksContent() {
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
+  const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
+  const [customTypeName, setCustomTypeName] = useState("");
   const [blockDate, setBlockDate] = useState(() => new Date());
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
@@ -70,7 +100,9 @@ export function TimeBlocksContent() {
 
   const { data, loading, error, refresh } = useApi<TimeBlock[]>(url);
   const { data: staffData } = useApi<StaffMember[]>("/api/provider/staff");
+  const { data: typeData, refresh: refreshTypes } = useApi<BlockedTimeType[]>("/api/provider/blocked-time-types");
   const { execute: postBlock, loading: creating } = useApiMutation<TimeBlock>("post");
+  const { execute: postType, loading: creatingType } = useApiMutation<BlockedTimeType>("post");
   const { execute: deleteBlock } = useApiMutation("delete");
 
   const rawStaff = Array.isArray(staffData)
@@ -83,6 +115,14 @@ export function TimeBlocksContent() {
   const activeStaff = rawStaff.filter(
     (s) => s.is_active !== false,
   );
+  const rawTypes = Array.isArray(typeData)
+    ? typeData
+    : typeData != null &&
+        typeof typeData === "object" &&
+        Array.isArray((typeData as { data?: BlockedTimeType[] }).data)
+      ? (typeData as { data: BlockedTimeType[] }).data
+      : [];
+  const activeTypes = rawTypes.filter((t) => t.is_active !== false);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -98,22 +138,40 @@ export function TimeBlocksContent() {
   const openAdd = () => {
     setName("");
     setNotes("");
+    setSelectedTypeId(null);
+    setCustomTypeName("");
     setBlockDate(new Date());
-    setStartTime("09:00");
-    setEndTime("17:00");
+    setStartTime("12:00");
+    setEndTime("13:00");
     setIsRecurring(false);
     setSelectedStaffId(null);
     setAddOpen(true);
   };
 
   const handleCreate = async () => {
-    const trimmed = name.trim();
+    let typeId = selectedTypeId;
+    const typedName = customTypeName.trim();
+    if (!typeId && typedName) {
+      const { data: createdType, error: typeErr } = await postType("/api/provider/blocked-time-types", {
+        name: typedName,
+        color: "#FF0077",
+        is_active: true,
+      });
+      if (typeErr || !createdType) {
+        Alert.alert("Couldn't add type", typeErr || "Please try again.");
+        return;
+      }
+      typeId = createdType.id;
+      refreshTypes();
+    }
+    const selectedType = activeTypes.find((type) => type.id === typeId);
+    const trimmed = name.trim() || typedName || selectedType?.name || "";
     if (!trimmed) {
-      Alert.alert("Required", "Enter a name for the block (e.g. Lunch, Meeting).");
+      Alert.alert("Required", "Choose a type or enter what you are blocking (e.g. Lunch, Meeting).");
       return;
     }
     const dateStr = format(blockDate, "yyyy-MM-dd");
-    if (endTime <= startTime) {
+    if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
       Alert.alert("Invalid times", "End time must be after start time.");
       return;
     }
@@ -121,6 +179,7 @@ export function TimeBlocksContent() {
     const { error: err } = await postBlock("/api/provider/time-blocks", {
       name: trimmed,
       staff_id: selectedStaffId || null,
+      blocked_time_type_id: typeId,
       date: dateStr,
       start_time: startTime,
       end_time: endTime,
@@ -263,12 +322,79 @@ export function TimeBlocksContent() {
         subtitle="Block off a slot so clients can't book"
       >
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Name *</Text>
+        <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+          Choose a common block type or type your own. This label appears on the calendar.
+        </Text>
+        <View style={twStyle("mb-3 flex-row flex-wrap")}>
+          {QUICK_TYPES.map((type) => {
+            const existing = activeTypes.find((t) => t.name.toLowerCase() === type.name.toLowerCase());
+            const selected = selectedTypeId === existing?.id || (!selectedTypeId && customTypeName === type.name);
+            return (
+              <TouchableOpacity
+                key={type.name}
+                onPress={() => {
+                  setName(type.name);
+                  setCustomTypeName(existing ? "" : type.name);
+                  setSelectedTypeId(existing?.id ?? null);
+                }}
+                style={[
+                  twStyle(selected ? "mb-2 mr-2 rounded-full bg-gray-900 px-3 py-2" : "mb-2 mr-2 rounded-full border border-gray-200 bg-white px-3 py-2"),
+                ]}
+              >
+                <Text style={twStyle(selected ? "text-xs font-bold text-white" : "text-xs font-semibold text-gray-700")}>
+                  {type.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {activeTypes.length > 0 && (
+          <>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Saved types</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-3")}>
+              {activeTypes.map((type) => {
+                const selected = selectedTypeId === type.id;
+                return (
+                  <TouchableOpacity
+                    key={type.id}
+                    onPress={() => {
+                      setSelectedTypeId(type.id);
+                      setCustomTypeName("");
+                      if (!name.trim()) setName(type.name);
+                    }}
+                    style={[
+                      twStyle(selected ? "flex-row items-center rounded-xl bg-indigo-600 px-3 py-2" : "flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2"),
+                      { marginRight: 8 },
+                    ]}
+                  >
+                    <View
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
+                        backgroundColor: type.color || "#6b7280",
+                        marginRight: 8,
+                      }}
+                    />
+                    <Text style={twStyle(selected ? "text-sm font-medium text-white" : "text-sm font-medium text-gray-700")}>
+                      {type.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </>
+        )}
         <TextInput
           style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-          placeholder="e.g. Lunch, Meeting"
+          placeholder="Custom type, e.g. Stock take"
           placeholderTextColor="#9ca3af"
-          value={name}
-          onChangeText={setName}
+          value={customTypeName || name}
+          onChangeText={(text) => {
+            setName(text);
+            setCustomTypeName(text);
+            setSelectedTypeId(null);
+          }}
         />
 
         {activeStaff.length > 0 && (
@@ -374,10 +500,34 @@ export function TimeBlocksContent() {
             display={Platform.OS === "ios" ? "spinner" : "default"}
             onChange={(_: any, d?: Date) => {
               setShowStartPicker(Platform.OS === "ios");
-              if (d) setStartTime(format(d, "HH:mm"));
+              if (d) {
+                const nextStart = format(d, "HH:mm");
+                const duration = Math.max(15, timeToMinutes(endTime) - timeToMinutes(startTime));
+                setStartTime(nextStart);
+                setEndTime(addMinutesToTime(nextStart, duration));
+              }
             }}
           />
         )}
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Duration</Text>
+        <View style={twStyle("mb-4 flex-row flex-wrap")}>
+          {QUICK_DURATIONS.map((minutes) => {
+            const selected = timeToMinutes(endTime) - timeToMinutes(startTime) === minutes;
+            return (
+              <TouchableOpacity
+                key={minutes}
+                onPress={() => setEndTime(addMinutesToTime(startTime, minutes))}
+                style={[
+                  twStyle(selected ? "mb-2 mr-2 rounded-full bg-gray-900 px-3 py-2" : "mb-2 mr-2 rounded-full border border-gray-200 bg-white px-3 py-2"),
+                ]}
+              >
+                <Text style={twStyle(selected ? "text-xs font-bold text-white" : "text-xs font-semibold text-gray-700")}>
+                  {minutes < 60 ? `${minutes} min` : `${minutes / 60} hr`}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>End time</Text>
         <TouchableOpacity
           onPress={() => setShowEndPicker(true)}
@@ -451,9 +601,9 @@ export function TimeBlocksContent() {
           maxLength={200}
         />
         <ActionButton
-          label={creating ? "Adding…" : "Add block"}
+          label={creating || creatingType ? "Adding…" : "Add block"}
           onPress={handleCreate}
-          loading={creating}
+          loading={creating || creatingType}
           fullWidth
         />
       </BottomSheet>

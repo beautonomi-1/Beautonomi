@@ -562,6 +562,7 @@ export default function BookCheckoutScreen() {
   /** Shown after a successful booking before navigating to booking-detail */
   const [bookingConfirmedData, setBookingConfirmedData] = useState<{ bookingId?: string; providerName?: string; date?: string; time?: string; services?: string; bookingStatus?: string } | null>(null);
   const [consuming, setConsuming] = useState(false);
+  const consumeInFlightRef = useRef(false);
   const [requestingNow, setRequestingNow] = useState(false);
   const onDemandAcceptEnabled = useFeatureFlag("on_demand_accept_customer_enabled");
   const onDemandModule = useModuleConfig("on_demand");
@@ -1638,6 +1639,7 @@ export default function BookCheckoutScreen() {
   }, [hold_id, hold, user, cancellationPolicyAccepted, t, serverClockOffsetMs]);
 
   const handleComplete = useCallback(async () => {
+    if (consumeInFlightRef.current) return;
     if (!hold_id || !hold) return;
 
     if (!user) {
@@ -1695,6 +1697,7 @@ export default function BookCheckoutScreen() {
       return;
     }
 
+    consumeInFlightRef.current = true;
     setConsuming(true);
     setError(null);
 
@@ -1962,6 +1965,7 @@ export default function BookCheckoutScreen() {
     } catch (e) {
       setError(getApiErrorMessage(e, "Failed to complete"));
     } finally {
+      consumeInFlightRef.current = false;
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs

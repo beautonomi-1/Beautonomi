@@ -151,7 +151,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     items: [
       { title: "My profile", description: "Photo, personal info, address & plan", href: "/provider/account/profile", mobileRoute: "/(app)/(tabs)/more/profile" },
       { title: "Rewards & badges", description: "Points, tiers, milestones & badge progress", href: "/provider/gamification", mobileRoute: "/(app)/(tabs)/more/rewards-hub" },
-      { title: "Subscription & plan", description: "Upgrade, billing period, cancel or renew", href: "/provider/settings/subscription", mobileRoute: "/(app)/(tabs)/more/settings/subscription" },
+      { title: "Subscription & plan", description: "Upgrade, billing period, cancel or renew", href: "/provider/subscription", mobileRoute: "/(app)/(tabs)/more/settings/subscription" },
       { title: "Notification preferences", description: "How you receive notifications", href: "/provider/settings/notifications", mobileRoute: "/(app)/(tabs)/more/settings/notification-preferences" },
       { title: "My tickets", description: "View and reply to your support tickets", href: "/help/my-tickets", mobileRoute: "/(app)/(tabs)/more/support-tickets" },
       { title: "Contact support", description: "Submit a support ticket or get help", href: "/help/submit-ticket", mobileRoute: "/(app)/(tabs)/more/contact-support" },

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 type BookingPaymentRow = {
   id: string;
@@ -29,6 +29,30 @@ type BookingPaymentRow = {
   }> | null;
 };
 
+type ProviderPaymentBookingRow = {
+  id: string;
+  provider_id?: string | null;
+  scheduled_at: string | null;
+  duration_minutes: number | null;
+  ref_number: string | null;
+  booking_number: string | null;
+};
+
+function mapPaymentMethod(method: string | null) {
+  switch (method) {
+    case "yoco":
+      return "yoco";
+    case "paystack":
+    case "card":
+      return "card";
+    case "cash":
+    case "bank_transfer":
+    case "other":
+    default:
+      return "cash";
+  }
+}
+
 /**
  * GET /api/provider/payments
  * 
@@ -38,16 +62,7 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -66,9 +81,82 @@ export async function GET(request: NextRequest) {
     const paymentMethod = searchParams.get('payment_method');
     const teamMemberId = searchParams.get('team_member_id');
 
+    const listPaymentsWithoutEmbeddedJoin = async (): Promise<{
+      payments: BookingPaymentRow[];
+      count: number;
+    }> => {
+      const { data: bookingRows, error: bookingsError } = await supabaseAdmin
+        .from("bookings")
+        .select("id, provider_id, scheduled_at, duration_minutes, ref_number, booking_number")
+        .eq("provider_id", providerId);
+
+      if (bookingsError) {
+        throw bookingsError;
+      }
+
+      const bookings = (bookingRows || []) as ProviderPaymentBookingRow[];
+      if (bookings.length === 0) {
+        return { payments: [], count: 0 };
+      }
+
+      const bookingById = new Map(bookings.map((booking) => [booking.id, booking]));
+      const bookingIds = bookings.map((booking) => booking.id);
+      const chunks: string[][] = [];
+      for (let i = 0; i < bookingIds.length; i += 500) {
+        chunks.push(bookingIds.slice(i, i + 500));
+      }
+
+      const allPayments: BookingPaymentRow[] = [];
+      for (const chunk of chunks) {
+        let query = supabaseAdmin
+          .from("booking_payments")
+          .select(
+            "id, booking_id, amount, payment_method, payment_provider, status, notes, created_at, created_by",
+          )
+          .in("booking_id", chunk)
+          .order("created_at", { ascending: false });
+
+        if (dateFrom) {
+          query = query.gte("created_at", `${dateFrom}T00:00:00`);
+        }
+        if (dateTo) {
+          query = query.lte("created_at", `${dateTo}T23:59:59.999`);
+        }
+        if (paymentMethod) {
+          query = query.eq("payment_method", paymentMethod);
+        }
+        if (teamMemberId) {
+          query = query.eq("created_by", teamMemberId);
+        }
+
+        const { data, error } = await query;
+        if (error) {
+          throw error;
+        }
+
+        for (const payment of (data || []) as BookingPaymentRow[]) {
+          const booking = bookingById.get(payment.booking_id);
+          if (booking) {
+            allPayments.push({ ...payment, booking });
+          }
+        }
+      }
+
+      allPayments.sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+
+      return {
+        payments: allPayments.slice(offset, offset + limit),
+        count: allPayments.length,
+      };
+    };
+
     // Scope through the booking join. This avoids oversized `.in(booking_id, ...)`
     // queries and does not depend on optional booking_payments.tenant_id rollout state.
-    let paymentsQuery = supabaseAdmin
+    const buildPaymentsQuery = (bookingRelation: string) => {
+      let query = supabaseAdmin
       .from('booking_payments')
       .select(`
         id,
@@ -80,7 +168,7 @@ export async function GET(request: NextRequest) {
         notes,
         created_at,
         created_by,
-        booking:bookings!inner(
+        booking:${bookingRelation}(
           id,
           provider_id,
           scheduled_at,
@@ -90,26 +178,47 @@ export async function GET(request: NextRequest) {
         )
       `, { count: 'exact' })
       .eq('booking.provider_id', providerId);
-    paymentsQuery = paymentsQuery.order('created_at', { ascending: false });
 
-    // Apply filters
-    if (dateFrom) {
-      paymentsQuery = paymentsQuery.gte('created_at', `${dateFrom}T00:00:00`);
-    }
-    if (dateTo) {
-      paymentsQuery = paymentsQuery.lte('created_at', `${dateTo}T23:59:59.999`);
-    }
-    if (paymentMethod) {
-      paymentsQuery = paymentsQuery.eq('payment_method', paymentMethod);
-    }
-    if (teamMemberId) {
-      paymentsQuery = paymentsQuery.eq('created_by', teamMemberId);
+      query = query.order('created_at', { ascending: false });
+
+      // Apply filters
+      if (dateFrom) {
+        query = query.gte('created_at', `${dateFrom}T00:00:00`);
+      }
+      if (dateTo) {
+        query = query.lte('created_at', `${dateTo}T23:59:59.999`);
+      }
+      if (paymentMethod) {
+        query = query.eq('payment_method', paymentMethod);
+      }
+      if (teamMemberId) {
+        query = query.eq('created_by', teamMemberId);
+      }
+
+      return query.range(offset, offset + limit - 1);
+    };
+
+    let paymentResult: {
+      data: unknown[] | null;
+      error: unknown;
+      count: number | null;
+    } = await buildPaymentsQuery("bookings!booking_payments_booking_id_fkey!inner");
+    if (paymentResult.error) {
+      // Older Supabase schema cache deployments may not know the generated FK
+      // hint yet. Fall back to the unhinted relationship instead of 500ing.
+      paymentResult = await buildPaymentsQuery("bookings!inner");
     }
 
-    // Apply pagination
-    paymentsQuery = paymentsQuery.range(offset, offset + limit - 1);
+    let payments: unknown[] | null = paymentResult.data;
+    let paymentsError = paymentResult.error;
+    let count = paymentResult.count;
 
-    const { data: payments, error: paymentsError, count } = await paymentsQuery;
+    if (paymentsError) {
+      const fallback = await listPaymentsWithoutEmbeddedJoin();
+      payments = fallback.payments;
+      paymentsError = null;
+      count = fallback.count;
+    }
 
     if (paymentsError) {
       throw paymentsError;
@@ -147,12 +256,7 @@ export async function GET(request: NextRequest) {
         appointment_duration: booking?.duration_minutes,
         team_member_id: p.created_by || undefined,
         team_member_name: teamMemberName,
-        method: p.payment_method === 'yoco' ? 'yoco' : 
-                p.payment_method === 'paystack' ? 'card' :
-                p.payment_method === 'card' ? 'card' :
-                p.payment_method === 'cash' ? 'cash' :
-                p.payment_method === 'bank_transfer' ? 'cash' : // Map bank_transfer to cash for display
-                'cash', // Default fallback
+        method: mapPaymentMethod(p.payment_method),
         amount: Number(p.amount || 0),
         status: p.status === 'completed' ? 'completed' : 
                 p.status === 'pending' ? 'pending' : 'failed',

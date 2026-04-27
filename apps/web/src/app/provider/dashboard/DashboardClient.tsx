@@ -562,7 +562,7 @@ export function DashboardClient({
               <span className="text-sm text-gray-600">Platform Commission</span>
               <span className="text-lg font-semibold text-orange-600">{formatCurrency(stats.platform_fees_paid || 0, tenantCurrency)}</span>
             </div>
-            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/settings/subscription")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/settings/subscription"); }}>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/subscription")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/subscription"); }}>
               <span className="text-sm text-gray-600">Subscriptions & Ads</span>
               <span className="text-lg font-semibold text-orange-600">{formatCurrency(stats.expenses_total || 0, tenantCurrency)}</span>
             </div>

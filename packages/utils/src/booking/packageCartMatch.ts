@@ -6,6 +6,7 @@
 export type PackageItemRow = {
   offering_id?: string | null;
   product_id?: string | null;
+  product_variant_id?: string | null;
   quantity?: unknown;
 };
 
@@ -77,7 +78,7 @@ export function exceedsEntitlement(
 
 /** Product quantities required by a public `service_packages` payload (`items` with `type: "product"`). */
 export function aggregatePackageProductRequirementsFromPublicPackage(pkg: {
-  items?: Array<{ type?: string; id?: string; quantity?: number }>;
+  items?: Array<{ type?: string; id?: string; quantity?: number; product_variant_id?: string | null }>;
 }): Map<string, number> {
   const m = new Map<string, number>();
   for (const it of pkg.items ?? []) {
@@ -159,7 +160,7 @@ export type PublicProductCatalogRow = {
 
 /** Build customer cart rows for mixed packages (first in-stock variant when `hasVariants`). */
 export function buildRetailCartRowsFromPublicPackage(
-  pkg: { items?: Array<{ type?: string; id?: string; quantity?: number }> },
+  pkg: { items?: Array<{ type?: string; id?: string; quantity?: number; product_variant_id?: string | null }> },
   catalog: PublicProductCatalogRow[],
   currencyFallback: string
 ): Array<{ id: string; name: string; price: number; quantity: number; currency: string }> {
@@ -173,8 +174,12 @@ export function buildRetailCartRowsFromPublicPackage(
     if (!p) continue;
     const qty = Math.max(1, Math.floor(Number(line.quantity) || 1));
     const cur = p.currency ?? currencyFallback;
+    const requestedVariantId = line.product_variant_id?.trim();
     if (p.hasVariants && p.variants?.length) {
-      const v = p.variants.find((x) => (x.quantity ?? 0) > 0) ?? p.variants[0];
+      const v =
+        (requestedVariantId ? p.variants.find((x) => x.id === requestedVariantId) : null) ??
+        p.variants.find((x) => (x.quantity ?? 0) > 0) ??
+        p.variants[0];
       const label = v.option_values ? Object.values(v.option_values).join(" / ") : "";
       out.push({
         id: `${p.id}:${v.id}`,

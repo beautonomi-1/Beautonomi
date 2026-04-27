@@ -15,6 +15,22 @@ export type LearnTreeNode = LearnCategoryRow & { children: LearnTreeNode[] };
 export type LearnHomePayload = {
   hero: { title: string; subtitle: string };
   cta_cards: { cards: Array<{ title: string; description: string; icon: string; link: string }> };
+  platform_guides: {
+    tabs: Array<{
+      id: "web" | "mobile";
+      label: string;
+      description: string;
+      groups: Array<{
+        title: string;
+        audience: "customer" | "provider";
+        cards: Array<{
+          title: string;
+          description: string;
+          href: string;
+        }>;
+      }>;
+    }>;
+  };
   featured_articles: Array<{
     id: string;
     title: string;
@@ -38,6 +54,7 @@ async function fetchLearnCategoryRows(audience: string | null): Promise<LearnCat
   let query = supabase
     .from("learning_categories")
     .select("id, title, slug, icon, sort_order, audience, parent_id")
+    .is("tenant_id", null)
     .eq("visibility", "public")
     .order("sort_order", { ascending: true });
 
@@ -100,11 +117,74 @@ export async function getPublicLearnHome(): Promise<LearnHomePayload> {
   const { data: sections } = await supabase
     .from("learning_homepage_sections")
     .select("section_key, payload")
-    .in("section_key", ["hero", "cta_cards", "featured_articles", "video_library", "platform_updates"]);
+    .is("tenant_id", null)
+    .in("section_key", ["hero", "cta_cards", "platform_guides", "featured_articles", "video_library", "platform_updates"]);
 
   const out: LearnHomePayload = {
     hero: { title: "Learning Center", subtitle: "Find guides and answers." },
     cta_cards: { cards: [] },
+    platform_guides: {
+      tabs: [
+        {
+          id: "web",
+          label: "Web",
+          description: "Use Beautonomi in a browser on desktop or mobile web.",
+          groups: [
+            {
+              title: "Customers",
+              audience: "customer",
+              cards: [
+                {
+                  title: "Book on the web",
+                  description: "Find providers, book services, pay, and manage appointments.",
+                  href: "/learn/article/customer-web-booking",
+                },
+              ],
+            },
+            {
+              title: "Providers",
+              audience: "provider",
+              cards: [
+                {
+                  title: "Provider web portal",
+                  description: "Manage bookings, finance, Yoco, memberships, packages, and settings.",
+                  href: "/learn/article/provider-web-portal",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "mobile",
+          label: "Mobile app",
+          description: "Use Beautonomi from the customer or provider app.",
+          groups: [
+            {
+              title: "Customers",
+              audience: "customer",
+              cards: [
+                {
+                  title: "Customer app guide",
+                  description: "Understand tabs, bookings, payments, notifications, and support.",
+                  href: "/learn/article/customer-mobile-app",
+                },
+              ],
+            },
+            {
+              title: "Providers",
+              audience: "provider",
+              cards: [
+                {
+                  title: "Provider app guide",
+                  description: "Use More, calendar, Yoco payments, finance, settings, and support.",
+                  href: "/learn/article/provider-mobile-app",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
     featured_articles: [],
     video_library: { title: "Video Library", videos: [] },
     platform_updates: { title: "Platform Updates", article_ids: [] },
@@ -127,6 +207,7 @@ export async function getPublicLearnHome(): Promise<LearnHomePayload> {
       .from("learning_articles")
       .select("id, title, slug, summary, image_url, learning_categories(slug)")
       .in("id", featuredIds)
+      .is("tenant_id", null)
       .eq("status", "published")
       .eq("is_internal", false);
     out.featured_articles = (articles ?? []) as unknown as LearnHomePayload["featured_articles"];

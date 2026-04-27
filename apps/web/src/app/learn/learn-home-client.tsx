@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { SearchHero } from "./components/search-hero";
 import { useLearnContext } from "./learn-context";
-import { ChevronRight, Search, Users, Briefcase, ArrowRight } from "lucide-react";
+import { ChevronRight, Search, Users, Briefcase, ArrowRight, Monitor, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LearnHomePayload } from "@/lib/learn/public-queries";
@@ -12,6 +12,7 @@ import { normalizeLearnCtaHref } from "@/lib/learn/normalize-learn-cta-href";
 
 export default function LearnHomeClient({ initialData }: { initialData: LearnHomePayload }) {
   const { setSearchHeroVisible, setSearchOverlayOpen } = useLearnContext();
+  const [activePlatformTab, setActivePlatformTab] = useState<"web" | "mobile">("web");
 
   useEffect(() => {
     setSearchHeroVisible(true);
@@ -20,10 +21,88 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
 
   const cards = initialData.cta_cards?.cards ?? [];
   const featured = Array.isArray(initialData.featured_articles) ? initialData.featured_articles : [];
+  const platformTabs = Array.isArray(initialData.platform_guides?.tabs) ? initialData.platform_guides.tabs : [];
+  const activeGuideTab = platformTabs.find((tab) => tab.id === activePlatformTab) ?? platformTabs[0];
 
   return (
     <div className="space-y-10 pb-24 md:pb-10">
       <SearchHero title={initialData.hero?.title} subtitle={initialData.hero?.subtitle} />
+
+      {platformTabs.length > 0 && activeGuideTab && (
+        <section className="rounded-[32px] border border-zinc-200/70 bg-white p-4 shadow-[0_24px_80px_-48px_rgba(0,0,0,0.35)] md:p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-[#ff0077]">Choose your experience</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-black">Guides for web and mobile app</h2>
+              <p className="mt-2 max-w-2xl text-sm text-zinc-600">
+                Learn the customer and provider flows in the right context, with direct links to current navigation and features.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 rounded-full bg-zinc-100 p-1">
+              {platformTabs.map((tab) => {
+                const Icon = tab.id === "mobile" ? Smartphone : Monitor;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActivePlatformTab(tab.id)}
+                    className={cn(
+                      "inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200",
+                      activeGuideTab.id === tab.id
+                        ? "bg-black text-white shadow-sm"
+                        : "text-zinc-600 hover:bg-white hover:text-black"
+                    )}
+                    aria-pressed={activeGuideTab.id === tab.id}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-[24px] bg-zinc-50 p-4 md:p-5">
+            <p className="text-sm text-zinc-600">{activeGuideTab.description}</p>
+            <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {activeGuideTab.groups.map((group) => {
+                const GroupIcon = group.audience === "provider" ? Briefcase : Users;
+                return (
+                  <div key={`${activeGuideTab.id}-${group.audience}`} className="rounded-[22px] border border-zinc-200/70 bg-white p-4">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#ff0077]/10">
+                        <GroupIcon className="h-5 w-5 text-[#ff0077]" aria-hidden />
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">{group.audience}</p>
+                        <h3 className="font-semibold text-black">{group.title}</h3>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {group.cards.map((card) => (
+                        <Link
+                          key={card.href}
+                          href={card.href}
+                          className={cn(
+                            "group flex items-center gap-3 rounded-2xl border border-zinc-200/50 px-4 py-3",
+                            "transition-all duration-200 hover:border-[#ff0077]/25 hover:bg-[#ff0077]/5 active:scale-[0.99]"
+                          )}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-black">{card.title}</p>
+                            <p className="mt-0.5 text-sm text-zinc-600">{card.description}</p>
+                          </div>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-hover:translate-x-0.5 group-hover:text-[#ff0077]" />
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
 
       {cards.length > 0 && (
         <section>

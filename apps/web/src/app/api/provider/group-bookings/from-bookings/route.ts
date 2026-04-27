@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
       request
     );
     const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
@@ -32,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     const { booking_ids } = bodySchema.parse(await request.json());
 
-    const { data: bookings, error: bErr } = await supabase
+    const { data: bookings, error: bErr } = await admin
       .from("bookings")
       .select(
         "id, customer_id, provider_id, scheduled_at, booking_number, customer_name, customer_email, customer_phone, service_id, service_name, group_booking_id"
@@ -52,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     const scheduledAt = bookings[0]?.scheduled_at || new Date().toISOString();
 
-    const { data: group, error: gErr } = await supabase
+    const { data: group, error: gErr } = await admin
       .from("group_bookings")
       .insert({
         provider_id: providerId,
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
 
     for (let i = 0; i < bookings.length; i++) {
       const b = bookings[i]!;
-      const { error: pErr } = await supabase.from("booking_participants").insert({
+      const { error: pErr } = await admin.from("booking_participants").insert({
         booking_id: b.id,
         group_booking_id: group.id,
         participant_name: b.customer_name || `Guest ${i + 1}`,
@@ -80,7 +82,7 @@ export async function POST(request: NextRequest) {
       if (pErr) {
         throw pErr;
       }
-      const { error: uErr } = await supabase
+      const { error: uErr } = await admin
         .from("bookings")
         .update({ group_booking_id: group.id, updated_at: new Date().toISOString() })
         .eq("id", b.id)
@@ -90,7 +92,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { data: full } = await supabase
+    const { data: full } = await admin
       .from("group_bookings")
       .select(
         `*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, booking_id)`

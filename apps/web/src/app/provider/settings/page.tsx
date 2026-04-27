@@ -71,6 +71,7 @@ const settingsCategories: { id: string; title: string; description: string; item
     items: [
       { title: "Payout center", description: "Balance, schedule, statements, and payout history", href: "/provider/payouts" },
       { title: "Payout Accounts", description: "Manage bank accounts for receiving payouts", href: "/provider/settings/payout-accounts" },
+      { title: "Subscription & plan", description: "Manage your Beautonomi plan, billing period, upgrades, renewals, and cancellations", href: "/provider/subscription" },
       { title: "Yoco Integration", description: "Connect and manage Yoco payment devices", href: "/provider/settings/sales/yoco-integration" },
       { title: "Receipt Sequencing", description: "Configure receipt numbering", href: "/provider/settings/sales/receipt-sequencing" },
       { title: "Receipt Template", description: "Customize receipt design", href: "/provider/settings/sales/receipt-template" },
@@ -111,20 +112,15 @@ const settingsCategories: { id: string; title: string; description: string; item
     id: "account",
     title: "Account",
     description: "Account settings, security, and privacy",
-    // §Provider-launch (audit 2026-04): the Account tab previously only
-    // surfaced Notification Preferences, which meant providers couldn't
-    // change their password, enable 2FA, review active sessions, or
-    // request a data export from inside the business portal. These links
-    // all point at the shared /account-settings routes that already exist
-    // for customers — they're user-scoped, not provider-scoped, so
-    // linking is the correct level of reuse.
+    // Account routes stay inside the provider shell, while reusing the
+    // user-scoped account APIs behind the scenes.
     items: [
       { title: "Notification Preferences", description: "Manage how you receive notifications", href: "/provider/settings/notifications" },
-      { title: "Login & Security", description: "Change password, enable two-factor authentication, and review active sessions", href: "/account-settings/login-and-security" },
-      { title: "Personal Info", description: "Update your name, email, phone number, and profile photo", href: "/account-settings/personal-info" },
-      { title: "Privacy & Sharing", description: "Control what you share, cookies, marketing consent, and targeted advertising", href: "/account-settings/privacy-and-sharing" },
-      { title: "Data Rights & Export", description: "Request a copy of your data or delete your account (GDPR/POPIA)", href: "/account-settings/privacy-and-sharing#data-rights" },
-      { title: "Preferences", description: "Language, region, currency, and accessibility preferences", href: "/account-settings/preferences" },
+      { title: "Login & Security", description: "Change password, enable two-factor authentication, and review active sessions", href: "/provider/account/login-and-security" },
+      { title: "Personal Info", description: "Update your name, email, phone number, and profile photo", href: "/provider/account/profile" },
+      { title: "Privacy & Sharing", description: "Control what you share, cookies, marketing consent, and targeted advertising", href: "/provider/account/privacy-and-sharing" },
+      { title: "Data Rights & Export", description: "Request a copy of your data or delete your account (GDPR/POPIA)", href: "/provider/account/data-rights" },
+      { title: "Preferences", description: "Language, region, currency, and accessibility preferences", href: "/provider/account/preferences" },
     ],
   },
 ];

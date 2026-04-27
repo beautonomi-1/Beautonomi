@@ -165,8 +165,8 @@ export function LocationMapPickerDialog({
         state: parsed.state || undefined,
         postal_code: parsed.postal_code || undefined,
         country: parsed.country,
-        latitude: parsed.latitude,
-        longitude: parsed.longitude,
+        latitude: ll.lat,
+        longitude: ll.lng,
         place_name: parsed.place_name,
       });
       onOpenChange(false);

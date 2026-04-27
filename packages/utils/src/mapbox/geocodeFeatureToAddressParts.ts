@@ -5,6 +5,12 @@
 export type MapboxGeocodeFeatureLike = {
   place_name: string;
   center: [number, number];
+  text?: string;
+  address?: string;
+  properties?: {
+    address?: string;
+    full_address?: string;
+  };
   context?: Array<{ id: string; text: string; short_code?: string }>;
 };
 
@@ -55,7 +61,16 @@ export function mapGeocodeFeatureToAddressParts(
 
   const placeParts = feature.place_name.split(",").map((p) => p.trim());
 
-  if (placeParts.length > 0) {
+  const streetNumber = feature.address?.trim() || feature.properties?.address?.trim() || "";
+  const streetName = feature.text?.trim() || "";
+  const exactStreetAddress = streetNumber && streetName ? `${streetNumber} ${streetName}` : "";
+  const propertyFullAddress = feature.properties?.full_address?.split(",")[0]?.trim() || "";
+
+  if (exactStreetAddress) {
+    addressParts.address_line1 = exactStreetAddress;
+  } else if (propertyFullAddress) {
+    addressParts.address_line1 = propertyFullAddress;
+  } else if (placeParts.length > 0) {
     addressParts.address_line1 = placeParts[0];
 
     if (!addressParts.city && placeParts.length > 1) {

@@ -25,9 +25,16 @@ type ExpressBookingLinkRow = {
 
 function isUsableLink(link: ExpressBookingLinkRow): boolean {
   if (link.is_active === false) return false;
-  if (link.expires_at && new Date(link.expires_at) < new Date()) return false;
+  if (link.expires_at) {
+    const expiresAt = new Date(link.expires_at);
+    if (Number.isFinite(expiresAt.getTime()) && expiresAt < new Date()) return false;
+  }
   if (link.max_uses != null && (link.use_count ?? 0) >= link.max_uses) return false;
   return true;
+}
+
+function normalizeSlug(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
 }
 
 /**
@@ -51,7 +58,7 @@ export async function GET(
       return errorResponse("Tenant not configured", "TENANT_UNAVAILABLE", 503);
     }
     const { slug: rawSlug } = await params;
-    const slug = (rawSlug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
+    const slug = normalizeSlug(rawSlug || "");
     if (!slug) {
       return notFoundResponse("Invalid link");
     }
@@ -70,23 +77,21 @@ export async function GET(
       .from("express_booking_links")
       .select(EXPRESS_LINK_SELECT)
       .ilike("slug", slug)
-      .eq("is_active", true)
       .order("updated_at", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(10);
 
     if (tenantProviderIds.length > 0) {
       linkQuery.in("provider_id", tenantProviderIds);
-    } else {
-      // No providers in this tenant — cannot safely resolve without scoping; fail fast.
-      return notFoundResponse("Booking link not found");
     }
 
-    const { data: tenantScopedLinks, error: linkError } = await linkQuery;
-    if (linkError) {
-      return notFoundResponse("Booking link not found");
+    let link: ExpressBookingLinkRow | null = null;
+    if (tenantProviderIds.length > 0) {
+      const { data: tenantScopedLinks, error: linkError } = await linkQuery;
+      if (!linkError) {
+        link = ((tenantScopedLinks ?? []) as ExpressBookingLinkRow[]).find(isUsableLink) ?? null;
+      }
     }
-    let link = ((tenantScopedLinks ?? []) as ExpressBookingLinkRow[]).find(isUsableLink) ?? null;
 
     // Tenant host mapping can be temporarily missing/misaligned in some environments.
     // Fallback to the newest globally usable candidate so legacy duplicate short
@@ -97,7 +102,6 @@ export async function GET(
         .from("express_booking_links")
         .select(EXPRESS_LINK_SELECT)
         .ilike("slug", slug)
-        .eq("is_active", true)
         .order("updated_at", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(10);
@@ -107,12 +111,32 @@ export async function GET(
       link = ((fallbackLinks ?? []) as ExpressBookingLinkRow[]).find(isUsableLink) ?? null;
     }
 
+    // Last-resort normalised scan for legacy data where the stored slug contains
+    // spaces, uppercase, or punctuation. Slugs are short codes, so this remains cheap.
+    if (!link) {
+      const { data: looseLinks, error: looseErr } = await supabase
+        .from("express_booking_links")
+        .select(EXPRESS_LINK_SELECT)
+        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (!looseErr && looseLinks?.length) {
+        link =
+          ((looseLinks ?? []) as ExpressBookingLinkRow[]).find(
+            (candidate) => normalizeSlug(candidate.slug || "") === slug && isUsableLink(candidate),
+          ) ?? null;
+      }
+    }
+
     if (!link) {
       return notFoundResponse("Booking link not found or unavailable");
     }
 
-    if (link.expires_at && new Date(link.expires_at) < new Date()) {
+    if (link.expires_at) {
+      const expiresAt = new Date(link.expires_at);
+      if (Number.isFinite(expiresAt.getTime()) && expiresAt < new Date()) {
       return notFoundResponse("This booking link has expired");
+      }
     }
 
     if (link.max_uses != null && (link.use_count ?? 0) >= link.max_uses) {

@@ -67,12 +67,12 @@ export async function POST(
       return notFoundResponse("Provider not found");
     }
 
-    const { data: group, error: gErr } = await supabase
+    const { data: group, error: gErr } = await admin
       .from("group_bookings")
       .select("id")
       .eq("id", groupId)
       .eq("provider_id", providerId)
-      .single();
+      .maybeSingle();
 
     if (gErr || !group) {
       return notFoundResponse("Group booking not found");
@@ -83,7 +83,7 @@ export async function POST(
     if (rawBody && typeof rawBody === "object" && "booking_id" in rawBody && rawBody.booking_id) {
       const body = bookingLinkSchema.parse(rawBody);
 
-      const { data: booking, error: bErr } = await supabase
+      const { data: booking, error: bErr } = await admin
         .from("bookings")
         .select("id, customer_id, group_booking_id, customers:users!bookings_customer_id_fkey(full_name, email, phone)")
         .eq("id", body.booking_id)
@@ -99,7 +99,7 @@ export async function POST(
         return errorResponse("Booking already belongs to another group", "CONFLICT", 409);
       }
 
-      const { data: existing } = await supabase
+      const { data: existing } = await admin
         .from("booking_participants")
         .select("id")
         .eq("booking_id", body.booking_id)
@@ -116,7 +116,7 @@ export async function POST(
         cust.email ||
         "Guest";
 
-      const { data: row, error: insErr } = await supabase
+      const { data: row, error: insErr } = await admin
         .from("booking_participants")
         .insert({
           booking_id: body.booking_id,
@@ -133,7 +133,7 @@ export async function POST(
         throw insErr;
       }
 
-      await supabase
+      const { error: bookingUpdateError } = await admin
         .from("bookings")
         .update({
           group_booking_id: groupId,
@@ -141,6 +141,9 @@ export async function POST(
         })
         .eq("id", body.booking_id)
         .eq("provider_id", providerId);
+      if (bookingUpdateError) {
+        throw bookingUpdateError;
+      }
 
       return successResponse({ data: row });
     }

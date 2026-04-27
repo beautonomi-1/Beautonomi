@@ -137,7 +137,7 @@ export function YocoPaymentSheet({
           <Ionicons name="link-outline" size={32} color="#d97706" />
           <Text style={twStyle("mt-2 text-sm font-medium text-amber-800")}>Yoco not connected</Text>
           <Text style={twStyle("mt-1 text-xs text-center text-amber-700")}>
-            Connect Yoco in More → Settings → Payment Settings → Yoco devices
+            Connect Yoco in More → Yoco payments.
           </Text>
         </View>
       ) : activeDevices.length === 0 ? (
@@ -145,7 +145,7 @@ export function YocoPaymentSheet({
           <Ionicons name="card-outline" size={32} color="#9ca3af" />
           <Text style={twStyle("mt-2 text-sm text-gray-500")}>No Yoco devices configured</Text>
           <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-            Add a device in Settings → Payment Settings → Yoco devices
+            Add a device from More → Yoco payments.
           </Text>
         </View>
       ) : (

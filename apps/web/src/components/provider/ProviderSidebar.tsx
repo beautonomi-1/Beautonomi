@@ -118,11 +118,15 @@ const navigationSections = [
       // discoverable alongside other money surfaces.
       { icon: CreditCard, label: "Payments", href: "/provider/payments", permission: "view_sales" as keyof StaffPermissions },
       { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" as keyof StaffPermissions },
+      { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "view_sales" as keyof StaffPermissions },
+      { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: CreditCard, label: "Subscription", href: "/provider/subscription", permission: undefined },
       { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" as keyof StaffPermissions },
       { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" as keyof StaffPermissions },
       { icon: Trophy, label: "Rewards & Badges", href: "/provider/gamification", permission: undefined },
       { icon: Grid3x3, label: "Catalogue", href: "/provider/catalogue", permission: "view_products" as keyof StaffPermissions },
       { icon: Sparkles, label: "Packages", href: "/provider/packages", permission: "view_services" as keyof StaffPermissions },
+      { icon: Ticket, label: "Memberships", href: "/provider/settings/services/memberships", permission: "view_services" as keyof StaffPermissions },
     ],
   },
   {
@@ -227,6 +231,18 @@ const isActiveRoute = (pathname: string, href: string) => {
   }
   if (href === "/provider/payouts") {
     return pathname.startsWith("/provider/payouts");
+  }
+  if (href === "/provider/subscription") {
+    return pathname.startsWith("/provider/subscription");
+  }
+  if (href === "/provider/settings/payout-accounts") {
+    return pathname.startsWith("/provider/settings/payout-accounts");
+  }
+  if (href === "/provider/settings/sales/yoco-integration") {
+    return pathname.startsWith("/provider/settings/sales/yoco");
+  }
+  if (href === "/provider/settings/services/memberships") {
+    return pathname.startsWith("/provider/settings/services/memberships");
   }
   if (href === "/provider/express-booking") {
     return pathname.startsWith("/provider/express-booking");

@@ -733,6 +733,7 @@ export default function ClientDetailScreen() {
                     defaultCountryName={defaultCountryName}
                     label="Search address"
                     placeholder="Start typing for suggestions…"
+                    geocodeTypes={["address"]}
                     onSelect={(p) => {
                       setHomeParsed(p);
                       setAddressSearchValue(p.full_address);

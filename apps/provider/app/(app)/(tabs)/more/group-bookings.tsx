@@ -1086,6 +1086,36 @@ export default function GroupBookingsScreen() {
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
+      <TouchableOpacity
+        onPress={openCreate}
+        activeOpacity={0.86}
+        style={twStyle("mb-3 overflow-hidden rounded-2xl bg-gray-900 p-4")}
+        accessibilityRole="button"
+        accessibilityLabel="Create a new group booking"
+      >
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-1 pr-3")}>
+            <View style={twStyle("mb-2 flex-row items-center")}>
+              <View style={twStyle("mr-2 rounded-full bg-white/10 px-2 py-1")}>
+                <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-indigo-100")}>
+                  New
+                </Text>
+              </View>
+              <Text style={twStyle("text-xs font-medium text-indigo-100")}>
+                Guided group setup
+              </Text>
+            </View>
+            <Text style={twStyle("text-lg font-bold text-white")}>Create a group booking</Text>
+            <Text style={twStyle("mt-1 text-xs leading-5 text-gray-300")}>
+              Add a shared time slot, service, team member, and initial participants with calendar checks.
+            </Text>
+          </View>
+          <View style={twStyle("h-11 w-11 items-center justify-center rounded-2xl bg-indigo-500")}>
+            <Ionicons name="add" size={24} color="#ffffff" />
+          </View>
+        </View>
+      </TouchableOpacity>
+
       <View style={twStyle("mb-3 flex-row")}>
         <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
           <StatCard title="Total" value={String(stats.total)} icon="people-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
@@ -1109,7 +1139,14 @@ export default function GroupBookingsScreen() {
       ) : groupError && !groups.length ? (
         <ErrorState message={groupError} onRetry={refresh} />
       ) : filtered.length === 0 ? (
-        <EmptyState icon="people-outline" title="No group bookings" description="Group sessions will appear here" />
+        <EmptyState
+          icon="people-outline"
+          title="No group bookings"
+          description="Create a group session for bridal parties, events, families, or shared service appointments."
+          actionLabel="Create group booking"
+          actionAccessibilityLabel="Create a new group booking"
+          onAction={openCreate}
+        />
       ) : (
         <FlatList
           {...verticalFlatListPerf}

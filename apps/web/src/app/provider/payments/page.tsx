@@ -97,7 +97,11 @@ export default function ProviderPayments() {
   }, [hasMounted, page, searchQuery]);
 
   if (!hasMounted) {
-    return null;
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <p className="text-sm text-gray-600">Loading payments...</p>
+      </div>
+    );
   }
 
   if (isLoading) {
@@ -170,7 +174,7 @@ export default function ProviderPayments() {
                   <div className="min-w-0">
                     <p className="font-medium text-sm">{payment.ref_number}</p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {new Date(payment.payment_date).toLocaleDateString()}
+                      {formatPaymentDate(payment.payment_date)}
                     </p>
                   </div>
                   <p className="font-semibold text-sm shrink-0">
@@ -208,7 +212,7 @@ export default function ProviderPayments() {
                 {payments.map((payment) => (
                   <TableRow key={payment.id}>
                     <TableCell className="font-medium">{payment.ref_number}</TableCell>
-                    <TableCell>{new Date(payment.payment_date).toLocaleDateString()}</TableCell>
+                    <TableCell>{formatPaymentDate(payment.payment_date)}</TableCell>
                     <TableCell>
                       {payment.appointment_duration ? `${payment.appointment_duration} min` : "-"}
                     </TableCell>
@@ -236,4 +240,14 @@ export default function ProviderPayments() {
       )}
     </div>
   );
+}
+
+function formatPaymentDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-ZA", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
 }

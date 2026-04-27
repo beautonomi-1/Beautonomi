@@ -26,15 +26,32 @@ interface Product {
   sku?: string;
   brand?: string;
   is_active?: boolean;
+  has_variants?: boolean;
+  variants?: ProductVariant[];
+}
+
+interface ProductVariant {
+  id: string;
+  option_values?: Record<string, string> | null;
+  retail_price: number;
+  sku?: string | null;
+  quantity?: number | null;
 }
 
 interface PackageItem {
   type: "service" | "product";
   offering_id?: string;
   product_id?: string;
+  product_variant_id?: string | null;
   quantity: number;
   offering?: OfferingCard;
   product?: Product;
+  product_variant?: ProductVariant | null;
+}
+
+function formatVariantLabel(variant: ProductVariant): string {
+  const optionLabel = variant.option_values ? Object.values(variant.option_values).filter(Boolean).join(" / ") : "";
+  return optionLabel || variant.sku || "Variant";
 }
 
 export default function CreatePackagePage() {
@@ -63,7 +80,7 @@ export default function CreatePackagePage() {
       setIsLoadingItems(true);
       // Load both services and products in parallel
       const [servicesResponse, productsResponse] = await Promise.all([
-        fetcher.get<{ data: OfferingCard[] }>("/api/provider/services"),
+        fetcher.get<{ data: OfferingCard[] }>("/api/provider/services?include_variants=true"),
         fetcher.get<unknown>("/api/provider/products?limit=1000"),
       ]);
       const svcPayload = servicesResponse.data;
@@ -106,8 +123,10 @@ export default function CreatePackagePage() {
         item.type = "product";
         item.offering_id = undefined;
         item.product_id = "";
+        item.product_variant_id = undefined;
         item.offering = undefined;
         item.product = undefined;
+        item.product_variant = undefined;
       }
     } else if (field === "offering_id") {
       item.offering_id = value;
@@ -117,6 +136,11 @@ export default function CreatePackagePage() {
       item.product_id = value;
       const selectedProduct = products.find((p) => p.id === value);
       item.product = selectedProduct;
+      item.product_variant_id = undefined;
+      item.product_variant = undefined;
+    } else if (field === "product_variant_id") {
+      item.product_variant_id = value || undefined;
+      item.product_variant = item.product?.variants?.find((variant) => variant.id === value) ?? null;
     } else {
       (item as any)[field] = value;
     }
@@ -151,6 +175,13 @@ export default function CreatePackagePage() {
           newErrors[`item_${index}`] = "Please select a service";
         } else if (item.type === "product" && !item.product_id) {
           newErrors[`item_${index}`] = "Please select a product";
+        } else if (
+          item.type === "product" &&
+          item.product?.has_variants &&
+          (item.product.variants?.length ?? 0) > 0 &&
+          !item.product_variant_id
+        ) {
+          newErrors[`item_${index}`] = "Please select a product variant";
         }
         if (item.quantity < 1) {
           newErrors[`quantity_${index}`] = "Quantity must be at least 1";
@@ -184,7 +215,7 @@ export default function CreatePackagePage() {
         items: items.map((item) => ({
           ...(item.type === "service" 
             ? { offering_id: item.offering_id }
-            : { product_id: item.product_id }
+            : { product_id: item.product_id, product_variant_id: item.product_variant_id || undefined }
           ),
           quantity: item.quantity,
         })),
@@ -408,7 +439,7 @@ export default function CreatePackagePage() {
                     return (
                       <div
                         key={index}
-                        className="flex gap-4 items-start p-4 border rounded-lg"
+                        className="flex gap-4 items-start p-4 border rounded-2xl bg-white shadow-sm"
                       >
                         <div className="flex-1 space-y-4">
                           <div>
@@ -478,10 +509,33 @@ export default function CreatePackagePage() {
                                   ))}
                                 </select>
                                 {selectedProduct && (
-                                  <p className="text-sm text-gray-500 mt-1">
-                                    {selectedProduct.brand && `${selectedProduct.brand} • `}
-                                    {selectedProduct.sku && `SKU: ${selectedProduct.sku}`}
-                                  </p>
+                                  <div className="mt-2 space-y-2">
+                                    <p className="text-sm text-gray-500">
+                                      {selectedProduct.brand && `${selectedProduct.brand} • `}
+                                      {selectedProduct.sku && `SKU: ${selectedProduct.sku}`}
+                                    </p>
+                                    {selectedProduct.has_variants && (selectedProduct.variants?.length ?? 0) > 0 && (
+                                      <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
+                                        <Label className="text-xs text-purple-900">Variant</Label>
+                                        <select
+                                          value={item.product_variant_id || ""}
+                                          onChange={(e) => updateItem(index, "product_variant_id", e.target.value)}
+                                          className="mt-1 w-full rounded-md border border-purple-200 bg-white px-3 py-2 text-sm"
+                                        >
+                                          <option value="">Choose a variant</option>
+                                          {selectedProduct.variants?.map((variant) => (
+                                            <option key={variant.id} value={variant.id}>
+                                              {formatVariantLabel(variant)} - {selectedProduct.currency || LAST_RESORT_CURRENCY} {variant.retail_price}
+                                              {variant.sku ? ` (SKU: ${variant.sku})` : ""}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <p className="mt-1 text-xs text-purple-700">
+                                          Select the exact size, colour, or option included in this package.
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
                               </>
                             )}

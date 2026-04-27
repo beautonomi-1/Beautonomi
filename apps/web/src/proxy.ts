@@ -61,6 +61,12 @@ export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const origin = request.headers.get('origin');
 
+    // PWA manifest must always stay public. Some preview deployments still
+    // routed this through auth despite the matcher exclusion, so bypass here too.
+    if (pathname === '/manifest.webmanifest' || pathname === '/api/public/manifest.webmanifest') {
+      return NextResponse.next();
+    }
+
     // Digital Asset Links / AASA: Google & Apple fetch `https://<apex>/.well-known/...` — must be 200, no redirect.
     if (pathname.startsWith('/.well-known/')) {
       return NextResponse.next();

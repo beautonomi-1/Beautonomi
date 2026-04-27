@@ -21,24 +21,28 @@ export async function ensurePackageEntitlementsFromProductOrder(
   const providerId = order.provider_id as string;
 
   const { data: items, error: itemsErr } = await (admin.from("product_order_items") as any)
-    .select("id, product_id, quantity, product_name")
+    .select("id, product_id, product_variant_id, quantity, product_name")
     .eq("order_id", productOrderId);
 
   if (itemsErr || !items?.length) {
     return;
   }
 
-  for (const line of items as Array<{ product_id: string; quantity: number }>) {
+  for (const line of items as Array<{ product_id: string; product_variant_id?: string | null; quantity: number }>) {
     const qty = Math.max(1, Number(line.quantity) || 1);
     const { data: spiRows } = await admin
       .from("service_package_items")
-      .select("package_id")
+      .select("package_id, product_variant_id")
       .eq("product_id", line.product_id)
-      .limit(5);
+      .limit(50);
 
-    if (!spiRows?.length) continue;
+    const matchingRows = (spiRows || []).filter((row: { product_variant_id?: string | null }) => {
+      const packageVariantId = row.product_variant_id ?? null;
+      return !packageVariantId || packageVariantId === (line.product_variant_id ?? null);
+    });
+    if (!matchingRows.length) continue;
 
-    const packageIds = [...new Set(spiRows.map((r: { package_id: string }) => r.package_id))];
+    const packageIds = [...new Set(matchingRows.map((r: { package_id: string }) => r.package_id))];
 
     for (const packageId of packageIds) {
       const { data: pkg } = await admin
@@ -78,6 +82,7 @@ export async function ensurePackageEntitlementsFromProductOrder(
             metadata: {
               last_order_top_up: productOrderId,
               product_line_product_id: line.product_id,
+              product_line_product_variant_id: line.product_variant_id ?? null,
             },
           })
           .eq("id", (existing as { id: string }).id);
@@ -91,6 +96,7 @@ export async function ensurePackageEntitlementsFromProductOrder(
             source: "product_order",
             product_order_id: productOrderId,
             product_id: line.product_id,
+            product_variant_id: line.product_variant_id ?? null,
           },
         });
       }

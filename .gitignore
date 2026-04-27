@@ -69,3 +69,6 @@ apps/admin-web/test-results/
 
 # --- Vercel ---
 .vercel/
+
+# --- Supabase (local CLI cache) ---
+supabase/.temp/

@@ -74,6 +74,7 @@ export function AddressAutocomplete({
   const [loading, setLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectingRef = useRef(false);
 
   useEffect(() => {
     setQuery(value);
@@ -128,6 +129,11 @@ export function AddressAutocomplete({
   }
 
   function handleSelect(result: GeocodingResult) {
+    selectingRef.current = true;
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
     const mapped = mapGeocodeFeatureToAddressParts(result, {
       defaultCountryName: resolvedDefaultCountry,
     });
@@ -160,6 +166,10 @@ export function AddressAutocomplete({
           value={query}
           onChangeText={handleChangeText}
           onBlur={() => {
+            if (selectingRef.current) {
+              selectingRef.current = false;
+              return;
+            }
             if (query.trim() && onBlur) onBlur(query.trim());
           }}
           placeholder={placeholder}
@@ -183,6 +193,9 @@ export function AddressAutocomplete({
             nestedScrollEnabled
             renderItem={({ item }: { item: GeocodingResult }) => (
               <TouchableOpacity
+                onPressIn={() => {
+                  selectingRef.current = true;
+                }}
                 onPress={() => handleSelect(item)}
                 style={twStyle("flex-row items-center border-b border-gray-50 px-3 py-3")}
                 accessibilityRole="button"

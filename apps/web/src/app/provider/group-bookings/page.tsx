@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Search, Users, Calendar, Edit, Trash2, CheckCircle } from "lucide-react";
+import { Search, Users, Calendar, Edit, Trash2, CheckCircle, Plus, Sparkles } from "lucide-react";
 import Pagination from "@/components/ui/pagination";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -19,11 +19,12 @@ import { GroupBookingDialog } from "@/components/provider-portal/GroupBookingDia
 import { toast } from "sonner";
 
 export default function GroupBookingsPage() {
+  const [hasMounted, setHasMounted] = useState(false);
   const [groupBookings, setGroupBookings] = useState<GroupBooking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [dateRange, setDateRange] = useState<string>("month");
+  const [dateRange, setDateRange] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -37,22 +38,22 @@ export default function GroupBookingsPage() {
         status: statusFilter !== "all" ? statusFilter : undefined,
       };
 
-      const now = new Date();
-      const todayStr = now.toISOString().split("T")[0];
+      const today = new Date();
+      const todayStr = formatLocalDate(today);
 
       if (dateRange === "today") {
         filters.date_from = todayStr;
         filters.date_to = todayStr;
       } else if (dateRange === "week") {
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - now.getDay());
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay());
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
-        filters.date_from = weekStart.toISOString().split("T")[0];
-        filters.date_to = weekEnd.toISOString().split("T")[0];
+        filters.date_from = formatLocalDate(weekStart);
+        filters.date_to = formatLocalDate(weekEnd);
       } else if (dateRange === "month") {
-        filters.date_from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-        filters.date_to = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
+        filters.date_from = formatLocalDate(new Date(today.getFullYear(), today.getMonth(), 1));
+        filters.date_to = formatLocalDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
       }
 
       const pagination: PaginationParams = { page, limit: 20 };
@@ -68,8 +69,13 @@ export default function GroupBookingsPage() {
   }, [page, statusFilter, dateRange, searchQuery]);
 
   useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasMounted) return;
     loadGroupBookings();
-  }, [loadGroupBookings]);
+  }, [hasMounted, loadGroupBookings]);
 
   const handleSearch = () => {
     setPage(1);
@@ -87,15 +93,15 @@ export default function GroupBookingsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this group booking?")) return;
+    if (!confirm("Cancel this group booking and any linked participant bookings?")) return;
 
     try {
       await providerApi.deleteGroupBooking(id);
-      toast.success("Group booking deleted");
+      toast.success("Group booking cancelled");
       loadGroupBookings();
     } catch (error) {
-      console.error("Failed to delete group booking:", error);
-      toast.error("Failed to delete group booking");
+      console.error("Failed to cancel group booking:", error);
+      toast.error("Failed to cancel group booking");
     }
   };
 
@@ -142,10 +148,28 @@ export default function GroupBookingsPage() {
   const formatDateTime = (booking: GroupBooking) => {
     if (booking.scheduled_at) {
       const d = new Date(booking.scheduled_at);
-      return { dateStr: d.toLocaleDateString(), timeStr: d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+      return {
+        dateStr: new Intl.DateTimeFormat("en-ZA", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        }).format(d),
+        timeStr: new Intl.DateTimeFormat("en-ZA", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(d),
+      };
     }
     return { dateStr: booking.scheduled_date || "—", timeStr: booking.scheduled_time || "" };
   };
+
+  if (!hasMounted) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <p className="text-sm text-gray-600">Loading group bookings...</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <LoadingTimeout loadingMessage="Loading group bookings..." />;
@@ -155,8 +179,36 @@ export default function GroupBookingsPage() {
     <div>
       <PageHeader
         title="Group Bookings"
-        subtitle="Group appointments created when customers book with multiple participants"
+        subtitle="Create and manage bridal parties, group events, and shared appointment sessions"
+        primaryAction={{
+          label: "New group booking",
+          onClick: handleCreate,
+          icon: <Plus className="w-4 h-4 mr-2 flex-shrink-0" />,
+        }}
       />
+
+      <SectionCard className="mb-4 overflow-hidden border-rose-100 bg-gradient-to-r from-slate-950 via-slate-900 to-rose-950 p-0 text-white sm:mb-6">
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div className="flex min-w-0 gap-4">
+            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10">
+              <Sparkles className="h-5 w-5 text-rose-200" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-rose-100">Build a group session</p>
+              <p className="mt-1 max-w-2xl text-sm text-slate-300">
+                Pick a service, staff member, time slot, and participants in one guided flow. Each participant is tracked for check-in, checkout, accounting, and calendar availability.
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={handleCreate}
+            className="w-full flex-shrink-0 bg-white text-slate-950 hover:bg-rose-50 sm:w-auto"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Create group
+          </Button>
+        </div>
+      </SectionCard>
 
       {/* Filters - Mobile First */}
       <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4">
@@ -179,7 +231,7 @@ export default function GroupBookingsPage() {
               <SelectItem value="today">Today</SelectItem>
               <SelectItem value="week">This Week</SelectItem>
               <SelectItem value="month">Month to Date</SelectItem>
-              <SelectItem value="custom">Custom Range</SelectItem>
+              <SelectItem value="all">All Time</SelectItem>
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -208,8 +260,13 @@ export default function GroupBookingsPage() {
       {groupBookings.length === 0 ? (
         <SectionCard className="p-8 sm:p-12">
           <EmptyState
+            icon={Users}
             title="No group bookings yet"
-            description="When customers book with multiple participants (e.g. bridal party, group events), those appointments will appear here."
+            description="Create your first group session for bridal parties, events, families, or shared service appointments."
+            action={{
+              label: "Create group booking",
+              onClick: handleCreate,
+            }}
           />
         </SectionCard>
       ) : (
@@ -278,7 +335,7 @@ export default function GroupBookingsPage() {
                             className="text-red-600 hover:text-red-700"
                           >
                             <Trash2 className="w-3 h-3 mr-1" />
-                            Delete
+                            Cancel
                           </Button>
                         </div>
                       </TableCell>
@@ -407,7 +464,7 @@ export default function GroupBookingsPage() {
                       className="flex-1 min-h-[44px] touch-manipulation text-red-600 hover:text-red-700"
                     >
                       <Trash2 className="w-4 h-4 mr-2" />
-                      Delete
+                      Cancel
                     </Button>
                   </div>
                 </div>
@@ -436,4 +493,12 @@ export default function GroupBookingsPage() {
       />
     </div>
   );
+}
+
+function formatLocalDate(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
 }

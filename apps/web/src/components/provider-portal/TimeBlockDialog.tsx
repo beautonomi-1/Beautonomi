@@ -30,7 +30,29 @@ interface TimeBlockDialogProps {
   onOpenChange: (open: boolean) => void;
   block?: TimeBlock | null;
   blockedTimeTypes: BlockedTimeType[];
+  onTypeCreated?: (type: BlockedTimeType) => void;
   onSuccess?: () => void;
+}
+
+const QUICK_TYPES = [
+  { name: "Lunch Break", color: "#F59E0B" },
+  { name: "Team Meeting", color: "#6366F1" },
+  { name: "Training", color: "#10B981" },
+  { name: "Personal Time", color: "#EC4899" },
+  { name: "Admin Time", color: "#64748B" },
+];
+
+const QUICK_DURATIONS = [15, 30, 45, 60, 90, 120];
+
+function addMinutesToTime(time: string, minutes: number): string {
+  const [h = "0", m = "0"] = time.split(":");
+  const total = Math.max(0, Math.min(23 * 60 + 59, Number(h) * 60 + Number(m) + minutes));
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function timeToMinutes(time: string): number {
+  const [h = "0", m = "0"] = time.split(":");
+  return Number(h) * 60 + Number(m);
 }
 
 export function TimeBlockDialog({
@@ -38,9 +60,12 @@ export function TimeBlockDialog({
   onOpenChange,
   block,
   blockedTimeTypes,
+  onTypeCreated,
   onSuccess,
 }: TimeBlockDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreatingType, setIsCreatingType] = useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
   const [formData, setFormData] = useState({
@@ -89,8 +114,48 @@ export function TimeBlockDialog({
     }
   };
 
+  const setDuration = (minutes: number) => {
+    setFormData((current) => ({
+      ...current,
+      end_time: addMinutesToTime(current.start_time, minutes),
+    }));
+  };
+
+  const handleCreateType = async (name = newTypeName.trim(), color = "#FF0077") => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      toast.error("Enter a type name first");
+      return;
+    }
+    setIsCreatingType(true);
+    try {
+      const created = await providerApi.createBlockedTimeType({
+        name: trimmed,
+        color,
+        is_active: true,
+      });
+      onTypeCreated?.(created);
+      setFormData((current) => ({
+        ...current,
+        blocked_time_type_id: created.id,
+        name: current.name.trim() ? current.name : created.name,
+      }));
+      setNewTypeName("");
+      toast.success("Blocked time type added");
+    } catch (error) {
+      console.error("Failed to create blocked time type:", error);
+      toast.error("Failed to create blocked time type");
+    } finally {
+      setIsCreatingType(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (timeToMinutes(formData.end_time) <= timeToMinutes(formData.start_time)) {
+      toast.error("End time must be after start time");
+      return;
+    }
     setIsLoading(true);
 
     try {
@@ -145,14 +210,34 @@ export function TimeBlockDialog({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">What are you blocking? *</Label>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., Lunch Break, Training Session"
+              placeholder="e.g. Lunch Break, Team Meeting, Personal Time"
               required
             />
+            <div className="mt-2 flex flex-wrap gap-2">
+              {QUICK_TYPES.map((type) => (
+                <button
+                  key={type.name}
+                  type="button"
+                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                  onClick={() => {
+                    setFormData((current) => ({
+                      ...current,
+                      name: type.name,
+                      blocked_time_type_id:
+                        blockedTimeTypes.find((existing) => existing.name.toLowerCase() === type.name.toLowerCase())?.id ||
+                        current.blocked_time_type_id,
+                    }));
+                  }}
+                >
+                  {type.name}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
@@ -210,10 +295,34 @@ export function TimeBlockDialog({
                   ))}
                 </SelectContent>
               </Select>
+              <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-3">
+                <Label htmlFor="new_time_type" className="text-xs text-gray-600">
+                  Add a new type directly
+                </Label>
+                <div className="mt-2 flex gap-2">
+                  <Input
+                    id="new_time_type"
+                    value={newTypeName}
+                    onChange={(e) => setNewTypeName(e.target.value)}
+                    placeholder="e.g. Stock Take"
+                    className="h-9"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 shrink-0"
+                    disabled={isCreatingType}
+                    onClick={() => handleCreateType()}
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <Label htmlFor="date">Date *</Label>
               <Input
@@ -243,6 +352,32 @@ export function TimeBlockDialog({
                 onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
                 required
               />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Duration shortcut</p>
+                <p className="text-xs text-gray-500">Pick a length and we will set the end time from the start time.</p>
+              </div>
+              <p className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-gray-700">
+                {Math.max(0, timeToMinutes(formData.end_time) - timeToMinutes(formData.start_time))} min
+              </p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {QUICK_DURATIONS.map((minutes) => (
+                <Button
+                  key={minutes}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  onClick={() => setDuration(minutes)}
+                >
+                  {minutes < 60 ? `${minutes}m` : `${minutes / 60}h`}
+                </Button>
+              ))}
             </div>
           </div>
 

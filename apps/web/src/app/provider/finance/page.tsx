@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { DollarSign, TrendingUp, Calendar, Download, ArrowUpRight, FileText } from "lucide-react";
+import { DollarSign, TrendingUp, Calendar, Download, ArrowUpRight, FileText, Building2, CheckCircle2, Loader2, Plus } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -25,6 +25,7 @@ import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalPro
 import { usePermissions } from "@/hooks/usePermissions";
 import { Lock } from "lucide-react";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { PAYOUT_COUNTRIES, getCurrencyForCountry } from "@/lib/payments/payout-countries";
 
 interface EarningsData {
   total_earnings: number;
@@ -46,6 +47,7 @@ interface EarningsData {
   travel_fees_total?: number;
   travel_fees_this_period?: number;
   refunds_total?: number;
+  refunds_this_period?: number;
   walk_in_additional_charges_total?: number;
   walk_in_additional_charges_this_period?: number;
   tips_total?: number;
@@ -92,6 +94,14 @@ interface PayoutAccount {
   active: boolean;
 }
 
+interface Bank {
+  code: string;
+  name: string;
+  country: string;
+  currency: string;
+  type: string;
+}
+
 export default function ProviderFinance() {
   const { selectedLocationId } = useProviderPortal();
   const { hasPermission } = usePermissions();
@@ -110,6 +120,19 @@ export default function ProviderFinance() {
   const [payoutAccounts, setPayoutAccounts] = useState<PayoutAccount[]>([]);
   const [selectedBankId, setSelectedBankId] = useState<string>("");
   const [isRequestingPayout, setIsRequestingPayout] = useState(false);
+  const [showInlineBankForm, setShowInlineBankForm] = useState(false);
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [isLoadingBanks, setIsLoadingBanks] = useState(false);
+  const [isVerifyingBank, setIsVerifyingBank] = useState(false);
+  const [isSavingBank, setIsSavingBank] = useState(false);
+  const [verifiedAccountName, setVerifiedAccountName] = useState<string | null>(null);
+  const [bankForm, setBankForm] = useState({
+    country: "ZA",
+    account_number: "",
+    bank_code: "",
+    account_name: "",
+    email: "",
+  });
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showTransactionDialog, setShowTransactionDialog] = useState(false);
   const [transactionDetails, setTransactionDetails] = useState<any>(null);
@@ -120,6 +143,12 @@ export default function ProviderFinance() {
     loadPayouts();
     loadPayoutAccounts();
   }, [dateRange, selectedLocationId]);
+
+  useEffect(() => {
+    if (showPayoutDialog && showInlineBankForm) {
+      loadBanks(bankForm.country);
+    }
+  }, [showPayoutDialog, showInlineBankForm, bankForm.country]);
 
   const loadFinanceData = async () => {
     try {
@@ -173,6 +202,87 @@ export default function ProviderFinance() {
     }
   };
 
+  const loadBanks = async (country: string) => {
+    try {
+      setIsLoadingBanks(true);
+      const response = await fetcher.get<{ data: Bank[] }>(`/api/public/banks?country=${encodeURIComponent(country)}`);
+      setBanks(response.data || []);
+    } catch (err) {
+      console.warn("Failed to load banks:", err);
+      toast.error("Failed to load bank list");
+    } finally {
+      setIsLoadingBanks(false);
+    }
+  };
+
+  const resetBankForm = () => {
+    setBankForm({
+      country: "ZA",
+      account_number: "",
+      bank_code: "",
+      account_name: "",
+      email: "",
+    });
+    setVerifiedAccountName(null);
+  };
+
+  const handleVerifyBankAccount = async () => {
+    if (!bankForm.account_number.trim() || !bankForm.bank_code) {
+      toast.error("Enter an account number and select a bank first.");
+      return;
+    }
+    try {
+      setIsVerifyingBank(true);
+      const response = await fetcher.post<{ data: { account_name: string } }>(
+        "/api/provider/payout-accounts/verify",
+        {
+          account_number: bankForm.account_number.trim(),
+          bank_code: bankForm.bank_code,
+        }
+      );
+      const name = response.data?.account_name;
+      if (name) {
+        setBankForm((prev) => ({ ...prev, account_name: name }));
+        setVerifiedAccountName(name);
+        toast.success("Bank account verified");
+      }
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Bank account verification failed");
+    } finally {
+      setIsVerifyingBank(false);
+    }
+  };
+
+  const handleAddPayoutAccountInline = async () => {
+    if (!bankForm.account_number.trim() || !bankForm.bank_code || !bankForm.account_name.trim()) {
+      toast.error("Account number, bank, and account name are required.");
+      return;
+    }
+    try {
+      setIsSavingBank(true);
+      const response = await fetcher.post<{ data: PayoutAccount }>("/api/provider/payout-accounts", {
+        type: "nuban",
+        country: bankForm.country,
+        account_number: bankForm.account_number.trim(),
+        bank_code: bankForm.bank_code,
+        account_name: bankForm.account_name.trim(),
+        currency: getCurrencyForCountry(bankForm.country),
+        ...(verifiedAccountName ? { verified_account_name: verifiedAccountName } : {}),
+        email: bankForm.email.trim() || undefined,
+      });
+      toast.success("Bank account added");
+      resetBankForm();
+      setShowInlineBankForm(false);
+      await loadPayoutAccounts();
+      const newId = response.data?.id;
+      if (newId) setSelectedBankId(newId);
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to add bank account");
+    } finally {
+      setIsSavingBank(false);
+    }
+  };
+
   const handleRequestPayout = async () => {
     if (!payoutAmount || parseFloat(payoutAmount) <= 0) {
       toast.error("Please enter a valid payout amount");
@@ -200,6 +310,7 @@ export default function ProviderFinance() {
       
       toast.success("Payout request submitted successfully");
       setShowPayoutDialog(false);
+      setShowInlineBankForm(false);
       setPayoutAmount("");
       setPayoutNotes("");
       loadFinanceData();
@@ -217,6 +328,11 @@ export default function ProviderFinance() {
     }
   };
 
+  const openPayoutDialog = () => {
+    setShowPayoutDialog(true);
+    setShowInlineBankForm(payoutAccounts.length === 0);
+  };
+
   const handleExport = () => {
     try {
       const params = new URLSearchParams({ range: dateRange });
@@ -228,6 +344,12 @@ export default function ProviderFinance() {
       alert("Failed to start export");
     }
   };
+
+  const rangeLabel =
+    dateRange === "week" ? "Last 7 days" :
+    dateRange === "month" ? "Month to date" :
+    dateRange === "year" ? "Last 12 months" :
+    "All time";
 
   const handleTransactionClick = async (transaction: Transaction) => {
     setSelectedTransaction(transaction);
@@ -290,7 +412,7 @@ export default function ProviderFinance() {
           <div>
             <h1 className="text-3xl font-semibold mb-2">Finance & Earnings</h1>
             <p className="text-gray-600">
-              Track your revenue and earnings
+              Track earnings for the selected period and all-time payoutable balance
               {" · "}
               <Link href="/provider/payouts" className="text-primary-600 hover:underline">
                 Payout center
@@ -301,29 +423,39 @@ export default function ProviderFinance() {
             {canRequestPayout ? (
             <Dialog open={showPayoutDialog} onOpenChange={setShowPayoutDialog}>
               <DialogTrigger asChild>
-                <Button className="bg-primary hover:bg-primary-hover">
+                <Button className="bg-primary hover:bg-primary-hover" onClick={openPayoutDialog}>
                   <ArrowUpRight className="w-4 h-4 mr-2" />
                   Request Payout
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-w-2xl">
                 <DialogHeader>
-                  <DialogTitle>Request Payout</DialogTitle>
+                  <DialogTitle className="flex items-center gap-2">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50">
+                      <ArrowUpRight className="h-4 w-4 text-emerald-700" />
+                    </span>
+                    Request payout
+                  </DialogTitle>
                   <DialogDescription>
-                    Request a withdrawal up to your available balance. Amounts are validated against the same ledger
-                    used on the dashboard.
+                    Withdraw from your all-time platform-held payout balance. Period earnings are shown separately on this page.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                  <div>
-                    <Label htmlFor="available-balance">Available Balance</Label>
-                    <Input
-                      id="available-balance"
-                      value={fmt(earnings.available_balance)}
-                      disabled
-                      className="mt-1"
-                    />
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">Available</p>
+                      <p className="mt-1 text-2xl font-semibold text-emerald-950">{fmt(earnings.available_balance)}</p>
+                    </div>
+                    <div className="rounded-2xl border bg-white p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Minimum</p>
+                      <p className="mt-1 text-lg font-semibold text-gray-950">{fmt(earnings.minimum_payout_amount ?? 100)}</p>
+                    </div>
+                    <div className="rounded-2xl border bg-white p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">In queue</p>
+                      <p className="mt-1 text-lg font-semibold text-gray-950">{fmt(earnings.pending_payouts)}</p>
+                    </div>
                   </div>
+
                   <div>
                     <Label htmlFor="payout-amount">Payout Amount ({currencyCode}) * — min {fmt(earnings.minimum_payout_amount ?? 100)}</Label>
                     <Input
@@ -348,34 +480,136 @@ export default function ProviderFinance() {
                       </p>
                     )}
                   </div>
-                  {payoutAccounts.length === 0 && (
-                    <p className="text-sm text-amber-600">
-                      Add a bank account in Settings → Payout Accounts to receive payouts.
-                    </p>
-                  )}
-                  {payoutAccounts.length > 1 && (
-                    <div>
-                      <Label>Pay out to</Label>
-                      <select
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                        value={selectedBankId || payoutAccounts[0]?.id}
-                        onChange={(e) => setSelectedBankId(e.target.value)}
+
+                  <div className="rounded-2xl border bg-gray-50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <Label>Bank account</Label>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Add or select the account that should receive this payout.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowInlineBankForm((value) => !value);
+                          if (!showInlineBankForm) void loadBanks(bankForm.country);
+                        }}
                       >
-                        {payoutAccounts.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.account_name} ****{a.account_number_last4}
-                            {a.bank_name ? ` (${a.bank_name})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">Payouts will be sent to this account</p>
+                        <Plus className="mr-1 h-3.5 w-3.5" />
+                        {showInlineBankForm ? "Hide form" : "Add account"}
+                      </Button>
                     </div>
-                  )}
-                  {payoutAccounts.length === 1 && (
-                    <p className="text-xs text-gray-500">
-                      Payout will be sent to {payoutAccounts[0].account_name} ****{payoutAccounts[0].account_number_last4}.
-                    </p>
-                  )}
+
+                    {payoutAccounts.length > 0 && (
+                      <div className="mt-3">
+                        <select
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
+                          value={selectedBankId || payoutAccounts[0]?.id}
+                          onChange={(e) => setSelectedBankId(e.target.value)}
+                        >
+                          {payoutAccounts.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.account_name} ****{a.account_number_last4}
+                              {a.bank_name ? ` (${a.bank_name})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {showInlineBankForm && (
+                      <div className="mt-4 space-y-3 rounded-xl border bg-white p-4">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <Label>Country</Label>
+                            <select
+                              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                              value={bankForm.country}
+                              onChange={(e) => {
+                                setBankForm((prev) => ({ ...prev, country: e.target.value, bank_code: "" }));
+                                setVerifiedAccountName(null);
+                              }}
+                            >
+                              {PAYOUT_COUNTRIES.map((country) => (
+                                <option key={country.code} value={country.code}>
+                                  {country.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <Label>Bank</Label>
+                            <select
+                              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                              value={bankForm.bank_code}
+                              disabled={isLoadingBanks}
+                              onChange={(e) => {
+                                setBankForm((prev) => ({ ...prev, bank_code: e.target.value }));
+                                setVerifiedAccountName(null);
+                              }}
+                            >
+                              <option value="">{isLoadingBanks ? "Loading banks..." : "Select bank"}</option>
+                              {banks.map((bank) => (
+                                <option key={bank.code} value={bank.code}>
+                                  {bank.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                          <div>
+                            <Label>Account number</Label>
+                            <Input
+                              value={bankForm.account_number}
+                              onChange={(e) => {
+                                setBankForm((prev) => ({ ...prev, account_number: e.target.value.replace(/\D/g, "") }));
+                                setVerifiedAccountName(null);
+                              }}
+                              placeholder="Enter bank account number"
+                            />
+                          </div>
+                          <div className="flex items-end">
+                            <Button type="button" variant="outline" onClick={handleVerifyBankAccount} disabled={isVerifyingBank}>
+                              {isVerifyingBank ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                              Verify
+                            </Button>
+                          </div>
+                        </div>
+                        <div>
+                          <Label>Account holder name</Label>
+                          <Input
+                            value={bankForm.account_name}
+                            onChange={(e) => setBankForm((prev) => ({ ...prev, account_name: e.target.value }))}
+                            placeholder="Account holder name"
+                          />
+                          {verifiedAccountName && (
+                            <p className="mt-1 flex items-center gap-1 text-xs text-emerald-700">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Verified as {verifiedAccountName}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <Label>Email (optional)</Label>
+                          <Input
+                            type="email"
+                            value={bankForm.email}
+                            onChange={(e) => setBankForm((prev) => ({ ...prev, email: e.target.value }))}
+                            placeholder="recipient@example.com"
+                          />
+                        </div>
+                        <Button type="button" onClick={handleAddPayoutAccountInline} disabled={isSavingBank} className="w-full">
+                          {isSavingBank ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Building2 className="mr-2 h-4 w-4" />}
+                          Save bank account
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
                   <div>
                     <Label htmlFor="payout-notes">Notes (Optional)</Label>
                     <Textarea
@@ -393,6 +627,7 @@ export default function ProviderFinance() {
                     variant="outline"
                     onClick={() => {
                       setShowPayoutDialog(false);
+                      setShowInlineBankForm(false);
                       setPayoutAmount("");
                       setPayoutNotes("");
                     }}
@@ -434,26 +669,26 @@ export default function ProviderFinance() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
           <div className="bg-white border rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Total Earnings</p>
+              <p className="text-sm text-gray-600">{rangeLabel} earnings</p>
               <DollarSign className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-semibold">
               {fmt(earnings.total_earnings)}
             </p>
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-              Net provider share from bookings and related ledger entries (same basis as payouts).
+              Net provider share from the selected period&apos;s ledger rows. This is not the same as all-time available payout balance.
             </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Available to withdraw</p>
+              <p className="text-sm text-gray-600">All-time available to withdraw</p>
               <TrendingUp className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-semibold text-green-600">
               {fmt(earnings.available_balance)}
             </p>
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-              Platform-held earnings minus completed payouts and your pending requests
+              All payoutable platform-held earnings minus completed payouts and your pending requests
               {(earnings.payout_hold_days ?? 0) > 0
                 ? `, after a ${earnings.payout_hold_days}-day hold on new earnings`
                 : ""}
@@ -477,7 +712,7 @@ export default function ProviderFinance() {
         {/* Revenue Streams */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <div className="bg-white border rounded-lg p-6">
-            <p className="text-sm text-gray-600 mb-2">Service Earnings</p>
+            <p className="text-sm text-gray-600 mb-2">Service Earnings ({rangeLabel})</p>
             <p className="text-2xl font-semibold">
               {fmt(earnings.bookings_earnings_this_period ?? earnings.bookings_earnings_total ?? 0)}
             </p>
@@ -523,7 +758,7 @@ export default function ProviderFinance() {
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Refunds</p>
             <p className="text-2xl font-semibold text-red-600">
-              {fmt(earnings.refunds_total || 0)}
+              {fmt(earnings.refunds_this_period ?? earnings.refunds_total ?? 0)}
             </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
@@ -559,7 +794,7 @@ export default function ProviderFinance() {
         {/* Monthly Comparison */}
         <div className="bg-white border rounded-lg p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Monthly Earnings</h2>
+            <h2 className="text-xl font-semibold">Earnings comparison</h2>
             <div className="flex gap-2">
               {(["week", "month", "year", "all"] as const).map((range) => (
                 <button
@@ -578,13 +813,13 @@ export default function ProviderFinance() {
           </div>
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <p className="text-sm text-gray-600 mb-1">This Month</p>
+              <p className="text-sm text-gray-600 mb-1">Selected period</p>
               <p className="text-2xl font-semibold">
                 {fmt(earnings.this_month)}
               </p>
             </div>
             <div>
-              <p className="text-sm text-gray-600 mb-1">Last Month</p>
+              <p className="text-sm text-gray-600 mb-1">Previous comparison</p>
               <p className="text-2xl font-semibold">
                 {fmt(earnings.last_month)}
               </p>

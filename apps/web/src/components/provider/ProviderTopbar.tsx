@@ -280,28 +280,21 @@ export function ProviderTopbar() {
                   Subscription
                 </Link>
               </DropdownMenuItem>
-              {/*
-                §Provider-launch (audit 2026-04): the user menu used to
-                skip straight from Subscription to the Help Centre, so
-                providers had no in-portal surface for password/2FA,
-                session management, privacy controls, or data export /
-                deletion requests. These three entries expose the
-                user-scoped /account-settings pages that already exist.
-              */}
+              {/* Account routes stay inside the provider shell, but reuse user-scoped APIs. */}
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/account-settings/login-and-security" className="cursor-pointer">
+                <Link href="/provider/account/login-and-security" className="cursor-pointer">
                   Login & Security
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/account-settings/privacy-and-sharing" className="cursor-pointer">
+                <Link href="/provider/account/privacy-and-sharing" className="cursor-pointer">
                   Privacy & Sharing
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link
-                  href="/account-settings/privacy-and-sharing#data-rights"
+                  href="/provider/account/data-rights"
                   className="cursor-pointer"
                 >
                   Data Rights & Export

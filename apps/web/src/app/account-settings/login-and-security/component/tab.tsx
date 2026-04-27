@@ -51,7 +51,15 @@ const tabs = [
   { value: "step1", label: "LOGIN" },
 ];
 
-const LoginAccount = ({ initial }: { initial: LoginAndSecurityInitial | null }) => {
+const LoginAccount = ({
+  initial,
+  accountHomeHref = "/account-settings",
+  accountHomeLabel = "Account",
+}: {
+  initial: LoginAndSecurityInitial | null;
+  accountHomeHref?: string;
+  accountHomeLabel?: string;
+}) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("step1");
   const [showPasswordUpdate, setShowPasswordUpdate] = useState(false);
@@ -348,10 +356,10 @@ const LoginAccount = ({ initial }: { initial: LoginAndSecurityInitial | null }) 
   return (
     <div className="min-h-screen bg-zinc-50/50 py-6 md:py-8">
       <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
-        <BackButton href="/account-settings" />
+        <BackButton href={accountHomeHref} />
         <Breadcrumb 
           items={[
-            { label: "Account", href: "/account-settings" },
+            { label: accountHomeLabel, href: accountHomeHref },
             { label: "Login & security" }
           ]} 
         />

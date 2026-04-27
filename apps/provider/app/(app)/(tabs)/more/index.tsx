@@ -163,6 +163,9 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
       { icon: "layers-outline", label: "Catalogue & offerings", subtitle: "Services, products & packages", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899", bg: "#fdf2f8" },
       { icon: "people-circle-outline", label: "Team & scheduling", subtitle: "Staff, shifts & time clock", route: "/(app)/(tabs)/more/team", color: "#14b8a6", bg: "#ccfbf1" },
       { icon: "cash-outline", label: "Finance & billing", subtitle: "Earnings, payroll, invoices & gift cards", route: "/(app)/(tabs)/more/finance-billing-hub", color: "#22c55e", bg: "#f0fdf4" },
+      { icon: "card-outline", label: "Yoco payments", subtitle: "Connect Yoco and manage card devices", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb", bg: "#dbeafe" },
+      { icon: "ribbon-outline", label: "Subscription & plan", subtitle: "Upgrade, renew, cancel or change billing", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6", bg: "#ede9fe" },
+      { icon: "wallet-outline", label: "Payout bank accounts", subtitle: "Add or manage payout accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669", bg: "#d1fae5" },
       { icon: "swap-horizontal-outline", label: "Transactions & history", subtitle: "Payments, fees & sales", route: "/(app)/(tabs)/more/transactions-hub", color: "#0d9488", bg: "#ccfbf1" },
       { icon: "bar-chart-outline", label: "Reports", subtitle: "Analytics, activity & insights", route: "/(app)/(tabs)/more/reports", color: "#3b82f6", bg: "#eff6ff" },
       { icon: "images-outline", label: "Gallery", subtitle: "Portfolio & photos", route: "/(app)/(tabs)/more/gallery", color: "#f43f5e", bg: "#fff1f2" },
@@ -192,6 +195,9 @@ const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; rout
   { icon: "layers-outline", label: "Catalogue", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899" },
   { icon: "megaphone-outline", label: "Buy ads", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
   { icon: "card-outline", label: "Memberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
+  { icon: "phone-portrait-outline", label: "Yoco", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
+  { icon: "ribbon-outline", label: "Subscription", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
+  { icon: "wallet-outline", label: "Bank accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669" },
 ];
 
 export default function MoreScreen() {
@@ -457,7 +463,7 @@ export default function MoreScreen() {
                 {formatCurrency(availablePayout)}
               </Text>
               <Text style={{ marginTop: 2, fontSize: 13, color: "#047857" }}>
-                Available for payout
+                All-time available to withdraw
               </Text>
             </View>
           </View>

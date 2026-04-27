@@ -34,6 +34,7 @@ interface FinanceEarnings {
   travel_fees_total: number;
   travel_fees_this_period: number;
   refunds_total: number;
+  refunds_this_period?: number;
   walk_in_additional_charges_total?: number;
   walk_in_additional_charges_this_period?: number;
   tips_total?: number;
@@ -121,16 +122,17 @@ function isPlatformRetainedFee(tx: FinanceTransaction): boolean {
   );
 }
 
-const RANGE_OPTIONS: { value: "week" | "month" | "year"; label: string }[] = [
+const RANGE_OPTIONS: { value: "week" | "month" | "year" | "all"; label: string }[] = [
   { value: "week", label: "Week" },
   { value: "month", label: "Month" },
   { value: "year", label: "Year" },
+  { value: "all", label: "All" },
 ];
 
 /** Content-only for use in Finance hub (Overview tab). */
 export function FinanceOverviewContent() {
   const [refreshing, setRefreshing] = useState(false);
-  const [range, setRange] = useState<"week" | "month" | "year">("month");
+  const [range, setRange] = useState<"week" | "month" | "year" | "all">("month");
   const { screenPadding } = useResponsive();
   const { selectedLocationId } = useProvider();
   const currency = getTenantDefaultCurrency();
@@ -163,6 +165,11 @@ export function FinanceOverviewContent() {
 
   const earnings = data?.earnings ?? ({} as FinanceEarnings);
   const transactions = data?.transactions ?? [];
+  const rangeLabel =
+    range === "week" ? "Last 7 days" :
+    range === "month" ? "Month to date" :
+    range === "year" ? "Last 12 months" :
+    "All time";
 
   return (
     <>
@@ -190,9 +197,12 @@ export function FinanceOverviewContent() {
         showsVerticalScrollIndicator={false}
       >
         <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-emerald-50/50 p-4")}>
-          <Text style={twStyle("text-sm font-medium text-gray-600")}>Available balance</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-600")}>All-time available to withdraw</Text>
           <Text style={twStyle("mt-1 text-2xl font-bold text-gray-900")}>
             {formatCurrency(earnings.available_balance ?? 0, currency)}
+          </Text>
+          <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+            Platform-held payoutable earnings minus completed payouts and pending requests.
           </Text>
           {(earnings.pending_payouts ?? 0) > 0 && (
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
@@ -204,7 +214,7 @@ export function FinanceOverviewContent() {
         <View style={twStyle("mb-4 flex-row")}>
           <View style={[twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12 }]}>
             <Text style={twStyle("text-xs font-medium text-gray-500")}>
-              {range === "week" ? "This week" : range === "year" ? "This year" : "This month"}
+              {rangeLabel} earnings
             </Text>
             <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
               {formatCurrency(earnings.this_month ?? 0, currency)}
@@ -214,14 +224,17 @@ export function FinanceOverviewContent() {
                 style={twStyle(`mt-0.5 text-xs font-medium ${(earnings.growth_percentage ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`)}
               >
                 {(earnings.growth_percentage ?? 0) >= 0 ? "+" : ""}
-                {earnings.growth_percentage}% vs last {range === "week" ? "week" : range === "year" ? "year" : "month"}
+                {earnings.growth_percentage}% vs comparison period
               </Text>
             )}
           </View>
           <View style={twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4")}>
-            <Text style={twStyle("text-xs font-medium text-gray-500")}>Total earnings</Text>
+            <Text style={twStyle("text-xs font-medium text-gray-500")}>Selected period total</Text>
             <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
               {formatCurrency(earnings.total_earnings ?? 0, currency)}
+            </Text>
+            <Text style={twStyle("mt-1 text-[10px] text-gray-500")}>
+              Not the same basis as payout balance
             </Text>
           </View>
         </View>
@@ -234,9 +247,9 @@ export function FinanceOverviewContent() {
           (earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0) > 0 ||
           (earnings.gift_card_sales_this_period ?? 0) > 0 ||
           (earnings.membership_sales_this_period ?? 0) > 0 ||
-          (earnings.refunds_total ?? 0) > 0) && (
+          (earnings.refunds_this_period ?? earnings.refunds_total ?? 0) > 0) && (
           <>
-            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Revenue Streams</Text>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Revenue Streams ({rangeLabel})</Text>
             <View style={twStyle("mb-4 flex-row flex-wrap")}>
               {(earnings.product_sales_earnings_total ?? 0) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
@@ -287,11 +300,11 @@ export function FinanceOverviewContent() {
                   </Text>
                 </View>
               )}
-              {(earnings.refunds_total ?? 0) > 0 && (
+              {(earnings.refunds_this_period ?? earnings.refunds_total ?? 0) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-red-100 bg-red-50/60 p-3 mb-2"), { width: "48%" }]}>
                   <Text style={twStyle("text-xs font-medium text-red-700")}>Refunds</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-red-900")}>
-                    {formatCurrency(earnings.refunds_total, currency)}
+                    {formatCurrency(earnings.refunds_this_period ?? earnings.refunds_total ?? 0, currency)}
                   </Text>
                 </View>
               )}
@@ -311,7 +324,7 @@ export function FinanceOverviewContent() {
         <View style={twStyle("mb-2 flex-row items-center justify-between")}>
           <Text style={twStyle("text-sm font-semibold text-gray-700")}>Transactions</Text>
           {transactions.length > 0 && (
-            <Text style={twStyle("text-xs text-gray-500")}>{transactions.length} in this {range}</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{transactions.length} in {rangeLabel.toLowerCase()}</Text>
           )}
         </View>
         {transactions.length === 0 ? (

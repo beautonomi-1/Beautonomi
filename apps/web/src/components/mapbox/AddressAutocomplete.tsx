@@ -239,6 +239,10 @@ export default function AddressAutocomplete({
 
   const handleSelectSuggestion = (suggestion: AddressSuggestion) => {
     didSelectRef.current = true;
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
     const address = mapGeocodeFeatureToAddressParts(suggestion, {
       defaultCountryName,
     });
@@ -320,6 +324,7 @@ export default function AddressAutocomplete({
         createPortal(
           <div
             ref={suggestionsRef}
+            data-address-autocomplete-listbox="true"
             role="listbox"
             className="bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto"
             style={{
@@ -334,13 +339,22 @@ export default function AddressAutocomplete({
               <button
                 key={suggestion.id}
                 type="button"
+                data-address-autocomplete-option="true"
                 role="option"
                 aria-selected={index === selectedIndex}
-                onMouseDown={(e) => {
+                onPointerDown={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
                   handleSelectSuggestion(suggestion);
                 }}
-                onClick={() => handleSelectSuggestion(suggestion)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
                 onMouseEnter={() => setSelectedIndex(index)}
                 className={`w-full text-left px-4 py-3 hover:bg-[#FF0077]/5 transition-colors border-b border-gray-100 last:border-b-0 ${
                   index === selectedIndex ? "bg-[#FF0077]/10" : "bg-white"

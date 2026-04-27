@@ -7,7 +7,6 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
-import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 
 /**
  * GET /api/provider/finance
@@ -66,7 +65,11 @@ export async function GET(request: NextRequest) {
     let lastMonthStart: Date;
     let lastMonthEnd: Date;
 
-    if (range === "week") {
+    if (range === "all") {
+      startDate = new Date("1970-01-01T00:00:00.000Z");
+      lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else if (range === "week") {
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
       lastMonthStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
       lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
@@ -102,8 +105,7 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .gte("created_at", startIso)
       .lte("created_at", nowIso)
-      .order("created_at", { ascending: false })
-      .limit(MAX_FINANCE_TRANSACTIONS);
+      .order("created_at", { ascending: false });
 
     const { data: ledgerRows, error: ledgerError } = await financeQuery;
 
@@ -269,6 +271,20 @@ export async function GET(request: NextRequest) {
       }
       return s;
     }, 0);
+    const refundsThisPeriod = rows
+      .filter((r: any) => {
+        const d = new Date(r.created_at);
+        return d >= startDate && d <= now;
+      })
+      .reduce((s: number, r: any) => {
+        if (r.transaction_type === "refund") {
+          return s + Math.abs(Number(r.net ?? r.amount ?? 0));
+        }
+        if (r.transaction_type === "provider_earnings" && Number(r.net ?? 0) < 0) {
+          return s + Math.abs(Number(r.net ?? 0));
+        }
+        return s;
+      }, 0);
 
     const thisMonthTotal = providerEarningsThis;
     const lastMonthTotal = providerEarningsLast;
@@ -368,6 +384,7 @@ export async function GET(request: NextRequest) {
         travel_fees_total: travelFeesTotal,
         travel_fees_this_period: travelFeesThisPeriod,
         refunds_total: refundsTotal,
+        refunds_this_period: refundsThisPeriod,
         walk_in_additional_charges_total: walkInAdditionalChargesTotal,
         walk_in_additional_charges_this_period: walkInAdditionalChargesThisPeriod,
         tips_total: tipsTotal,

@@ -662,6 +662,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionRef.current = session;
   }, [user, isLoading, session]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (isSupabaseAuthLockError(event.reason)) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+    return () => window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+  }, []);
+
   // When navigating to provider portal with role customer, re-resolve role (e.g. staff get provider_staff)
   useEffect(() => {
     if (
