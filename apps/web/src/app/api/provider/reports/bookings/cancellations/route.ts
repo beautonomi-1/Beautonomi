@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get("to")
       ? endOfDay(new Date(searchParams.get("to")!))
       : endOfDay(new Date());
+    const locationId = searchParams.get("location_id") || undefined;
 
     const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysDiff > MAX_REPORT_DAYS) {
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get cancelled bookings (simplified query to avoid nested join issues)
-    const { data: cancelledBookings, error: bookingsError } = await supabaseAdmin
+    let cancelledBookingsQuery = supabaseAdmin
       .from("bookings")
       .select(
         `
@@ -53,6 +54,12 @@ export async function GET(request: NextRequest) {
       .lte("scheduled_at", toDate.toISOString())
       .order("cancelled_at", { ascending: false })
       .limit(MAX_BOOKINGS_FOR_REPORT);
+
+    if (locationId) {
+      cancelledBookingsQuery = cancelledBookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: cancelledBookings, error: bookingsError } = await cancelledBookingsQuery;
 
     if (bookingsError) {
       console.error("Error fetching cancelled bookings:", bookingsError);
@@ -91,13 +98,19 @@ export async function GET(request: NextRequest) {
     }
 
     // Get total bookings for cancellation rate (capped for performance)
-    const { data: allBookings } = await supabaseAdmin
+    let allBookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id")
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString())
       .limit(MAX_BOOKINGS_FOR_REPORT);
+
+    if (locationId) {
+      allBookingsQuery = allBookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: allBookings } = await allBookingsQuery;
 
     const totalBookings = allBookings?.length || 0;
     const totalCancelled = cancelledBookings?.length || 0;
@@ -112,7 +125,7 @@ export async function GET(request: NextRequest) {
         providerId,
         fromDate,
         toDate,
-        null,
+        locationId ?? null,
         { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES }
       );
       // Sum revenue for cancelled bookings (if they had finance_transactions)

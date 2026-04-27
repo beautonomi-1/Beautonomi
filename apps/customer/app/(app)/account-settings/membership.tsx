@@ -37,6 +37,7 @@ export default function MembershipScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [cancellingSalonId, setCancellingSalonId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -84,6 +85,37 @@ export default function MembershipScreen() {
           },
         },
       ]
+    );
+  };
+
+  const cancelSalonMembership = (membership: ProviderMembership) => {
+    Alert.alert(
+      "Cancel salon membership",
+      `Cancel your ${membership.plan_name} membership with ${membership.provider_name}? Your benefits will continue until the current expiry date.`,
+      [
+        { text: "Keep membership", style: "cancel" },
+        {
+          text: "Cancel",
+          style: "destructive",
+          onPress: async () => {
+            setCancellingSalonId(membership.id);
+            try {
+              const res = await api.post("/api/me/membership/cancel", {
+                provider_membership_id: membership.id,
+              });
+              if (res.error) {
+                Alert.alert("Error", getApiErrorMessage(res.error, "Failed to cancel"));
+              } else {
+                await load();
+              }
+            } catch (e) {
+              Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
+            } finally {
+              setCancellingSalonId(null);
+            }
+          },
+        },
+      ],
     );
   };
 
@@ -162,10 +194,8 @@ export default function MembershipScreen() {
               Your active memberships with providers. You get the listed discount on bookings at each salon.
             </Text>
             {providerMemberships.map((pm) => (
-              <TouchableOpacity
+              <View
                 key={pm.id}
-                onPress={() => pm.provider_slug && router.push({ pathname: "/(app)/partner-profile", params: { slug: pm.provider_slug } })}
-                activeOpacity={0.8}
                 style={{
                   backgroundColor: Colors.white,
                   borderRadius: 16,
@@ -191,9 +221,34 @@ export default function MembershipScreen() {
                   )}
                 </View>
                 {pm.provider_slug && (
-                  <Text style={{ fontSize: 13, color: Colors.primary, marginTop: 8, fontWeight: "500" }}>View provider →</Text>
+                  <TouchableOpacity
+                    onPress={() => router.push({ pathname: "/(app)/partner-profile", params: { slug: pm.provider_slug } })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View ${pm.provider_name}`}
+                    style={{ marginTop: 8 }}
+                  >
+                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>View provider →</Text>
+                  </TouchableOpacity>
                 )}
-              </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => cancelSalonMembership(pm)}
+                  disabled={cancellingSalonId === pm.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cancel ${pm.plan_name} membership with ${pm.provider_name}`}
+                  style={{
+                    marginTop: 12,
+                    paddingVertical: 10,
+                    borderWidth: 1,
+                    borderColor: "#EF4444",
+                    borderRadius: 12,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ color: "#DC2626", fontWeight: "500" }}>
+                    {cancellingSalonId === pm.id ? "Cancelling..." : "Cancel salon membership"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             ))}
           </View>
         )}

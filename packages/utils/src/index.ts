@@ -101,6 +101,10 @@ export {
   type BookingPricingResult,
 } from "./booking/calculateBookingPricing";
 export { mapToBookingStatusEnum } from "./booking/mapToBookingStatusEnum";
+export {
+  getHoldTimeRemaining,
+  serverNowToClockOffsetMs,
+} from "./booking/holdTimeRemaining";
 export { safeNum } from "./safeNum";
 export {
   coerceChipMultiValue,

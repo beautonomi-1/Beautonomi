@@ -223,6 +223,8 @@ export async function GET(
     }
 
     return successResponse({
+      /** ISO time from server — use with client `Date.now()` to correct clock skew for hold countdowns. */
+      server_now: new Date().toISOString(),
       hold_id: hold.id,
       provider_id: hold.provider_id,
       provider_slug: providerSlug,

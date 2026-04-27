@@ -247,6 +247,7 @@ async function handlePaymentNotification(
       const { data: existingPayment } = await supabase
         .from("booking_payments")
         .select("id")
+        .eq("payment_provider", "yoco")
         .eq("payment_provider_id", id)
         .maybeSingle();
       if (existingPayment) {
@@ -279,6 +280,10 @@ async function handlePaymentNotification(
         });
       
       if (paymentError) {
+        if (paymentError.code === "23505") {
+          console.log(`Yoco payment ${id} was recorded concurrently, skipping duplicate`);
+          return;
+        }
         console.error("Error creating booking_payment:", paymentError);
         throw new Error(`Failed to create booking_payment for Yoco payment ${id}: ${paymentError.message}`);
       } else {

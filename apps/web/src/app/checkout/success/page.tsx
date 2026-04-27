@@ -129,17 +129,51 @@ function CheckoutSuccessContent() {
 
   useEffect(() => {
     if (!resolvedBookingId || isWaitlist) return;
-    fetch(`/api/me/bookings/${resolvedBookingId}`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((json) => {
-        const data = json?.data;
-        if (data?.selected_datetime) setBookingData(data);
-      })
-      .catch(() => {});
-  }, [resolvedBookingId, isWaitlist]);
+    let cancelled = false;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-  const isConfirmed = bookingData?.status === "confirmed" || bookingData?.status === "completed";
+    const loadBooking = async () => {
+      attempts += 1;
+      try {
+        const response = await fetch(`/api/me/bookings/${resolvedBookingId}`, {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        });
+        const json = response.ok ? await response.json() : null;
+        const data = json?.data;
+        if (cancelled) return;
+        if (data?.selected_datetime) {
+          setBookingData(data);
+        }
+        const paymentStatus = typeof data?.payment_status === "string" ? data.payment_status : "";
+        const shouldKeepPolling =
+          !!paystackReference &&
+          attempts < POLL_MAX_ATTEMPTS &&
+          (!paymentStatus || paymentStatus === "pending");
+        if (shouldKeepPolling) {
+          timer = setTimeout(loadBooking, POLL_INTERVAL_MS);
+        }
+      } catch {
+        if (!cancelled && paystackReference && attempts < POLL_MAX_ATTEMPTS) {
+          timer = setTimeout(loadBooking, POLL_INTERVAL_MS);
+        }
+      }
+    };
+
+    void loadBooking();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [resolvedBookingId, isWaitlist, paystackReference]);
+
   const isPendingApproval = bookingData?.status === "pending" && !isWaitlist;
+  const isFinalizingPayment =
+    !isWaitlist &&
+    !isCustomOffer &&
+    !!paystackReference &&
+    (!bookingData || bookingData.payment_status === "pending");
   const walletAmountUsed = Number(bookingData?.wallet_amount ?? 0);
   const giftCardAmountUsed = Number(bookingData?.gift_card_amount ?? 0);
   const isSplitPayment = (walletAmountUsed > 0 || giftCardAmountUsed > 0) && Number(bookingData?.total_paid ?? 0) > 0;
@@ -265,7 +299,9 @@ function CheckoutSuccessContent() {
           ) : (
             <>
               <h1 className="text-2xl font-bold mb-2" style={{ color: TEXT_PRIMARY }}>
-                {isPendingApproval
+                {isFinalizingPayment
+                  ? "Finalizing payment..."
+                  : isPendingApproval
                   ? "Booking received!"
                   : showBookingLink
                     ? "Booking confirmed!"
@@ -276,7 +312,11 @@ function CheckoutSuccessContent() {
                   Booking #{bookingNumber}
                 </p>
               )}
-              {isPendingApproval ? (
+              {isFinalizingPayment ? (
+                <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
+                  We&apos;re confirming your payment with Paystack. This usually takes a few seconds.
+                </p>
+              ) : isPendingApproval ? (
                 <>
                   <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
                     Your payment is received. The provider will confirm your appointment shortly.

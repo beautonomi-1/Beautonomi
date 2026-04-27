@@ -24,6 +24,7 @@ import {
   formatReportRangeCaption,
   type ReportDateRangeKey,
 } from "@/lib/reportDateRanges";
+import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
 const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
@@ -119,7 +120,7 @@ export default function RevenueReport() {
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
   const { from, to } = getReportDateRange(dateRange);
   const rangeCaption = formatReportRangeCaption(from, to);
-  const revenueReportUrl = `/api/provider/reports/revenue?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  const revenueReportUrl = appendReportLocation(`/api/provider/reports/revenue?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, timedOut, refresh } = useApi<RevenueData>(
     revenueReportUrl,
     { timeoutMs: 15000 }

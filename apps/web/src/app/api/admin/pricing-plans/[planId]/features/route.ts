@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireAdminSection,
   successResponse,
@@ -25,7 +25,7 @@ export async function GET(
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const { planId } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
     const { data: rows, error } = await supabase
       .from("pricing_plan_features")
@@ -58,7 +58,7 @@ export async function PUT(
       return errorResponse("Invalid body", "VALIDATION_ERROR", 400, parsed.error.issues);
     }
 
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
     const { data: plan, error: planErr } = await supabase
       .from("pricing_plans")

@@ -11,6 +11,8 @@ import { fetcher } from "@/lib/http/fetcher";
 import { format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
+import { addLocationIdToUrl } from "@/app/provider/reports/utils/report-api-url";
 import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface BusinessDashboardData {
@@ -43,6 +45,7 @@ interface BusinessDashboardData {
 }
 
 export default function BusinessDashboardReport() {
+  const { selectedLocationId } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [data, setData] = useState<BusinessDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,7 +53,7 @@ export default function BusinessDashboardReport() {
 
   useEffect(() => {
     loadReport();
-  }, []);
+  }, [selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -58,7 +61,7 @@ export default function BusinessDashboardReport() {
       setError(null);
 
       const response = await fetcher.get<{ data: BusinessDashboardData }>(
-        `/api/provider/reports/business/dashboard`
+        addLocationIdToUrl("/api/provider/reports/business/dashboard", selectedLocationId)
       );
       setData(response.data);
     } catch (err) {

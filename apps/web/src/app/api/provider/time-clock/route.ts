@@ -1,6 +1,17 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, getProviderIdForUser, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
+
+type StaffTimeCardRow = {
+  id: string;
+  staff_id: string;
+  staff?: { name?: string | null } | null;
+  date: string;
+  clock_in_time?: string | null;
+  clock_out_time?: string | null;
+  notes?: string | null;
+  total_hours?: number | null;
+};
 
 /**
  * GET /api/provider/time-clock
@@ -54,7 +65,7 @@ export async function GET(request: NextRequest) {
     // fields with the US-locale string ("02:45 PM") and then POSTed that
     // straight back, guaranteeing a 400. Expose the unformatted timestamps
     // so clients can parse them into the device's local HH:MM for editing.
-    const transformed = (timeCards || []).map((card: any) => ({
+    const transformed = ((timeCards || []) as StaffTimeCardRow[]).map((card) => ({
       id: card.id,
       team_member_id: card.staff_id,
       team_member_name: card.staff?.name || "Unknown",
@@ -87,13 +98,13 @@ export async function POST(request: NextRequest) {
     const { pin } = body;
 
     if (!pin || pin.length !== 4) {
-      return successResponse({ error: "Invalid PIN" }, 400);
+      return errorResponse("Invalid PIN", "INVALID_PIN", 400);
     }
 
     // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
-      return successResponse({ error: "Provider not found" }, 404);
+      return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
     }
 
     // Find staff member by PIN
@@ -106,7 +117,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (staffError || !staff) {
-      return successResponse({ error: "Invalid PIN" }, 401);
+      return errorResponse("Invalid PIN", "INVALID_PIN", 401);
     }
 
     // Check if already clocked in
@@ -120,7 +131,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (activeTimeCard) {
-      return successResponse({ error: "Already clocked in" }, 400);
+      return errorResponse("Already clocked in", "ALREADY_CLOCKED_IN", 400);
     }
 
     // Create time card entry

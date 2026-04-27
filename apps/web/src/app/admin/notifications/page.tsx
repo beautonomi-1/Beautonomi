@@ -87,10 +87,14 @@ export default function AdminNotifications() {
       setError(null);
 
       if (activeTab === "templates") {
-        const response = await fetcher.get<{ data: NotificationTemplate[]; error: null }>(
-          "/api/admin/notifications/templates"
+        const response = await fetcher.get<{
+          data: NotificationTemplate[] | { templates?: NotificationTemplate[] };
+          error: null;
+        }>(
+          "/api/admin/notification-templates"
         );
-        setTemplates(response.data || []);
+        const payload = response.data;
+        setTemplates(Array.isArray(payload) ? payload : payload?.templates ?? []);
       } else if (activeTab === "logs") {
         const response = await fetcher.get<{
           data: NotificationLog[];
@@ -116,7 +120,7 @@ export default function AdminNotifications() {
   const handleDeleteTemplate = async (id: string) => {
     if (!confirm("Are you sure you want to delete this template?")) return;
     try {
-      await fetcher.delete(`/api/admin/notifications/templates/${id}`);
+      await fetcher.delete(`/api/admin/notification-templates/${id}`);
       toast.success("Template deleted");
       loadData();
     } catch {
@@ -1257,10 +1261,10 @@ function TemplateDialog({
       };
 
       if (template) {
-        await fetcher.put(`/api/admin/notifications/templates/${template.id}`, payload);
+        await fetcher.patch(`/api/admin/notification-templates/${template.id}`, payload);
         toast.success("Template updated");
       } else {
-        await fetcher.post("/api/admin/notifications/templates", payload);
+        await fetcher.post("/api/admin/notification-templates", payload);
         toast.success("Template created");
       }
       onSave();

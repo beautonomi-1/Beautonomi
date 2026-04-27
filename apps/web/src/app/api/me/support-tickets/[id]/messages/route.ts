@@ -66,6 +66,11 @@ export async function POST(
       return errorResponse("You can only reply to your own tickets", "FORBIDDEN", 403);
     }
 
+    const currentStatus = String(ticket.status ?? "");
+    if (currentStatus === "resolved" || currentStatus === "closed") {
+      return errorResponse("This ticket is closed to new replies", "TICKET_CLOSED", 409);
+    }
+
     const bodyText = message.slice(0, 10000) || (attachments.length ? "(attachment)" : "");
 
     const { data: newMessage, error: insertError } = await supabase
@@ -86,9 +91,8 @@ export async function POST(
       updated_at: new Date().toISOString(),
       last_customer_reply_at: new Date().toISOString(),
     };
-    const st = String(ticket.status ?? "");
-    if (st === "open" || st === "in_progress") {
-      ticketUpdate.status = "waiting_customer";
+    if (currentStatus === "waiting_customer") {
+      ticketUpdate.status = "in_progress";
     }
     await supabase.from("support_tickets").update(ticketUpdate).eq("id", id);
 

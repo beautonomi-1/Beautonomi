@@ -19,7 +19,7 @@ import {
   slicesFromBookingCart,
 } from "@/lib/booking-slot-math/blocked-window-minutes";
 
-const BOOKING_MAX_ADVANCE_DAYS = 90;
+const FALLBACK_MAX_ADVANCE_DAYS = 365;
 const STRIP_DAYS = 21;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -72,6 +72,11 @@ interface StepCalendarProps {
   onNext: () => void;
   providerSlug: string;
 }
+
+type OnlineBookingSettings = {
+  min_notice_minutes?: number | null;
+  max_advance_days?: number | null;
+};
 
 interface TimeSlot {
   time: string;
@@ -132,6 +137,7 @@ export default function StepCalendar({
 }: StepCalendarProps) {
   const searchParams = useSearchParams();
   const excludeHoldId = searchParams.get("hold_id")?.trim() || undefined;
+  const [onlineBookingSettings, setOnlineBookingSettings] = useState<OnlineBookingSettings | null>(null);
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(() =>
     coerceSelectedDate(bookingState.selectedDate)
@@ -150,16 +156,51 @@ export default function StepCalendar({
     return new Date(n.getFullYear(), n.getMonth(), 1);
   });
   const { t } = useTranslation();
+  const minNoticeMinutes =
+    typeof onlineBookingSettings?.min_notice_minutes === "number" &&
+    Number.isFinite(onlineBookingSettings.min_notice_minutes) &&
+    onlineBookingSettings.min_notice_minutes >= 0
+      ? Math.floor(onlineBookingSettings.min_notice_minutes)
+      : 0;
+  const maxAdvanceDays =
+    typeof onlineBookingSettings?.max_advance_days === "number" &&
+    Number.isFinite(onlineBookingSettings.max_advance_days) &&
+    onlineBookingSettings.max_advance_days >= 1
+      ? Math.floor(onlineBookingSettings.max_advance_days)
+      : FALLBACK_MAX_ADVANCE_DAYS;
 
   const today = startOfLocalDay(new Date());
   const lastSelectableDay = new Date(today);
-  lastSelectableDay.setDate(today.getDate() + BOOKING_MAX_ADVANCE_DAYS - 1);
+  lastSelectableDay.setDate(today.getDate() + maxAdvanceDays - 1);
   const minViewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const maxViewMonth = new Date(lastSelectableDay.getFullYear(), lastSelectableDay.getMonth(), 1);
   const canPrevMonth = startOfLocalDay(monthViewDate).getTime() > startOfLocalDay(minViewMonth).getTime();
   const canNextMonth = startOfLocalDay(monthViewDate).getTime() < startOfLocalDay(maxViewMonth).getTime();
 
   const selectedDay = coerceSelectedDate(selectedDate);
+
+  useEffect(() => {
+    if (!bookingState.providerId) {
+      setOnlineBookingSettings(null);
+      return;
+    }
+    let cancelled = false;
+    fetcher
+      .get<{ data?: OnlineBookingSettings }>(
+        `/api/public/provider-online-booking-settings?provider_id=${encodeURIComponent(bookingState.providerId)}`,
+        { staleTimeMs: 60_000 },
+      )
+      .then((res) => {
+        if (cancelled) return;
+        setOnlineBookingSettings(res?.data ?? (res as OnlineBookingSettings));
+      })
+      .catch(() => {
+        if (!cancelled) setOnlineBookingSettings(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookingState.providerId]);
 
   const selectableSlots = useMemo(() => {
     if (!availability?.slots?.length || !selectedDay) return [];
@@ -208,6 +249,16 @@ export default function StepCalendar({
         bookingState.selectedLocationId
           ? `&locationId=${encodeURIComponent(bookingState.selectedLocationId)}`
           : "";
+      const policyParam = `&min_notice_minutes=${encodeURIComponent(String(minNoticeMinutes))}&max_advance_days=${encodeURIComponent(String(maxAdvanceDays))}`;
+      const selectedOfferingIds = [
+        ...new Set(bookingState.selectedServices.map((service) => service.id).filter(Boolean)),
+      ];
+      const serviceParam =
+        selectedOfferingIds.length > 1
+          ? `&service_ids=${encodeURIComponent(selectedOfferingIds.join(","))}`
+          : selectedOfferingIds.length === 1
+            ? `&service_id=${encodeURIComponent(selectedOfferingIds[0])}`
+            : "";
 
       const uniqueStaffIds = [
         ...new Set(
@@ -218,7 +269,7 @@ export default function StepCalendar({
       ];
 
       const buildUrl = (sid: string | null) =>
-        `/api/availability?staffId=${sid || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}${providerParam}${locationParam}`;
+        `/api/availability?staffId=${sid || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}${providerParam}${locationParam}${serviceParam}${policyParam}`;
 
       if (uniqueStaffIds.length <= 1) {
         const response = await fetcher.get<{ data: AvailabilityData }>(
@@ -271,11 +322,11 @@ export default function StepCalendar({
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.holdId, bookingState.providerId, bookingState.selectedLocationId]);
+  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.holdId, bookingState.providerId, bookingState.selectedLocationId, minNoticeMinutes, maxAdvanceDays]);
 
   useEffect(() => {
     if (selectedDate) loadAvailability();
-  }, [selectedDate, loadAvailability]);
+  }, [selectedDate, loadAvailability, bookingState.availabilityRefreshToken]);
 
   useEffect(() => {
     if (!selectedDate) return;
@@ -321,6 +372,7 @@ export default function StepCalendar({
       selectedSlotEnd: null,
       selectedSlotAvailableStaffIds: null,
       holdId: null,
+      holdExpiresAt: null,
     });
   };
 
@@ -341,7 +393,7 @@ export default function StepCalendar({
       selectedSlotAvailableStaffIds: publicSlot?.available_staff_ids ?? null,
     };
     if (time !== bookingState.selectedTimeSlot) {
-      updateBookingState({ ...updates, holdId: null });
+      updateBookingState({ ...updates, holdId: null, holdExpiresAt: null });
     } else {
       updateBookingState(updates);
     }
@@ -359,7 +411,7 @@ export default function StepCalendar({
     strip.scrollTo({ left: btnLeft - stripWidth / 2 + btnWidth / 2, behavior: "smooth" });
   }, [selectedDay]);
 
-  const stripCount = Math.min(BOOKING_MAX_ADVANCE_DAYS, STRIP_DAYS);
+  const stripCount = Math.min(maxAdvanceDays, STRIP_DAYS);
   const stripDates: Date[] = [];
   for (let i = 0; i < stripCount; i++) {
     const date = new Date(today);

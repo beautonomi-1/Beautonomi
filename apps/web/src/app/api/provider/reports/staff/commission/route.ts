@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
       ? endOfDay(new Date(searchParams.get("to")!))
       : endOfDay(new Date());
     const staffIdFilter = searchParams.get("staff_id");
+    const locationId = searchParams.get("location_id") || undefined;
 
     // Get staff members
     let staffQuery = supabaseAdmin
@@ -84,7 +85,8 @@ export async function GET(request: NextRequest) {
           providerId,
           staff.id,
           fromDate,
-          toDate
+          toDate,
+          locationId
         );
 
         const serviceRate = staff.service_commission_rate ?? staff.commission_rate ?? 0;

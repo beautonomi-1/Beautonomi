@@ -138,7 +138,7 @@ export default function DistanceSettingsScreen() {
                   maximumValue={100}
                   step={1}
                   value={sliderValue}
-                  onValueChange={(value) =>
+                  onValueChange={(value: number) =>
                     update(() => setMaxDistance(String(Math.round(value))))
                   }
                   onSlidingStart={() =>

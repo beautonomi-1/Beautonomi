@@ -23,6 +23,7 @@ import {
   formatReportRangeCaption,
   type ReportDateRangeKey,
 } from "@/lib/reportDateRanges";
+import { appendReportLocation } from "@/lib/reportLocationQuery";
 
 const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
@@ -56,7 +57,7 @@ export default function StaffReport() {
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
   const { from, to } = getReportDateRange(dateRange);
   const rangeCaption = formatReportRangeCaption(from, to);
-  const staffReportUrl = `/api/provider/reports/staff?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  const staffReportUrl = appendReportLocation(`/api/provider/reports/staff?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, refresh } = useApi<StaffData>(staffReportUrl);
 
   // §Provider-audit 2026-04 (round 8): key selected staff by id when the

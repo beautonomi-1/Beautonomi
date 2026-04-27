@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
       ? endOfDay(new Date(searchParams.get("to")!))
       : endOfDay(new Date());
     const staffId = searchParams.get("staffId");
+    const locationId = searchParams.get("location_id") || undefined;
 
     // Get all staff members for this provider
     let staffQuery = supabaseAdmin
@@ -86,11 +87,12 @@ export async function GET(request: NextRequest) {
       supabaseAdmin,
       providerId,
       fromDate,
-      toDate
+      toDate,
+      locationId ?? null
     );
 
     // Get bookings for date range
-    const bookingsQuery = supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from('bookings')
       .select(`
         id,
@@ -108,6 +110,10 @@ export async function GET(request: NextRequest) {
       .eq('provider_id', providerId)
       .gte('scheduled_at', fromDate.toISOString())
       .lte('scheduled_at', toDate.toISOString());
+
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
 
     const { data: bookings, error: bookingsError } = await bookingsQuery;
 
@@ -128,15 +134,18 @@ export async function GET(request: NextRequest) {
       .gte('created_at', fromDate.toISOString())
       .lte('created_at', toDate.toISOString());
 
+    const bookingIdSet = new Set((bookings || []).map((b: { id: string }) => b.id));
+
     // Calculate performance metrics for each staff member
     const staffPerformance = await Promise.all((staffMembers || []).map(async (staff: any) => {
       const staffBookings = bookings?.filter((booking: any) =>
         booking.booking_services?.some((service: any) => service.staff_id === staff.id)
       ) || [];
 
-      // Filter reviews by staff_rating JSONB field
+      // Filter reviews by staff_rating JSONB field (scoped to bookings in this report, e.g. location)
       // staff_rating format: {staff_id: "...", rating: 5} or null
       const staffReviews = (reviews || []).filter((r: any) => {
+        if (r.booking_id && !bookingIdSet.has(r.booking_id)) return false;
         if (!r.staff_rating || typeof r.staff_rating !== 'object') return false;
         return r.staff_rating.staff_id === staff.id;
       }) || [];
@@ -208,7 +217,8 @@ export async function GET(request: NextRequest) {
           providerId,
           staff.id,
           fromDate,
-          toDate
+          toDate,
+          locationId
         );
         commissionEarned = commissionResult.totalCommission;
       }

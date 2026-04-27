@@ -3,7 +3,10 @@
   "compilerOptions": {
     "strict": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "expo-modules-core": ["./node_modules/expo-modules-core"]
+    }
   },
   "include": ["**/*.ts", "**/*.tsx", "nativewind-env.d.ts", "expo-clipboard.d.ts"],
   "exclude": ["node_modules", "**/__tests__/**", "**/*.test.ts", "**/*.test.tsx"]

@@ -4,6 +4,13 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import {
+  sumTipNet,
+  sumPlatformRetainedFees,
+  sumRefundsLikeFinance,
+  sumCancellationFeeNetAbs,
+  sumSubscriptionAndAdsExpenses,
+} from "@/lib/reports/analytics-ledger-breakdown";
+import {
   subMonths,
   startOfMonth,
   endOfMonth,
@@ -39,7 +46,9 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) {
       return successResponse({
-        revenue: { total: 0, thisMonth: 0, lastMonth: 0, growth: "0" },
+        revenue: { total: 0, thisMonth: 0, lastMonth: 0, growth: "0", period: "month", all_time: 0, current_period: 0, previous_period: 0 },
+        earnings_breakdown: { basis: "", all_time: {}, current_period: {}, expenses: { all_time: 0, current_period: 0 } },
+        expenses: { total: 0, this_month: 0, note: "Includes subscription fees, ad campaign payments, and other platform charges" },
         bookings: { total: 0, thisMonth: 0, lastMonth: 0, upcoming: 0, growth: "0" },
         customers: { total: 0, repeat: 0, new: 0 },
         services: [],
@@ -236,66 +245,103 @@ export async function GET(request: NextRequest) {
       bookingsGrowth = growth.toFixed(1);
     }
 
-    // Fetch tips, expenses (subscriptions & ads), and platform commission for this provider
-    const EXPENSE_TYPES = ["provider_subscription_payment", "provider_ads_payment", "provider_expense"];
-    const TIP_TYPE = "tip";
-    const REFUND_TYPE = "refund";
+    const currentRange = { from: thisMonthStart, to: thisMonthEndDate };
 
-    let tipsTotal = 0;
-    let tipsThisMonth = 0;
-    let expensesTotal = 0;
-    let expensesThisMonth = 0;
-    let refundsTotal = 0;
-    let platformFeesTotal = 0;
-    let cancellationFeesTotal = 0;
-    let cancellationFeesThisMonth = 0;
-    const CANCELLATION_FEE_TYPE = "cancellation_fee";
+    let allTimeLB = {
+      tips_net: 0,
+      platform_fees_retained: 0,
+      refunds: 0,
+      cancellation_fees: 0,
+      expenses_abs: 0,
+    };
+    let currentLB = { ...allTimeLB };
 
     try {
-      const [tipsAllQ, tipsMonthQ, expAllQ, expMonthQ, refAllQ, platFeeQ, cancelAllQ, cancelMonthQ] = await Promise.all([
-        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", TIP_TYPE),
-        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", TIP_TYPE).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
-        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).in("transaction_type", EXPENSE_TYPES),
-        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).in("transaction_type", EXPENSE_TYPES).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
-        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", REFUND_TYPE),
-        supabaseAdmin.from("finance_transactions").select("net").eq("provider_id", providerId).eq("transaction_type", "payment"),
-        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", CANCELLATION_FEE_TYPE),
-        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", CANCELLATION_FEE_TYPE).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
-      ]);
-
-      tipsTotal = (tipsAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
-      tipsThisMonth = (tipsMonthQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
-      expensesTotal = (expAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
-      expensesThisMonth = (expMonthQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
-      refundsTotal = (refAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
-      platformFeesTotal = (platFeeQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.net || 0)), 0);
-      cancellationFeesTotal = (cancelAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
-      cancellationFeesThisMonth = (cancelMonthQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      const [atTips, atPlat, atRef, atCancel, atExp, curTips, curPlat, curRef, curCancel, curExp] =
+        await Promise.all([
+          sumTipNet(supabaseAdmin, providerId),
+          sumPlatformRetainedFees(supabaseAdmin, providerId),
+          sumRefundsLikeFinance(supabaseAdmin, providerId),
+          sumCancellationFeeNetAbs(supabaseAdmin, providerId),
+          sumSubscriptionAndAdsExpenses(supabaseAdmin, providerId),
+          sumTipNet(supabaseAdmin, providerId, currentRange),
+          sumPlatformRetainedFees(supabaseAdmin, providerId, currentRange),
+          sumRefundsLikeFinance(supabaseAdmin, providerId, currentRange),
+          sumCancellationFeeNetAbs(supabaseAdmin, providerId, currentRange),
+          sumSubscriptionAndAdsExpenses(supabaseAdmin, providerId, currentRange),
+        ]);
+      allTimeLB = {
+        tips_net: atTips,
+        platform_fees_retained: atPlat,
+        refunds: atRef,
+        cancellation_fees: atCancel,
+        expenses_abs: atExp.asAbs,
+      };
+      currentLB = {
+        tips_net: curTips,
+        platform_fees_retained: curPlat,
+        refunds: curRef,
+        cancellation_fees: curCancel,
+        expenses_abs: curExp.asAbs,
+      };
     } catch (e) {
       console.warn("Provider finance breakdown query failed:", e);
     }
 
+    const earningsBasis =
+      "Headline service revenue = sum of net `provider_earnings` in range (platform-settled; may exclude direct walk-in cash). " +
+      "Tips are separate `tip` rows (net). Platform retained = `service_fee` + `platform_fee` (absolute). " +
+      "Refunds = `refund` rows + negative `provider_earnings`, aligned with the finance page.";
+
     return successResponse({
+      period,
       revenue: {
+        // total: all-time `provider_earnings` net (headline) — use `all_time` for new clients
         total: totalRevenue,
+        all_time: totalRevenue,
         thisMonth: thisMonthRevenue,
+        current_period: thisMonthRevenue,
         lastMonth: lastMonthRevenue,
+        previous_period: lastMonthRevenue,
         growth: revenueGrowth,
+        period,
       },
       earnings_breakdown: {
+        basis: earningsBasis,
+        all_time: {
+          service_earnings_net: totalRevenue,
+          tips_net: allTimeLB.tips_net,
+          cancellation_fees: allTimeLB.cancellation_fees,
+          refunds: allTimeLB.refunds,
+          platform_fees_retained: allTimeLB.platform_fees_retained,
+        },
+        current_period: {
+          start: thisMonthStart.toISOString(),
+          end: thisMonthEndDate.toISOString(),
+          period,
+          service_earnings_net: thisMonthRevenue,
+          tips_net: currentLB.tips_net,
+          cancellation_fees: currentLB.cancellation_fees,
+          refunds: currentLB.refunds,
+          platform_fees_retained: currentLB.platform_fees_retained,
+        },
+        // Legacy flat keys (prefer all_time / current_period)
         service_earnings: totalRevenue,
-        cancellation_fees: cancellationFeesTotal,
-        cancellation_fees_this_month: cancellationFeesThisMonth,
-        tips: tipsTotal,
-        tips_this_month: tipsThisMonth,
-        refunds: refundsTotal,
-        platform_fees_paid: platformFeesTotal,
-        net_after_refunds: totalRevenue + cancellationFeesTotal + tipsTotal - refundsTotal,
+        cancellation_fees: allTimeLB.cancellation_fees,
+        cancellation_fees_this_month: currentLB.cancellation_fees,
+        tips: allTimeLB.tips_net,
+        tips_this_month: currentLB.tips_net,
+        refunds: allTimeLB.refunds,
+        refunds_this_month: currentLB.refunds,
+        platform_fees_paid: allTimeLB.platform_fees_retained,
+        platform_fees_retained_this_month: currentLB.platform_fees_retained,
       },
       expenses: {
-        total: expensesTotal,
-        this_month: expensesThisMonth,
-        note: "Includes subscription fees, ad campaign payments, and other platform charges",
+        total: allTimeLB.expenses_abs,
+        this_month: currentLB.expenses_abs,
+        all_time: allTimeLB.expenses_abs,
+        current_period: currentLB.expenses_abs,
+        note: "Includes subscription fees, ad campaign payments, and other platform charges (absolute sum of net amounts).",
       },
       bookings: {
         total: totalBookings,

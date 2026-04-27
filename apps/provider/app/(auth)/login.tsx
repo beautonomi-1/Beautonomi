@@ -354,13 +354,13 @@ export default function LoginScreen() {
         </View>
 
         <Text
-          style={{ textAlign: "center", fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 6 }}
+          style={{ textAlign: "center", fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 6, letterSpacing: -0.3 }}
           accessibilityRole="header"
         >
-          {t("auth.login")}
+          Welcome back
         </Text>
-        <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", marginBottom: 28 }}>
-          Welcome back to Beautonomi
+        <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 28 }}>
+          {t("auth.login")} · Beautonomi for service pros
         </Text>
 
         {/* Account status message (deactivated/suspended redirect) */}

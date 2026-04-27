@@ -11,6 +11,7 @@ import { Colors } from "@/constants/colors";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
+import { formatCurrency } from "@/lib/format";
 /** Profile completion API response (GET /api/provider/profile-completion) */
 type ProfileCompletionItem = {
   id: string;
@@ -24,6 +25,35 @@ type ProfileCompletionData = {
   total: number;
   percentage: number;
   items: ProfileCompletionItem[];
+};
+
+type FinanceSummaryData = {
+  earnings?: {
+    available_balance?: number;
+    pending_payouts?: number;
+    minimum_payout_amount?: number;
+  };
+};
+
+type PayoutAccountSummary = {
+  id: string;
+  account_name?: string | null;
+  bank_name?: string | null;
+  account_number_last4?: string | null;
+  account_number?: string | null;
+  active?: boolean;
+  is_primary?: boolean;
+};
+
+type PayoutScheduleData = {
+  payout_schedule?: string;
+  payout_hold_days?: number;
+  next_payout_date?: string | null;
+  next_payout_description?: string | null;
+};
+
+type TeamAccessData = {
+  can_process_payments?: boolean;
 };
 
 /**
@@ -170,14 +200,42 @@ export default function MoreScreen() {
     email?: string | null;
     phone?: string | null;
     avatar_url?: string | null;
+    /** From GET /api/me/profile: business (`providers`) rating when the user is owner/staff */
+    provider_rating_average?: number | null;
+    provider_review_count?: number | null;
   };
   const { data: meProfile, refresh: refreshMeProfile } = useApi<MeProfileLite>("/api/me/profile", { staleTimeMs: 45_000 });
+  const { data: financeSummary, refresh: refreshFinanceSummary } = useApi<FinanceSummaryData>("/api/provider/finance?range=month", { staleTimeMs: 30_000 });
+  const { data: payoutAccounts, loading: payoutAccountsLoading, refresh: refreshPayoutAccounts } = useApi<PayoutAccountSummary[]>("/api/provider/payout-accounts", { staleTimeMs: 30_000 });
+  const { data: payoutSchedule, refresh: refreshPayoutSchedule } = useApi<PayoutScheduleData>("/api/provider/payouts/next-date", { staleTimeMs: 60_000 });
+  const { data: teamAccess } = useApi<TeamAccessData>("/api/provider/team-access", { staleTimeMs: 60_000 });
   const completion = completionData ?? null;
   const completionItems = completion?.items ?? [];
   const completionPct = completion?.percentage ?? 0;
   const showCompletionCard = completionItems.length > 0 && completionPct < 100;
   const firstIncompleteRoute = completionItems.find((i) => !i.completed)?.route;
   const showCompletionError = !completionLoading && !!completionError && !completionData;
+  const availablePayout = Number(financeSummary?.earnings?.available_balance ?? 0);
+  const pendingPayouts = Number(financeSummary?.earnings?.pending_payouts ?? 0);
+  const minimumPayout = Number(financeSummary?.earnings?.minimum_payout_amount ?? 100);
+  const accounts = Array.isArray(payoutAccounts) ? payoutAccounts : [];
+  const primaryPayoutAccount =
+    accounts.find((account) => account.is_primary === true) ??
+    accounts.find((account) => account.active !== false) ??
+    accounts[0];
+  const hasPayoutAccount = accounts.length > 0;
+  const payoutAccountLast4 = primaryPayoutAccount?.account_number_last4 ?? primaryPayoutAccount?.account_number?.slice(-4);
+  const canRequestPayouts = teamAccess?.can_process_payments !== false;
+  const requestPayoutDisabledReason = !canRequestPayouts
+    ? "Requires payment-processing permission"
+    : !hasPayoutAccount
+      ? "Add a bank account first"
+      : availablePayout < minimumPayout
+        ? `Minimum payout is ${formatCurrency(minimumPayout)}`
+        : null;
+  const nextPayoutDate = payoutSchedule?.next_payout_date
+    ? new Date(payoutSchedule.next_payout_date)
+    : null;
 
   function completionItemLabel(item: ProfileCompletionItem) {
     return t(`provider.profileCompletionItems.${item.id}` as never);
@@ -187,17 +245,26 @@ export default function MoreScreen() {
     useCallback(() => {
       void refreshCompletion();
       void refreshMeProfile();
-    }, [refreshCompletion, refreshMeProfile])
+      void refreshFinanceSummary();
+      void refreshPayoutAccounts();
+      void refreshPayoutSchedule();
+    }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule])
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refreshCompletion(), refreshMeProfile()]);
+      await Promise.all([
+        refreshCompletion(),
+        refreshMeProfile(),
+        refreshFinanceSummary(),
+        refreshPayoutAccounts(),
+        refreshPayoutSchedule(),
+      ]);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshCompletion, refreshMeProfile]);
+  }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule]);
 
   const headerInitials = useMemo(() => {
     const n = (meProfile?.full_name || user?.email || "").trim();
@@ -287,15 +354,165 @@ export default function MoreScreen() {
             </View>
           )}
           <View style={{ marginLeft: 14, flex: 1 }}>
-            <Text style={{ fontSize: 20, fontWeight: "700", letterSpacing: -0.5, color: Colors.gray[900] }}>
-              My profile
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <Text
+                style={{
+                  fontSize: 20,
+                  fontWeight: "700",
+                  letterSpacing: -0.5,
+                  color: Colors.gray[900],
+                  flexGrow: 1,
+                  flexShrink: 1,
+                }}
+              >
+                My profile
+              </Text>
+              {meProfile?.provider_rating_average != null && (
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push("/(app)/(tabs)/more/reviews" as never);
+                  }}
+                  style={{ flexDirection: "row", alignItems: "center" }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Business rating ${meProfile.provider_rating_average.toFixed(1)} from ${meProfile.provider_review_count ?? 0} reviews. Opens reviews.`}
+                >
+                  <Ionicons name="star" size={16} color="#f59e0b" style={{ marginRight: 3 }} />
+                  <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
+                    {meProfile.provider_rating_average.toFixed(1)}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>({meProfile.provider_review_count ?? 0})</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }} numberOfLines={2}>
               {headerSubtitle}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
         </TouchableOpacity>
+
+        {/* Payouts - web payout center parity: balance, request action, and bank setup above the fold */}
+        <View
+          style={{
+            marginBottom: 16,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: "#bbf7d0",
+            backgroundColor: "#ecfdf5",
+            padding: 16,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 14,
+                backgroundColor: "#d1fae5",
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 12,
+              }}
+            >
+              <Ionicons name="wallet-outline" size={24} color="#047857" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: "#047857", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                Provider payouts
+              </Text>
+              <Text style={{ marginTop: 2, fontSize: 28, fontWeight: "800", color: "#064e3b", letterSpacing: -0.8 }}>
+                {formatCurrency(availablePayout)}
+              </Text>
+              <Text style={{ marginTop: 2, fontSize: 13, color: "#047857" }}>
+                Available for payout
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <View style={{ borderRadius: 999, backgroundColor: "#d1fae5", paddingHorizontal: 10, paddingVertical: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#065f46" }}>
+                Min {formatCurrency(minimumPayout)}
+              </Text>
+            </View>
+            {pendingPayouts > 0 && (
+              <View style={{ borderRadius: 999, backgroundColor: "#fef3c7", paddingHorizontal: 10, paddingVertical: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: "#92400e" }}>
+                  {formatCurrency(pendingPayouts)} pending
+                </Text>
+              </View>
+            )}
+            {nextPayoutDate && Number.isFinite(nextPayoutDate.getTime()) && (
+              <View style={{ borderRadius: 999, backgroundColor: "#e0f2fe", paddingHorizontal: 10, paddingVertical: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: "#075985" }}>
+                  Next run {nextPayoutDate.toLocaleDateString()}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <TouchableOpacity
+            onPress={() => handleMenuPress(hasPayoutAccount ? "/(app)/(tabs)/more/payouts" : "/(app)/(tabs)/more/settings/payout-accounts")}
+            activeOpacity={0.75}
+            style={{
+              marginTop: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              borderRadius: 14,
+              backgroundColor: hasPayoutAccount ? "#047857" : "#111827",
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={hasPayoutAccount ? "Request payout" : "Set up bank account for payouts"}
+          >
+            <Ionicons name={hasPayoutAccount ? "cash-outline" : "business-outline"} size={20} color="#fff" />
+            <Text style={{ marginLeft: 8, flex: 1, fontSize: 15, fontWeight: "700", color: "#fff" }}>
+              {hasPayoutAccount ? "Request payout" : "Set up bank account"}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.8)" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => handleMenuPress("/(app)/(tabs)/more/settings/payout-accounts")}
+            activeOpacity={0.75}
+            style={{
+              marginTop: 10,
+              flexDirection: "row",
+              alignItems: "center",
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: "#a7f3d0",
+              backgroundColor: "#fff",
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Bank account setup"
+          >
+            <Ionicons name={hasPayoutAccount ? "checkmark-circle" : "alert-circle"} size={20} color={hasPayoutAccount ? "#059669" : "#d97706"} />
+            <View style={{ marginLeft: 8, flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.gray[900] }}>
+                Bank account setup
+              </Text>
+              <Text style={{ marginTop: 1, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>
+                {payoutAccountsLoading
+                  ? "Checking payout account..."
+                  : hasPayoutAccount
+                    ? `${primaryPayoutAccount?.bank_name || "Bank account"}${payoutAccountLast4 ? ` • •••• ${payoutAccountLast4}` : ""}`
+                    : "Add a bank account before requesting payouts"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+          </TouchableOpacity>
+
+          {requestPayoutDisabledReason && (
+            <Text style={{ marginTop: 10, fontSize: 12, color: "#92400e", lineHeight: 16 }}>
+              {requestPayoutDisabledReason}
+            </Text>
+          )}
+        </View>
 
         {/* Highlight ads + memberships above the fold (also listed under “Grow your business”) */}
         <View style={{ marginBottom: 16, flexDirection: "row", gap: 12 }}>

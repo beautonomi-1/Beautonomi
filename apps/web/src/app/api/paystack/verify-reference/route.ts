@@ -14,6 +14,8 @@ import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/charge-success";
 
 /**
  * GET /api/paystack/verify-reference?reference=...&booking_id=...
@@ -31,6 +33,11 @@ type PaystackVerifyApiResponse = {
     currency?: string;
     reference?: string;
     metadata?: Record<string, unknown>;
+    fees?: number;
+    customer?: {
+      email?: string;
+      customer_code?: string;
+    };
   };
 };
 
@@ -181,6 +188,17 @@ export async function GET(request: NextRequest) {
         }
       }
     }
+
+    await processSuccessfulPayment(
+      {
+        reference: d.reference ?? reference,
+        metadata,
+        amount: d.amount,
+        fees: d.fees,
+        customer: d.customer,
+      },
+      getSupabaseAdmin(),
+    );
 
     return successResponse({
       verified: true,

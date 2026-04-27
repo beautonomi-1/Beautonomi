@@ -132,14 +132,31 @@ export async function GET(request: NextRequest) {
     // triggering "invalid time / slot taken" in non-UTC deployments.
     let providerTimeZone: string | null = null;
     let providerTimeZoneRaw: string | null = null;
+    let providerMinNotice: number | null = null;
+    let providerMaxAdvance: number | null = null;
     try {
       const admin = getSupabaseAdmin();
-      const { data: providerRow } = await admin
-        .from("providers")
-        .select("timezone")
-        .eq("id", providerIdForEngine)
-        .maybeSingle();
+      const [{ data: providerRow }, { data: onlineSettings }] = await Promise.all([
+        admin
+          .from("providers")
+          .select("timezone")
+          .eq("id", providerIdForEngine)
+          .maybeSingle(),
+        admin
+          .from("provider_online_booking_settings")
+          .select("min_notice_minutes, max_advance_days")
+          .eq("provider_id", providerIdForEngine)
+          .maybeSingle(),
+      ]);
       providerTimeZoneRaw = (providerRow as { timezone?: string | null } | null)?.timezone ?? null;
+      const rawNotice = (onlineSettings as { min_notice_minutes?: number | null } | null)?.min_notice_minutes;
+      const rawAdvance = (onlineSettings as { max_advance_days?: number | null } | null)?.max_advance_days;
+      if (typeof rawNotice === "number" && Number.isFinite(rawNotice) && rawNotice >= 0) {
+        providerMinNotice = Math.floor(rawNotice);
+      }
+      if (typeof rawAdvance === "number" && Number.isFinite(rawAdvance) && rawAdvance >= 1) {
+        providerMaxAdvance = Math.floor(rawAdvance);
+      }
       // §Launch-audit 2026-04-18: reject invalid / legacy offset-style
       // timezones so the availability engine never throws RangeError on
       // Intl.DateTimeFormat. `normalizeProviderTimezone` maps common
@@ -160,31 +177,36 @@ export async function GET(request: NextRequest) {
       // behaviour (UTC interpretation of HH:MM).
     }
 
-    // Min-notice + max-advance parity with the slug route: shared filters
-    // applied after the engine so `/api/availability` and the slug endpoint
-    // surface the same slots regardless of who consumes the API.
-    const minNoticeMinutes = parseInt(
+    // Min-notice + max-advance parity with the slug route: provider policy
+    // is enforced server-side even if a client omits or tampers with params.
+    const clientMinNotice = parseInt(
       searchParams.get("min_notice_minutes") || searchParams.get("minNoticeMinutes") || "0",
       10
     );
-    const maxAdvanceDays = parseInt(
+    const clientMaxAdvance = parseInt(
       searchParams.get("max_advance_days") || searchParams.get("maxAdvanceDays") || "365",
       10
     );
+    const safeClientMinNotice =
+      Number.isFinite(clientMinNotice) && clientMinNotice > 0 ? clientMinNotice : 0;
+    const safeClientMaxAdvance =
+      Number.isFinite(clientMaxAdvance) && clientMaxAdvance >= 1 ? clientMaxAdvance : 365;
     const effectiveMinNotice =
-      Number.isFinite(minNoticeMinutes) && minNoticeMinutes > 0 ? minNoticeMinutes : 0;
+      providerMinNotice != null ? Math.max(safeClientMinNotice, providerMinNotice) : safeClientMinNotice;
     const effectiveMaxAdvance =
-      Number.isFinite(maxAdvanceDays) && maxAdvanceDays >= 1 ? maxAdvanceDays : 365;
+      providerMaxAdvance != null ? Math.min(safeClientMaxAdvance, providerMaxAdvance) : safeClientMaxAdvance;
 
     // Max-advance guard (mirrors slug route).
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dateObj = new Date(`${date}T00:00:00`);
-    dateObj.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    const dateObj = match
+      ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+      : NaN;
     const daysFromToday = Math.floor(
-      (dateObj.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)
+      (dateObj - today) / (24 * 60 * 60 * 1000)
     );
-    if (daysFromToday > effectiveMaxAdvance) {
+    if (Number.isFinite(daysFromToday) && daysFromToday > effectiveMaxAdvance) {
       return successResponse({ date, slots: [] });
     }
 

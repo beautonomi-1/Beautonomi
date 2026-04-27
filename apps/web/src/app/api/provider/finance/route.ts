@@ -380,6 +380,15 @@ export async function GET(request: NextRequest) {
       transactions: transactions,
       language_context: {
         audience: "provider",
+        metric_labels: {
+          available_balance: "platform-held payoutable balance",
+          total_earnings: "provider earnings",
+          product_sales_earnings_total: "platform-held ecommerce provider earnings",
+          walk_in_additional_charges_total: "cash register/end-of-day collection",
+          gift_card_sales_this_period: "liability movement",
+          membership_sales_this_period: "liability or deferred revenue movement",
+          platform_fees_deducted: "platform revenue and fees",
+        },
         glossary: {
           available_balance: "Amount currently available for payout after hold period and prior payouts.",
           pending_payouts: "Payout requests created but not yet completed.",

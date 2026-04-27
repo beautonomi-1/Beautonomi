@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
+import { successResponse, handleApiError, requireAuthInApi, getOffsetPaginationParams } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/me/reviews
@@ -14,8 +14,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const bookingIdFilter = searchParams.get("booking_id");
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 50, maxLimit: 100 });
 
     if (bookingIdFilter) {
       const { data: review, error: oneError } = await supabase
@@ -100,6 +99,11 @@ export async function GET(request: NextRequest) {
     return successResponse({
       reviews: reviews || [],
       total: count ?? reviews?.length ?? 0,
+      pagination: {
+        limit,
+        offset,
+        has_more: offset + limit < (count ?? 0),
+      },
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch reviews");

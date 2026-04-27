@@ -73,6 +73,8 @@ function statusBg(status: string): string {
       return "#dbeafe";
     case "in_progress":
       return "#fef3c2";
+    case "waiting_customer":
+      return "#fce7f3";
     case "resolved":
       return "#dcfce7";
     case "closed":

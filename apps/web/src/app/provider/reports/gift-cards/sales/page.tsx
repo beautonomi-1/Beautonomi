@@ -12,6 +12,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface GiftCardSalesData {
@@ -27,6 +28,7 @@ interface GiftCardSalesData {
 }
 
 export default function GiftCardSalesReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -38,7 +40,7 @@ export default function GiftCardSalesReport() {
 
   useEffect(() => {
     loadReport();
-  }, [dateRange]);
+  }, [dateRange, selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -52,6 +54,7 @@ export default function GiftCardSalesReport() {
       if (dateRange.to) {
         params.append("to", dateRange.to.toISOString());
       }
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: GiftCardSalesData }>(
         `/api/provider/reports/gift-cards/sales?${params.toString()}`

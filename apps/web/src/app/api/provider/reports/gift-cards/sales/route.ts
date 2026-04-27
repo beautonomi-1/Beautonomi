@@ -41,17 +41,24 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get("to")
       ? new Date(searchParams.get("to")!)
       : new Date();
+    const locationId = searchParams.get("location_id") || undefined;
 
     // Platform-only gift cards - providers don't sell gift cards
     // This report now shows gift cards redeemed at this provider (via bookings)
     // Get gift card redemptions for this provider's bookings
-    const { data: bookingsWithGiftCards, error: bookingsError } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from('bookings')
       .select('id, gift_card_id, gift_card_amount, scheduled_at')
       .eq('provider_id', providerId)
       .not('gift_card_id', 'is', null)
       .gte('scheduled_at', fromDate.toISOString())
       .lte('scheduled_at', toDate.toISOString());
+
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: bookingsWithGiftCards, error: bookingsError } = await bookingsQuery;
 
     if (bookingsError) {
       if (

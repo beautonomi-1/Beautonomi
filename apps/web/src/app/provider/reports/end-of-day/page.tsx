@@ -7,12 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Banknote, CreditCard, ShoppingBag, Calendar } from "lucide-react";
+import { Banknote, CreditCard, ShoppingBag, Calendar, Download } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { format } from "date-fns";
 import { ReportSkeleton } from "../components/ReportSkeleton";
 import { EmptyReportState } from "../components/EmptyReportState";
 import type { EndOfDayResponse } from "@/app/api/provider/reports/end-of-day/route";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../utils/export";
 
 const PAYMENT_LABELS: Record<string, string> = {
   cash: "Cash",
@@ -25,6 +28,8 @@ const PAYMENT_LABELS: Record<string, string> = {
 };
 
 export default function EndOfDayReportPage() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
+  const { currencyCode: exportCurrency } = useReportCurrency();
   const today = format(new Date(), "yyyy-MM-dd");
   const [date, setDate] = useState(today);
   const [data, setData] = useState<EndOfDayResponse | null>(null);
@@ -33,13 +38,14 @@ export default function EndOfDayReportPage() {
 
   useEffect(() => {
     loadReport();
-  }, [date]);
+  }, [date, selectedLocationId]);
 
   const loadReport = async () => {
     try {
       setIsLoading(true);
       setError(null);
       const params = new URLSearchParams({ date });
+      appendLocation(params);
       const response = await fetcher.get<{ data: EndOfDayResponse }>(
         `/api/provider/reports/end-of-day?${params.toString()}`
       );
@@ -49,6 +55,16 @@ export default function EndOfDayReportPage() {
       setData(null);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleExport = (fmt: "csv" | "pdf" = "csv") => {
+    if (!data) return;
+    if (fmt === "csv") {
+      const rows = formatReportDataForExport(data as unknown as ReportRow, "end-of-day", exportCurrency);
+      exportToCSV(rows, "end-of-day-report");
+    } else {
+      exportToPDF("end-of-day-report", "end-of-day-report", "End of day report");
     }
   };
 
@@ -97,6 +113,17 @@ export default function EndOfDayReportPage() {
           <Button onClick={loadReport} disabled={isLoading} className="rounded-xl">
             {isLoading ? "Loading…" : "Update"}
           </Button>
+          {data && !error && (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" className="rounded-xl" onClick={() => handleExport("csv")}>
+                <Download className="h-4 w-4 mr-1" />
+                CSV
+              </Button>
+              <Button type="button" variant="outline" className="rounded-xl" onClick={() => handleExport("pdf")}>
+                Print / PDF
+              </Button>
+            </div>
+          )}
         </div>
 
         {error && (
@@ -107,7 +134,7 @@ export default function EndOfDayReportPage() {
         )}
 
         {data && !error && (
-          <>
+          <div id="end-of-day-report">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Card className="rounded-xl border-gray-200 shadow-sm">
                 <CardHeader className="pb-2">
@@ -202,7 +229,7 @@ export default function EndOfDayReportPage() {
                 </table>
               </CardContent>
             </Card>
-          </>
+          </div>
         )}
       </div>
     </SettingsDetailLayout>

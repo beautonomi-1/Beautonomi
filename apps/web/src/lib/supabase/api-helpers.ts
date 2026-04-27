@@ -551,6 +551,24 @@ export function getPaginationParams(request: Request) {
   return { page, limit, offset };
 }
 
+export function getOffsetPaginationParams(
+  request: Request,
+  options: { defaultLimit?: number; maxLimit?: number } = {},
+) {
+  const { searchParams } = new URL(request.url);
+  const defaultLimit = options.defaultLimit ?? 20;
+  const maxLimit = options.maxLimit ?? 100;
+  const rawLimit = parseInt(searchParams.get("limit") || String(defaultLimit), 10);
+  const rawOffset = parseInt(searchParams.get("offset") || "0", 10);
+  const limit = Math.min(
+    maxLimit,
+    Math.max(1, Number.isFinite(rawLimit) ? rawLimit : defaultLimit),
+  );
+  const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
+
+  return { limit, offset };
+}
+
 /**
  * Create paginated response
  */

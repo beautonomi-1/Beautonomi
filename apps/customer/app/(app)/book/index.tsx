@@ -281,6 +281,28 @@ function formatTimeSafe(value: unknown, timeZone?: string | null): string {
   });
 }
 
+function formatHHMMInTimeZone(value: unknown, timeZone?: string | null): string | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      ...(timeZone ? { timeZone } : {}),
+    }).formatToParts(parsed);
+    const hour = parts.find((p) => p.type === "hour")?.value;
+    const minute = parts.find((p) => p.type === "minute")?.value;
+    if (!hour || !minute) return null;
+    return `${hour === "24" ? "00" : hour}:${minute}`;
+  } catch {
+    const hour = String(parsed.getHours()).padStart(2, "0");
+    const minute = String(parsed.getMinutes()).padStart(2, "0");
+    return `${hour}:${minute}`;
+  }
+}
+
 /* ─── Step Progress Indicator ─── */
 function StepIndicator({ steps, current }: { steps: Step[]; current: Step }) {
   const currentIdx = steps.indexOf(current);
@@ -1371,12 +1393,15 @@ export default function BookScreen() {
     setWaitlistJoining(true);
     try {
       const preferredDate = formatLocalDateYYYYMMDD(selectedDay);
+      const waitlistSlot = selectedSlot ?? displaySlots[0] ?? slots[0] ?? null;
+      const preferredStart = formatHHMMInTimeZone(waitlistSlot?.start, provider?.timezone ?? null) ?? "00:00";
+      const preferredEnd = formatHHMMInTimeZone(waitlistSlot?.end, provider?.timezone ?? null) ?? preferredStart;
       const body: Record<string, string> = {
         provider_id: provider.id,
         customer_name: displayName.trim(),
         preferred_date: preferredDate,
-        preferred_time_start: "09:00",
-        preferred_time_end: "17:00",
+        preferred_time_start: preferredStart,
+        preferred_time_end: preferredEnd,
       };
       if (user?.email) body.customer_email = user.email;
       if (user?.user_metadata?.phone || (user as { phone?: string })?.phone) body.customer_phone = (user?.user_metadata?.phone || (user as { phone?: string })?.phone) as string;
@@ -1409,7 +1434,7 @@ export default function BookScreen() {
     } finally {
       setWaitlistJoining(false);
     }
-  }, [provider?.id, selectedDay, user, effectiveOfferingId, selectedStaff?.id, t]);
+  }, [provider?.id, provider?.timezone, selectedDay, selectedSlot, displaySlots, slots, user, effectiveOfferingId, selectedStaff?.id, t]);
 
   useEffect(() => {
     if (step === "time" && selectedDay && selectedStaff) loadSlots();

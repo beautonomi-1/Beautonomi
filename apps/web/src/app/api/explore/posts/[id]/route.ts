@@ -13,6 +13,7 @@ import type { ExplorePost } from "@/types/explore";
 import { toPublicMediaUrl, toStoragePath } from "@/lib/explore/media-urls";
 
 const supabaseUrl = () => process.env.NEXT_PUBLIC_SUPABASE_URL;
+const MAX_EXPLORE_MEDIA = 5;
 
 type ExplorePostRow = {
   id: string;
@@ -202,7 +203,15 @@ export async function PATCH(
     const updates: Record<string, any> = {};
     if (body.caption !== undefined) updates.caption = body.caption;
     if (body.media_urls !== undefined) {
+      if (!Array.isArray(body.media_urls) || body.media_urls.length > MAX_EXPLORE_MEDIA) {
+        return errorResponse(`Explore posts can include up to ${MAX_EXPLORE_MEDIA} media files`, "VALIDATION_ERROR", 400);
+      }
       updates.media_urls = (body.media_urls as string[]).map((u: string) => toStoragePath(String(u)));
+    }
+    if (body.tags !== undefined) {
+      updates.tags = Array.isArray(body.tags)
+        ? [...new Set(body.tags.map((t: string) => String(t).trim().toLowerCase()).filter(Boolean))].slice(0, 20)
+        : [];
     }
     if (body.status !== undefined) {
       updates.status = body.status === "published" ? "published" : "draft";

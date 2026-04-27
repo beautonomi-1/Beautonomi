@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const locationId = request.nextUrl.searchParams.get("location_id") || null;
+
     const now = new Date();
 
     // Today's metrics
@@ -61,7 +63,7 @@ export async function GET(request: NextRequest) {
       providerId,
       startOfToday,
       endOfToday,
-      null,
+      locationId,
       dashOpts
     );
 
@@ -70,7 +72,7 @@ export async function GET(request: NextRequest) {
       providerId,
       weekStart,
       weekEnd,
-      null,
+      locationId,
       dashOpts
     );
 
@@ -79,31 +81,37 @@ export async function GET(request: NextRequest) {
       providerId,
       monthStart,
       monthEnd,
-      null,
+      locationId,
       dashOpts
     );
 
     // Get bookings for different periods (for counts and status)
-    const { data: todayBookings } = await supabaseAdmin
+    let todayBq = supabaseAdmin
       .from("bookings")
       .select("id, status, scheduled_at")
       .eq("provider_id", providerId)
       .gte("scheduled_at", startOfToday.toISOString())
       .lte("scheduled_at", endOfToday.toISOString());
+    if (locationId) todayBq = todayBq.eq("location_id", locationId);
+    const { data: todayBookings } = await todayBq;
 
-    const { data: weekBookings } = await supabaseAdmin
+    let weekBq = supabaseAdmin
       .from("bookings")
       .select("id, status, scheduled_at")
       .eq("provider_id", providerId)
       .gte("scheduled_at", weekStart.toISOString())
       .lte("scheduled_at", weekEnd.toISOString());
+    if (locationId) weekBq = weekBq.eq("location_id", locationId);
+    const { data: weekBookings } = await weekBq;
 
-    const { data: monthBookings } = await supabaseAdmin
+    let monthBq = supabaseAdmin
       .from("bookings")
       .select("id, status, scheduled_at, customer_id")
       .eq("provider_id", providerId)
       .gte("scheduled_at", monthStart.toISOString())
       .lte("scheduled_at", monthEnd.toISOString());
+    if (locationId) monthBq = monthBq.eq("location_id", locationId);
+    const { data: monthBookings } = await monthBq;
 
     // Calculate today's metrics
     const todayBookingsCount = todayBookings?.length || 0;
@@ -117,22 +125,26 @@ export async function GET(request: NextRequest) {
     const monthClients = new Set(monthBookings?.map((b) => b.customer_id).filter(Boolean)).size;
 
     // Get upcoming bookings
-    const { data: upcomingBookings } = await supabaseAdmin
+    let upBq = supabaseAdmin
       .from("bookings")
       .select("id, scheduled_at, status")
       .eq("provider_id", providerId)
       .gte("scheduled_at", now.toISOString())
       .order("scheduled_at", { ascending: true })
       .limit(10);
+    if (locationId) upBq = upBq.eq("location_id", locationId);
+    const { data: upcomingBookings } = await upBq;
 
     // Get recent bookings
-    const { data: recentBookings } = await supabaseAdmin
+    let recBq = supabaseAdmin
       .from("bookings")
       .select("id, scheduled_at, status")
       .eq("provider_id", providerId)
       .lte("scheduled_at", now.toISOString())
       .order("scheduled_at", { ascending: false })
       .limit(10);
+    if (locationId) recBq = recBq.eq("location_id", locationId);
+    const { data: recentBookings } = await recBq;
 
     return successResponse({
       today: {

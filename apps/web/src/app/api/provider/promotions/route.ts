@@ -42,7 +42,10 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request,
+    );
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
@@ -52,10 +55,25 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("Provider not found");
     }
 
+    const { data: provRow, error: provRowErr } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .single();
+    if (provRowErr || !provRow?.tenant_id) {
+      return badRequestResponse("Provider tenant not found");
+    }
+    const tenantId = provRow.tenant_id as string;
+
     // Validate required fields
-    const { code, type, value, description } = body;
-    if (!code || !type || value === undefined) {
+    const { code, type, value: rawValue, description } = body;
+    if (!code || !type || rawValue === undefined || rawValue === null) {
       return badRequestResponse("Missing required fields: code, type, value");
+    }
+    const value =
+      typeof rawValue === "number" ? rawValue : parseFloat(String(rawValue).replace(/,/g, "."));
+    if (Number.isNaN(value)) {
+      return badRequestResponse("Invalid numeric value for promotion");
     }
 
     // Validate type (DB enum is 'percentage' | 'fixed')
@@ -69,7 +87,7 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("Percentage value must be between 0 and 100");
     }
 
-    if ((type === 'fixed' || type === 'fixed_amount') && value < 0) {
+    if (dbType === "fixed" && value <= 0) {
       return badRequestResponse("Fixed amount value must be greater than 0");
     }
 
@@ -77,6 +95,7 @@ export async function POST(request: NextRequest) {
     const { data: existing } = await supabase
       .from("promotions")
       .select("id")
+      .eq("tenant_id", tenantId)
       .eq("provider_id", providerId)
       .eq("code", code.toUpperCase())
       .maybeSingle();
@@ -94,6 +113,7 @@ export async function POST(request: NextRequest) {
     const { data: promotion, error } = await supabase
       .from("promotions")
       .insert({
+        tenant_id: tenantId,
         provider_id: providerId,
         code: upperCode,
         name: body.name || upperCode,

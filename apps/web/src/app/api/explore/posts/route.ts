@@ -595,6 +595,9 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(rawMediaUrls) || rawMediaUrls.length === 0) {
       return errorResponse("At least one media file is required", "VALIDATION_ERROR", 400);
     }
+    if (rawMediaUrls.length > 5) {
+      return errorResponse("Explore posts can include up to 5 media files", "VALIDATION_ERROR", 400);
+    }
 
     const media_urls = rawMediaUrls.map((u: string) => toStoragePath(String(u)));
 
@@ -633,8 +636,7 @@ export async function POST(request: NextRequest) {
       offering_id = off.id;
     }
 
-    const publishedAt =
-      status === "published" ? new Date().toISOString() : new Date().toISOString();
+    const publishedAt = status === "published" ? new Date().toISOString() : null;
 
     const { data: post, error } = await supabaseAdmin
       .from("explore_posts")

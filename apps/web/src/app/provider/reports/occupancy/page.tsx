@@ -7,16 +7,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Users, Calendar } from "lucide-react";
+import { Users, Calendar, Download } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { format, subDays } from "date-fns";
 import { ReportSkeleton } from "../components/ReportSkeleton";
 import { EmptyReportState } from "../components/EmptyReportState";
 import type { OccupancyResponse } from "@/app/api/provider/reports/occupancy/route";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../utils/export";
 
 const MAX_DAYS = 31;
 
 export default function OccupancyReportPage() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
+  const { currencyCode: exportCurrency } = useReportCurrency();
   const today = format(new Date(), "yyyy-MM-dd");
   const [from, setFrom] = useState(format(subDays(new Date(), 6), "yyyy-MM-dd"));
   const [to, setTo] = useState(today);
@@ -27,13 +32,14 @@ export default function OccupancyReportPage() {
 
   useEffect(() => {
     loadReport();
-  }, [from, to]);
+  }, [from, to, selectedLocationId]);
 
   const loadReport = async () => {
     try {
       setIsLoading(true);
       setError(null);
       const params = new URLSearchParams({ from, to });
+      appendLocation(params);
       const response = await fetcher.get<{ data: OccupancyResponse }>(
         `/api/provider/reports/occupancy?${params.toString()}`
       );
@@ -43,6 +49,16 @@ export default function OccupancyReportPage() {
       setData(null);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleExport = (fmt: "csv" | "pdf" = "csv") => {
+    if (!data) return;
+    if (fmt === "csv") {
+      const rows = formatReportDataForExport(data as unknown as ReportRow, "occupancy", exportCurrency);
+      exportToCSV(rows, "occupancy-report");
+    } else {
+      exportToPDF("occupancy-report", "occupancy-report", "Occupancy report");
     }
   };
 
@@ -101,6 +117,17 @@ export default function OccupancyReportPage() {
           <Button onClick={loadReport} disabled={isLoading} className="rounded-xl">
             {isLoading ? "Loading…" : "Update"}
           </Button>
+          {data && !error && (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" className="rounded-xl" onClick={() => handleExport("csv")}>
+                <Download className="h-4 w-4 mr-1" />
+                CSV
+              </Button>
+              <Button type="button" variant="outline" className="rounded-xl" onClick={() => handleExport("pdf")}>
+                Print / PDF
+              </Button>
+            </div>
+          )}
           <div className="flex gap-2 ml-4">
             <Button
               variant={view === "byDate" ? "default" : "outline"}
@@ -126,7 +153,7 @@ export default function OccupancyReportPage() {
         )}
 
         {data && !error && (
-          <>
+          <div id="occupancy-report">
             {view === "byDate" && (
               <Card className="rounded-xl border-gray-200 shadow-sm">
                 <CardHeader>
@@ -200,7 +227,7 @@ export default function OccupancyReportPage() {
                 ))}
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </SettingsDetailLayout>

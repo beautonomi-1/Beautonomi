@@ -14,6 +14,7 @@ import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
 import { RevenueChart } from "../../components/RevenueChart";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface BookingSummaryData {
@@ -39,6 +40,7 @@ interface BookingSummaryData {
 }
 
 export default function BookingSummaryReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -51,7 +53,7 @@ export default function BookingSummaryReport() {
 
   useEffect(() => {
     loadReport();
-  }, [dateRange]);
+  }, [dateRange, selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -65,6 +67,7 @@ export default function BookingSummaryReport() {
       if (dateRange.to) {
         params.append("to", dateRange.to.toISOString());
       }
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: BookingSummaryData }>(
         `/api/provider/reports/bookings/summary?${params.toString()}`

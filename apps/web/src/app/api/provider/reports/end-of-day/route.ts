@@ -14,6 +14,7 @@ const PAYMENT_METHODS = ["cash", "card", "bank_transfer", "paystack", "yoco", "g
 
 export interface EndOfDayResponse {
   date: string;
+  reportBasis: string;
   byPaymentMethod: Record<string, number>;
   bookingPaymentsTotal: number;
   walletTotal: number;
@@ -163,6 +164,33 @@ export async function GET(request: NextRequest) {
     }
     const salesCount = (salesRows || []).length;
 
+    // Walk-in retail/POS sales live in product_orders, not the legacy sales table.
+    let productOrderSalesCount = 0;
+    {
+      let productOrderQuery = supabaseAdmin
+        .from("product_orders")
+        .select("total_amount, payment_method")
+        .eq("provider_id", providerId)
+        .eq("order_source", "walk_in")
+        .eq("payment_status", "paid")
+        .gte("paid_at", dayStart)
+        .lt("paid_at", dayEndISO);
+
+      if (providerTenantId) {
+        productOrderQuery = productOrderQuery.eq("tenant_id", providerTenantId);
+      }
+
+      const { data: productOrderRows, error: productOrderError } = await productOrderQuery;
+      if (productOrderError) throw productOrderError;
+      productOrderSalesCount = (productOrderRows || []).length;
+      for (const row of (productOrderRows ?? []) as { total_amount?: number; payment_method?: string }[]) {
+        const amount = Number(row.total_amount ?? 0);
+        const method = normalizePaymentMethod(row.payment_method);
+        byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
+        salesTotal += amount;
+      }
+    }
+
     // Ledger-based tips and cancellation fees for the day
     let tipsTotal = 0;
     let cancellationFeesTotal = 0;
@@ -188,6 +216,7 @@ export async function GET(request: NextRequest) {
 
     const response: EndOfDayResponse = {
       date: dateStr,
+      reportBasis: "cash-register/end-of-day collection by payment date; not payoutable balance",
       byPaymentMethod,
       bookingPaymentsTotal,
       walletTotal,
@@ -196,7 +225,7 @@ export async function GET(request: NextRequest) {
       cancellationFeesTotal,
       total,
       bookingCount,
-      salesCount,
+      salesCount: salesCount + productOrderSalesCount,
       note: "Cash-register style: sums booking_payments, sales, tips, and cancellation fees by payment date. For ledger-based revenue, use the payments report.",
     };
 

@@ -175,7 +175,7 @@ export default function InAppBrowserScreen() {
           source={{ uri: rawUrl }}
           style={styles.webview}
           originWhitelist={["https://*", "http://*", "provider://*"]}
-          onShouldStartLoadWithRequest={(request) => {
+          onShouldStartLoadWithRequest={(request: { url: string }) => {
             const u = request.url;
             if (u.startsWith("provider://")) {
               Linking.openURL(u).catch(() => {});

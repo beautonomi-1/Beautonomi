@@ -12,8 +12,8 @@ const callbackUrlSchema = z
   .string()
   .min(1)
   .refine(
-    (s) => /^https?:\/\//i.test(s) || s.startsWith("customer://"),
-    { message: "callback_url must be an http(s) URL or customer:// deep link" },
+    (s) => /^https?:\/\//i.test(s) || s.startsWith("customer://") || s.startsWith("exp://"),
+    { message: "callback_url must be an http(s), customer://, or exp:// URL" },
   );
 
 const bodySchema = z.object({

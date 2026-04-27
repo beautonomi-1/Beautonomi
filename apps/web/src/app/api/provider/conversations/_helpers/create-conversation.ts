@@ -107,19 +107,17 @@ export async function createConversation(request: NextRequest): Promise<Response
       );
     }
 
-    let query = supabase
+    // One thread per provider–customer: reuse any existing row so the app
+    // does not open duplicate DMs (e.g. one row scoped to a booking and
+    // another with booking_id null from the client list / messaging entry).
+    const { data: existing } = await admin
       .from("conversations")
       .select("id")
       .eq("customer_id", customer_id)
-      .eq("provider_id", providerId);
-
-    if (booking_id) {
-      query = query.eq("booking_id", booking_id);
-    } else {
-      query = query.is("booking_id", null);
-    }
-
-    const { data: existing } = await query.maybeSingle();
+      .eq("provider_id", providerId)
+      .order("last_message_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (existing) {
       return successResponse({ id: existing.id, created: false });

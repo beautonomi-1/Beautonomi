@@ -1223,7 +1223,8 @@ export default function NewBookingScreen() {
       } else {
         Alert.alert("Success", "Booking created successfully");
       }
-      router.back();
+      // Return to the bookings list hub (avoids a stale "new booking" screen on back stack).
+      router.replace("/(app)/(tabs)/bookings" as never);
     }
   }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Default production build entry: webpack locally (stable with pdfkit / server routes),
- * Turbopack on GitHub Actions only to cut peak RSS on ~7GB runners.
+ * Default production build entry. Turbopack keeps peak memory lower on this large app;
+ * set NEXT_WEB_FORCE_WEBPACK=1 when debugging a webpack-only production issue.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -47,14 +47,12 @@ if (syncAdmin.status !== 0 && syncAdmin.status !== null) {
   process.exit(syncAdmin.status);
 }
 
-// Use Turbopack on memory-constrained CI (GHA) and Vercel — webpack `next build` often exceeds ~6GB heap.
+// Use Turbopack by default — webpack `next build` can exceed 8GB heap on this app.
 // Override: NEXT_WEB_FORCE_WEBPACK=1 to force webpack when debugging a Turbopack-only issue.
-const useTurbopack =
-  (process.env.GITHUB_ACTIONS === "true" || process.env.VERCEL === "1") &&
-  process.env.NEXT_WEB_FORCE_WEBPACK !== "1";
+const useTurbopack = process.env.NEXT_WEB_FORCE_WEBPACK !== "1";
 const modeArgs = useTurbopack ? ["--turbopack"] : ["--webpack"];
 const nodeOpts =
-  process.env.NODE_OPTIONS || "--max-old-space-size=6144";
+  process.env.NODE_OPTIONS || "--max-old-space-size=8192";
 
 const result = spawnSync(process.execPath, [nextCli, "build", ...modeArgs], {
   cwd: root,

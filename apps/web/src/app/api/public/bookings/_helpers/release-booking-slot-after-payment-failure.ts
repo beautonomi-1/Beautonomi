@@ -76,6 +76,23 @@ export async function releaseBookingSlotAfterPaymentFailure(
     }
   }
 
+  try {
+    const { error: walletLedgerErr } = await adminSupabase
+      .from("finance_transactions")
+      .delete()
+      .eq("booking_id", bookingId)
+      .eq("transaction_type", "wallet_payment");
+    if (walletLedgerErr) {
+      console.warn(
+        "[releaseBookingSlotAfterPaymentFailure] wallet_payment ledger cleanup",
+        bookingId,
+        walletLedgerErr
+      );
+    }
+  } catch (e) {
+    console.warn("[releaseBookingSlotAfterPaymentFailure] wallet_payment ledger cleanup", bookingId, e);
+  }
+
   const now = new Date().toISOString();
   const { error } = await adminSupabase
     .from("bookings")

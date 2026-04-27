@@ -15,6 +15,7 @@ import {
   validatePosProductStock,
 } from "@/lib/provider-sales/pos-product-stock";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 
 /**
  * GET /api/provider/product-sales — list walk-in sales history
@@ -267,6 +268,14 @@ export async function POST(request: NextRequest) {
       return errorResponse(stockErrors.join("; "), "STOCK_ERROR", 400);
     }
 
+    if (parsed.payment_method === "yoco" && !parsed.payment_reference?.trim()) {
+      return errorResponse(
+        "Yoco walk-in product sales require the terminal payment reference.",
+        "YOCO_REFERENCE_REQUIRED",
+        400,
+      );
+    }
+
     const totalAmount = sumMoney(subtotal, taxAmount);
 
     const { data: seqData } = await supabase.rpc("nextval", {
@@ -317,6 +326,17 @@ export async function POST(request: NextRequest) {
 
     const { error: insertErr } = await supabase.from("product_order_items").insert(itemsToInsert);
     if (insertErr) throw insertErr;
+
+    await recordProductOrderPayment({
+      supabase: supabase as never,
+      productOrderId: order.id,
+      reference: parsed.payment_reference?.trim() || `walk_in_pos_${order.id}`,
+      amountMajor: totalAmount,
+      feesMajor: 0,
+      source: "walk_in_pos",
+      provider: parsed.payment_method,
+      platformHeld: false,
+    });
 
     await applyPosProductStockDecrements(supabase, posItems);
 

@@ -53,8 +53,8 @@ export async function GET(request: Request) {
       price_max: searchParams.get("price_max") ? Number(searchParams.get("price_max")) : undefined,
       rating_min: searchParams.get("rating_min") ? Number(searchParams.get("rating_min")) : undefined,
       sort_by: (searchParams.get("sort_by") as any) || "relevance",
-      page: searchParams.get("page") ? Number(searchParams.get("page")) : 1,
-      limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : 20,
+      page: Math.max(1, searchParams.get("page") ? Number(searchParams.get("page")) : 1),
+      limit: Math.min(50, Math.max(1, searchParams.get("limit") ? Number(searchParams.get("limit")) : 20)),
     };
 
     // Location filters
@@ -74,8 +74,8 @@ export async function GET(request: Request) {
       };
     }
 
-    const page = filters.page || 1;
-    const limit = filters.limit || 20;
+    const page = Number.isFinite(filters.page) ? filters.page || 1 : 1;
+    const limit = Number.isFinite(filters.limit) ? filters.limit || 20 : 20;
     const offset = (page - 1) * limit;
 
     // Build query with count

@@ -321,7 +321,7 @@ export function CustomOfferSheet({
             value={scheduledAt}
             mode="datetime"
             minimumDate={new Date()}
-            onChange={(_, d) => d && setScheduledAt(d)}
+            onChange={(_: any, d?: Date) => d && setScheduledAt(d)}
             display={Platform.OS === "ios" ? "spinner" : "default"}
           />
         </View>

@@ -102,10 +102,6 @@ export async function GET(request: NextRequest) {
     // Map frontend status values to database queries using centralized utility
     const now = new Date().toISOString();
     
-    // For "past" status, we need to fetch all non-cancelled bookings and filter in memory
-    // because we need to match: (status = 'completed' OR scheduled_at < now)
-    const needsInMemoryFilter = status === "past";
-    
     // Apply status filters using centralized mapping
     if (status === "upcoming") {
       // Upcoming: pending / confirmed / in_progress. Must include in_progress even when
@@ -116,8 +112,13 @@ export async function GET(request: NextRequest) {
         .in("status", dbStatuses)
         .or(`scheduled_at.gte.${nowQuoted},status.eq.in_progress`);
     } else if (status === "past") {
-      // Past: fetch all non-cancelled bookings, we'll filter in memory
-      query = query.neq("status", "cancelled");
+      // Past is now fully database-filtered so high-volume customers do not
+      // force the API to load their entire history before slicing.
+      const nowQuoted = `"${now}"`;
+      query = query
+        .neq("status", "cancelled")
+        .neq("status", "in_progress")
+        .or(`status.eq.completed,scheduled_at.lt.${nowQuoted}`);
     } else if (status === "cancelled") {
       // Cancelled: only cancelled bookings
       query = query.eq("status", "cancelled");
@@ -129,63 +130,18 @@ export async function GET(request: NextRequest) {
     // Ordering (see sortBy / sortAscending above)
     query = query.order(sortBy, { ascending: sortAscending });
 
-    // For "past" status, fetch all matching records first to get accurate count
-    let allBookings: any[] = [];
-    let totalCount = 0;
-    
-    if (needsInMemoryFilter) {
-      const { data: allData, error: allError, count: allCount } = await query;
-      if (allError) {
-        console.error("Bookings query error (all):", {
-          code: allError.code,
-          message: allError.message,
-          details: allError.details,
-          hint: allError.hint,
-        });
-        throw allError;
-      }
-      allBookings = allData || [];
-      totalCount = allCount || 0;
-    } else {
-      const { data, error, count } = await query.range(offset, offset + limit - 1);
-      if (error) {
-        console.error("Bookings query error:", {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-        });
-        throw error;
-      }
-      allBookings = data || [];
-      totalCount = count || 0;
-    }
-
-    // Filter "past" bookings in memory
-    let filteredBookings = allBookings;
-    if (needsInMemoryFilter) {
-      filteredBookings = allBookings.filter((booking) => {
-        if (booking.status === "in_progress") return false;
-        return (
-          booking.status === "completed" ||
-          (booking.scheduled_at && new Date(booking.scheduled_at) < new Date(now))
-        );
+    const { data, error, count } = await query.range(offset, offset + limit - 1);
+    if (error) {
+      console.error("Bookings query error:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
       });
-      totalCount = filteredBookings.length;
-
-      // Re-sort in memory: the SQL order may not match "past" semantics once
-      // we filter (e.g. created_at vs scheduled_at for completed rows).
-      const sortKey = (b: { created_at?: string | null; scheduled_at?: string | null }) =>
-        sortBy === "created_at" ? b.created_at : b.scheduled_at;
-      filteredBookings = [...filteredBookings].sort((a, b) => {
-        const ta = new Date(sortKey(a) || 0).getTime();
-        const tb = new Date(sortKey(b) || 0).getTime();
-        return sortAscending ? ta - tb : tb - ta;
-      });
-
-      // Apply pagination after filtering + sort
-      filteredBookings = filteredBookings.slice(offset, offset + limit);
+      throw error;
     }
+    const filteredBookings = data || [];
+    const totalCount = count || 0;
 
     // Transform bookings to match Booking interface
     const transformedBookings = (filteredBookings || []).map((booking: any) => {

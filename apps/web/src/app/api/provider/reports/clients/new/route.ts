@@ -41,13 +41,21 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get("to")
       ? new Date(searchParams.get("to")!)
       : new Date();
+    const locationId = searchParams.get("location_id") || undefined;
 
-    // Get all bookings to find first visit per client
-    const { data: allBookings, error: allBookingsError } = await supabaseAdmin
+    // Get bookings to find first visit per client. With location_id, this means
+    // first visit at the selected provider location.
+    let allBookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, customer_id, scheduled_at, total_amount, status")
       .eq("provider_id", providerId)
       .order("scheduled_at", { ascending: true });
+
+    if (locationId) {
+      allBookingsQuery = allBookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: allBookings, error: allBookingsError } = await allBookingsQuery;
 
     if (allBookingsError) {
       return handleApiError(

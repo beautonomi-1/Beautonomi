@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get("to")
       ? endOfDay(new Date(searchParams.get("to")!))
       : endOfDay(new Date());
+    const locationId = searchParams.get("location_id") || undefined;
 
     const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysDiff > MAX_REPORT_DAYS) {
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get no-show bookings (simplified query to avoid deep nesting)
-    const { data: noShowBookings, error: bookingsError } = await supabaseAdmin
+    let noShowBookingsQuery = supabaseAdmin
       .from("bookings")
       .select(
         `
@@ -55,6 +56,12 @@ export async function GET(request: NextRequest) {
       .lte("scheduled_at", toDate.toISOString())
       .order("scheduled_at", { ascending: false })
       .limit(MAX_BOOKINGS_FOR_REPORT);
+
+    if (locationId) {
+      noShowBookingsQuery = noShowBookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: noShowBookings, error: bookingsError } = await noShowBookingsQuery;
 
     if (bookingsError) {
       console.error("Error fetching no-show bookings:", bookingsError);
@@ -120,13 +127,19 @@ export async function GET(request: NextRequest) {
     }
 
     // Get total bookings for no-show rate (capped for performance)
-    const { data: allBookings } = await supabaseAdmin
+    let allBookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id")
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString())
       .limit(MAX_BOOKINGS_FOR_REPORT);
+
+    if (locationId) {
+      allBookingsQuery = allBookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: allBookings } = await allBookingsQuery;
 
     const totalBookings = allBookings?.length || 0;
     const totalNoShows = noShowBookings?.length || 0;
@@ -141,7 +154,7 @@ export async function GET(request: NextRequest) {
         providerId,
         fromDate,
         toDate,
-        null,
+        locationId ?? null,
         { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES }
       );
       // Sum revenue for no-show bookings (if they had finance_transactions)

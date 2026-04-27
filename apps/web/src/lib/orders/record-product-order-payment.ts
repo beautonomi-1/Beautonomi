@@ -12,8 +12,15 @@ type RecordProductOrderPaymentInput = {
   reference: string;
   amountMajor: number;
   feesMajor?: number;
-  source: "paystack_verify" | "paystack_webhook" | "wallet_checkout";
-  provider: "paystack" | "wallet";
+  source:
+    | "paystack_verify"
+    | "paystack_webhook"
+    | "wallet_checkout"
+    | "provider_mark_collected"
+    | "walk_in_pos";
+  provider: "paystack" | "wallet" | "cash" | "yoco" | "card_on_delivery";
+  /** True when Beautonomi/gateway holds money that can become provider payout balance. */
+  platformHeld?: boolean;
 };
 
 export async function recordProductOrderPayment(
@@ -41,18 +48,13 @@ async function recordProductOrderPaymentInner(
 
   const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
     .select(
-      "id, tenant_id, provider_id, customer_id, order_number, total_amount, platform_fee, payment_status, payment_reference",
+      "id, tenant_id, provider_id, customer_id, order_number, total_amount, platform_fee, payment_status, payment_reference, status",
     )
     .eq("id", productOrderId)
     .maybeSingle();
 
   if (orderErr || !order) {
     throw orderErr || new Error("Product order not found");
-  }
-
-  // Order-level idempotency: if the order is already paid, don't create duplicate ledger entries
-  if ((order as any).payment_status === "paid") {
-    return { ok: true, duplicate: true };
   }
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
@@ -71,17 +73,33 @@ async function recordProductOrderPaymentInner(
   const orderTotal = Number((order as any).total_amount || amountMajor);
   const grossForProvider = Math.max(0, subtractMoney(orderTotal, platformFee));
   const providerEarnings = grossForProvider;
+  const isPlatformHeld = input.platformHeld ?? (provider === "paystack" || provider === "wallet");
+  const orderReferenceForLedger = (order as any).order_number ?? productOrderId;
+  const { data: existingLedgerRows } = await (supabase.from("finance_transactions") as any)
+    .select("id")
+    .eq("provider_id", (order as any).provider_id ?? null)
+    .eq("transaction_type", "provider_earnings")
+    .ilike("description", `%${orderReferenceForLedger}%`);
 
-  await (supabase.from("product_orders") as any)
+  // If the order was already marked paid and both the gateway audit row and
+  // platform-held provider ledger are present, this is an idempotent retry.
+  if ((order as any).payment_status === "paid" && alreadyRecorded && (!isPlatformHeld || (existingLedgerRows?.length ?? 0) > 0)) {
+    return { ok: true, duplicate: true };
+  }
+
+  const { error: orderUpdateError } = await (supabase.from("product_orders") as any)
     .update({
       tenant_id: financeTenantId,
       payment_status: "paid",
       payment_reference: reference,
-      status: "confirmed",
+      status: ["pending", "cancelled", "refunded"].includes(String((order as any).status ?? ""))
+        ? "confirmed"
+        : (order as any).status,
       confirmed_at: new Date().toISOString(),
       paid_at: new Date().toISOString(),
     })
     .eq("id", productOrderId);
+  if (orderUpdateError) throw orderUpdateError;
 
   const customerId = (order as any).customer_id as string | undefined;
   const providerId = (order as any).provider_id as string | undefined;
@@ -89,26 +107,30 @@ async function recordProductOrderPaymentInner(
     await clearCustomerCartForProvider(supabase, customerId, providerId);
   }
 
-  if (alreadyRecorded) {
-    return { ok: true, duplicate: true };
+  if (!alreadyRecorded) {
+    const { error: paymentTxError } = await (supabase.from("payment_transactions") as any).insert({
+      booking_id: null,
+      reference,
+      amount: amountMajor,
+      fees: feesMajor,
+      net_amount: subtractMoney(amountMajor, feesMajor),
+      status: "success",
+      provider,
+      transaction_type: "charge",
+      metadata: {
+        kind: "product_order",
+        product_order_id: productOrderId,
+        source,
+      },
+      created_at: new Date().toISOString(),
+    });
+    if (paymentTxError) {
+      if (paymentTxError.code === "23505") {
+        return { ok: true, duplicate: true };
+      }
+      throw paymentTxError;
+    }
   }
-
-  await (supabase.from("payment_transactions") as any).insert({
-    booking_id: null,
-    reference,
-    amount: amountMajor,
-    fees: feesMajor,
-    net_amount: subtractMoney(amountMajor, feesMajor),
-    status: "success",
-    provider,
-    transaction_type: "charge",
-    metadata: {
-      kind: "product_order",
-      product_order_id: productOrderId,
-      source,
-    },
-    created_at: new Date().toISOString(),
-  });
 
   try {
     await ensurePackageEntitlementsFromProductOrder(supabase, productOrderId);
@@ -120,20 +142,31 @@ async function recordProductOrderPaymentInner(
     );
   }
 
-  await (supabase.from("finance_transactions") as any).insert([
+  // Provider-collected product/COD/POS money is tracked on product_orders and
+  // payment_transactions only. It is intentionally excluded from
+  // finance_transactions because that ledger drives platform-held payouts and
+  // shadow GL; adding provider-collected cash here would overstate payable cash.
+  if (!isPlatformHeld) {
+    return { ok: true, duplicate: alreadyRecorded };
+  }
+
+  const financeRows = [
     {
       booking_id: null,
       provider_id: (order as any).provider_id ?? null,
       tenant_id: financeTenantId,
       transaction_type: "payment",
-      amount: grossForProvider,
+      amount: isPlatformHeld ? grossForProvider : orderTotal,
       fees: feesMajor,
-      commission: platformFee,
-      net: platformFee,
-      description: `Product order payment ${(order as any).order_number ?? productOrderId}`,
+      commission: isPlatformHeld ? platformFee : 0,
+      net: isPlatformHeld ? platformFee : 0,
+      description: `${isPlatformHeld ? "Product order payment" : "Provider-collected product order payment"} ${(order as any).order_number ?? productOrderId}`,
       created_at: new Date().toISOString(),
     },
-    {
+  ];
+
+  if (isPlatformHeld) {
+    financeRows.push({
       booking_id: null,
       provider_id: (order as any).provider_id ?? null,
       tenant_id: financeTenantId,
@@ -144,8 +177,9 @@ async function recordProductOrderPaymentInner(
       net: providerEarnings,
       description: `Provider earnings from product order ${(order as any).order_number ?? productOrderId}`,
       created_at: new Date().toISOString(),
-    },
-    {
+    });
+
+    financeRows.push({
       booking_id: null,
       provider_id: (order as any).provider_id ?? null,
       tenant_id: financeTenantId,
@@ -156,8 +190,11 @@ async function recordProductOrderPaymentInner(
       net: platformFee,
       description: `Platform fee from product order ${(order as any).order_number ?? productOrderId}`,
       created_at: new Date().toISOString(),
-    },
-  ]);
+    });
+  }
+
+  const { error: financeInsertError } = await (supabase.from("finance_transactions") as any).insert(financeRows);
+  if (financeInsertError) throw financeInsertError;
 
   return { ok: true, duplicate: false };
 }

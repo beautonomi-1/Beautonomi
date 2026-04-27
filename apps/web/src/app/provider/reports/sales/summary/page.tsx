@@ -14,6 +14,7 @@ import { RevenueChart } from "../../components/RevenueChart";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface SalesSummaryData {
@@ -28,6 +29,7 @@ interface SalesSummaryData {
 }
 
 export default function SalesSummaryReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -40,7 +42,7 @@ export default function SalesSummaryReport() {
 
   useEffect(() => {
     loadReport();
-  }, [dateRange]);
+  }, [dateRange, selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -54,6 +56,7 @@ export default function SalesSummaryReport() {
       if (dateRange.to) {
         params.append("to", dateRange.to.toISOString());
       }
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: SalesSummaryData }>(
         `/api/provider/reports/sales/summary?${params.toString()}`

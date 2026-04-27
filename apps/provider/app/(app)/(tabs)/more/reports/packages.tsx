@@ -10,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
+import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
@@ -53,7 +54,7 @@ export default function PackageReportScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState("month");
 
-  const packagesUrl = `/api/provider/reports/packages?period=${period}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  const packagesUrl = appendReportLocation(`/api/provider/reports/packages?period=${period}`, selectedLocationId);
   const { data: reportData, loading, error: dataError, refresh } = useApi<{
     stats: PackageStats;
     packages: PackageReport[];

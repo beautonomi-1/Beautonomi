@@ -15,7 +15,7 @@ export default function PaymentCallback() {
 
   useEffect(() => {
     const verifyPayment = async () => {
-      const reference = searchParams.get("reference");
+      const reference = searchParams.get("reference") || searchParams.get("trxref");
       
       if (!reference) {
         setStatus("error");
@@ -26,7 +26,7 @@ export default function PaymentCallback() {
       try {
         const response = await fetcher.get<{
           data: { status: string; bookingId?: string };
-        }>(`/api/paystack/verify?reference=${reference}`);
+        }>(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`);
 
         if (response.data.status === "success") {
           setStatus("success");
@@ -35,9 +35,11 @@ export default function PaymentCallback() {
           // Redirect to booking confirmation after 3 seconds
           setTimeout(() => {
             if (response.data.bookingId) {
-              router.push(`/booking/confirmation?bookingId=${response.data.bookingId}`);
+              router.push(
+                `/checkout/success?booking_id=${encodeURIComponent(response.data.bookingId)}&reference=${encodeURIComponent(reference)}`,
+              );
             } else {
-              router.push("/");
+              router.push(`/checkout/success?reference=${encodeURIComponent(reference)}`);
             }
           }, 3000);
         } else {

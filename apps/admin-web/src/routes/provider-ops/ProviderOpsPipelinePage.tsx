@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
@@ -450,7 +450,7 @@ export function ProviderOpsPipelinePage() {
                       >
                         <Link
                           to={adminSpaTo(`/admin/provider-ops/leads/${lead.id}`)}
-                          onClick={(e) => {
+                          onClick={(e: MouseEvent<HTMLAnchorElement>) => {
                             if (suppressCardClickRef.current) {
                               e.preventDefault();
                             }

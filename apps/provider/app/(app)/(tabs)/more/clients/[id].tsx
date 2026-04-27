@@ -1029,7 +1029,7 @@ export default function ClientDetailScreen() {
                   mode="date"
                   display={Platform.OS === "ios" ? "spinner" : "default"}
                   maximumDate={new Date()}
-                  onChange={(_, d) => {
+                  onChange={(_: any, d?: Date) => {
                     setShowDobPicker(Platform.OS === "ios");
                     if (d) setFormDob(formatDateFns(d, "yyyy-MM-dd"));
                   }}

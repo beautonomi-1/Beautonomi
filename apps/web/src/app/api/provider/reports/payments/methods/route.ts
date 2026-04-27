@@ -29,14 +29,21 @@ export async function GET(request: NextRequest) {
       ? new Date(searchParams.get("from")!)
       : subDays(new Date(), 30);
     const toDate = searchParams.get("to") ? new Date(searchParams.get("to")!) : new Date();
+    const locationId = searchParams.get("location_id") || undefined;
 
     // Get bookings in the period
-    const { data: bookings } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, wallet_amount, total_amount")
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString());
+
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: bookings } = await bookingsQuery;
 
     const bookingIds = (bookings ?? []).map((b) => b.id);
 

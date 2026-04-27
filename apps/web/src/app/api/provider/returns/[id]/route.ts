@@ -11,7 +11,8 @@ import {
 import { z } from "zod";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 
-const updateSchema = z.object({
+/** Exported for contract tests; keep in sync with mobile `PATCH` bodies. */
+export const updateSchema = z.object({
   action: z.enum(["approve", "reject", "mark_received", "process_refund"]),
   provider_notes: z.string().max(500).optional(),
   return_method: z.enum(["drop_off", "courier", "not_required"]).optional(),

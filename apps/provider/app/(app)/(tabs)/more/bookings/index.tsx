@@ -20,7 +20,7 @@ import {
   startOfMonth,
   endOfMonth,
 } from "date-fns";
-import { useApi } from "@/hooks/useApi";
+import { usePagedProviderBookings } from "@/hooks/usePagedProviderBookings";
 import { useProvider } from "@/providers/ProviderContext";
 import { supabase } from "@/lib/supabase/client";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -240,7 +240,7 @@ export default function BookingsListScreen() {
   }
   const url = `/api/provider/bookings?${queryParts.join("&")}`;
 
-  const { data, loading, error, refresh } = useApi<Booking[]>(url);
+  const { data, loading, error, refresh } = usePagedProviderBookings<Booking>(url, { timeoutMs: 60_000 });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -331,10 +331,8 @@ export default function BookingsListScreen() {
         start = d.getTime();
         end = start + 24 * 60 * 60 * 1000;
       } else if (statsRange === "week") {
-        const wk = new Date(d);
-        wk.setDate(d.getDate() - d.getDay());
-        start = wk.getTime();
-        end = start + 7 * 24 * 60 * 60 * 1000;
+        start = startOfWeek(d, { weekStartsOn: 1 }).getTime();
+        end = endOfWeek(d, { weekStartsOn: 1 }).getTime() + 1;
       } else {
         start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
         end = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();

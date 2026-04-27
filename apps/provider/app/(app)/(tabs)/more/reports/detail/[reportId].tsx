@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Share,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -32,6 +31,8 @@ import {
   formatReportRangeCaption,
   type ReportDateRangeKey,
 } from "@/lib/reportDateRanges";
+import { shareReportAsCsv } from "@/lib/reportExportCsv";
+import { appendReportLocation } from "@/lib/reportLocationQuery";
 
 const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
   { label: "Today", value: "today" },
@@ -64,7 +65,6 @@ function buildReportUrl(
     locationId: string | null;
   },
 ): string {
-  const loc = opts.locationId ? `&location_id=${encodeURIComponent(opts.locationId)}` : "";
   const extra = def.extraSearch
     ? def.extraSearch({
         from: opts.from,
@@ -76,17 +76,15 @@ function buildReportUrl(
 
   switch (def.query) {
     case "none":
-      return opts.locationId
-        ? `/api/provider/reports/${def.apiPath}?location_id=${encodeURIComponent(opts.locationId)}`
-        : `/api/provider/reports/${def.apiPath}`;
+      return appendReportLocation(`/api/provider/reports/${def.apiPath}`, opts.locationId);
     case "fromTo":
-      return `/api/provider/reports/${def.apiPath}?from=${opts.from}&to=${opts.to}${loc}${extra}`;
+      return `${appendReportLocation(`/api/provider/reports/${def.apiPath}?from=${opts.from}&to=${opts.to}`, opts.locationId)}${extra}`;
     case "periodMQY":
-      return `/api/provider/reports/${def.apiPath}?period=${encodeURIComponent(opts.period)}${loc}`;
+      return appendReportLocation(`/api/provider/reports/${def.apiPath}?period=${encodeURIComponent(opts.period)}`, opts.locationId);
     case "periodDMWY":
-      return `/api/provider/reports/${def.apiPath}?period=${encodeURIComponent(opts.period)}${loc}`;
+      return appendReportLocation(`/api/provider/reports/${def.apiPath}?period=${encodeURIComponent(opts.period)}`, opts.locationId);
     case "singleDate":
-      return `/api/provider/reports/${def.apiPath}?date=${encodeURIComponent(opts.date)}${loc}`;
+      return appendReportLocation(`/api/provider/reports/${def.apiPath}?date=${encodeURIComponent(opts.date)}`, opts.locationId);
     default:
       return `/api/provider/reports/${def.apiPath}`;
   }
@@ -121,16 +119,13 @@ export default function ReportDetailScreen() {
   const { data, loading, error, refresh } = useApi<unknown>(path, { enabled: !!def && !!path });
 
   const handleShare = useCallback(async () => {
-    if (data == null) return;
+    if (data == null || !reportId) return;
     try {
-      await Share.share({
-        title: def?.title ?? "Report",
-        message: typeof data === "object" ? JSON.stringify(data, null, 2) : String(data),
-      });
+      await shareReportAsCsv(String(reportId), def?.title ?? "Report", data);
     } catch {
       /* ignore */
     }
-  }, [data, def?.title]);
+  }, [data, def?.title, reportId]);
 
   if (!reportId || !def) {
     return (
@@ -154,7 +149,7 @@ export default function ReportDetailScreen() {
               void handleShare();
             }}
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
-            accessibilityLabel="Share report data"
+            accessibilityLabel="Export and share report as CSV"
           >
             <Ionicons name="share-outline" size={18} color="#374151" />
           </TouchableOpacity>

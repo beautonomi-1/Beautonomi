@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+import * as ExpoLinking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
 import { api } from "@/lib/api-client";
@@ -135,27 +136,44 @@ export default function PaymentsScreen() {
     setAddingCard(true);
     const countBefore = methods.length;
     try {
-      const res = await api.post<{ authorization_url?: string; data?: { authorization_url?: string } }>(
+      const callbackUrl = ExpoLinking.createURL("account-settings/payments");
+      const res = await api.post<{ authorization_url?: string; reference?: string; data?: { authorization_url?: string; reference?: string } }>(
         "/api/me/payment-methods/initialize-verification",
         {
           set_as_default: methods.length === 0,
           /** Paystack redirects here after checkout — must be in-app scheme so Safari returns to the customer app (not the web account page). */
-          callback_url: "customer://account-settings/payments",
+          callback_url: callbackUrl,
         },
       );
       if (res.error) {
         Alert.alert(t("common.error"), res.error.message ?? t("customer.paymentsScreen.couldNotStartVerification"));
         return;
       }
-      const payload = res.data as { authorization_url?: string; data?: { authorization_url?: string } } | null | undefined;
+      const payload = res.data as { authorization_url?: string; reference?: string; data?: { authorization_url?: string; reference?: string } } | null | undefined;
       const url = payload?.authorization_url ?? payload?.data?.authorization_url;
+      let reference = payload?.reference ?? payload?.data?.reference ?? null;
       if (!url) {
         Alert.alert(t("common.error"), t("customer.paymentsScreen.couldNotStartVerification"));
         return;
       }
-      await WebBrowser.openBrowserAsync(url, {
-        presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-      });
+      const browserResult = await WebBrowser.openAuthSessionAsync(url, callbackUrl);
+      if (browserResult.type === "success" && browserResult.url) {
+        try {
+          const parsed = ExpoLinking.parse(browserResult.url);
+          const query = parsed.queryParams ?? {};
+          const returnedRef = query.reference ?? query.trxref;
+          reference = Array.isArray(returnedRef)
+            ? returnedRef[0] ?? reference
+            : typeof returnedRef === "string" && returnedRef.trim()
+              ? returnedRef.trim()
+              : reference;
+        } catch {
+          // Keep the initialize reference fallback.
+        }
+      }
+      if (reference) {
+        await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+      }
 
       const MAX_POLL = 12;
       const POLL_MS = 2000;

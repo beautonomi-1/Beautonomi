@@ -29,12 +29,13 @@ export interface YocoReconciliationResponse {
     synced: number;
     not_synced: number;
   };
+  note?: string;
 }
 
 /**
  * GET /api/provider/reports/payments/yoco-reconciliation
  * Lists recent Yoco payments and whether each is synced to booking_payments (for booking-linked payments).
- * Query: from (ISO date), to (ISO date), limit (default 100).
+ * Query: from (ISO date), to (ISO date), limit (default 100), location_id (booking/sale-linked rows only).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -60,6 +61,7 @@ export async function GET(request: NextRequest) {
     const fromStr = searchParams.get("from");
     const toStr = searchParams.get("to");
     const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10) || 100, 500);
+    const locationId = searchParams.get("location_id") || undefined;
 
     const from = fromStr ? new Date(fromStr) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const to = toStr ? new Date(toStr) : new Date();
@@ -75,7 +77,7 @@ export async function GET(request: NextRequest) {
 
     if (yocoError) throw yocoError;
 
-    const payments = (yocoPayments || []) as Array<{
+    let payments = (yocoPayments || []) as Array<{
       id: string;
       yoco_payment_id: string;
       amount: number;
@@ -85,6 +87,40 @@ export async function GET(request: NextRequest) {
       sale_id: string | null;
       created_at: string;
     }>;
+
+    if (locationId && payments.length > 0) {
+      const bookingIds = payments.map((p) => p.appointment_id).filter(Boolean) as string[];
+      const saleIds = payments.map((p) => p.sale_id).filter(Boolean) as string[];
+      const matchingBookingIds = new Set<string>();
+      const matchingSaleIds = new Set<string>();
+
+      if (bookingIds.length > 0) {
+        const { data: bookingRows } = await supabaseAdmin
+          .from("bookings")
+          .select("id")
+          .in("id", bookingIds)
+          .eq("location_id", locationId);
+        for (const row of bookingRows ?? []) {
+          matchingBookingIds.add((row as { id: string }).id);
+        }
+      }
+
+      if (saleIds.length > 0) {
+        const { data: saleRows } = await supabaseAdmin
+          .from("sales")
+          .select("id")
+          .in("id", saleIds)
+          .eq("location_id", locationId);
+        for (const row of saleRows ?? []) {
+          matchingSaleIds.add((row as { id: string }).id);
+        }
+      }
+
+      payments = payments.filter((p) =>
+        (p.appointment_id && matchingBookingIds.has(p.appointment_id)) ||
+        (p.sale_id && matchingSaleIds.has(p.sale_id))
+      );
+    }
 
     const withBooking = payments.filter((p) => p.appointment_id);
     const yocoIdsWithBooking = withBooking.map((p) => p.yoco_payment_id);
@@ -129,6 +165,9 @@ export async function GET(request: NextRequest) {
         synced: syncedCount,
         not_synced: withBookingCount - syncedCount,
       },
+      note: locationId
+        ? "Location filter applies to Yoco rows linked to bookings or sales at the selected location."
+        : undefined,
     };
 
     return successResponse(response);

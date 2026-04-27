@@ -43,6 +43,15 @@ const ALL_DAY_KEYS_SET = new Set([
   'saturday',
 ]);
 
+function dayIndexForDateKey(date: string): number {
+  const parsed = new Date(`${date}T12:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) ? parsed.getUTCDay() : 0;
+}
+
+function dayKeyForDateKey(date: string): (typeof DAY_KEYS)[number] {
+  return DAY_KEYS[dayIndexForDateKey(date)] ?? 'sunday';
+}
+
 /**
  * Empty working_hours means "no explicit operating-hours constraint".
  * Do not impose a 09:00 start here: providers can create appointments before
@@ -153,7 +162,7 @@ function constrainShiftsToLocationHours(
   locationWh: Record<string, WorkingHoursDay>,
   date: string
 ): StaffShift[] {
-  const dayKey = DAY_KEYS[new Date(`${date}T12:00:00`).getDay()];
+  const dayKey = dayKeyForDateKey(date);
   const resolved = resolveWorkingHoursDay(locationWh, dayKey);
 
   if (!resolved) {
@@ -220,7 +229,7 @@ async function buildStaffShiftsFromPrimaryLocation(
       ? (raw as Record<string, WorkingHoursDay>)
       : {};
 
-  const dayKey = DAY_KEYS[new Date(`${date}T12:00:00`).getDay()];
+  const dayKey = dayKeyForDateKey(date);
   const resolved = resolveWorkingHoursDay(wh, dayKey);
   if (!resolved) {
     return [];
@@ -277,7 +286,7 @@ async function buildStaffShiftsFromWorkingHoursFallback(
       : {};
 
   const hasAnyKeys = Object.keys(wh).length > 0;
-  const dayKey = DAY_KEYS[new Date(`${date}T12:00:00`).getDay()];
+  const dayKey = dayKeyForDateKey(date);
 
   if (!hasAnyKeys && providerId) {
     const fromLoc = await buildStaffShiftsFromPrimaryLocation(db, providerId, date, staffId, locationId);
@@ -320,7 +329,7 @@ async function resolveStaffScheduleForDate(
   staffId: string,
   date: string
 ): Promise<StaffScheduleDayResult> {
-  const dayOfWeek = new Date(`${date}T12:00:00`).getDay();
+  const dayOfWeek = dayIndexForDateKey(date);
   const { data: row, error } = await supabase
     .from('staff_schedules')
     .select('start_time, end_time, is_working')
@@ -342,8 +351,12 @@ async function resolveStaffScheduleForDate(
     return `${s}:00`;
   };
 
-  const start = row.start_time != null ? normalize(String(row.start_time)) : '09:00:00';
-  const end = row.end_time != null ? normalize(String(row.end_time)) : '18:00:00';
+  if (row.start_time == null || row.end_time == null) {
+    return { kind: 'none' };
+  }
+
+  const start = normalize(String(row.start_time));
+  const end = normalize(String(row.end_time));
 
   return {
     kind: 'open',
@@ -482,19 +495,19 @@ function expandRecurringTimeBlocksForDate(
 ): TimeBlock[] {
   if (!recurringBlocks.length) return [];
 
-  const targetDateObj = new Date(`${date}T12:00:00`);
-  const targetDayOfWeek = targetDateObj.getDay();
+  const targetDateObj = new Date(`${date}T12:00:00.000Z`);
+  const targetDayOfWeek = dayIndexForDateKey(date);
 
   return recurringBlocks
     .filter((block) => {
-      const originalDate = new Date(`${block.date}T12:00:00`);
+      const originalDate = new Date(`${block.date}T12:00:00.000Z`);
       if (targetDateObj < originalDate) return false;
 
       if (block.recurring_pattern) {
         return expandRecurringPattern(block.recurring_pattern as any, block.date, date);
       }
 
-      return originalDate.getDay() === targetDayOfWeek;
+      return originalDate.getUTCDay() === targetDayOfWeek;
     })
     .map((block) => ({
       ...block,

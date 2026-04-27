@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
@@ -20,6 +20,7 @@ interface RoleGateProps {
 
 export function RoleGate({ children }: RoleGateProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, signOut } = useAuth();
   const { role, loading, profileLoadError, refresh } = useProvider();
   const lastResolved = useRef<{ loading: boolean; blocked: boolean } | null>(null);
@@ -36,11 +37,14 @@ export function RoleGate({ children }: RoleGateProps) {
       }
       return "api";
     }
+    if (role === "customer" && pathname?.includes("/onboarding")) {
+      return null;
+    }
     if (!ALLOWED_ROLES.includes(role as UserRole)) {
       return "role";
     }
     return null;
-  }, [role, profileLoadError]);
+  }, [role, profileLoadError, pathname]);
   const blocked = !loading && blockReason !== null;
 
   useEffect(() => {

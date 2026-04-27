@@ -31,6 +31,16 @@ type PricingPlanLink = {
   cta_text?: string;
   display_order?: number;
   is_active?: boolean;
+  /** Shown on /pricing and provider catalog cards (e.g. ZAR) */
+  currency?: string | null;
+};
+
+type PricingOnlyApiRow = {
+  row_kind?: string;
+  reason?: string;
+  orphan_subscription_plan_id?: string | null;
+  pricing_plan_id?: string;
+  pricing_plan?: Record<string, unknown> & { id?: string; name?: string; subscription_plan_id?: string | null };
 };
 
 type PlanRow = Record<string, unknown> & {
@@ -97,7 +107,7 @@ export function PlansListPage() {
 
   const rows = Array.isArray(q.data) ? q.data : q.data?.plans ?? [];
   const plansMeta = Array.isArray(q.data) ? null : q.data?.meta ?? null;
-  const pricingOnlyRows = Array.isArray(q.data) ? [] : (q.data?.pricing_only ?? []);
+  const pricingOnlyRows: PricingOnlyApiRow[] = Array.isArray(q.data) ? [] : (q.data?.pricing_only ?? []);
 
   const webPlansEditorUrl = (() => {
     const base = (publicEnv.siteUrl || publicEnv.appUrl || "").replace(/\/$/, "");
@@ -124,6 +134,7 @@ export function PlansListPage() {
   const [nMaxLoc, setNMaxLoc] = useState("1");
   const [nMaxBookings, setNMaxBookings] = useState("");
   const [nMaxStaff, setNMaxStaff] = useState("");
+  const [nFeaturesJson, setNFeaturesJson] = useState("{}");
 
   const [editId, setEditId] = useState<string | null>(null);
   const [editRow, setEditRow] = useState<PlanRow | null>(null);
@@ -151,8 +162,23 @@ export function PlansListPage() {
   const [eDescDisplay, setEDescDisplay] = useState("");
   const [eCtaText, setECtaText] = useState("Get started");
   const [eOrderPricing, setEOrderPricing] = useState("0");
+  const [ePricingCurrency, setEPricingCurrency] = useState("");
   /** One rich-text row per `pricing_plan_features` line (HTML from WYSIWYG). */
   const [eMarketingFeatures, setEMarketingFeatures] = useState<string[]>([]);
+
+  /** Orphan / pricing-only marketing card (no or broken subscription link) */
+  const [poEdit, setPoEdit] = useState<PricingOnlyApiRow | null>(null);
+  const [poName, setPoName] = useState("");
+  const [poSubPlanId, setPoSubPlanId] = useState("");
+  const [poPrice, setPoPrice] = useState("");
+  const [poPeriod, setPoPeriod] = useState("");
+  const [poDesc, setPoDesc] = useState("");
+  const [poCta, setPoCta] = useState("Get started");
+  const [poOrder, setPoOrder] = useState("0");
+  const [poPopular, setPoPopular] = useState(false);
+  const [poActive, setPoActive] = useState(true);
+  const [poCurrency, setPoCurrency] = useState("");
+  const [poFeatures, setPoFeatures] = useState<string[]>([]);
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.plans() });
 
@@ -167,8 +193,19 @@ export function PlansListPage() {
   });
 
   const createPlan = useMutation({
-    mutationFn: () =>
-      adminApi.postJson<unknown>("/api/admin/subscription-plans", {
+    mutationFn: () => {
+      let featuresObj: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(nFeaturesJson || "{}") as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          featuresObj = parsed as Record<string, unknown>;
+        } else {
+          throw new Error("Features must be a JSON object (not an array).");
+        }
+      } catch (e) {
+        throw new Error(e instanceof Error ? e.message : "Invalid features JSON");
+      }
+      return adminApi.postJson<unknown>("/api/admin/subscription-plans", {
         name: nName.trim(),
         description: nDesc.trim() || undefined,
         price_monthly: nFree ? undefined : nMonthly.trim() ? parseFloat(nMonthly) : undefined,
@@ -181,8 +218,9 @@ export function PlansListPage() {
         max_locations: parseInt(nMaxLoc, 10) || 1,
         max_bookings_per_month: nMaxBookings.trim() ? parseInt(nMaxBookings, 10) : null,
         max_staff_members: nMaxStaff.trim() ? parseInt(nMaxStaff, 10) : null,
-        features: {},
-      }),
+        features: featuresObj,
+      });
+    },
     onSuccess: () => {
       invalidate();
       setShowCreate(false);
@@ -198,7 +236,47 @@ export function PlansListPage() {
       setNMaxLoc("1");
       setNMaxBookings("");
       setNMaxStaff("");
+      setNFeaturesJson("{}");
     },
+  });
+
+  const savePoCard = useMutation({
+    mutationFn: async () => {
+      const id = String(poEdit?.pricing_plan_id ?? "");
+      if (!id || !poEdit) throw new Error("No pricing card selected");
+      if (!poSubPlanId.trim()) {
+        throw new Error("Select a subscription plan to link. Paid rows only appear in the provider upgrade flow when a linked, active card exists.");
+      }
+      await adminApi.putJson<unknown>("/api/admin/pricing-plans", {
+        id,
+        name: poName.trim() || "Plan",
+        price: poPrice.trim() || "0",
+        period: poPeriod.trim() || null,
+        description: poDesc.trim() || null,
+        cta_text: poCta.trim() || "Get started",
+        is_popular: poPopular,
+        display_order: parseInt(poOrder, 10) || 0,
+        is_active: poActive,
+        subscription_plan_id: poSubPlanId.trim(),
+        currency: poCurrency.trim() ? poCurrency.trim().toUpperCase() : null,
+      });
+      const lines = poFeatures.filter((t) => !isBlankHtmlContent(t));
+      await adminApi.putJson(`/api/admin/pricing-plans/${id}/features`, { features: lines });
+    },
+    onSuccess: () => {
+      invalidate();
+      setPoEdit(null);
+    },
+    onError: (err: Error) => adminToast.error(err.message),
+  });
+
+  const hidePoCard = useMutation({
+    mutationFn: (pricingId: string) => adminApi.putJson("/api/admin/pricing-plans", { id: pricingId, is_active: false }),
+    onSuccess: () => {
+      invalidate();
+      adminToast.success("Pricing card hidden from /pricing. Link again from a subscription plan when ready.");
+    },
+    onError: (err: Error) => adminToast.error(err.message),
   });
 
   const savePlan = useMutation({
@@ -253,6 +331,7 @@ export function PlansListPage() {
           display_order: parseInt(eOrderPricing, 10) || 0,
           is_active: eActive,
           subscription_plan_id: subId,
+          currency: ePricingCurrency.trim() ? ePricingCurrency.trim().toUpperCase() : null,
           paystack_plan_code_monthly:
             (savedPlan.paystack_plan_code_monthly as string | null | undefined) ??
             (prevPpFull.paystack_plan_code_monthly as string | null | undefined) ??
@@ -291,6 +370,32 @@ export function PlansListPage() {
     setEditRow(null);
   }
 
+  function closePoEdit() {
+    setPoEdit(null);
+  }
+
+  function openPoEdit(row: PricingOnlyApiRow) {
+    setPoEdit(row);
+    const pp = (row.pricing_plan ?? {}) as Record<string, unknown>;
+    setPoName(String(pp.name ?? ""));
+    const fromRow =
+      pp.subscription_plan_id != null && String(pp.subscription_plan_id).trim()
+        ? String(pp.subscription_plan_id)
+        : row.orphan_subscription_plan_id != null && String(row.orphan_subscription_plan_id).trim()
+          ? String(row.orphan_subscription_plan_id)
+          : "";
+    setPoSubPlanId(fromRow);
+    setPoPrice(String(pp.price ?? ""));
+    setPoPeriod(pp.period != null && String(pp.period) !== "" ? String(pp.period) : "");
+    setPoDesc(pp.description != null ? String(pp.description) : "");
+    setPoCta(String(pp.cta_text ?? "Get started"));
+    setPoOrder(String(pp.display_order ?? 0));
+    setPoPopular(Boolean(pp.is_popular));
+    setPoActive(pp.is_active !== false);
+    setPoCurrency(pp.currency != null ? String(pp.currency) : "");
+    setPoFeatures([]);
+  }
+
   function openEdit(row: PlanRow) {
     if (!row.id) return;
     setEditId(row.id);
@@ -317,6 +422,7 @@ export function PlansListPage() {
     setEDescDisplay(pp?.description != null ? String(pp.description) : "");
     setECtaText(String(pp?.cta_text ?? "Get started"));
     setEOrderPricing(String(pp?.display_order ?? row.display_order ?? 0));
+    setEPricingCurrency(pp && "currency" in pp && pp.currency != null ? String(pp.currency) : "");
     setEMarketingFeatures([]);
   }
 
@@ -344,6 +450,28 @@ export function PlansListPage() {
     };
   }, [editRow?.id, editRow?.pricing_plan?.id]);
 
+  useEffect(() => {
+    if (!poEdit?.pricing_plan_id) return;
+    const id = String(poEdit.pricing_plan_id);
+    let cancelled = false;
+    adminApi
+      .getJson<Array<{ feature_text?: string }>>(`/api/admin/pricing-plans/${id}/features`, { timeoutMs: 30_000 })
+      .then((r) => {
+        if (cancelled || !Array.isArray(r)) return;
+        setPoFeatures(
+          r
+            .map((x) => x.feature_text)
+            .filter((t): t is string => typeof t === "string" && t.length > 0),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setPoFeatures([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [poEdit?.pricing_plan_id]);
+
   if (denied) return denied;
   if (q.isLoading) {
     return (
@@ -363,11 +491,19 @@ export function PlansListPage() {
   const createErr = createPlan.error instanceof Error ? createPlan.error.message : null;
   const saveErr = savePlan.error instanceof Error ? savePlan.error.message : null;
 
+  function providerCatalogLabel(r: PlanRow): "yes" | "no" {
+    if (r.is_free) return "yes";
+    const pp = r.pricing_plan;
+    if (!pp?.id) return "no";
+    if (pp.is_active === false) return "no";
+    return "yes";
+  }
+
   return (
     <div className="space-y-6">
-      <AdminPageHeader
+        <AdminPageHeader
         title="Plans & subscription products"
-        description="Subscription plans control billing and in-app entitlements (feature JSON). The public /pricing page uses separate marketing rows (price label, bullets) linked to each plan when “Show on pricing page” is enabled."
+        description="Entitlements and limits live in subscription_plans (including the feature JSON). Provider upgrade UI and the public /pricing page show copy from linked, active pricing_plans plus marketing bullets in pricing_plan_features. Paid plans only appear in the in-app catalog when a linked marketing card is active."
       />
       {webPlansEditorUrl ? (
         <AdminPanel className="border-indigo-200 bg-indigo-50/80">
@@ -507,6 +643,16 @@ export function PlansListPage() {
                 onChange={(e) => setNMaxStaff(e.target.value)}
               />
             </label>
+            <label className="text-sm sm:col-span-2">
+              Entitlements / feature flags (JSON object on subscription_plans.features)
+              <textarea
+                className="mt-1 w-full min-h-[120px] rounded border border-gray-300 px-2 py-2 font-mono text-xs"
+                value={nFeaturesJson}
+                onChange={(e) => setNFeaturesJson(e.target.value)}
+                placeholder="{}"
+                spellCheck={false}
+              />
+            </label>
           </div>
           <button
             type="button"
@@ -529,14 +675,16 @@ export function PlansListPage() {
               and drive the provider app and enforcement.
             </p>
             <p>
-              <strong>Feature permissions</strong> are the <code className="rounded bg-white px-1">features</code> JSON object
-              (marketing_campaigns, booking_limits, multi_location, advanced_analytics, …). Edit the JSON carefully — invalid
-              shapes may be ignored at runtime.
+              <strong>Entitlements (feature permissions)</strong> are the <code className="rounded bg-white px-1">features</code>{" "}
+              JSON on <code className="rounded bg-white px-1">subscription_plans</code> (gating, limits, integrations). This is
+              not the same as the bullet list below — that list is marketing copy.
             </p>
             <p>
-              <strong>Public /pricing</strong> uses <code className="rounded bg-white px-1">pricing_plans</code> + bullet lines
-              in <code className="rounded bg-white px-1">pricing_plan_features</code>. Enable “Show on pricing page” to sync
-              a marketing card; bullets are one line each in the text area.
+              <strong>Provider-facing bullets</strong> and <strong>public /pricing</strong> both use the same marketing
+              data: an <strong>active</strong> <code className="rounded bg-white px-1">pricing_plans</code> row linked to
+              this subscription product, with HTML bullets in <code className="rounded bg-white px-1">pricing_plan_features</code>
+              . Enable “Show on pricing page” to create or refresh that link. For paid plans, the provider catalog also requires
+              this link.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -696,6 +844,15 @@ export function PlansListPage() {
                       onChange={(e) => setEOrderPricing(e.target.value)}
                     />
                   </label>
+                  <label className="text-sm">
+                    Display currency (optional, e.g. ZAR)
+                    <input
+                      className="mt-1 w-full rounded border border-gray-300 px-2 py-1 uppercase"
+                      value={ePricingCurrency}
+                      onChange={(e) => setEPricingCurrency(e.target.value)}
+                      placeholder="ZAR"
+                    />
+                  </label>
                   <label className="text-sm sm:col-span-2">
                     Short description (marketing)
                     <textarea
@@ -819,10 +976,274 @@ export function PlansListPage() {
 
       {pricingOnlyRows.length > 0 ? (
         <AdminPanel>
-          <p className="text-sm font-medium text-amber-900">
-            {pricingOnlyRows.length} active pricing card(s) are not linked to a subscription plan (they can still
-            appear on /pricing). Reconcile in the full Next.js admin at {webPlansEditorUrl || "/admin/plans"}.
+          <p className="mb-3 text-sm text-gray-700">
+            These <strong>active</strong> marketing cards are missing a valid <code className="text-xs">subscription_plan_id</code>{" "}
+            (or the ID does not match a loaded subscription product). They can still show on <strong>/pricing</strong> until you
+            link or hide them. Orphan paid cards do <strong>not</strong> appear in the provider upgrade catalog until linked.
           </p>
+          <AdminDataTable>
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Issue</AdminTh>
+                <AdminTh>Card name</AdminTh>
+                <AdminTh>Price label</AdminTh>
+                <AdminTh> </AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {pricingOnlyRows.map((row) => {
+                const pp = row.pricing_plan ?? {};
+                const reason = row.reason ?? "";
+                const reasonLabel =
+                  reason === "no_subscription_link"
+                    ? "Not linked to a product"
+                    : reason === "unknown_subscription_plan"
+                      ? "Link points to missing product"
+                      : reason;
+                return (
+                  <tr key={String(row.pricing_plan_id ?? pp.id ?? "")}>
+                    <AdminTd className="text-xs text-amber-900">{reasonLabel}</AdminTd>
+                    <AdminTd className="font-medium">{String(pp.name ?? "—")}</AdminTd>
+                    <AdminTd className="text-xs">
+                      {String(pp.price ?? "—")}
+                      {pp.period ? ` ${String(pp.period)}` : ""}
+                    </AdminTd>
+                    <AdminTd>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" className="text-sm text-gray-900 underline" onClick={() => openPoEdit(row)}>
+                          Link &amp; edit
+                        </button>
+                        <button
+                          type="button"
+                          className="text-sm text-amber-900 underline disabled:opacity-50"
+                          disabled={hidePoCard.isPending}
+                          onClick={() => {
+                            const id = String(row.pricing_plan_id ?? row.pricing_plan?.id ?? "");
+                            if (!id) return;
+                            if (
+                              confirm("Hide this card from /pricing? (Does not delete the row; you can link it again later.)")
+                            ) {
+                              hidePoCard.mutate(id);
+                            }
+                          }}
+                        >
+                          Hide from /pricing
+                        </button>
+                      </div>
+                    </AdminTd>
+                  </tr>
+                );
+              })}
+            </AdminTableBody>
+          </AdminDataTable>
+        </AdminPanel>
+      ) : null}
+
+      {poEdit ? (
+        <AdminPanel>
+          <p className="mb-2 text-sm font-medium text-gray-900">Marketing-only or orphan pricing card</p>
+          <p className="mb-3 text-xs text-gray-600">
+            Link this row to a subscription product, adjust copy, and save bullets. This updates what providers see in the
+            upgrade flow and what visitors see on the public /pricing page (when the card is active).
+          </p>
+          {rows.length === 0 ? (
+            <p className="mb-3 text-sm text-amber-900">
+              There are no subscription products in the merge yet — create a plan in this list first, then use “Link &amp; edit”
+              again to attach this card to it.
+            </p>
+          ) : null}
+          {poEdit.reason === "unknown_subscription_plan" && poEdit.orphan_subscription_plan_id ? (
+            <p className="mb-3 text-xs text-amber-800">
+              Stored link <code className="break-all rounded bg-amber-50 px-1">{String(poEdit.orphan_subscription_plan_id)}</code>{" "}
+              did not resolve to a product in the merge — pick a valid product below and save.
+            </p>
+          ) : null}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm sm:col-span-2">
+              Link to subscription product (billing) *
+              <select
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                value={poSubPlanId}
+                onChange={(e) => setPoSubPlanId(e.target.value)}
+              >
+                <option value="">— Select a plan —</option>
+                {rows.map((r) =>
+                  r.id ? (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({String(r.is_free ? "free" : "paid")})
+                    </option>
+                  ) : null,
+                )}
+                {poSubPlanId && !rows.some((r) => r.id === poSubPlanId) ? (
+                  <option value={poSubPlanId}>Unmatched ID (fix required)</option>
+                ) : null}
+              </select>
+            </label>
+            <label className="text-sm sm:col-span-2">
+              Card title (on /pricing)
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={poName}
+                onChange={(e) => setPoName(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              Price label
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={poPrice}
+                onChange={(e) => setPoPrice(e.target.value)}
+                placeholder="R99"
+              />
+            </label>
+            <label className="text-sm">
+              Period label
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={poPeriod}
+                onChange={(e) => setPoPeriod(e.target.value)}
+                placeholder="/month"
+              />
+            </label>
+            <label className="text-sm">
+              Display currency
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1 uppercase"
+                value={poCurrency}
+                onChange={(e) => setPoCurrency(e.target.value)}
+                placeholder="ZAR"
+              />
+            </label>
+            <label className="text-sm">
+              Card sort
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={poOrder}
+                onChange={(e) => setPoOrder(e.target.value)}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={poActive} onChange={(e) => setPoActive(e.target.checked)} />
+              Active (shown on /pricing)
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={poPopular} onChange={(e) => setPoPopular(e.target.checked)} />
+              Popular
+            </label>
+            <label className="text-sm sm:col-span-2">
+              Short description
+              <textarea
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                rows={2}
+                value={poDesc}
+                onChange={(e) => setPoDesc(e.target.value)}
+              />
+            </label>
+            <label className="text-sm sm:col-span-2">
+              CTA label
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={poCta}
+                onChange={(e) => setPoCta(e.target.value)}
+              />
+            </label>
+            <div className="text-sm sm:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  Plan bullets (rich text → <code className="text-xs">pricing_plan_features</code>)
+                </span>
+                <button
+                  type="button"
+                  className="rounded border border-gray-300 px-2 py-1 text-xs"
+                  onClick={() => setPoFeatures((p) => [...p, ""])}
+                >
+                  Add bullet
+                </button>
+              </div>
+              <div className="mt-3 space-y-4">
+                {poFeatures.map((html, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <div className="flex shrink-0 flex-col gap-0.5 pt-1">
+                      <button
+                        type="button"
+                        className="rounded border border-gray-200 px-1.5 py-0.5 text-[10px] disabled:opacity-40"
+                        disabled={i === 0}
+                        aria-label="Move up"
+                        onClick={() => {
+                          if (i === 0) return;
+                          setPoFeatures((prev) => {
+                            const n = [...prev];
+                            [n[i - 1], n[i]] = [n[i], n[i - 1]];
+                            return n;
+                          });
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-gray-200 px-1.5 py-0.5 text-[10px] disabled:opacity-40"
+                        disabled={i === poFeatures.length - 1}
+                        aria-label="Move down"
+                        onClick={() => {
+                          if (i >= poFeatures.length - 1) return;
+                          setPoFeatures((prev) => {
+                            const n = [...prev];
+                            [n[i], n[i + 1]] = [n[i + 1], n[i]];
+                            return n;
+                          });
+                        }}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-red-200 px-1.5 py-0.5 text-[10px] text-red-700"
+                        aria-label="Remove"
+                        onClick={() => setPoFeatures((prev) => prev.filter((_, j) => j !== i))}
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <RichTextEditor
+                        value={html}
+                        onChange={(next) =>
+                          setPoFeatures((prev) => {
+                            const c = [...prev];
+                            c[i] = next;
+                            return c;
+                          })
+                        }
+                        minHeightClassName="min-h-[100px]"
+                        placeholder={`Bullet ${i + 1}`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+              disabled={savePoCard.isPending}
+              onClick={() => void savePoCard.mutate()}
+            >
+              Save card
+            </button>
+            <button
+              type="button"
+              className="rounded border border-gray-300 px-3 py-2 text-sm"
+              onClick={() => closePoEdit()}
+            >
+              Cancel
+            </button>
+          </div>
+          {savePoCard.error instanceof Error ? (
+            <p className="mt-2 text-sm text-red-600">{(savePoCard.error as Error).message}</p>
+          ) : null}
         </AdminPanel>
       ) : null}
 
@@ -843,6 +1264,7 @@ export function PlansListPage() {
               <AdminTh>Yearly</AdminTh>
               <AdminTh>Free</AdminTh>
               <AdminTh>Active</AdminTh>
+              <AdminTh>Provider catalog</AdminTh>
               <AdminTh>Public /pricing</AdminTh>
               <AdminTh>Paystack</AdminTh>
               <AdminTh> </AdminTh>
@@ -861,6 +1283,12 @@ export function PlansListPage() {
                   <AdminTd className="tabular-nums">{r.price_yearly != null ? String(r.price_yearly) : "—"}</AdminTd>
                   <AdminTd>{r.is_free ? "yes" : "no"}</AdminTd>
                   <AdminTd>{r.is_active !== false ? "yes" : "no"}</AdminTd>
+                  <AdminTd
+                    className="text-xs"
+                    title="Paid products need an active linked marketing card to appear in the in-app upgrade list. Free plans always show."
+                  >
+                    {providerCatalogLabel(r)}
+                  </AdminTd>
                   <AdminTd className="max-w-[10rem] text-xs">
                     <span title={publicLabel}>{publicLabel}</span>
                   </AdminTd>

@@ -176,6 +176,10 @@ export interface BookingState {
   recurringFrequency?: "weekly" | "biweekly" | "monthly";
   /** Slot hold ID reserved when leaving the calendar step — passed to booking creation to exclude from conflict check. */
   holdId?: string | null;
+  /** Expiry for the active slot hold, shown on the payment step countdown. */
+  holdExpiresAt?: string | null;
+  /** Incremented when the parent needs the calendar step to reload availability. */
+  availabilityRefreshToken?: number;
   /**
    * B11: provider intake / consent / waiver form responses captured on the
    * "forms" step. Keyed by `provider_forms.id` → `{ field_id: value }` so the
@@ -758,10 +762,8 @@ export default function BookingFlow() {
     }
   };
 
-  /** Create a booking hold when leaving the calendar step so the server can exclude
-   *  it from the conflict check — prevents the customer's own slot reservation from
-   *  blocking their own booking attempt. Non-fatal: booking proceeds even if hold fails. */
-  const createHoldForCalendarExit = async (): Promise<string | null> => {
+  /** Create a booking hold before leaving the calendar step. */
+  const createHoldForCalendarExit = async (): Promise<{ holdId: string; expiresAt: string | null } | null> => {
     if (
       !bookingState.providerId ||
       !bookingState.selectedDate ||
@@ -814,7 +816,12 @@ export default function BookingFlow() {
               return v.toString(16);
             });
 
-      const res = await fetcher.post<{ data?: { hold_id?: string; id?: string } }>(
+      const res = await fetcher.post<{
+        data?: { hold_id?: string; id?: string; expires_at?: string | null };
+        hold_id?: string;
+        id?: string;
+        expires_at?: string | null;
+      }>(
         "/api/public/booking-holds",
         {
           provider_id: bookingState.providerId,
@@ -848,10 +855,14 @@ export default function BookingFlow() {
         },
         { headers: { "Idempotency-Key": holdIdemKey } }
       );
-      return res?.data?.hold_id ?? res?.data?.id ?? null;
+      const holdId = res?.data?.hold_id ?? res?.data?.id ?? res?.hold_id ?? res?.id ?? null;
+      if (!holdId) {
+        throw new Error("No hold id returned");
+      }
+      return { holdId, expiresAt: res?.data?.expires_at ?? res?.expires_at ?? null };
     } catch (err) {
       console.warn("[booking] hold creation failed:", err);
-      toast.warning("Could not reserve your time slot. It may no longer be available.");
+      toast.warning("Could not reserve your time slot. Please choose another available time.");
       return null;
     }
   };
@@ -865,8 +876,21 @@ export default function BookingFlow() {
       // When leaving the calendar step, always create a fresh hold for the selected slot.
       if (currentStep === "calendar") {
         setIsCreatingHold(true);
-        createHoldForCalendarExit().then((newHoldId) => {
-          if (newHoldId) updateBookingState({ holdId: newHoldId });
+        createHoldForCalendarExit().then((hold) => {
+          if (!hold) {
+            updateBookingState({
+              holdId: null,
+              holdExpiresAt: null,
+              selectedTimeSlot: null,
+              selectedSlotStart: null,
+              selectedSlotEnd: null,
+              selectedSlotAvailableStaffIds: null,
+              availabilityRefreshToken: Date.now(),
+            });
+            setIsCreatingHold(false);
+            return;
+          }
+          updateBookingState({ holdId: hold.holdId, holdExpiresAt: hold.expiresAt });
           setIsCreatingHold(false);
           setCurrentStepIndex(nextIndex);
         });
@@ -895,7 +919,7 @@ export default function BookingFlow() {
       if (prevStep === "calendar") {
         const id = bookingState.holdId;
         if (id) await releaseHold(id);
-        updateBookingState({ holdId: null });
+        updateBookingState({ holdId: null, holdExpiresAt: null });
       }
       setCurrentStepIndex(prevIndex);
     } else {
@@ -1342,6 +1366,7 @@ export default function BookingFlow() {
                       if (id) await releaseHold(id);
                       updateBookingState({
                         holdId: null,
+                        holdExpiresAt: null,
                         selectedTimeSlot: null,
                         selectedSlotStart: null,
                         selectedSlotEnd: null,

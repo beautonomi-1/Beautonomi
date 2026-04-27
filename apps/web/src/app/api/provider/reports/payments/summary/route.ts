@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
       ? startOfDay(new Date(searchParams.get("from")!))
       : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to") ? endOfDay(new Date(searchParams.get("to")!)) : endOfDay(new Date());
+    const locationId = searchParams.get("location_id") || undefined;
 
     const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysDiff > MAX_REPORT_DAYS) {
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
     }
 
     // ── 1. Bookings in period (for payment_status + wallet_amount aggregates) ──
-    const { data: bookings } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select(
         "id, total_amount, total_paid, wallet_amount, payment_status, payment_provider, currency, scheduled_at"
@@ -50,6 +51,12 @@ export async function GET(request: NextRequest) {
       .lte("scheduled_at", toDate.toISOString())
       .not("status", "eq", "cancelled")
       .limit(MAX_BOOKINGS_FOR_REPORT);
+
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: bookings } = await bookingsQuery;
 
     const bookingIds = (bookings ?? []).map((b) => b.id);
 

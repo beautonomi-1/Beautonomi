@@ -233,6 +233,8 @@ async function handleGetProviderBookings(request: NextRequest) {
       query = query.or(orClauses.join(","));
     }
 
+    // Pagination: `limit` (max 1000 per request) + `offset` for stable server-side pages.
+    // Mobile/provider apps merge multiple pages for the same date/sort filters when needed.
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
     if (limitParam) {

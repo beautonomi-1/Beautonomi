@@ -16,6 +16,14 @@ const purchaseSchema = z.object({
   quantity: z.number().int().positive().min(1).max(1000).default(1),
   currency: z.string().min(3).max(6).optional(),
   recipient_email: z.string().email().optional().nullable(),
+  callback_url: z
+    .string()
+    .trim()
+    .optional()
+    .refine((v) => {
+      if (!v) return true;
+      return v.startsWith("https://") || v.startsWith("http://") || v.startsWith("customer://") || v.startsWith("exp://");
+    }, { message: "Invalid callback URL" }),
   // provider_id removed - platform sells all gift cards
 });
 
@@ -106,7 +114,7 @@ export async function POST(request: NextRequest) {
     if (orderError || !order) throw orderError || new Error("Failed to create order");
 
     const reference = generateTransactionReference("giftcard", order.id);
-    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success`;
+    const callbackUrl = parsed.data.callback_url || `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success`;
 
     const paystackData = await initializePaystackTransaction({
       email,

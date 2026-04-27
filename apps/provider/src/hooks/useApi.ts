@@ -194,8 +194,14 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   }, [cacheKey, fetchData]);
 
   const mutate = useCallback((newData: T) => {
+    responseCache.set(cacheKey, {
+      data: newData,
+      error: null,
+      errorCode: null,
+      expiresAt: Date.now() + staleTimeMs,
+    });
     setData(newData);
-  }, []);
+  }, [cacheKey, staleTimeMs]);
 
   return { data, loading, error, errorCode, timedOut, refresh, mutate };
 }

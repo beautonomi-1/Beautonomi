@@ -30,7 +30,7 @@ export default function BookingPaymentCallbackPage() {
   const searchParams = useSearchParams();
   const bookingId = params.id as string;
   const payRemaining = searchParams.get("pay_remaining") === "1";
-  const reference = searchParams.get("reference");
+  const reference = searchParams.get("reference") || searchParams.get("trxref");
 
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");

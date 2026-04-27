@@ -12,6 +12,7 @@ import {
 import { useRouter, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -28,7 +29,13 @@ type Ticket = {
   updated_at: string;
 };
 
-type TicketsResponse = { tickets?: Ticket[]; total?: number };
+const PAGE_SIZE = 50;
+
+type TicketsResponse = {
+  tickets?: Ticket[];
+  total?: number;
+  pagination?: { has_more?: boolean };
+};
 
 function formatDateSafe(value: unknown): string {
   if (typeof value !== "string" || !value) return "—";
@@ -48,6 +55,8 @@ function statusBgColor(status: string): string {
       return "#dbeafe";
     case "in_progress":
       return "#fef3c2";
+    case "waiting_customer":
+      return "#fce7f3";
     case "resolved":
       return "#dcfce7";
     case "closed":
@@ -62,10 +71,15 @@ export default function SupportTicketsListScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
-  const { data, loading, error, refresh } = useApi<TicketsResponse>("/api/me/support-tickets");
+  const [extraTickets, setExtraTickets] = useState<Ticket[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const { data, loading, error, refresh } = useApi<TicketsResponse>(`/api/me/support-tickets?limit=${PAGE_SIZE}&offset=0`);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setExtraTickets([]);
+    setLoadMoreError(null);
     try {
       await refresh();
     } finally {
@@ -73,10 +87,37 @@ export default function SupportTicketsListScreen() {
     }
   }, [refresh]);
 
-  const tickets: Ticket[] =
+  const firstPageTickets: Ticket[] =
     data && typeof data === "object" && Array.isArray((data as TicketsResponse).tickets)
       ? (data as TicketsResponse).tickets ?? []
       : [];
+  const tickets = [...firstPageTickets, ...extraTickets];
+  const total = data && typeof data === "object" ? (data as TicketsResponse).total : undefined;
+  const canLoadMore =
+    typeof total === "number"
+      ? tickets.length < total
+      : Boolean(data && typeof data === "object" && (data as TicketsResponse).pagination?.has_more);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !canLoadMore) return;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const res = await api.get<TicketsResponse>(
+        `/api/me/support-tickets?limit=${PAGE_SIZE}&offset=${tickets.length}`,
+      );
+      if (res.error) {
+        setLoadMoreError(res.error.message || "Failed to load more tickets");
+        return;
+      }
+      const next = Array.isArray(res.data?.tickets) ? res.data.tickets : [];
+      setExtraTickets((current) => [...current, ...next]);
+    } catch (err) {
+      setLoadMoreError(err instanceof Error ? err.message : "Failed to load more tickets");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [canLoadMore, loadingMore, tickets.length]);
 
   useEffect(() => {
     if (!loading && data !== undefined && data !== null) {
@@ -181,6 +222,22 @@ export default function SupportTicketsListScreen() {
               </Text>
             </TouchableOpacity>
           ))}
+          {loadMoreError ? <Text style={styles.loadMoreError}>{loadMoreError}</Text> : null}
+          {canLoadMore ? (
+            <TouchableOpacity
+              onPress={loadMore}
+              disabled={loadingMore}
+              style={[styles.loadMoreBtn, loadingMore && styles.loadMoreBtnDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel="Load more support tickets"
+            >
+              {loadingMore ? (
+                <ActivityIndicator color={Colors.primary} />
+              ) : (
+                <Text style={styles.loadMoreText}>Load more tickets</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
         </View>
       )}
     </ScrollView>
@@ -215,4 +272,15 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: "500", color: Colors.gray[800] },
   subject: { fontWeight: "600", color: Colors.gray[900] },
   meta: { marginTop: 6, fontSize: 12, color: Colors.gray[500] },
+  loadMoreBtn: {
+    marginTop: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  loadMoreBtnDisabled: { opacity: 0.6 },
+  loadMoreText: { color: Colors.primary, fontWeight: "600" },
+  loadMoreError: { color: "#b91c1c", textAlign: "center", marginBottom: 8 },
 });

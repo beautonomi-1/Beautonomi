@@ -148,7 +148,7 @@ export default function TabsLayout() {
               } as unknown as ViewStyle)
             : {}),
         },
-        tabBarButton: (props) => {
+        tabBarButton: (props: any) => {
           const { onPress, ...rest } = props;
           const touchableProps = {
             ...rest,

@@ -11,6 +11,7 @@ import { Download, Users, TrendingUp, Repeat } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface ClientRetentionData {
@@ -27,6 +28,7 @@ interface ClientRetentionData {
 }
 
 export default function ClientRetentionReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const exportCurrency = useReportExportCurrency();
   const [period, setPeriod] = useState("month");
   const [data, setData] = useState<ClientRetentionData | null>(null);
@@ -35,7 +37,7 @@ export default function ClientRetentionReport() {
 
   useEffect(() => {
     loadReport();
-  }, [period]);
+  }, [period, selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -44,6 +46,7 @@ export default function ClientRetentionReport() {
 
       const params = new URLSearchParams();
       params.append("period", period);
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: ClientRetentionData }>(
         `/api/provider/reports/clients/retention?${params.toString()}`

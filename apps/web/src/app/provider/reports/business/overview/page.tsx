@@ -12,6 +12,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface BusinessOverviewData {
@@ -35,6 +36,7 @@ interface BusinessOverviewData {
 }
 
 export default function BusinessOverviewReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [period, setPeriod] = useState("month");
   const [data, setData] = useState<BusinessOverviewData | null>(null);
@@ -44,7 +46,7 @@ export default function BusinessOverviewReport() {
 
   useEffect(() => {
     loadReport();
-  }, [period]);
+  }, [period, selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -53,6 +55,7 @@ export default function BusinessOverviewReport() {
 
       const params = new URLSearchParams();
       params.append("period", period);
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: BusinessOverviewData }>(
         `/api/provider/reports/business/overview?${params.toString()}`

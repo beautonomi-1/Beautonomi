@@ -27,6 +27,7 @@ interface BookingsListProps {
 }
 
 type SortMode = "scheduled_desc" | "scheduled_asc" | "created_desc" | "created_asc";
+const BOOKINGS_PAGE_SIZE = 100;
 
 function sortModeToQuery(m: SortMode): string {
   const map: Record<SortMode, [string, string]> = {
@@ -37,6 +38,35 @@ function sortModeToQuery(m: SortMode): string {
   };
   const [sort_by, sort_dir] = map[m];
   return `sort_by=${sort_by}&sort_dir=${sort_dir}`;
+}
+
+async function fetchAllBookingsPages(status: BookingsListProps["status"], sortMode: SortMode) {
+  const bookings: Booking[] = [];
+  const sortQs = sortModeToQuery(sortMode);
+
+  for (let page = 1; ; page += 1) {
+    const params = status
+      ? `?status=${encodeURIComponent(status)}&limit=${BOOKINGS_PAGE_SIZE}&page=${page}&${sortQs}`
+      : `?limit=${BOOKINGS_PAGE_SIZE}&page=${page}&${sortQs}`;
+    const response = await fetcher.get<{
+      data: {
+        items: Booking[];
+        total: number;
+        page: number;
+        limit: number;
+        has_more: boolean;
+      };
+      error: null;
+    }>(`/api/me/bookings${params}`, { staleTimeMs: 15_000 });
+
+    const pageData = response.data?.items || response.data || [];
+    const list = Array.isArray(pageData) ? pageData : [];
+    bookings.push(...list);
+    if (response.data?.has_more !== true && list.length < BOOKINGS_PAGE_SIZE) break;
+    if (response.data?.has_more === false) break;
+  }
+
+  return bookings;
 }
 
 export default function BookingsList({
@@ -52,6 +82,7 @@ export default function BookingsList({
   const skipHydrateFetchOnce = useRef(
     Boolean(
       initialSeed &&
+        initialSeed.length < BOOKINGS_PAGE_SIZE &&
         status === "upcoming" &&
         sortMode === "scheduled_desc" &&
         (refreshTrigger ?? 0) === 0,
@@ -64,23 +95,7 @@ export default function BookingsList({
         setIsLoading(true);
         setError(null);
 
-        const sortQs = sortModeToQuery(sortMode);
-        const params = status
-          ? `?status=${encodeURIComponent(status)}&limit=100&page=1&${sortQs}`
-          : `?limit=100&page=1&${sortQs}`;
-        const response = await fetcher.get<{
-          data: {
-            items: Booking[];
-            total: number;
-            page: number;
-            limit: number;
-            has_more: boolean;
-          };
-          error: null;
-        }>(`/api/me/bookings${params}`, { staleTimeMs: 15_000 });
-
-        const bookingsData = response.data?.items || response.data || [];
-        setBookings(Array.isArray(bookingsData) ? bookingsData : []);
+        setBookings(await fetchAllBookingsPages(status, sortMode));
       } catch (err) {
         const errorMessage =
           err instanceof FetchTimeoutError

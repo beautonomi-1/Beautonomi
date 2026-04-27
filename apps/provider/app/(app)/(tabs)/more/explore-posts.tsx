@@ -4,12 +4,10 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  Image,
   Alert,
   RefreshControl,
   TextInput,
   Linking,
-  type ImageStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
@@ -27,6 +25,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { appendFormDataFileNative } from "@beautonomi/utils";
+import { Image, type ImageStyle as ExpoImageStyle } from "expo-image";
 
 interface ExplorePost {
   id: string;
@@ -61,6 +60,13 @@ interface ExploreComment {
   created_at: string;
 }
 
+type MinePostsResponse = ExplorePost[] | {
+  posts?: ExplorePost[];
+  data?: ExplorePost[];
+  pagination?: { has_more?: boolean };
+  total?: number;
+};
+
 function formatDateSafe(value: unknown): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
@@ -90,8 +96,10 @@ export default function ExplorePostsScreen() {
   const [editCaption, setEditCaption] = useState("");
   const [editPublishNow, setEditPublishNow] = useState(true);
   const [editPrimaryCategorySlug, setEditPrimaryCategorySlug] = useState<string | null>(null);
+  const [extraPosts, setExtraPosts] = useState<ExplorePost[]>([]);
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
 
-  const { data, loading, error, refresh } = useApi<ExplorePost[]>("/api/explore/posts/mine");
+  const { data, loading, error, refresh } = useApi<MinePostsResponse>("/api/explore/posts/mine?limit=100&offset=0");
   const { execute: deletePost } = useApiMutation("delete");
   const { execute: createPost, loading: creating } = useApiMutation<ExplorePost>("post");
   const { execute: updatePost, loading: updating } = useApiMutation<ExplorePost>("patch");
@@ -104,17 +112,46 @@ export default function ExplorePostsScreen() {
 
   const [commentBody, setCommentBody] = useState("");
 
-  const posts = useMemo(() => (data ?? []) as ExplorePost[], [data]);
+  const firstPagePosts = useMemo(() => {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.posts)) return data.posts;
+    if (Array.isArray(data?.data)) return data.data;
+    return [];
+  }, [data]);
+  const posts = useMemo(() => [...firstPagePosts, ...extraPosts], [firstPagePosts, extraPosts]);
+  const canLoadMorePosts =
+    !Array.isArray(data) &&
+    (typeof data?.total === "number"
+      ? posts.length < data.total
+      : Boolean(data?.pagination?.has_more));
   const comments: ExploreComment[] = commentsResp?.data ?? [];
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      setExtraPosts([]);
       await refresh();
     } finally {
       setRefreshing(false);
     }
   }, [refresh]);
+
+  const loadMorePosts = useCallback(async () => {
+    if (loadingMorePosts || !canLoadMorePosts) return;
+    setLoadingMorePosts(true);
+    try {
+      const res = await api.get<MinePostsResponse>(`/api/explore/posts/mine?limit=100&offset=${posts.length}`);
+      if (res.error) {
+        Alert.alert("Could not load more", res.error.message ?? "Please try again.");
+        return;
+      }
+      const body = res.data;
+      const next = Array.isArray(body) ? body : Array.isArray(body?.posts) ? body.posts : Array.isArray(body?.data) ? body.data : [];
+      setExtraPosts((current) => [...current, ...next]);
+    } finally {
+      setLoadingMorePosts(false);
+    }
+  }, [canLoadMorePosts, loadingMorePosts, posts.length]);
 
   useEffect(() => {
     api.get<GlobalCategory[] | { data: GlobalCategory[] }>("/api/public/categories/global").then((res) => {
@@ -210,11 +247,11 @@ export default function ExplorePostsScreen() {
   const handleSaveEdit = useCallback(async () => {
     if (!viewPost) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const payload: { caption: string | null; status: "draft" | "published"; primary_category_slug?: string } = {
+    const payload: { caption: string | null; status: "draft" | "published"; primary_category_slug?: string | null } = {
       caption: editCaption.trim() || null,
       status: editPublishNow ? "published" : "draft",
     };
-    if (editPrimaryCategorySlug !== undefined) payload.primary_category_slug = editPrimaryCategorySlug ?? undefined;
+    if (editPrimaryCategorySlug !== undefined) payload.primary_category_slug = editPrimaryCategorySlug ?? null;
     const { data: updated, error: err } = await updatePost(`/api/explore/posts/${viewPost.id}`, payload);
     if (err) {
       Alert.alert("Error", err);
@@ -437,8 +474,8 @@ export default function ExplorePostsScreen() {
                       {thumb && !isVideo ? (
                         <Image
                           source={{ uri: thumb }}
-                          style={twStyle("h-full w-full") as ImageStyle}
-                          resizeMode="cover"
+                          style={twStyle("h-full w-full") as ExpoImageStyle}
+                          contentFit="cover"
                           accessibilityLabel="Post image"
                         />
                       ) : thumb && isVideo ? (
@@ -484,6 +521,19 @@ export default function ExplorePostsScreen() {
                   </TouchableOpacity>
                 );
               })}
+              {canLoadMorePosts && (
+                <TouchableOpacity
+                  onPress={loadMorePosts}
+                  disabled={loadingMorePosts}
+                  style={twStyle("mt-4 items-center rounded-xl border border-gray-200 bg-white px-4 py-3")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Load more Explore posts"
+                >
+                  <Text style={twStyle("text-sm font-semibold text-[#ec4899]")}>
+                    {loadingMorePosts ? "Loading..." : "Load more posts"}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </>
         )}
@@ -523,8 +573,8 @@ export default function ExplorePostsScreen() {
               <View key={i} style={twStyle("mr-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100")}>
                 <Image
                   source={{ uri: asset.uri }}
-                  style={twStyle("h-full w-full") as ImageStyle}
-                  resizeMode="cover"
+                  style={twStyle("h-full w-full") as ExpoImageStyle}
+                  contentFit="cover"
                 />
                 <TouchableOpacity
                   onPress={() => removeAsset(i)}
@@ -742,8 +792,8 @@ export default function ExplorePostsScreen() {
                 <View style={twStyle("mb-4 aspect-square overflow-hidden rounded-xl bg-gray-100")}>
                   <Image
                     source={{ uri: viewPost.media_urls[0] }}
-                    style={twStyle("h-full w-full") as ImageStyle}
-                    resizeMode="cover"
+                    style={twStyle("h-full w-full") as ExpoImageStyle}
+                    contentFit="cover"
                   />
                 </View>
               ) : null}

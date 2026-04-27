@@ -1,7 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { successResponse, notFoundResponse, handleApiError, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import {
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  requireRoleInApi,
+  getProviderIdForUser,
+} from "@/lib/supabase/api-helpers";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import type { User } from "@/types/beautonomi";
 
@@ -230,6 +236,25 @@ export async function GET(request: NextRequest) {
       password_changed_at: u.password_changed_at ?? null,
       email_change_pending: emailChangePending,
     };
+
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
+    if (providerId) {
+      const { data: providerRow } = await supabase
+        .from("providers")
+        .select("rating_average, review_count")
+        .eq("id", providerId)
+        .maybeSingle();
+      const pr = providerRow as { rating_average: number | null; review_count: number | null } | null;
+      Object.assign(formattedData, {
+        provider_rating_average: pr != null ? Number(pr.rating_average) || 0 : null,
+        provider_review_count: pr != null ? Number(pr.review_count) || 0 : null,
+      });
+    } else {
+      Object.assign(formattedData, {
+        provider_rating_average: null,
+        provider_review_count: null,
+      });
+    }
 
     const res = successResponse(formattedData);
     res.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=60");

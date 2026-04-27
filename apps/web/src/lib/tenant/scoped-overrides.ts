@@ -158,3 +158,64 @@ export async function fetchScopedListMerged<T>(input: {
 
   return { data: [...out.values()], source };
 }
+
+/**
+ * Merged list for tables where `tenant_id` is optional (legacy) or not yet in every database.
+ * Loads the full `select` result, then (only when a `tenant_id` field is present on rows)
+ * applies the same “global (null) + tenant override” merge as `fetchScopedListMerged`.
+ * If rows have no `tenant_id` key, returns the unfiltered list (entire column is the catalog).
+ */
+export async function fetchOptionalTenantListMerged<T extends Record<string, unknown>>(input: {
+  supabase: any;
+  table: string;
+  tenantId: string;
+  select: string;
+  dedupeKey: (row: T) => string;
+  orderBy?: { column: string; ascending?: boolean };
+}): Promise<{ data: T[]; source: ScopedSource }> {
+  const { supabase, table, select, dedupeKey, orderBy, tenantId } = input;
+  const effectiveTenantId = sanitizeTenantId(tenantId);
+
+  let q = supabase.from(table).select(select);
+  if (orderBy) {
+    q = q.order(orderBy.column, { ascending: orderBy.ascending ?? true });
+  }
+  const { data: allRaw, error } = await q;
+  if (error) throw error;
+
+  const allRows = (allRaw ?? []) as T[];
+  if (allRows.length === 0) {
+    return { data: [], source: "none" };
+  }
+
+  const hasTenantIdColumn = allRows.some((r) => Object.prototype.hasOwnProperty.call(r, "tenant_id"));
+  if (!hasTenantIdColumn) {
+    return { data: allRows, source: "global" };
+  }
+
+  const out = new Map<string, T>();
+  for (const row of allRows) {
+    if (row.tenant_id == null) {
+      out.set(dedupeKey(row), row);
+    }
+  }
+  if (effectiveTenantId) {
+    for (const row of allRows) {
+      if (String(row.tenant_id) === effectiveTenantId) {
+        out.set(dedupeKey(row), row);
+      }
+    }
+  }
+
+  const merged = [...out.values()];
+  const hasTenantOverride =
+    !!effectiveTenantId && allRows.some((r) => String(r.tenant_id) === effectiveTenantId);
+  const source: ScopedSource =
+    hasTenantOverride && merged.length > 0
+      ? "tenant"
+      : merged.length > 0
+        ? "global"
+        : "none";
+
+  return { data: merged, source };
+}

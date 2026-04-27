@@ -43,9 +43,10 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get("to")
       ? endOfDay(new Date(searchParams.get("to")!))
       : endOfDay(new Date());
+    const locationId = searchParams.get("location_id") || undefined;
 
     // Get bookings with services (simplified query to avoid deep nesting)
-    const { data: bookings, error: bookingsError } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select(
         `
@@ -70,6 +71,12 @@ export async function GET(request: NextRequest) {
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString())
       .in("status", ["confirmed", "completed"]);
+
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: bookings, error: bookingsError } = await bookingsQuery;
 
     if (bookingsError) {
       console.error("Error fetching bookings:", bookingsError);
@@ -113,7 +120,7 @@ export async function GET(request: NextRequest) {
       providerId,
       fromDate,
       toDate,
-      null,
+      locationId ?? null,
       { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES }
     );
 

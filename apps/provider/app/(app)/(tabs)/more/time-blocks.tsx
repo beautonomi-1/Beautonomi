@@ -353,7 +353,7 @@ export function TimeBlocksContent() {
             value={blockDate}
             mode="date"
             display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(_, d) => {
+            onChange={(_: any, d?: Date) => {
               setShowDatePicker(Platform.OS === "ios");
               if (d) setBlockDate(d);
             }}
@@ -372,7 +372,7 @@ export function TimeBlocksContent() {
             value={new Date(`2000-01-01T${startTime}:00`)}
             mode="time"
             display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(_, d) => {
+            onChange={(_: any, d?: Date) => {
               setShowStartPicker(Platform.OS === "ios");
               if (d) setStartTime(format(d, "HH:mm"));
             }}
@@ -391,7 +391,7 @@ export function TimeBlocksContent() {
             value={new Date(`2000-01-01T${endTime}:00`)}
             mode="time"
             display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(_, d) => {
+            onChange={(_: any, d?: Date) => {
               setShowEndPicker(Platform.OS === "ios");
               if (d) setEndTime(format(d, "HH:mm"));
             }}

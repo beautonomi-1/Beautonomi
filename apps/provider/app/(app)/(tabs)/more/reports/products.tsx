@@ -24,6 +24,7 @@ import {
   formatReportRangeCaption,
   type ReportDateRangeKey,
 } from "@/lib/reportDateRanges";
+import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
 const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
@@ -55,7 +56,7 @@ export default function ProductsReport() {
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
   const { from, to } = getReportDateRange(dateRange);
   const rangeCaption = formatReportRangeCaption(from, to);
-  const productsReportUrl = `/api/provider/reports/products?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  const productsReportUrl = appendReportLocation(`/api/provider/reports/products?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, refresh } = useApi<ProductsData>(productsReportUrl);
 
   const handleExport = useCallback(async () => {

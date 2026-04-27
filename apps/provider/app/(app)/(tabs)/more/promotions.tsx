@@ -79,8 +79,8 @@ export function PromotionsContent() {
       Alert.alert("Invalid", "Percentage must be between 0 and 100.");
       return;
     }
-    if (promoType === "fixed_amount" && numValue < 0) {
-      Alert.alert("Invalid", "Fixed amount must be 0 or more.");
+    if (promoType === "fixed_amount" && numValue <= 0) {
+      Alert.alert("Invalid", "Enter a fixed amount greater than 0.");
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
     }
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get("period") || "month"; // month, quarter, year
+    const locationId = searchParams.get("location_id") || undefined;
 
     let currentFromDate: Date;
     const currentToDate = new Date();
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
       providerId,
       currentFromDate,
       currentToDate,
-      null,
+      locationId ?? null,
       dashOpts
     );
 
@@ -87,25 +88,37 @@ export async function GET(request: NextRequest) {
       providerId,
       previousFromDate,
       previousToDate,
-      null,
+      locationId ?? null,
       dashOpts
     );
 
     // Get current period bookings (for counts and status)
-    const { data: currentBookings } = await supabaseAdmin
+    let currentBookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, status, customer_id, scheduled_at")
       .eq("provider_id", providerId)
       .gte("scheduled_at", currentFromDate.toISOString())
       .lte("scheduled_at", currentToDate.toISOString());
 
+    if (locationId) {
+      currentBookingsQuery = currentBookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: currentBookings } = await currentBookingsQuery;
+
     // Get previous period bookings (for counts and status)
-    const { data: previousBookings } = await supabaseAdmin
+    let previousBookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, status, customer_id, scheduled_at")
       .eq("provider_id", providerId)
       .gte("scheduled_at", previousFromDate.toISOString())
       .lte("scheduled_at", previousToDate.toISOString());
+
+    if (locationId) {
+      previousBookingsQuery = previousBookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: previousBookings } = await previousBookingsQuery;
 
     // Calculate current period metrics
     const currentBookingsCount = currentBookings?.length || 0;

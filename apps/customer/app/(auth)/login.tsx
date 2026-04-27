@@ -568,8 +568,13 @@ export default function LoginScreen() {
         >
           Welcome to Beautonomi
         </Text>
-        <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", marginBottom: 28 }}>
+        <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 6 }}>
           {t("auth.login")} or {t("auth.signup").toLowerCase()} to continue
+        </Text>
+        <Text
+          style={{ textAlign: "center", fontSize: 14, color: "#9CA3AF", lineHeight: 20, marginBottom: 28, fontWeight: "500" }}
+        >
+          Book beauty and wellness — tailored to you.
         </Text>
 
         {statusMessage ? (
