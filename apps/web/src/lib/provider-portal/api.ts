@@ -410,7 +410,13 @@ function rruleToRecurrenceRule(rr: string): RecurrenceRule {
   } else if (upper.includes("FREQ=MONTHLY")) pattern = "monthly";
   const intervalMatch = upper.match(/INTERVAL=(\d+)/);
   const interval = intervalMatch ? parseInt(intervalMatch[1]!, 10) : 1;
-  return { pattern, interval: Number.isFinite(interval) && interval > 0 ? interval : 1 };
+  const countMatch = upper.match(/COUNT=(\d+)/);
+  const occurrences = countMatch ? parseInt(countMatch[1]!, 10) : undefined;
+  return {
+    pattern,
+    interval: Number.isFinite(interval) && interval > 0 ? interval : 1,
+    ...(occurrences && occurrences > 0 ? { occurrences } : {}),
+  };
 }
 
 function recurrenceRuleToRrule(rule: RecurrenceRule | string): string {
@@ -463,6 +469,9 @@ function mapRecurringDbRowToAppointment(
         : 0;
   const todayStr = new Date().toISOString().slice(0, 10);
   const startYmd = row.start_date || todayStr;
+  if (typeof row.occurrences === "number" && row.occurrences > 0) {
+    rr.occurrences = row.occurrences;
+  }
   const next_occurrence_date = nextUpcomingOccurrenceYmd(
     {
       start_date: startYmd,
@@ -795,6 +804,15 @@ export class ProviderApiClient implements ProviderApi {
       (apt as any).is_group_booking = booking.is_group_booking || false;
       (apt as any).group_booking_ref = booking.group_booking_ref || null;
       (apt as any).participants = booking.participants || [];
+      (apt as any).recurring_series_id = booking.recurring_series_id || null;
+      (apt as any).is_recurring = Boolean(booking.is_recurring || booking.recurring_series_id);
+      (apt as any).recurring_series = booking.recurring_series || null;
+      (apt as any).recurrence_rule = booking.recurrence_rule || null;
+      (apt as any).recurrence_start_date = booking.recurrence_start_date || null;
+      (apt as any).recurrence_end_date = booking.recurrence_end_date || null;
+      (apt as any).recurrence_frequency = booking.recurrence_frequency || null;
+      (apt as any).recurrence_last_booking_date = booking.recurrence_last_booking_date || null;
+      (apt as any).recurrence_occurrences = booking.recurrence_occurrences || null;
       if (booking.provider_form_responses != null) {
         (apt as any).provider_form_responses = booking.provider_form_responses;
       }
@@ -902,6 +920,19 @@ export class ProviderApiClient implements ProviderApi {
       ...(booking.version !== undefined && { version: booking.version }),
       ...(booking.referral_source_id !== undefined && { referral_source_id: booking.referral_source_id }),
       ...(booking.is_group_booking && { is_group_booking: true, group_booking_ref: booking.group_booking_ref || null }),
+      ...(booking.recurring_series_id || booking.is_recurring
+        ? {
+            recurring_series_id: booking.recurring_series_id || null,
+            is_recurring: true,
+            recurring_series: booking.recurring_series || null,
+            recurrence_rule: booking.recurrence_rule || null,
+            recurrence_start_date: booking.recurrence_start_date || null,
+            recurrence_end_date: booking.recurrence_end_date || null,
+            recurrence_frequency: booking.recurrence_frequency || null,
+            recurrence_last_booking_date: booking.recurrence_last_booking_date || null,
+            recurrence_occurrences: booking.recurrence_occurrences || null,
+          }
+        : {}),
       ...(db_status !== undefined ? { db_status } : {}),
       ...(booking.provider_form_responses != null &&
       typeof booking.provider_form_responses === "object" &&
@@ -3180,7 +3211,9 @@ export class ProviderApiClient implements ProviderApi {
       (ruleObj ?? { pattern: "weekly", interval: 1 }) as RecurrenceRule
     );
     const simpleFreq =
-      ruleObj?.pattern === "weekly"
+      ruleObj?.pattern === "daily"
+        ? "daily"
+        : ruleObj?.pattern === "weekly"
         ? "weekly"
         : ruleObj?.pattern === "biweekly"
           ? "biweekly"
@@ -3238,6 +3271,7 @@ export class ProviderApiClient implements ProviderApi {
       notes: data.notes,
       is_active: data.status !== "cancelled",
       metadata,
+      occurrences: ruleObj?.occurrences && ruleObj.occurrences > 0 ? Math.floor(ruleObj.occurrences) : undefined,
       preferred_time,
       location_type: (data as any).location_type ?? undefined,
       payment_method: (data as any).payment_method === "cash" || (data as any).payment_method === "card"
@@ -3245,7 +3279,9 @@ export class ProviderApiClient implements ProviderApi {
         : undefined,
     };
     if (simpleFreq) body.frequency = simpleFreq;
-    const res = (await fetcher.post(`/api/provider/recurring-appointments`, body)) as {
+    // Creating up to 12 initial bookings runs in parallel on the server but still
+    // needs more than the default 25-second production timeout. Use 90 s.
+    const res = (await fetcher.post(`/api/provider/recurring-appointments`, body, { timeoutMs: 90_000 })) as {
       data?: any;
     };
     const row = res?.data ?? res;

@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
     };
 
     const listRaw = (rows ?? []) as Row[];
+    const campaignIds = listRaw.map((r) => r.id);
     const providerIds = [...new Set(listRaw.map((r) => r.provider_id))];
     const providerNameById = new Map<string, string>();
     if (providerIds.length > 0) {
@@ -99,6 +100,27 @@ export async function GET(request: NextRequest) {
           pr.id,
           pr.business_name?.trim() || userRow?.full_name?.trim() || "Provider"
         );
+      }
+    }
+
+    const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
+    const eventCountsByCampaign = new Map<string, { impressions: number; clicks: number; books: number }>();
+    if (campaignIds.length > 0) {
+      const { data: events, error: eventErr } = await admin
+        .from("ads_events")
+        .select("campaign_id, event_type")
+        .in("campaign_id", campaignIds)
+        .gte("created_at", since30);
+      if (eventErr) throw eventErr;
+      for (const event of events ?? []) {
+        const campaignId = String((event as { campaign_id?: string | null }).campaign_id ?? "");
+        if (!campaignId) continue;
+        const current = eventCountsByCampaign.get(campaignId) ?? { impressions: 0, clicks: 0, books: 0 };
+        const type = String((event as { event_type?: string | null }).event_type ?? "");
+        if (type === "impression") current.impressions += 1;
+        if (type === "click") current.clicks += 1;
+        if (type === "book") current.books += 1;
+        eventCountsByCampaign.set(campaignId, current);
       }
     }
 
@@ -134,6 +156,7 @@ export async function GET(request: NextRequest) {
         end_at: r.end_at,
         created_at: r.created_at,
         updated_at: r.updated_at,
+        events_30d: eventCountsByCampaign.get(r.id) ?? { impressions: 0, clicks: 0, books: 0 },
       })),
       total: count ?? listRaw.length,
       limit,

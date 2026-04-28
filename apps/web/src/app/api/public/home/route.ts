@@ -1762,9 +1762,19 @@ export async function GET(request: Request) {
     } as typeof data & { ads_disclosure_label: string };
 
     if (adsRow?.data?.enabled && adsRow.data.max_sponsored_slots) {
-      const maxSlots = Math.min(Number(adsRow.data.max_sponsored_slots) || 5, 10);
+      const maxSlots = Math.min(Number(adsRow.data.max_sponsored_slots) || 5, 100);
       try {
-        const auctionWinners = await runAdsAuction({ tenantId, maxSlots });
+        const url = new URL(request.url);
+        const homeLat = url.searchParams.get("lat");
+        const homeLng = url.searchParams.get("lng");
+        const categorySlug = url.searchParams.get("category");
+        const auctionWinners = await runAdsAuction({
+          tenantId,
+          maxSlots,
+          categorySlug: categorySlug || undefined,
+          userLat: homeLat != null ? Number(homeLat) : null,
+          userLng: homeLng != null ? Number(homeLng) : null,
+        });
         const winnerProviderIds = auctionWinners.map((w) => w.provider_id);
         const winnerCampaignMap = new Map(auctionWinners.map((w) => [w.provider_id, w.campaign_id]));
         if (winnerProviderIds.length > 0) {
@@ -1816,7 +1826,7 @@ export async function GET(request: Request) {
       if (sponsored.length > 0) {
         const lat = new URL(request.url).searchParams.get("lat");
         const lng = new URL(request.url).searchParams.get("lng");
-        if (lat && lng) {
+        if (lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
           try {
             const mapbox = await getMapboxService();
             const userCoords = { latitude: parseFloat(lat), longitude: parseFloat(lng) };

@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+
+// Creating up to 12 initial bookings serially can exceed the default 10-second
+// Vercel function budget. Allow up to 60 seconds.
+export const maxDuration = 60;
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { createBookingFromRecurringSeries } from "@/lib/recurring/create-booking-from-series";
@@ -9,6 +13,7 @@ import {
   SUBSCRIPTION_UPGRADE_SHORT,
 } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { isAdvancedRecurrenceRule } from "@/lib/recurring/advanced-rrule";
+import { isDateOnOrBeforeEnd, nextRecurringOccurrenceDate } from "@/lib/recurring/next-due-date";
 import { z } from "zod";
 
 const createRecurringSchema = z.object({
@@ -23,11 +28,48 @@ const createRecurringSchema = z.object({
   notes: z.string().optional(),
   is_active: z.boolean().optional().default(true),
   frequency: z.string().min(1).optional().nullable(),
+  occurrences: z.number().int().positive().optional().nullable(),
   preferred_time: z.string().optional().nullable(),
   location_type: z.enum(["at_salon", "at_home"]).optional().nullable(),
   payment_method: z.enum(["card", "cash"]).optional().nullable(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
+
+function occurrenceCountFromRule(rule: string): number | null {
+  const match = rule.toUpperCase().match(/(?:^|;)COUNT=(\d+)(?:;|$)/);
+  if (!match) return null;
+  const count = Number(match[1]);
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : null;
+}
+
+function buildInitialOccurrenceDates(params: {
+  startDate: string;
+  frequency?: string | null;
+  recurrenceRule?: string | null;
+  endDate?: string | null;
+  occurrences?: number | null;
+}): string[] {
+  const maxInitialVisits = 12;
+  const requestedCount = params.occurrences && params.occurrences > 0 ? Math.floor(params.occurrences) : null;
+  const limit = requestedCount ? Math.min(requestedCount, maxInitialVisits) : maxInitialVisits;
+  const dates: string[] = [];
+  let last: string | null = null;
+
+  for (let i = 0; i < limit; i++) {
+    const next = nextRecurringOccurrenceDate({
+      startDate: params.startDate,
+      lastBookingDate: last,
+      frequency: params.frequency,
+      recurrenceRule: params.recurrenceRule,
+    });
+    if (!next) break;
+    if (!isDateOnOrBeforeEnd(next, params.endDate)) break;
+    dates.push(next);
+    last = next;
+  }
+
+  return dates;
+}
 
 /**
  * GET /api/provider/recurring-appointments
@@ -123,6 +165,8 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validated = createRecurringSchema.parse(body);
+    const requestedOccurrences =
+      validated.occurrences ?? occurrenceCountFromRule(validated.recurrence_rule);
 
     const isAdvancedPattern = isAdvancedRecurrenceRule(validated.recurrence_rule);
 
@@ -139,6 +183,7 @@ export async function POST(request: NextRequest) {
       .insert({
         provider_id: providerId,
         ...validated,
+        occurrences: requestedOccurrences,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -150,26 +195,59 @@ export async function POST(request: NextRequest) {
     }
 
     const admin = getSupabaseAdmin();
-    const initialVisit = await createBookingFromRecurringSeries(
-      admin,
-      appointment as any,
-      validated.start_date
-    );
+    const initialOccurrenceDates = buildInitialOccurrenceDates({
+      startDate: validated.start_date,
+      frequency: validated.frequency,
+      recurrenceRule: validated.recurrence_rule,
+      endDate: validated.end_date,
+      occurrences: requestedOccurrences,
+    });
     const warnings: string[] = [];
-    if ("bookingId" in initialVisit) {
+    const createdBookingIds: string[] = [];
+    let lastCreatedDate: string | null = null;
+
+    // Run all initial occurrence bookings in parallel to stay within the 60-second
+    // function budget (serial loop of 12 DB writes could breach the old 25-second limit).
+    const results = await Promise.allSettled(
+      initialOccurrenceDates.map((occurrenceDate) =>
+        createBookingFromRecurringSeries(admin, appointment as any, occurrenceDate).then(
+          (created) => ({ occurrenceDate, created }),
+        ),
+      ),
+    );
+
+    // Preserve date order for lastCreatedDate tracking.
+    for (let i = 0; i < initialOccurrenceDates.length; i++) {
+      const r = results[i];
+      const occurrenceDate = initialOccurrenceDates[i];
+      if (r.status === "fulfilled") {
+        const { created } = r.value;
+        if ("bookingId" in created) {
+          createdBookingIds.push(created.bookingId);
+          lastCreatedDate = occurrenceDate;
+        } else {
+          warnings.push(`Visit on ${occurrenceDate} was not created: ${created.error}`);
+        }
+      } else {
+        warnings.push(`Visit on ${occurrenceDate} failed: ${r.reason}`);
+      }
+    }
+
+    if (lastCreatedDate) {
       await admin
         .from("recurring_appointments")
-        .update({ last_booking_date: validated.start_date, updated_at: new Date().toISOString() })
+        .update({ last_booking_date: lastCreatedDate, updated_at: new Date().toISOString() })
         .eq("id", appointment.id);
-    } else {
-      warnings.push(`Recurring series was created, but the first calendar visit was not created: ${initialVisit.error}`);
     }
 
     return successResponse({
       ...appointment,
-      last_booking_date: "bookingId" in initialVisit ? validated.start_date : appointment.last_booking_date,
+      occurrences: requestedOccurrences,
+      last_booking_date: lastCreatedDate ?? appointment.last_booking_date,
       _warnings: warnings,
-      _initial_booking_id: "bookingId" in initialVisit ? initialVisit.bookingId : null,
+      _initial_booking_id: createdBookingIds[0] ?? null,
+      _created_booking_ids: createdBookingIds,
+      _created_occurrence_count: createdBookingIds.length,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

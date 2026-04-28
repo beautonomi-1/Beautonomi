@@ -111,13 +111,7 @@ export default function RecurringAppointmentsPage() {
     try {
       await providerApi.deleteRecurringAppointment(appointment.id, deleteSeries);
       setAppointments((current) =>
-        deleteSeries
-          ? current.filter(
-              (item) =>
-                item.client_id !== appointment.client_id ||
-                item.service_id !== appointment.service_id
-            )
-          : current.filter((item) => item.id !== appointment.id)
+        current.filter((item) => item.id !== appointment.id)
       );
       toast.success(deleteSeries ? "Series deleted" : "Appointment deleted");
       void loadAppointments();

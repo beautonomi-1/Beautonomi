@@ -120,6 +120,19 @@ function createAppointmentFromBookingRow(
     client_since: customer.created_at || "",
     ...(booking.version !== undefined && { version: booking.version }),
     ...(booking.is_group_booking && { is_group_booking: true, group_booking_ref: booking.group_booking_ref || null }),
+    ...(booking.recurring_series_id || booking.is_recurring
+      ? {
+          recurring_series_id: booking.recurring_series_id || null,
+          is_recurring: true,
+          recurring_series: booking.recurring_series || null,
+          recurrence_rule: booking.recurrence_rule || null,
+          recurrence_start_date: booking.recurrence_start_date || null,
+          recurrence_end_date: booking.recurrence_end_date || null,
+          recurrence_frequency: booking.recurrence_frequency || null,
+          recurrence_last_booking_date: booking.recurrence_last_booking_date || null,
+          recurrence_occurrences: booking.recurrence_occurrences || null,
+        }
+      : {}),
     ...(db_status !== undefined ? { db_status } : {}),
     ...(booking.provider_form_responses != null &&
     typeof booking.provider_form_responses === "object" &&

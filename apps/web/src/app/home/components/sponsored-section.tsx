@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { Megaphone } from "lucide-react";
+import { ArrowRight, Megaphone } from "lucide-react";
+import Link from "next/link";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card-dynamic";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -96,9 +97,20 @@ export default function SponsoredSection({
             <Megaphone className="h-5 w-5 text-muted-foreground" />
             <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">{sponsoredHeading}</h2>
           </div>
+          <Link href="/more-sponsored-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-[#FF0077]">
+            View all
+            <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
+          </Link>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-          {providers.slice(0, 8).map((provider) => (
+        <div className="flex md:hidden gap-4 overflow-x-auto pb-4 -mx-4 px-4 scrollbar-hide snap-x snap-mandatory">
+          {providers.map((provider) => (
+            <div key={provider.id} className="flex-shrink-0 w-[calc(85vw)] snap-start">
+              <ProviderCard provider={provider} sponsoredBadgeText={sponsoredBadgeText} />
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+          {providers.map((provider) => (
             <ProviderCard key={provider.id} provider={provider} sponsoredBadgeText={sponsoredBadgeText} />
           ))}
         </div>

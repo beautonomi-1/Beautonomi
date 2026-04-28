@@ -23,6 +23,8 @@ interface SearchSuggestion {
   title: string;
   subtitle?: string;
   url: string;
+  is_group_booking?: boolean;
+  group_booking_id?: string | null;
 }
 
 interface SearchResult {
@@ -69,7 +71,14 @@ export default function SearchScreen() {
       if (s.type === "client") {
         router.push(`/(app)/(tabs)/more/clients/${s.id}` as never);
       } else if (s.type === "appointment") {
-        router.push(`/(app)/(tabs)/bookings/${s.id}` as never);
+        if (s.is_group_booking && s.group_booking_id) {
+          router.push({
+            pathname: "/(app)/(tabs)/more/group-bookings",
+            params: { open_group_id: s.group_booking_id },
+          } as never);
+        } else {
+          router.push(`/(app)/(tabs)/bookings/${s.id}` as never);
+        }
       } else if (s.type === "service") {
         router.push(`/(app)/(tabs)/more/catalogue/${s.id}` as never);
       }

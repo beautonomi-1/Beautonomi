@@ -50,6 +50,14 @@ export async function GET(
     const resolvedParams = await params;
     const id = resolvedParams.id;
 
+    // Group bookings don't have individual PDF receipts; return a clear error.
+    if (id.startsWith("group:")) {
+      return NextResponse.json(
+        { error: "PDF receipts for group bookings are managed from the Group Bookings section." },
+        { status: 404 },
+      );
+    }
+
     const token = new URL(request.url).searchParams.get("token");
     if (token) {
       const parsed = parseReceiptDownloadToken(token, {

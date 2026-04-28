@@ -44,6 +44,30 @@ export async function GET(request: NextRequest) {
 
     for (const appointment of recurring) {
       try {
+        const occurrenceLimit = Number(appointment.occurrences ?? 0);
+        if (Number.isFinite(occurrenceLimit) && occurrenceLimit > 0) {
+          const { count: generatedCount, error: countError } = await supabaseAdmin
+            .from("bookings")
+            .select("id", { count: "exact", head: true })
+            .eq("recurring_series_id", appointment.id);
+
+          if (countError) {
+            errors.push(`${appointment.id}: generated count failed: ${countError.message}`);
+            continue;
+          }
+          if ((generatedCount ?? 0) >= occurrenceLimit) {
+            const generatedThrough =
+              typeof appointment.last_booking_date === "string" ? appointment.last_booking_date : null;
+            if (generatedThrough && generatedThrough <= todayStr) {
+              await supabaseAdmin
+                .from("recurring_appointments")
+                .update({ is_active: false, updated_at: new Date().toISOString() })
+                .eq("id", appointment.id);
+            }
+            continue;
+          }
+        }
+
         const lastRaw = appointment.last_booking_date;
         const lastBookingDate =
           typeof lastRaw === "string" && lastRaw

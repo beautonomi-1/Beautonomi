@@ -64,6 +64,7 @@ type Campaign = {
   end_at: string | null;
   created_at: string;
   updated_at: string;
+  events_30d?: { impressions: number; clicks: number; books: number };
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -78,6 +79,10 @@ const MODEL_LABELS: Record<string, string> = {
   impression_pack: "Impression Pack",
   time_based: "Time-Based",
 };
+
+function formatCtr(clicks = 0, impressions = 0) {
+  return impressions > 0 ? `${((clicks / impressions) * 100).toFixed(1)}%` : "0.0%";
+}
 
 export default function AdminAdsPage() {
   const { format: fmt } = useReportCurrency();
@@ -283,7 +288,10 @@ export default function AdminAdsPage() {
             {/* 7-day metrics */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">7-Day Performance</CardTitle>
+                <CardTitle className="text-sm">How ad events are counted</CardTitle>
+                <CardDescription>
+                  Impressions increase when sponsored provider cards are delivered and when visible cards appear on home, search, and view-all surfaces. Clicks are counted when customers open the sponsored provider profile.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-4 gap-4 text-center">
@@ -358,6 +366,7 @@ export default function AdminAdsPage() {
                         <th className="text-left px-3 py-2 font-medium">Model</th>
                         <th className="text-right px-3 py-2 font-medium">Budget</th>
                         <th className="text-right px-3 py-2 font-medium">Spent</th>
+                        <th className="text-right px-3 py-2 font-medium">Performance (30d)</th>
                         <th className="text-left px-3 py-2 font-medium">Period</th>
                         <th className="text-left px-3 py-2 font-medium">Updated</th>
                         <th className="text-right px-3 py-2 font-medium">Actions</th>
@@ -393,6 +402,12 @@ export default function AdminAdsPage() {
                             ) : (
                               fmt(c.spent)
                             )}
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            <div className="font-medium">{(c.events_30d?.impressions ?? 0).toLocaleString()} impressions</div>
+                            <div className="text-xs text-muted-foreground">
+                              {(c.events_30d?.clicks ?? 0).toLocaleString()} clicks · {formatCtr(c.events_30d?.clicks, c.events_30d?.impressions)} CTR · {(c.events_30d?.books ?? 0).toLocaleString()} bookings
+                            </div>
                           </td>
                           <td className="px-3 py-3">
                             {c.start_at && c.end_at ? (

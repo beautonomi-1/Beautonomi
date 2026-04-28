@@ -15,6 +15,9 @@ export interface AuctionParams {
   categoryId?: string | null;
   /** Max number of sponsored slots to return */
   maxSlots: number;
+  /** Optional user location — boosts nearby sponsored providers without making ads purely distance-based. */
+  userLat?: number | null;
+  userLng?: number | null;
   /** Optional: exclude these provider IDs (e.g. already in organic results) to avoid duplicate */
   excludeProviderIds?: string[];
 }
@@ -49,7 +52,7 @@ export const COST_PER_IMPRESSION_RATIO = 0.05;
  */
 export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinner[]> {
   const supabase = getSupabaseAdmin();
-  const { tenantId, categoryId, categorySlug, maxSlots, excludeProviderIds = [] } = params;
+  const { tenantId, categoryId, categorySlug, maxSlots, excludeProviderIds = [], userLat, userLng } = params;
   if (maxSlots <= 0) return [];
   if (!tenantId) return [];
 
@@ -61,7 +64,7 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
     .maybeSingle();
 
   if (!config?.enabled) return [];
-  const limit = Math.min(maxSlots, Number(config.max_sponsored_slots) || 5, 10);
+  const limit = Math.min(maxSlots, Number(config.max_sponsored_slots) || 5, 100);
 
   // Resolve category id from slug if needed
   let globalCategoryId: string | null = categoryId ?? null;
@@ -189,17 +192,59 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
   const qualityByProvider = new Map<string, number>();
   (qualityRows ?? []).forEach((r: any) => qualityByProvider.set(r.provider_id, Number(r.computed_score ?? 0)));
 
+  const hasUserCoords =
+    userLat != null &&
+    userLng != null &&
+    Number.isFinite(Number(userLat)) &&
+    Number.isFinite(Number(userLng)) &&
+    Number(userLat) >= -90 &&
+    Number(userLat) <= 90 &&
+    Number(userLng) >= -180 &&
+    Number(userLng) <= 180;
+  const distanceBoostByProvider = new Map<string, number>();
+  if (hasUserCoords) {
+    const { data: locations } = await supabase
+      .from("provider_locations")
+      .select("provider_id, latitude, longitude")
+      .in("provider_id", providerIds)
+      .eq("is_active", true)
+      .not("latitude", "is", null)
+      .not("longitude", "is", null);
+    for (const loc of locations ?? []) {
+      const lat = Number((loc as any).latitude);
+      const lng = Number((loc as any).longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      const km = haversineKm(Number(userLat), Number(userLng), lat, lng);
+      const current = distanceBoostByProvider.get((loc as any).provider_id);
+      if (current == null || km < current) distanceBoostByProvider.set((loc as any).provider_id, km);
+    }
+  }
+
+  const { data: recentImpressions } = await supabase
+    .from("ads_events")
+    .select("provider_id")
+    .in("provider_id", providerIds)
+    .eq("event_type", "impression")
+    .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+  const impressionsByProvider = new Map<string, number>();
+  (recentImpressions ?? []).forEach((event: any) => {
+    impressionsByProvider.set(event.provider_id, (impressionsByProvider.get(event.provider_id) ?? 0) + 1);
+  });
+
   // Relevance: 1 if campaign targets this category (or no category filter), else 0.5
   const scoreCandidates: AuctionWinner[] = eligible.map((c) => {
     const quality = qualityByProvider.get(c.provider_id) ?? 0.3;
     const categoryIds = c.targeting?.global_category_ids ?? [];
     const relevance =
-      !globalCategoryId ? 1 : categoryIds.length === 0 ? 1 : categoryIds.includes(globalCategoryId) ? 1 : 0.5;
+      !globalCategoryId ? 1 : categoryIds.length === 0 ? 0.9 : categoryIds.includes(globalCategoryId) ? 1.25 : 0.45;
+    const nearestKm = distanceBoostByProvider.get(c.provider_id);
+    const proximity = nearestKm == null ? 1 : nearestKm <= 5 ? 1.25 : nearestKm <= 15 ? 1.15 : nearestKm <= 35 ? 1.05 : 0.9;
+    const exposureFairness = 1 / Math.sqrt((impressionsByProvider.get(c.provider_id) ?? 0) + 1);
     return {
       campaign_id: c.id,
       provider_id: c.provider_id,
       bid_cpc: c.bid_cpc,
-      quality_score: quality,
+      quality_score: quality * proximity * exposureFairness,
       relevance,
     };
   });
@@ -213,6 +258,17 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
 
   const winners = scoreCandidates.slice(0, limit);
   return winners;
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const earthKm = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return earthKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 /**
@@ -233,8 +289,8 @@ export async function recordAdImpressions(
     idempotency_key: `${idempotencyPrefix}:impression:${w.campaign_id}:${i}`,
     attribution: { source: "search", ...(attribution ?? {}), rank: i + 1 },
   }));
-  await supabase.from("ads_events").upsert(rows, {
-    onConflict: "idempotency_key",
-    ignoreDuplicates: true,
-  });
+  const { error } = await supabase.from("ads_events").insert(rows);
+  if (error && error.code !== "23505") {
+    throw error;
+  }
 }

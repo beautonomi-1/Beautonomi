@@ -46,6 +46,20 @@ export const ProviderCard = React.memo(function ProviderCard({
   };
   const providerInitial = provider.business_name.charAt(0).toUpperCase();
 
+  React.useEffect(() => {
+    if (!provider.is_sponsored || !provider.campaign_id || !provider.id) return;
+    api.post("/api/public/ads/event", {
+      event_type: "impression",
+      campaign_id: provider.campaign_id,
+      provider_id: provider.id,
+      idempotency_key: `app-card-impression:${provider.campaign_id}:${provider.id}:${Date.now()}`,
+      attribution: {
+        source: "provider_card",
+        placement: "app_provider_card_visible",
+      },
+    }).catch(() => {});
+  }, [provider.campaign_id, provider.id, provider.is_sponsored]);
+
   const handlePress = () => {
     if (provider.is_sponsored && provider.campaign_id && provider.id) {
       api.post("/api/public/ads/event", {

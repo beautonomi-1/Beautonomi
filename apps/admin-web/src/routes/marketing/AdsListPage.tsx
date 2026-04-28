@@ -45,6 +45,7 @@ type Campaign = {
   end_at: string | null;
   created_at: string;
   updated_at: string;
+  events_30d?: { impressions: number; clicks: number; books: number };
 };
 
 type CampaignsPayload = { campaigns: Campaign[]; total: number };
@@ -64,6 +65,10 @@ const MODEL_LABELS: Record<string, string> = {
 
 function fmt(v: number) {
   return `R ${v.toFixed(2)}`;
+}
+
+function formatCtr(clicks = 0, impressions = 0) {
+  return impressions > 0 ? `${((clicks / impressions) * 100).toFixed(1)}%` : "0.0%";
 }
 
 const LIMIT = 20;
@@ -143,6 +148,7 @@ export function AdsListPage() {
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Model</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Budget</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Spent</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Performance (30d)</th>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Period</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Actions</th>
             </tr>
@@ -174,6 +180,12 @@ export function AdsListPage() {
                 <td className="px-3 py-3 text-right font-medium">{fmt(c.budget)}</td>
                 <td className="px-3 py-3 text-right text-gray-600">
                   {c.billing_model === "time_based" ? "—" : fmt(c.spent)}
+                </td>
+                <td className="px-3 py-3 text-right">
+                  <div className="font-medium text-gray-900">{(c.events_30d?.impressions ?? 0).toLocaleString()} impressions</div>
+                  <div className="text-xs text-gray-500">
+                    {(c.events_30d?.clicks ?? 0).toLocaleString()} clicks · {formatCtr(c.events_30d?.clicks, c.events_30d?.impressions)} CTR · {(c.events_30d?.books ?? 0).toLocaleString()} bookings
+                  </div>
                 </td>
                 <td className="px-3 py-3 text-xs text-gray-500">
                   {c.start_at
@@ -339,6 +351,10 @@ export function AdsListPage() {
               <div className="text-xs text-blue-700">Total Budget</div>
             </div>
           </div>
+          <p className="mt-3 text-xs text-gray-600">
+            Impressions count when sponsored provider cards are delivered and when visible cards appear on customer home,
+            search, and view-all surfaces. Clicks count when customers open a sponsored provider profile.
+          </p>
         </AdminPanel>
       )}
 

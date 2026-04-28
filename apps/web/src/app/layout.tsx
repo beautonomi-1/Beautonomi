@@ -65,7 +65,7 @@ export async function generateMetadata(): Promise<Metadata> {
       shortcut: "/icon.svg",
       apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
     },
-    manifest: "/manifest.webmanifest",
+    manifest: "/api/public/manifest.webmanifest",
     title: {
       default: "Beautonomi | Book Beauty Services, Salons & Mobile Pros",
       template: "%s | Beautonomi",

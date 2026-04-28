@@ -115,7 +115,8 @@ export async function GET(request: Request) {
         avatar_url,
         is_featured,
         is_verified,
-        currency
+        currency,
+        created_at
       `, { count: "exact" })
       .eq("status", "active")
       .eq("tenant_id", tenantId);
@@ -266,29 +267,45 @@ export async function GET(request: Request) {
       query = query.in("id", atHomeProviderIds);
     }
 
-    // Apply sorting
+    const sortInMemory =
+      filters.sort_by === "rating" ||
+      filters.sort_by === "relevance" ||
+      filters.sort_by === "distance" ||
+      filters.sort_by === "price_low" ||
+      filters.sort_by === "price_high";
+
+    // Apply sorting. Rating/relevance/price/distance are sorted after card enrichment
+    // to avoid fragile PostgREST order clauses and to include derived fields.
     switch (filters.sort_by) {
       case "price_low":
-        // Note: starting_price doesn't exist, would need to calculate from offerings
-        // For now, sort by rating as fallback
-        query = query.order("rating_average", { ascending: true });
+        query = query.order("created_at", { ascending: false });
         break;
       case "price_high":
-        // Note: starting_price doesn't exist, would need to calculate from offerings
-        // For now, sort by rating as fallback
-        query = query.order("rating_average", { ascending: false });
+        query = query.order("created_at", { ascending: false });
         break;
       case "rating":
-        query = query.order("rating_average", { ascending: false });
+        query = query.order("created_at", { ascending: false });
+        break;
+      case "newest":
+        query = query.order("created_at", { ascending: false });
+        break;
+      case "distance":
+        query = query.order("created_at", { ascending: false });
         break;
       case "relevance":
       default:
-        query = query.order("is_featured", { ascending: false }).order("rating_average", { ascending: false });
+        query = query.order("created_at", { ascending: false });
         break;
     }
 
-    // Apply pagination
-    query = query.range(offset, offset + limit - 1);
+    const postPaginateAfterEnrichment =
+      sortInMemory ||
+      (filters.location?.latitude != null &&
+        filters.location?.longitude != null);
+
+    // Derived sorts need enriched fields from provider_locations/offerings, so fetch a wider
+    // candidate set and page after calculating the sortable values.
+    query = postPaginateAfterEnrichment ? query.limit(1000) : query.range(offset, offset + limit - 1);
 
     const { data: providers, error, count } = await query;
 
@@ -326,6 +343,7 @@ export async function GET(request: Request) {
     // Fetch locations for all providers (city, country; and lat/lng when user coords present for distance_km)
     const userLat = filters.location?.latitude;
     const userLng = filters.location?.longitude;
+    const hasUserCoords = userLat != null && userLng != null && Number.isFinite(userLat) && Number.isFinite(userLng);
     const { data: locations } = await supabase
       .from("provider_locations")
       .select("provider_id, city, country, is_primary, latitude, longitude, location_type")
@@ -345,7 +363,7 @@ export async function GET(request: Request) {
         if (!byProvider.has(loc.provider_id)) byProvider.set(loc.provider_id, []);
         byProvider.get(loc.provider_id)!.push(loc);
       });
-      if (userLat != null && userLng != null && Number.isFinite(userLat) && Number.isFinite(userLng)) {
+      if (hasUserCoords) {
         byProvider.forEach((locs, providerId) => {
           let minKm = Infinity;
           for (const loc of locs) {
@@ -394,7 +412,7 @@ export async function GET(request: Request) {
     }
 
     // Transform providers to match PublicProviderCard type
-    const transformedProviders = providers.map((provider: any) => {
+    let transformedProviders = providers.map((provider: any) => {
       const location = locationMap.get(provider.id);
       const priceInfo = priceMap.get(provider.id);
       const distance_km = distanceMap.get(provider.id) ?? null;
@@ -422,6 +440,40 @@ export async function GET(request: Request) {
       };
     });
 
+    switch (filters.sort_by) {
+      case "price_low":
+        transformedProviders = [...transformedProviders].sort(
+          (a: any, b: any) => (a.starting_price ?? Infinity) - (b.starting_price ?? Infinity),
+        );
+        break;
+      case "price_high":
+        transformedProviders = [...transformedProviders].sort(
+          (a: any, b: any) => (b.starting_price ?? -Infinity) - (a.starting_price ?? -Infinity),
+        );
+        break;
+      case "rating":
+        transformedProviders = [...transformedProviders].sort(
+          (a: any, b: any) => (b.rating ?? 0) - (a.rating ?? 0) || (b.review_count ?? 0) - (a.review_count ?? 0),
+        );
+        break;
+      case "distance":
+        if (hasUserCoords) {
+          transformedProviders = [...transformedProviders].sort(
+            (a: any, b: any) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity),
+          );
+        }
+        break;
+      case "relevance":
+      default:
+        transformedProviders = [...transformedProviders].sort(
+          (a: any, b: any) =>
+            Number(Boolean(b.is_featured)) - Number(Boolean(a.is_featured)) ||
+            (b.rating ?? 0) - (a.rating ?? 0) ||
+            (b.review_count ?? 0) - (a.review_count ?? 0),
+        );
+        break;
+    }
+
     // Sponsored slots: run auction and merge winners at top
     let finalProviders = transformedProviders;
     const sponsoredProviderIds = new Set<string>();
@@ -432,6 +484,8 @@ export async function GET(request: Request) {
         categorySlug: filters.category && !isUuid(filters.category) ? filters.category : undefined,
         maxSlots: 5,
         excludeProviderIds: [],
+        userLat: filters.location?.latitude ?? null,
+        userLng: filters.location?.longitude ?? null,
       });
       if (winners.length > 0) {
         const supabaseAdmin = getSupabaseAdmin();
@@ -583,8 +637,12 @@ export async function GET(request: Request) {
     }
     const services: any[] = serviceResults;
 
+    const visibleProviders = postPaginateAfterEnrichment
+      ? finalProviders.slice(offset, offset + limit)
+      : finalProviders;
+
     const result: SearchResult = {
-      providers: finalProviders,
+      providers: visibleProviders,
       services: services,
       total: count || 0,
       page: page,

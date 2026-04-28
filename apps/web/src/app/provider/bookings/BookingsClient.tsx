@@ -447,12 +447,44 @@ export function BookingsClient({
       team_member_name: firstService.staff_name || booking.staff_name || "",
       team_member_id: firstService.staff_id || (booking as any).staff_id || "",
       location_type: booking.location_type || "at_salon",
+      location_id: booking.location_id ?? "",
+      address_line1: (booking as any).address?.line1 || "",
+      address_city: (booking as any).address?.city || "",
+      address_state: (booking as any).address?.state || "",
+      address_country: (booking as any).address?.country || "",
+      address_postal_code: (booking as any).address?.postal_code || "",
+      address_latitude: (booking as any).address?.latitude ?? null,
+      address_longitude: (booking as any).address?.longitude ?? null,
+      travel_fee: (booking as any).travel_fee || 0,
       payment_status: (booking as any).payment_status || "",
       created_by: booking.customer_name || "",
+      created_date: (booking as any).created_at || new Date().toISOString(),
       total_amount: booking.total_amount,
+      is_group_booking: Boolean((booking as any).is_group_booking),
+      group_booking_ref: (booking as any).group_booking_ref ?? null,
+      recurring_series_id: (booking as any).recurring_series_id ?? null,
+      is_recurring: Boolean((booking as any).is_recurring || (booking as any).recurring_series_id),
+      recurring_series: (booking as any).recurring_series ?? null,
+      recurrence_rule: (booking as any).recurrence_rule ?? null,
+      recurrence_start_date: (booking as any).recurrence_start_date ?? null,
+      recurrence_end_date: (booking as any).recurrence_end_date ?? null,
+      recurrence_frequency: (booking as any).recurrence_frequency ?? null,
+      recurrence_last_booking_date: (booking as any).recurrence_last_booking_date ?? null,
+      recurrence_occurrences: (booking as any).recurrence_occurrences ?? null,
+      services: (booking as any).services || [],
+      products: (booking as any).products || [],
     } as Appointment;
     openViewMode(apt);
   }, []);
+
+  const openBookingDetails = useCallback((booking: ProviderBookingListItem) => {
+    const groupId = (booking as any).group_booking_id;
+    if ((booking as any).is_group_booking && typeof groupId === "string" && groupId.length > 0) {
+      router.push("/provider/group-bookings");
+      return;
+    }
+    router.push(`/provider/bookings/${booking.id}`);
+  }, [router]);
 
   const handleAppointmentUpdated = useCallback((_updated: Appointment) => {
     clearFetcherCache();
@@ -716,7 +748,7 @@ export function BookingsClient({
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => router.push(`/provider/bookings/${b.id}`)}
+                              onClick={() => openBookingDetails(b)}
                               className="text-[11px] h-7 px-2 text-gray-600"
                               aria-label="Details"
                             >
@@ -830,7 +862,7 @@ export function BookingsClient({
                         <CreditCard className="w-3 h-3" /> Pay
                       </Button>
                     )}
-                    <Button variant="ghost" size="sm" onClick={() => router.push(`/provider/bookings/${b.id}`)} className="text-xs h-9">
+                    <Button variant="ghost" size="sm" onClick={() => openBookingDetails(b)} className="text-xs h-9">
                       Details
                     </Button>
                   </div>
