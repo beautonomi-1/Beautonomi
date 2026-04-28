@@ -20,6 +20,8 @@ export default function AdminLoginPage() {
   const { user, role: contextRole, isLoading, refreshUser, signOut } = useAuth();
   const nextParam = searchParams.get("next") || "";
   const safeNext = nextParam.startsWith("/admin") ? nextParam : "";
+  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  const mainSiteLoginHref = appBaseUrl ? `${appBaseUrl}/login` : "/login";
 
   useEffect(() => {
     if (isLoading) return;
@@ -169,7 +171,7 @@ export default function AdminLoginPage() {
         </form>
 
         <p className="text-center text-sm text-gray-500 mt-6">
-          <Link href="/login" className="text-primary hover:underline font-medium">
+          <Link href={mainSiteLoginHref} className="text-primary hover:underline font-medium">
             Back to main site
           </Link>
         </p>

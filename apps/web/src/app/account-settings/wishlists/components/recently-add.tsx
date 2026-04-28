@@ -46,13 +46,17 @@ const RecentlyAdd = ({ thumbnails = [], subtitle }: RecentlyAddProps) => {
           </div>
         </Link>
       ) : (
-        <div className="max-w-sm rounded-3xl border border-dashed border-gray-200 bg-gray-50/70 p-6">
+        <Link
+          href="/account-settings/wishlists/recently-viewed"
+          className="block max-w-sm rounded-3xl border border-dashed border-gray-200 bg-gray-50/70 p-6 transition-colors hover:border-gray-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FF0077]"
+          aria-label="View recently viewed providers"
+        >
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-gray-400 shadow-sm">
             <Eye className="h-6 w-6" aria-hidden />
           </div>
           <p className="mt-4 text-sm font-medium text-gray-900">No recent views yet</p>
           <p className="mt-1 text-sm text-gray-600">Browse providers and they will appear here.</p>
-        </div>
+        </Link>
       )}
       <p className="text-sm text-gray-600 mt-2">
         {subtitle || (hasRecentViews ? "Click to view all recently viewed providers" : "Start browsing to build your list")}

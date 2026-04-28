@@ -330,7 +330,7 @@ export async function POST(request: NextRequest) {
             .eq("booking_source", "online")
             .eq("payment_status", "pending")
             .or("payment_provider.eq.paystack,payment_provider.is.null")
-            .in("status", ["pending", "pending_payment", "confirmed", "booked"])
+            .in("status", ["pending", "pending_payment", "confirmed"])
             .gte("scheduled_at", windowStart.toISOString())
             .lte("scheduled_at", windowEnd.toISOString());
         }
