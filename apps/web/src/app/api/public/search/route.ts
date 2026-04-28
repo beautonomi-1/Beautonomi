@@ -115,7 +115,8 @@ export async function GET(request: Request) {
         avatar_url,
         is_featured,
         is_verified,
-        currency
+        currency,
+        created_at
       `, { count: "exact" })
       .eq("status", "active")
       .eq("tenant_id", tenantId);
@@ -281,14 +282,26 @@ export async function GET(request: Request) {
       case "rating":
         query = query.order("rating_average", { ascending: false });
         break;
+      case "newest":
+        query = query.order("created_at", { ascending: false });
+        break;
+      case "distance":
+        query = query.order("is_featured", { ascending: false }).order("rating_average", { ascending: false });
+        break;
       case "relevance":
       default:
         query = query.order("is_featured", { ascending: false }).order("rating_average", { ascending: false });
         break;
     }
 
-    // Apply pagination
-    query = query.range(offset, offset + limit - 1);
+    const postPaginateByDistance =
+      filters.sort_by === "distance" &&
+      filters.location?.latitude != null &&
+      filters.location?.longitude != null;
+
+    // Distance needs coordinates from provider_locations, so fetch a wider candidate set
+    // and page after calculating nearest branch distance.
+    query = postPaginateByDistance ? query.limit(1000) : query.range(offset, offset + limit - 1);
 
     const { data: providers, error, count } = await query;
 
@@ -326,6 +339,7 @@ export async function GET(request: Request) {
     // Fetch locations for all providers (city, country; and lat/lng when user coords present for distance_km)
     const userLat = filters.location?.latitude;
     const userLng = filters.location?.longitude;
+    const hasUserCoords = userLat != null && userLng != null && Number.isFinite(userLat) && Number.isFinite(userLng);
     const { data: locations } = await supabase
       .from("provider_locations")
       .select("provider_id, city, country, is_primary, latitude, longitude, location_type")
@@ -345,7 +359,7 @@ export async function GET(request: Request) {
         if (!byProvider.has(loc.provider_id)) byProvider.set(loc.provider_id, []);
         byProvider.get(loc.provider_id)!.push(loc);
       });
-      if (userLat != null && userLng != null && Number.isFinite(userLat) && Number.isFinite(userLng)) {
+      if (hasUserCoords) {
         byProvider.forEach((locs, providerId) => {
           let minKm = Infinity;
           for (const loc of locs) {
@@ -394,7 +408,7 @@ export async function GET(request: Request) {
     }
 
     // Transform providers to match PublicProviderCard type
-    const transformedProviders = providers.map((provider: any) => {
+    let transformedProviders = providers.map((provider: any) => {
       const location = locationMap.get(provider.id);
       const priceInfo = priceMap.get(provider.id);
       const distance_km = distanceMap.get(provider.id) ?? null;
@@ -422,6 +436,12 @@ export async function GET(request: Request) {
       };
     });
 
+    if (filters.sort_by === "distance" && hasUserCoords) {
+      transformedProviders = [...transformedProviders].sort(
+        (a: any, b: any) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity),
+      );
+    }
+
     // Sponsored slots: run auction and merge winners at top
     let finalProviders = transformedProviders;
     const sponsoredProviderIds = new Set<string>();
@@ -432,6 +452,8 @@ export async function GET(request: Request) {
         categorySlug: filters.category && !isUuid(filters.category) ? filters.category : undefined,
         maxSlots: 5,
         excludeProviderIds: [],
+        userLat: filters.location?.latitude ?? null,
+        userLng: filters.location?.longitude ?? null,
       });
       if (winners.length > 0) {
         const supabaseAdmin = getSupabaseAdmin();
@@ -583,8 +605,12 @@ export async function GET(request: Request) {
     }
     const services: any[] = serviceResults;
 
+    const visibleProviders = postPaginateByDistance
+      ? finalProviders.slice(offset, offset + limit)
+      : finalProviders;
+
     const result: SearchResult = {
-      providers: finalProviders,
+      providers: visibleProviders,
       services: services,
       total: count || 0,
       page: page,

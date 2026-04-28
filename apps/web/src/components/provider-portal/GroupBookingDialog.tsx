@@ -42,7 +42,7 @@ import type {
 import type { AppointmentService, AppointmentProduct } from "@/components/appointments/types";
 import { calculateBookingPricing } from "@/components/appointments/pricing";
 import { providerApi } from "@/lib/provider-portal/api";
-import { fetcher, providerPortalFetch } from "@/lib/http/fetcher";
+import { FetchError, fetcher, providerPortalFetch } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -111,6 +111,7 @@ export function GroupBookingDialog({
   const { format: formatMoney } = useProviderMoneyFormat();
   const { provider: portalProvider } = useProviderPortal();
   const [isLoading, setIsLoading] = useState(false);
+  const [isValidatingAddress, setIsValidatingAddress] = useState(false);
 
   // ─── Core data ──────────────────────────────────────────────────────────
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -496,7 +497,13 @@ export function GroupBookingDialog({
     ));
   }, [removeProduct]);
 
-  const applyAtHomeAddress = useCallback((address: PickedMapLocation) => {
+  const applyAtHomeAddress = useCallback(async (address: PickedMapLocation) => {
+    const addressString =
+      address.place_name ||
+      [address.address_line1, address.city, address.state, address.postal_code, address.country]
+        .filter(Boolean)
+        .join(", ");
+
     setFormData(prev => ({
       ...prev,
       address_line1: address.address_line1,
@@ -508,7 +515,56 @@ export function GroupBookingDialog({
       address_longitude: address.longitude,
       address_place_name: address.place_name || address.address_line1,
     }));
-  }, []);
+
+    if (!addressString.trim() || !providerId) return;
+
+    try {
+      setIsValidatingAddress(true);
+      const res = await fetcher.post<{
+        data: {
+          valid: boolean;
+          travelFee: number;
+          distanceKm?: number;
+          travelTimeMinutes?: number;
+          coordinates?: { latitude: number; longitude: number };
+          address?: {
+            line1?: string;
+            city?: string;
+            state?: string;
+            country?: string;
+            postalCode?: string;
+            fullAddress?: string;
+          };
+          reason?: string;
+        };
+      }>("/api/location/validate", {
+        address: addressString,
+        provider_id: providerId,
+      });
+
+      if (!res.data?.valid) {
+        toast.error(res.data?.reason || "This address is outside your active service zones.");
+        return;
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        address_line1: res.data.address?.line1 || address.address_line1,
+        address_city: res.data.address?.city || address.city,
+        address_state: res.data.address?.state || address.state || "",
+        address_country: res.data.address?.country || address.country || prev.address_country || "South Africa",
+        address_postal_code: res.data.address?.postalCode || address.postal_code || "",
+        address_latitude: res.data.coordinates?.latitude ?? address.latitude,
+        address_longitude: res.data.coordinates?.longitude ?? address.longitude,
+        address_place_name: res.data.address?.fullAddress || address.place_name || address.address_line1,
+        travel_fee: Math.max(0, Number(res.data.travelFee || 0)),
+      }));
+    } catch (error) {
+      toast.error(error instanceof FetchError ? error.message : "Failed to calculate travel fee for this address.");
+    } finally {
+      setIsValidatingAddress(false);
+    }
+  }, [providerId]);
 
   // ─── Package handler ──────────────────────────────────────────────────
   const handleAddPackage = useCallback((pkg: typeof packages[0]) => {
@@ -849,9 +905,15 @@ export function GroupBookingDialog({
                       inputClassName="h-10 bg-white"
                       required={formData.location_type === "at_home"}
                     />
+                    {isValidatingAddress && (
+                      <p className="mt-1 flex items-center gap-1 text-[11px] text-blue-700">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Calculating travel fee...
+                      </p>
+                    )}
                     {formData.address_latitude != null && formData.address_longitude != null && (
                       <p className="mt-1 text-[11px] text-blue-700">
                         Pin saved: {formData.address_latitude.toFixed(5)}, {formData.address_longitude.toFixed(5)}
+                        {formData.travel_fee > 0 ? ` · Travel fee ${formatMoney(formData.travel_fee)}` : ""}
                       </p>
                     )}
                   </div>
@@ -1249,7 +1311,7 @@ export function GroupBookingDialog({
                   onOpenChange={o => { if (o && !productsLoadedRef.current && products.length === 0) loadProducts(); }}
                 >
                   <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Add a product..." /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[200001]">
                     {filteredProducts.flatMap(p => {
                       if (p.has_variants && p.variants?.length) {
                         return p.variants.map(v => (
@@ -1284,7 +1346,7 @@ export function GroupBookingDialog({
                   if (pkg) handleAddPackage(pkg);
                 }}>
                   <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Apply a package..." /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[200001]">
                     {isLoadingPackages && <div className="flex items-center gap-2 p-2 text-xs text-gray-500"><Loader2 className="w-3 h-3 animate-spin" />Loading...</div>}
                     {packages.map(pkg => (
                       <SelectItem key={pkg.id} value={pkg.id}>
@@ -1337,9 +1399,9 @@ export function GroupBookingDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading} className="w-full sm:w-auto h-10">
             Cancel
           </Button>
-          <Button type="submit" form="group-booking-form" disabled={isLoading || participants.length === 0}
+          <Button type="submit" form="group-booking-form" disabled={isLoading || isValidatingAddress || participants.length === 0}
             className="w-full sm:w-auto bg-primary hover:bg-primary/90 h-10">
-            {isLoading ? "Saving..." : booking ? "Update Group Booking" : "Create Group Booking"}
+            {isLoading ? "Saving..." : isValidatingAddress ? "Checking address..." : booking ? "Update Group Booking" : "Create Group Booking"}
           </Button>
         </div>
       </DialogContent>
@@ -1355,7 +1417,7 @@ export function GroupBookingDialog({
 
       {/* ─── Variant Picker Dialog ────────────────────────────────── */}
       <AlertDialog open={variantPickerFor !== null} onOpenChange={o => !o && setVariantPickerFor(null)}>
-        <AlertDialogContent className="max-w-sm">
+        <AlertDialogContent className="z-[200002] max-w-sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Choose a Variant</AlertDialogTitle>
             <AlertDialogDescription>Select a variant for this service.</AlertDialogDescription>
@@ -1395,7 +1457,7 @@ export function GroupBookingDialog({
 
       {/* ─── Addon Picker Dialog ──────────────────────────────────── */}
       <AlertDialog open={addonPickerFor !== null} onOpenChange={o => !o && setAddonPickerFor(null)}>
-        <AlertDialogContent className="max-w-sm">
+        <AlertDialogContent className="z-[200002] max-w-sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Add Extras</AlertDialogTitle>
             <AlertDialogDescription>Select add-ons for this participant.</AlertDialogDescription>

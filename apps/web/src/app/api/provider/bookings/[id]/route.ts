@@ -225,6 +225,7 @@ export async function GET(
         locations:provider_locations(id, name, address_line1, city),
         providers:providers!bookings_provider_id_fkey(timezone),
         group_bookings!bookings_group_booking_id_fkey(ref_number, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact)),
+        recurring_appointments!bookings_recurring_series_id_fkey(id, recurrence_rule, start_date, end_date, start_time, frequency, last_booking_date, occurrences, is_active),
         service_packages!bookings_package_id_fkey(id, name),
         booking_services(
           id,
@@ -272,6 +273,14 @@ export async function GET(
     }
 
     const bookingData = booking as BookingDbRow;
+    const recurringSeries = (() => {
+      const series = (bookingData as { recurring_appointments?: unknown }).recurring_appointments as
+        | Record<string, unknown>
+        | Array<Record<string, unknown>>
+        | null
+        | undefined;
+      return Array.isArray(series) ? series[0] ?? null : series ?? null;
+    })();
     const transformedBooking = {
       id: bookingData.id,
       booking_number: bookingData.booking_number,
@@ -404,6 +413,15 @@ export async function GET(
       // Include joined data for provider portal (customers, locations)
       customers: bookingData.customers || null,
       locations: bookingData.locations || null,
+      recurring_series_id: (bookingData as { recurring_series_id?: string | null }).recurring_series_id || null,
+      is_recurring: Boolean((bookingData as { recurring_series_id?: string | null }).recurring_series_id || recurringSeries?.id),
+      recurring_series: recurringSeries,
+      recurrence_rule: recurringSeries?.recurrence_rule || null,
+      recurrence_start_date: recurringSeries?.start_date || null,
+      recurrence_end_date: recurringSeries?.end_date || null,
+      recurrence_frequency: recurringSeries?.frequency || null,
+      recurrence_last_booking_date: recurringSeries?.last_booking_date || null,
+      recurrence_occurrences: recurringSeries?.occurrences || null,
       // Group booking: for calendar/sidebar (ref + participants). FK join can return array or single.
       is_group_booking: Boolean(bookingData.is_group_booking),
       group_booking_id: bookingData.group_booking_id || null,

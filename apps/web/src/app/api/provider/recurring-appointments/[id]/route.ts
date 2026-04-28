@@ -150,21 +150,11 @@ export async function DELETE(
     }
 
     if (deleteSeries) {
-      // Delete all appointments with same recurrence_rule and customer/service
-      // For simplicity, delete all recurring appointments for this customer/service combination
-      let deleteQuery = supabase
+      const { error } = await supabase
         .from("recurring_appointments")
         .delete()
-        .eq("customer_id", appointment.customer_id)
+        .eq("id", id)
         .eq("provider_id", providerId);
-      
-      if (appointment.service_id) {
-        deleteQuery = deleteQuery.eq("service_id", appointment.service_id);
-      } else {
-        deleteQuery = deleteQuery.is("service_id", null);
-      }
-      
-      const { error } = await deleteQuery;
       
       if (error) {
         throw error;

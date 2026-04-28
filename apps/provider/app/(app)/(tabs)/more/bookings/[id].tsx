@@ -119,6 +119,50 @@ function formatProductVariantLabel(variant: unknown): string | null {
   }
 }
 
+function formatSeriesDate(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value.includes("T") ? value : `${value}T00:00:00`);
+  if (!Number.isFinite(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function recurrencePatternLabel(rule: unknown, fallbackFrequency?: unknown): string {
+  const frequency = typeof fallbackFrequency === "string" ? fallbackFrequency.toLowerCase() : "";
+  const normalizedRule = typeof rule === "string" ? rule.toUpperCase() : "";
+  const interval = Math.max(1, Number(normalizedRule.match(/INTERVAL=(\d+)/)?.[1] ?? 1));
+  if (frequency === "daily" || normalizedRule.includes("FREQ=DAILY")) return interval > 1 ? `Every ${interval} days` : "Daily";
+  if (frequency === "biweekly" || (normalizedRule.includes("FREQ=WEEKLY") && interval === 2)) return "Every 2 weeks";
+  if (frequency === "weekly" || normalizedRule.includes("FREQ=WEEKLY")) return interval > 1 ? `Every ${interval} weeks` : "Weekly";
+  if (frequency === "monthly" || normalizedRule.includes("FREQ=MONTHLY")) return interval > 1 ? `Every ${interval} months` : "Monthly";
+  return "Repeating visit";
+}
+
+function getRecurringDetails(booking: BookingDetail | null | undefined) {
+  if (!booking) return null;
+  const series = booking.recurring_series ?? {};
+  const seriesId = booking.recurring_series_id ?? series.id;
+  if (!booking.is_recurring && !seriesId) return null;
+  const rule = booking.recurrence_rule ?? series.recurrence_rule ?? null;
+  const generatedThrough = formatSeriesDate(booking.recurrence_last_booking_date ?? series.last_booking_date);
+  const pieces = [
+    formatSeriesDate(booking.recurrence_start_date ?? series.start_date)
+      ? `Starts ${formatSeriesDate(booking.recurrence_start_date ?? series.start_date)}`
+      : null,
+    booking.recurrence_end_date ?? series.end_date
+      ? `ends ${formatSeriesDate(booking.recurrence_end_date ?? series.end_date)}`
+      : booking.recurrence_occurrences ?? series.occurrences
+        ? `${booking.recurrence_occurrences ?? series.occurrences} visits planned`
+        : "no end date",
+    generatedThrough ? `generated through ${generatedThrough}` : null,
+  ].filter(Boolean);
+  return {
+    label: recurrencePatternLabel(rule, booking.recurrence_frequency ?? series.frequency),
+    status: series.is_active === false ? "Paused series" : "Active series",
+    rule: typeof rule === "string" ? rule : null,
+    timeline: pieces.join(" · "),
+  };
+}
+
 type BookingDetail = {
   id: string;
   booking_number?: string | null;
@@ -185,6 +229,24 @@ type BookingDetail = {
   payment_option?: string | null;
   package_id?: string | null;
   package_name?: string | null;
+  recurring_series_id?: string | null;
+  is_recurring?: boolean;
+  recurring_series?: {
+    id?: string | null;
+    recurrence_rule?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    frequency?: string | null;
+    last_booking_date?: string | null;
+    occurrences?: number | null;
+    is_active?: boolean | null;
+  } | null;
+  recurrence_rule?: string | null;
+  recurrence_start_date?: string | null;
+  recurrence_end_date?: string | null;
+  recurrence_frequency?: string | null;
+  recurrence_last_booking_date?: string | null;
+  recurrence_occurrences?: number | null;
   is_group_booking?: boolean;
   group_booking_id?: string | null;
   group_booking_ref?: string | null;
@@ -817,6 +879,7 @@ export default function BookingDetailScreen() {
 
   const b = data as BookingDetail;
   const services = b.services ?? [];
+  const recurringDetails = getRecurringDetails(b);
   const customerName = b.customers?.full_name ?? "Guest";
   const customerId = b.customer_id ?? (b.customers as { id?: string } | undefined)?.id ?? null;
   const locationName = b.locations?.name ?? null;
@@ -1947,6 +2010,38 @@ export default function BookingDetailScreen() {
             </Text>
           ) : null}
         </View>
+
+        {recurringDetails ? (
+          <View style={twStyle("rounded-xl border border-blue-200 bg-blue-50 p-4 mb-3")}>
+            <View style={twStyle("flex-row items-start justify-between")}>
+              <View style={twStyle("flex-1 pr-3")}>
+                <View style={twStyle("flex-row items-center")}>
+                  <Ionicons name="repeat-outline" size={18} color="#2563eb" />
+                  <Text style={twStyle("ml-2 text-sm font-bold text-blue-950")}>
+                    {recurringDetails.label}
+                  </Text>
+                </View>
+                <Text style={twStyle("mt-1 text-xs text-blue-800")}>
+                  {recurringDetails.timeline || "Repeating series"}
+                </Text>
+                {recurringDetails.rule ? (
+                  <Text style={twStyle("mt-1 text-xs text-blue-700")}>Rule: {recurringDetails.rule}</Text>
+                ) : null}
+              </View>
+              <View style={twStyle("rounded-full border border-blue-300 px-2 py-1")}>
+                <Text style={twStyle("text-xs font-semibold text-blue-700")}>{recurringDetails.status}</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/recurring-appointments" as never)}
+              style={twStyle("mt-3 rounded-lg border border-blue-200 bg-white px-3 py-2")}
+              accessibilityRole="button"
+              accessibilityLabel="Manage recurring series"
+            >
+              <Text style={twStyle("text-center text-sm font-semibold text-blue-700")}>Manage series</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {hasAdditionalLocationDetails ? (
           <View style={twStyle("rounded-xl border border-slate-200 bg-slate-50 p-4 mb-3")}>

@@ -629,7 +629,7 @@ export interface SearchFilters {
   price_max?: number;
   rating_min?: number;
   availability?: 'now' | 'soon' | 'any';
-  sort_by?: 'relevance' | 'price_low' | 'price_high' | 'rating' | 'distance' | 'soonest';
+  sort_by?: 'relevance' | 'price_low' | 'price_high' | 'rating' | 'distance' | 'soonest' | 'newest';
   page?: number;
   limit?: number;
 }

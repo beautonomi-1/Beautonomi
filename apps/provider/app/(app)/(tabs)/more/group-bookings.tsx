@@ -355,6 +355,7 @@ export default function GroupBookingsScreen() {
   const [createProducts, setCreateProducts] = useState<SelectedGroupProduct[]>([]);
   const [showPackagePicker, setShowPackagePicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
+  const [validatingCreateAddress, setValidatingCreateAddress] = useState(false);
 
   const createDateOptions = useMemo(
     () => Array.from({ length: 21 }, (_, i) => addDays(startOfDay(new Date()), i)),
@@ -1117,6 +1118,66 @@ export default function GroupBookingsScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowCreate(false);
     refresh();
+  }
+
+  async function applyCreateAddress(parsed: {
+    full_address: string;
+    address_line1: string;
+    city: string;
+    state: string;
+    postal_code: string;
+    country: string;
+    latitude: number;
+    longitude: number;
+  }) {
+    setCreateForm((p) => ({
+      ...p,
+      addressSearchValue: parsed.full_address,
+      addressLine1: parsed.address_line1,
+      addressCity: parsed.city,
+      addressState: parsed.state,
+      addressPostalCode: parsed.postal_code,
+      addressCountry: parsed.country,
+      addressLatitude: parsed.latitude,
+      addressLongitude: parsed.longitude,
+    }));
+
+    const addressString = parsed.full_address || `${parsed.address_line1}, ${parsed.city}, ${parsed.country}`;
+    if (!provider?.id || !addressString.trim()) return;
+    setValidatingCreateAddress(true);
+    try {
+      const res = await api.post<{
+        valid?: boolean;
+        travelFee?: number;
+        coordinates?: { latitude: number; longitude: number };
+        address?: { line1?: string; city?: string; state?: string; country?: string; postalCode?: string; fullAddress?: string };
+        reason?: string;
+      }>("/api/location/validate", {
+        address: addressString,
+        provider_id: provider.id,
+      });
+      const data = res.data ?? {};
+      if (!data.valid) {
+        Alert.alert("Outside service area", data.reason || "This address is outside your active service zones.");
+        return;
+      }
+      setCreateForm((p) => ({
+        ...p,
+        addressSearchValue: data.address?.fullAddress || parsed.full_address,
+        addressLine1: data.address?.line1 || parsed.address_line1,
+        addressCity: data.address?.city || parsed.city,
+        addressState: data.address?.state || parsed.state,
+        addressPostalCode: data.address?.postalCode || parsed.postal_code,
+        addressCountry: data.address?.country || parsed.country || "South Africa",
+        addressLatitude: data.coordinates?.latitude ?? parsed.latitude,
+        addressLongitude: data.coordinates?.longitude ?? parsed.longitude,
+        travelFee: String(Math.max(0, Number(data.travelFee || 0))),
+      }));
+    } catch (e) {
+      Alert.alert("Travel fee unavailable", e instanceof Error ? e.message : "Could not calculate the travel fee.");
+    } finally {
+      setValidatingCreateAddress(false);
+    }
   }
 
   function openAddParticipant() {
@@ -2074,20 +2135,16 @@ export default function GroupBookingsScreen() {
                   geocodeTypes={["address"]}
                   placeholder="Start typing street address..."
                   onSelect={(parsed) => {
-                    setCreateForm((p) => ({
-                      ...p,
-                      addressSearchValue: parsed.full_address,
-                      addressLine1: parsed.address_line1,
-                      addressCity: parsed.city,
-                      addressState: parsed.state,
-                      addressPostalCode: parsed.postal_code,
-                      addressCountry: parsed.country,
-                      addressLatitude: parsed.latitude,
-                      addressLongitude: parsed.longitude,
-                    }));
+                    void applyCreateAddress(parsed);
                   }}
                   onBlur={(q) => setCreateForm((p) => ({ ...p, addressSearchValue: q, addressLine1: p.addressLine1 || q }))}
                 />
+                {validatingCreateAddress ? (
+                  <View style={twStyle("mt-2 flex-row items-center")}>
+                    <ActivityIndicator size="small" color="#2563eb" />
+                    <Text style={twStyle("ml-2 text-xs text-blue-700")}>Calculating travel fee...</Text>
+                  </View>
+                ) : null}
                 {createForm.addressLatitude != null && createForm.addressLongitude != null ? (
                   <View style={{ marginTop: 12, alignItems: "center" }}>
                     <StaticMapImage
@@ -2097,7 +2154,9 @@ export default function GroupBookingsScreen() {
                       height={150}
                       zoom={15}
                     />
-                    <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>Selected map pin</Text>
+                    <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>
+                      Selected map pin{Number(createForm.travelFee || 0) > 0 ? ` · Travel fee ${formatCurrency(Number(createForm.travelFee || 0))}` : ""}
+                    </Text>
                   </View>
                 ) : null}
                 <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Street line</Text>
@@ -2469,9 +2528,9 @@ export default function GroupBookingsScreen() {
           </View>
 
           <ActionButton
-            label="Create Group"
+            label={validatingCreateAddress ? "Checking address..." : "Create Group"}
             onPress={handleCreate}
-            loading={creatingGroup || creatingParticipantBooking || addingParticipant}
+            loading={creatingGroup || creatingParticipantBooking || addingParticipant || validatingCreateAddress}
             fullWidth
           />
         </ScrollView>

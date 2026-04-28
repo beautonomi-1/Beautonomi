@@ -143,6 +143,64 @@ type AppointmentProductOrderLink = {
   payment_status?: string | null;
 };
 
+function formatSeriesDate(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  const date = new Date(value.includes("T") ? value : `${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function recurrencePatternLabel(rule: unknown, fallbackFrequency?: unknown): string {
+  const frequency = typeof fallbackFrequency === "string" ? fallbackFrequency.toLowerCase() : "";
+  const normalizedRule = typeof rule === "string" ? rule.toUpperCase() : "";
+  const intervalMatch = normalizedRule.match(/INTERVAL=(\d+)/);
+  const interval = intervalMatch ? Math.max(1, Number(intervalMatch[1])) : 1;
+
+  if (frequency === "daily" || normalizedRule.includes("FREQ=DAILY")) {
+    return interval > 1 ? `Every ${interval} days` : "Daily";
+  }
+  if (frequency === "biweekly" || (normalizedRule.includes("FREQ=WEEKLY") && interval === 2)) {
+    return "Every 2 weeks";
+  }
+  if (frequency === "weekly" || normalizedRule.includes("FREQ=WEEKLY")) {
+    return interval > 1 ? `Every ${interval} weeks` : "Weekly";
+  }
+  if (frequency === "monthly" || normalizedRule.includes("FREQ=MONTHLY")) {
+    return interval > 1 ? `Every ${interval} months` : "Monthly";
+  }
+  return "Repeating visit";
+}
+
+function getRecurringDetails(appointment: Appointment | null | undefined) {
+  if (!appointment) return null;
+  const raw = appointment as Record<string, any>;
+  const series = raw.recurring_series && typeof raw.recurring_series === "object" ? raw.recurring_series : {};
+  const seriesId = raw.recurring_series_id ?? series.id;
+  if (!raw.is_recurring && !seriesId) return null;
+
+  const rule = raw.recurrence_rule ?? series.recurrence_rule;
+  const startDate = raw.recurrence_start_date ?? series.start_date;
+  const endDate = raw.recurrence_end_date ?? series.end_date;
+  const lastBookingDate = raw.recurrence_last_booking_date ?? series.last_booking_date;
+  const occurrences = raw.recurrence_occurrences ?? series.occurrences;
+  const active = series.is_active !== false;
+
+  const generatedThrough = formatSeriesDate(lastBookingDate);
+  const pieces = [
+    formatSeriesDate(startDate) ? `Starts ${formatSeriesDate(startDate)}` : null,
+    endDate ? `ends ${formatSeriesDate(endDate)}` : occurrences ? `${occurrences} visits planned` : "no end date",
+    generatedThrough ? `generated through ${generatedThrough}` : null,
+  ].filter(Boolean);
+
+  return {
+    id: seriesId,
+    label: recurrencePatternLabel(rule, raw.recurrence_frequency ?? series.frequency),
+    rule: typeof rule === "string" ? rule : null,
+    status: active ? "Active series" : "Paused series",
+    timeline: pieces.join(" · "),
+  };
+}
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -177,6 +235,7 @@ export function AppointmentSidebar({
   const { format: formatMoney } = useProviderMoneyFormat();
   const { provider: portalProviderRaw } = useProviderPortal();
   const portalProvider = portalProviderRaw as PortalProviderProfile | null;
+  const recurringDetails = getRecurringDetails(selectedAppointment);
 
   /** Booking id for PATCH /bookings/:id (calendar rows may use composite ids or service-line ids). */
   const activeBookingId = useMemo(() => {
@@ -1992,6 +2051,7 @@ export function AppointmentSidebar({
           if (recurringWarnings?.length) {
             toast.warning(recurringWarnings.join(" "), { duration: 8000 });
           }
+          onRefresh?.();
           toast.success("Repeating visit series created");
         } catch (recErr) {
           console.error("Failed to create recurring series, falling back to single booking:", recErr);
@@ -1999,7 +2059,9 @@ export function AppointmentSidebar({
           const shortReason =
             recurringReason.length > 160 ? `${recurringReason.slice(0, 157)}…` : recurringReason;
           try {
-            await providerApi.createAppointment(appointmentData as any);
+            const createdOnce = await providerApi.createAppointment(appointmentData as any);
+            onAppointmentCreated?.(createdOnce);
+            onRefresh?.();
             toast.success(
               `Appointment booked once. Repeating schedule was not created: ${shortReason}`
             );
@@ -2674,6 +2736,35 @@ export function AppointmentSidebar({
                     </Button>
                   );
                 })()}
+              </div>
+            )}
+
+            {mode === "view" && recurringDetails && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Repeat className="h-4 w-4 text-blue-600" />
+                      <p className="text-sm font-semibold text-blue-950">{recurringDetails.label}</p>
+                    </div>
+                    <p className="mt-1 text-xs text-blue-800">{recurringDetails.timeline || "Repeating series"}</p>
+                    {recurringDetails.rule && (
+                      <p className="mt-1 text-[11px] text-blue-700">Rule: {recurringDetails.rule}</p>
+                    )}
+                  </div>
+                  <Badge variant="outline" className="shrink-0 border-blue-300 text-blue-700">
+                    {recurringDetails.status}
+                  </Badge>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 border-blue-200 bg-white text-blue-700 hover:bg-blue-100"
+                  onClick={() => window.location.assign("/provider/recurring-appointments")}
+                >
+                  Manage series
+                </Button>
               </div>
             )}
 

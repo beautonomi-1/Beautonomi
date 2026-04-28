@@ -2,13 +2,13 @@ import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import BottomNav from "@/components/layout/bottom-nav";
 import Footer from "@/components/layout/footer";
 import React from "react";
-import UpcomingTalent from "./upcoming-talent-cards";
+import ProviderSectionViewAll from "@/app/components/provider-section-view-all";
 
 const page = () => {
   return (
     <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader />
-      <UpcomingTalent />
+      <ProviderSectionViewAll section="upcoming" />
       <Footer />
       <BottomNav />
     </div>

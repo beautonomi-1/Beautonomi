@@ -1,10 +1,40 @@
 import { cache } from "react";
+import { headers } from "next/headers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { haversineDistanceKm } from "@/lib/geo/distance";
 import { resolveTenantIdFromServerHeaders } from "@/lib/tenant/resolve-tenant-from-headers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import type { PublicProfilePromotion, PublicProviderDetail } from "@/types/beautonomi";
+
+function isUnmappedPreviewOrDevHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h.endsWith(".vercel.app");
+}
+
+async function getServerHost(): Promise<string> {
+  const h = await headers();
+  return (h.get("x-forwarded-host") || h.get("host") || "").split(":")[0] || "";
+}
+
+async function resolvePublicProfileTenantId(): Promise<string> {
+  try {
+    return await resolveTenantIdFromServerHeaders();
+  } catch (error) {
+    const host = await getServerHost();
+    if (!isUnmappedPreviewOrDevHost(host)) throw error;
+
+    const { data } = await getSupabaseAdmin()
+      .from("tenants")
+      .select("id")
+      .eq("slug", "za")
+      .eq("is_active", true)
+      .maybeSingle();
+    if (data?.id) return data.id as string;
+    throw error;
+  }
+}
 
 function mapPublicProfilePromotions(rows: unknown, currency: string): PublicProfilePromotion[] {
   if (!Array.isArray(rows)) return [];
@@ -43,12 +73,7 @@ export const getPublicProviderDetail = cache(
     try {
       const supabase = await getSupabaseServer();
 
-      let tenantId: string;
-      try {
-        tenantId = await resolveTenantIdFromServerHeaders();
-      } catch {
-        return { provider: null, seoIndexable: false };
-      }
+      const tenantId = await resolvePublicProfileTenantId();
 
       const tenantRegion = await getTenantRegionConfig(tenantId);
       const defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
@@ -61,7 +86,10 @@ export const getPublicProviderDetail = cache(
       }
 
       // Resolve provider row
-      const providerRow = await resolveProvider(supabase, decodedSlug, slug, tenantId);
+      let providerRow = await resolveProvider(supabase, decodedSlug, slug, tenantId);
+      if (!providerRow && isUnmappedPreviewOrDevHost(await getServerHost())) {
+        providerRow = await resolveProviderAcrossTenants(supabase, decodedSlug, slug);
+      }
       if (!providerRow) return { provider: null, seoIndexable: false };
 
       const providerData = providerRow as Record<string, any>;
@@ -382,4 +410,27 @@ async function resolveProvider(
   const nonPublic = ["suspended", "deactivated", "banned", "deleted"];
   if (nonPublic.includes(String(row.status ?? ""))) return null;
   return lastRowUnknown as Record<string, any>;
+}
+
+async function resolveProviderAcrossTenants(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  decodedSlug: string,
+  originalSlug: string,
+): Promise<Record<string, any> | null> {
+  const candidates = Array.from(new Set([decodedSlug, originalSlug].filter(Boolean)));
+  for (const candidate of candidates) {
+    const { data } = await supabase
+      .from("providers")
+      .select(PROVIDER_SELECT + ", status")
+      .eq("slug", candidate)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const row = data as ({ status?: string } & Record<string, any>) | null;
+    if (!row) continue;
+    const nonPublic = ["suspended", "deactivated", "banned", "deleted"];
+    if (nonPublic.includes(String(row.status ?? ""))) return null;
+    return row;
+  }
+  return null;
 }

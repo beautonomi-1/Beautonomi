@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 import { requirePublicTenant } from '@/lib/tenant/require-public-tenant';
 import { z } from 'zod';
@@ -8,6 +9,13 @@ const suggestionsSchema = z.object({
   q: z.string().min(1, 'Query is required').max(100, 'Query too long'),
   limit: z.number().int().min(1).max(20).optional().default(10),
 });
+
+function isPreviewOrDevHost(request: NextRequest): boolean {
+  const host = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "")
+    .split(":")[0]
+    .toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host.endsWith(".vercel.app");
+}
 
 /**
  * GET /api/public/search/suggestions
@@ -68,7 +76,7 @@ export async function GET(request: NextRequest) {
     // Use separate queries for better compatibility and to search description field
     const { data: providersByName, error: providersByNameError } = await supabase
       .from('providers')
-      .select('id, business_name, description')
+      .select('id, business_name, slug, description')
       .ilike('business_name', `%${searchTerm}%`)
       .eq('status', 'active')
       .eq('tenant_id', tenantId)
@@ -77,7 +85,7 @@ export async function GET(request: NextRequest) {
     // Only search description if it's not null/empty
     const { data: providersByDesc, error: providersByDescError } = await supabase
       .from('providers')
-      .select('id, business_name, description')
+      .select('id, business_name, slug, description')
       .not('description', 'is', null)
       .ilike('description', `%${searchTerm}%`)
       .eq('status', 'active')
@@ -92,8 +100,34 @@ export async function GET(request: NextRequest) {
         providerMap.set(p.id, p);
       }
     });
-    const providers = Array.from(providerMap.values()).slice(0, Math.ceil(data.limit / 3));
+    let providers = Array.from(providerMap.values()).slice(0, Math.ceil(data.limit / 3));
     const providersError = providersByNameError || providersByDescError;
+
+    if (providers.length === 0 && isPreviewOrDevHost(request)) {
+      const admin = getSupabaseAdmin();
+      const fallbackLimit = Math.ceil(data.limit / 3);
+      const [fallbackByName, fallbackByDesc] = await Promise.all([
+        admin
+          .from('providers')
+          .select('id, business_name, slug, description')
+          .ilike('business_name', `%${searchTerm}%`)
+          .eq('status', 'active')
+          .limit(fallbackLimit),
+        admin
+          .from('providers')
+          .select('id, business_name, slug, description')
+          .not('description', 'is', null)
+          .ilike('description', `%${searchTerm}%`)
+          .eq('status', 'active')
+          .limit(fallbackLimit),
+      ]);
+      const fallbackMap = new Map();
+      (fallbackByName.data || []).forEach((p: any) => fallbackMap.set(p.id, p));
+      (fallbackByDesc.data || []).forEach((p: any) => {
+        if (!fallbackMap.has(p.id)) fallbackMap.set(p.id, p);
+      });
+      providers = Array.from(fallbackMap.values()).slice(0, fallbackLimit);
+    }
 
     // Search legacy service categories (tenant catalog)
     const { data: categories, error: categoriesError } = await supabase
@@ -156,7 +190,10 @@ export async function GET(request: NextRequest) {
         type: 'provider',
         id: provider.id,
         name: provider.business_name || 'Unknown',
-        url: `/search?q=${encodeURIComponent(provider.business_name)}&type=provider`,
+        url: provider.slug
+          ? `/partner-profile?slug=${encodeURIComponent(provider.slug)}`
+          : `/search?q=${encodeURIComponent(provider.business_name)}&type=provider`,
+        slug: provider.slug || undefined,
       });
     });
 

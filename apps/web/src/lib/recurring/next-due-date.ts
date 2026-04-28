@@ -1,6 +1,6 @@
 import { addDays, addMonths, format, parseISO, isValid } from "date-fns";
 
-export type SimpleFrequency = "weekly" | "biweekly" | "monthly";
+export type SimpleFrequency = "daily" | "weekly" | "biweekly" | "monthly";
 
 /**
  * Next calendar occurrence (YYYY-MM-DD) after `lastBookingDate`, or the first occurrence (`startDate`) when none booked yet.
@@ -22,7 +22,8 @@ export function nextRecurringOccurrenceDate(params: {
   if (!isValid(last)) return format(start, "yyyy-MM-dd");
 
   const freq = (params.frequency || "").toLowerCase() as SimpleFrequency | "";
-  if (freq === "weekly" || freq === "biweekly" || freq === "monthly") {
+  if (freq === "daily" || freq === "weekly" || freq === "biweekly" || freq === "monthly") {
+    if (freq === "daily") return format(addDays(last, 1), "yyyy-MM-dd");
     if (freq === "weekly") return format(addDays(last, 7), "yyyy-MM-dd");
     if (freq === "biweekly") return format(addDays(last, 14), "yyyy-MM-dd");
     return format(addMonths(last, 1), "yyyy-MM-dd");

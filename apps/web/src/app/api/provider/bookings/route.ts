@@ -126,6 +126,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
         locations:provider_locations(id, name, address_line1, city),
         group_bookings!bookings_group_booking_id_fkey(ref_number),
+        recurring_appointments!bookings_recurring_series_id_fkey(id, recurrence_rule, start_date, end_date, start_time, frequency, last_booking_date, occurrences, is_active),
         service_packages!bookings_package_id_fkey(id, name),
         booking_services(
           id,
@@ -319,6 +320,9 @@ async function handleGetProviderBookings(request: NextRequest) {
         unit_price: bp.unit_price || bp.products?.retail_price || 0,
         total_price: bp.total_price || (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
       }));
+      const recurringSeries = Array.isArray(booking.recurring_appointments)
+        ? booking.recurring_appointments[0]
+        : booking.recurring_appointments;
 
       return {
         id: booking.id,
@@ -392,6 +396,15 @@ async function handleGetProviderBookings(request: NextRequest) {
         customer_name: booking.customers?.full_name || null,
         location_name: booking.locations?.name || null,
         staff_name: services[0]?.staff_name || null,
+        recurring_series_id: booking.recurring_series_id || null,
+        is_recurring: Boolean(booking.recurring_series_id || recurringSeries?.id),
+        recurring_series: recurringSeries || null,
+        recurrence_rule: recurringSeries?.recurrence_rule || null,
+        recurrence_start_date: recurringSeries?.start_date || null,
+        recurrence_end_date: recurringSeries?.end_date || null,
+        recurrence_frequency: recurringSeries?.frequency || null,
+        recurrence_last_booking_date: recurringSeries?.last_booking_date || null,
+        recurrence_occurrences: recurringSeries?.occurrences || null,
         // Group booking: show on calendar and list
         is_group_booking: Boolean(booking.is_group_booking),
         group_booking_id: booking.group_booking_id || null,
@@ -403,9 +416,171 @@ async function handleGetProviderBookings(request: NextRequest) {
       };
     });
 
-    setCachedProviderBookingsList(cacheKey, transformedBookings as unknown as Booking[]);
+    let groupQuery = supabaseAdmin
+      .from("group_bookings")
+      .select("*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons)")
+      .eq("provider_id", providerId);
 
-    const response = successResponse(transformedBookings as unknown as Booking[]);
+    if (status && status !== "all") {
+      const rawStatuses = status.includes(",")
+        ? status.split(",").map((s) => s.trim()).filter(Boolean)
+        : [status];
+      const groupStatuses = [
+        ...new Set(
+          rawStatuses.flatMap((s) => {
+            const db = mapStatusToDatabase(s);
+            if (s === "booked" || db === "confirmed") return ["booked", "confirmed"];
+            if (s === "started" || db === "in_progress") return ["started", "in_progress"];
+            return [s, db].filter((v): v is string => Boolean(v));
+          }),
+        ),
+      ];
+      if (groupStatuses.length) groupQuery = groupQuery.in("status", groupStatuses);
+    }
+    if (startDate) groupQuery = groupQuery.gte("scheduled_at", `${startDate}T00:00:00`);
+    if (endDate) groupQuery = groupQuery.lte("scheduled_at", `${endDate}T23:59:59`);
+    if (locationId) groupQuery = groupQuery.eq("location_id", locationId);
+    if (searchRaw && searchRaw.trim().length > 0) {
+      const safe = searchRaw.trim().replace(/[%_,()]/g, "");
+      groupQuery = groupQuery.or(`ref_number.ilike.%${safe}%,title.ilike.%${safe}%`);
+    }
+    const { data: groupRows, error: groupErr } = await groupQuery
+      .order(orderColumn, { ascending })
+      .limit(500);
+    if (groupErr && !["42P01", "42703"].includes(groupErr.code ?? "")) {
+      console.warn("[GET /api/provider/bookings] Failed to merge group bookings:", groupErr);
+    }
+
+    const groupStaffIds = [...new Set((groupRows ?? []).map((g: any) => g.staff_id).filter(Boolean))];
+    const groupLocationIds = [...new Set((groupRows ?? []).map((g: any) => g.location_id).filter(Boolean))];
+    const [groupStaffRes, groupLocRes] = await Promise.all([
+      groupStaffIds.length
+        ? supabaseAdmin.from("provider_staff").select("id, name").in("id", groupStaffIds)
+        : Promise.resolve({ data: [] as any[] }),
+      groupLocationIds.length
+        ? supabaseAdmin.from("provider_locations").select("id, name, address_line1, city").in("id", groupLocationIds)
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
+    const groupStaffName = new Map((groupStaffRes.data ?? []).map((s: any) => [s.id, s.name]));
+    const groupLocation = new Map((groupLocRes.data ?? []).map((l: any) => [l.id, l]));
+
+    const transformedGroups = (groupRows ?? []).map((group: any) => {
+      const participants = Array.isArray(group.booking_participants) ? group.booking_participants : [];
+      const primary = participants.find((p: any) => p.is_primary_contact) ?? participants[0] ?? {};
+      const firstParticipantService = participants.find((p: any) => p.service_id || p.service_name) ?? {};
+      const serviceId = firstParticipantService.service_id || group.service_id || "";
+      const serviceName =
+        firstParticipantService.service_name ||
+        group.service_name ||
+        group.title ||
+        "Group booking";
+      const participantTotal = participants.reduce((sum: number, p: any) => sum + (Number(p.price) || 0), 0);
+      const productRows = Array.isArray(group.products) ? group.products : [];
+      const products = productRows.map((p: any, idx: number) => ({
+        id: p.id ?? `${group.id}-product-${idx}`,
+        product_id: p.product_id ?? p.productId ?? null,
+        product_variant_id: p.product_variant_id ?? p.productVariantId ?? null,
+        product_variant: p.product_variant_id || p.productVariantId
+          ? { option_values: p.product_variant_name || p.productVariantName ? { option: p.product_variant_name ?? p.productVariantName } : {} }
+          : null,
+        product_name: p.product_name ?? p.productName ?? "Product",
+        quantity: Number(p.quantity ?? 1) || 1,
+        unit_price: Number(p.unit_price ?? p.unitPrice ?? 0) || 0,
+        total_price: Number(p.total_price ?? p.totalPrice ?? 0) || (Number(p.unit_price ?? p.unitPrice ?? 0) || 0) * (Number(p.quantity ?? 1) || 1),
+      }));
+      const productTotal = products.reduce((sum: number, p: any) => sum + (Number(p.total_price) || 0), 0);
+      const total = Number(group.total_price ?? 0) || participantTotal + productTotal + (Number(group.travel_fee) || 0);
+      const staffName = group.staff_id ? groupStaffName.get(group.staff_id) ?? null : null;
+      const loc = group.location_id ? groupLocation.get(group.location_id) ?? null : null;
+      return {
+        id: `group:${group.id}`,
+        group_booking_id: group.id,
+        booking_number: group.ref_number || group.id,
+        customer_id: null,
+        version: 0,
+        provider_id: group.provider_id,
+        status: mapStatusFromDatabase(group.status === "started" ? "in_progress" : group.status === "booked" ? "confirmed" : group.status),
+        db_status: group.status === "started" ? "in_progress" : group.status === "booked" ? "confirmed" : group.status,
+        location_type: group.location_type || "at_salon",
+        location_id: group.location_id,
+        address: group.address_line1 ? {
+          line1: group.address_line1,
+          city: group.address_city,
+          state: group.address_state,
+          country: group.address_country,
+          postal_code: group.address_postal_code,
+          latitude: group.address_latitude,
+          longitude: group.address_longitude,
+        } : null,
+        scheduled_at: group.scheduled_at,
+        completed_at: null,
+        cancelled_at: null,
+        cancellation_reason: null,
+        services: [{
+          id: serviceId || group.id,
+          offering_id: serviceId || null,
+          staff_id: group.staff_id || null,
+          staff_name: staffName,
+          name: serviceName,
+          offering_name: serviceName,
+          service_name: serviceName,
+          duration_minutes: Number(group.duration_minutes) || 60,
+          price: participantTotal || total,
+          currency: lastResortCurrency,
+          scheduled_start_at: group.scheduled_at,
+          scheduled_end_at: null,
+          guest_name: primary.participant_name || null,
+        }],
+        products,
+        addons: [],
+        package_id: group.package_id || null,
+        package_name: null,
+        subtotal: Math.max(0, total - (Number(group.travel_fee) || 0)),
+        discount_amount: 0,
+        discount_code: null,
+        discount_reason: null,
+        tax_amount: 0,
+        tax_rate: 0,
+        service_fee_percentage: 0,
+        service_fee_amount: 0,
+        tip_amount: 0,
+        total_amount: total,
+        total_paid: 0,
+        total_refunded: 0,
+        currency: lastResortCurrency,
+        payment_status: "pending",
+        payment_method: null,
+        special_requests: group.notes || null,
+        loyalty_points_earned: 0,
+        travel_fee: Number(group.travel_fee) || 0,
+        created_at: group.created_at,
+        updated_at: group.updated_at,
+        current_stage: null,
+        customers: {
+          id: null,
+          full_name: primary.participant_name || group.title || "Group booking",
+          email: primary.participant_email || null,
+          phone: primary.participant_phone || null,
+        },
+        locations: loc,
+        customer_name: primary.participant_name || group.title || "Group booking",
+        location_name: loc?.name || null,
+        staff_name: staffName,
+        is_group_booking: true,
+        group_booking_ref: group.ref_number || null,
+        provider_form_responses: null,
+      };
+    });
+
+    const mergedBookings = [...transformedBookings, ...transformedGroups].sort((a: any, b: any) => {
+      const aTime = new Date(a.scheduled_at ?? 0).getTime();
+      const bTime = new Date(b.scheduled_at ?? 0).getTime();
+      return ascending ? aTime - bTime : bTime - aTime;
+    });
+
+    setCachedProviderBookingsList(cacheKey, mergedBookings as unknown as Booking[]);
+
+    const response = successResponse(mergedBookings as unknown as Booking[]);
     
     // Add cache headers for faster subsequent requests (5 seconds)
     response.headers.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=10');

@@ -152,7 +152,7 @@ const HottestPicksSection = ({
             <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">Hottest Picks</h2>
           </div>
           <Link href="/more-hottest-pick-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-[#FF0077]">
-            View More
+            View all
             <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
           </Link>
         </div>

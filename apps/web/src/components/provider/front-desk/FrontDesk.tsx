@@ -112,6 +112,36 @@ export function FrontDesk() {
   const queueCounts = useMemo(() => getQueueCounts(metricBookings), [metricBookings]);
 
   const handleCardClick = async (b: FrontDeskBooking) => {
+    if ((b as any).is_group_booking) {
+      const firstService = ((b as any).services || [])[0] || {};
+      openViewMode({
+        id: b.id,
+        booking_id: b.id,
+        ref_number: (b as any).booking_number || (b as any).group_booking_ref || "",
+        client_name: (b as any).customer_name || "Group booking",
+        client_email: (b as any).customers?.email || "",
+        client_phone: (b as any).customers?.phone || "",
+        service_id: firstService.offering_id || firstService.id || "",
+        service_name: firstService.service_name || firstService.offering_name || "Group booking",
+        team_member_id: firstService.staff_id || "",
+        team_member_name: firstService.staff_name || (b as any).staff_name || "",
+        scheduled_date: format(new Date((b as any).scheduled_at), "yyyy-MM-dd"),
+        scheduled_time: format(new Date((b as any).scheduled_at), "HH:mm"),
+        duration_minutes: firstService.duration_minutes || 60,
+        price: (b as any).total_amount || 0,
+        status: (b as any).status,
+        location_type: (b as any).location_type || "at_salon",
+        location_id: (b as any).location_id || "",
+        payment_status: (b as any).payment_status || "",
+        created_by: (b as any).customer_name || "Group booking",
+        total_amount: (b as any).total_amount || 0,
+        is_group_booking: true,
+        group_booking_ref: (b as any).group_booking_ref || null,
+        services: (b as any).services || [],
+        products: (b as any).products || [],
+      } as any);
+      return;
+    }
     setLoadingAppointment(b.id);
     try {
       const appointment = await providerApi.getAppointment(b.id);
