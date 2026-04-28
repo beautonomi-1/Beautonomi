@@ -69,12 +69,28 @@ function adsCreatePaymentUrl(data: AdsCampaignCreateData | undefined): string | 
   return typeof url === "string" && url.trim() ? url : null;
 }
 
+function isTimeBasedCampaign(campaign: Campaign | null): boolean {
+  return campaign?.billing_model === "time_based";
+}
+
+function isImpressionPackCampaign(campaign: Campaign | null): boolean {
+  return Boolean(campaign && campaign.billing_model !== "time_based" && campaign.pack_impressions != null);
+}
+
+function canEditBudgetFields(campaign: Campaign | null): boolean {
+  return Boolean(campaign && !isTimeBasedCampaign(campaign) && !isImpressionPackCampaign(campaign));
+}
+
 type PerformanceSummary = {
   impressions: number;
+  reach: number;
   clicks: number;
   spend: number;
   sales: number;
 };
+
+const formatCompactNumber = (value: number | null | undefined) =>
+  new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Number(value ?? 0));
 
 type ImpressionPack = {
   id: string;
@@ -138,6 +154,7 @@ export default function AdsSettingsScreen() {
     bid_cpc: "",
     global_category_ids: [] as string[],
   });
+  const cpcBudgetAvailable = availableModels.length === 0 || availableModels.includes("cpc_budget");
 
   const loadAll = useCallback(async () => {
     if (!enabled) {
@@ -287,14 +304,29 @@ export default function AdsSettingsScreen() {
 
   const handleUpdateCampaign = useCallback(async () => {
     if (!editCampaign) return;
+    const canEditBudget = canEditBudgetFields(editCampaign);
+    if (canEditBudget && editForm.budget) {
+      const nextBudget = parseFloat(editForm.budget.replace(/,/g, "."));
+      if (Number.isFinite(nextBudget) && nextBudget > Number(editCampaign.budget ?? 0)) {
+        Alert.alert(
+          "Budget top-up needed",
+          "Budget increases require a new paid campaign or pack. Lower the budget here, or buy another boost."
+        );
+        return;
+      }
+    }
     setUpdating(editCampaign.id);
     try {
-      const res = await api.patch(`/api/provider/ads/campaigns/${editCampaign.id}`, {
-        budget: editForm.budget ? parseFloat(editForm.budget.replace(/,/g, ".")) : undefined,
-        daily_budget: editForm.daily_budget === "" ? null : editForm.daily_budget ? parseFloat(editForm.daily_budget.replace(/,/g, ".")) : undefined,
-        bid_cpc: editForm.bid_cpc ? parseFloat(editForm.bid_cpc.replace(/,/g, ".")) : undefined,
+      const payload: Record<string, unknown> = {
         targeting: { global_category_ids: editForm.global_category_ids },
-      });
+      };
+      if (canEditBudget) {
+        payload.budget = editForm.budget ? parseFloat(editForm.budget.replace(/,/g, ".")) : undefined;
+        payload.daily_budget =
+          editForm.daily_budget === "" ? null : editForm.daily_budget ? parseFloat(editForm.daily_budget.replace(/,/g, ".")) : undefined;
+        payload.bid_cpc = editForm.bid_cpc ? parseFloat(editForm.bid_cpc.replace(/,/g, ".")) : undefined;
+      }
+      const res = await api.patch(`/api/provider/ads/campaigns/${editCampaign.id}`, payload);
       if (res.error) {
         Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update campaign"));
         return;
@@ -343,14 +375,14 @@ export default function AdsSettingsScreen() {
   if (!enabled) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Ads" subtitle="Ad campaigns & spend" onBack={() => router.back()} />
+        <ScreenHeader title="Ads" subtitle="Reach more customers and track impact" onBack={() => router.back()} />
         <View style={[twStyle("flex-1 px-4 pt-8"), { paddingHorizontal: screenPadding }]}>
           <View style={twStyle("rounded-2xl border border-gray-200 bg-amber-50 p-6")}>
             <Ionicons name="megaphone-outline" size={40} color="#b45309" />
             <Text style={twStyle("mt-3 text-base font-semibold text-gray-900")}>Ads not enabled</Text>
             <Text style={twStyle("mt-1 text-sm text-gray-600")}>
-              Sponsored listings are turned off for this marketplace, or packs have not been published yet. Your marketplace
-              team enables this in Admin → Control Plane → Ads (module on, impression or time packs active).
+              Sponsored listings are not available in your market yet. When ads are available, you will be able to boost your
+              profile and track visibility, reach, clicks, and bookings here.
             </Text>
           </View>
         </View>
@@ -371,7 +403,7 @@ export default function AdsSettingsScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Ads" subtitle="Campaigns & performance" onBack={() => router.back()} />
+      <ScreenHeader title="Ads" subtitle="Reach more customers and track campaign impact" onBack={() => router.back()} />
       <ScrollView
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
@@ -379,38 +411,37 @@ export default function AdsSettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[twStyle("px-4 pt-4"), { paddingHorizontal: screenPadding }]}>
-          <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/80 p-4")}>
-            <Text style={twStyle("text-sm font-semibold text-indigo-950")}>Buy advertising here</Text>
-            <Text style={twStyle("mt-1 text-xs leading-5 text-indigo-900/90")}>
-              Impression packs, time boosts, and CPC budgets are configured by your marketplace in{" "}
-              <Text style={twStyle("font-semibold")}>Admin → Control Plane → Ads</Text>. You purchase and manage
-              campaigns on this screen; customers see your listing as sponsored in the Beautonomi app and website when your
-              bid wins a slot.
-            </Text>
-          </View>
           {/* Performance */}
           {performance && (
             <View style={twStyle("mb-6")}>
               <Text style={twStyle("text-sm font-semibold text-gray-700 mb-3")}>Performance</Text>
+              <Text style={twStyle("text-xs text-gray-500 mb-3")}>
+                Visibility, unique reach, clicks, and bookings generated by your sponsored campaigns.
+              </Text>
               <View style={twStyle("flex-row flex-wrap")}>
                 <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mr-2 mb-2"), { minWidth: "45%" }]}>
                   <Ionicons name="eye-outline" size={20} color="#6b7280" />
-                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{performance.impressions}</Text>
+                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{formatCompactNumber(performance.impressions)}</Text>
                   <Text style={twStyle("text-xs text-gray-500")}>Impressions</Text>
                 </View>
                 <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mb-2"), { minWidth: "45%" }]}>
-                  <Ionicons name="hand-left-outline" size={20} color="#6b7280" />
-                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{performance.clicks}</Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>Clicks</Text>
+                  <Ionicons name="people-outline" size={20} color="#6b7280" />
+                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{formatCompactNumber(performance.reach)}</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>Reach</Text>
                 </View>
                 <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mr-2 mb-2"), { minWidth: "45%" }]}>
+                  <Ionicons name="hand-left-outline" size={20} color="#6b7280" />
+                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{formatCompactNumber(performance.clicks)}</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>Clicks</Text>
+                </View>
+                <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mb-2"), { minWidth: "45%" }]}>
                   <Ionicons name="wallet-outline" size={20} color="#6b7280" />
                   <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{tenantCurrency} {Number(performance.spend).toFixed(2)}</Text>
                   <Text style={twStyle("text-xs text-gray-500")}>Spend</Text>
                 </View>
-                <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mb-2"), { minWidth: "45%" }]}>
+                <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mr-2 mb-2"), { minWidth: "45%" }]}>
                   <Ionicons name="cart-outline" size={20} color="#6b7280" />
-                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{performance.sales}</Text>
+                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{formatCompactNumber(performance.sales)}</Text>
                   <Text style={twStyle("text-xs text-gray-500")}>Sales (bookings)</Text>
                 </View>
               </View>
@@ -509,7 +540,9 @@ export default function AdsSettingsScreen() {
           <View style={twStyle("mb-4")}>
             <View style={twStyle("flex-row items-center justify-between mb-3")}>
               <Text style={twStyle("text-sm font-semibold text-gray-700")}>Campaigns</Text>
-              <ActionButton label="Create campaign" onPress={() => setCreateOpen(true)} variant="primary" size="sm" icon="add" />
+              {cpcBudgetAvailable && (
+                <ActionButton label="Create campaign" onPress={() => setCreateOpen(true)} variant="primary" size="sm" icon="add" />
+              )}
             </View>
             {campaigns.length === 0 ? (
               <View style={twStyle("rounded-2xl border border-gray-200 bg-gray-50 p-8 items-center")}>
@@ -531,12 +564,15 @@ export default function AdsSettingsScreen() {
                         {c.billing_model !== "time_based" && c.pack_impressions != null && (
                           <Text style={twStyle("text-xs text-gray-500")}>{c.pack_impressions} impressions</Text>
                         )}
+                        {(c.status === "draft" || c.status === "paused") && Number(c.budget) <= Number(c.spent ?? 0) && (
+                          <Text style={twStyle("text-xs text-amber-600")}>awaiting payment</Text>
+                        )}
                       </View>
                       {updating === c.id ? (
                         <ActivityIndicator size="small" color="#111" />
                       ) : (
                         <View style={twStyle("flex-row gap-2")}>
-                          {c.status === "draft" && (
+                          {c.status === "draft" && Number(c.budget) > Number(c.spent ?? 0) && (
                             <TouchableOpacity onPress={() => handleSetStatus(c.id, "active")} style={twStyle("bg-green-600 px-3 py-1.5 rounded-lg")}>
                               <Text style={twStyle("text-white text-xs font-medium")}>Activate</Text>
                             </TouchableOpacity>
@@ -546,14 +582,16 @@ export default function AdsSettingsScreen() {
                               <Text style={twStyle("text-white text-xs font-medium")}>Pause</Text>
                             </TouchableOpacity>
                           )}
-                          {c.status === "paused" && (
+                          {c.status === "paused" && Number(c.budget) > Number(c.spent ?? 0) && (
                             <TouchableOpacity onPress={() => handleSetStatus(c.id, "active")} style={twStyle("bg-green-600 px-3 py-1.5 rounded-lg")}>
                               <Text style={twStyle("text-white text-xs font-medium")}>Resume</Text>
                             </TouchableOpacity>
                           )}
-                          {(c.status === "draft" || c.status === "paused") && c.pack_impressions == null && c.billing_model !== "time_based" && (
+                          {(c.status === "draft" || c.status === "paused") && (
                             <TouchableOpacity onPress={() => openEdit(c)} style={twStyle("border border-gray-300 px-3 py-1.5 rounded-lg")}>
-                              <Text style={twStyle("text-gray-700 text-xs font-medium")}>Edit</Text>
+                              <Text style={twStyle("text-gray-700 text-xs font-medium")}>
+                                {canEditBudgetFields(c) ? "Edit" : "Target"}
+                              </Text>
                             </TouchableOpacity>
                           )}
                         </View>
@@ -673,39 +711,61 @@ export default function AdsSettingsScreen() {
       </BottomSheet>
 
       {/* Edit campaign sheet */}
-      <BottomSheet visible={!!editCampaign} onClose={() => !updating && setEditCampaign(null)} title="Edit campaign" subtitle="Update budget and bid." snapHeight="full">
+      <BottomSheet
+        visible={!!editCampaign}
+        onClose={() => !updating && setEditCampaign(null)}
+        title="Edit campaign"
+        subtitle={canEditBudgetFields(editCampaign) ? "Update budget, bid, and targeting." : "Pack pricing is locked. You can refine targeting."}
+        snapHeight="full"
+      >
         {editCampaign && (
           <View style={twStyle("gap-4 pb-6")}>
-            <View>
-              <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Total budget ({tenantCurrency})</Text>
-              <TextInput
-                value={editForm.budget}
-                onChangeText={(t) => setEditForm((p) => ({ ...p, budget: t }))}
-                placeholder="e.g. 500"
-                keyboardType="decimal-pad"
-                style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
-              />
-            </View>
-            <View>
-              <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Daily budget ({tenantCurrency})</Text>
-              <TextInput
-                value={editForm.daily_budget}
-                onChangeText={(t) => setEditForm((p) => ({ ...p, daily_budget: t }))}
-                placeholder="e.g. 50"
-                keyboardType="decimal-pad"
-                style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
-              />
-            </View>
-            <View>
-              <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Bid per click ({tenantCurrency})</Text>
-              <TextInput
-                value={editForm.bid_cpc}
-                onChangeText={(t) => setEditForm((p) => ({ ...p, bid_cpc: t }))}
-                placeholder="e.g. 2"
-                keyboardType="decimal-pad"
-                style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
-              />
-            </View>
+            {canEditBudgetFields(editCampaign) ? (
+              <>
+                <View>
+                  <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Total budget ({tenantCurrency})</Text>
+                  <TextInput
+                    value={editForm.budget}
+                    onChangeText={(t) => setEditForm((p) => ({ ...p, budget: t }))}
+                    placeholder="e.g. 500"
+                    keyboardType="decimal-pad"
+                    style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
+                  />
+                  <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+                    You can lower this budget. To add more money, buy another boost or pack.
+                  </Text>
+                </View>
+                <View>
+                  <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Daily budget ({tenantCurrency})</Text>
+                  <TextInput
+                    value={editForm.daily_budget}
+                    onChangeText={(t) => setEditForm((p) => ({ ...p, daily_budget: t }))}
+                    placeholder="e.g. 50"
+                    keyboardType="decimal-pad"
+                    style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
+                  />
+                </View>
+                <View>
+                  <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Bid per click ({tenantCurrency})</Text>
+                  <TextInput
+                    value={editForm.bid_cpc}
+                    onChangeText={(t) => setEditForm((p) => ({ ...p, bid_cpc: t }))}
+                    placeholder="e.g. 2"
+                    keyboardType="decimal-pad"
+                    style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
+                  />
+                </View>
+              </>
+            ) : (
+              <View style={twStyle("rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
+                <Text style={twStyle("text-sm font-semibold text-amber-950")}>Pricing is set by the marketplace</Text>
+                <Text style={twStyle("mt-1 text-xs leading-5 text-amber-800")}>
+                  {isTimeBasedCampaign(editCampaign)
+                    ? "Time boosts keep their purchased dates and price. Buy another boost to extend visibility."
+                    : "Impression packs keep their purchased impression count and price."}
+                </Text>
+              </View>
+            )}
             {globalCategories.length > 0 && (
               <View>
                 <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Target categories</Text>

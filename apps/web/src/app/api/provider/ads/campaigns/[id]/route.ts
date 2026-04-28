@@ -3,16 +3,12 @@
  */
 
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, handleApiError, errorResponse, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-async function getProviderId(request: NextRequest): Promise<string | null> {
-  const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+async function getProviderId(userId: string, request: NextRequest): Promise<string | null> {
   const supabase = getSupabaseAdmin();
-  const { data: byOwner } = await supabase.from("providers").select("id").eq("user_id", user.id).limit(1).maybeSingle();
-  if (byOwner) return byOwner.id;
-  const { data: staff } = await supabase.from("provider_staff").select("provider_id").eq("user_id", user.id).limit(1).maybeSingle();
-  return staff?.provider_id ?? null;
+  return getProviderIdForUser(userId, supabase as never, { request });
 }
 
 export async function PATCH(
@@ -20,7 +16,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const providerId = await getProviderId(request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const providerId = await getProviderId(user.id, request);
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
     const { id: campaignId } = await params;
 
@@ -36,7 +33,7 @@ export async function PATCH(
     const supabase = getSupabaseAdmin();
     const { data: existing } = await supabase
       .from("ads_campaigns")
-      .select("id, provider_id, pack_impressions, budget, billing_model")
+      .select("id, provider_id, pack_impressions, budget, spent, billing_model, start_at, end_at")
       .eq("id", campaignId)
       .single();
     if (!existing || existing.provider_id !== providerId) {
@@ -45,6 +42,25 @@ export async function PATCH(
     const billingModel = (existing as any).billing_model ?? "cpc_budget";
     const isPackCampaign = (existing as any).pack_impressions != null;
     const isTimeBased = billingModel === "time_based";
+
+    if (updates.status === "active") {
+      const budget = Number((existing as any).budget ?? 0);
+      const spent = Number((existing as any).spent ?? 0);
+      if (budget <= 0 || (!isTimeBased && budget - spent <= 0)) {
+        return errorResponse(
+          "This campaign needs a paid budget before it can be activated.",
+          "ADS_PAYMENT_REQUIRED",
+          400
+        );
+      }
+      if (isTimeBased && (!(existing as any).start_at || !(existing as any).end_at)) {
+        return errorResponse(
+          "This time-based campaign is waiting for payment activation.",
+          "ADS_PAYMENT_REQUIRED",
+          400
+        );
+      }
+    }
 
     if (isTimeBased) {
       // Time-based campaigns: only status and targeting can be edited

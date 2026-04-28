@@ -136,6 +136,12 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { AvailabilitySlotPicker } from "./AvailabilitySlotPicker";
 
 // Types are now in ./types.ts
+type AppointmentProductOrderLink = {
+  id: string;
+  order_number?: string | null;
+  status?: string | null;
+  payment_status?: string | null;
+};
 
 // ============================================================================
 // COMPONENT
@@ -388,10 +394,35 @@ export function AppointmentSidebar({
   // Products state - ensure it's always an array
   const [products, setProducts] = useState<ProductItem[]>(Array.isArray(productsProp) ? productsProp : []);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [appointmentProductOrder, setAppointmentProductOrder] = useState<AppointmentProductOrderLink | null>(null);
   const prevProductsPropRef = useRef<string>("");
   const productsLoadedRef = useRef<boolean>(false); // Track if products have been loaded
   const customTipInputRef = useRef<HTMLInputElement>(null);
   const [customTipActive, setCustomTipActive] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || mode === "create" || !activeBookingId || formData.products.length === 0) {
+      setAppointmentProductOrder(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetcher.get<{ data?: { orders?: AppointmentProductOrderLink[] } }>(
+          `/api/provider/product-orders?booking_id=${encodeURIComponent(activeBookingId)}&limit=1`,
+          { staleTimeMs: 0 },
+        );
+        if (!cancelled) setAppointmentProductOrder(res?.data?.orders?.[0] ?? null);
+      } catch {
+        if (!cancelled) setAppointmentProductOrder(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, mode, activeBookingId, formData.products.length]);
   
   // Client search state
   const [clientSearchQuery, setClientSearchQuery] = useState("");
@@ -1940,6 +1971,7 @@ export function AppointmentSidebar({
             unit_price: p.unitPrice,
             total: p.totalPrice,
             product_id: p.productId,
+            product_variant_id: p.productVariantId || null,
           })),
         ];
         (appointmentData as any).cart_items = cart_items;
@@ -1951,11 +1983,15 @@ export function AppointmentSidebar({
         };
 
         try {
-          await providerApi.createRecurringAppointment({
+          const recurring = await providerApi.createRecurringAppointment({
             ...appointmentData,
             client_id: formData.clientId.trim(),
             recurrence_rule: recurrenceRule,
           } as any);
+          const recurringWarnings = (recurring as any)?._warnings as string[] | undefined;
+          if (recurringWarnings?.length) {
+            toast.warning(recurringWarnings.join(" "), { duration: 8000 });
+          }
           toast.success("Repeating visit series created");
         } catch (recErr) {
           console.error("Failed to create recurring series, falling back to single booking:", recErr);
@@ -2187,10 +2223,12 @@ export function AppointmentSidebar({
       updateSelectedAppointment(updated);
       onAppointmentUpdated?.(updated);
 
-      await providerApi.updateAppointment(activeBookingId, {
+        const serverUpdated = await providerApi.updateAppointment(activeBookingId, {
         ...updatePayload,
         ...(newStatus === AppointmentStatus.WAITING && sendNotification && { send_arrival_notification: true }),
       } as any);
+        updateSelectedAppointment(serverUpdated);
+        onAppointmentUpdated?.(serverUpdated);
 
       onRefresh?.();
       
@@ -3425,6 +3463,9 @@ export function AppointmentSidebar({
                     onTimeChange={(time) => setFormData(prev => ({ ...prev, startTime: time }))}
                     mode={formData.kind === AppointmentKind.AT_HOME ? "mobile" : "salon"}
                   />
+                  <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] leading-relaxed text-blue-800">
+                    Provider-created bookings are saved immediately. Countdown timers only appear for customer checkout holds; held checkout slots appear here as blocked/ghost availability.
+                  </p>
 
                   {/* Duration pills */}
                   <div className="space-y-1.5">
@@ -3788,19 +3829,25 @@ export function AppointmentSidebar({
                               <>
                                 <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
                                   <button
-                                    className="px-2 py-1 text-gray-500 hover:bg-gray-50 transition-colors"
+                                    type="button"
+                                    className="px-2 py-1 text-gray-600 hover:bg-gray-50 transition-colors"
                                     onClick={() => updateProductQuantity(product.id, product.quantity - 1)}
                                   >
                                     <Minus className="w-3 h-3" />
                                   </button>
                                   <Input
                                     type="number"
-                                    className="w-10 h-6 text-xs text-center border-x border-gray-200 rounded-none"
+                                    className="w-12 h-7 text-xs text-center border-x border-gray-200 rounded-none bg-white text-gray-950 font-semibold opacity-100 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                     value={product.quantity}
-                                    onChange={(e) => updateProductQuantity(product.id, parseInt(e.target.value) || 1)}
+                                    min={1}
+                                    onChange={(e) => {
+                                      const next = parseInt(e.target.value, 10);
+                                      if (Number.isFinite(next)) updateProductQuantity(product.id, next);
+                                    }}
                                   />
                                   <button
-                                    className="px-2 py-1 text-gray-500 hover:bg-gray-50 transition-colors"
+                                    type="button"
+                                    className="px-2 py-1 text-gray-600 hover:bg-gray-50 transition-colors"
                                     onClick={() => updateProductQuantity(product.id, product.quantity + 1)}
                                   >
                                     <Plus className="w-3 h-3" />
@@ -3846,6 +3893,29 @@ export function AppointmentSidebar({
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {mode === "view" && formData.products.length > 0 && appointmentProductOrder && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 rounded-lg bg-white p-1.5 text-amber-700">
+                      <Package className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-amber-950">Product pickup linked</p>
+                      <p className="mt-0.5 text-xs text-amber-800">
+                        {appointmentProductOrder.order_number || "Product order"} is in Product Orders for fulfillment.
+                        Status: {(appointmentProductOrder.status || "confirmed").replace(/_/g, " ")}.
+                      </p>
+                    </div>
+                    <a
+                      href={`/provider/ecommerce/orders?order=${appointmentProductOrder.id}`}
+                      className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                    >
+                      Fulfill
+                    </a>
+                  </div>
                 </div>
               )}
 
@@ -5018,7 +5088,8 @@ export function AppointmentSidebar({
                   {([
                     { value: "pay_later" as const, label: "Pay Later", icon: Clock },
                     { value: "cash" as const, label: "Cash", icon: Receipt },
-                    { value: "yoco_pos" as const, label: "Card (Yoco)", icon: CreditCard },
+                    { value: "card" as const, label: "Manual Card", icon: CreditCard },
+                    { value: "yoco_pos" as const, label: "Yoco Terminal", icon: CreditCard },
                     { value: "payment_link" as const, label: "Payment Link", icon: Send },
                   ] as const).map(({ value, label, icon: Icon }) => (
                     <button

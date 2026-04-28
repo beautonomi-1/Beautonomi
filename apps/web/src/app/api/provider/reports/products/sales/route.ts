@@ -85,6 +85,9 @@ export async function GET(request: NextRequest) {
         `)
       .eq('provider_id', providerId)
       .eq('payment_status', 'paid')
+      // Appointment product orders are fulfillment mirrors. Their revenue is
+      // counted from booking_products above, so exclude them here.
+      .or('order_source.is.null,order_source.neq.appointment')
       .gte('created_at', fromDate.toISOString())
       .lte('created_at', toDate.toISOString());
 

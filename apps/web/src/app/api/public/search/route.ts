@@ -3,7 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
-import { runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
+import { buildAdReachKey, runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
 import type { SearchFilters, SearchResult } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -11,6 +11,14 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 export const dynamic = "force-dynamic";
 // Cache search results for 30 seconds
 export const revalidate = 30;
+
+function isUuid(value: string | null | undefined): value is string {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
+
+function sanitizeSearchTerm(value: string): string {
+  return value.trim().replace(/[,%()]/g, " ").replace(/\s+/g, " ").slice(0, 80);
+}
 
 /**
  * GET /api/public/search
@@ -82,12 +90,15 @@ export async function GET(request: Request) {
     // Note: city and country are in provider_locations, not providers table
     // starting_price may need to be calculated from offerings
     // Exclude providers whose user has opted out of public search / SEO
-    const { data: seoOptedOutProviders } = await supabase
+    const { data: seoOptedOutProviders, error: seoOptOutError } = await supabase
       .from("providers")
       .select("id, users!inner(include_in_search_engines)")
       .eq("tenant_id", tenantId)
       .eq("status", "active")
       .eq("users.include_in_search_engines", false);
+    if (seoOptOutError) {
+      console.warn("Failed to load SEO opt-out provider filter:", seoOptOutError);
+    }
     const seoOptedOutIds = (seoOptedOutProviders ?? []).map((p: any) => p.id as string);
 
     let query = supabase
@@ -111,15 +122,68 @@ export async function GET(request: Request) {
 
     // Filter out SEO-opted-out providers
     if (seoOptedOutIds.length > 0) {
-      query = query.not("id", "in", `(${seoOptedOutIds.map((id) => `"${id}"`).join(",")})`);
+      query = query.not("id", "in", `(${seoOptedOutIds.join(",")})`);
     }
 
     // Apply text search for provider name
     // Search in business_name and description
     if (queryText && queryText.trim()) {
-      const searchTerm = queryText.trim();
+      const searchTerm = sanitizeSearchTerm(queryText);
       // Use or() to search across multiple fields with proper wildcard syntax
-      query = query.or(`business_name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+      if (searchTerm) {
+        query = query.or(`business_name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+      }
+    }
+
+    if (filters.category) {
+      let categoryId = isUuid(filters.category) ? filters.category : null;
+      if (!categoryId) {
+        const { data: categoryRow } = await supabase
+          .from("global_service_categories")
+          .select("id")
+          .eq("slug", filters.category)
+          .eq("is_active", true)
+          .maybeSingle();
+        categoryId = (categoryRow as { id?: string } | null)?.id ?? null;
+      }
+
+      if (categoryId) {
+        const [{ data: associationRows }, { data: offeringRows }] = await Promise.all([
+          supabase
+            .from("provider_global_category_associations")
+            .select("provider_id, providers!inner(tenant_id, status)")
+            .eq("global_category_id", categoryId)
+            .eq("providers.tenant_id", tenantId)
+            .eq("providers.status", "active"),
+          supabase
+            .from("offerings")
+            .select("provider_id, providers!inner(tenant_id, status)")
+            .eq("category_id", categoryId)
+            .eq("is_active", true)
+            .eq("providers.tenant_id", tenantId)
+            .eq("providers.status", "active"),
+        ]);
+        const categoryProviderIds = [
+          ...new Set([
+            ...(associationRows ?? []).map((row: any) => row.provider_id).filter(Boolean),
+            ...(offeringRows ?? []).map((row: any) => row.provider_id).filter(Boolean),
+          ]),
+        ];
+        if (categoryProviderIds.length === 0) {
+          return NextResponse.json({
+            data: {
+              providers: [],
+              services: [],
+              total: 0,
+              page,
+              limit,
+              has_more: false,
+            },
+            error: null,
+          });
+        }
+        query = query.in("id", categoryProviderIds);
+      }
     }
 
     // Apply filters
@@ -364,7 +428,8 @@ export async function GET(request: Request) {
     try {
       const winners = await runAdsAuction({
         tenantId,
-        categorySlug: filters.category || undefined,
+        categoryId: isUuid(filters.category) ? filters.category : undefined,
+        categorySlug: filters.category && !isUuid(filters.category) ? filters.category : undefined,
         maxSlots: 5,
         excludeProviderIds: [],
       });
@@ -451,8 +516,14 @@ export async function GET(request: Request) {
         sponsoredCards.sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
         const organicOnly = transformedProviders.filter((p: any) => !sponsoredProviderIds.has(p.id));
         finalProviders = [...sponsoredCards, ...organicOnly];
-        const idempotencyPrefix = `search:${Date.now()}:${filters.category ?? "all"}:${page}`;
-        await recordAdImpressions(winners, idempotencyPrefix);
+        const reachKey = buildAdReachKey(request);
+        const idempotencyPrefix = `search:${reachKey}:${filters.category ?? "all"}:${page}:${Date.now()}`;
+        await recordAdImpressions(winners, idempotencyPrefix, {
+          placement: "search",
+          reach_key: reachKey,
+        }).catch((impressionError) => {
+          console.warn("Failed to record search ad impressions:", impressionError);
+        });
       }
     } catch (e) {
       console.warn("Ads auction failed, returning organic only:", e);
@@ -492,7 +563,9 @@ export async function GET(request: Request) {
     let serviceResults: any[] = [];
     const searchQuery = searchParams.get('q') || searchParams.get('query');
     if (searchQuery) {
-      const { data: offerings } = await supabase
+      const safeServiceQuery = sanitizeSearchTerm(searchQuery);
+      if (safeServiceQuery) {
+        const { data: offerings } = await supabase
         .from("offerings")
         .select(
           "id, name, description, price, duration_minutes, type, provider_id, providers!inner(id, business_name, slug, avatar_url)"
@@ -500,12 +573,13 @@ export async function GET(request: Request) {
         .eq("is_active", true)
         .eq("type", "service")
         .eq("providers.tenant_id", tenantId)
-        .or(`name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`)
+        .or(`name.ilike.%${safeServiceQuery}%,description.ilike.%${safeServiceQuery}%`)
         .limit(20);
-      serviceResults = (offerings ?? []).map((row: any) => {
-        const { providers: provider, ...rest } = row;
-        return { ...rest, provider };
-      });
+        serviceResults = (offerings ?? []).map((row: any) => {
+          const { providers: provider, ...rest } = row;
+          return { ...rest, provider };
+        });
+      }
     }
     const services: any[] = serviceResults;
 

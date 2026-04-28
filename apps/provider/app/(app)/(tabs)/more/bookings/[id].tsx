@@ -221,6 +221,15 @@ type BookingDetail = {
   provider_points_earned?: number | null;
 };
 
+type AppointmentProductOrderResponse = {
+  orders?: {
+    id: string;
+    order_number?: string | null;
+    status?: string | null;
+    payment_status?: string | null;
+  }[];
+};
+
 type BookingResourceRow = {
   id: string;
   resource_id: string;
@@ -338,6 +347,12 @@ export default function BookingDetailScreen() {
   const { provider: providerProfile } = useProvider();
   const providerTimezone = providerProfile?.timezone ?? null;
   const bookingIdStr = typeof id === "string" ? id : Array.isArray(id) ? id[0] ?? "" : "";
+  const appointmentProductOrdersUrl =
+    bookingIdStr && (data?.products?.length ?? 0) > 0
+      ? `/api/provider/product-orders?booking_id=${encodeURIComponent(bookingIdStr)}&limit=1`
+      : "";
+  const { data: appointmentProductOrdersData } = useApi<AppointmentProductOrderResponse>(appointmentProductOrdersUrl);
+  const appointmentProductOrder = appointmentProductOrdersData?.orders?.[0] ?? null;
   const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -2679,6 +2694,24 @@ export default function BookingDetailScreen() {
                 </View>
               );
             })}
+            {appointmentProductOrder ? (
+              <TouchableOpacity
+                onPress={() =>
+                  router.push(
+                    `/(app)/(tabs)/more/product-orders?order=${encodeURIComponent(appointmentProductOrder.id)}` as never,
+                  )
+                }
+                style={twStyle("mt-1 rounded-xl border border-amber-200 bg-amber-50 p-3 flex-row items-center justify-between")}
+              >
+                <View style={twStyle("flex-1 pr-3")}>
+                  <Text style={twStyle("text-sm font-semibold text-amber-950")}>Product pickup linked</Text>
+                  <Text style={twStyle("text-xs text-amber-800 mt-0.5")}>
+                    {appointmentProductOrder.order_number ?? "Product order"} · {(appointmentProductOrder.status ?? "confirmed").replace(/_/g, " ")}
+                  </Text>
+                </View>
+                <Text style={twStyle("text-sm font-semibold text-amber-800")}>Fulfill</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
 

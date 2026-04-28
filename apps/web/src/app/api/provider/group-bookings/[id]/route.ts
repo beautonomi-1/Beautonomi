@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
+import { addMinutes } from "date-fns";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
+import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
 
 /**
  * GET /api/provider/group-bookings/[id]
@@ -67,6 +69,10 @@ export async function PATCH(
     const allowedFields = [
       "title", "scheduled_at", "service_id", "staff_id", "location_id",
       "max_participants", "duration_minutes", "notes", "status",
+      "location_type", "address_line1", "address_city", "address_state",
+      "address_country", "address_postal_code", "address_latitude",
+      "address_longitude", "address_place_name", "travel_fee", "products",
+      "total_price",
       // §Provider-audit 2026-04 (packages round 2): allow updating the
       // service_package link so providers can attach/detach a package after
       // the group booking was created.
@@ -75,6 +81,20 @@ export async function PATCH(
     const sanitized: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const key of allowedFields) {
       if (key in body) sanitized[key] = body[key];
+    }
+    if (sanitized.location_type === "at_home") {
+      sanitized.location_id = null;
+      sanitized.travel_fee = Math.max(0, Number(sanitized.travel_fee || 0));
+    } else if (sanitized.location_type === "at_salon") {
+      sanitized.address_line1 = null;
+      sanitized.address_city = null;
+      sanitized.address_state = null;
+      sanitized.address_country = null;
+      sanitized.address_postal_code = null;
+      sanitized.address_latitude = null;
+      sanitized.address_longitude = null;
+      sanitized.address_place_name = null;
+      sanitized.travel_fee = 0;
     }
 
     // Mobile / portal sometimes send split date+time instead of ISO `scheduled_at`.
@@ -108,7 +128,7 @@ export async function PATCH(
     if (movingSlot && !allowOverride) {
       const { data: existing } = await admin
         .from("group_bookings")
-        .select("scheduled_at, duration_minutes, staff_id, location_id, service_id")
+        .select("scheduled_at, duration_minutes, staff_id, location_id, service_id, location_type")
         .eq("id", id)
         .eq("provider_id", providerId)
         .maybeSingle();
@@ -129,19 +149,38 @@ export async function PATCH(
         (sanitized.service_id as string | null | undefined) ??
         (existing?.service_id as string | null | undefined) ??
         null;
+      const nextLocationType =
+        (sanitized.location_type as string | null | undefined) ??
+        (existing?.location_type as string | null | undefined) ??
+        "at_salon";
       if (nextScheduledAt) {
         const d = new Date(nextScheduledAt);
         if (!Number.isNaN(d.getTime())) {
+          const holdEnd = addMinutes(
+            d,
+            (Number.isFinite(nextDuration) ? nextDuration : 60) + (nextLocationType === "at_home" ? 30 : 0),
+          );
+          const holdOverlap = await checkActiveHoldOverlap(admin, providerId, d, holdEnd, {
+            dbStaffId: nextStaff ? String(nextStaff) : null,
+          });
+          if (holdOverlap) {
+            return errorResponse(
+              "This time slot is no longer available. Please select another time.",
+              "CONFLICT",
+              409,
+            );
+          }
+
           const check = await evaluateProviderSlotAgainstGrid(admin, {
             providerId,
             scheduledAt: d,
             durationMinutes: Number.isFinite(nextDuration) ? nextDuration : 60,
             staffIdsCsv: nextStaff ? String(nextStaff) : null,
-            locationId: nextLocation ? String(nextLocation) : null,
+            locationId: nextLocationType === "at_home" ? null : (nextLocation ? String(nextLocation) : null),
             excludeBookingId: undefined,
             excludeGroupBookingId: id,
-            mode: "salon",
-            travelBufferRaw: null,
+            mode: nextLocationType === "at_home" ? "mobile" : "salon",
+            travelBufferRaw: nextLocationType === "at_home" ? "30" : null,
             minNoticeMinutes: 0,
             maxAdvanceDays: 365,
             resourceOfferingIds: nextService ? [String(nextService)] : [],
@@ -155,6 +194,49 @@ export async function PATCH(
           }
         }
       }
+    }
+
+    if (
+      "products" in sanitized ||
+      "travel_fee" in sanitized ||
+      "location_type" in sanitized ||
+      "total_price" in sanitized
+    ) {
+      const [{ data: existingTotals }, { data: participantRows }] = await Promise.all([
+        admin
+          .from("group_bookings")
+          .select("products, travel_fee, location_type")
+          .eq("id", id)
+          .eq("provider_id", providerId)
+          .maybeSingle(),
+        admin
+          .from("booking_participants")
+          .select("price")
+          .eq("group_booking_id", id),
+      ]);
+      const nextProducts = Array.isArray(sanitized.products)
+        ? sanitized.products
+        : Array.isArray(existingTotals?.products)
+          ? existingTotals.products
+          : [];
+      const nextLocationType = String(
+        sanitized.location_type ?? existingTotals?.location_type ?? "at_salon",
+      );
+      const nextTravelFee = nextLocationType === "at_home"
+        ? Math.max(0, Number(sanitized.travel_fee ?? existingTotals?.travel_fee ?? 0))
+        : 0;
+      const participantTotal = (participantRows ?? []).reduce(
+        (sum: number, p: any) => sum + Math.max(0, Number(p.price || 0)),
+        0,
+      );
+      const productTotal = nextProducts.reduce(
+        (sum: number, p: any) =>
+          sum + Math.max(0, Number(p.total_price ?? p.totalPrice ?? (Number(p.unit_price ?? p.unitPrice ?? 0) * Number(p.quantity ?? 1)))),
+        0,
+      );
+      sanitized.products = nextProducts;
+      sanitized.travel_fee = nextTravelFee;
+      sanitized.total_price = participantTotal + productTotal + nextTravelFee;
     }
 
     const { data, error } = await admin

@@ -37,6 +37,26 @@ function normalizeSlug(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
 }
 
+/** Fallback when `providers.slug` is blank — matches booking slug expectations; UUID fallback resolves via public provider API. */
+function derivePublicProviderSlug(
+  rawSlug: string | null | undefined,
+  businessName: string | null | undefined,
+  providerId: string,
+): string {
+  const trimmed = typeof rawSlug === "string" ? rawSlug.trim() : "";
+  if (trimmed) return trimmed;
+  const name = typeof businessName === "string" ? businessName.trim() : "";
+  if (name) {
+    const slugified = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 96);
+    if (slugified) return slugified;
+  }
+  return providerId;
+}
+
 /**
  * GET /api/public/express-link/[slug]
  *
@@ -143,15 +163,29 @@ export async function GET(
       return notFoundResponse("This booking link has reached its usage limit");
     }
 
+    // `providers` uses `status` (e.g. active/draft), not `is_active` — selecting a non-existent column
+    // caused provider lookups to fail and surfaced as NOT_FOUND for every express link.
     const { data: provider, error: providerError } = await supabase
       .from("providers")
-      .select("id, slug, business_name, is_active")
+      .select("id, slug, business_name, status")
       .eq("id", link.provider_id)
-      .single();
+      .maybeSingle();
 
-    if (providerError || !provider?.slug || provider.is_active === false) {
+    if (providerError || !provider) {
+      console.error("[express-link] provider lookup failed", providerError, link.provider_id);
       return notFoundResponse("Provider not found");
     }
+
+    // Align with GET /api/public/providers/[slug]: only listed/active businesses book.
+    if (provider.status !== "active") {
+      return notFoundResponse("Provider not available");
+    }
+
+    const providerSlug = derivePublicProviderSlug(
+      provider.slug as string | null | undefined,
+      provider.business_name as string | null | undefined,
+      provider.id as string,
+    );
 
     // Increment use_count (best-effort; don't fail the request if this fails)
     await supabase
@@ -165,7 +199,7 @@ export async function GET(
     const prefill = sanitizeExpressPrefill((link as { prefill?: unknown }).prefill);
 
     return successResponse({
-      provider_slug: provider.slug,
+      provider_slug: providerSlug,
       provider_id: provider.id,
       provider_name: provider.business_name,
       link_name: link.name,

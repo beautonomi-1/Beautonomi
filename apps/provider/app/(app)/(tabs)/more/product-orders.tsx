@@ -15,7 +15,7 @@ import {
 import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api, getApiBaseUrl } from "@/lib/api-client";
 import { webApiTenantHeaders } from "@/config/public-env";
@@ -1054,10 +1054,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 }
 
 export default function ProductOrdersScreen() {
+  const { order } = useLocalSearchParams<{ order?: string }>();
+  const deepLinkOrderId = typeof order === "string" ? order : Array.isArray(order) ? order[0] : undefined;
+
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Product Orders" showBack subtitle="Customer orders" />
-      <ProductOrdersContent />
+      <ProductOrdersContent deepLinkOrderId={deepLinkOrderId} />
     </ScreenContainer>
   );
 }

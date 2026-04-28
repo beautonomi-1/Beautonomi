@@ -74,6 +74,9 @@ export async function GET(request: NextRequest) {
       .from("product_orders")
       .select("id")
       .eq("provider_id", providerId)
+      // Appointment orders are fulfillment mirrors for booking_products, which
+      // are counted by booking/product reports elsewhere.
+      .or("order_source.is.null,order_source.neq.appointment")
       .not("status", "in", "(cancelled,refunded)");
 
     if (locationId) {

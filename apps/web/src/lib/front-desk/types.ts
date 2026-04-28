@@ -30,7 +30,7 @@ export type QueueTabId =
   | "completed";
 
 /** Date range used for front-desk metric cards. */
-export type FrontDeskMetricRange = "all" | "today" | "week" | "month" | "year";
+export type { FrontDeskMetricRange } from "@beautonomi/utils";
 
 /** Extended booking with operational state for front desk */
 export interface FrontDeskBooking extends Booking {

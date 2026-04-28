@@ -14,6 +14,7 @@ import { mapStatusToProvider } from "@/lib/utils/booking-status";
 import { checkActiveHoldOverlap, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import {
   createBookingsReadCacheKey,
   getCachedProviderBookingsList,
@@ -797,11 +798,11 @@ async function handleCreateProviderBooking(request: NextRequest) {
       })(),
       payment_status: (() => {
         if (body.payment_option === "deposit") {
-          // Deposit booking: if cash deposit was collected now, partially_paid; otherwise pending
-          return body.payment_method === "cash" ? "partially_paid" : "pending";
+          // Deposit booking: if an in-person payment was collected now, partially_paid; otherwise pending.
+          return body.payment_method === "cash" || body.payment_method === "card" ? "partially_paid" : "pending";
         }
-        // Full payment: cash = paid, everything else = pending
-        return body.payment_method === "cash" ? "paid" : "pending";
+        // Full payment: manual cash/card means the provider already collected it; terminal/link stay pending.
+        return body.payment_method === "cash" || body.payment_method === "card" ? "paid" : "pending";
       })(),
       special_requests: body.special_requests || null,
       // Deposit metadata
@@ -1246,7 +1247,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
         try {
           const { data: pendingProducts } = await supabaseAdmin
             .from("booking_products")
-            .select("id, product_id, quantity")
+            .select("id, product_id, product_variant_id, quantity")
             .eq("booking_id", booking.id)
             .is("stock_deducted_at", null);
           if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
@@ -1254,13 +1255,19 @@ async function handleCreateProviderBooking(request: NextRequest) {
             for (const row of pendingProducts as Array<{
               id: string;
               product_id: string | null;
+              product_variant_id?: string | null;
               quantity: number | null;
             }>) {
               if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
-              const { error: decErr } = await supabaseAdmin.rpc(
-                "decrement_product_stock",
-                { p_product_id: row.product_id, p_quantity: row.quantity },
-              );
+              const { error: decErr } = row.product_variant_id
+                ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
+                  p_variant_id: row.product_variant_id,
+                  p_quantity: row.quantity,
+                })
+                : await supabaseAdmin.rpc(
+                  "decrement_product_stock",
+                  { p_product_id: row.product_id, p_quantity: row.quantity },
+                );
               if (decErr) {
                 console.error(
                   `[provider/bookings create] decrement_product_stock failed for booking ${booking.id}, row ${row.id}:`,
@@ -1281,33 +1288,42 @@ async function handleCreateProviderBooking(request: NextRequest) {
           );
         }
       }
+
+      try {
+        await syncAppointmentProductOrder(supabaseAdmin as never, booking.id);
+      } catch (orderSyncError) {
+        console.error(
+          `[provider/bookings create] failed to sync appointment product order for booking ${booking.id}:`,
+          orderSyncError,
+        );
+      }
     }
 
-    // Record a booking_payments row for cash payments so that:
+    // Record a booking_payments row for manually collected payments so that:
     // 1. The update_booking_payment_status trigger sets total_paid correctly
     // 2. The create_finance_ledger_from_payment trigger creates finance_transactions
     // 3. End-of-day reports (which query booking_payments) include this revenue
     // 4. Payout balance calculations (which use finance_transactions) are accurate
-    if (body.payment_method === "cash" && finalTotalAmount > 0) {
-      const cashAmount = body.payment_option === "deposit" && body.deposit_amount
+    if ((body.payment_method === "cash" || body.payment_method === "card") && finalTotalAmount > 0) {
+      const collectedAmount = body.payment_option === "deposit" && body.deposit_amount
         ? Number(body.deposit_amount)
         : finalTotalAmount;
       const { error: paymentRowError } = await supabaseAdmin
         .from("booking_payments")
         .insert({
           booking_id: booking.id,
-          amount: cashAmount,
-          payment_method: "cash",
-          payment_provider: "cash",
+          amount: collectedAmount,
+          payment_method: body.payment_method === "card" ? "card" : "cash",
+          payment_provider: body.payment_method === "card" ? "manual" : "cash",
           status: "completed",
           notes: body.payment_option === "deposit"
-            ? `Cash deposit collected at booking creation (${body.deposit_percentage ?? 0}%)`
-            : "Cash payment recorded at booking creation",
+            ? `${body.payment_method === "card" ? "Manual card" : "Cash"} deposit collected at booking creation (${body.deposit_percentage ?? 0}%)`
+            : `${body.payment_method === "card" ? "Manual card" : "Cash"} payment recorded at booking creation`,
           created_by: user.id,
           ...(tenantId ? { tenant_id: tenantId } : {}),
         });
       if (paymentRowError) {
-        console.warn("Failed to insert booking_payments row for cash:", paymentRowError);
+        console.warn("Failed to insert booking_payments row for manual payment:", paymentRowError);
       }
     }
 

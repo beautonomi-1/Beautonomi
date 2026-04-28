@@ -8,6 +8,16 @@ interface UserLocation {
   address: string;
 }
 
+type IpGeoResponse = {
+  data?: {
+    latitude?: number | string | null;
+    longitude?: number | string | null;
+    city?: string | null;
+    country?: string | null;
+    region?: string | null;
+  } | null;
+};
+
 /**
  * Hook to get and manage user location from localStorage
  * The location is set by the header component when user selects an address
@@ -18,17 +28,52 @@ export function useUserLocation() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
+      let cancelled = false;
+      const finish = () => {
+        if (!cancelled) setIsLoading(false);
+      };
+
+      const loadIpFallback = async () => {
+        try {
+          const response = await fetch("/api/public/ip-geolocation", {
+            credentials: "same-origin",
+            cache: "force-cache",
+          });
+          if (!response.ok) return;
+          const json = (await response.json().catch(() => null)) as IpGeoResponse | null;
+          const data = json?.data;
+          const latitude = Number(data?.latitude);
+          const longitude = Number(data?.longitude);
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+          const address = [data?.city, data?.region, data?.country].filter(Boolean).join(", ");
+          const nextLocation = { latitude, longitude, address: address || "Current area" };
+          localStorage.setItem("userLocation", JSON.stringify(nextLocation));
+          if (!cancelled) {
+            setLocation(nextLocation);
+            window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: nextLocation }));
+          }
+        } catch {
+          // IP location is a best-effort guest enhancement; manual search still works.
+        }
+      };
+
       try {
         const savedLocation = localStorage.getItem("userLocation");
         if (savedLocation) {
           const parsed = JSON.parse(savedLocation);
           setLocation(parsed);
+          finish();
+        } else {
+          void loadIpFallback().finally(finish);
         }
       } catch (error) {
         console.error("Error reading user location from localStorage:", error);
-      } finally {
-        setIsLoading(false);
+        void loadIpFallback().finally(finish);
       }
+
+      return () => {
+        cancelled = true;
+      };
     }
   }, []);
 

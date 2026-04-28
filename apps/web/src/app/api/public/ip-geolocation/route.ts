@@ -139,16 +139,6 @@ async function getLocationFromIpApi(ip: string) {
     });
   } catch (error: unknown) {
     console.error("Error in ip-api.com fallback:", error);
-    const message = error instanceof Error ? error.message : "Failed to get location from IP";
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message,
-          code: "GEOLOCATION_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ data: null, error: null });
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -16,6 +17,17 @@ const createSchema = z.object({
   description: z.string().optional(),
   is_active: z.boolean().optional(),
 });
+
+const DEFAULT_REFERRAL_SOURCES = [
+  { name: "Google Search", description: "Client found you through Google" },
+  { name: "Instagram", description: "Client found you through Instagram" },
+  { name: "Facebook", description: "Client found you through Facebook" },
+  { name: "TikTok", description: "Client found you through TikTok" },
+  { name: "WhatsApp", description: "Client reached you through WhatsApp" },
+  { name: "Client referral", description: "Referred by another client" },
+  { name: "Walk-in", description: "Client walked in or contacted the salon directly" },
+  { name: "Other", description: "Other source" },
+] as const;
 
 /**
  * GET /api/provider/referral-sources
@@ -49,10 +61,28 @@ export async function GET(request: NextRequest) {
       query = query.eq("provider_id", providerId);
     }
 
-    const { data, error } = await query;
+    let { data, error } = await query;
 
     if (error) {
       throw error;
+    }
+
+    if (providerId && (!data || data.length === 0)) {
+      const admin = getSupabaseAdmin();
+      const defaults = DEFAULT_REFERRAL_SOURCES.map((source) => ({
+        provider_id: providerId,
+        name: source.name,
+        description: source.description,
+        is_active: true,
+      }));
+      const { data: created, error: seedError } = await admin
+        .from("referral_sources")
+        .insert(defaults)
+        .select("*")
+        .order("name", { ascending: true });
+      if (!seedError && created) {
+        data = created;
+      }
     }
 
     return successResponse(data || []);

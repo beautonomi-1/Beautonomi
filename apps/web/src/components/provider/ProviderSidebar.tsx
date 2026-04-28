@@ -38,6 +38,7 @@ import {
   Ticket,
   Link2,
   Monitor,
+  Target,
   Coins,
   PiggyBank,
   CreditCard,
@@ -140,6 +141,7 @@ const navigationSections = [
       { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" as keyof StaffPermissions },
       { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" as keyof StaffPermissions },
       { icon: Megaphone, label: "Marketing", href: "/provider/marketing/automations", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Target, label: "Paid Ads", href: "/provider/settings/ads", permission: "edit_settings" as keyof StaffPermissions },
       { icon: Link2, label: "Booking links", href: "/provider/express-booking", permission: "edit_settings" as keyof StaffPermissions },
     ],
   },
@@ -243,6 +245,9 @@ const isActiveRoute = (pathname: string, href: string) => {
   }
   if (href === "/provider/settings/services/memberships") {
     return pathname.startsWith("/provider/settings/services/memberships");
+  }
+  if (href === "/provider/settings/ads") {
+    return pathname.startsWith("/provider/settings/ads");
   }
   if (href === "/provider/express-booking") {
     return pathname.startsWith("/provider/express-booking");

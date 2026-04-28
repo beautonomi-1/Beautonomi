@@ -231,6 +231,17 @@ export async function GET(request: NextRequest) {
         });
       }
 
+      if (metadata?.ads_budget_order_id) {
+        await processSuccessfulPayment(data.data, getSupabaseAdmin());
+        return successResponse({
+          status: "success",
+          type: "ads_budget_order",
+          adsBudgetOrderId: String(metadata.ads_budget_order_id),
+          campaignId: metadata.campaign_id ? String(metadata.campaign_id) : null,
+          message: "Ads payment confirmed",
+        });
+      }
+
       // Handle booking payments
       const bookingId = metadata.bookingId || metadata.booking_id;
 

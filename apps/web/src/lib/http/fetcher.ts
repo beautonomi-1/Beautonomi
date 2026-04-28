@@ -521,16 +521,21 @@ async function cachedGet<T = unknown>(url: string, options?: CachedGetOptions): 
 
   const staleMs = options?.staleTimeMs ?? DEFAULT_STALE_TIME_MS;
   const now = Date.now();
+  const bypassCache = staleMs <= 0;
   const cached = getResponseCache.get(url);
-  if (cached && cached.expiresAt > now) {
+  if (!bypassCache && cached && cached.expiresAt > now) {
     return cached.data as T;
   }
 
   const inflight = inflightGetRequests.get(url);
-  if (inflight) return inflight as Promise<T>;
+  if (!bypassCache && inflight) return inflight as Promise<T>;
 
   const promise = fetchJson<T>(url, { ...options, method: "GET" }).then((data) => {
-    getResponseCache.set(url, { data, expiresAt: Date.now() + staleMs });
+    if (bypassCache) {
+      getResponseCache.delete(url);
+    } else {
+      getResponseCache.set(url, { data, expiresAt: Date.now() + staleMs });
+    }
     pruneGetCache(Date.now());
     inflightGetRequests.delete(url);
     return data;
@@ -539,7 +544,7 @@ async function cachedGet<T = unknown>(url: string, options?: CachedGetOptions): 
     throw err;
   });
 
-  inflightGetRequests.set(url, promise);
+  if (!bypassCache) inflightGetRequests.set(url, promise);
   return promise;
 }
 

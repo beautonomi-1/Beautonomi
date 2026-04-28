@@ -4,21 +4,36 @@
  */
 
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, handleApiError, errorResponse, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-async function getProviderId(request: NextRequest): Promise<string | null> {
-  const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+async function getProviderId(userId: string, request: NextRequest): Promise<string | null> {
   const supabase = getSupabaseAdmin();
-  const { data: byOwner } = await supabase.from("providers").select("id").eq("user_id", user.id).limit(1).maybeSingle();
-  if (byOwner) return byOwner.id;
-  const { data: staff } = await supabase.from("provider_staff").select("provider_id").eq("user_id", user.id).limit(1).maybeSingle();
-  return staff?.provider_id ?? null;
+  return getProviderIdForUser(userId, supabase as never, { request });
+}
+
+function reachKeyForEvent(event: { id?: string; idempotency_key?: string | null; attribution?: any }): string | null {
+  const attribution = event.attribution && typeof event.attribution === "object" ? event.attribution : {};
+  const explicit =
+    attribution.reach_key ||
+    attribution.visitor_id ||
+    attribution.anonymous_id ||
+    attribution.session_id ||
+    attribution.user_id ||
+    attribution.client_id;
+  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+
+  const key = event.idempotency_key;
+  if (typeof key === "string" && key.includes(":impression:")) {
+    return key.split(":impression:")[0] || null;
+  }
+  return event.id ?? null;
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const providerId = await getProviderId(request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const providerId = await getProviderId(user.id, request);
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
     const { searchParams } = new URL(request.url);
@@ -30,7 +45,7 @@ export async function GET(request: NextRequest) {
 
     let eventsQuery = supabase
       .from("ads_events")
-      .select("id, campaign_id, event_type, created_at, attribution")
+      .select("id, campaign_id, event_type, created_at, attribution, idempotency_key")
       .eq("provider_id", providerId);
     if (startDate) eventsQuery = eventsQuery.gte("created_at", startDate);
     if (endDate) eventsQuery = eventsQuery.lte("created_at", endDate);
@@ -40,6 +55,13 @@ export async function GET(request: NextRequest) {
     const impressions = (events ?? []).filter((e: any) => e.event_type === "impression").length;
     const clicks = (events ?? []).filter((e: any) => e.event_type === "click").length;
     const books = (events ?? []).filter((e: any) => e.event_type === "book").length;
+    const reachKeys = new Set<string>();
+    for (const event of events ?? []) {
+      if ((event as any).event_type !== "impression") continue;
+      const reachKey = reachKeyForEvent(event as any);
+      if (reachKey) reachKeys.add(reachKey);
+    }
+    const reach = reachKeys.size;
 
     const { data: campaigns } = await supabase
       .from("ads_campaigns")
@@ -60,7 +82,7 @@ export async function GET(request: NextRequest) {
      * Mirror the DB charge model here on a per-impression basis, capped
      * at the campaign's budget so the dashboard agrees with `spent`.
      */
-    const COST_RATIO_DEFAULT = 1;
+    const COST_RATIO_DEFAULT = 0.05;
     let cpcCostRatio = COST_RATIO_DEFAULT;
     try {
       const { data: cfg } = await supabase
@@ -93,13 +115,19 @@ export async function GET(request: NextRequest) {
 
     const hasDateFilter = !!(startDate || endDate);
 
-    const byCampaign: Record<string, { impressions: number; clicks: number; books: number; spent: number }> = {};
+    const byCampaign: Record<string, { impressions: number; reach: number; clicks: number; books: number; spent: number }> = {};
+    const reachByCampaign = new Map<string, Set<string>>();
     let periodSpent = 0;
     for (const e of events ?? []) {
       const cid = e.campaign_id ?? "uncategorized";
-      if (!byCampaign[cid]) byCampaign[cid] = { impressions: 0, clicks: 0, books: 0, spent: 0 };
+      if (!byCampaign[cid]) byCampaign[cid] = { impressions: 0, reach: 0, clicks: 0, books: 0, spent: 0 };
       if (e.event_type === "impression") {
         byCampaign[cid].impressions += 1;
+        const reachKey = reachKeyForEvent(e as any);
+        if (reachKey) {
+          if (!reachByCampaign.has(cid)) reachByCampaign.set(cid, new Set<string>());
+          reachByCampaign.get(cid)!.add(reachKey);
+        }
         const inc = costForImpression(cid);
         byCampaign[cid].spent += inc;
         periodSpent += inc;
@@ -109,7 +137,8 @@ export async function GET(request: NextRequest) {
     }
     // Cap per-campaign period spend by total budget for parity with DB.
     for (const c of campaigns ?? []) {
-      if (!byCampaign[c.id]) byCampaign[c.id] = { impressions: 0, clicks: 0, books: 0, spent: 0 };
+      if (!byCampaign[c.id]) byCampaign[c.id] = { impressions: 0, reach: 0, clicks: 0, books: 0, spent: 0 };
+      byCampaign[c.id].reach = reachByCampaign.get(c.id)?.size ?? 0;
       const budget = Number(c.budget ?? 0);
       if (budget > 0 && byCampaign[c.id].spent > budget) byCampaign[c.id].spent = budget;
       if (!hasDateFilter) {
@@ -125,6 +154,7 @@ export async function GET(request: NextRequest) {
     return successResponse({
       summary: {
         impressions,
+        reach,
         clicks,
         spend: periodSpent,
         spend_label: hasDateFilter ? "spend in period (modeled from impressions)" : "lifetime",

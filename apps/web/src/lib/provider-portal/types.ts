@@ -740,8 +740,14 @@ export interface GroupBooking {
   location_name?: string;
   address_line1?: string;
   address_city?: string;
+  address_state?: string;
+  address_country?: string;
   address_postal_code?: string;
+  address_latitude?: number;
+  address_longitude?: number;
+  address_place_name?: string;
   travel_fee?: number;
+  products?: unknown[];
 }
 
 export interface GroupBookingParticipant {

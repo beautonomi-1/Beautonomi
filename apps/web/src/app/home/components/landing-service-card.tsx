@@ -16,6 +16,7 @@ interface ServiceCardProps {
   price: string;
   distance: string;
   topRated?: boolean;
+  providerSlug?: string | null;
 }
 
 const LandingServiceCard: React.FC<ServiceCardProps> = ({
@@ -28,9 +29,12 @@ const LandingServiceCard: React.FC<ServiceCardProps> = ({
   price: _price,
   distance,
   topRated,
+  providerSlug,
 }) => {
+  const href = providerSlug ? `/partner-profile?slug=${encodeURIComponent(providerSlug)}` : "#";
+
   return (
-    <Link href="/partner-profile" className="block">
+    <Link href={href} className="block" aria-disabled={!providerSlug}>
       <div className="w-full cursor-pointer group">
         {/* Image Container */}
         <div className="relative w-full h-40 md:h-64 rounded-lg md:rounded-xl overflow-hidden mb-2 md:mb-3">

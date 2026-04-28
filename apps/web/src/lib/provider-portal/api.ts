@@ -753,7 +753,7 @@ export class ProviderApiClient implements ProviderApi {
 
       const response = await fetcher.get<{ data: any[] }>(
         `/api/provider/bookings?${params.toString()}`,
-        { timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS }
+        { timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS, staleTimeMs: 0 }
       );
       const bookings = response.data || [];
       return transformBookingRowsToAppointments(bookings, filters, pagination);
@@ -775,7 +775,9 @@ export class ProviderApiClient implements ProviderApi {
       // When id is composite (e.g. "uuid-svc-0" from expanded calendar), use root booking id
       const bookingId = rootBookingId(id);
       const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.get<{ data: any }>(`/api/provider/bookings/${bookingId}`);
+      const response = await fetcher.get<{ data: any }>(`/api/provider/bookings/${bookingId}`, {
+        staleTimeMs: 0,
+      });
       const booking = response.data;
       
       // Transform using same logic as listAppointments for consistency
@@ -1304,6 +1306,8 @@ export class ProviderApiClient implements ProviderApi {
         total_paid: booking.total_paid || 0,
         total_refunded: booking.total_refunded || 0,
         payment_status: booking.payment_status,
+        current_stage: booking.current_stage,
+        booking_id: booking.id,
         travel_fee: booking.travel_fee || 0,
         // Services array for detailed view
         services: booking.services || [],
@@ -3184,6 +3188,14 @@ export class ProviderApiClient implements ProviderApi {
             ? "monthly"
             : null;
     const cartItems = (data as { cart_items?: unknown }).cart_items;
+    const serviceLines = Array.isArray(cartItems)
+      ? cartItems
+          .filter((item: any) => item?.type === "service" && item?.service_id)
+          .map((item: any) => ({
+            offering_id: item.service_id,
+            staff_id: data.team_member_id || undefined,
+          }))
+      : [];
     const baseMeta =
       data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
         ? { ...(data.metadata as Record<string, unknown>) }
@@ -3194,6 +3206,18 @@ export class ProviderApiClient implements ProviderApi {
       price: data.price ?? 0,
     };
     if (Array.isArray(cartItems)) metadata.cart_items = cartItems;
+    if (serviceLines.length > 0) metadata.services = serviceLines;
+    if ((data as any).location_type === "at_home") {
+      metadata.address = {
+        line1: (data as any).address_line1 ?? null,
+        line2: (data as any).address_line2 ?? null,
+        city: (data as any).address_city ?? null,
+        postal_code: (data as any).address_postal_code ?? null,
+        country: (data as any).address_country ?? null,
+        latitude: (data as any).address_latitude ?? null,
+        longitude: (data as any).address_longitude ?? null,
+      };
+    }
 
     const sched = (data.scheduled_time || "10:00").trim();
     const preferred_time =
@@ -3215,6 +3239,10 @@ export class ProviderApiClient implements ProviderApi {
       is_active: data.status !== "cancelled",
       metadata,
       preferred_time,
+      location_type: (data as any).location_type ?? undefined,
+      payment_method: (data as any).payment_method === "cash" || (data as any).payment_method === "card"
+        ? (data as any).payment_method
+        : undefined,
     };
     if (simpleFreq) body.frequency = simpleFreq;
     const res = (await fetcher.post(`/api/provider/recurring-appointments`, body)) as {

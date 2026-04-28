@@ -8,7 +8,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
+import { buildAdReachKey, runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
 
 export const dynamic = "force-dynamic";
 // Increase timeout for this route (Next.js default is 10s, we need more for parallel queries)
@@ -1800,8 +1800,12 @@ export async function GET(request: Request) {
               };
               sponsored.push(card as PublicProviderCard);
             }
-            const idempotencyPrefix = `home:${Date.now()}`;
-            await recordAdImpressions(auctionWinners, idempotencyPrefix).catch((err) =>
+            const reachKey = buildAdReachKey(request);
+            const idempotencyPrefix = `home:${reachKey}:${Date.now()}`;
+            await recordAdImpressions(auctionWinners, idempotencyPrefix, {
+              placement: "home",
+              reach_key: reachKey,
+            }).catch((err) =>
               console.warn("Home: ad impression recording failed:", err)
             );
           }

@@ -26,9 +26,12 @@ interface ProductOrder {
   total_amount: number;
   payment_status: string;
   fulfillment_type: string;
+  order_source?: string | null;
+  booking_id?: string | null;
+  customer_name?: string | null;
   tracking_number: string | null;
   created_at: string;
-  customer: { id: string; full_name: string; email: string };
+  customer?: { id: string; full_name: string; email: string } | null;
   items: {
     id: string;
     product_name: string;
@@ -314,6 +317,7 @@ export default function ProviderProductOrdersPage() {
               const platformFee = Number(o.platform_fee ?? 0);
               const totalAmount = Number(o.total_amount ?? 0);
               const providerEarnings = Math.max(0, totalAmount - platformFee);
+              const isAppointmentOrder = o.order_source === "appointment";
               return (
                 <div
                   key={o.id}
@@ -334,10 +338,13 @@ export default function ProviderProductOrdersPage() {
                         <Badge variant={o.payment_status === "paid" ? "default" : "outline"}>
                           {o.payment_status}
                         </Badge>
+                        {o.order_source === "appointment" && (
+                          <Badge variant="outline">appointment pickup</Badge>
+                        )}
                       </div>
                       <p className="text-sm text-gray-700 break-words">
-                        <span className="font-medium">{o.customer?.full_name}</span>{" "}
-                        <span className="text-gray-400">({o.customer?.email})</span>
+                        <span className="font-medium">{o.customer?.full_name || o.customer_name || "Appointment customer"}</span>{" "}
+                        {o.customer?.email && <span className="text-gray-400">({o.customer.email})</span>}
                       </p>
                       <div className="mt-2 space-y-1">
                         {o.items?.map((item) => (
@@ -365,11 +372,17 @@ export default function ProviderProductOrdersPage() {
                         {deliveryFee > 0 && <p>Delivery: {formatMoney(deliveryFee)}</p>}
                         {discountAmount > 0 && <p>Discount: -{formatMoney(discountAmount)}</p>}
                         {platformFee > 0 && <p>Platform fee: -{formatMoney(platformFee)}</p>}
-                        <p className="font-medium text-gray-700">Provider earnings: {formatMoney(providerEarnings)}</p>
+                        <p className="font-medium text-gray-700">
+                          {isAppointmentOrder
+                            ? "Included in booking total"
+                            : `Provider earnings: ${formatMoney(providerEarnings)}`}
+                        </p>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
                         {new Date(o.created_at).toLocaleDateString()} ·{" "}
-                        {o.fulfillment_type === "delivery" ? "Delivery" : "Collection"}
+                        {isAppointmentOrder
+                          ? "Appointment pickup"
+                          : o.fulfillment_type === "delivery" ? "Delivery" : "Collection"}
                       </p>
                       <select
                         value={o.status}

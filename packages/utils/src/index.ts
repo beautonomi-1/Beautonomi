@@ -7,6 +7,11 @@ export {
   toIsoUtcTimestamp,
 } from "./dates";
 export {
+  formatFrontDeskRangeCaption,
+  getMetricRangeParams,
+  type FrontDeskMetricRange,
+} from "./front-desk/metricRange";
+export {
   addMoney,
   currencySelectLabel,
   formatMoney,

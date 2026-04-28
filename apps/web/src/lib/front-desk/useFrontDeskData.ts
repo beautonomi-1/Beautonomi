@@ -4,10 +4,13 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { getMetricRangeParams } from "@beautonomi/utils";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import type { Booking } from "@/types/beautonomi";
 import { getOperationalBadge } from "./operationalState";
 import type { FrontDeskBooking, FrontDeskMetricRange } from "./types";
+
+export { formatFrontDeskRangeCaption } from "@beautonomi/utils";
 
 export interface UseFrontDeskDataInput {
   date: Date;
@@ -26,38 +29,6 @@ export interface UseFrontDeskDataOutput {
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-}
-
-function formatYmd(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getMetricRangeParams(range: FrontDeskMetricRange | undefined, anchorDate: Date): { start?: string; end?: string } {
-  const selected = range ?? "today";
-  if (selected === "all") return {};
-
-  const start = new Date(anchorDate);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-
-  if (selected === "week") {
-    const day = start.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    start.setDate(start.getDate() + mondayOffset);
-    end.setTime(start.getTime());
-    end.setDate(start.getDate() + 6);
-  } else if (selected === "month") {
-    start.setDate(1);
-    end.setFullYear(start.getFullYear(), start.getMonth() + 1, 0);
-  } else if (selected === "year") {
-    start.setMonth(0, 1);
-    end.setFullYear(start.getFullYear(), 11, 31);
-  }
-
-  return { start: formatYmd(start), end: formatYmd(end) };
 }
 
 function mapBookingsToFrontDeskBookings(rows: any[]): FrontDeskBooking[] {
@@ -149,29 +120,20 @@ export function useFrontDeskData(input: UseFrontDeskDataInput): UseFrontDeskData
       setLoading(true);
       setError(null);
 
-      const startDate = formatYmd(date);
-
       const params = new URLSearchParams();
-      params.set("start_date", startDate);
-      params.set("end_date", startDate);
+      const rangeDates = getMetricRangeParams(metricRange, date);
+      if (rangeDates.start) params.set("start_date", rangeDates.start);
+      if (rangeDates.end) params.set("end_date", rangeDates.end);
       if (locationId) params.set("location_id", locationId);
 
-      const metricParams = new URLSearchParams();
-      const metricDates = getMetricRangeParams(metricRange, date);
-      if (metricDates.start) metricParams.set("start_date", metricDates.start);
-      if (metricDates.end) metricParams.set("end_date", metricDates.end);
-      if (locationId) metricParams.set("location_id", locationId);
-
-      const [bookingsRows, metricRows, staffData, locationsData, servicesData] = await Promise.all([
+      const [bookingsRows, staffData, locationsData, servicesData] = await Promise.all([
         fetchBookingsPages(params),
-        fetchBookingsPages(metricParams),
         fetchStaff(locationId),
         fetchLocations(),
         fetchServices(),
       ]);
 
       const enriched = mapBookingsToFrontDeskBookings(bookingsRows);
-      const metricsEnriched = mapBookingsToFrontDeskBookings(metricRows);
 
       let filtered = enriched;
       if (query && query.trim()) {
@@ -185,7 +147,7 @@ export function useFrontDeskData(input: UseFrontDeskDataInput): UseFrontDeskData
       }
 
       setBookings(filtered);
-      setMetricBookings(metricsEnriched);
+      setMetricBookings(enriched);
       setStaff(staffData);
       setLocations(locationsData);
       setServices(servicesData);
@@ -198,6 +160,7 @@ export function useFrontDeskData(input: UseFrontDeskDataInput): UseFrontDeskData
             : "Failed to load bookings";
       setError(msg);
       setBookings([]);
+      setMetricBookings([]);
     } finally {
       setLoading(false);
     }

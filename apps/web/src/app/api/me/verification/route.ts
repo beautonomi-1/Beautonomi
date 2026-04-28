@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
@@ -187,6 +187,33 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id);
 
     if (updateError) throw updateError;
+
+    if (user.role === "provider_owner" || user.role === "provider_staff") {
+      try {
+        const providerId = await getProviderIdForUser(user.id, supabase, { request });
+        if (providerId) {
+          await getSupabaseAdmin()
+            .from("provider_verification_status")
+            .upsert(
+              {
+                provider_id: providerId,
+                status: "in_progress",
+                metadata: {
+                  manual_verification_id: verification.id,
+                  manual_document_type: documentType,
+                  manual_country: country,
+                  manual_submitted_by_user_id: user.id,
+                  manual_submitted_at: verification.submitted_at,
+                },
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "provider_id" }
+            );
+        }
+      } catch (providerSyncError) {
+        console.error("Failed to sync provider manual verification status:", providerSyncError);
+      }
+    }
 
     return successResponse({
       verification_id: verification.id,

@@ -8,6 +8,7 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -34,6 +35,9 @@ import { useProvider } from "@/providers/ProviderContext";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { api } from "@/lib/api-client";
+import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
+import { StaticMapImage } from "@/components/ui/StaticMapImage";
+import { normalizeProductsList } from "@/lib/unpack-provider-api";
 
 // The list endpoint (GET /api/provider/group-bookings) maps participants to
 // { client_name, client_email, client_phone, service_name, checked_in,
@@ -85,6 +89,15 @@ interface GroupBooking {
   status: string;
   notes: string | null;
   location_id: string | null;
+  location_type?: "at_salon" | "at_home";
+  address_line1?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_postal_code?: string | null;
+  address_country?: string | null;
+  address_latitude?: number | null;
+  address_longitude?: number | null;
+  travel_fee?: number | null;
   location_name?: string | null;
   ref_number: string | null;
   participants?: Participant[];
@@ -153,13 +166,36 @@ const STATUS_FILTERS = [
   { label: "Cancelled", value: "cancelled" },
 ];
 
-type ServiceRow = { id: string; title: string; duration_minutes?: number; price?: number };
+type ServiceRow = {
+  id: string;
+  title: string;
+  duration_minutes?: number;
+  price?: number;
+  service_type?: string;
+  variant_name?: string | null;
+  parent_service_id?: string | null;
+};
 type TeamRow = { id: string; name?: string };
 type ParticipantFormRow = { id: string; name: string; phone: string; email: string };
+type ProductRow = {
+  id: string;
+  name: string;
+  price: number;
+  variants?: { id: string; name: string; price: number }[];
+};
+type SelectedGroupProduct = {
+  productId: string;
+  productName: string;
+  productVariantId?: string;
+  productVariantName?: string;
+  quantity: number;
+  unitPrice: number;
+};
 type EditingGroupContext = {
   serviceId: string | null;
   staffId: string | null;
   locationId: string | null;
+  locationType: "at_salon" | "at_home";
 };
 
 function statusStyle(s: string) {
@@ -205,9 +241,16 @@ function SelectChip({
   );
 }
 
+function serviceLabel(service: ServiceRow): string {
+  if (service.variant_name?.trim()) return `${service.title} · ${service.variant_name.trim()}`;
+  if (service.service_type === "variant") return `${service.title} · Variant`;
+  return service.title;
+}
+
 export default function GroupBookingsScreen() {
   useResponsive();
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
   const params = useLocalSearchParams<{
     open_group_id?: string;
     default_date?: string;
@@ -219,7 +262,8 @@ export default function GroupBookingsScreen() {
   const providerTz = provider?.timezone ?? null;
   const locations = provider?.locations ?? [];
 
-  const { data: servicesRaw } = useApi<ServiceRow[]>("/api/provider/services");
+  const { data: servicesRaw } = useApi<ServiceRow[]>("/api/provider/services?include_variants=true");
+  const { data: productsRaw } = useApi<unknown>("/api/provider/products?limit=200");
   const teamUrl = selectedLocationId
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/team";
@@ -236,6 +280,7 @@ export default function GroupBookingsScreen() {
     : "/api/provider/packages";
   const { data: packagesRaw } = useApi<{ packages?: PackageRow[] }>(packagesUrl);
   const services = useMemo(() => (Array.isArray(servicesRaw) ? servicesRaw : []), [servicesRaw]);
+  const productsList = useMemo(() => normalizeProductsList(productsRaw) as ProductRow[], [productsRaw]);
   const teamMembers = useMemo(() => (Array.isArray(teamRaw) ? teamRaw : []), [teamRaw]);
   const packagesList = useMemo<PackageRow[]>(
     () =>
@@ -291,13 +336,25 @@ export default function GroupBookingsScreen() {
     serviceId: "" as string,
     staffId: "" as string,
     locationId: "" as string,
+    locationType: "at_salon" as "at_salon" | "at_home",
+    addressSearchValue: "",
+    addressLine1: "",
+    addressCity: "",
+    addressState: "",
+    addressPostalCode: "",
+    addressCountry: "South Africa",
+    addressLatitude: null as number | null,
+    addressLongitude: null as number | null,
+    travelFee: "",
     // §Provider-audit 2026-04 (packages round 3): track the attached
     // service_package so the POST payload can include `package_id` like
     // the web `GroupBookingDialog` does.
     packageId: "" as string,
   });
   const [createParticipants, setCreateParticipants] = useState<ParticipantFormRow[]>([]);
+  const [createProducts, setCreateProducts] = useState<SelectedGroupProduct[]>([]);
   const [showPackagePicker, setShowPackagePicker] = useState(false);
+  const [showProductPicker, setShowProductPicker] = useState(false);
 
   const createDateOptions = useMemo(
     () => Array.from({ length: 21 }, (_, i) => addDays(startOfDay(new Date()), i)),
@@ -352,13 +409,15 @@ export default function GroupBookingsScreen() {
       `/api/provider/bookings/available-slots?date=${encodeURIComponent(createSlotParams.date)}` +
       `&duration_minutes=${encodeURIComponent(String(createSlotParams.duration))}`;
     if (createSlotParams.staffId) q += `&staff_ids=${encodeURIComponent(createSlotParams.staffId)}`;
-    if (createSlotParams.locationId) q += `&location_id=${encodeURIComponent(createSlotParams.locationId)}`;
+    if (createForm.locationType === "at_salon" && createSlotParams.locationId) q += `&location_id=${encodeURIComponent(createSlotParams.locationId)}`;
     if (createSlotParams.serviceIds.length > 0) {
       q += `&service_ids=${encodeURIComponent(createSlotParams.serviceIds.join(","))}`;
     }
-    q += `&mode=salon&travel_buffer=0`;
+    q += createForm.locationType === "at_home"
+      ? "&mode=mobile&travel_buffer=30"
+      : "&mode=salon&travel_buffer=0";
     return q;
-  }, [createSlotParams]);
+  }, [createForm.locationType, createSlotParams]);
 
   const { data: createSlotsData, loading: createSlotsLoading } = useApi<AvailableSlotsApiResponse>(
     createSlotsUrl,
@@ -471,6 +530,7 @@ export default function GroupBookingsScreen() {
     staffId?: string | null;
     locationId?: string | null;
     serviceId?: string | null;
+    locationType?: "at_salon" | "at_home";
   }): Promise<string | null> {
     const scheduledAt = buildZonedIsoForWallClock(args.date, args.time.substring(0, 5), providerTz);
     if (!Number.isFinite(Date.parse(scheduledAt))) {
@@ -479,11 +539,11 @@ export default function GroupBookingsScreen() {
     const params = new URLSearchParams({
       scheduled_at: scheduledAt,
       duration_minutes: String(args.durationMinutes),
-      mode: "salon",
-      travel_buffer: "0",
+      mode: args.locationType === "at_home" ? "mobile" : "salon",
+      travel_buffer: args.locationType === "at_home" ? "30" : "0",
     });
     if (args.staffId) params.set("staff_ids", args.staffId);
-    if (args.locationId) params.set("location_id", args.locationId);
+    if (args.locationType !== "at_home" && args.locationId) params.set("location_id", args.locationId);
     if (args.serviceId) params.set("offering_ids", args.serviceId);
     const res = await api.get<{ available?: boolean; conflicts?: string[] }>(
       `/api/provider/bookings/check-availability?${params.toString()}`,
@@ -564,6 +624,7 @@ export default function GroupBookingsScreen() {
       serviceId: group.service_id ?? null,
       staffId: group.team_member_id ?? null,
       locationId: group.location_id ?? null,
+      locationType: group.location_type === "at_home" ? "at_home" : "at_salon",
     });
     setSelectedGroup(null);
     setShowEdit(true);
@@ -618,6 +679,7 @@ export default function GroupBookingsScreen() {
       staffId: editingGroupContext?.staffId,
       locationId: editingGroupContext?.locationId,
       serviceId: editingGroupContext?.serviceId,
+      locationType: editingGroupContext?.locationType,
     });
     if (availabilityError) {
       Alert.alert("Time not available", availabilityError);
@@ -680,9 +742,20 @@ export default function GroupBookingsScreen() {
       serviceId: "",
       staffId: requestedStaffId,
       locationId: requestedLocationId || defaultLoc,
+      locationType: "at_salon",
+      addressSearchValue: "",
+      addressLine1: "",
+      addressCity: "",
+      addressState: "",
+      addressPostalCode: "",
+      addressCountry: "South Africa",
+      addressLatitude: null,
+      addressLongitude: null,
+      travelFee: "",
       packageId: "",
     });
     setCreateParticipants([{ id: `participant-${Date.now()}`, name: "", phone: "", email: "" }]);
+    setCreateProducts([]);
     setShowCreate(true);
   }
 
@@ -711,6 +784,18 @@ export default function GroupBookingsScreen() {
     serviceId: string;
     staffId?: string | null;
     locationId?: string | null;
+    locationType: "at_salon" | "at_home";
+    address?: {
+      address_line1: string;
+      address_city?: string;
+      address_state?: string;
+      address_postal_code?: string;
+      address_country?: string;
+      address_latitude?: number | null;
+      address_longitude?: number | null;
+      travel_fee?: number;
+    };
+    products?: SelectedGroupProduct[];
     durationMinutes: number;
     unitPrice: number;
     participant: { name: string; phone?: string; email?: string };
@@ -730,8 +815,20 @@ export default function GroupBookingsScreen() {
       customer_phone: args.participant.phone?.trim() || undefined,
       customer_email: args.participant.email?.trim() || undefined,
       scheduled_at: scheduledAt,
-      location_type: "at_salon",
-      location_id: args.locationId || undefined,
+      location_type: args.locationType,
+      location_id: args.locationType === "at_salon" ? (args.locationId || undefined) : undefined,
+      ...(args.locationType === "at_home" && args.address
+        ? {
+            address_line1: args.address.address_line1,
+            address_city: args.address.address_city,
+            address_state: args.address.address_state,
+            address_postal_code: args.address.address_postal_code,
+            address_country: args.address.address_country,
+            address_latitude: args.address.address_latitude,
+            address_longitude: args.address.address_longitude,
+            travel_fee: args.address.travel_fee || 0,
+          }
+        : {}),
       staff_id: args.staffId || undefined,
       team_member_id: args.staffId || undefined,
       service_id: args.serviceId,
@@ -747,8 +844,19 @@ export default function GroupBookingsScreen() {
           duration: args.durationMinutes,
         },
       ],
+      products: (args.products ?? []).map((p) => ({
+        productId: p.productId,
+        productName: p.productName,
+        quantity: p.quantity,
+        unitPrice: p.unitPrice,
+        totalPrice: p.unitPrice * p.quantity,
+        productVariantId: p.productVariantId || null,
+      })),
       subtotal: args.unitPrice,
-      total_amount: args.unitPrice,
+      total_amount:
+        args.unitPrice +
+        (args.locationType === "at_home" ? Number(args.address?.travel_fee || 0) : 0) +
+        (args.products ?? []).reduce((sum, p) => sum + p.unitPrice * p.quantity, 0),
       booking_source: "provider",
       status: "confirmed",
       special_requests: args.groupRef
@@ -857,13 +965,24 @@ export default function GroupBookingsScreen() {
       Alert.alert("Staff required", "Select a team member to schedule this group booking correctly.");
       return;
     }
+    if (createForm.locationType === "at_home") {
+      if (!createForm.addressLine1.trim()) {
+        Alert.alert("Address required", "Search and select the client address so the map pin and travel fee are accurate.");
+        return;
+      }
+      if (createForm.addressLatitude == null || createForm.addressLongitude == null) {
+        Alert.alert("Map pin required", "Choose a Mapbox address suggestion so the exact coordinates are saved.");
+        return;
+      }
+    }
     const createAvailabilityError = await verifyGroupSlotAvailability({
       date: createForm.date,
       time: createForm.time,
       durationMinutes: duration,
       staffId: createForm.staffId,
-      locationId: createForm.locationId || selectedLocationId || null,
+      locationId: createForm.locationType === "at_home" ? null : (createForm.locationId || selectedLocationId || null),
       serviceId: createForm.serviceId,
+      locationType: createForm.locationType,
     });
     if (createAvailabilityError) {
       Alert.alert("Time not available", createAvailabilityError);
@@ -903,19 +1022,44 @@ export default function GroupBookingsScreen() {
     }
 
     const svc = createForm.serviceId ? services.find((s) => s.id === createForm.serviceId) : undefined;
+    const travelFee = Math.max(0, Number(createForm.travelFee || 0) || 0);
+    const productsTotal = createProducts.reduce((sum, p) => sum + (Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1), 0);
+    const participantTotal = participantsToCreate.length * (Number(svc?.price ?? 0) || 0);
     const payload: Record<string, unknown> = {
-      title: createForm.title.trim() || svc?.title || "Group Session",
+      title: createForm.title.trim() || (svc ? serviceLabel(svc) : undefined) || "Group Session",
       scheduled_at: scheduledAt,
       duration_minutes: duration,
       max_participants: maxParticipants,
       notes: createForm.notes.trim() || undefined,
+      location_type: createForm.locationType,
+      travel_fee: createForm.locationType === "at_home" ? travelFee : 0,
+      total_price: participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0),
+      products: createProducts.map((p) => ({
+        product_id: p.productId,
+        product_name: p.productName,
+        product_variant_id: p.productVariantId || null,
+        product_variant_name: p.productVariantName,
+        quantity: p.quantity,
+        unit_price: p.unitPrice,
+        total_price: p.unitPrice * p.quantity,
+      })),
     };
     if (createForm.serviceId) {
       payload.service_id = createForm.serviceId;
-      payload.service_name = svc?.title;
+      payload.service_name = svc ? serviceLabel(svc) : undefined;
     }
     if (createForm.staffId) payload.staff_id = createForm.staffId;
-    if (createForm.locationId) payload.location_id = createForm.locationId;
+    if (createForm.locationType === "at_salon" && createForm.locationId) payload.location_id = createForm.locationId;
+    if (createForm.locationType === "at_home") {
+      payload.address_line1 = createForm.addressLine1.trim();
+      payload.address_city = createForm.addressCity.trim() || undefined;
+      payload.address_state = createForm.addressState.trim() || undefined;
+      payload.address_postal_code = createForm.addressPostalCode.trim() || undefined;
+      payload.address_country = createForm.addressCountry.trim() || "South Africa";
+      payload.address_latitude = createForm.addressLatitude;
+      payload.address_longitude = createForm.addressLongitude;
+      payload.address_place_name = createForm.addressSearchValue || createForm.addressLine1;
+    }
     // §Provider-audit 2026-04 (packages round 3): attach the selected
     // service_package so downstream reporting + discount math apply,
     // matching the web `GroupBookingDialog` submit path.
@@ -941,7 +1085,21 @@ export default function GroupBookingsScreen() {
         scheduledTime: createForm.time,
         serviceId: createForm.serviceId,
         staffId: createForm.staffId,
-        locationId: createForm.locationId,
+        locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
+        locationType: createForm.locationType,
+        address: createForm.locationType === "at_home"
+          ? {
+              address_line1: createForm.addressLine1.trim(),
+              address_city: createForm.addressCity.trim(),
+              address_state: createForm.addressState.trim(),
+              address_postal_code: createForm.addressPostalCode.trim(),
+              address_country: createForm.addressCountry.trim() || "South Africa",
+              address_latitude: createForm.addressLatitude,
+              address_longitude: createForm.addressLongitude,
+              travel_fee: idx === 0 ? travelFee : 0,
+            }
+          : undefined,
+        products: idx === 0 ? createProducts : [],
         durationMinutes: duration,
         unitPrice,
         participant,
@@ -998,7 +1156,21 @@ export default function GroupBookingsScreen() {
       scheduledTime: selectedGroup.scheduled_time || "",
       serviceId,
       staffId: selectedGroup.team_member_id,
-      locationId: selectedGroup.location_id,
+      locationId: selectedGroup.location_type === "at_home" ? null : selectedGroup.location_id,
+      locationType: selectedGroup.location_type === "at_home" ? "at_home" : "at_salon",
+      address: selectedGroup.location_type === "at_home"
+        ? {
+            address_line1: selectedGroup.address_line1 || "",
+            address_city: selectedGroup.address_city || "",
+            address_state: selectedGroup.address_state || "",
+            address_postal_code: selectedGroup.address_postal_code || "",
+            address_country: selectedGroup.address_country || "South Africa",
+            address_latitude: selectedGroup.address_latitude ?? null,
+            address_longitude: selectedGroup.address_longitude ?? null,
+            travel_fee: 0,
+          }
+        : undefined,
+      products: [],
       durationMinutes,
       unitPrice,
       participant: participantForm,
@@ -1849,9 +2021,30 @@ export default function GroupBookingsScreen() {
             placeholderTextColor="#9ca3af"
           />
 
-          {locations.length > 0 ? (
-            <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Location</Text>
+          <View style={twStyle("mb-3")}>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Where is it happening?</Text>
+            <View style={twStyle("mb-3 flex-row")}>
+              <TouchableOpacity
+                onPress={() => setCreateForm((p) => ({ ...p, locationType: "at_salon" }))}
+                style={[twStyle(`flex-1 rounded-xl border px-3 py-3 ${createForm.locationType === "at_salon" ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`), { marginRight: 8 }]}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: createForm.locationType === "at_salon" }}
+              >
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>At salon</Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Use a provider location</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setCreateForm((p) => ({ ...p, locationType: "at_home", locationId: "" }))}
+                style={twStyle(`flex-1 rounded-xl border px-3 py-3 ${createForm.locationType === "at_home" ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`)}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: createForm.locationType === "at_home" }}
+              >
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>At home</Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Save address + map pin</Text>
+              </TouchableOpacity>
+            </View>
+
+            {createForm.locationType === "at_salon" && locations.length > 0 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <SelectChip
                   label="Not set"
@@ -1867,8 +2060,82 @@ export default function GroupBookingsScreen() {
                   />
                 ))}
               </ScrollView>
-            </View>
-          ) : null}
+            ) : null}
+
+            {createForm.locationType === "at_home" ? (
+              <View style={twStyle("rounded-2xl border border-blue-100 bg-blue-50 p-3")}>
+                <Text style={twStyle("mb-2 text-xs text-blue-800")}>
+                  Select a Mapbox suggestion so coordinates are saved for travel buffer and fee accuracy.
+                </Text>
+                <AddressAutocomplete
+                  label="Search address"
+                  value={createForm.addressSearchValue}
+                  countryCode="ZA"
+                  geocodeTypes={["address"]}
+                  placeholder="Start typing street address..."
+                  onSelect={(parsed) => {
+                    setCreateForm((p) => ({
+                      ...p,
+                      addressSearchValue: parsed.full_address,
+                      addressLine1: parsed.address_line1,
+                      addressCity: parsed.city,
+                      addressState: parsed.state,
+                      addressPostalCode: parsed.postal_code,
+                      addressCountry: parsed.country,
+                      addressLatitude: parsed.latitude,
+                      addressLongitude: parsed.longitude,
+                    }));
+                  }}
+                  onBlur={(q) => setCreateForm((p) => ({ ...p, addressSearchValue: q, addressLine1: p.addressLine1 || q }))}
+                />
+                {createForm.addressLatitude != null && createForm.addressLongitude != null ? (
+                  <View style={{ marginTop: 12, alignItems: "center" }}>
+                    <StaticMapImage
+                      latitude={createForm.addressLatitude}
+                      longitude={createForm.addressLongitude}
+                      width={Math.min(windowWidth - 48, 400)}
+                      height={150}
+                      zoom={15}
+                    />
+                    <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>Selected map pin</Text>
+                  </View>
+                ) : null}
+                <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Street line</Text>
+                <TextInput
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+                  value={createForm.addressLine1}
+                  onChangeText={(t) => setCreateForm((p) => ({ ...p, addressLine1: t }))}
+                  placeholder="Street and number"
+                  placeholderTextColor="#9ca3af"
+                />
+                <View style={[twStyle("flex-row"), { marginTop: 10 }]}>
+                  <TextInput
+                    style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"), { marginRight: 8 }]}
+                    value={createForm.addressCity}
+                    onChangeText={(t) => setCreateForm((p) => ({ ...p, addressCity: t }))}
+                    placeholder="City"
+                    placeholderTextColor="#9ca3af"
+                  />
+                  <TextInput
+                    style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+                    value={createForm.addressPostalCode}
+                    onChangeText={(t) => setCreateForm((p) => ({ ...p, addressPostalCode: t }))}
+                    placeholder="Postal code"
+                    placeholderTextColor="#9ca3af"
+                  />
+                </View>
+                <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Travel fee (optional)</Text>
+                <TextInput
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+                  value={createForm.travelFee}
+                  onChangeText={(t) => setCreateForm((p) => ({ ...p, travelFee: t }))}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+            ) : null}
+          </View>
 
           {packagesList.length > 0 ? (
             <View style={twStyle("mb-3")}>
@@ -1940,7 +2207,7 @@ export default function GroupBookingsScreen() {
                 {services.map((svc) => (
                   <SelectChip
                     key={svc.id}
-                    label={svc.title}
+                    label={serviceLabel(svc)}
                     selected={createForm.serviceId === svc.id}
                     onPress={() => {
                       setCreateForm((p) => {
@@ -1977,6 +2244,60 @@ export default function GroupBookingsScreen() {
               </ScrollView>
             </View>
           ) : null}
+
+          <View style={twStyle("mb-3 rounded-2xl border border-gray-100 bg-gray-50 p-3")}>
+            <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Products (optional)</Text>
+              <TouchableOpacity
+                onPress={() => setShowProductPicker(true)}
+                style={twStyle("flex-row items-center rounded-full bg-white px-2.5 py-1")}
+                accessibilityRole="button"
+              >
+                <Ionicons name="add" size={14} color="#4f46e5" />
+                <Text style={twStyle("ml-1 text-xs font-semibold text-indigo-700")}>Add product</Text>
+              </TouchableOpacity>
+            </View>
+            {createProducts.length === 0 ? (
+              <Text style={twStyle("text-xs text-gray-500")}>No products added.</Text>
+            ) : (
+              createProducts.map((p, idx) => (
+                <View key={`${p.productId}-${p.productVariantId ?? "simple"}`} style={twStyle("mb-2 flex-row items-center justify-between rounded-xl bg-white px-3 py-2")}>
+                  <View style={twStyle("min-w-0 flex-1")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>
+                      {p.productName}{p.productVariantName ? ` · ${p.productVariantName}` : ""}
+                    </Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{formatCurrency(p.unitPrice)} × {p.quantity}</Text>
+                  </View>
+                  <View style={twStyle("flex-row items-center")}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setCreateProducts((prev) => prev.map((item, i) => i === idx ? { ...item, quantity: Math.max(1, item.quantity - 1) } : item));
+                      }}
+                      style={twStyle("rounded-full bg-gray-100 px-2 py-1")}
+                    >
+                      <Text style={twStyle("text-sm font-bold text-gray-700")}>-</Text>
+                    </TouchableOpacity>
+                    <Text style={twStyle("mx-2 text-sm text-gray-700")}>{p.quantity}</Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setCreateProducts((prev) => prev.map((item, i) => i === idx ? { ...item, quantity: item.quantity + 1 } : item));
+                      }}
+                      style={twStyle("rounded-full bg-gray-100 px-2 py-1")}
+                    >
+                      <Text style={twStyle("text-sm font-bold text-gray-700")}>+</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setCreateProducts((prev) => prev.filter((_, i) => i !== idx))}
+                      style={twStyle("ml-2")}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
 
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date *</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-3")} contentContainerStyle={{ paddingVertical: 4 }}>
@@ -2154,6 +2475,82 @@ export default function GroupBookingsScreen() {
             fullWidth
           />
         </ScrollView>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={showProductPicker}
+        onClose={() => setShowProductPicker(false)}
+        title="Add product"
+      >
+        {productsList.length === 0 ? (
+          <EmptyState
+            icon="bag-outline"
+            title="No products"
+            description="Add retail products in inventory first, then attach them to a group booking."
+          />
+        ) : (
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 420 }}>
+            {productsList.map((product) => {
+              if (product.variants && product.variants.length > 0) {
+                return (
+                  <View key={product.id}>
+                    <Text style={twStyle("px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+                      {product.name}
+                    </Text>
+                    {product.variants.map((variant) => {
+                      const alreadyAdded = createProducts.some((p) => p.productId === product.id && p.productVariantId === variant.id);
+                      return (
+                        <TouchableOpacity
+                          key={variant.id}
+                          onPress={() => {
+                            if (!alreadyAdded) {
+                              setCreateProducts((prev) => [...prev, {
+                                productId: product.id,
+                                productName: product.name,
+                                productVariantId: variant.id,
+                                productVariantName: variant.name,
+                                quantity: 1,
+                                unitPrice: variant.price,
+                              }]);
+                            }
+                            setShowProductPicker(false);
+                          }}
+                          style={twStyle(`flex-row items-center justify-between border-b border-gray-100 px-4 py-3 ${alreadyAdded ? "bg-indigo-50" : ""}`)}
+                          accessibilityRole="button"
+                        >
+                          <Text style={twStyle("flex-1 text-sm text-gray-900")} numberOfLines={1}>{variant.name}</Text>
+                          <Text style={twStyle("ml-3 text-sm font-medium text-gray-700")}>{formatCurrency(variant.price)}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                );
+              }
+              const alreadyAdded = createProducts.some((p) => p.productId === product.id && !p.productVariantId);
+              return (
+                <TouchableOpacity
+                  key={product.id}
+                  onPress={() => {
+                    if (!alreadyAdded) {
+                      setCreateProducts((prev) => [...prev, {
+                        productId: product.id,
+                        productName: product.name,
+                        quantity: 1,
+                        unitPrice: product.price,
+                      }]);
+                    }
+                    setShowProductPicker(false);
+                  }}
+                  style={twStyle(`flex-row items-center justify-between border-b border-gray-100 px-4 py-3 ${alreadyAdded ? "bg-indigo-50" : ""}`)}
+                  accessibilityRole="button"
+                >
+                  <Text style={twStyle("flex-1 text-sm text-gray-900")} numberOfLines={1}>{product.name}</Text>
+                  <Text style={twStyle("ml-3 text-sm font-medium text-gray-700")}>{formatCurrency(product.price)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
       </BottomSheet>
 
       {/* §Provider-audit 2026-04 (packages round 3 — mobile parity):

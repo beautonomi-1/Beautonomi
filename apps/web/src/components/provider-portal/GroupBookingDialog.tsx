@@ -51,6 +51,8 @@ import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { AvailabilitySlotPicker } from "@/components/appointments/AvailabilitySlotPicker";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
+import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
+import { LocationMapPickerDialog, type PickedMapLocation } from "@/components/mapbox/LocationMapPickerDialog";
 
 // ─── Participant addon shape ────────────────────────────────────────────────
 interface ParticipantAddon {
@@ -62,6 +64,7 @@ interface ParticipantAddon {
 }
 
 interface ParticipantData {
+  booking_id?: string;
   client_name: string;
   client_email: string;
   client_phone: string;
@@ -137,6 +140,7 @@ export function GroupBookingDialog({
   // ─── Dialog sub-states ─────────────────────────────────────────────────
   const [variantPickerFor, setVariantPickerFor] = useState<{ participantIdx: number; serviceId: string } | null>(null);
   const [addonPickerFor, setAddonPickerFor] = useState<{ participantIdx: number; catalogServiceId: string } | null>(null);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
 
   // ─── Search ────────────────────────────────────────────────────────────
   const [serviceSearchQuery, setServiceSearchQuery] = useState("");
@@ -162,8 +166,13 @@ export function GroupBookingDialog({
     location_type: "at_salon" as "at_salon" | "at_home",
     location_id: "",
     address_line1: "",
+    address_state: "",
+    address_country: "South Africa",
     address_city: "",
     address_postal_code: "",
+    address_latitude: undefined as number | undefined,
+    address_longitude: undefined as number | undefined,
+    address_place_name: "",
     travel_fee: 0,
   });
 
@@ -204,8 +213,10 @@ export function GroupBookingDialog({
   const loadProducts = useCallback(async (search?: string) => {
     try {
       const q = search ? `?search=${encodeURIComponent(search)}&limit=50` : "?limit=50";
-      const res = await fetcher.get<{ data: ProductItem[] }>(`/api/provider/products${q}`);
-      const list = res.data ?? (res as any).products ?? [];
+      const res = await fetcher.get<{ data?: { products?: ProductItem[] } | ProductItem[]; products?: ProductItem[] }>(`/api/provider/products${q}`);
+      const list = Array.isArray(res.data)
+        ? res.data
+        : (res.data?.products ?? (res as any).products ?? []);
       setProducts(Array.isArray(list) ? list : []);
       if (!search) productsLoadedRef.current = true;
     } catch {
@@ -288,11 +299,17 @@ export function GroupBookingDialog({
         location_type: first.location_type || "at_salon",
         location_id: first.location_id || "",
         address_line1: first.address_line1 || "",
+        address_state: first.address_state || "",
+        address_country: first.address_country || "South Africa",
         address_city: first.address_city || "",
         address_postal_code: first.address_postal_code || "",
+        address_latitude: first.address_latitude,
+        address_longitude: first.address_longitude,
+        address_place_name: first.address_line1 || "",
         travel_fee: first.travel_fee || 0,
       });
       setParticipants(existingAppointments.map((apt) => ({
+        booking_id: apt.booking_id || apt.id,
         client_name: apt.client_name,
         client_email: apt.client_email || "",
         client_phone: apt.client_phone || "",
@@ -316,11 +333,17 @@ export function GroupBookingDialog({
         location_type: booking.location_type || "at_salon",
         location_id: booking.location_id || "",
         address_line1: booking.address_line1 || "",
+        address_state: booking.address_state || "",
+        address_country: booking.address_country || "South Africa",
         address_city: booking.address_city || "",
         address_postal_code: booking.address_postal_code || "",
+        address_latitude: booking.address_latitude,
+        address_longitude: booking.address_longitude,
+        address_place_name: booking.address_line1 || "",
         travel_fee: booking.travel_fee || 0,
       });
       setParticipants(booking.participants.map((p) => ({
+        booking_id: (p as any).booking_id,
         client_name: p.client_name,
         client_email: p.client_email || "",
         client_phone: p.client_phone || "",
@@ -344,8 +367,13 @@ export function GroupBookingDialog({
         location_type: "at_salon",
         location_id: "",
         address_line1: "",
+        address_state: "",
+        address_country: "South Africa",
         address_city: "",
         address_postal_code: "",
+        address_latitude: undefined,
+        address_longitude: undefined,
+        address_place_name: "",
         travel_fee: 0,
       });
       setParticipants([]);
@@ -468,6 +496,20 @@ export function GroupBookingDialog({
     ));
   }, [removeProduct]);
 
+  const applyAtHomeAddress = useCallback((address: PickedMapLocation) => {
+    setFormData(prev => ({
+      ...prev,
+      address_line1: address.address_line1,
+      address_city: address.city,
+      address_state: address.state || "",
+      address_country: address.country || prev.address_country || "South Africa",
+      address_postal_code: address.postal_code || "",
+      address_latitude: address.latitude,
+      address_longitude: address.longitude,
+      address_place_name: address.place_name || address.address_line1,
+    }));
+  }, []);
+
   // ─── Package handler ──────────────────────────────────────────────────
   const handleAddPackage = useCallback((pkg: typeof packages[0]) => {
     if (!pkg.items?.length) { toast.error("Package has no items"); return; }
@@ -586,6 +628,7 @@ export function GroupBookingDialog({
         participant_email: p.client_email || undefined,
         phone: p.client_phone || undefined,
         participant_phone: p.client_phone || undefined,
+        booking_id: p.booking_id || undefined,
         service_id: p.service_id || formData.service_id,
         service_name: p.service_name || formData.service_name,
         price: p.price + p.addons.reduce((s, a) => s + a.price, 0),
@@ -612,8 +655,22 @@ export function GroupBookingDialog({
         location_type: formData.location_type,
         address_line1: formData.location_type === "at_home" ? formData.address_line1 : undefined,
         address_city: formData.location_type === "at_home" ? formData.address_city : undefined,
+        address_state: formData.location_type === "at_home" ? formData.address_state : undefined,
+        address_country: formData.location_type === "at_home" ? formData.address_country : undefined,
         address_postal_code: formData.location_type === "at_home" ? formData.address_postal_code : undefined,
+        address_latitude: formData.location_type === "at_home" ? formData.address_latitude : undefined,
+        address_longitude: formData.location_type === "at_home" ? formData.address_longitude : undefined,
+        address_place_name: formData.location_type === "at_home" ? formData.address_place_name : undefined,
         travel_fee: formData.location_type === "at_home" ? formData.travel_fee : 0,
+        products: groupProducts.map((p) => ({
+          product_id: p.productId,
+          product_name: p.productName,
+          product_variant_id: p.productVariantId,
+          product_variant_name: p.productVariantName,
+          quantity: p.quantity,
+          unit_price: p.unitPrice,
+          total_price: p.totalPrice,
+        })),
         // §Provider-audit 2026-04 (packages round 2): persist the selected
         // service package on group bookings. Previously the UI expanded the
         // package contents into participants/products, but never told the
@@ -766,8 +823,37 @@ export function GroupBookingDialog({
               {formData.location_type === "at_home" && (
                 <div className="space-y-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
                   <div>
-                    <Label className="text-xs text-gray-500">Address *</Label>
-                    <Input value={formData.address_line1} onChange={e => setFormData({ ...formData, address_line1: e.target.value })} placeholder="Street address" className="mt-1 h-10" required={formData.location_type === "at_home"} />
+                    <div className="mb-1 flex items-center justify-between">
+                      <Label className="text-xs text-gray-500">Address *</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setMapPickerOpen(true)}
+                      >
+                        <MapPin className="mr-1 h-3 w-3" /> Drop pin
+                      </Button>
+                    </div>
+                    <AddressAutocomplete
+                      value={formData.address_place_name || formData.address_line1}
+                      inputId="group-booking-address"
+                      placeholder="Search street address..."
+                      country="ZA"
+                      defaultCountryName="South Africa"
+                      geocodeTypes={["address"]}
+                      onInputChange={(value) =>
+                        setFormData(prev => ({ ...prev, address_place_name: value, address_line1: value }))
+                      }
+                      onChange={applyAtHomeAddress}
+                      inputClassName="h-10 bg-white"
+                      required={formData.location_type === "at_home"}
+                    />
+                    {formData.address_latitude != null && formData.address_longitude != null && (
+                      <p className="mt-1 text-[11px] text-blue-700">
+                        Pin saved: {formData.address_latitude.toFixed(5)}, {formData.address_longitude.toFixed(5)}
+                      </p>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -777,6 +863,16 @@ export function GroupBookingDialog({
                     <div>
                       <Label className="text-xs text-gray-500">Postal Code</Label>
                       <Input value={formData.address_postal_code} onChange={e => setFormData({ ...formData, address_postal_code: e.target.value })} placeholder="Postal code" className="mt-1 h-10" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs text-gray-500">Province / State</Label>
+                      <Input value={formData.address_state} onChange={e => setFormData({ ...formData, address_state: e.target.value })} placeholder="Province" className="mt-1 h-10" />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500">Country</Label>
+                      <Input value={formData.address_country} onChange={e => setFormData({ ...formData, address_country: e.target.value })} placeholder="Country" className="mt-1 h-10" />
                     </div>
                   </div>
                   <div>
@@ -794,6 +890,9 @@ export function GroupBookingDialog({
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <Tag className="w-4 h-4 text-gray-400" />Service Details
               </div>
+              <p className="text-xs text-gray-500">
+                The default service only pre-fills new participants and drives the availability check. Each participant line below is the billable service line used in totals.
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs text-gray-500">Team Member *</Label>
@@ -805,7 +904,7 @@ export function GroupBookingDialog({
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs text-gray-500">Default Service</Label>
+                  <Label className="text-xs text-gray-500">Default service (template)</Label>
                   <div className="relative mt-1">
                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 z-10" />
                     <Select
@@ -820,7 +919,7 @@ export function GroupBookingDialog({
                         });
                       }}
                     >
-                      <SelectTrigger className="h-10 pl-8"><SelectValue placeholder="Select service" /></SelectTrigger>
+                      <SelectTrigger className="h-10 pl-8"><SelectValue placeholder="Select default service" /></SelectTrigger>
                       <SelectContent>
                         {services.filter(s => !s.service_type || s.service_type === "basic" || s.service_type === "variant" || s.service_type === "package").map(svc => (
                           <SelectItem key={svc.id} value={svc.id}>
@@ -974,6 +1073,9 @@ export function GroupBookingDialog({
                   <Plus className="w-3.5 h-3.5 mr-1" />Add
                 </Button>
               </div>
+              <p className="text-xs text-gray-500">
+                Add one row per person. The participant service, add-ons, and price field are what count toward the group total.
+              </p>
 
               <div className="space-y-2 max-h-[400px] overflow-y-auto">
                 {participants.length === 0 ? (
@@ -1241,6 +1343,15 @@ export function GroupBookingDialog({
           </Button>
         </div>
       </DialogContent>
+
+      <LocationMapPickerDialog
+        open={mapPickerOpen}
+        onOpenChange={setMapPickerOpen}
+        initialLatitude={formData.address_latitude}
+        initialLongitude={formData.address_longitude}
+        defaultCountryName={formData.address_country || "South Africa"}
+        onLocationPicked={applyAtHomeAddress}
+      />
 
       {/* ─── Variant Picker Dialog ────────────────────────────────── */}
       <AlertDialog open={variantPickerFor !== null} onOpenChange={o => !o && setVariantPickerFor(null)}>

@@ -7,6 +7,7 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { formatFrontDeskRangeCaption, getMetricRangeParams, type FrontDeskMetricRange } from "@beautonomi/utils";
 import { playRingtone } from "@/lib/on-demand/ringtone";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -34,8 +35,6 @@ interface TodayBookingRow {
   services?: { name?: string; offering_name?: string; duration_minutes?: number }[];
 }
 
-type FrontDeskMetricRange = "all" | "today" | "week" | "month" | "year";
-
 const METRIC_RANGES: Array<{ id: FrontDeskMetricRange; label: string }> = [
   { id: "all", label: "All" },
   { id: "today", label: "Today" },
@@ -43,44 +42,6 @@ const METRIC_RANGES: Array<{ id: FrontDeskMetricRange; label: string }> = [
   { id: "month", label: "Month" },
   { id: "year", label: "Year" },
 ];
-
-function formatYmd(date: Date): string {
-  return format(date, "yyyy-MM-dd");
-}
-
-function getMetricRangeParams(range: FrontDeskMetricRange, anchorDate: Date): { start?: string; end?: string } {
-  if (range === "all") return {};
-
-  const start = new Date(anchorDate);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-
-  if (range === "week") {
-    const day = start.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    start.setDate(start.getDate() + mondayOffset);
-    end.setTime(start.getTime());
-    end.setDate(start.getDate() + 6);
-  } else if (range === "month") {
-    start.setDate(1);
-    end.setFullYear(start.getFullYear(), start.getMonth() + 1, 0);
-  } else if (range === "year") {
-    start.setMonth(0, 1);
-    end.setFullYear(start.getFullYear(), 11, 31);
-  }
-
-  return { start: formatYmd(start), end: formatYmd(end) };
-}
-
-function buildBookingsUrl(range: FrontDeskMetricRange, locationId?: string | null): string {
-  const params = new URLSearchParams();
-  const dates = getMetricRangeParams(range, new Date());
-  if (dates.start) params.set("start_date", dates.start);
-  if (dates.end) params.set("end_date", dates.end);
-  params.set("limit", "1000");
-  if (locationId != null) params.set("location_id", locationId);
-  return `/api/provider/bookings?${params.toString()}`;
-}
 
 function serviceLine(s?: { name?: string; offering_name?: string; duration_minutes?: number }): string {
   const n = s?.name || s?.offering_name || "Service";
@@ -102,37 +63,36 @@ export default function WaitingRoomScreen() {
   const prevPendingConfirmCountRef = useRef<number | null>(null);
   const ringtoneStopRef = useRef<(() => void) | null>(null);
 
-  const todayStr = format(new Date(), "yyyy-MM-dd");
   const waitingRoomUrl = selectedLocationId
     ? `/api/provider/waiting-room?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/waiting-room";
   const { data: entries, loading: waitingLoading, error: waitingError, refresh: refreshWaiting } =
     useApi<WaitingRoomEntry[]>(waitingRoomUrl);
 
-  const bookingsUrl =
-    selectedLocationId != null
-      ? `/api/provider/bookings?start_date=${todayStr}&end_date=${todayStr}&limit=500&location_id=${encodeURIComponent(selectedLocationId)}`
-      : `/api/provider/bookings?start_date=${todayStr}&end_date=${todayStr}&limit=500`;
+  /** Same calendar window as web Front Desk metrics (bounded “All” = last 90 days). Lists below still filter to today. */
+  const bookingsRangeUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    const dates = getMetricRangeParams(metricRange, new Date());
+    if (dates.start) params.set("start_date", dates.start);
+    if (dates.end) params.set("end_date", dates.end);
+    params.set("limit", "1000");
+    if (selectedLocationId != null) params.set("location_id", selectedLocationId);
+    return `/api/provider/bookings?${params.toString()}`;
+  }, [metricRange, selectedLocationId]);
+
   const {
     data: rawBookings,
     loading: bookingsLoading,
     error: bookingsError,
     refresh: refreshBookings,
-  } = useApi<TodayBookingRow[]>(bookingsUrl);
-  const metricBookingsUrl = buildBookingsUrl(metricRange, selectedLocationId);
-  const {
-    data: metricBookings,
-    loading: metricBookingsLoading,
-    refresh: refreshMetricBookings,
-  } = useApi<TodayBookingRow[]>(metricBookingsUrl);
+  } = useApi<TodayBookingRow[]>(bookingsRangeUrl);
 
   const { execute: patchWaitingRoom } = useApiMutation("patch");
 
   const onRefresh = useCallback(() => {
     refreshWaiting();
     refreshBookings();
-    refreshMetricBookings();
-  }, [refreshWaiting, refreshBookings, refreshMetricBookings]);
+  }, [refreshWaiting, refreshBookings]);
 
   useEffect(() => {
     return () => {
@@ -179,15 +139,20 @@ export default function WaitingRoomScreen() {
   }, [rawBookings]);
 
   const metricSummary = useMemo(() => {
-    const list = Array.isArray(metricBookings) ? metricBookings : [];
+    const list = Array.isArray(rawBookings) ? rawBookings : [];
     return {
       pendingCount: list.filter((b) => b.db_status === "pending").length,
       bookedCount: list.filter(isActiveScheduleBooking).length,
       completedCount: list.filter((b) => b.status === "completed").length,
     };
-  }, [metricBookings]);
+  }, [rawBookings]);
 
   const metricRangeLabel = METRIC_RANGES.find((range) => range.id === metricRange)?.label ?? "Today";
+
+  const headerSubtitle = useMemo(
+    () => `${formatFrontDeskRangeCaption(metricRange, new Date())} · Today’s lists below`,
+    [metricRange],
+  );
 
   useEffect(() => {
     if (
@@ -223,7 +188,7 @@ export default function WaitingRoomScreen() {
   if (scheduleStillLoading) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Front Desk" subtitle="Today · schedule & check-ins" showBack />
+        <ScreenHeader title="Front Desk" subtitle="Loading schedule…" showBack />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -234,7 +199,7 @@ export default function WaitingRoomScreen() {
   if (scheduleLoadError) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Front Desk" subtitle="Today · schedule & check-ins" showBack />
+        <ScreenHeader title="Front Desk" subtitle="Could not load schedule" showBack />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={bookingsError ?? "Could not load today's bookings"} onRetry={onRefresh} />
         </View>
@@ -244,13 +209,13 @@ export default function WaitingRoomScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Front Desk" subtitle="Same data as calendar — today" showBack />
+      <ScreenHeader title="Front Desk" subtitle={headerSubtitle} showBack />
 
       <ScrollView
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshControl={
-          <RefreshControl refreshing={waitingLoading || bookingsLoading || metricBookingsLoading} onRefresh={onRefresh} tintColor="#1a1f3c" />
+          <RefreshControl refreshing={waitingLoading || bookingsLoading} onRefresh={onRefresh} tintColor="#1a1f3c" />
         }
       >
         <View style={twStyle("mx-4 mb-3")}>

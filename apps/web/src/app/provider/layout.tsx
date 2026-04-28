@@ -19,12 +19,15 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
   const isOnboardingPage = pathname === "/provider/onboarding";
   const isEmbedPage = pathname === "/provider/embed";
   const isSubscriptionCheckout = pathname === "/provider/subscription-checkout";
+  const isAdsPaymentReturn =
+    pathname === "/provider/settings/ads/payment-return" ||
+    (pathname?.startsWith("/provider/settings/ads/payment-return/") ?? false);
   const isGetStartedPage =
     pathname === "/provider/get-started" ||
     (pathname?.startsWith("/provider/get-started/") ?? false);
 
   // Onboarding allows customers; embed is for WebView; subscription-checkout is minimal layout (no shell)
-  if (isOnboardingPage || isEmbedPage || isSubscriptionCheckout) {
+  if (isOnboardingPage || isEmbedPage || isSubscriptionCheckout || isAdsPaymentReturn) {
     return <>{children}</>;
   }
 
