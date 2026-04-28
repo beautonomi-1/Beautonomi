@@ -267,41 +267,45 @@ export async function GET(request: Request) {
       query = query.in("id", atHomeProviderIds);
     }
 
-    // Apply sorting
+    const sortInMemory =
+      filters.sort_by === "rating" ||
+      filters.sort_by === "relevance" ||
+      filters.sort_by === "distance" ||
+      filters.sort_by === "price_low" ||
+      filters.sort_by === "price_high";
+
+    // Apply sorting. Rating/relevance/price/distance are sorted after card enrichment
+    // to avoid fragile PostgREST order clauses and to include derived fields.
     switch (filters.sort_by) {
       case "price_low":
-        // Note: starting_price doesn't exist, would need to calculate from offerings
-        // For now, sort by rating as fallback
-        query = query.order("rating_average", { ascending: true });
+        query = query.order("created_at", { ascending: false });
         break;
       case "price_high":
-        // Note: starting_price doesn't exist, would need to calculate from offerings
-        // For now, sort by rating as fallback
-        query = query.order("rating_average", { ascending: false });
+        query = query.order("created_at", { ascending: false });
         break;
       case "rating":
-        query = query.order("rating_average", { ascending: false });
+        query = query.order("created_at", { ascending: false });
         break;
       case "newest":
         query = query.order("created_at", { ascending: false });
         break;
       case "distance":
-        query = query.order("is_featured", { ascending: false }).order("rating_average", { ascending: false });
+        query = query.order("created_at", { ascending: false });
         break;
       case "relevance":
       default:
-        query = query.order("is_featured", { ascending: false }).order("rating_average", { ascending: false });
+        query = query.order("created_at", { ascending: false });
         break;
     }
 
-    const postPaginateByDistance =
-      filters.sort_by === "distance" &&
-      filters.location?.latitude != null &&
-      filters.location?.longitude != null;
+    const postPaginateAfterEnrichment =
+      sortInMemory ||
+      (filters.location?.latitude != null &&
+        filters.location?.longitude != null);
 
-    // Distance needs coordinates from provider_locations, so fetch a wider candidate set
-    // and page after calculating nearest branch distance.
-    query = postPaginateByDistance ? query.limit(1000) : query.range(offset, offset + limit - 1);
+    // Derived sorts need enriched fields from provider_locations/offerings, so fetch a wider
+    // candidate set and page after calculating the sortable values.
+    query = postPaginateAfterEnrichment ? query.limit(1000) : query.range(offset, offset + limit - 1);
 
     const { data: providers, error, count } = await query;
 
@@ -436,10 +440,38 @@ export async function GET(request: Request) {
       };
     });
 
-    if (filters.sort_by === "distance" && hasUserCoords) {
-      transformedProviders = [...transformedProviders].sort(
-        (a: any, b: any) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity),
-      );
+    switch (filters.sort_by) {
+      case "price_low":
+        transformedProviders = [...transformedProviders].sort(
+          (a: any, b: any) => (a.starting_price ?? Infinity) - (b.starting_price ?? Infinity),
+        );
+        break;
+      case "price_high":
+        transformedProviders = [...transformedProviders].sort(
+          (a: any, b: any) => (b.starting_price ?? -Infinity) - (a.starting_price ?? -Infinity),
+        );
+        break;
+      case "rating":
+        transformedProviders = [...transformedProviders].sort(
+          (a: any, b: any) => (b.rating ?? 0) - (a.rating ?? 0) || (b.review_count ?? 0) - (a.review_count ?? 0),
+        );
+        break;
+      case "distance":
+        if (hasUserCoords) {
+          transformedProviders = [...transformedProviders].sort(
+            (a: any, b: any) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity),
+          );
+        }
+        break;
+      case "relevance":
+      default:
+        transformedProviders = [...transformedProviders].sort(
+          (a: any, b: any) =>
+            Number(Boolean(b.is_featured)) - Number(Boolean(a.is_featured)) ||
+            (b.rating ?? 0) - (a.rating ?? 0) ||
+            (b.review_count ?? 0) - (a.review_count ?? 0),
+        );
+        break;
     }
 
     // Sponsored slots: run auction and merge winners at top
@@ -605,7 +637,7 @@ export async function GET(request: Request) {
     }
     const services: any[] = serviceResults;
 
-    const visibleProviders = postPaginateByDistance
+    const visibleProviders = postPaginateAfterEnrichment
       ? finalProviders.slice(offset, offset + limit)
       : finalProviders;
 

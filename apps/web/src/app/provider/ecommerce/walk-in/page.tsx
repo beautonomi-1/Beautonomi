@@ -15,6 +15,7 @@ import {
   X,
   User,
   History,
+  ChevronRight,
 } from "lucide-react";
 import { BarcodeLookup } from "@/components/provider-portal/BarcodeLookup";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -23,14 +24,27 @@ import { isCompleteE164 } from "@/lib/phone";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
 
+interface Variant {
+  id: string;
+  variant_name: string;
+  retail_price: number;
+  quantity: number;
+  sku?: string | null;
+}
+
 interface Product {
   id: string;
   name: string;
   brand: string | null;
   retail_price: number;
-  /** Percentage; matches `POST /api/provider/product-sales` line tax (percentOf on line subtotal). */
+  /** Percentage; matches `POST /api/provider/product-sales` line tax. */
   tax_rate: number;
+  /** Parent-level stock (0 for variant-based products). */
   quantity: number;
+  /** Authoritative stock: sum of variant quantities when has_variants, else quantity. */
+  effective_quantity: number;
+  has_variants: boolean;
+  variants: Variant[];
   image_urls: string[];
   is_active: boolean;
 }
@@ -38,13 +52,25 @@ interface Product {
 interface CartItem {
   product: Product;
   qty: number;
+  /** Populated when the product has variants and the user chose one. */
+  variantId?: string;
+  variantName?: string;
+  /** Unit price resolved from the variant (may differ from parent retail_price). */
+  unitPrice: number;
+  /** Available stock for this specific line (variant or parent). */
+  availableQty: number;
+}
+
+/** Unique key per cart line (product + optional variant). */
+function cartLineKey(productId: string, variantId?: string) {
+  return variantId ? `${productId}::${variantId}` : productId;
 }
 
 function walkInCartTotals(cart: CartItem[], taxRatePercent = 0) {
   let subtotal = 0;
   let taxAmount = 0;
   for (const c of cart) {
-    const line = c.product.retail_price * c.qty;
+    const line = c.unitPrice * c.qty;
     subtotal += line;
     taxAmount += percentOf(line, taxRatePercent);
   }
@@ -81,8 +107,11 @@ export default function WalkInSalePage() {
   const [showHistory, setShowHistory] = useState(false);
   const [showYocoDialog, setShowYocoDialog] = useState(false);
   const [walkInTaxRate, setWalkInTaxRate] = useState(0);
-
   const [loadError, setLoadError] = useState("");
+
+  /** Product awaiting variant selection before being added to the cart. */
+  const [variantPickerProduct, setVariantPickerProduct] = useState<Product | null>(null);
+
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     setLoadError("");
@@ -91,11 +120,21 @@ export default function WalkInSalePage() {
       if (res?.data?.products) {
         setProducts(
           res.data.products
-            .filter((p) => p.is_active && p.quantity > 0)
+            // Use effective_quantity (sums variant stock for variant-based products)
+            // so variant-only catalogs appear in the grid.
+            .filter((p) => p.is_active && (p.effective_quantity ?? p.quantity) > 0)
             .map((p) => ({
               ...p,
               retail_price: Number(p.retail_price),
+              effective_quantity: Number(p.effective_quantity ?? p.quantity),
               tax_rate: Number((p as { tax_rate?: unknown }).tax_rate ?? 0),
+              variants: (p.variants || []).map((v: any) => ({
+                id: v.id,
+                variant_name: v.variant_name || v.name || "Variant",
+                retail_price: Number(v.retail_price ?? p.retail_price),
+                quantity: Number(v.quantity ?? 0),
+                sku: v.sku ?? null,
+              })),
             })),
         );
       }
@@ -108,10 +147,14 @@ export default function WalkInSalePage() {
   }, []);
 
   const fetchHistory = useCallback(async () => {
-    const res = await fetcher.get<{ data: { sales: WalkInOrder[] } }>(
-      "/api/provider/product-sales?limit=20",
-    );
-    if (res?.data?.sales) setRecentSales(res.data.sales);
+    try {
+      const res = await fetcher.get<{ data: { sales: WalkInOrder[] } }>(
+        "/api/provider/product-sales?limit=20",
+      );
+      if (res?.data?.sales) setRecentSales(res.data.sales);
+    } catch {
+      // non-fatal
+    }
   }, []);
 
   const fetchTaxSettings = useCallback(async () => {
@@ -133,57 +176,85 @@ export default function WalkInSalePage() {
     return () => clearTimeout(id);
   }, [fetchProducts]);
 
-  useEffect(() => {
-    void fetchTaxSettings();
-  }, [fetchTaxSettings]);
+  useEffect(() => { void fetchTaxSettings(); }, [fetchTaxSettings]);
 
-  const filtered = products.filter(
-    (p) =>
-      (p?.name ?? "").toLowerCase().includes((search ?? "").toLowerCase()) ||
-      (p?.brand ?? "").toLowerCase().includes((search ?? "").toLowerCase()),
-  );
+  const filtered = useMemo(() =>
+    products.filter(
+      (p) =>
+        (p?.name ?? "").toLowerCase().includes((search ?? "").toLowerCase()) ||
+        (p?.brand ?? "").toLowerCase().includes((search ?? "").toLowerCase()),
+    ),
+  [products, search]);
 
-  const addToCart = (product: Product) => {
+  /** Add a product (or a specific variant) to the cart. */
+  const addToCart = useCallback((product: Product, variant?: Variant) => {
+    const key = cartLineKey(product.id, variant?.id);
+    const unitPrice = variant ? variant.retail_price : product.retail_price;
+    const availableQty = variant ? variant.quantity : (product.effective_quantity ?? product.quantity);
+
     setCart((prev) => {
-      const existing = prev.find((c) => c.product.id === product.id);
+      const existing = prev.find((c) => cartLineKey(c.product.id, c.variantId) === key);
       if (existing) {
-        if (existing.qty >= product.quantity) return prev;
+        if (existing.qty >= availableQty) return prev;
         return prev.map((c) =>
-          c.product.id === product.id ? { ...c, qty: c.qty + 1 } : c,
+          cartLineKey(c.product.id, c.variantId) === key ? { ...c, qty: c.qty + 1 } : c,
         );
       }
-      return [...prev, { product, qty: 1 }];
+      return [
+        ...prev,
+        {
+          product,
+          qty: 1,
+          variantId: variant?.id,
+          variantName: variant?.variant_name,
+          unitPrice,
+          availableQty,
+        },
+      ];
     });
+  }, []);
+
+  /** Handle clicking a product tile — opens variant picker if needed, else direct add. */
+  const handleProductClick = (product: Product) => {
+    if (product.has_variants && product.variants.length > 0) {
+      setVariantPickerProduct(product);
+    } else {
+      addToCart(product);
+    }
   };
 
-  const updateQty = (productId: string, delta: number) => {
+  const updateQty = (key: string, delta: number) => {
     setCart((prev) =>
       prev
         .map((c) => {
-          if (c.product.id !== productId) return c;
+          if (cartLineKey(c.product.id, c.variantId) !== key) return c;
           const newQty = c.qty + delta;
           if (newQty <= 0) return null;
-          if (newQty > c.product.quantity) return c;
+          if (newQty > c.availableQty) return c;
           return { ...c, qty: newQty };
         })
         .filter(Boolean) as CartItem[],
     );
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((c) => c.product.id !== productId));
+  const removeFromCart = (key: string) => {
+    setCart((prev) => prev.filter((c) => cartLineKey(c.product.id, c.variantId) !== key));
   };
 
-  const { subtotal, taxAmount, grandTotal } = useMemo(() => walkInCartTotals(cart, walkInTaxRate), [cart, walkInTaxRate]);
+  const { subtotal, taxAmount, grandTotal } = useMemo(
+    () => walkInCartTotals(cart, walkInTaxRate),
+    [cart, walkInTaxRate],
+  );
 
   const submitWalkInOrder = async (paymentReference?: string) => {
     const res = await fetcher.post<{
-      data: { order: { order_number: string } };
+      data: { order: { order_number: string; total_amount?: string | number } };
       error?: string;
     }>("/api/provider/product-sales", {
       items: cart.map((c) => ({
         product_id: c.product.id,
         quantity: c.qty,
+        ...(c.variantId ? { product_variant_id: c.variantId } : {}),
       })),
       payment_method: paymentMethod,
       payment_reference: paymentReference,
@@ -192,7 +263,7 @@ export default function WalkInSalePage() {
     });
 
     if (res?.data?.order) {
-      const serverTotal = parseFloat(String((res.data.order as { total_amount?: string }).total_amount ?? ""));
+      const serverTotal = parseFloat(String(res.data.order.total_amount ?? ""));
       const fallback = walkInCartTotals(cart, walkInTaxRate).grandTotal;
       setSuccess({
         orderNumber: res.data.order.order_number,
@@ -218,7 +289,6 @@ export default function WalkInSalePage() {
       setShowYocoDialog(true);
       return;
     }
-
     setProcessing(true);
     setError("");
     try {
@@ -330,17 +400,50 @@ export default function WalkInSalePage() {
                   placeholder="Barcode / SKU"
                   onSelect={(product, variant) => {
                     const full = products.find((p) => p.id === product.id);
-                    const toAdd: Product = full ?? {
-                      id: product.id,
-                      name: product.name ?? "Product",
-                      brand: null,
-                      retail_price: variant?.retail_price ?? product.retail_price ?? 0,
-                      tax_rate: Number((product as { tax_rate?: unknown }).tax_rate ?? 0),
-                      quantity: variant?.quantity ?? product.quantity ?? 0,
-                      image_urls: product.image_urls ?? [],
-                      is_active: true,
-                    };
-                    if (toAdd.quantity > 0) addToCart(toAdd);
+                    if (full) {
+                      if (variant) {
+                        const v: Variant = {
+                          id: variant.id,
+                          variant_name: (variant as any).variant_name || (variant as any).name || "Variant",
+                          retail_price: Number(variant.retail_price ?? full.retail_price),
+                          quantity: Number(variant.quantity ?? 0),
+                          sku: (variant as any).sku ?? null,
+                        };
+                        if (v.quantity > 0) addToCart(full, v);
+                      } else {
+                        if ((full.effective_quantity ?? full.quantity) > 0) addToCart(full);
+                      }
+                    } else {
+                      // Product not in the filtered list (e.g. scanned out-of-grid product)
+                      const qty = variant?.quantity ?? (product as any).quantity ?? 0;
+                      if (qty > 0) {
+                        const synthetic: Product = {
+                          id: product.id,
+                          name: (product as any).name ?? "Product",
+                          brand: null,
+                          retail_price: Number(variant?.retail_price ?? (product as any).retail_price ?? 0),
+                          tax_rate: Number((product as any).tax_rate ?? 0),
+                          quantity: qty,
+                          effective_quantity: qty,
+                          has_variants: false,
+                          variants: [],
+                          image_urls: (product as any).image_urls ?? [],
+                          is_active: true,
+                        };
+                        addToCart(
+                          synthetic,
+                          variant
+                            ? {
+                                id: variant.id,
+                                variant_name: (variant as any).variant_name || "Variant",
+                                retail_price: Number(variant.retail_price ?? synthetic.retail_price),
+                                quantity: qty,
+                                sku: (variant as any).sku ?? null,
+                              }
+                            : undefined,
+                        );
+                      }
+                    }
                   }}
                 />
               </div>
@@ -374,19 +477,22 @@ export default function WalkInSalePage() {
               ) : (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {filtered.map((product) => {
-                    const inCart = cart.find((c) => c.product.id === product.id);
+                    const stock = product.effective_quantity ?? product.quantity;
+                    const inCartQty = cart
+                      .filter((c) => c.product.id === product.id)
+                      .reduce((s, c) => s + c.qty, 0);
                     return (
                       <button
                         key={product.id}
-                        onClick={() => addToCart(product)}
+                        onClick={() => handleProductClick(product)}
                         className="group relative overflow-hidden rounded-xl border bg-white p-3 text-left transition hover:border-pink-300 hover:shadow-sm"
                       >
-                        {inCart && (
+                        {inCartQty > 0 && (
                           <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-pink-600 text-xs font-bold text-white">
-                            {inCart.qty}
+                            {inCartQty}
                           </span>
                         )}
-                        <p className="text-sm font-semibold text-gray-900 line-clamp-2">
+                        <p className="text-sm font-semibold text-gray-900 line-clamp-2 pr-7">
                           {product.name}
                         </p>
                         {product.brand && (
@@ -394,12 +500,20 @@ export default function WalkInSalePage() {
                         )}
                         <div className="mt-2 flex items-center justify-between">
                           <span className="font-bold text-pink-600">
-                            {formatMoney(product.retail_price)}
+                            {product.has_variants && product.variants.length > 0
+                              ? `From ${formatMoney(Math.min(...product.variants.map((v) => v.retail_price)))}`
+                              : formatMoney(product.retail_price)}
                           </span>
                           <span className="text-xs text-gray-400">
-                            {product.quantity} in stock
+                            {stock} in stock
                           </span>
                         </div>
+                        {product.has_variants && product.variants.length > 0 && (
+                          <div className="mt-1.5 flex items-center gap-1 text-[10px] text-pink-500 font-medium">
+                            <ChevronRight className="h-3 w-3" />
+                            {product.variants.length} option{product.variants.length !== 1 ? "s" : ""}
+                          </div>
+                        )}
                       </button>
                     );
                   })}
@@ -423,42 +537,48 @@ export default function WalkInSalePage() {
                   </div>
                 ) : (
                   <div className="max-h-[320px] divide-y overflow-y-auto px-5">
-                    {cart.map((item) => (
-                      <div key={item.product.id} className="flex items-center gap-3 py-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {item.product.name}
-                          </p>
-                          <p className="text-xs text-gray-400">
-                            {formatMoney(item.product.retail_price)} each
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5">
+                    {cart.map((item) => {
+                      const key = cartLineKey(item.product.id, item.variantId);
+                      return (
+                        <div key={key} className="flex items-center gap-3 py-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {item.product.name}
+                              {item.variantName && (
+                                <span className="ml-1 text-xs text-gray-400">· {item.variantName}</span>
+                              )}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {formatMoney(item.unitPrice)} each
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => updateQty(key, -1)}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border text-gray-500 hover:bg-gray-50"
+                            >
+                              <Minus className="h-3.5 w-3.5" />
+                            </button>
+                            <span className="w-7 text-center text-sm font-bold">{item.qty}</span>
+                            <button
+                              onClick={() => updateQty(key, 1)}
+                              className="flex h-7 w-7 items-center justify-center rounded-full border text-gray-500 hover:bg-gray-50"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                          <span className="w-20 text-right text-sm font-semibold text-gray-900">
+                            {formatMoney(item.unitPrice * item.qty)}
+                          </span>
                           <button
-                            onClick={() => updateQty(item.product.id, -1)}
-                            className="flex h-7 w-7 items-center justify-center rounded-full border text-gray-500 hover:bg-gray-50"
+                            onClick={() => removeFromCart(key)}
+                            className="text-gray-300 hover:text-red-500"
                           >
-                            <Minus className="h-3.5 w-3.5" />
-                          </button>
-                          <span className="w-7 text-center text-sm font-bold">{item.qty}</span>
-                          <button
-                            onClick={() => updateQty(item.product.id, 1)}
-                            className="flex h-7 w-7 items-center justify-center rounded-full border text-gray-500 hover:bg-gray-50"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
+                            <X className="h-4 w-4" />
                           </button>
                         </div>
-                        <span className="w-20 text-right text-sm font-semibold text-gray-900">
-                          {formatMoney(item.product.retail_price * item.qty)}
-                        </span>
-                        <button
-                          onClick={() => removeFromCart(item.product.id)}
-                          className="text-gray-300 hover:text-red-500"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
@@ -564,6 +684,74 @@ export default function WalkInSalePage() {
           </div>
         )}
       </div>
+
+      {/* ── Variant picker ─────────────────────────────────────────────── */}
+      {variantPickerProduct && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50"
+          onClick={() => setVariantPickerProduct(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl bg-white p-5 shadow-xl max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-gray-900">{variantPickerProduct.name}</h3>
+                {variantPickerProduct.brand && (
+                  <p className="text-xs text-gray-400">{variantPickerProduct.brand}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setVariantPickerProduct(null)}
+                className="rounded-full p-1 hover:bg-gray-100"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-gray-500">Choose a variant to add to the sale:</p>
+            <div className="space-y-2">
+              {variantPickerProduct.variants.map((v) => {
+                const isInCart = cart.some(
+                  (c) => c.product.id === variantPickerProduct.id && c.variantId === v.id,
+                );
+                const cartItem = cart.find(
+                  (c) => c.product.id === variantPickerProduct.id && c.variantId === v.id,
+                );
+                return (
+                  <button
+                    key={v.id}
+                    disabled={v.quantity <= 0}
+                    onClick={() => {
+                      addToCart(variantPickerProduct, v);
+                      setVariantPickerProduct(null);
+                    }}
+                    className={`w-full flex items-center justify-between rounded-xl border-2 p-3 text-left transition-colors ${
+                      v.quantity <= 0
+                        ? "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
+                        : isInCart
+                          ? "border-pink-300 bg-pink-50"
+                          : "border-gray-200 hover:border-pink-300 hover:bg-pink-50"
+                    }`}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{v.variant_name}</p>
+                      {v.sku && <p className="text-xs text-gray-400">SKU: {v.sku}</p>}
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-pink-600">{formatMoney(v.retail_price)}</p>
+                      <p className="text-xs text-gray-400">
+                        {v.quantity <= 0 ? "Out of stock" : `${v.quantity} in stock`}
+                        {isInCart && cartItem ? ` · ${cartItem.qty} in cart` : ""}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showYocoDialog && (
         <YocoPaymentDialog

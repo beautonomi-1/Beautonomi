@@ -43,25 +43,23 @@ export async function POST(request: NextRequest) {
     }
 
     const key = idempotencyKey ?? `public:${eventType}:${campaignId}:${providerId}:${Date.now()}`;
-    const { error } = await supabase.from("ads_events").upsert(
-      {
-        campaign_id: campaignId,
-        provider_id: providerId,
-        event_type: eventType,
-        idempotency_key: key,
-        attribution: { source: "public_api", ...attribution },
-      },
-      { onConflict: "idempotency_key", ignoreDuplicates: true }
-    );
+    const { error } = await supabase.from("ads_events").insert({
+      campaign_id: campaignId,
+      provider_id: providerId,
+      event_type: eventType,
+      idempotency_key: key,
+      attribution: { source: "public_api", ...attribution },
+    });
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === "23505") {
+        return NextResponse.json({ data: { recorded: false, duplicate: true }, error: null });
+      }
+      throw error;
+    }
     return NextResponse.json({ data: { recorded: true }, error: null });
   } catch (error: unknown) {
     console.warn("Ads event record failed:", error);
-    const message = error instanceof Error ? error.message : "Failed to record event";
-    return NextResponse.json(
-      { data: null, error: { message, code: "INTERNAL" } },
-      { status: 500 }
-    );
+    return NextResponse.json({ data: { recorded: false }, error: null }, { status: 202 });
   }
 }

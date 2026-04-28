@@ -693,6 +693,10 @@ export function GroupBookingDialog({
       }));
 
       const apiPayload: Record<string, unknown> = {
+        // Providers create group bookings intentionally — skip the strict
+        // slot-availability grid check (same override pattern as the regular
+        // bookings route body.allow_override flag).
+        allow_override: true,
         title: formData.title || formData.service_name || "Group Session",
         scheduled_at: scheduledAt,
         service_id: formData.service_id || undefined,
@@ -800,6 +804,19 @@ export function GroupBookingDialog({
         hideClose
         suppressFallbackTitle
         className="p-0 gap-0 border-0 max-w-[100vw] sm:max-w-[min(90vw,680px)] max-h-[95vh] sm:max-h-[min(90vh,850px)] overflow-hidden rounded-t-3xl sm:rounded-2xl box-border flex flex-col"
+        onPointerDownOutside={(e) => {
+          // Prevent dialog dismissal when clicking the Mapbox suggestion dropdown (portal).
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('[data-address-autocomplete-listbox="true"]') || target?.closest('[data-address-autocomplete-option="true"]')) {
+            e.preventDefault();
+          }
+        }}
+        onInteractOutside={(e) => {
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('[data-address-autocomplete-listbox="true"]')) {
+            e.preventDefault();
+          }
+        }}
       >
         <div className="h-1 w-full bg-gradient-to-r from-violet-500 via-purple-500 to-violet-600 flex-shrink-0" />
 
@@ -937,10 +954,16 @@ export function GroupBookingDialog({
                       <Input value={formData.address_country} onChange={e => setFormData({ ...formData, address_country: e.target.value })} placeholder="Country" className="mt-1 h-10" />
                     </div>
                   </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">Travel Fee</Label>
-                    <Input type="number" value={formData.travel_fee} onChange={e => setFormData({ ...formData, travel_fee: parseFloat(e.target.value) || 0 })} min={0} step={10} className="mt-1 h-10" />
-                  </div>
+                  {/* Travel fee is auto-derived from the validated service zone — read-only. */}
+                  {formData.travel_fee > 0 && (
+                    <div>
+                      <Label className="text-xs text-gray-500">Travel Fee (auto-calculated)</Label>
+                      <div className="mt-1 h-10 flex items-center px-3 bg-blue-50 border border-blue-100 rounded-md text-sm font-medium text-blue-900">
+                        {formatMoney(formData.travel_fee)}
+                      </div>
+                      <p className="mt-1 text-[11px] text-blue-600">Derived from your active service zones for this address.</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -953,7 +976,7 @@ export function GroupBookingDialog({
                 <Tag className="w-4 h-4 text-gray-400" />Service Details
               </div>
               <p className="text-xs text-gray-500">
-                The default service only pre-fills new participants and drives the availability check. Each participant line below is the billable service line used in totals.
+                Select a team member to check real availability slots. You can also pick a service to pre-fill all participant lines below — each can still be changed individually.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -966,7 +989,7 @@ export function GroupBookingDialog({
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs text-gray-500">Default service (template)</Label>
+                  <Label className="text-xs text-gray-500">Pre-fill service for all participants</Label>
                   <div className="relative mt-1">
                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 z-10" />
                     <Select
@@ -981,7 +1004,7 @@ export function GroupBookingDialog({
                         });
                       }}
                     >
-                      <SelectTrigger className="h-10 pl-8"><SelectValue placeholder="Select default service" /></SelectTrigger>
+                      <SelectTrigger className="h-10 pl-8"><SelectValue placeholder="Select service (optional)" /></SelectTrigger>
                       <SelectContent>
                         {services.filter(s => !s.service_type || s.service_type === "basic" || s.service_type === "variant" || s.service_type === "package").map(svc => (
                           <SelectItem key={svc.id} value={svc.id}>
@@ -993,17 +1016,8 @@ export function GroupBookingDialog({
                       </SelectContent>
                     </Select>
                   </div>
+                  <p className="mt-1 text-[11px] text-gray-400">Selecting a service pre-fills it for all participants below. Each participant can still use a different service.</p>
                 </div>
-              </div>
-              <div>
-                <Label className="text-xs text-gray-500">Max Participants</Label>
-                <Input
-                  type="number"
-                  value={formData.max_participants}
-                  onChange={e => setFormData({ ...formData, max_participants: parseInt(e.target.value) || 10 })}
-                  min={2} max={100}
-                  className="mt-1 h-10 w-full sm:w-32"
-                />
               </div>
               {(selectedTeamMember || selectedService) && (
                 <div className="flex flex-wrap gap-2">

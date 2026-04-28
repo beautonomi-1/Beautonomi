@@ -3279,7 +3279,9 @@ export class ProviderApiClient implements ProviderApi {
         : undefined,
     };
     if (simpleFreq) body.frequency = simpleFreq;
-    const res = (await fetcher.post(`/api/provider/recurring-appointments`, body)) as {
+    // Creating up to 12 initial bookings runs in parallel on the server but still
+    // needs more than the default 25-second production timeout. Use 90 s.
+    const res = (await fetcher.post(`/api/provider/recurring-appointments`, body, { timeoutMs: 90_000 })) as {
       data?: any;
     };
     const row = res?.data ?? res;

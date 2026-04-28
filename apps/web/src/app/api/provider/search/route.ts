@@ -18,6 +18,10 @@ export interface ProviderSearchSuggestion {
   title: string;
   subtitle?: string;
   url: string;
+  /** Present on appointment results — true when the booking is a group-booking participant. */
+  is_group_booking?: boolean;
+  /** Present on appointment results when is_group_booking is true. */
+  group_booking_id?: string | null;
 }
 
 export interface ProviderSearchResult {
@@ -112,49 +116,51 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Search bookings (by booking_number or customer name)
+    const BOOKING_SELECT = `
+      id,
+      booking_number,
+      scheduled_start_at,
+      status,
+      customer_id,
+      is_group_booking,
+      group_booking_id,
+      customers:users!bookings_customer_id_fkey(id, full_name, email)
+    `;
+
+    const pushBookingSuggestion = (b: Record<string, unknown>) => {
+      const customer = b.customers as { full_name?: string; email?: string } | null;
+      const customerName = customer?.full_name || customer?.email || "";
+      const scheduledDate = b.scheduled_start_at
+        ? new Date(b.scheduled_start_at as string).toLocaleDateString(intlLocale, {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
+        : "";
+      const isGroup = Boolean(b.is_group_booking);
+      const groupId = (b.group_booking_id as string | null) ?? null;
+      suggestions.push({
+        type: "appointment",
+        id: b.id as string,
+        title: (b.booking_number as string) || "Booking",
+        subtitle: customerName ? `${customerName} · ${scheduledDate}` : scheduledDate,
+        url: `/provider/calendar?date=${
+          (b.scheduled_start_at as string | undefined)?.split("T")[0] || ""
+        }&appointment=${b.id as string}`,
+        ...(isGroup ? { is_group_booking: true, group_booking_id: groupId } : {}),
+      });
+    };
+
     const { data: bookings } = await supabaseAdmin
       .from("bookings")
-      .select(
-        `
-        id,
-        booking_number,
-        scheduled_start_at,
-        status,
-        customer_id,
-        customers:users!bookings_customer_id_fkey(id, full_name, email)
-      `
-      )
+      .select(BOOKING_SELECT)
       .eq("provider_id", providerId)
       .or(`booking_number.ilike.${searchTerm}`)
       .order("scheduled_start_at", { ascending: false })
       .limit(limit);
 
     if (bookings) {
-      for (const b of bookings) {
-        const customer = (b as any).customers;
-        const customerName = customer?.full_name || customer?.email || "";
-        const scheduledDate = (b as any).scheduled_start_at
-          ? new Date((b as any).scheduled_start_at).toLocaleDateString(
-              intlLocale,
-              {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              }
-            )
-          : "";
-        suggestions.push({
-          type: "appointment",
-          id: (b as any).id,
-          title: (b as any).booking_number || `Booking`,
-          subtitle: customerName
-            ? `${customerName} · ${scheduledDate}`
-            : scheduledDate,
-          url: `/provider/calendar?date=${
-            (b as any).scheduled_start_at?.split("T")[0] || ""
-          }&appointment=${(b as any).id}`,
-        });
-      }
+      for (const b of bookings) pushBookingSuggestion(b as unknown as Record<string, unknown>);
     }
 
     // If we didn't find bookings by number, try by customer name
@@ -171,44 +177,14 @@ export async function GET(request: NextRequest) {
         const customerIds = matchingCustomers.map((c) => (c as any).id);
         const { data: customerBookings } = await supabaseAdmin
           .from("bookings")
-          .select(
-            `
-            id,
-            booking_number,
-            scheduled_start_at,
-            customers:users!bookings_customer_id_fkey(id, full_name, email)
-          `
-          )
+          .select(BOOKING_SELECT)
           .eq("provider_id", providerId)
           .in("customer_id", customerIds)
           .order("scheduled_start_at", { ascending: false })
           .limit(limit);
 
         if (customerBookings) {
-          for (const b of customerBookings) {
-            const customer = (b as any).customers;
-            const scheduledDate = (b as any).scheduled_start_at
-              ? new Date((b as any).scheduled_start_at).toLocaleDateString(
-                  intlLocale,
-                  {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  }
-                )
-              : "";
-            suggestions.push({
-              type: "appointment",
-              id: (b as any).id,
-              title: (b as any).booking_number || `Booking`,
-              subtitle: customer
-                ? `${customer.full_name || customer.email} · ${scheduledDate}`
-                : scheduledDate,
-              url: `/provider/calendar?date=${
-                (b as any).scheduled_start_at?.split("T")[0] || ""
-              }&appointment=${(b as any).id}`,
-            });
-          }
+          for (const b of customerBookings) pushBookingSuggestion(b as unknown as Record<string, unknown>);
         }
       }
     }

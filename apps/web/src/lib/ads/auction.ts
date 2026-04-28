@@ -289,8 +289,8 @@ export async function recordAdImpressions(
     idempotency_key: `${idempotencyPrefix}:impression:${w.campaign_id}:${i}`,
     attribution: { source: "search", ...(attribution ?? {}), rank: i + 1 },
   }));
-  await supabase.from("ads_events").upsert(rows, {
-    onConflict: "idempotency_key",
-    ignoreDuplicates: true,
-  });
+  const { error } = await supabase.from("ads_events").insert(rows);
+  if (error && error.code !== "23505") {
+    throw error;
+  }
 }

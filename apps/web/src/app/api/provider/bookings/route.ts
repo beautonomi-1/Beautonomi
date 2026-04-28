@@ -1032,7 +1032,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
       endAt = new Date(start.getTime() + (duration + defaultBuffer) * 60 * 1000);
     }
 
-    const allowOverride = await canOverrideDoubleBooking(supabaseAdmin, providerId);
+    // Provider-portal bookings can request an explicit override via the request
+    // body (same pattern as the group-bookings route). This lets providers book
+    // intentionally outside the availability grid without changing their global
+    // "allow double booking" setting.
+    const bodyOverride = body.allow_override === true || body.allow_override_slot === true;
+    const allowOverride = bodyOverride || await canOverrideDoubleBooking(supabaseAdmin, providerId);
     const useRpcPath = staffId != null && !allowOverride;
 
     // Active customer holds block the window (same as public validate-booking).
@@ -1054,9 +1059,21 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // Same shared engine as GET /available-slots + GET /check-availability — single source of truth
     // at commit time (unless provider allows intentional double-booking override).
     if (!allowOverride) {
+      // gridDur must match what the slot picker shows — exclude the generic defaultBuffer
+      // (15 min) that was added to endAt for the hold-overlap window only.
+      // Using duration+buffer caused end-of-day slots that the picker marked as
+      // available to be rejected at commit time (e.g. 60 min service near closing
+      // → grid check uses 75 min → slot appears unavailable).
       const gridDur = Math.max(
         15,
-        Math.min(480, Math.round((endAt.getTime() - startAt.getTime()) / 60000)),
+        Math.min(
+          480,
+          body.services && Array.isArray(body.services) && body.services.length > 0
+            ? // Multi-service: sum of per-service (duration + svcBuffer) — already correct
+              Math.round((endAt.getTime() - startAt.getTime()) / 60000)
+            : // Simple booking: use the raw duration only, no defaultBuffer
+              Math.round(Number(body.duration_minutes ?? 60)),
+        ),
       );
       const staffSet =
         body.services && Array.isArray(body.services) && body.services.length > 0

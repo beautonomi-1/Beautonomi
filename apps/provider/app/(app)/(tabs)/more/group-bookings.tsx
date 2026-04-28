@@ -1655,11 +1655,14 @@ export default function GroupBookingsScreen() {
                     [
                       { text: "Cancel", style: "cancel" },
                       {
-                        text: "Open bookings",
+                        text: "Open group booking",
                         onPress: () => {
+                          // Navigate to group booking detail (which lists all participants
+                          // and their individual booking IDs) rather than the plain
+                          // bookings list that never filtered by group_booking_id.
                           router.push({
-                            pathname: "/(app)/(tabs)/more/bookings",
-                            params: { group_booking_id: groupId },
+                            pathname: "/(app)/(tabs)/more/group-bookings",
+                            params: { open_group_id: groupId },
                           } as never);
                         },
                       },

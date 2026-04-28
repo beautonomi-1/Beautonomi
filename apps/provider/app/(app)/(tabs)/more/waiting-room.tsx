@@ -22,6 +22,8 @@ interface WaitingRoomEntry {
   service_name?: string;
   status: "waiting" | "in_service" | "completed" | "left";
   checked_in_time: string;
+  is_group_booking?: boolean;
+  group_booking_id?: string | null;
 }
 
 interface TodayBookingRow {
@@ -31,6 +33,8 @@ interface TodayBookingRow {
   db_status?: string;
   scheduled_at: string;
   location_type?: string;
+  is_group_booking?: boolean;
+  group_booking_id?: string | null;
   customers?: { full_name?: string; phone?: string } | null;
   services?: { name?: string; offering_name?: string; duration_minutes?: number }[];
 }
@@ -55,6 +59,26 @@ function isActiveScheduleBooking(b: TodayBookingRow): boolean {
 
 export default function WaitingRoomScreen() {
   const router = useRouter();
+
+  /** Navigate to the correct screen for a booking row (group or individual). */
+  const openBooking = useCallback(
+    (b: { id: string; is_group_booking?: boolean; group_booking_id?: string | null }) => {
+      if (b.is_group_booking && b.group_booking_id) {
+        router.push({
+          pathname: "/(app)/(tabs)/more/group-bookings",
+          params: { open_group_id: b.group_booking_id },
+        } as never);
+        return;
+      }
+      // Guard against synthetic group:UUID ids that slip through without the flag.
+      const safeId = b.id.startsWith("group:") ? null : b.id;
+      if (safeId) {
+        router.push(`/(app)/(tabs)/bookings/${safeId}` as never);
+      }
+    },
+    [router],
+  );
+
   const { isTablet } = useResponsive();
   const { selectedLocationId } = useProvider();
   const onDemandConfig = useModuleConfig("on_demand");
@@ -304,7 +328,7 @@ export default function WaitingRoomScreen() {
               return (
                 <TouchableOpacity
                   key={b.id}
-                  onPress={() => router.push(`/(app)/(tabs)/bookings/${b.id}` as never)}
+                  onPress={() => openBooking(b)}
                   style={twStyle("mb-2 flex-row items-center rounded-xl border-2 border-amber-300 bg-amber-50/90 p-4")}
                   accessibilityRole="button"
                   accessibilityLabel={`Pending booking ${name} at ${t}`}
@@ -342,7 +366,7 @@ export default function WaitingRoomScreen() {
               return (
                 <TouchableOpacity
                   key={b.id}
-                  onPress={() => router.push(`/(app)/(tabs)/bookings/${b.id}` as never)}
+                  onPress={() => openBooking(b)}
                   style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
                   accessibilityRole="button"
                 >
@@ -378,7 +402,7 @@ export default function WaitingRoomScreen() {
               waitingList.map((entry) => (
                 <View key={entry.id} style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-3")}>
                   <TouchableOpacity
-                    onPress={() => router.push(`/(app)/(tabs)/bookings/${entry.id}` as never)}
+                    onPress={() => openBooking(entry)}
                     style={twStyle("min-w-0 flex-1 flex-row items-center")}
                     accessibilityRole="button"
                   >
@@ -417,7 +441,7 @@ export default function WaitingRoomScreen() {
               inServiceList.map((entry) => (
                 <View key={entry.id} style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-3")}>
                   <TouchableOpacity
-                    onPress={() => router.push(`/(app)/(tabs)/bookings/${entry.id}` as never)}
+                    onPress={() => openBooking(entry)}
                     style={twStyle("min-w-0 flex-1 flex-row items-center")}
                     accessibilityRole="button"
                   >

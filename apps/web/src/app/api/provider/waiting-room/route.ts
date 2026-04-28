@@ -61,6 +61,8 @@ export async function GET(request: NextRequest) {
         checked_in_time,
         status,
         notes,
+        is_group_booking,
+        group_booking_id,
         provider_staff:staff_id(
           id,
           name:users(full_name)
@@ -115,11 +117,13 @@ export async function GET(request: NextRequest) {
         team_member_id: booking.staff_id,
         team_member_name: booking.provider_staff?.name || booking.provider_staff?.full_name || "Staff",
         checked_in_time: booking.checked_in_time || booking.scheduled_at,
-        checked_in_method: "staff" as const, // Default to staff, could be enhanced
+        checked_in_method: "staff" as const,
         status: wrStatus,
         notes: booking.notes,
-        position: undefined, // Could calculate based on check-in time order
+        position: undefined,
         estimated_wait_time: undefined,
+        is_group_booking: Boolean(booking.is_group_booking),
+        group_booking_id: booking.group_booking_id ?? null,
       };
     });
 

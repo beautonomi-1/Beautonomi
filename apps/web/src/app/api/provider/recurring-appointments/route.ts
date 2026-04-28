@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+
+// Creating up to 12 initial bookings serially can exceed the default 10-second
+// Vercel function budget. Allow up to 60 seconds.
+export const maxDuration = 60;
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { createBookingFromRecurringSeries } from "@/lib/recurring/create-booking-from-series";
@@ -202,17 +206,30 @@ export async function POST(request: NextRequest) {
     const createdBookingIds: string[] = [];
     let lastCreatedDate: string | null = null;
 
-    for (const occurrenceDate of initialOccurrenceDates) {
-      const created = await createBookingFromRecurringSeries(
-        admin,
-        appointment as any,
-        occurrenceDate
-      );
-      if ("bookingId" in created) {
-        createdBookingIds.push(created.bookingId);
-        lastCreatedDate = occurrenceDate;
+    // Run all initial occurrence bookings in parallel to stay within the 60-second
+    // function budget (serial loop of 12 DB writes could breach the old 25-second limit).
+    const results = await Promise.allSettled(
+      initialOccurrenceDates.map((occurrenceDate) =>
+        createBookingFromRecurringSeries(admin, appointment as any, occurrenceDate).then(
+          (created) => ({ occurrenceDate, created }),
+        ),
+      ),
+    );
+
+    // Preserve date order for lastCreatedDate tracking.
+    for (let i = 0; i < initialOccurrenceDates.length; i++) {
+      const r = results[i];
+      const occurrenceDate = initialOccurrenceDates[i];
+      if (r.status === "fulfilled") {
+        const { created } = r.value;
+        if ("bookingId" in created) {
+          createdBookingIds.push(created.bookingId);
+          lastCreatedDate = occurrenceDate;
+        } else {
+          warnings.push(`Visit on ${occurrenceDate} was not created: ${created.error}`);
+        }
       } else {
-        warnings.push(`Visit on ${occurrenceDate} was not created: ${created.error}`);
+        warnings.push(`Visit on ${occurrenceDate} failed: ${r.reason}`);
       }
     }
 

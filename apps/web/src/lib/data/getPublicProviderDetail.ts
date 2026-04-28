@@ -1,7 +1,6 @@
 import { cache } from "react";
 import { headers } from "next/headers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { haversineDistanceKm } from "@/lib/geo/distance";
 import { resolveTenantIdFromServerHeaders } from "@/lib/tenant/resolve-tenant-from-headers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -71,7 +70,7 @@ export const getPublicProviderDetail = cache(
     userLng?: number,
   ): Promise<{ provider: PublicProviderDetail | null; seoIndexable: boolean }> => {
     try {
-      const supabase = await getSupabaseServer();
+      const supabase = getSupabaseAdmin();
 
       const tenantId = await resolvePublicProfileTenantId();
 
@@ -95,7 +94,9 @@ export const getPublicProviderDetail = cache(
       const providerData = providerRow as Record<string, any>;
       const userData = providerData.users as Record<string, any> | null;
       const includeInSearchEngines = userData?.include_in_search_engines ?? false;
-      const acceptsCustomRequests = providerData.accepts_custom_requests ?? true;
+      // DB default is false — only show "Request Custom Service" tab when the
+      // provider has explicitly opted in, not for everyone.
+      const acceptsCustomRequests = providerData.accepts_custom_requests ?? false;
 
       // Parallel queries
       const [locationsResult, offeringsResult, staffCountResult, policiesResult, pointsResult] =
@@ -345,21 +346,22 @@ const PROVIDER_SELECT = `
   id, slug, business_name, business_type, description,
   rating_average, review_count, thumbnail_url, avatar_url,
   gallery, is_featured, is_verified, currency,
-  years_in_business, tax_rate_percent, tips_enabled,
-  website, social_media_links, accepts_custom_requests,
+  years_in_business, website,
+  accepts_custom_requests,
+  offers_mobile_services,
+  social_media_links,
   response_rate, response_time_hours, languages_spoken,
-  offers_mobile_services, minimum_mobile_booking_amount,
   user_id, users(include_in_search_engines)
 `;
 
 async function resolveProvider(
-  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  supabase: ReturnType<typeof getSupabaseAdmin>,
   decodedSlug: string,
   originalSlug: string,
   tenantId: string,
 ): Promise<Record<string, any> | null> {
   // Primary: by decoded slug
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("providers")
     .select(PROVIDER_SELECT)
     .eq("slug", decodedSlug)
@@ -413,7 +415,7 @@ async function resolveProvider(
 }
 
 async function resolveProviderAcrossTenants(
-  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  supabase: ReturnType<typeof getSupabaseAdmin>,
   decodedSlug: string,
   originalSlug: string,
 ): Promise<Record<string, any> | null> {
