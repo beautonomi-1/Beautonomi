@@ -90,6 +90,13 @@ export async function PATCH(
           : body.variables;
     }
     if (body.url !== undefined) updateData.url = body.url;
+    if (body.image !== undefined) updateData.image = body.image;
+    if (body.onesignal_template_id !== undefined) {
+      updateData.onesignal_template_id = body.onesignal_template_id;
+    }
+    if (body.live_activities_config !== undefined) {
+      updateData.live_activities_config = body.live_activities_config;
+    }
     if (body.enabled !== undefined) updateData.enabled = body.enabled;
     if (body.description !== undefined) updateData.description = body.description;
 

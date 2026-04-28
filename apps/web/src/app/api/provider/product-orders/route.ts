@@ -8,6 +8,17 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 
+const PRODUCT_ORDER_STATUSES = [
+  "pending",
+  "confirmed",
+  "processing",
+  "ready_for_collection",
+  "shipped",
+  "delivered",
+  "cancelled",
+  "refunded",
+] as const;
+
 /**
  * GET /api/provider/product-orders
  * List product orders for the provider
@@ -23,6 +34,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
     const status = searchParams.get("status");
+    const bookingId = searchParams.get("booking_id")?.trim();
     const offset = (page - 1) * limit;
 
     let query = (supabase.from("product_orders") as any)
@@ -46,16 +58,47 @@ export async function GET(request: NextRequest) {
     if (status) {
       query = query.eq("status", status);
     }
+    if (bookingId) {
+      query = query.eq("booking_id", bookingId);
+    }
 
     const { data: orders, error, count } = await query;
     if (error) throw error;
 
+    const statusCountResults = await Promise.all([
+      (supabase.from("product_orders") as any)
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", providerId)
+        .match(bookingId ? { booking_id: bookingId } : {}),
+      ...PRODUCT_ORDER_STATUSES.map((orderStatus) =>
+        (supabase.from("product_orders") as any)
+          .select("id", { count: "exact", head: true })
+          .eq("provider_id", providerId)
+          .eq("status", orderStatus)
+          .match(bookingId ? { booking_id: bookingId } : {}),
+      ),
+    ]);
+
+    for (const result of statusCountResults) {
+      if (result.error) throw result.error;
+    }
+
+    const statusCounts = PRODUCT_ORDER_STATUSES.reduce<Record<string, number>>(
+      (acc, orderStatus, index) => {
+        acc[orderStatus] = statusCountResults[index + 1]?.count ?? 0;
+        return acc;
+      },
+      {},
+    );
+
     return successResponse({
       orders: orders ?? [],
+      status_counts: statusCounts,
       pagination: {
         page,
         limit,
         total: count ?? 0,
+        totalAll: statusCountResults[0]?.count ?? 0,
         totalPages: Math.ceil((count ?? 0) / limit),
       },
     });

@@ -6,6 +6,7 @@ import {
   notFoundResponse,
   successResponse,
   handleApiError,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
     const excludeHoldId = sp.get("exclude_hold_id")?.trim() || undefined;
 
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-      return handleApiError(new Error("date is required (YYYY-MM-DD)"), "VALIDATION_ERROR", 400);
+      return errorResponse("date is required (YYYY-MM-DD)", "VALIDATION_ERROR", 400);
     }
 
     const mode = (sp.get("mode") || "salon").toLowerCase() === "mobile" ? "mobile" : "salon";

@@ -12,6 +12,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface PaymentMethodsData {
@@ -32,6 +33,7 @@ interface PaymentMethodsData {
 }
 
 export default function PaymentMethodsReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -43,7 +45,7 @@ export default function PaymentMethodsReport() {
 
   useEffect(() => {
     loadReport();
-  }, [dateRange]);
+  }, [dateRange, selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -57,6 +59,7 @@ export default function PaymentMethodsReport() {
       if (dateRange.to) {
         params.append("to", dateRange.to.toISOString());
       }
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: PaymentMethodsData }>(
         `/api/provider/reports/payments/methods?${params.toString()}`

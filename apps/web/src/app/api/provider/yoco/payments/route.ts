@@ -394,6 +394,46 @@ export async function POST(request: Request) {
       .single();
 
     if (insertError || !payment) {
+      if ((insertError as { code?: string } | null)?.code === "23505" && (yocoPayment.id || yocoPayment.paymentId)) {
+        const { data: existingPayment } = await supabase
+          .from("provider_yoco_payments")
+          .select("*")
+          .eq("yoco_payment_id", yocoPayment.id || yocoPayment.paymentId)
+          .maybeSingle();
+        if (existingPayment) {
+          const existing = existingPayment as {
+            id: string;
+            yoco_payment_id: string;
+            device_id: string;
+            amount: number;
+            currency: string;
+            status: string;
+            created_at: string;
+            appointment_id?: string | null;
+            sale_id?: string | null;
+            metadata?: Record<string, unknown> | null;
+          };
+          return NextResponse.json({
+            data: {
+              id: existing.id,
+              yoco_payment_id: existing.yoco_payment_id,
+              reference: existing.yoco_payment_id,
+              device_id: existing.device_id,
+              device_name: device.name,
+              amount: existing.amount,
+              amount_cents: existing.amount,
+              currency: existing.currency,
+              status: existing.status,
+              payment_date: existing.created_at,
+              appointment_id: existing.appointment_id,
+              sale_id: existing.sale_id,
+              metadata: existing.metadata,
+              receipt_url: (existing.metadata?.receipt_url as string | undefined) ?? undefined,
+            },
+            error: null,
+          });
+        }
+      }
       console.error("Error storing payment:", insertError);
       // Payment was processed by Yoco but failed to store - log for manual reconciliation
     }

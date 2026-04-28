@@ -3,7 +3,10 @@
   "compilerOptions": {
     "strict": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "expo-modules-core": ["./node_modules/expo-modules-core"]
+    }
   },
   "include": [
     "index.ts",
@@ -11,7 +14,8 @@
     "app/**/*.tsx",
     "src/**/*.ts",
     "src/**/*.tsx",
-    "nativewind-env.d.ts"
+    "nativewind-env.d.ts",
+    "react-native-jsx-compat.d.ts"
   ],
   "exclude": ["node_modules"]
 }

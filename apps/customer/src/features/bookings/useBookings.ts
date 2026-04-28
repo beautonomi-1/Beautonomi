@@ -5,7 +5,6 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { Booking } from "@/types/api";
 import { useAuth } from "@/providers/AuthProvider";
@@ -14,27 +13,20 @@ import {
   BOOKINGS_CACHE_KEY_PREFIX,
   LEGACY_BOOKINGS_CACHE_KEY_PREFIX,
 } from "@/lib/cache-keys";
+import {
+  fetchAllBookingsPages,
+  type CustomerBookingsSortBy,
+  type CustomerBookingsSortDir,
+} from "@/features/bookings/fetchAllBookingsPages";
 
 type BookingsStatus = "upcoming" | "past" | "cancelled";
 
-export type MeBookingsSortBy = "scheduled_at" | "created_at";
-export type MeBookingsSortDir = "asc" | "desc";
+export type MeBookingsSortBy = CustomerBookingsSortBy;
+export type MeBookingsSortDir = CustomerBookingsSortDir;
 
 export interface UseBookingsOptions {
   sortBy?: MeBookingsSortBy;
   sortDir?: MeBookingsSortDir;
-}
-
-interface BookingsResponse {
-  data?: Booking[];
-  items?: Booking[];
-}
-
-function extractBookingsList(body: BookingsResponse | Booking[] | null | undefined): Booking[] {
-  if (body == null) return [];
-  if (Array.isArray(body)) return body;
-  const items = body.items ?? body.data;
-  return Array.isArray(items) ? items : [];
 }
 
 export function useBookings(status?: BookingsStatus, options?: UseBookingsOptions) {
@@ -91,18 +83,8 @@ export function useBookings(status?: BookingsStatus, options?: UseBookingsOption
         }
       }
 
-      const params = new URLSearchParams();
-      if (status) params.set("status", status);
-      params.set("sort_by", sortBy);
-      params.set("sort_dir", sortDir);
-      // Default API limit is 20; tabs need enough rows for active customers.
-      params.set("limit", "100");
-      params.set("page", "1");
-
       try {
-        const res = await api.get<BookingsResponse | Booking[]>(
-          `/api/me/bookings?${params.toString()}`,
-        );
+        const res = await fetchAllBookingsPages({ status, sortBy, sortDir });
         if (gen !== requestGeneration.current) return;
 
         if (res.error) {
@@ -123,7 +105,7 @@ export function useBookings(status?: BookingsStatus, options?: UseBookingsOption
             setData(null);
           }
         } else {
-          const list = extractBookingsList(res.data as BookingsResponse | Booking[] | undefined);
+          const list = res.data ?? [];
           setData(list);
           try {
             await AsyncStorage.setItem(cacheKey, JSON.stringify(list));

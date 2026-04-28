@@ -91,6 +91,10 @@ interface PlatformSettings {
     sms_from: string;
     /** Stored in platform_secrets.twilio_whatsapp_from */
     whatsapp_from: string;
+    /** In public settings JSON; mirrors Supabase Phone → Twilio (Message / Content SID for SMS / WhatsApp). */
+    message_service_sid: string;
+    /** Optional; for WhatsApp-only / Content API (Supabase dashboard). */
+    content_sid: string;
     enabled: boolean;
   };
   mapbox: {
@@ -171,6 +175,35 @@ interface PlatformSettings {
         enabled: boolean;
       };
     };
+  };
+  /**
+   * Supabase Auth → Email (and related) policy, stored for admin SPA visibility and
+   * future app consumption. The enforced rules remain in the Supabase project: keep
+   * these values in sync with the dashboard.
+   */
+  auth: {
+    email_provider_enabled: boolean;
+    secure_email_change: boolean;
+    secure_password_change: boolean;
+    require_current_password: boolean;
+    prevent_leaked_passwords: boolean;
+    minimum_password_length: number;
+    /** Mirrors Supabase “Password requirements” presets (character classes). */
+    password_requirements: "none" | "letters_and_digits" | "lowercase_uppercase_number";
+    email_otp_expiration_seconds: number;
+    email_otp_length: number;
+    /** Supabase: Authentication → Phone → Enable phone provider. */
+    phone_provider_enabled: boolean;
+    /** Supabase: “Enable phone confirmations” before sign-in. */
+    phone_confirmations_enabled: boolean;
+    /** SMS / WhatsApp backend in Supabase; usually twilio. */
+    sms_provider: "twilio";
+    /** Matches Supabase “SMS OTP Expiry” (seconds). */
+    sms_otp_expiration_seconds: number;
+    /** Matches Supabase “SMS OTP Length” (digits). */
+    sms_otp_length: number;
+    /** Matches Supabase SMS template, e.g. <code v-pre>{{</code> .Code <code v-pre>}}</code> */
+    sms_message_template: string;
   };
 }
 
@@ -278,6 +311,8 @@ function getDefaultPlatformSettings(): PlatformSettings {
         auth_token: "",
         sms_from: process.env.TWILIO_SMS_FROM || "",
         whatsapp_from: process.env.TWILIO_WHATSAPP_FROM || "",
+        message_service_sid: "",
+        content_sid: "",
         enabled: false,
       },
       apps: (() => {
@@ -305,6 +340,23 @@ function getDefaultPlatformSettings(): PlatformSettings {
           },
         };
       })(),
+      auth: {
+        email_provider_enabled: true,
+        secure_email_change: true,
+        secure_password_change: true,
+        require_current_password: true,
+        prevent_leaked_passwords: true,
+        minimum_password_length: 8,
+        password_requirements: "none",
+        email_otp_expiration_seconds: 3600,
+        email_otp_length: 6,
+        phone_provider_enabled: true,
+        phone_confirmations_enabled: true,
+        sms_provider: "twilio",
+        sms_otp_expiration_seconds: 120,
+        sms_otp_length: 6,
+        sms_message_template: "Your OTP code is {{ .Code }}",
+      },
     };
 }
 
@@ -335,6 +387,92 @@ function mergeSecretField(
   const t = typeof incoming === "string" ? incoming.trim() : "";
   if (!t || t === "***") return (existing && String(existing).trim()) || null;
   return t;
+}
+
+const AUTH_PASSWORD_PRESETS: PlatformSettings["auth"]["password_requirements"][] = [
+  "none",
+  "letters_and_digits",
+  "lowercase_uppercase_number",
+];
+
+function normalizeAuthFromPatch(
+  defaults: PlatformSettings["auth"],
+  existing: unknown,
+  patch: unknown
+): PlatformSettings["auth"] {
+  const e = (existing && typeof existing === "object" ? existing : {}) as Record<string, unknown>;
+  const p = (patch && typeof patch === "object" ? patch : {}) as Record<string, unknown>;
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const b = (v: unknown) => (typeof v === "boolean" ? v : null);
+  const s = (v: unknown) => (typeof v === "string" ? v : null);
+  const pr = s(p.password_requirements);
+  const prE = s(e.password_requirements);
+  const presetP =
+    pr && AUTH_PASSWORD_PRESETS.includes(pr as PlatformSettings["auth"]["password_requirements"])
+      ? (pr as PlatformSettings["auth"]["password_requirements"])
+      : undefined;
+  const presetE =
+    prE && AUTH_PASSWORD_PRESETS.includes(prE as PlatformSettings["auth"]["password_requirements"])
+      ? (prE as PlatformSettings["auth"]["password_requirements"])
+      : undefined;
+
+  return {
+    email_provider_enabled: b(p.email_provider_enabled) ?? b(e.email_provider_enabled) ?? defaults.email_provider_enabled,
+    secure_email_change: b(p.secure_email_change) ?? b(e.secure_email_change) ?? defaults.secure_email_change,
+    secure_password_change: b(p.secure_password_change) ?? b(e.secure_password_change) ?? defaults.secure_password_change,
+    require_current_password: b(p.require_current_password) ?? b(e.require_current_password) ?? defaults.require_current_password,
+    prevent_leaked_passwords: b(p.prevent_leaked_passwords) ?? b(e.prevent_leaked_passwords) ?? defaults.prevent_leaked_passwords,
+    minimum_password_length:
+      n(p.minimum_password_length) ?? n(e.minimum_password_length) ?? defaults.minimum_password_length,
+    password_requirements: presetP ?? presetE ?? defaults.password_requirements,
+    email_otp_expiration_seconds:
+      n(p.email_otp_expiration_seconds) ?? n(e.email_otp_expiration_seconds) ?? defaults.email_otp_expiration_seconds,
+    email_otp_length: n(p.email_otp_length) ?? n(e.email_otp_length) ?? defaults.email_otp_length,
+    phone_provider_enabled: b(p.phone_provider_enabled) ?? b(e.phone_provider_enabled) ?? defaults.phone_provider_enabled,
+    phone_confirmations_enabled:
+      b(p.phone_confirmations_enabled) ?? b(e.phone_confirmations_enabled) ?? defaults.phone_confirmations_enabled,
+    sms_provider:
+      (s(p.sms_provider) === "twilio" ? "twilio" : null) ??
+      (s(e.sms_provider) === "twilio" ? "twilio" : null) ??
+      defaults.sms_provider,
+    sms_otp_expiration_seconds:
+      n(p.sms_otp_expiration_seconds) ?? n(e.sms_otp_expiration_seconds) ?? defaults.sms_otp_expiration_seconds,
+    sms_otp_length: n(p.sms_otp_length) ?? n(e.sms_otp_length) ?? defaults.sms_otp_length,
+    sms_message_template:
+      typeof p.sms_message_template === "string" && p.sms_message_template.trim()
+        ? p.sms_message_template.trim()
+        : typeof e.sms_message_template === "string" && (e.sms_message_template as string).trim()
+          ? (e.sms_message_template as string).trim()
+          : defaults.sms_message_template,
+  };
+}
+
+function validateAuthSettings(a: PlatformSettings["auth"]): string | null {
+  if (a.minimum_password_length < 6 || a.minimum_password_length > 128) {
+    return "Auth: minimum password length must be between 6 and 128";
+  }
+  if (a.email_otp_length < 4 || a.email_otp_length > 10) {
+    return "Auth: email OTP length must be between 4 and 10";
+  }
+  if (a.email_otp_expiration_seconds < 30 || a.email_otp_expiration_seconds > 7 * 24 * 60 * 60) {
+    return "Auth: email OTP expiration must be between 30 seconds and 7 days";
+  }
+  if (a.sms_otp_length < 4 || a.sms_otp_length > 10) {
+    return "Auth: SMS OTP length must be between 4 and 10";
+  }
+  if (a.sms_otp_expiration_seconds < 30 || a.sms_otp_expiration_seconds > 24 * 60 * 60) {
+    return "Auth: SMS OTP expiration must be between 30 seconds and 24 hours";
+  }
+  if (a.sms_message_template && a.sms_message_template.length > 2000) {
+    return "Auth: SMS message template is too long";
+  }
+  if (a.sms_provider !== "twilio") {
+    return "Auth: SMS provider must be twilio (other providers not supported in admin yet)";
+  }
+  if (!AUTH_PASSWORD_PRESETS.includes(a.password_requirements)) {
+    return "Auth: invalid password character requirements";
+  }
+  return null;
 }
 
 /**
@@ -368,6 +506,13 @@ export async function GET(request: NextRequest) {
       const settingsRow = scopedSettings.data as SettingsRow;
       if (settingsRow?.settings) {
         const merged = { ...settingsRow.settings } as unknown as PlatformSettings;
+        merged.auth = {
+          ...defaultSettings.auth,
+          ...((merged as { auth?: Partial<PlatformSettings["auth"]> }).auth ?? {}),
+        };
+        if (!AUTH_PASSWORD_PRESETS.includes(merged.auth.password_requirements)) {
+          merged.auth = { ...merged.auth, password_requirements: defaultSettings.auth.password_requirements };
+        }
         merged.onesignal = {
           ...defaultSettings.onesignal,
           ...(merged.onesignal ?? ({} as PlatformSettings["onesignal"])),
@@ -396,7 +541,10 @@ export async function GET(request: NextRequest) {
           if (secretRow?.google_calendar_client_secret) merged.calendar_integrations.google.client_secret = "***";
           if (secretRow?.outlook_client_id) merged.calendar_integrations.outlook.client_id = "***";
           if (secretRow?.outlook_client_secret) merged.calendar_integrations.outlook.client_secret = "***";
-          if (!merged.twilio) merged.twilio = { account_sid: "", auth_token: "", sms_from: "", whatsapp_from: "", enabled: false };
+          merged.twilio = {
+            ...defaultSettings.twilio,
+            ...(merged.twilio ?? ({} as PlatformSettings["twilio"])),
+          };
           if (secretRow?.twilio_account_sid) merged.twilio.account_sid = "***";
           if (secretRow?.twilio_auth_token) merged.twilio.auth_token = "***";
           if (secretRow?.twilio_sms_from) merged.twilio.sms_from = secretRow.twilio_sms_from as string;
@@ -464,11 +612,21 @@ export async function PATCH(request: NextRequest) {
       scopeTenantId ?? currentTenantId
     );
     const existing = (existingRow as SettingsRow | null)?.settings ?? globalFallbackRow?.settings ?? {};
-    const settings: PlatformSettings = { ...defaults, ...existing, ...body } as PlatformSettings;
+    const existingRecord = existing as Record<string, unknown>;
+    const mergedAuth = normalizeAuthFromPatch(
+      defaults.auth,
+      existingRecord.auth,
+      (body as Partial<PlatformSettings>).auth
+    );
+    const authError = validateAuthSettings(mergedAuth);
+    if (authError) {
+      return errorResponse(authError, "VALIDATION_ERROR", 400);
+    }
+    const settings: PlatformSettings = { ...defaults, ...existing, ...body, auth: mergedAuth } as PlatformSettings;
 
     // Validate required top-level sections after merge
-    if (!settings.branding || !settings.localization || !settings.payouts || !settings.notifications || !settings.payment_types || !settings.paystack || !settings.onesignal || !settings.mapbox || !settings.amplitude || !settings.google || !settings.calendar_integrations || !settings.apps || !settings.features || !settings.social_auth) {
-      return errorResponse("Invalid settings structure: missing required section (branding, localization, payouts, notifications, payment_types, paystack, onesignal, mapbox, amplitude, google, calendar_integrations, apps, features, social_auth)", "VALIDATION_ERROR", 400);
+    if (!settings.branding || !settings.localization || !settings.payouts || !settings.notifications || !settings.payment_types || !settings.paystack || !settings.onesignal || !settings.mapbox || !settings.amplitude || !settings.google || !settings.calendar_integrations || !settings.apps || !settings.features || !settings.social_auth || !settings.auth) {
+      return errorResponse("Invalid settings structure: missing required section (branding, localization, payouts, notifications, payment_types, paystack, onesignal, mapbox, amplitude, google, calendar_integrations, apps, features, social_auth, auth)", "VALIDATION_ERROR", 400);
     }
 
     // Store sensitive secrets in platform_secrets (NOT in public platform_settings JSON)

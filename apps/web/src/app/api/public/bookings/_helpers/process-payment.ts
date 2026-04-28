@@ -26,6 +26,7 @@ import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
 
 export interface PaymentResult {
   paymentUrl: string | null;
+  paymentReference?: string | null;
 }
 
 /** Fields read from the booking row after `create_booking_with_locking` (and similar). */
@@ -215,33 +216,6 @@ export async function processPayment(
           .eq("id", booking.id);
 
         amountToCollect = Math.max(0, amountToCollect - walletAmountApplied);
-
-        // For split wallet+card payments, record the wallet portion in finance_transactions immediately.
-        // The Paystack/card portion will be recorded by the webhook after payment succeeds.
-        // This ensures the full collected amount is always visible in the ledger.
-        if (amountToCollect > 0 && walletAmountApplied > 0) {
-          try {
-            const splitWalletTenantId = await resolveTenantIdForFinanceLedger(supabase, {
-              tenant_id: booking.tenant_id ?? flagTenantId ?? null,
-              provider_id: draft.provider_id,
-            });
-            await (supabase.from("finance_transactions") as any).insert({
-              booking_id: booking.id,
-              provider_id: draft.provider_id,
-              tenant_id: splitWalletTenantId,
-              transaction_type: "wallet_payment",
-              amount: walletAmountApplied,
-              fees: 0,
-              commission: 0,
-              net: walletAmountApplied,
-              description: `Wallet contribution for booking ${booking.booking_number} (split payment — card covers remainder)`,
-              created_at: new Date().toISOString(),
-            });
-          } catch (ledgerErr: any) {
-            // Non-fatal: log and continue — the booking and wallet debit already succeeded
-            console.error("[wallet-split-ledger] failed to insert wallet_payment entry:", ledgerErr?.message || ledgerErr);
-          }
-        }
       }
     } catch (e: any) {
       return handleApiError(e, e?.message || "Wallet payment failed", "WALLET_ERROR", 400);
@@ -315,11 +289,12 @@ export async function processPayment(
       }
     }
 
-    return { paymentUrl: null };
+    return { paymentUrl: null, paymentReference: null };
   }
 
   // ── Card payment ─────────────────────────────────────────────────────────
   let paymentUrl: string | null = null;
+  let paymentReference: string | null = null;
 
   if (paymentMethod === "card") {
     const paystackEnabled = await isPaystackEnabledForTenant(flagTenantId);
@@ -349,8 +324,15 @@ export async function processPayment(
     }
 
     const reference = generateTransactionReference("booking", booking.id);
+    paymentReference = reference;
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-    const callbackUrl = `${baseUrl}/checkout/success?booking_id=${encodeURIComponent(booking.id)}&booking_number=${encodeURIComponent(booking.booking_number || "")}`;
+    const webSuccessUrl = `${baseUrl}/checkout/success?booking_id=${encodeURIComponent(booking.id)}&booking_number=${encodeURIComponent(booking.booking_number || "")}`;
+    const clientCb = validatedDraft.paystack_callback_url?.trim();
+    const callbackUrl =
+      clientCb &&
+      (clientCb.startsWith("customer://") || clientCb.startsWith("exp://") || clientCb.startsWith("https://"))
+        ? clientCb
+        : webSuccessUrl;
 
     const savedPaymentMethodId = validatedDraft.payment_method_id ?? null;
     const saveCard = validatedDraft.save_card === true;
@@ -441,16 +423,18 @@ export async function processPayment(
       // not. Wrap the whole tail in try/catch and log loudly.
       try {
         const chargeData = chargeResult.data as { id?: number; reference?: string; amount?: number };
-        const paystackTxId =
-          chargeData?.id !== undefined && chargeData?.id !== null
-            ? String(chargeData.id)
-            : null;
-        if (paystackTxId) {
+        const paystackPaymentProviderId =
+          typeof chargeData?.reference === "string" && chargeData.reference.trim()
+            ? chargeData.reference.trim()
+            : chargeData?.id !== undefined && chargeData?.id !== null
+              ? String(chargeData.id)
+              : null;
+        if (paystackPaymentProviderId) {
           const { data: existingBp } = await supabaseAdmin
             .from("booking_payments")
             .select("id")
             .eq("payment_provider", "paystack")
-            .eq("payment_provider_id", paystackTxId)
+            .eq("payment_provider_id", paystackPaymentProviderId)
             .maybeSingle();
           if (!existingBp) {
             const amountMajor =
@@ -462,12 +446,13 @@ export async function processPayment(
               amount: amountMajor,
               payment_method: "card",
               payment_provider: "paystack",
-              payment_provider_id: paystackTxId,
+              payment_provider_id: paystackPaymentProviderId,
               status: "completed",
               notes: `Saved card charge. Ref: ${chargeData.reference ?? ""}`,
               payment_provider_data: {
                 source: "process_payment_saved_card",
                 reference: chargeData.reference,
+                paystack_transaction_id: chargeData.id,
               },
             });
           }
@@ -664,7 +649,7 @@ export async function processPayment(
     }
   }
 
-  return { paymentUrl };
+  return { paymentUrl, paymentReference: paymentUrl ? paymentReference : null };
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────

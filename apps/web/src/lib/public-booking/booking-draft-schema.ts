@@ -137,6 +137,25 @@ export const bookingDraftSchema = z.object({
       ),
     )
     .optional(),
+  /**
+   * Mobile (Expo) return URL for Paystack hosted card checkout — closes
+   * `openAuthSessionAsync` when Paystack redirects here.
+   */
+  paystack_callback_url: z
+    .string()
+    .trim()
+    .optional()
+    .refine(
+      (v) => {
+        if (!v) return true;
+        return (
+          v.startsWith("customer://") ||
+          v.startsWith("exp://") ||
+          v.startsWith("https://")
+        );
+      },
+      { message: "Invalid paystack_callback_url" },
+    ),
 });
 
 export type PublicBookingValidatedBody = z.infer<typeof bookingDraftSchema>;

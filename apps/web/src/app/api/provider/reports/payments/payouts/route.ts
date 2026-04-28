@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get("to")
       ? endOfDay(new Date(searchParams.get("to")!))
       : endOfDay(new Date());
+    const locationId = searchParams.get("location_id") || undefined;
 
     // Use provider_earnings only (consistent with dashboard revenue)
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
@@ -52,18 +53,24 @@ export async function GET(request: NextRequest) {
       providerId,
       fromDate,
       toDate,
-      null,
+      locationId ?? null,
       dashOpts
     );
 
     // Get bookings to match with finance transactions
-    const { data: bookings } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from('bookings')
       .select('id, scheduled_at, status, total_amount')
       .eq('provider_id', providerId)
       .gte('scheduled_at', fromDate.toISOString())
       .lte('scheduled_at', toDate.toISOString())
       .in('status', ['confirmed', 'completed']);
+
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: bookings } = await bookingsQuery;
 
     // Get service_fee and refund data from finance_transactions (ledger-consistent)
     const bookingIds = bookings?.map((b) => b.id) || [];
@@ -145,6 +152,7 @@ export async function GET(request: NextRequest) {
     const platformFeeRate = totalGrossAmount > 0 ? totalPlatformFees / totalGrossAmount : 0;
 
     return successResponse({
+      reportBasis: "platform-held provider earnings from finance_transactions; not gross sales or cash-register takings",
       totalPayouts,
       totalPayoutAmount,
       totalGrossAmount,

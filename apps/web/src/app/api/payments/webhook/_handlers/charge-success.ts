@@ -32,6 +32,7 @@ import {
 } from "@/lib/orders/product-order-lifecycle";
 import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
+import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -133,7 +134,7 @@ export async function handleChargeFailed(
 
 // ─── charge.success internals ────────────────────────────────────────────────
 
-async function processSuccessfulPayment(data: PaystackChargeData, supabase: SupabaseClient) {
+export async function processSuccessfulPayment(data: PaystackChargeData, supabase: SupabaseClient) {
   const { reference, metadata, amount, fees, customer, authorization } = data;
 
   if (!reference || !metadata?.booking_id) {
@@ -164,7 +165,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
       return;
     }
     if (metadata?.membership_order_id) {
-      await handleMembershipOrderSuccess({ reference, metadata }, supabase);
+      await handleMembershipOrderSuccess({ reference, metadata, amount, fees }, supabase);
       return;
     }
     if (metadata?.provider_subscription_order_id) {
@@ -247,8 +248,15 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     provider_id: bookingData.provider_id as string | null | undefined,
   });
 
-  if (bookingData.payment_status === "paid" && bookingData.payment_reference === reference) {
-    console.log(`Payment ${reference} already processed`);
+  const { data: alreadySettledPaymentTx } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("provider", "paystack")
+    .eq("reference", reference)
+    .maybeSingle();
+
+  if (alreadySettledPaymentTx) {
+    console.log(`[charge-success] Paystack ref ${reference} already settled — skipping (idempotent retry).`);
     try {
       await tryCreateCustomerRecurringFromPaystackChargeMetadata(
         supabase,
@@ -355,7 +363,6 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
       payment_reference: reference,
       payment_date: new Date().toISOString(),
       payment_provider: "paystack",
-      status: "confirmed",
     })
     .eq("id", metadata.booking_id);
 
@@ -363,6 +370,11 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     console.error("Error updating booking payment status:", updateError);
     throw updateError;
   }
+
+  await syncBookingAfterPaystackSuccess(supabase, metadata.booking_id, {
+    paymentReference: reference,
+    paymentProvider: "paystack",
+  });
 
   // Gift cards: capture reserved redemption
   try {
@@ -470,6 +482,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
   const { data: existingPaymentTxForRef } = await supabase
     .from("payment_transactions")
     .select("id")
+    .eq("provider", "paystack")
     .eq("reference", reference)
     .maybeSingle();
 
@@ -490,7 +503,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
   const isSecondCharge = !!existingFinancePaymentRow;
 
   // Now insert the payment_transactions row for this charge (after idempotency checks).
-  await supabase.from("payment_transactions").insert({
+  const { error: paymentTxInsertError } = await supabase.from("payment_transactions").insert({
     booking_id: metadata.booking_id,
     reference,
     amount: amountInCurrency,
@@ -505,6 +518,13 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     },
     created_at: webhookNow,
   });
+  if (paymentTxInsertError) {
+    if (paymentTxInsertError.code === "23505") {
+      console.log(`[charge-success] Paystack ref ${reference} was settled concurrently — skipping duplicate ledger writes.`);
+      return;
+    }
+    throw paymentTxInsertError;
+  }
 
   await supabase
     .from("payments")
@@ -516,7 +536,8 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
       payment_provider_response: data,
     })
     .eq("booking_id", metadata.booking_id)
-    .eq("payment_provider", "paystack");
+    .eq("payment_provider", "paystack")
+    .eq("payment_provider_transaction_id", reference);
 
   if (!isSecondCharge) {
   await supabase.from("finance_transactions").insert({
@@ -1985,7 +2006,7 @@ async function handleGiftCardOrderFailed(
 // ─── Membership Order ────────────────────────────────────────────────────────
 
 async function handleMembershipOrderSuccess(
-  payload: { reference: string; metadata: any },
+  payload: { reference: string; metadata: any; amount?: number; fees?: number },
   supabase: SupabaseClient,
 ) {
   const { metadata } = payload;
@@ -2020,6 +2041,15 @@ async function handleMembershipOrderSuccess(
     return;
   }
   const providerId = planProviderId;
+  const grossAmount =
+    typeof payload.amount === "number"
+      ? convertFromSmallestUnit(payload.amount)
+      : Number(orderData.amount || 0);
+  const feeAmount =
+    typeof payload.fees === "number"
+      ? convertFromSmallestUnit(payload.fees)
+      : 0;
+  const netAmount = Math.max(0, grossAmount - feeAmount);
 
   const membershipFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: null,
@@ -2069,9 +2099,9 @@ async function handleMembershipOrderSuccess(
   await supabase.from("payment_transactions").insert({
     booking_id: null,
     reference: payload.reference,
-    amount: Number(orderData.amount || 0),
-    fees: 0,
-    net_amount: Number(orderData.amount || 0),
+    amount: grossAmount,
+    fees: feeAmount,
+    net_amount: netAmount,
     status: "success",
     provider: "paystack",
     transaction_type: "charge",
@@ -2089,8 +2119,8 @@ async function handleMembershipOrderSuccess(
     provider_id: providerId,
     tenant_id: membershipFinanceTenantId,
     transaction_type: "membership_sale",
-    amount: Number(orderData.amount || 0),
-    fees: 0,
+    amount: grossAmount,
+    fees: feeAmount,
     commission: 0,
     net: 0,
     description: `Membership sale (gross)`,
@@ -2103,10 +2133,10 @@ async function handleMembershipOrderSuccess(
       provider_id: providerId,
       tenant_id: membershipFinanceTenantId,
       transaction_type: "provider_earnings",
-      amount: Number(orderData.amount || 0),
-      fees: 0,
+      amount: grossAmount,
+      fees: feeAmount,
       commission: 0,
-      net: Number(orderData.amount || 0),
+      net: netAmount,
       description: `Provider earnings from membership sale`,
       created_at: new Date().toISOString(),
     });
@@ -2244,7 +2274,13 @@ async function handleProviderSubscriptionOrderFailed(
 ) {
   const orderId = payload.metadata.provider_subscription_order_id as string;
   await supabase.from("provider_subscription_orders")
-    .update({ status: "failed", updated_at: new Date().toISOString() })
+    .update({
+      status: "failed",
+      paystack_reference: payload.reference,
+      failed_at: new Date().toISOString(),
+      failure_reason: payload.message || "Payment failed",
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", orderId);
 }
 
@@ -2374,6 +2410,7 @@ async function handleCustomerCardVerificationSuccess(
   const { data: existingTx } = await supabase
     .from("payment_transactions")
     .select("id")
+    .eq("provider", "paystack")
     .eq("reference", reference)
     .maybeSingle();
   if (existingTx) {
@@ -2420,7 +2457,7 @@ async function handleCustomerCardVerificationSuccess(
     );
   }
 
-  await supabase.from("payment_transactions").insert({
+  const { error: paymentTxInsertError } = await supabase.from("payment_transactions").insert({
     booking_id: null,
     reference,
     amount: amountInCurrency,
@@ -2436,6 +2473,13 @@ async function handleCustomerCardVerificationSuccess(
     },
     created_at: new Date().toISOString(),
   });
+  if (paymentTxInsertError) {
+    if (paymentTxInsertError.code === "23505") {
+      console.log(`[card_verification] Paystack ref ${reference} was recorded concurrently`);
+      return;
+    }
+    throw paymentTxInsertError;
+  }
 }
 
 // ─── Subscription Authorization ──────────────────────────────────────────────
@@ -2625,7 +2669,6 @@ async function handleBookingRemainingSuccess(
 
   const amountInCurrency = convertFromSmallestUnit(amount || 0);
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
-  const netAmount = amountInCurrency - feesInCurrency;
 
   const { error: bookingPaymentInsertError } = await supabase
     .from("booking_payments")
@@ -2655,15 +2698,32 @@ async function handleBookingRemainingSuccess(
     tenantId: bookingData.tenant_id ?? payRemainingFinanceTenantId ?? null,
     providerId,
   });
-  const platformCommission = commissionRate > 0 ? percentOf(netAmount, commissionRate) : 0;
-  const providerEarnings = subtractMoney(netAmount, platformCommission);
+  const tipAmount = Number(metadata?.tip_amount ?? bookingData.tip_amount ?? 0);
+  const taxAmount = Number(metadata?.tax_amount ?? bookingData.tax_amount ?? 0);
+  const travelFee = Number(metadata?.travel_fee ?? bookingData.travel_fee ?? 0);
+  const serviceFeeAmount = Number(
+    metadata?.service_fee_amount ??
+      bookingData.service_fee_amount ??
+      bookingData.platform_service_fee ??
+      0,
+  );
+  const bookingTotal = Number(bookingData.total_amount || 0);
+  const fullCommissionBase = bookingTotal > 0
+    ? bookingTotal - tipAmount - taxAmount - travelFee - serviceFeeAmount
+    : amountInCurrency;
+  const netRevenueRatio = bookingTotal > 0
+    ? Math.max(0, fullCommissionBase / bookingTotal)
+    : 1;
+  const commissionBase = Math.max(0, Math.round(amountInCurrency * netRevenueRatio * 100) / 100);
+  const platformCommission = commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
+  const providerEarnings = subtractMoney(commissionBase, platformCommission);
 
-  await supabase.from("payment_transactions").insert({
+  const { error: paymentTxInsertError } = await supabase.from("payment_transactions").insert({
     booking_id: bookingId,
     reference,
     amount: amountInCurrency,
     fees: feesInCurrency,
-    net_amount: netAmount,
+    net_amount: amountInCurrency - feesInCurrency,
     status: "success",
     provider: "paystack",
     transaction_type: "charge",
@@ -2673,13 +2733,20 @@ async function handleBookingRemainingSuccess(
     },
     created_at: new Date().toISOString(),
   });
+  if (paymentTxInsertError) {
+    if (paymentTxInsertError.code === "23505") {
+      console.log(`Pay-remaining payment ${reference} was settled concurrently`);
+      return;
+    }
+    throw paymentTxInsertError;
+  }
 
   await supabase.from("finance_transactions").insert({
     booking_id: bookingId,
     provider_id: providerId,
     tenant_id: payRemainingFinanceTenantId,
     transaction_type: "payment",
-    amount: netAmount,
+    amount: commissionBase,
     fees: feesInCurrency,
     commission: platformCommission,
     net: platformCommission,
@@ -2699,16 +2766,10 @@ async function handleBookingRemainingSuccess(
     created_at: new Date().toISOString(),
   });
 
-  await supabase
-    .from("bookings")
-    .update({
-      status: "confirmed",
-      payment_date: new Date().toISOString(),
-      payment_provider: "paystack",
-      payment_reference: reference,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", bookingId);
+  await syncBookingAfterPaystackSuccess(supabase, bookingId, {
+    paymentReference: reference,
+    paymentProvider: "paystack",
+  });
 
   const payRemainRegion = payRemainingFinanceTenantId
     ? await getTenantRegionConfig(payRemainingFinanceTenantId)
@@ -2818,22 +2879,7 @@ async function handleAdditionalChargeSuccess(
   const platformCommission = commissionRate > 0 ? percentOf(netAmount, commissionRate) : 0;
   const providerEarnings = subtractMoney(netAmount, platformCommission);
 
-  await supabase.from("additional_charges")
-    .update({
-      status: "paid",
-      paid_at: new Date().toISOString(),
-    })
-    .eq("id", chargeId)
-    .eq("booking_id", bookingId);
-
-  await supabase.from("bookings")
-    .update({
-      total_amount: Number(bookingData.total_amount ?? 0) + Number((charge as { amount?: number }).amount ?? 0),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", bookingId);
-
-  await supabase.from("payment_transactions").insert({
+  const { error: paymentTxInsertError } = await supabase.from("payment_transactions").insert({
     booking_id: bookingId,
     reference,
     amount: amountInCurrency,
@@ -2848,6 +2894,28 @@ async function handleAdditionalChargeSuccess(
     },
     created_at: new Date().toISOString(),
   });
+  if (paymentTxInsertError) {
+    if (paymentTxInsertError.code === "23505") {
+      console.log(`Additional charge payment ${reference} was settled concurrently`);
+      return;
+    }
+    throw paymentTxInsertError;
+  }
+
+  await supabase.from("additional_charges")
+    .update({
+      status: "paid",
+      paid_at: new Date().toISOString(),
+    })
+    .eq("id", chargeId)
+    .eq("booking_id", bookingId);
+
+  await supabase.from("bookings")
+    .update({
+      total_amount: Number(bookingData.total_amount ?? 0) + Number((charge as { amount?: number }).amount ?? 0),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", bookingId);
 
   await supabase.from("finance_transactions").insert({
     booking_id: bookingId,

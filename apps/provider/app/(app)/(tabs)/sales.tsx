@@ -1317,8 +1317,7 @@ export default function SalesScreen() {
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ fontWeight: "600", fontSize: 15, color: "#1e1b4b" }}>Grow with sponsored listings</Text>
             <Text style={{ fontSize: 12, color: "#4338ca", marginTop: 4, lineHeight: 16 }}>
-              Buy ad packs or set a budget in Ads settings. Superadmin sets pricing in Admin → Control Plane → Ads; your
-              slots appear on the customer app and web home when your campaign is active.
+              Buy a boost, reach more high-intent customers, and track the views, clicks, and bookings your ads generate.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color="#4338ca" />

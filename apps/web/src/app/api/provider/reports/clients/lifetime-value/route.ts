@@ -40,12 +40,17 @@ export async function GET(request: NextRequest) {
         404
       );
     }
+    const locationId = request.nextUrl.searchParams.get("location_id") || undefined;
     // Get all bookings
-    const { data: bookings, error: bookingsError } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, customer_id, total_amount, scheduled_at, status")
       .eq("provider_id", providerId)
       .in("status", ["confirmed", "completed"]);
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+    const { data: bookings, error: bookingsError } = await bookingsQuery;
 
     if (bookingsError) {
       return handleApiError(

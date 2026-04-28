@@ -21,6 +21,7 @@ const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES];
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_MEDIA_ITEMS = 5;
 
 const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov"];
 
@@ -208,6 +209,10 @@ export function ExplorePostForm({
   }, []);
 
   const uploadFile = async (file: File) => {
+    if (mediaPaths.length >= MAX_MEDIA_ITEMS) {
+      toast.error(`You can add up to ${MAX_MEDIA_ITEMS} media files.`);
+      return;
+    }
     if (!ALLOWED_TYPES.includes(file.type)) {
       toast.error("Invalid file type");
       return;
@@ -270,8 +275,16 @@ export function ExplorePostForm({
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files?.length) return;
+    const remainingSlots = MAX_MEDIA_ITEMS - mediaPaths.length;
+    if (remainingSlots <= 0) {
+      toast.error(`You can add up to ${MAX_MEDIA_ITEMS} media files.`);
+      return;
+    }
+    if (files.length > remainingSlots) {
+      toast.error(`Only ${remainingSlots} more media file${remainingSlots === 1 ? "" : "s"} can be added.`);
+    }
 
-    for (let i = 0; i < files.length; i++) {
+    for (let i = 0; i < Math.min(files.length, remainingSlots); i++) {
       const file = files[i];
       if (!ALLOWED_TYPES.includes(file.type)) {
         toast.error(`${file.name}: Invalid type. Use JPEG, PNG, WebP, MP4, or WebM.`);
@@ -306,7 +319,7 @@ export function ExplorePostForm({
           caption: caption || null,
           media_urls: mediaPaths,
           tags,
-          primary_category_slug: primaryCategorySlug || undefined,
+          primary_category_slug: primaryCategorySlug,
           offering_id: offeringId || null,
           status: post.status,
         });
@@ -316,7 +329,7 @@ export function ExplorePostForm({
           caption: caption || null,
           media_urls: mediaPaths,
           tags,
-          primary_category_slug: primaryCategorySlug || undefined,
+          primary_category_slug: primaryCategorySlug,
           offering_id: offeringId || undefined,
           status: "published",
         });

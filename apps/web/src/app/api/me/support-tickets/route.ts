@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
+import { successResponse, handleApiError, requireAuthInApi, getOffsetPaginationParams } from "@/lib/supabase/api-helpers";
 import {
   notifySupportTicketCreated,
   notifySupportStaffInboxActivity,
@@ -133,8 +133,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 50, maxLimit: 100 });
 
     let query = supabase
       .from("support_tickets")
@@ -146,14 +145,8 @@ export async function GET(request: NextRequest) {
         priority,
         category,
         created_at,
-        updated_at,
-        support_ticket_messages (
-          id,
-          message,
-          is_internal,
-          created_at
-        )
-      `)
+        updated_at
+      `, { count: "exact" })
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -162,7 +155,7 @@ export async function GET(request: NextRequest) {
       query = query.eq("status", status);
     }
 
-    const { data: tickets, error } = await query;
+    const { data: tickets, error, count } = await query;
 
     if (error) {
       throw error;
@@ -170,7 +163,12 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       tickets: tickets || [],
-      total: tickets?.length || 0,
+      total: count ?? 0,
+      pagination: {
+        limit,
+        offset,
+        has_more: offset + limit < (count ?? 0),
+      },
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch support tickets");

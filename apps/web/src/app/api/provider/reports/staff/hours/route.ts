@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
       ? new Date(searchParams.get("to")!)
       : new Date();
     const staffId = searchParams.get("staff_id");
+    const locationId = searchParams.get("location_id") || undefined;
 
     // Get staff members
     let staffQuery = supabaseAdmin
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get bookings with actual start/end times
-    const bookingsQuery = supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select(
         `
@@ -93,6 +94,10 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString());
+
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
 
     const { data: bookings, error: bookingsError } = await bookingsQuery;
 

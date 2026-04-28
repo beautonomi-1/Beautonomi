@@ -82,6 +82,40 @@ values
   ((select id from tenants where slug = 'uk'), 'www.beautonomi.co.uk', false, true);
 ```
 
+## Admin Subdomain Isolation
+
+`admin.beautonomi.com` is an internal admin hostname, not a public marketplace
+domain. It should stay attached to the same Vercel `apps/web` project and route
+to the existing `/admin` app tree through `src/proxy.ts`.
+
+Production requirements:
+
+1. Set `ADMIN_HOST=admin.beautonomi.com` in the Vercel production environment.
+2. Do not configure a Vercel domain redirect for `admin.beautonomi.com`; the
+   browser must remain on the admin hostname for hostname-scoped firewall rules.
+3. `/admin` page routes on tenant/public hosts redirect to
+   `https://admin.beautonomi.com/admin...` with a temporary 307 redirect. Keep
+   `/api/admin/*` as protected API routes; do not redirect those unless a later
+   API-host migration is explicitly planned.
+4. Ensure `tenant_domains` contains an active production row for
+   `admin.beautonomi.com` with `is_primary=false` (migration 548 seeds the ZA
+   platform mapping). This prevents `STRICT_TENANT_HOST_RESOLUTION=true` from
+   rejecting admin-origin requests before admin authorization runs.
+5. Add `https://admin.beautonomi.com` to Supabase Auth redirect allow URLs,
+   including `/auth/callback` for password recovery or OAuth flows started from
+   the admin host.
+6. Scope Vercel Firewall / Zero Trust policies to
+   `Hostname = admin.beautonomi.com`, with stricter rules for `/api/admin/*` if
+   needed.
+
+Rollback:
+
+1. Set `ENABLE_ADMIN_HOST_ROUTING=false` in Vercel.
+2. Optionally add a temporary Vercel redirect from `admin.beautonomi.com` to the
+   canonical `/admin` URL.
+3. Leave the `tenant_domains` row inactive only if the domain is fully removed
+   from production routing.
+
 ## Mobile Option B (Single Global Build)
 
 - Keep one app build.

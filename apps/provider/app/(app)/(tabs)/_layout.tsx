@@ -1,4 +1,4 @@
-import { Tabs, useRouter } from "expo-router";
+import { Tabs, useRouter, type Router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo } from "react";
 import { View, Platform, type ViewStyle } from "react-native";
@@ -11,8 +11,65 @@ import { Colors } from "@/constants/colors";
 import { TAB_BAR_MIN_BOTTOM_INSET, tabBarOuterHeight } from "@/constants/layout";
 import { AppHeader } from "@/components/AppHeader";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
+import { useApi } from "@/hooks/useApi";
 
 type IconName = keyof typeof Ionicons.glyphMap;
+
+type HubTab = "bookings" | "chats" | "more";
+
+type ProviderNavCounts = {
+  pending_bookings: number;
+  active_product_orders: number;
+  unread_messages: number;
+  waiting_room: number;
+  critical_total: number;
+};
+
+const formatTabBadge = (count: number): string | undefined => {
+  if (count <= 0) return undefined;
+  return count > 99 ? "99+" : String(count);
+};
+
+/**
+ * Tapping a tab that hosts a stack should (1) go to the hub when switching
+ * from another tab, and (2) pop to the hub when re-tapping the same tab while
+ * nested (same behavior as the More menu).
+ */
+function makeHubTabListener(
+  tabName: HubTab,
+  hubHref: `/(app)/(tabs)/${HubTab}`,
+  exoRouter: Router,
+) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ({ navigation }: { navigation: any }) => ({
+    tabPress: (e: { preventDefault: () => void }) => {
+      const state = navigation.getState() as { routes: { name: string; state?: { index?: number; key?: string } }[]; index: number };
+      const tabRoute = state.routes.find((r) => r.name === tabName) as
+        | { name: string; state?: { index?: number; key?: string } }
+        | undefined;
+      const st = tabRoute?.state;
+      const alreadyOnThisTab = state.routes[state.index]?.name === tabName;
+
+      if (!alreadyOnThisTab) {
+        e.preventDefault();
+        exoRouter.replace(hubHref as never);
+        return;
+      }
+
+      if (typeof st?.index === "number" && st.index > 0) {
+        e.preventDefault();
+        if (st.key) {
+          navigation.dispatch({
+            ...StackActions.popToTop(),
+            target: st.key,
+          });
+        } else {
+          exoRouter.replace(hubHref as never);
+        }
+      }
+    },
+  });
+}
 
 function TabIcon({ name, focused }: { name: IconName; focused: boolean }) {
   return <Ionicons name={name} size={22} color={focused ? Colors.primary : "#9ca3af"} />;
@@ -23,11 +80,28 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const { t } = useTranslation();
+  const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>(
+    "/api/provider/nav-counts",
+    { staleTimeMs: 30_000 },
+  );
+
+  const bookingsBadge = formatTabBadge(
+    Number(navCounts?.pending_bookings ?? 0) + Number(navCounts?.waiting_room ?? 0),
+  );
+  const chatsBadge = formatTabBadge(Number(navCounts?.unread_messages ?? 0));
+  const moreBadge = formatTabBadge(Number(navCounts?.active_product_orders ?? 0));
 
   useEffect(() => {
     if (!isSentryEnabled()) return;
     authFlowBreadcrumb("authenticated_tabs_layout_mount", { app: "provider" });
   }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void refreshNavCounts();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [refreshNavCounts]);
 
   const safeBottom = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
   const TAB_BAR_HEIGHT = tabBarOuterHeight(insets.bottom);
@@ -121,8 +195,10 @@ export default function TabsLayout() {
         name="chats"
         options={{
           title: t("provider.chats"),
+          tabBarBadge: chatsBadge,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "chatbubbles" : "chatbubbles-outline"} focused={focused} />,
         }}
+        listeners={makeHubTabListener("chats", "/(app)/(tabs)/chats", router)}
       />
       {/*
         §Provider-audit 2026-04: the previous "Transaction History" tab was
@@ -133,8 +209,10 @@ export default function TabsLayout() {
         name="bookings"
         options={{
           title: t("provider.bookings"),
+          tabBarBadge: bookingsBadge,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "calendar-clear" : "calendar-clear-outline"} focused={focused} />,
         }}
+        listeners={makeHubTabListener("bookings", "/(app)/(tabs)/bookings", router)}
       />
       {/* Sales is still reachable via More → Sales history. */}
       <Tabs.Screen name="sales" options={{ href: null }} />
@@ -142,39 +220,10 @@ export default function TabsLayout() {
         name="more"
         options={{
           title: t("common.more"),
+          tabBarBadge: moreBadge,
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "menu" : "menu-outline"} focused={focused} />,
         }}
-        listeners={({ navigation }) => ({
-          tabPress: (e) => {
-            // More hub: pop nested stack when re-tapping More, and when
-            // switching from another tab always replace to the hub so a stale
-            // inner screen (e.g. booking detail) is not shown instead of the menu.
-            const state = navigation.getState();
-            const moreRoute = state.routes.find(
-              (r: { name: string }) => r.name === "more",
-            ) as { state?: { index?: number; key?: string } } | undefined;
-            const st = moreRoute?.state;
-            const alreadyOnMoreTab = state.routes[state.index]?.name === "more";
-
-            if (!alreadyOnMoreTab) {
-              e.preventDefault();
-              router.replace("/(app)/(tabs)/more" as never);
-              return;
-            }
-
-            if (typeof st?.index === "number" && st.index > 0) {
-              e.preventDefault();
-              if (st.key) {
-                navigation.dispatch({
-                  ...StackActions.popToTop(),
-                  target: st.key,
-                });
-              } else {
-                router.replace("/(app)/(tabs)/more" as never);
-              }
-            }
-          },
-        })}
+        listeners={makeHubTabListener("more", "/(app)/(tabs)/more", router)}
       />
       {/* Hide settings from tab bar - it's now inside More */}
       <Tabs.Screen name="settings" options={{ href: null }} />

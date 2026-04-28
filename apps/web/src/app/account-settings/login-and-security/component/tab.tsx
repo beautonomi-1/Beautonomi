@@ -51,7 +51,15 @@ const tabs = [
   { value: "step1", label: "LOGIN" },
 ];
 
-const LoginAccount = ({ initial }: { initial: LoginAndSecurityInitial | null }) => {
+const LoginAccount = ({
+  initial,
+  accountHomeHref = "/account-settings",
+  accountHomeLabel = "Account",
+}: {
+  initial: LoginAndSecurityInitial | null;
+  accountHomeHref?: string;
+  accountHomeLabel?: string;
+}) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("step1");
   const [showPasswordUpdate, setShowPasswordUpdate] = useState(false);
@@ -261,7 +269,9 @@ const LoginAccount = ({ initial }: { initial: LoginAndSecurityInitial | null }) 
       if (profile?.email_change_pending) {
         setShowEmailDialog(false);
         setNewEmail("");
-        toast.success("Check your new email and click the confirmation link to complete the change.");
+        toast.success(
+          "We sent confirmation links to your current email and your new address. Open each link to finish the change (both may be required).",
+        );
       } else {
         toast.success("Verification email sent.");
         setShowEmailDialog(false);
@@ -346,10 +356,10 @@ const LoginAccount = ({ initial }: { initial: LoginAndSecurityInitial | null }) 
   return (
     <div className="min-h-screen bg-zinc-50/50 py-6 md:py-8">
       <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
-        <BackButton href="/account-settings" />
+        <BackButton href={accountHomeHref} />
         <Breadcrumb 
           items={[
-            { label: "Account", href: "/account-settings" },
+            { label: accountHomeLabel, href: accountHomeHref },
             { label: "Login & security" }
           ]} 
         />
@@ -640,7 +650,8 @@ const LoginAccount = ({ initial }: { initial: LoginAndSecurityInitial | null }) 
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">Change email</DialogTitle>
             <DialogDescription className="text-sm text-gray-600 font-light">
-              Enter your new email address. We&apos;ll send a verification link to confirm.
+              Enter your new email. We&apos;ll email confirmation links—you may need to confirm from your current
+              address and the new one.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

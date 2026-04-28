@@ -85,6 +85,7 @@ export default function CookieConsentExperience() {
     <>
       {bannerVisible ? (
         <div
+          data-nosnippet
           className={cn(
             "fixed bottom-0 left-0 right-0 z-[10000] border-t border-gray-200/90 bg-white/95 shadow-[0_-12px_40px_rgba(15,23,42,0.08)] backdrop-blur-md supports-[backdrop-filter]:bg-white/90",
             "pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1",
@@ -155,6 +156,7 @@ export default function CookieConsentExperience() {
         }}
       >
         <DialogContent
+          data-nosnippet
           suppressFallbackTitle
           className={cn(
             "flex max-h-[min(88dvh,calc(100svh-1.5rem))] w-[min(100vw-1rem,28rem)] flex-col gap-0 overflow-hidden rounded-2xl border-gray-200/80 p-0 shadow-2xl",

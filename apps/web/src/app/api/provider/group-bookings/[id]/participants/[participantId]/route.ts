@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -22,6 +23,7 @@ export async function DELETE(
       request
     );
     const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const { id: groupId, participantId } = await params;
 
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -29,7 +31,21 @@ export async function DELETE(
       return notFoundResponse("Provider not found");
     }
 
-    const { data: part, error: pErr } = await supabase
+    const { data: gb, error: groupError } = await admin
+      .from("group_bookings")
+      .select("id")
+      .eq("id", groupId)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+
+    if (groupError) {
+      throw groupError;
+    }
+    if (!gb) {
+      return notFoundResponse("Group booking not found");
+    }
+
+    const { data: part, error: pErr } = await admin
       .from("booking_participants")
       .select("id, booking_id, group_booking_id")
       .eq("id", participantId)
@@ -40,18 +56,7 @@ export async function DELETE(
       return notFoundResponse("Participant not found");
     }
 
-    const { data: gb } = await supabase
-      .from("group_bookings")
-      .select("id")
-      .eq("id", groupId)
-      .eq("provider_id", providerId)
-      .single();
-
-    if (!gb) {
-      return notFoundResponse("Group booking not found");
-    }
-
-    const { error: dErr } = await supabase
+    const { error: dErr } = await admin
       .from("booking_participants")
       .delete()
       .eq("id", participantId)
@@ -74,7 +79,7 @@ export async function DELETE(
     // filters `status !== 'cancelled'`). We do NOT delete the booking —
     // audit trail must be preserved.
     if (part.booking_id) {
-      await supabase
+      const { error: bookingError } = await admin
         .from("bookings")
         .update({
           status: "cancelled",
@@ -87,6 +92,9 @@ export async function DELETE(
         .eq("provider_id", providerId)
         // Do not clobber an already-completed booking.
         .not("status", "in", "(completed,no_show,cancelled)");
+      if (bookingError) {
+        throw bookingError;
+      }
     }
 
     return successResponse({ success: true });

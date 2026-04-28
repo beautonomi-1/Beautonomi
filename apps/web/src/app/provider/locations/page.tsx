@@ -487,6 +487,7 @@ function LocationModal({
                 onChange={handleAddressSelect}
                 placeholder="Start typing an address..."
                 country={formData.country || "ZA"}
+                geocodeTypes={["address"]}
                 className="relative z-[1]"
                 required
               />

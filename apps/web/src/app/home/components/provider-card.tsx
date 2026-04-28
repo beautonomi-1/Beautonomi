@@ -36,7 +36,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
   sponsoredBadgeText = "Sponsored",
   isInWishlistProp,
 }) => {
-  const { user } = useAuth();
+  const { user, session, isLoading: authLoading } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
   const [isToggling, setIsToggling] = React.useState(false);
   const [isInWishlist, setIsInWishlist] = React.useState(isInWishlistProp ?? false);
@@ -74,7 +74,8 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     }
 
     const checkWishlist = async () => {
-      if (!user || !provider.id) {
+      if (authLoading) return;
+      if (!user || !session || !provider.id) {
         setIsInWishlist(false);
         return;
       }
@@ -113,7 +114,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     
     // Check immediately when user and provider.id are available
     checkWishlist();
-  }, [user, provider.id, isInWishlistProp]);
+  }, [authLoading, session, user, provider.id, isInWishlistProp]);
 
   const toggleWishlist = async () => {
     if (!user) {

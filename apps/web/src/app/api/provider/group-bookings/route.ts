@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
+import { addMinutes } from "date-fns";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
+import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
 
 /**
  * List/detail queries use the service-role client so provider_staff and
@@ -110,7 +112,13 @@ export async function GET(request: NextRequest) {
           checked_out: !!p.checked_out_at,
           checked_out_time: p.checked_out_at,
         }));
-        const totalPrice = participants.reduce((sum: number, p: any) => sum + (Number(p.price) || 0), 0);
+        const participantTotal = participants.reduce((sum: number, p: any) => sum + (Number(p.price) || 0), 0);
+        const productTotal = Array.isArray(row.products)
+          ? row.products.reduce((sum: number, p: any) => sum + (Number(p.total_price ?? p.totalPrice) || 0), 0)
+          : 0;
+        const totalPrice = row.total_price != null
+          ? Number(row.total_price) || 0
+          : participantTotal + productTotal + (Number(row.travel_fee) || 0);
         const sid = row.service_id as string | null | undefined;
         const tid = row.staff_id as string | null | undefined;
         return {
@@ -177,6 +185,17 @@ export async function POST(request: NextRequest) {
       service_id,
       staff_id,
       location_id,
+      location_type,
+      address_line1,
+      address_city,
+      address_state,
+      address_country,
+      address_postal_code,
+      address_latitude,
+      address_longitude,
+      address_place_name,
+      travel_fee,
+      products,
       max_participants,
       duration_minutes,
       notes,
@@ -202,16 +221,44 @@ export async function POST(request: NextRequest) {
     if (Number.isNaN(scheduledAtDate.getTime())) {
       return errorResponse("Invalid scheduled_at", "VALIDATION_ERROR", 400);
     }
+    const normalizedProducts = Array.isArray(products) ? products : [];
+    const normalizedParticipants = Array.isArray(participants) ? participants : [];
+    const serverTravelFee = location_type === "at_home" ? Math.max(0, Number(travel_fee || 0)) : 0;
+    const participantTotal = normalizedParticipants.reduce(
+      (sum: number, p: any) => sum + Math.max(0, Number(p.price || 0)),
+      0,
+    );
+    const productTotal = normalizedProducts.reduce(
+      (sum: number, p: any) => sum + Math.max(0, Number(p.total_price ?? p.totalPrice ?? (Number(p.unit_price ?? p.unitPrice ?? 0) * Number(p.quantity ?? 1)))),
+      0,
+    );
+    const serverTotalPrice = participantTotal + productTotal + serverTravelFee;
+
     if (!allowOverride) {
+      const holdEnd = addMinutes(
+        scheduledAtDate,
+        effectiveDuration + (location_type === "at_home" ? 30 : 0),
+      );
+      const holdOverlap = await checkActiveHoldOverlap(admin, providerId, scheduledAtDate, holdEnd, {
+        dbStaffId: staff_id ? String(staff_id) : null,
+      });
+      if (holdOverlap) {
+        return errorResponse(
+          "This time slot is no longer available. Please select another time.",
+          "CONFLICT",
+          409,
+        );
+      }
+
       const check = await evaluateProviderSlotAgainstGrid(admin, {
         providerId,
         scheduledAt: scheduledAtDate,
         durationMinutes: effectiveDuration,
         staffIdsCsv: staff_id ? String(staff_id) : null,
-        locationId: location_id ? String(location_id) : null,
+        locationId: location_type === "at_home" ? null : (location_id ? String(location_id) : null),
         excludeBookingId: undefined,
-        mode: "salon",
-        travelBufferRaw: null,
+        mode: location_type === "at_home" ? "mobile" : "salon",
+        travelBufferRaw: location_type === "at_home" ? "30" : null,
         minNoticeMinutes: 0,
         maxAdvanceDays: 365,
         resourceOfferingIds: service_id ? [String(service_id)] : [],
@@ -233,7 +280,19 @@ export async function POST(request: NextRequest) {
         scheduled_at,
         service_id: service_id || null,
         staff_id: staff_id || null,
-        location_id: location_id || null,
+        location_id: location_type === "at_home" ? null : (location_id || null),
+        location_type: location_type === "at_home" ? "at_home" : "at_salon",
+        address_line1: location_type === "at_home" ? (address_line1 || null) : null,
+        address_city: location_type === "at_home" ? (address_city || null) : null,
+        address_state: location_type === "at_home" ? (address_state || null) : null,
+        address_country: location_type === "at_home" ? (address_country || null) : null,
+        address_postal_code: location_type === "at_home" ? (address_postal_code || null) : null,
+        address_latitude: location_type === "at_home" && address_latitude != null ? Number(address_latitude) : null,
+        address_longitude: location_type === "at_home" && address_longitude != null ? Number(address_longitude) : null,
+        address_place_name: location_type === "at_home" ? (address_place_name || null) : null,
+        travel_fee: serverTravelFee,
+        products: normalizedProducts,
+        total_price: serverTotalPrice,
         max_participants: max_participants || 10,
         duration_minutes: duration_minutes || 60,
         notes: notes || null,
@@ -256,8 +315,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Add participants if provided (booking_id is nullable after migration 485)
-    if (Array.isArray(participants) && participants.length > 0) {
-      const participantRows = participants.map((p: any, idx: number) => ({
+    if (normalizedParticipants.length > 0) {
+      const participantRows = normalizedParticipants.map((p: any, idx: number) => ({
         group_booking_id: groupBooking.id,
         booking_id: p.booking_id || null,
         participant_name: p.name || p.participant_name || p.client_name || '—',
@@ -277,6 +336,20 @@ export async function POST(request: NextRequest) {
 
       if (pError) {
         console.warn("Failed to insert participants:", pError);
+      }
+
+      const linkedBookingIds = participantRows
+        .map((p: any) => p.booking_id)
+        .filter((id: unknown): id is string => typeof id === "string" && id.length > 0);
+      if (linkedBookingIds.length > 0) {
+        const { error: linkError } = await admin
+          .from("bookings")
+          .update({ group_booking_id: groupBooking.id, is_group_booking: true, updated_at: new Date().toISOString() })
+          .eq("provider_id", providerId)
+          .in("id", linkedBookingIds);
+        if (linkError) {
+          console.warn("Failed to link existing bookings to group:", linkError);
+        }
       }
     }
 

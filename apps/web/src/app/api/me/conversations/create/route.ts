@@ -21,43 +21,13 @@ export async function POST(request: NextRequest) {
     const body = createSchema.parse(await request.json());
     const { provider_id, booking_id } = body;
 
-    // When booking_id is provided: find or create that specific booking conversation
-    if (booking_id) {
-      const { data: existing } = await supabase
-        .from("conversations")
-        .select("id")
-        .eq("customer_id", user.id)
-        .eq("provider_id", provider_id)
-        .eq("booking_id", booking_id)
-        .maybeSingle();
-
-      if (existing) {
-        return successResponse({ id: existing.id, created: false });
-      }
-
-      const { data: newConv, error: createError } = await (supabase.from("conversations") as any)
-        .insert({
-          booking_id,
-          customer_id: user.id,
-          provider_id: provider_id,
-          last_message_at: new Date().toISOString(),
-          last_message_preview: "",
-          last_message_sender_id: user.id,
-          unread_count_customer: 0,
-          unread_count_provider: 0,
-        })
-        .select("id")
-        .single();
-
-      if (createError) throw createError;
-      return successResponse({ id: newConv.id, created: true });
-    }
-
-    // No booking_id: opening from provider profile. Prefer any existing conversation with this
-    // provider (general or booking-specific) so the user sees their existing thread.
+    // One thread per provider (matches POST /api/provider/conversations and migration
+    // conversations_customer_provider_uidx). Whether the client came from a booking
+    // flow or the profile, reuse the same row so the provider app does not list the
+    // same client multiple times.
     const { data: existingList } = await supabase
       .from("conversations")
-      .select("id")
+      .select("id, booking_id")
       .eq("customer_id", user.id)
       .eq("provider_id", provider_id)
       .order("last_message_at", { ascending: false, nullsFirst: false })
@@ -65,13 +35,18 @@ export async function POST(request: NextRequest) {
 
     const existing = existingList?.[0];
     if (existing) {
+      if (booking_id && existing.booking_id == null) {
+        await (supabase.from("conversations") as any)
+          .update({ booking_id })
+          .eq("id", existing.id);
+      }
       return successResponse({ id: existing.id, created: false });
     }
 
-    // Create new general conversation (no booking)
+    // First conversation with this provider
     const { data: newConv, error: createError } = await (supabase.from("conversations") as any)
       .insert({
-        booking_id: null,
+        booking_id: booking_id || null,
         customer_id: user.id,
         provider_id: provider_id,
         last_message_at: new Date().toISOString(),

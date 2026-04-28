@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import { handleApiError } from "@/lib/supabase/api-helpers";
+import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
 
@@ -386,6 +387,7 @@ export async function createBookingRecord(
   const products = draft.products ?? [];
   if (products.length > 0) {
     const primaryStaffId = draft.services?.[0]?.staff_id ?? null;
+    const stockDeductedAt = new Date().toISOString();
     const bookingProductsRows = products.map((product) => ({
       booking_id: booking.id,
       product_id: product.productId ?? product.product_id,
@@ -395,6 +397,9 @@ export async function createBookingRecord(
       total_price: Number(product.totalPrice),
       currency: v.currency,
       staff_id: primaryStaffId,
+      stock_deducted_at: product.productVariantId || v.productById.get(product.productId ?? product.product_id ?? "")?.track_stock_quantity
+        ? stockDeductedAt
+        : null,
     }));
 
     const { error: bookingProductsError } = await adminSupabase
@@ -434,6 +439,15 @@ export async function createBookingRecord(
             .eq("id", pid);
         }
       }
+    }
+
+    try {
+      await syncAppointmentProductOrder(adminSupabase, booking.id);
+    } catch (orderSyncError) {
+      console.error(
+        `[public bookings] failed to sync appointment product order for booking ${booking.id}:`,
+        orderSyncError,
+      );
     }
   }
 

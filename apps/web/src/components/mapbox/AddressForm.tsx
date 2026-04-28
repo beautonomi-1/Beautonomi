@@ -59,6 +59,7 @@ export default function AddressForm({
   const [formData, setFormData] = useState({
     label: initialAddress?.label || "",
     address_line1: initialAddress?.address_line1 || "",
+    place_name: "",
     address_line2: initialAddress?.address_line2 || "",
     city: initialAddress?.city || "",
     state: initialAddress?.state || "",
@@ -88,6 +89,7 @@ export default function AddressForm({
     setFormData({
       ...formData,
       address_line1: address.address_line1,
+      place_name: address.place_name || address.address_line1,
       city: address.city,
       state: address.state || "",
       postal_code: address.postal_code || "",
@@ -129,11 +131,12 @@ export default function AddressForm({
       <div>
         <Label htmlFor="address">Address *</Label>
         <AddressAutocomplete
-          value={formData.address_line1}
+          value={formData.place_name || formData.address_line1}
           onChange={handleAddressSelect}
           placeholder="Start typing an address..."
           country={formData.country || country}
           proximity={proximity}
+          geocodeTypes={["address"]}
           required
         />
       </div>

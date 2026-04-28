@@ -24,9 +24,16 @@ interface PackageItem {
   id: string;
   offering_id?: string | null;
   product_id?: string | null;
+  product_variant_id?: string | null;
   quantity: number;
   offering?: { id: string; title: string; duration_minutes?: number; price?: number } | null;
   product?: { id: string; name: string; retail_price?: number; sku?: string | null } | null;
+  product_variant?: {
+    id: string;
+    option_values?: Record<string, string> | null;
+    retail_price?: number | null;
+    sku?: string | null;
+  } | null;
 }
 
 interface ServicePackage {
@@ -75,7 +82,12 @@ export default function PackagesListScreen() {
   const renderPackageRow = (pkg: ServicePackage) => {
     const itemLabel = (item: PackageItem) => {
       if (item.offering) return item.offering.title;
-      if (item.product) return item.product.name;
+      if (item.product) {
+        const variantLabel = item.product_variant?.option_values
+          ? Object.values(item.product_variant.option_values).filter(Boolean).join(" / ")
+          : item.product_variant?.sku;
+        return variantLabel ? `${item.product.name} — ${variantLabel}` : item.product.name;
+      }
       if (item.offering_id) return "Service";
       if (item.product_id) return "Product";
       return "Item";

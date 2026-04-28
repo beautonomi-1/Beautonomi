@@ -139,10 +139,12 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (!(me as { referred_by?: string | null } | null)?.referred_by) {
-        return errorResponse(
-          "No referral to attribute. Use referral_code or sign up with a referral link.",
-          "VALIDATION_ERROR",
-          400
+        return successResponse(
+          {
+            status: "skipped",
+            reason: "no_referral_to_attribute",
+          },
+          200
         );
       }
 

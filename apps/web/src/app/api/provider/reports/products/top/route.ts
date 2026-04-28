@@ -36,23 +36,36 @@ export async function GET(request: NextRequest) {
       ? new Date(searchParams.get("to")!)
       : new Date();
     const limit = parseInt(searchParams.get("limit") || "20");
+    const locationId = searchParams.get("location_id") || undefined;
 
     // Get bookings and sales
+    let bookingsQuery = supabaseAdmin
+      .from('bookings')
+      .select('id, scheduled_at')
+      .eq('provider_id', providerId)
+      .gte('scheduled_at', fromDate.toISOString())
+      .lte('scheduled_at', toDate.toISOString());
+
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+
+    let salesQuery = supabaseAdmin
+      .from('sales')
+      .select('id, sale_date')
+      .eq('provider_id', providerId)
+      // sales table uses 'completed' for paid (canonical: see lib/utils/payment-status.ts)
+      .eq('payment_status', 'completed')
+      .gte('sale_date', fromDate.toISOString())
+      .lte('sale_date', toDate.toISOString());
+
+    if (locationId) {
+      salesQuery = salesQuery.eq("location_id", locationId);
+    }
+
     const [bookingsResult, salesResult] = await Promise.all([
-      supabaseAdmin
-        .from('bookings')
-        .select('id, scheduled_at')
-        .eq('provider_id', providerId)
-        .gte('scheduled_at', fromDate.toISOString())
-        .lte('scheduled_at', toDate.toISOString()),
-      supabaseAdmin
-        .from('sales')
-        .select('id, sale_date')
-        .eq('provider_id', providerId)
-        // sales table uses 'completed' for paid (canonical: see lib/utils/payment-status.ts)
-        .eq('payment_status', 'completed')
-        .gte('sale_date', fromDate.toISOString())
-        .lte('sale_date', toDate.toISOString())
+      bookingsQuery,
+      salesQuery,
     ]);
 
     const { data: bookings } = bookingsResult;

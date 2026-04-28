@@ -9,8 +9,8 @@
     "./locales/*": "./src/locales/*"
   },
   "dependencies": {
-    "i18next": "^23.16.0",
-    "react-i18next": "^15.1.0"
+    "i18next": "^23.16.8",
+    "react-i18next": "^15.7.4"
   },
   "peerDependencies": {
     "react": ">=18"

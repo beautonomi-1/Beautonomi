@@ -1,3 +1,4 @@
+import type { NodeOptions } from "@sentry/node";
 import * as Sentry from "@sentry/nextjs";
 import { scrubSentryEvent, scrubSentryTransaction } from "./src/lib/sentry/before-send";
 
@@ -8,7 +9,7 @@ if (dsn) {
     dsn,
     sendDefaultPii: false,
     tracesSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
-    beforeSend: scrubSentryEvent,
-    beforeSendTransaction: scrubSentryTransaction,
+    beforeSend: scrubSentryEvent as NonNullable<NodeOptions["beforeSend"]>,
+    beforeSendTransaction: scrubSentryTransaction as NonNullable<NodeOptions["beforeSendTransaction"]>,
   });
 }

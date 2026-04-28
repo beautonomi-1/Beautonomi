@@ -13,6 +13,7 @@ import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface ClientSummaryData {
@@ -36,6 +37,7 @@ interface ClientSummaryData {
 }
 
 export default function ClientSummaryReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 90),
@@ -62,6 +64,7 @@ export default function ClientSummaryReport() {
       if (dateRange.to) {
         params.append("to", dateRange.to.toISOString());
       }
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: ClientSummaryData }>(
         `/api/provider/reports/clients/summary?${params.toString()}`

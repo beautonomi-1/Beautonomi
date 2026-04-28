@@ -26,10 +26,10 @@ import { changeLanguage } from "@/lib/i18n";
 import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
-  isCompleteSupabaseSmsOtp,
-  SUPABASE_AUTH_OTP_LENGTH,
-  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+  isCompleteOtpForLength,
 } from "@/lib/supabase-sms-otp";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { DEFAULT_AUTH } from "@/lib/config-bundle";
 import {
   COUNTRY_CODES,
   stripLeadingZero,
@@ -93,6 +93,12 @@ export default function LoginScreen() {
     signInWithEmail,
     signInWithOAuth,
   } = useAuth();
+  const { bundle: configBundle } = useConfigBundle();
+  const auth = configBundle?.auth ?? DEFAULT_AUTH;
+  const emailOtpLen = auth.email_otp_length;
+  const emailOtpExpiryMin = Math.max(1, Math.round(auth.email_otp_expiration_seconds / 60));
+  const smsOtpLen = auth.sms_otp_length;
+  const smsOtpExpiryMin = Math.max(1, Math.round(auth.sms_otp_expiration_seconds / 60));
   const formNarrow = isTablet || Platform.OS === "web";
   const formStyle = formNarrow ? { width: "100%" as const, maxWidth: Math.min(420, contentMaxWidth), alignSelf: "center" as const } : undefined;
   const scrollContentStyle = {
@@ -138,6 +144,10 @@ export default function LoginScreen() {
 
   const fullPhone = `${countryCode}${stripLeadingZero(phone.replace(/\D/g, ""))}`.trim();
   const hasSocialAuth = socialAuth.google || socialAuth.apple;
+  const showPhoneLoginBlock =
+    auth.phone_provider_enabled && (mode === "phone" || !auth.email_provider_enabled);
+  const showEmailLoginBlock =
+    auth.email_provider_enabled && (mode === "email" || !auth.phone_provider_enabled);
   const filteredCountries = countrySearch
     ? COUNTRY_CODES.filter((c) => c.label.toLowerCase().includes(countrySearch.toLowerCase()))
     : COUNTRY_CODES;
@@ -148,6 +158,29 @@ export default function LoginScreen() {
       setSocialAuth({ google: true, apple: true });
     });
   }, []);
+
+  useEffect(() => {
+    if (auth.email_provider_enabled) return;
+    if (mode !== "email") return;
+    setMode("phone");
+    setEmailOtpMode(false);
+    setEmailOtpSent(false);
+    setEmailOtpCode("");
+    setPendingEmailOtp("");
+  }, [auth.email_provider_enabled, mode]);
+
+  useEffect(() => {
+    if (auth.phone_provider_enabled) return;
+    if (mode !== "phone") return;
+    setMode("email");
+  }, [auth.phone_provider_enabled, mode]);
+
+  useEffect(() => {
+    if (auth.phone_provider_enabled) return;
+    setOtpSent(false);
+    setToken("");
+    setPendingPhone("");
+  }, [auth.phone_provider_enabled]);
 
   function handlePhoneChange(text: string) {
     const digits = text.replace(/[^\d\s]/g, "");
@@ -160,6 +193,10 @@ export default function LoginScreen() {
   }
 
   async function handleSendOtp() {
+    if (!auth.phone_provider_enabled) {
+      setFormError("Phone sign-in is not enabled for this platform.");
+      return;
+    }
     setFormError(null);
     setFormSuccess(null);
     if (!phone.trim()) {
@@ -182,7 +219,11 @@ export default function LoginScreen() {
       }
       setPendingPhone(e164);
       setOtpSent(true);
-      setFormSuccess("We sent you a verification code. Check your phone.");
+      setFormSuccess(
+        `We sent a ${smsOtpLen}-digit code. Check your phone (valid about ${smsOtpExpiryMin} ${
+          smsOtpExpiryMin === 1 ? "minute" : "minutes"
+        }).`,
+      );
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
     } finally {
@@ -191,10 +232,14 @@ export default function LoginScreen() {
   }
 
   async function handleVerifyOtp(otpOverride?: string) {
+    if (!auth.phone_provider_enabled) {
+      setFormError("Phone sign-in is not enabled for this platform.");
+      return;
+    }
     setFormError(null);
     const otpToken = normalizeSupabaseSmsOtpToken(otpOverride ?? token);
-    if (!isCompleteSupabaseSmsOtp(otpToken)) {
-      setFormError(`Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS`);
+    if (!isCompleteOtpForLength(otpToken, smsOtpLen)) {
+      setFormError(`Enter the ${smsOtpLen}-digit code from your SMS`);
       return;
     }
     const phoneToVerify = pendingPhone || fullPhone;
@@ -267,6 +312,10 @@ export default function LoginScreen() {
   }
 
   async function handleSendEmailOtp() {
+    if (!auth.email_provider_enabled) {
+      setFormError("Email sign-in is not enabled for this platform.");
+      return;
+    }
     setFormError(null);
     setFormSuccess(null);
     const trimmed = email.trim();
@@ -288,7 +337,9 @@ export default function LoginScreen() {
       setPendingEmailOtp(trimmed);
       setEmailOtpSent(true);
       setEmailOtpCode("");
-      setFormSuccess(`We sent a ${SUPABASE_AUTH_OTP_LENGTH}-digit code to your email.`);
+      setFormSuccess(
+        `We sent a ${emailOtpLen}-digit code to your email (valid about ${emailOtpExpiryMin} minutes).`,
+      );
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Failed to send code.");
     } finally {
@@ -299,8 +350,8 @@ export default function LoginScreen() {
   async function handleVerifyEmailOtp(otpOverride?: string) {
     setFormError(null);
     const otpToken = normalizeSupabaseSmsOtpToken(otpOverride ?? emailOtpCode);
-    if (!isCompleteSupabaseSmsOtp(otpToken)) {
-      setFormError(`Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your email`);
+    if (!isCompleteOtpForLength(otpToken, emailOtpLen)) {
+      setFormError(`Enter the ${emailOtpLen}-digit code from your email`);
       return;
     }
     const addr = pendingEmailOtp || email.trim();
@@ -354,13 +405,13 @@ export default function LoginScreen() {
         </View>
 
         <Text
-          style={{ textAlign: "center", fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 6 }}
+          style={{ textAlign: "center", fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 6, letterSpacing: -0.3 }}
           accessibilityRole="header"
         >
-          {t("auth.login")}
+          Welcome back
         </Text>
-        <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", marginBottom: 28 }}>
-          Welcome back to Beautonomi
+        <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 28 }}>
+          {t("auth.login")} · Beautonomi for service pros
         </Text>
 
         {/* Account status message (deactivated/suspended redirect) */}
@@ -417,81 +468,85 @@ export default function LoginScreen() {
           </View>
         ) : null}
 
-        {/* Mode toggle */}
-        <View
-          style={{
-            flexDirection: "row",
-            borderRadius: 14,
-            backgroundColor: "#F3F4F6",
-            padding: 4,
-            marginBottom: 24,
-          }}
-          accessibilityRole="tablist"
-          accessibilityLabel="Login method selection"
-        >
-          {(["phone", "email"] as const).map((m) => (
-            <TouchableOpacity
-              key={m}
-              onPress={() => {
-                setMode(m);
-                setFormError(null);
-                setFormSuccess(null);
-                if (m === "phone") {
-                  setOtpSent(false);
-                  setToken("");
-                }
-                if (m === "email") {
-                  setEmailOtpMode(false);
-                  setEmailOtpSent(false);
-                  setEmailOtpCode("");
-                  setPendingEmailOtp("");
-                }
-              }}
-              style={{
-                flex: 1,
-                paddingVertical: 12,
-                borderRadius: 11,
-                backgroundColor: mode === m ? "#fff" : "transparent",
-                ...(mode === m
-                  ? Platform.select({
-                      web: { boxShadow: "0 1px 3px rgba(0,0,0,0.08)" },
-                      default: { shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-                    })
-                  : {}),
-              }}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: mode === m }}
-              accessibilityLabel={m === "phone" ? "Phone" : "Email"}
-            >
-              <Text
-                style={{
-                  textAlign: "center",
-                  fontSize: 14,
-                  fontWeight: mode === m ? "700" : "500",
-                  color: mode === m ? PRIMARY : "#6B7280",
+        {/* Mode toggle when both phone and email sign-in are enabled */}
+        {auth.email_provider_enabled && auth.phone_provider_enabled ? (
+          <View
+            style={{
+              flexDirection: "row",
+              borderRadius: 14,
+              backgroundColor: "#F3F4F6",
+              padding: 4,
+              marginBottom: 24,
+            }}
+            accessibilityRole="tablist"
+            accessibilityLabel="Login method selection"
+          >
+            {(["phone", "email"] as const).map((m) => (
+              <TouchableOpacity
+                key={m}
+                onPress={() => {
+                  setMode(m);
+                  setFormError(null);
+                  setFormSuccess(null);
+                  if (m === "phone") {
+                    setOtpSent(false);
+                    setToken("");
+                    setPendingPhone("");
+                  }
+                  if (m === "email") {
+                    setEmailOtpMode(false);
+                    setEmailOtpSent(false);
+                    setEmailOtpCode("");
+                    setPendingEmailOtp("");
+                  }
                 }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 11,
+                  backgroundColor: mode === m ? "#fff" : "transparent",
+                  ...(mode === m
+                    ? Platform.select({
+                        web: { boxShadow: "0 1px 3px rgba(0,0,0,0.08)" },
+                        default: { shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+                      })
+                    : {}),
+                }}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: mode === m }}
+                accessibilityLabel={m === "phone" ? "Phone" : "Email"}
               >
-                {m === "phone" ? "Phone" : "Email"}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+                <Text
+                  style={{
+                    textAlign: "center",
+                    fontSize: 14,
+                    fontWeight: mode === m ? "700" : "500",
+                    color: mode === m ? PRIMARY : "#6B7280",
+                  }}
+                >
+                  {m === "phone" ? "Phone" : "Email"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
 
-        {mode === "phone" ? (
+        {showPhoneLoginBlock ? (
           <>
-            {otpSent ? (
+            {otpSent && auth.phone_provider_enabled ? (
               <>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 }}>
                   Verification Code
                 </Text>
                 <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 12 }}>
-                  Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS
+                  Enter the {smsOtpLen}-digit code from your SMS
                 </Text>
                 <OtpDigitRow
+                  length={smsOtpLen}
                   value={token}
                   onChange={setToken}
                   onComplete={(code) => {
-                    if (!loading && isCompleteSupabaseSmsOtp(code)) void handleVerifyOtp(code);
+                    if (!loading && isCompleteOtpForLength(code, smsOtpLen)) void handleVerifyOtp(code);
                   }}
                   disabled={loading}
                   autoFocus
@@ -557,9 +612,8 @@ export default function LoginScreen() {
                   Enter your national number without repeating the country code. Leading 0 is optional.
                 </Text>
                 <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 20, lineHeight: 18 }}>
-                  We&apos;ll text a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid about{" "}
-                  {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
-                  {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). Standard rates apply.{" "}
+                  We&apos;ll text a {smsOtpLen}-digit code (valid about {smsOtpExpiryMin}{" "}
+                  {smsOtpExpiryMin === 1 ? "minute" : "minutes"}). Standard rates apply.{" "}
                   <Text
                     style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
                     onPress={() =>
@@ -572,11 +626,11 @@ export default function LoginScreen() {
               </>
             )}
 
-            {otpSent ? (
+            {otpSent && auth.phone_provider_enabled ? (
               <View>
                 <TouchableOpacity
                   onPress={() => void handleVerifyOtp()}
-                  disabled={loading || !isCompleteSupabaseSmsOtp(token)}
+                  disabled={loading || !isCompleteOtpForLength(token, smsOtpLen)}
                   style={{
                     backgroundColor: PRIMARY,
                     borderRadius: 12,
@@ -627,7 +681,7 @@ export default function LoginScreen() {
               </TouchableOpacity>
             )}
           </>
-        ) : (
+        ) : showEmailLoginBlock ? (
           <>
             {/* Email */}
             <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
@@ -707,13 +761,15 @@ export default function LoginScreen() {
                   Verification code
                 </Text>
                 <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 12 }}>
-                  Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to {pendingEmailOtp || email.trim()}
+                  Enter the {emailOtpLen}-digit code sent to {pendingEmailOtp || email.trim()}
+                  {` (valid about ${emailOtpExpiryMin} minutes)`}
                 </Text>
                 <OtpDigitRow
+                  length={emailOtpLen}
                   value={emailOtpCode}
                   onChange={setEmailOtpCode}
                   onComplete={(code) => {
-                    if (!loading && isCompleteSupabaseSmsOtp(code)) void handleVerifyEmailOtp(code);
+                    if (!loading && isCompleteOtpForLength(code, emailOtpLen)) void handleVerifyEmailOtp(code);
                   }}
                   disabled={loading}
                   autoFocus
@@ -721,7 +777,7 @@ export default function LoginScreen() {
                 />
                 <TouchableOpacity
                   onPress={() => void handleVerifyEmailOtp()}
-                  disabled={loading || !isCompleteSupabaseSmsOtp(emailOtpCode)}
+                  disabled={loading || !isCompleteOtpForLength(emailOtpCode, emailOtpLen)}
                   style={{
                     backgroundColor: PRIMARY,
                     borderRadius: 12,
@@ -754,7 +810,8 @@ export default function LoginScreen() {
             {emailOtpMode && !emailOtpSent && (
               <>
                 <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 12 }}>
-                  We&apos;ll email you a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code.
+                  We&apos;ll email you a {emailOtpLen}-digit verification code (valid about {emailOtpExpiryMin}{" "}
+                  {emailOtpExpiryMin === 1 ? "minute" : "minutes"}).
                 </Text>
                 <TouchableOpacity
                   onPress={handleSendEmailOtp}
@@ -823,26 +880,40 @@ export default function LoginScreen() {
                     <Text style={{ fontWeight: "700", color: PRIMARY }}>Reset it</Text>
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => {
-                    setEmailOtpMode(true);
-                    setPassword("");
-                    setEmailOtpSent(false);
-                    setEmailOtpCode("");
-                    setPendingEmailOtp("");
-                    setFormError(null);
-                    setFormSuccess(null);
-                  }}
-                  disabled={loading}
-                  style={{ marginTop: 8 }}
-                >
-                  <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
-                    Sign in with <Text style={{ fontWeight: "700", color: PRIMARY }}>email code</Text> instead
-                  </Text>
-                </TouchableOpacity>
+                {auth.email_provider_enabled && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setEmailOtpMode(true);
+                      setPassword("");
+                      setEmailOtpSent(false);
+                      setEmailOtpCode("");
+                      setPendingEmailOtp("");
+                      setFormError(null);
+                      setFormSuccess(null);
+                    }}
+                    disabled={loading}
+                    style={{ marginTop: 8 }}
+                  >
+                    <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
+                      Sign in with <Text style={{ fontWeight: "700", color: PRIMARY }}>email code</Text> instead
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </>
             )}
           </>
+        ) : (
+          <Text
+            style={{
+              textAlign: "center",
+              color: "#6B7280",
+              fontSize: 14,
+              marginBottom: 8,
+              lineHeight: 20,
+            }}
+          >
+            Email and phone sign-in are not enabled. Contact your administrator.
+          </Text>
         )}
 
         {hasSocialAuth && (

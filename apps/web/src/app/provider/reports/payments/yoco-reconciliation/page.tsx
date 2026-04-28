@@ -12,10 +12,12 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays, format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 import type { YocoReconciliationResponse } from "@/app/api/provider/reports/payments/yoco-reconciliation/route";
 
 export default function YocoReconciliationReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const exportCurrency = useReportExportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -27,7 +29,7 @@ export default function YocoReconciliationReport() {
 
   useEffect(() => {
     loadReport();
-  }, [dateRange]); // eslint-disable-line react-hooks/exhaustive-deps -- load when dateRange changes
+  }, [dateRange, selectedLocationId]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters change
 
   const loadReport = async () => {
     try {
@@ -41,6 +43,7 @@ export default function YocoReconciliationReport() {
       if (dateRange.to) {
         params.append("to", dateRange.to.toISOString());
       }
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: YocoReconciliationResponse }>(
         `/api/provider/reports/payments/yoco-reconciliation?${params.toString()}`

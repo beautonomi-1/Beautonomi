@@ -8,6 +8,16 @@ import {
   loadCachedReceiptPdf,
   saveCachedReceiptPdf,
 } from "@/lib/receipts/pdf-cache";
+import {
+  drawPdfFooter,
+  drawPdfHeader,
+  drawPdfInfoGrid,
+  drawPdfLineItems,
+  drawPdfSectionTitle,
+  drawPdfTotals,
+  formatPdfDate,
+  moneyPdf,
+} from "@/lib/receipts/pdf-design";
 
 // Wave 2.5 (audit 2026-04 final 100/100): 60s serverless budget +
 // Supabase Storage-backed cache for finalized receipts. Cold cost is
@@ -104,147 +114,111 @@ export async function GET(
     }
 
     const currency = r.currency || "ZAR";
-    const money = (amount: number | undefined) =>
-      new Intl.NumberFormat("en-ZA", {
-        style: "currency",
-        currency,
-        maximumFractionDigits: 2,
-      }).format(Number(amount || 0));
+    const money = (amount: number | undefined) => moneyPdf(amount, currency);
 
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const doc = new PDFDocument({ size: "A4", margin: 50, bufferPages: true });
     const chunks: Buffer[] = [];
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
 
-    // Receipt header from provider settings
-    if (r.receipt_header) {
-      doc.fontSize(10).fillColor("#555").text(r.receipt_header, { align: "center" });
-      doc.moveDown(0.5);
-    }
+    drawPdfHeader(doc, {
+      title: "Receipt",
+      subtitle: "Provider copy for booking payment records",
+      documentNumber: r.invoice_number || id,
+      status: r.payment_status || "pending",
+      note: r.receipt_header,
+    });
 
-    doc.fontSize(22).fillColor("#333").text("Receipt", { align: "left" });
-    doc.moveDown(0.3);
-    doc.fontSize(11).fillColor("#333").text(`Receipt #: ${r.invoice_number || "-"}`);
-    if (r.invoice_date) doc.text(`Date: ${r.invoice_date}`);
-    if (r.booking_date) doc.text(`Booking date: ${r.booking_date}`);
-    doc.moveDown(0.5);
-
-    // Provider & Customer
-    doc.fontSize(10).text(`From: ${r.provider?.name || "-"}`);
-    if (r.provider?.email) doc.text(`  ${r.provider.email}`);
-    if (r.provider?.phone) doc.text(`  ${r.provider.phone}`);
     const addr = r.provider?.address;
-    if (addr?.line1) doc.text(`  ${addr.line1}`);
-    const cityState = [addr?.city, addr?.state].filter(Boolean).join(", ");
-    if (cityState) doc.text(`  ${cityState} ${addr?.postal_code || ""}`);
-    doc.moveDown(0.3);
-
-    doc.text(`To: ${r.customer?.name || "-"}`);
-    if (r.customer?.email) doc.text(`  ${r.customer.email}`);
-    if (r.customer?.phone) doc.text(`  ${r.customer.phone}`);
-    doc.moveDown(0.8);
+    const providerAddress = [
+      addr?.line1,
+      [addr?.city, addr?.state, addr?.postal_code].filter(Boolean).join(", "),
+    ].filter(Boolean);
+    drawPdfInfoGrid(doc, [
+      {
+        label: "From",
+        lines: [r.provider?.name || "-", r.provider?.email, r.provider?.phone, ...providerAddress],
+      },
+      {
+        label: "To",
+        lines: [r.customer?.name || "-", r.customer?.email, r.customer?.phone],
+      },
+      {
+        label: "Booking",
+        lines: [
+          r.invoice_date ? `Issued ${formatPdfDate(r.invoice_date)}` : null,
+          r.booking_date ? `Booked ${formatPdfDate(r.booking_date)}` : null,
+        ],
+      },
+    ]);
 
     // Service address
     if (r.location_type === "at_home" && r.service_address?.line1) {
-      doc.fontSize(10).text("Service Location:", { underline: true });
-      doc.text(r.service_address.line1);
+      drawPdfSectionTitle(doc, "Service location");
+      doc.fontSize(10).fillColor("#111827").text(r.service_address.line1);
       const saCity = [r.service_address.city, r.service_address.state].filter(Boolean).join(", ");
       if (saCity) doc.text(`${saCity} ${r.service_address.postal_code || ""}`);
       doc.moveDown(0.5);
     }
 
-    // Line items
-    doc.fontSize(12).text("Items", { underline: true });
-    doc.moveDown(0.4);
-    for (const item of r.items || []) {
-      doc.fontSize(10);
-      const desc = [
-        item.description,
-        item.staff ? `(${item.staff})` : null,
-        item.duration ? `${item.duration} min` : null,
-      ]
-        .filter(Boolean)
-        .join(" ");
-      doc.text(`${desc} x${item.quantity || 1}`, { continued: true });
-      doc.text(money(item.total), { align: "right" });
-    }
+    drawPdfLineItems(
+      doc,
+      (r.items || []).map((item) => ({
+        description: item.description || "Item",
+        detail: [
+          item.staff ? `Staff: ${item.staff}` : null,
+          item.duration ? `${item.duration} min` : null,
+          `Quantity ${item.quantity || 1}`,
+        ].filter(Boolean).join(" · "),
+        amount: money(item.total),
+      })),
+      { title: "Items" },
+    );
 
-    doc.moveDown(0.5);
-
-    // Summary
-    doc.fontSize(11).text(`Subtotal: ${money(r.subtotal)}`);
-    if (r.discount_amount > 0) {
-      doc.text(
-        `Discount${r.discount_reason ? ` (${r.discount_reason})` : ""}: -${money(r.discount_amount)}`
-      );
-    }
-    if (r.travel_fee > 0) doc.text(`Travel fee: ${money(r.travel_fee)}`);
-    if (r.tax_amount > 0) {
-      doc.text(
-        `Tax${r.tax_rate > 0 ? ` (${r.tax_rate.toFixed(1)}%)` : ""}: ${money(r.tax_amount)}`
-      );
-    }
-    if (r.service_fee_amount > 0) doc.text(`Service fee: ${money(r.service_fee_amount)}`);
-    if (r.tip_amount > 0) doc.text(`Tip: ${money(r.tip_amount)}`);
-    if (r.cancellation_fee > 0) doc.text(`Cancellation fee: ${money(r.cancellation_fee)}`);
-    doc.moveDown(0.3);
-    doc.fontSize(13).text(`Total: ${money(r.total_amount)}`);
-
-    // Deposit / paid / balance
-    if (r.deposit_required && r.payment_option === "deposit") {
-      doc
-        .fontSize(10)
-        .text(
-          `Deposit${r.deposit_percentage ? ` (${r.deposit_percentage}%)` : ""}: ${money(r.deposit_amount)}`
-        );
-    }
-    if (Number(r.amount_paid || 0) > 0) {
-      doc.fontSize(10).text(`Amount paid: ${money(r.amount_paid)}`);
-    }
-    if (Number(r.balance_due || 0) > 0) {
-      doc
-        .fontSize(11)
-        .fillColor("red")
-        .text(`Balance due: ${money(r.balance_due)}`);
-      doc.fillColor("#333");
-    }
+    drawPdfTotals(
+      doc,
+      [
+        { label: "Subtotal", value: money(r.subtotal) },
+        ...(r.discount_amount > 0
+          ? [{ label: r.discount_reason ? `Discount (${r.discount_reason})` : "Discount", value: `-${money(r.discount_amount)}`, tone: "success" as const }]
+          : []),
+        ...(r.travel_fee > 0 ? [{ label: "Travel fee", value: money(r.travel_fee) }] : []),
+        ...(r.tax_amount > 0 ? [{ label: r.tax_rate > 0 ? `Tax (${r.tax_rate.toFixed(1)}%)` : "Tax", value: money(r.tax_amount) }] : []),
+        ...(r.service_fee_amount > 0 ? [{ label: "Service fee", value: money(r.service_fee_amount) }] : []),
+        ...(r.tip_amount > 0 ? [{ label: "Tip", value: money(r.tip_amount) }] : []),
+        ...(r.cancellation_fee > 0 ? [{ label: "Cancellation fee", value: money(r.cancellation_fee), tone: "warning" as const }] : []),
+        ...(r.deposit_required && r.payment_option === "deposit"
+          ? [{ label: `Deposit${r.deposit_percentage ? ` (${r.deposit_percentage}%)` : ""}`, value: money(r.deposit_amount) }]
+          : []),
+        ...(Number(r.amount_paid || 0) > 0 ? [{ label: "Amount paid", value: money(r.amount_paid) }] : []),
+        ...(Number(r.balance_due || 0) > 0 ? [{ label: "Balance due", value: money(r.balance_due), tone: "danger" as const }] : []),
+      ],
+      { label: "Total", value: money(r.total_amount) },
+    );
 
     // Additional charges
     if (r.additional_charges && r.additional_charges.length > 0) {
       doc.moveDown(0.4);
-      doc.fontSize(11).text("Additional charges:", { underline: true });
-      for (const charge of r.additional_charges) {
-        const statusLabel = charge.status === "paid"
-          ? `Paid${charge.paid_at ? ` on ${new Date(charge.paid_at).toLocaleDateString()}` : ""}`
-          : (charge.status || "pending");
-        doc
-          .fontSize(10)
-          .text(
-            `${charge.description || "Charge"}: ${money(charge.amount)} (${statusLabel})`
-          );
-      }
+      drawPdfLineItems(
+        doc,
+        r.additional_charges.map((charge) => ({
+          description: charge.description || "Additional charge",
+          detail: charge.status === "paid"
+            ? `Paid${charge.paid_at ? ` on ${formatPdfDate(charge.paid_at)}` : ""}`
+            : (charge.status || "Pending"),
+          amount: money(charge.amount),
+        })),
+        { title: "Additional charges" },
+      );
     }
-
-    // Payment status
-    doc.moveDown(0.3);
-    doc
-      .fontSize(10)
-      .fillColor("#333")
-      .text(`Payment status: ${r.payment_status || "-"}`);
 
     // Notes
     if (r.notes) {
       doc.moveDown(0.3);
-      doc.fontSize(10).text("Notes:", { underline: true });
+      drawPdfSectionTitle(doc, "Notes");
       doc.text(r.notes);
     }
 
-    // Receipt footer from provider settings
-    if (r.receipt_footer) {
-      doc.moveDown(1);
-      doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#ddd").lineWidth(0.5).stroke();
-      doc.moveDown(0.3);
-      doc.fontSize(9).fillColor("#666").text(r.receipt_footer, { align: "center" });
-    }
+    drawPdfFooter(doc, r.receipt_footer);
 
     doc.end();
     const buffer = await new Promise<Buffer>((resolve) => {

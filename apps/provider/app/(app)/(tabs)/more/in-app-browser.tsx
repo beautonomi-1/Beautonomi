@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Platform,
   Linking,
+  Alert,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import type { WebViewMessageEvent } from "react-native-webview";
@@ -34,11 +35,19 @@ export default function InAppBrowserScreen() {
         const raw = JSON.parse(e.nativeEvent.data) as { type?: string };
         // Ads budget: `/provider/settings/ads/payment-return` posts BEAUTONOMI_ADS_PAYMENT_DONE.
         // Provider subscription / renew / initialize-payment: Paystack callback lands on
-        // `/provider/subscription?payment_success=true&in_app=1`, which posts `subscription_success`
+        // `/provider/subscription?payment_success=true&in_app=1`, which posts subscription status
         // (see apps/web `provider/subscription/page.tsx`) so the shell can pop back to native UI.
         if (raw?.type === "BEAUTONOMI_ADS_PAYMENT_DONE" || raw?.type === "subscription_success") {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           router.back();
+        }
+        if (raw?.type === "subscription_failed") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          Alert.alert(
+            "Payment not completed",
+            "The subscription payment did not go through. Check your card funds or try another payment method.",
+            [{ text: "Back to subscription", onPress: () => router.back() }],
+          );
         }
       } catch {
         // ignore non-JSON messages
@@ -175,7 +184,7 @@ export default function InAppBrowserScreen() {
           source={{ uri: rawUrl }}
           style={styles.webview}
           originWhitelist={["https://*", "http://*", "provider://*"]}
-          onShouldStartLoadWithRequest={(request) => {
+          onShouldStartLoadWithRequest={(request: { url: string }) => {
             const u = request.url;
             if (u.startsWith("provider://")) {
               Linking.openURL(u).catch(() => {});

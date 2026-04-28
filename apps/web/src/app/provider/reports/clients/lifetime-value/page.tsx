@@ -10,6 +10,8 @@ import { Download, DollarSign, Users, TrendingUp } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
+import { addLocationIdToUrl } from "@/app/provider/reports/utils/report-api-url";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface LifetimeValueData {
@@ -39,6 +41,7 @@ interface LifetimeValueData {
 }
 
 export default function LifetimeValueReport() {
+  const { selectedLocationId } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [data, setData] = useState<LifetimeValueData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,7 +49,7 @@ export default function LifetimeValueReport() {
 
   useEffect(() => {
     loadReport();
-  }, []);
+  }, [selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -54,7 +57,7 @@ export default function LifetimeValueReport() {
       setError(null);
 
       const response = await fetcher.get<{ data: LifetimeValueData }>(
-        `/api/provider/reports/clients/lifetime-value`
+        addLocationIdToUrl("/api/provider/reports/clients/lifetime-value", selectedLocationId)
       );
       setData(response.data);
     } catch (err) {

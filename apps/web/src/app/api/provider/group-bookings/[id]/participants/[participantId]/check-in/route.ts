@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
@@ -13,6 +14,7 @@ export async function POST(
 ) {
   try {
     const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const { id, participantId } = await params;
 
@@ -21,33 +23,68 @@ export async function POST(
       return notFoundResponse("Provider not found");
     }
 
-    // §Provider-audit 2026-04 (round 8): constrain the update to the caller's
-    // provider so a staff user cannot mutate bookings that belong to
-    // another tenant just by guessing (or being handed) IDs. We also
-    // reject a check-in if the booking is already cancelled / no-show
-    // since those statuses should never silently flip to "checked_in".
-    const { data, error } = await supabase
-      .from("bookings")
+    const { data: group, error: groupError } = await admin
+      .from("group_bookings")
+      .select("id")
+      .eq("id", id)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+
+    if (groupError) {
+      throw groupError;
+    }
+    if (!group) {
+      return notFoundResponse("Group booking not found");
+    }
+
+    const now = new Date().toISOString();
+    const { data: participant, error } = await admin
+      .from("booking_participants")
       .update({
-        status: "checked_in",
-        checked_in_at: new Date().toISOString(),
+        checked_in_at: now,
+        updated_at: now,
       })
       .eq("id", participantId)
       .eq("group_booking_id", id)
-      .eq("provider_id", providerId)
-      .not("status", "in", "(cancelled,no_show)")
-      .select()
-      .single();
+      .select("id, booking_id, checked_in_at")
+      .maybeSingle();
 
-    if (error || !data) {
-      return notFoundResponse("Participant booking not found");
+    if (error || !participant) {
+      return notFoundResponse("Participant not found");
+    }
+
+    if (participant.booking_id) {
+      const { error: bookingError } = await admin
+        .from("bookings")
+        .update({
+          status: "checked_in",
+          checked_in_at: now,
+          updated_at: now,
+        })
+        .eq("id", participant.booking_id)
+        .eq("group_booking_id", id)
+        .eq("provider_id", providerId)
+        .not("status", "in", "(cancelled,no_show)");
+      if (bookingError) {
+        throw bookingError;
+      }
+    }
+
+    const { error: statusError } = await admin
+      .from("group_bookings")
+      .update({ status: "started", updated_at: now })
+      .eq("id", id)
+      .eq("provider_id", providerId)
+      .not("status", "in", "(completed,cancelled)");
+    if (statusError) {
+      throw statusError;
     }
 
     return successResponse({
       success: true,
       message: "Participant checked in successfully",
-      checked_in_at: data.checked_in_at,
-      booking: data,
+      checked_in_at: participant.checked_in_at,
+      participant,
     });
   } catch (error) {
     return handleApiError(error, "Failed to check in participant");

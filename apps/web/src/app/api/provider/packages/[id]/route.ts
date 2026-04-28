@@ -14,6 +14,7 @@ function supabaseServiceRole() {
 const packageItemSchema = z.object({
   offering_id: z.string().uuid().optional(),
   product_id: z.string().uuid().optional(),
+  product_variant_id: z.string().uuid().nullable().optional(),
   quantity: z.number().int().positive().default(1),
 }).refine(
   (data) => (data.offering_id !== undefined) !== (data.product_id !== undefined),
@@ -59,6 +60,7 @@ export async function GET(
           id,
           offering_id,
           product_id,
+          product_variant_id,
           quantity,
           offerings:offering_id(
             id,
@@ -72,6 +74,12 @@ export async function GET(
             retail_price,
             sku,
             brand
+          ),
+          product_variants:product_variant_id(
+            id,
+            option_values,
+            retail_price,
+            sku
           )
         )
       `)
@@ -156,6 +164,7 @@ export async function PATCH(
         package_id: id,
         ...(item.offering_id ? { offering_id: item.offering_id } : {}),
         ...(item.product_id ? { product_id: item.product_id } : {}),
+        ...(item.product_id && item.product_variant_id ? { product_variant_id: item.product_variant_id } : {}),
         quantity: item.quantity,
       }));
 
@@ -177,6 +186,7 @@ export async function PATCH(
           id,
           offering_id,
           product_id,
+          product_variant_id,
           quantity,
           offerings:offering_id(
             id,
@@ -190,6 +200,12 @@ export async function PATCH(
             retail_price,
             sku,
             brand
+          ),
+          product_variants:product_variant_id(
+            id,
+            option_values,
+            retail_price,
+            sku
           )
         )
       `)

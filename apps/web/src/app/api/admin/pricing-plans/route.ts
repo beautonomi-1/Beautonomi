@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { z } from "zod";
 import { fetchScopedListMerged, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
@@ -60,7 +60,7 @@ async function syncPricingPlanFeatures(
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const { currentTenantId } = await resolveAdminTenantContext(request, undefined, user.role ?? null);
 
     const scopedPlans = await fetchScopedListMerged<Record<string, unknown>>({
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
     const { currentTenantId, requestedScope } = await resolveAdminTenantContext(request, body as Record<string, unknown>, user.role ?? null);
     const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
     const { currentTenantId, requestedScope } = await resolveAdminTenantContext(request, body as Record<string, unknown>, user.role ?? null);
     const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;

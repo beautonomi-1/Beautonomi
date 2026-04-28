@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -36,6 +37,7 @@ interface PayoutAccount {
   account_name?: string;
   bank_name?: string;
   account_number?: string;
+  account_number_last4?: string;
 }
 
 /** GET /api/provider/team-access — `can_process_payments` matches POST /api/provider/payouts */
@@ -60,7 +62,7 @@ export function PayoutsContent() {
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
 
   const { data: payoutsList, loading, error, refresh } = useApi<Payout[]>("/api/provider/payouts");
-  const { data: accountsList } = useApi<PayoutAccount[]>("/api/provider/payout-accounts");
+  const { data: accountsList, refresh: refreshAccounts } = useApi<PayoutAccount[]>("/api/provider/payout-accounts");
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access");
   const { data: financeData, refresh: refreshFinance } = useApi<{
     earnings?: {
@@ -68,7 +70,7 @@ export function PayoutsContent() {
       pending_payouts?: number;
       minimum_payout_amount?: number;
     };
-  }>("/api/provider/finance");
+  }>("/api/provider/finance?range=month");
   const { execute: postPayout, loading: requesting } = useApiMutation<Payout>("post");
 
   const payouts: Payout[] = Array.isArray(payoutsList) ? payoutsList : [];
@@ -83,11 +85,11 @@ export function PayoutsContent() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refresh(), refreshFinance()]);
+      await Promise.all([refresh(), refreshFinance(), refreshAccounts()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refresh, refreshFinance]);
+  }, [refresh, refreshFinance, refreshAccounts]);
 
   const handleRequestPayout = useCallback(async () => {
     const num = parseFloat(amount.replace(/,/g, "."));
@@ -131,6 +133,7 @@ export function PayoutsContent() {
     setBankAccountId(null);
     refresh();
     refreshFinance();
+    refreshAccounts();
   }, [
     amount,
     notes,
@@ -178,7 +181,7 @@ export function PayoutsContent() {
           </View>
         )}
         <View style={twStyle("mb-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-4")}>
-          <Text style={twStyle("text-sm text-emerald-700 mb-1")}>Available balance</Text>
+          <Text style={twStyle("text-sm text-emerald-700 mb-1")}>All-time available to withdraw</Text>
           <Text style={twStyle("text-2xl font-bold text-emerald-900")}>
             {defaultCurrency} {Number(availableBalance).toFixed(2)}
           </Text>
@@ -190,6 +193,9 @@ export function PayoutsContent() {
           <Text style={twStyle("text-xs text-gray-500 mt-1")}>
             Minimum payout: {defaultCurrency} {Number(minimumPayout).toFixed(2)}
           </Text>
+          <Text style={twStyle("text-xs text-gray-500 mt-1")}>
+            This is your platform-held payoutable balance after completed payouts and pending requests.
+          </Text>
         </View>
 
         {payouts.length === 0 ? (
@@ -199,15 +205,23 @@ export function PayoutsContent() {
             </View>
             <Text style={twStyle("text-center font-semibold text-gray-900")}>No payouts yet</Text>
             <Text style={twStyle("mt-1 text-center text-sm text-gray-500")}>
-              Request a payout to withdraw your available balance to your bank account.
+              Request a payout to withdraw your all-time available balance to your bank account.
             </Text>
             {canRequestPayouts ? (
               <TouchableOpacity
-                onPress={() => setRequestOpen(true)}
+                onPress={() => {
+                  if (accounts.length === 0) {
+                    router.push("/(app)/(tabs)/more/settings/payout-accounts");
+                    return;
+                  }
+                  setRequestOpen(true);
+                }}
                 style={twStyle("mt-6 flex-row items-center justify-center rounded-xl bg-emerald-600 px-6 py-3")}
               >
                 <Ionicons name="cash-outline" size={20} color="#fff" />
-                <Text style={twStyle("ml-2 font-medium text-white")}>Request payout</Text>
+                <Text style={twStyle("ml-2 font-medium text-white")}>
+                  {accounts.length === 0 ? "Add bank account" : "Request payout"}
+                </Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -218,7 +232,11 @@ export function PayoutsContent() {
                 setAmount("");
                 setNotes("");
                 setBankAccountId(null);
-                setRequestOpen(true);
+                if (accounts.length === 0) {
+                  router.push("/(app)/(tabs)/more/settings/payout-accounts");
+                } else {
+                  setRequestOpen(true);
+                }
               }}
               style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 py-3")}
             >
@@ -265,7 +283,7 @@ export function PayoutsContent() {
         visible={requestOpen && canRequestPayouts}
         onClose={() => setRequestOpen(false)}
         title="Request payout"
-        subtitle="Withdraw to your bank account"
+        subtitle="Withdraw from your all-time available balance"
       >
         <Text style={twStyle("mb-1 text-sm text-emerald-700")}>
           Available: {defaultCurrency} {Number(availableBalance).toFixed(2)}
@@ -294,7 +312,7 @@ export function PayoutsContent() {
         <Text style={twStyle("mb-4 text-xs text-gray-500")}>
           {`Min ${defaultCurrency} ${Number(minimumPayout).toFixed(2)} · Available ${defaultCurrency} ${Number(availableBalance).toFixed(2)}`}
         </Text>
-        {accounts.length > 0 && (
+        {accounts.length > 0 ? (
           <>
             <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Bank account</Text>
             <ScrollView style={twStyle("mb-4 max-h-32")} nestedScrollEnabled>
@@ -305,13 +323,30 @@ export function PayoutsContent() {
                   style={twStyle(`mb-2 rounded-xl border px-4 py-3 ${bankAccountId === a.id ? "border-emerald-500 bg-emerald-50" : "border-gray-200 bg-gray-50"}`)}
                 >
                   <Text style={twStyle("font-medium text-gray-900")}>{a.account_name ?? "Bank account"}</Text>
-                  {a.account_number && (
-                    <Text style={twStyle("text-xs text-gray-500")}>***{String(a.account_number).slice(-4)}</Text>
+                  {(a.account_number_last4 || a.account_number || a.bank_name) && (
+                    <Text style={twStyle("text-xs text-gray-500")}>
+                      {a.bank_name ? `${a.bank_name} · ` : ""}
+                      ****{a.account_number_last4 ?? String(a.account_number ?? "").slice(-4)}
+                    </Text>
                   )}
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </>
+        ) : (
+          <TouchableOpacity
+            onPress={() => {
+              setRequestOpen(false);
+              router.push("/(app)/(tabs)/more/settings/payout-accounts");
+            }}
+            style={twStyle("mb-4 flex-row items-center rounded-xl border border-amber-200 bg-amber-50 px-4 py-3")}
+          >
+            <Ionicons name="card-outline" size={18} color="#b45309" />
+            <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-amber-900")}>
+              Add a bank account before requesting a payout
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color="#b45309" />
+          </TouchableOpacity>
         )}
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
         <TextInput
@@ -325,6 +360,7 @@ export function PayoutsContent() {
           label={requesting ? "Submitting…" : "Request payout"}
           onPress={handleRequestPayout}
           loading={requesting}
+          disabled={accounts.length === 0}
           fullWidth
         />
       </BottomSheet>

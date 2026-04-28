@@ -79,7 +79,7 @@ export default function InAppBrowserScreen() {
           source={{ uri: rawUrl }}
           style={styles.webview}
           originWhitelist={["https://*", "http://*", "customer://*"]}
-          onShouldStartLoadWithRequest={(request) => {
+          onShouldStartLoadWithRequest={(request: { url: string }) => {
             const u = request.url;
             if (u.startsWith("customer://")) {
               Linking.openURL(u).catch(() => {});
@@ -87,7 +87,7 @@ export default function InAppBrowserScreen() {
             }
             return true;
           }}
-          onMessage={(e) => {
+          onMessage={(e: any) => {
             try {
               const msg = JSON.parse(e.nativeEvent.data);
               const isPaymentSuccess =
@@ -112,8 +112,8 @@ export default function InAppBrowserScreen() {
               // ignore
             }
           }}
-          onError={(e) => setLoadError(e.nativeEvent.description || "Failed to load")}
-          onHttpError={(e) => setLoadError(`HTTP ${e.nativeEvent.statusCode}`)}
+          onError={(e: any) => setLoadError(e.nativeEvent.description || "Failed to load")}
+          onHttpError={(e: any) => setLoadError(`HTTP ${e.nativeEvent.statusCode}`)}
           startInLoadingState
           renderLoading={() => (
             <View style={styles.loading}>

@@ -11,6 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
+import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
@@ -132,7 +133,7 @@ export default function BusinessReportScreen() {
   const { selectedLocationId } = useProvider();
   const [period, setPeriod] = useState("month");
 
-  const businessUrl = `/api/provider/reports/business/overview?period=${period}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  const businessUrl = appendReportLocation(`/api/provider/reports/business/overview?period=${period}`, selectedLocationId);
   const { data: overview, loading, error: dataError, timedOut, refresh } = useApi<OverviewResponse>(
     businessUrl,
     { timeoutMs: 15000 }

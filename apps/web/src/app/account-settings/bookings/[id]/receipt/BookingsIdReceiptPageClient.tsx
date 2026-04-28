@@ -207,7 +207,8 @@ export default function ReceiptPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="min-h-screen bg-gradient-to-b from-rose-50/60 via-white to-slate-50 px-4 py-8 print:min-h-0 print:bg-white print:p-0">
+      <div className="container mx-auto max-w-4xl print:max-w-none print:p-0">
         <div className="flex justify-between items-center mb-6 print:hidden">
           <Link href={`/account-settings/bookings/${bookingId}`}>
             <Button variant="ghost">
@@ -227,110 +228,122 @@ export default function ReceiptPage() {
           </div>
         </div>
 
-        <Card className="print:shadow-none print:border-0">
-          <CardHeader className="text-center border-b pb-4">
+        <Card className="overflow-hidden border-slate-200 bg-white/95 shadow-xl shadow-rose-100/40 print:rounded-none print:border-0 print:bg-white print:shadow-none">
+          <CardHeader className="border-b border-slate-100 bg-slate-950 px-8 py-8 text-white print:bg-white print:px-0 print:py-3 print:text-slate-950">
             {receipt.receipt_header && (
-              <p className="text-sm text-gray-500 whitespace-pre-line mb-2">{receipt.receipt_header}</p>
+              <p className="mx-auto mb-5 max-w-2xl whitespace-pre-line text-center text-sm text-slate-300 print:text-slate-500">{receipt.receipt_header}</p>
             )}
-            <CardTitle className="text-3xl">Receipt</CardTitle>
-            <p className="text-gray-600 mt-2">Booking #{receipt.booking_number}</p>
-          </CardHeader>
-          <CardContent className="space-y-6 pt-6">
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <h3 className="font-semibold mb-2">Customer</h3>
-                <p className="text-sm">{receipt.customer?.full_name || "N/A"}</p>
-                <p className="text-sm text-gray-600">{receipt.customer?.email || ""}</p>
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between print:flex-row print:items-end print:justify-between">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-rose-300 print:text-rose-700">Beautonomi</p>
+                <CardTitle className="text-4xl font-semibold tracking-tight print:text-3xl">Receipt</CardTitle>
+                <p className="text-sm text-slate-300 print:text-slate-600">Booking #{receipt.booking_number}</p>
               </div>
-              <div>
-                <h3 className="font-semibold mb-2">Provider</h3>
-                <p className="text-sm">{receipt.provider?.business_name || "Provider"}</p>
+              <Badge
+                className={
+                  receipt.payment_status === "paid"
+                    ? "w-fit border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800"
+                    : receipt.payment_status === "pending"
+                    ? "w-fit border border-amber-200 bg-amber-50 px-3 py-1 text-amber-800"
+                    : "w-fit border border-red-200 bg-red-50 px-3 py-1 text-red-800"
+                }
+              >
+                {receipt.payment_status === "paid" && <CheckCircle2 className="mr-1 h-3 w-3" />}
+                {(receipt.payment_status || "pending").charAt(0).toUpperCase() +
+                  (receipt.payment_status || "pending").slice(1)}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-7 p-8 print:p-0 print:pt-5">
+            <div className="grid gap-4 sm:grid-cols-3 print:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 print:rounded-lg print:bg-white">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</h3>
+                <p className="text-sm font-semibold text-slate-950">{receipt.customer?.full_name || "N/A"}</p>
+                <p className="text-sm text-slate-600">{receipt.customer?.email || ""}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 print:rounded-lg print:bg-white">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Provider</h3>
+                <p className="text-sm font-semibold text-slate-950">{receipt.provider?.business_name || "Provider"}</p>
                 {receipt.provider?.owner_email && (
-                  <p className="text-sm text-gray-600">{receipt.provider.owner_email}</p>
+                  <p className="text-sm text-slate-600">{receipt.provider.owner_email}</p>
                 )}
               </div>
-            </div>
-
-            <div className="border-t pt-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-600">Booking Date:</span>
-                  <p className="font-medium">{formatDate(receipt.booking_date)}</p>
-                </div>
-                <div>
-                  <span className="text-gray-600">Service Date:</span>
-                  <p className="font-medium">{formatDate(receipt.service_date)}</p>
-                </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 print:rounded-lg print:bg-white">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Dates</h3>
+                <p className="text-sm text-slate-600">Booked <span className="font-semibold text-slate-950">{formatDate(receipt.booking_date)}</span></p>
+                <p className="text-sm text-slate-600">Service <span className="font-semibold text-slate-950">{formatDate(receipt.service_date)}</span></p>
               </div>
             </div>
 
             {(receipt.services.length > 0 || (receipt.addons?.length ?? 0) > 0 || receipt.products.length > 0) && (
-              <div className="border-t pt-4">
-                <h3 className="font-semibold mb-4">Items</h3>
-                <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 print:rounded-lg">
+                <div className="border-b border-slate-200 bg-slate-50 px-5 py-3 print:bg-white">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Items</h3>
+                </div>
+                <div className="divide-y divide-slate-100">
                   {receipt.services.map((service, index) => (
-                    <div key={index} className="flex justify-between items-start">
+                    <div key={index} className="flex items-start justify-between gap-4 px-5 py-4">
                       <div>
-                        <p className="font-medium">{service.name}</p>
-                        <p className="text-sm text-gray-600">
+                        <p className="font-medium text-slate-950">{service.name}</p>
+                        <p className="text-sm text-slate-500">
                           Quantity: {service.quantity} × {formatCurrency(service.price)}
                         </p>
                       </div>
-                      <p className="font-medium">{formatCurrency(service.total)}</p>
+                      <p className="font-semibold text-slate-950">{formatCurrency(service.total)}</p>
                     </div>
                   ))}
                   {(receipt.addons ?? []).map((addon, index) => (
-                    <div key={`addon-${index}`} className="flex justify-between items-start">
+                    <div key={`addon-${index}`} className="flex items-start justify-between gap-4 px-5 py-4">
                       <div>
-                        <p className="font-medium">Add-on: {addon.name}</p>
-                        <p className="text-sm text-gray-600">
+                        <p className="font-medium text-slate-950">Add-on: {addon.name}</p>
+                        <p className="text-sm text-slate-500">
                           Quantity: {addon.quantity} × {formatCurrency(addon.price)}
                         </p>
                       </div>
-                      <p className="font-medium">{formatCurrency(addon.total)}</p>
+                      <p className="font-semibold text-slate-950">{formatCurrency(addon.total)}</p>
                     </div>
                   ))}
                   {receipt.products.map((product, index) => (
-                    <div key={index} className="flex justify-between items-start">
+                    <div key={index} className="flex items-start justify-between gap-4 px-5 py-4">
                       <div>
-                        <p className="font-medium">{product.name}</p>
-                        <p className="text-sm text-gray-600">
+                        <p className="font-medium text-slate-950">{product.name}</p>
+                        <p className="text-sm text-slate-500">
                           Quantity: {product.quantity} × {formatCurrency(product.price)}
                         </p>
                       </div>
-                      <p className="font-medium">{formatCurrency(product.total)}</p>
+                      <p className="font-semibold text-slate-950">{formatCurrency(product.total)}</p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <div className="border-t pt-4 space-y-2">
+            <div className="ml-auto max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-sm print:rounded-lg print:shadow-none">
               <div className="flex justify-between text-sm">
-                <span>Subtotal</span>
+                <span className="text-slate-600">Subtotal</span>
                 <span>{formatCurrency(receipt.subtotal)}</span>
               </div>
               {receipt.tax > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>Tax{receipt.tax_rate ? ` (${receipt.tax_rate}%)` : ""}</span>
+                  <span className="text-slate-600">Tax{receipt.tax_rate ? ` (${receipt.tax_rate}%)` : ""}</span>
                   <span>{formatCurrency(receipt.tax)}</span>
                 </div>
               )}
               {(receipt.fees ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>Service / platform fee</span>
+                  <span className="text-slate-600">Service / platform fee</span>
                   <span>{formatCurrency(receipt.fees)}</span>
                 </div>
               )}
               {(receipt.travel_fee ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>Travel fee</span>
+                  <span className="text-slate-600">Travel fee</span>
                   <span>{formatCurrency(receipt.travel_fee!)}</span>
                 </div>
               )}
               {(receipt.tip_amount ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>Tip</span>
+                  <span className="text-slate-600">Tip</span>
                   <span>{formatCurrency(receipt.tip_amount!)}</span>
                 </div>
               )}
@@ -346,7 +359,7 @@ export default function ReceiptPage() {
                   <span>-{formatCurrency(receipt.discount)}</span>
                 </div>
               )}
-              <div className="flex justify-between font-bold text-lg pt-2 border-t">
+              <div className="mt-3 flex justify-between border-t pt-3 text-lg font-bold text-slate-950">
                 <span>Total</span>
                 <span>{formatCurrency(receipt.total)}</span>
               </div>
@@ -373,12 +386,12 @@ export default function ReceiptPage() {
             </div>
 
             {(receipt.additional_charges?.length ?? 0) > 0 && (
-              <div className="border-t pt-4">
-                <h3 className="font-semibold mb-2 text-sm">Additional Charges</h3>
-                <div className="space-y-2">
+              <div className="rounded-2xl border border-slate-200 p-5 print:rounded-lg">
+                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">Additional Charges</h3>
+                <div className="space-y-3">
                   {receipt.additional_charges!.map((charge) => (
                     <div key={charge.id}>
-                      <div className="flex justify-between text-sm">
+                      <div className="flex justify-between gap-4 text-sm">
                         <span>{charge.description}</span>
                         <div className="flex items-center gap-2">
                           <span>{formatCurrency(charge.amount)}</span>
@@ -396,33 +409,17 @@ export default function ReceiptPage() {
               </div>
             )}
 
-            <div className="border-t pt-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">Payment Status:</span>
-                <Badge
-                  className={
-                    receipt.payment_status === "paid"
-                      ? "bg-green-100 text-green-800"
-                      : receipt.payment_status === "pending"
-                      ? "bg-yellow-100 text-yellow-800"
-                      : "bg-red-100 text-red-800"
-                  }
-                >
-                  {receipt.payment_status === "paid" && (
-                    <CheckCircle2 className="w-3 h-3 mr-1" />
-                  )}
-                  {(receipt.payment_status || "pending").charAt(0).toUpperCase() +
-                    (receipt.payment_status || "pending").slice(1)}
-                </Badge>
-              </div>
+            <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-4 text-sm text-rose-950 print:rounded-lg print:bg-white">
+              This receipt is generated from Beautonomi booking and payment records. Keep it for your personal payment history.
             </div>
           </CardContent>
           {receipt.receipt_footer && (
-            <div className="border-t px-6 py-4 text-center text-xs text-gray-500 whitespace-pre-line">
+            <div className="border-t border-slate-100 bg-slate-50 px-8 py-5 text-center text-xs text-slate-500 whitespace-pre-line print:bg-white">
               {receipt.receipt_footer}
             </div>
           )}
         </Card>
       </div>
+    </div>
   );
 }

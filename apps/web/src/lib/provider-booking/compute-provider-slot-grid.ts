@@ -120,12 +120,14 @@ export async function computeProviderBookingSlotGrid(
   const effectiveMaxAdvance =
     Number.isFinite(maxAdvanceDays) && maxAdvanceDays >= 1 ? maxAdvanceDays : 365;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dateObj = new Date(`${dateStr}T00:00:00`);
-  dateObj.setHours(0, 0, 0, 0);
-  const daysFromToday = Math.floor((dateObj.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-  if (daysFromToday > effectiveMaxAdvance) {
+  const now = new Date();
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  const requestedDate = dateMatch
+    ? Date.UTC(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]))
+    : NaN;
+  const daysFromToday = Math.floor((requestedDate - today) / (24 * 60 * 60 * 1000));
+  if (Number.isFinite(daysFromToday) && daysFromToday > effectiveMaxAdvance) {
     return {
       providerTimeZone: null,
       slotGrid: [],

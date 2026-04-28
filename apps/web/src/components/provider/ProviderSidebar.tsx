@@ -38,6 +38,7 @@ import {
   Ticket,
   Link2,
   Monitor,
+  Target,
   Coins,
   PiggyBank,
   CreditCard,
@@ -118,11 +119,15 @@ const navigationSections = [
       // discoverable alongside other money surfaces.
       { icon: CreditCard, label: "Payments", href: "/provider/payments", permission: "view_sales" as keyof StaffPermissions },
       { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" as keyof StaffPermissions },
+      { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "view_sales" as keyof StaffPermissions },
+      { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: CreditCard, label: "Subscription", href: "/provider/subscription", permission: undefined },
       { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" as keyof StaffPermissions },
       { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" as keyof StaffPermissions },
       { icon: Trophy, label: "Rewards & Badges", href: "/provider/gamification", permission: undefined },
       { icon: Grid3x3, label: "Catalogue", href: "/provider/catalogue", permission: "view_products" as keyof StaffPermissions },
       { icon: Sparkles, label: "Packages", href: "/provider/packages", permission: "view_services" as keyof StaffPermissions },
+      { icon: Ticket, label: "Memberships", href: "/provider/settings/services/memberships", permission: "view_services" as keyof StaffPermissions },
     ],
   },
   {
@@ -136,6 +141,7 @@ const navigationSections = [
       { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" as keyof StaffPermissions },
       { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" as keyof StaffPermissions },
       { icon: Megaphone, label: "Marketing", href: "/provider/marketing/automations", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Target, label: "Paid Ads", href: "/provider/settings/ads", permission: "edit_settings" as keyof StaffPermissions },
       { icon: Link2, label: "Booking links", href: "/provider/express-booking", permission: "edit_settings" as keyof StaffPermissions },
     ],
   },
@@ -146,6 +152,24 @@ const bottomItems = [
   { icon: Ticket, label: "My tickets", href: "/help/my-tickets" },
   { icon: Settings, label: "Settings", href: "/provider/settings" },
 ];
+
+type ProviderNavCounts = {
+  pending_bookings: number;
+  active_product_orders: number;
+  unread_messages: number;
+  waiting_room: number;
+  critical_total: number;
+};
+
+const emptyNavCounts: ProviderNavCounts = {
+  pending_bookings: 0,
+  active_product_orders: 0,
+  unread_messages: 0,
+  waiting_room: 0,
+  critical_total: 0,
+};
+
+const formatNavCount = (count: number): string => (count > 99 ? "99+" : String(count));
 
 // Match routes including sub-routes
 const isActiveRoute = (pathname: string, href: string) => {
@@ -210,6 +234,21 @@ const isActiveRoute = (pathname: string, href: string) => {
   if (href === "/provider/payouts") {
     return pathname.startsWith("/provider/payouts");
   }
+  if (href === "/provider/subscription") {
+    return pathname.startsWith("/provider/subscription");
+  }
+  if (href === "/provider/settings/payout-accounts") {
+    return pathname.startsWith("/provider/settings/payout-accounts");
+  }
+  if (href === "/provider/settings/sales/yoco-integration") {
+    return pathname.startsWith("/provider/settings/sales/yoco");
+  }
+  if (href === "/provider/settings/services/memberships") {
+    return pathname.startsWith("/provider/settings/services/memberships");
+  }
+  if (href === "/provider/settings/ads") {
+    return pathname.startsWith("/provider/settings/ads");
+  }
   if (href === "/provider/express-booking") {
     return pathname.startsWith("/provider/express-booking");
   }
@@ -234,6 +273,7 @@ export function ProviderSidebar() {
   const { signOut, user: _user, role } = useAuth();
   const { branding } = usePlatformSettings();
   const { hasPermission, isLoading: permissionsLoading, permissions } = usePermissions();
+  const [navCounts, setNavCounts] = React.useState<ProviderNavCounts>(emptyNavCounts);
   
   // Track if user was a provider owner (to handle temporary role loss during tab switches)
   const wasOwnerRef = React.useRef<boolean>(false);
@@ -254,6 +294,53 @@ export function ProviderSidebar() {
   
   // Determine if user is/was a provider (handles temporary role loss)
   const isProvider = role === 'provider_owner' || role === 'provider_staff' || wasOwnerRef.current;
+
+  React.useEffect(() => {
+    if (!isProvider) return;
+
+    let cancelled = false;
+    const loadCounts = async () => {
+      try {
+        const response = await fetch("/api/provider/nav-counts", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const data = (payload?.data ?? payload) as Partial<ProviderNavCounts>;
+        if (cancelled) return;
+        setNavCounts({
+          pending_bookings: Number(data.pending_bookings ?? 0),
+          active_product_orders: Number(data.active_product_orders ?? 0),
+          unread_messages: Number(data.unread_messages ?? 0),
+          waiting_room: Number(data.waiting_room ?? 0),
+          critical_total: Number(data.critical_total ?? 0),
+        });
+      } catch {
+        // Nav badges are alert helpers; never block the sidebar if counts fail.
+      }
+    };
+
+    void loadCounts();
+    const interval = window.setInterval(loadCounts, 30_000);
+    const onFocus = () => void loadCounts();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [isProvider]);
+
+  const navCountByHref = React.useMemo<Record<string, number>>(
+    () => ({
+      "/provider/bookings": navCounts.pending_bookings,
+      "/provider/ecommerce/orders": navCounts.active_product_orders,
+      "/provider/messaging": navCounts.unread_messages,
+      "/provider/waiting-room": navCounts.waiting_room,
+    }),
+    [navCounts],
+  );
 
   // Filter navigation sections based on permissions
   // CRITICAL FIX: For provider owners, ALWAYS show all menu items
@@ -387,6 +474,8 @@ export function ProviderSidebar() {
                 {section.items.map((item) => {
                   const Icon = item.icon;
                   const isActive = isActiveRoute(pathname, item.href);
+                  const count = navCountByHref[item.href] ?? 0;
+                  const countLabel = count > 0 ? formatNavCount(count) : null;
                   const linkContent = (
                     <Link
                       href={item.href}
@@ -407,11 +496,21 @@ export function ProviderSidebar() {
                         "w-5 h-5 flex-shrink-0 transition-transform pointer-events-none",
                         isActive && "scale-110"
                       )} />
+                      {!isExpanded && countLabel && (
+                        <span className="absolute right-1.5 top-1.5 min-w-4 h-4 rounded-full bg-red-500 px-1 text-[9px] font-bold leading-4 text-white ring-2 ring-white/20 pointer-events-none">
+                          {countLabel}
+                        </span>
+                      )}
                       {isExpanded && (
                         <>
                           <span className="text-sm font-medium whitespace-nowrap flex-1 pointer-events-none">
                             {item.label}
                           </span>
+                          {countLabel && (
+                            <span className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white pointer-events-none">
+                              {countLabel}
+                            </span>
+                          )}
                           {item.badge && (
                             <span 
                               className="px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#1a1f3c] rounded pointer-events-none"

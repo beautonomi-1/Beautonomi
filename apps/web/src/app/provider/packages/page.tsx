@@ -20,6 +20,7 @@ interface PackageItem {
   id: string;
   offering_id?: string | null;
   product_id?: string | null;
+  product_variant_id?: string | null;
   quantity: number;
   offering?: {
     id: string;
@@ -33,6 +34,12 @@ interface PackageItem {
     retail_price: number;
     sku?: string | null;
     brand?: string | null;
+  } | null;
+  product_variant?: {
+    id: string;
+    option_values?: Record<string, string> | null;
+    retail_price?: number | null;
+    sku?: string | null;
   } | null;
 }
 
@@ -93,6 +100,11 @@ export default function ProviderPackagesPage() {
       style: "currency",
       currency: currency,
     }).format(amount);
+  };
+
+  const formatVariantLabel = (item: PackageItem) => {
+    const optionValues = item.product_variant?.option_values;
+    return optionValues ? Object.values(optionValues).filter(Boolean).join(" / ") : item.product_variant?.sku ?? "";
   };
 
   if (isLoading) {
@@ -179,10 +191,11 @@ export default function ProviderPackagesPage() {
                     <p className="text-sm font-semibold mb-2">Items Included:</p>
                     <ul className="space-y-1">
                       {pkg.items.map((item) => {
+                        const variantLabel = formatVariantLabel(item);
                         const itemName = item.offering 
                           ? `${item.offering.title} (Service)`
                           : item.product 
-                          ? `${item.product.name} (Product)`
+                          ? `${item.product.name}${variantLabel ? ` — ${variantLabel}` : ""} (Product)`
                           : item.offering_id
                           ? "Service (deleted)"
                           : item.product_id

@@ -4,13 +4,17 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { getMetricRangeParams } from "@beautonomi/utils";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import type { Booking } from "@/types/beautonomi";
 import { getOperationalBadge } from "./operationalState";
-import type { FrontDeskBooking } from "./types";
+import type { FrontDeskBooking, FrontDeskMetricRange } from "./types";
+
+export { formatFrontDeskRangeCaption } from "@beautonomi/utils";
 
 export interface UseFrontDeskDataInput {
   date: Date;
+  metricRange?: FrontDeskMetricRange;
   locationId?: string | null;
   staffId?: string | null;
   query?: string;
@@ -18,12 +22,47 @@ export interface UseFrontDeskDataInput {
 
 export interface UseFrontDeskDataOutput {
   bookings: FrontDeskBooking[];
+  metricBookings: FrontDeskBooking[];
   staff: Array<{ id: string; name: string }>;
   locations: Array<{ id: string; name: string }>;
   services: Array<{ id: string; name: string; duration_minutes?: number; price?: number }>;
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
+}
+
+function mapBookingsToFrontDeskBookings(rows: any[]): FrontDeskBooking[] {
+  return rows.map((b: any) => {
+    const customer = b.customers || {};
+    const loc = b.locations || {};
+    const firstSvc = (b.services || [])[0];
+    return {
+      ...b,
+      customer_name: customer.full_name || "Customer",
+      staff_name: firstSvc?.staff_name || firstSvc?.staff?.name || "",
+      location_name: loc.name || "",
+      operationalBadge: getOperationalBadge(b),
+    };
+  });
+}
+
+async function fetchBookingsPages(params: URLSearchParams): Promise<any[]> {
+  const limit = 1000;
+  const rows: any[] = [];
+  for (let offset = 0; offset < 10_000; offset += limit) {
+    const paged = new URLSearchParams(params);
+    paged.set("limit", String(limit));
+    paged.set("offset", String(offset));
+    const res = await fetcher.get<{ data: Booking[] }>(`/api/provider/bookings?${paged.toString()}`, {
+      timeoutMs: 8000,
+      staleTimeMs: 0,
+    });
+    const raw = (res as any)?.data ?? res;
+    const page = Array.isArray(raw) ? raw : [];
+    rows.push(...page);
+    if (page.length < limit) break;
+  }
+  return rows;
 }
 
 /** Fetch staff from provider API (locations are from ProviderPortal) */
@@ -67,8 +106,9 @@ async function fetchServices(): Promise<Array<{ id: string; name: string; durati
 }
 
 export function useFrontDeskData(input: UseFrontDeskDataInput): UseFrontDeskDataOutput {
-  const { date, locationId, query } = input;
+  const { date, metricRange, locationId, query } = input;
   const [bookings, setBookings] = useState<FrontDeskBooking[]>([]);
+  const [metricBookings, setMetricBookings] = useState<FrontDeskBooking[]>([]);
   const [staff, setStaff] = useState<Array<{ id: string; name: string }>>([]);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [services, setServices] = useState<Array<{ id: string; name: string; duration_minutes?: number; price?: number }>>([]);
@@ -80,40 +120,20 @@ export function useFrontDeskData(input: UseFrontDeskDataInput): UseFrontDeskData
       setLoading(true);
       setError(null);
 
-      const startDate = date.toISOString().slice(0, 10);
-      const endDate = new Date(date);
-      endDate.setDate(endDate.getDate() + 1);
-      const endDateStr = endDate.toISOString().slice(0, 10);
-
       const params = new URLSearchParams();
-      params.set("start_date", startDate);
-      params.set("end_date", endDateStr);
+      const rangeDates = getMetricRangeParams(metricRange, date);
+      if (rangeDates.start) params.set("start_date", rangeDates.start);
+      if (rangeDates.end) params.set("end_date", rangeDates.end);
       if (locationId) params.set("location_id", locationId);
 
-      const [bookingsRes, staffData, locationsData, servicesData] = await Promise.all([
-        fetcher.get<{ data: Booking[] }>(`/api/provider/bookings?${params.toString()}`, {
-          timeoutMs: 8000,
-          staleTimeMs: 0,
-        }),
+      const [bookingsRows, staffData, locationsData, servicesData] = await Promise.all([
+        fetchBookingsPages(params),
         fetchStaff(locationId),
         fetchLocations(),
         fetchServices(),
       ]);
 
-      const raw = (bookingsRes as any)?.data ?? bookingsRes;
-      const arr = Array.isArray(raw) ? raw : [];
-      const enriched: FrontDeskBooking[] = arr.map((b: any) => {
-        const customer = b.customers || {};
-        const loc = b.locations || {};
-        const firstSvc = (b.services || [])[0];
-        return {
-          ...b,
-          customer_name: customer.full_name || "Customer",
-          staff_name: firstSvc?.staff_name || firstSvc?.staff?.name || "",
-          location_name: loc.name || "",
-          operationalBadge: getOperationalBadge(b),
-        };
-      });
+      const enriched = mapBookingsToFrontDeskBookings(bookingsRows);
 
       let filtered = enriched;
       if (query && query.trim()) {
@@ -127,6 +147,7 @@ export function useFrontDeskData(input: UseFrontDeskDataInput): UseFrontDeskData
       }
 
       setBookings(filtered);
+      setMetricBookings(enriched);
       setStaff(staffData);
       setLocations(locationsData);
       setServices(servicesData);
@@ -139,14 +160,15 @@ export function useFrontDeskData(input: UseFrontDeskDataInput): UseFrontDeskData
             : "Failed to load bookings";
       setError(msg);
       setBookings([]);
+      setMetricBookings([]);
     } finally {
       setLoading(false);
     }
-  }, [date, locationId, query]);
+  }, [date, metricRange, locationId, query]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  return { bookings, staff, locations, services, loading, error, refetch: load };
+  return { bookings, metricBookings, staff, locations, services, loading, error, refetch: load };
 }

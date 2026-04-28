@@ -36,6 +36,16 @@ function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T |
   ]);
 }
 
+function isSupabaseAuthLockError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error && "message" in error
+        ? String((error as { message?: unknown }).message)
+        : String(error ?? "");
+  return message.includes("Lock ") && message.includes("was released because another request stole it");
+}
+
 async function fetchRoleWithTimeout(
   url: string,
   timeoutMs: number = ROLE_FETCH_TIMEOUT_MS
@@ -620,6 +630,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       return user;
     } catch (error) {
+      if (isSupabaseAuthLockError(error)) {
+        // Another tab/request won Supabase's browser auth lock. Keep the
+        // current state and let the next auth event/visibility refresh settle it.
+        setIsLoading(false);
+        const preserved = userRef.current;
+        pendingRefreshCallbacks.current.forEach((cb) => cb.resolve(preserved));
+        pendingRefreshCallbacks.current = [];
+        refreshInProgress.current = false;
+        return preserved;
+      }
       console.error("Unexpected error in refreshUser:", error);
       setUser(null);
       setRole(null);
@@ -641,6 +661,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoadingRef.current = isLoading;
     sessionRef.current = session;
   }, [user, isLoading, session]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (isSupabaseAuthLockError(event.reason)) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+    return () => window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+  }, []);
 
   // When navigating to provider portal with role customer, re-resolve role (e.g. staff get provider_staff)
   useEffect(() => {
@@ -700,7 +731,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           safetyTimeout = null;
         }
       } catch (error) {
-        console.error("Error in initial auth load:", error);
+        if (!isSupabaseAuthLockError(error)) {
+          console.error("Error in initial auth load:", error);
+        }
         // Ensure loading state is cleared even on error
         if (isMounted) {
           setIsLoading(false);
@@ -865,7 +898,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /** After login, apply default saved address to marketplace `userLocation` once per session (unless user clears session storage). */
   useEffect(() => {
-    if (!user?.id || typeof window === "undefined") return;
+    if (!user?.id || !session || typeof window === "undefined") return;
     const syncKey = `beautonomi_primary_loc_v1_${user.id}`;
     if (sessionStorage.getItem(syncKey)) return;
 
@@ -922,7 +955,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, user?.role]);
+  }, [session, user?.id, user?.role]);
 
   const signOut = useCallback(async () => {
     if (!supabase) return;

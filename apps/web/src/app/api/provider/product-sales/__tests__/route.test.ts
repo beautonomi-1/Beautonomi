@@ -5,6 +5,7 @@ const mockRequireRoleInApi = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockResolveTenantIdWithZaFallback = vi.fn();
+const mockRecordProductOrderPayment = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -27,6 +28,10 @@ vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
 vi.mock("@/lib/provider-sales/pos-product-stock", () => ({
   validatePosProductStock: vi.fn().mockResolvedValue(null),
   applyPosProductStockDecrements: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/orders/record-product-order-payment", () => ({
+  recordProductOrderPayment: (...args: unknown[]) => mockRecordProductOrderPayment(...args),
 }));
 
 const PROVIDER_ID = "22222222-2222-4222-8222-222222222222";
@@ -114,6 +119,7 @@ describe("POST /api/provider/product-sales", () => {
       user: { id: USER_ID, role: "provider_owner" },
     });
     mockGetProviderIdForUser.mockResolvedValue(PROVIDER_ID);
+    mockRecordProductOrderPayment.mockResolvedValue({ ok: true, duplicate: false });
   });
 
   it("sets tenant_id from providers.tenant_id when present", async () => {
@@ -138,6 +144,14 @@ describe("POST /api/provider/product-sales", () => {
     expect(body?.data?.order?.id).toBe("order-uuid-1");
     expect(insertCalls).toHaveLength(1);
     expect((insertCalls[0] as { tenant_id?: string }).tenant_id).toBe(tenantFromRow);
+    expect(mockRecordProductOrderPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        productOrderId: "order-uuid-1",
+        source: "walk_in_pos",
+        provider: "cash",
+        platformHeld: false,
+      }),
+    );
     expect(mockResolveTenantIdWithZaFallback).not.toHaveBeenCalled();
   }, 45_000);
 

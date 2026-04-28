@@ -19,6 +19,8 @@ import {
 import Link from "next/link";
 import { fetcher } from "@/lib/http/fetcher";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { addLocationIdToUrl } from "@/app/provider/reports/utils/report-api-url";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 
 const reportCategories = [
   {
@@ -145,19 +147,22 @@ interface QuickStats {
 
 export default function ReportsPage() {
   const { format: fmt } = useReportCurrency();
+  const { selectedLocationId } = useReportLocationQuery();
   const [quickStats, setQuickStats] = useState<QuickStats | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   useEffect(() => {
     loadQuickStats();
-  }, []);
+  }, [selectedLocationId]);
 
   const loadQuickStats = async () => {
     try {
       setIsLoadingStats(true);
       // Get stats from business overview endpoint (more accurate than dashboard)
       type BusinessOverviewData = { totalRevenue?: number; totalBookings?: number; uniqueClients?: number; revenueGrowth?: number };
-      const response = await fetcher.get<{ data: BusinessOverviewData }>("/api/provider/reports/business/overview?period=month");
+      const response = await fetcher.get<{ data: BusinessOverviewData }>(
+        addLocationIdToUrl("/api/provider/reports/business/overview?period=month", selectedLocationId)
+      );
       const overviewData = response.data ?? {};
       setQuickStats({
         totalRevenue: overviewData.totalRevenue ?? 0,

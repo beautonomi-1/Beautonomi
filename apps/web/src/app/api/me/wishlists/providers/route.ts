@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, getOffsetPaginationParams } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -12,6 +12,9 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
  */
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 100, maxLimit: 100 });
+    const wantsPaginated = searchParams.has("limit") || searchParams.has("offset");
     let user;
     try {
       const result = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
@@ -19,7 +22,11 @@ export async function GET(request: NextRequest) {
     } catch (authError) {
       console.error("Authentication error:", authError);
       // Return empty array if auth fails
-      return successResponse([]);
+      return successResponse(wantsPaginated ? {
+        providers: [],
+        total: 0,
+        pagination: { limit, offset, has_more: false },
+      } : []);
     }
     
     const supabase = await getSupabaseServer(request);
@@ -35,7 +42,11 @@ export async function GET(request: NextRequest) {
     if (wishlistError) {
       console.error("Error fetching wishlists:", wishlistError);
       // Return empty array instead of throwing
-      return successResponse([]);
+      return successResponse(wantsPaginated ? {
+        providers: [],
+        total: 0,
+        pagination: { limit, offset, has_more: false },
+      } : []);
     }
 
     if (!wishlists || wishlists.length === 0) {
@@ -45,20 +56,29 @@ export async function GET(request: NextRequest) {
     const wishlistIds = wishlists.map((w: any) => w.id);
 
     // Get all provider items from all wishlists
-    const { data: items, error: itemsError } = await (supabase.from("wishlist_items") as any)
-      .select("id, item_type, item_id, wishlist_id, created_at")
+    const { data: items, error: itemsError, count: itemsCount } = await (supabase.from("wishlist_items") as any)
+      .select("id, item_type, item_id, wishlist_id, created_at", { count: "exact" })
       .in("wishlist_id", wishlistIds)
       .eq("item_type", "provider")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (itemsError) {
       console.error("Error fetching wishlist items:", itemsError);
       // Return empty array instead of throwing
-      return successResponse([]);
+      return successResponse(wantsPaginated ? {
+        providers: [],
+        total: 0,
+        pagination: { limit, offset, has_more: false },
+      } : []);
     }
 
     if (!items || items.length === 0) {
-      return successResponse([]);
+      return successResponse(wantsPaginated ? {
+        providers: [],
+        total: itemsCount ?? 0,
+        pagination: { limit, offset, has_more: false },
+      } : []);
     }
 
     // Get unique provider IDs
@@ -71,7 +91,11 @@ export async function GET(request: NextRequest) {
     });
 
     if (providerIds.length === 0) {
-      return successResponse([]);
+      return successResponse(wantsPaginated ? {
+        providers: [],
+        total: itemsCount ?? 0,
+        pagination: { limit, offset, has_more: false },
+      } : []);
     }
 
     // Fetch provider data (use rating_average, not rating)
@@ -98,11 +122,19 @@ export async function GET(request: NextRequest) {
         providerIds: providerIds.slice(0, 5), // Log first 5 IDs
       });
       // Return empty array instead of throwing to prevent page breakage
-      return successResponse([]);
+      return successResponse(wantsPaginated ? {
+        providers: [],
+        total: itemsCount ?? 0,
+        pagination: { limit, offset, has_more: offset + limit < (itemsCount ?? 0) },
+      } : []);
     }
 
     if (!providers || providers.length === 0) {
-      return successResponse([]);
+      return successResponse(wantsPaginated ? {
+        providers: [],
+        total: itemsCount ?? 0,
+        pagination: { limit, offset, has_more: offset + limit < (itemsCount ?? 0) },
+      } : []);
     }
 
     // Fetch locations for all providers (include location_type for salon vs base)
@@ -264,6 +296,18 @@ export async function GET(request: NextRequest) {
         hasAllFields: !!(p.id && p.slug && p.business_name),
       })),
     });
+
+    if (wantsPaginated) {
+      return successResponse({
+        providers: providersWithAddedAt,
+        total: itemsCount ?? providersWithAddedAt.length,
+        pagination: {
+          limit,
+          offset,
+          has_more: offset + limit < (itemsCount ?? providersWithAddedAt.length),
+        },
+      });
+    }
 
     return successResponse(providersWithAddedAt);
   } catch (error) {

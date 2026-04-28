@@ -73,7 +73,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
   supports_salon,
   current_badge,
 }) => {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, session, isLoading: authLoading } = useAuth();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -100,7 +100,8 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
   // Check if provider is in wishlist - optimized with caching for instant display
   useEffect(() => {
     const checkWishlist = async () => {
-      if (!user || !id) {
+      if (authLoading) return;
+      if (!user || !session || !id) {
         setIsInWishlist(false);
         return;
       }
@@ -139,7 +140,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
     
     // Check immediately when user and id are available
     checkWishlist();
-  }, [user, id]);
+  }, [authLoading, session, user, id]);
 
   const handleShareClick = () => {
     setIsShareModalOpen(true);

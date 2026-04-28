@@ -109,6 +109,7 @@ const NearbySection = () => {
               description={`${provider.city}, ${provider.country}`}
               price=""
               distance={provider.distance_km ? `${provider.distance_km.toFixed(1)} km` : ""}
+              providerSlug={provider.slug}
             />
           ))}
         </div>

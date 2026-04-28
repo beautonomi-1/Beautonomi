@@ -44,6 +44,14 @@ export default function CarouselCard({
   const atsalon = content?.atsalon === "true";
   const ratingsVisible = content?.ratingsVisible === "true";
   const isActive = content?.isActive === "true";
+  const profileHref =
+    typeof content?.link === "string" && content.link
+      ? content.link
+      : typeof content?.slug === "string" && content.slug
+        ? `/partner-profile?slug=${encodeURIComponent(content.slug)}`
+        : typeof content?.provider_slug === "string" && content.provider_slug
+          ? `/partner-profile?slug=${encodeURIComponent(content.provider_slug)}`
+          : "#";
 
   const labelTopClass = guestfav ? "top-12" : "top-4";
 
@@ -66,7 +74,7 @@ export default function CarouselCard({
                 className={`relative w-full overflow-hidden`}
                 style={{ height: imageHeight }}
               >
-                <Link href={"/partner-profile"}>
+                <Link href={profileHref} aria-disabled={profileHref === "#"}>
                   <Image
                     src={slide.src}
                     alt={slide.alt}
@@ -136,7 +144,7 @@ export default function CarouselCard({
           }
         </div>
       </Carousel>
-      <Link href={"/partner-profile"}>
+      <Link href={profileHref} aria-disabled={profileHref === "#"}>
         <div className="text-sm">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-1.5">

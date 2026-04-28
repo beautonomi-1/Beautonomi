@@ -8,7 +8,6 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
-import { router } from "expo-router";
 import type { NotificationClickEvent, NotificationWillDisplayEvent } from "react-native-onesignal";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
@@ -17,146 +16,46 @@ import { api } from "@/lib/api-client";
 import { getOneSignalAppId } from "@/lib/third-party-config";
 import { trackNotificationOpened } from "@/lib/analytics";
 import { addBreadcrumb } from "@/lib/sentry";
+import { navigateFromNotification, type Notification } from "@/lib/notifications";
 
 /**
- * Route to the correct screen based on notification payload.
+ * Deep link from a push — same rules as the in-app notification list
+ * (navigateFromNotification) so banners and the bell land on the same screens.
  */
-function handleNotificationRoute(data: Record<string, unknown>) {
+function handleNotificationRoute(
+  data: Record<string, unknown>,
+  opts?: { launchUrl?: string; title?: string; body?: string }
+) {
   try {
-    const type = String(data.type ?? data.notification_type ?? "");
-    const bookingId = String(data.booking_id ?? data.bookingId ?? "");
-    const id = String(
-      data.id ?? data.booking_id ?? data.bookingId ?? data.chat_id ?? data.conversation_id ?? data.post_id ?? "",
+    const notif = data;
+    const type = String(
+      notif.type ?? notif.notification_type ?? notif.template_key ?? notif.push_type ?? ""
     );
-
+    const id = String(
+      notif.id ?? notif.booking_id ?? notif.bookingId ?? notif.chat_id ?? notif.conversation_id ?? notif.post_id ?? ""
+    );
     addBreadcrumb("Notification tapped", "notification", { type, id });
     trackNotificationOpened(type, data);
 
-    // Template-based pushes include template_key + booking_id but often omit type
-    if (!type && bookingId) {
-      router.push({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
-      return;
-    }
+    const link =
+      opts?.launchUrl ??
+      (typeof notif.url === "string" ? notif.url : undefined) ??
+      (typeof notif.link === "string" ? notif.link : undefined) ??
+      (typeof notif.action_url === "string" ? notif.action_url : undefined) ??
+      (typeof notif.deep_link === "string" ? notif.deep_link : undefined);
 
-    switch (type) {
-      case "on_demand_declined": {
-        const rid = String(data.on_demand_request_id ?? "");
-        if (rid) {
-          router.push({
-            pathname: "/(app)/on-demand/result",
-            params: { status: "declined", requestId: rid },
-          });
-        } else {
-          router.push("/(app)/(tabs)/bookings");
-        }
-        break;
-      }
-
-      case "on_demand_accepted": {
-        const reqId = String(data.on_demand_request_id ?? "");
-        const acceptedBookingId = String(data.booking_id ?? data.bookingId ?? "");
-        if (acceptedBookingId) {
-          router.push({ pathname: "/(app)/booking-detail", params: { id: acceptedBookingId } });
-        } else if (reqId) {
-          router.push({
-            pathname: "/(app)/on-demand/result",
-            params: { status: "accepted", requestId: reqId },
-          });
-        } else {
-          router.push("/(app)/(tabs)/bookings");
-        }
-        break;
-      }
-
-      case "on_demand_expired": {
-        const expReqId = String(data.on_demand_request_id ?? "");
-        if (expReqId) {
-          router.push({
-            pathname: "/(app)/on-demand/result",
-            params: { status: "expired", requestId: expReqId },
-          });
-        } else {
-          router.push("/(app)/(tabs)/bookings");
-        }
-        break;
-      }
-
-      case "payment_received":
-      case "payment_successful":
-      case "payment_failed":
-      case "payment_pending":
-      case "payment_method_expired":
-      case "partial_payment_received":
-        if (bookingId || id) {
-          router.push({ pathname: "/(app)/booking-detail", params: { id: bookingId || id } });
-        } else {
-          router.push("/(app)/account-settings/payments");
-        }
-        break;
-
-      case "booking_reminder":
-      case "booking_confirmed":
-      case "booking_confirmation": // on-demand accepted
-      case "booking_cancelled":
-      case "booking_updated":
-      case "booking_completed":
-      case "provider_arrived":
-        if (id) {
-          router.push({ pathname: "/(app)/booking-detail", params: { id } });
-        } else {
-          router.push("/(app)/(tabs)/bookings");
-        }
-        break;
-
-      case "new_message":
-      case "chat_message": {
-        const conversationId = String(data.conversation_id ?? data.chat_id ?? "");
-        if (conversationId) {
-          router.push({ pathname: "/(app)/chat", params: { id: conversationId } });
-        } else {
-          router.push("/(app)/(tabs)/chats");
-        }
-        break;
-      }
-
-      case "review_response":
-      case "review_request":
-        router.push("/(app)/account-settings/reviews");
-        break;
-
-      case "custom_request_response":
-        router.push("/(app)/account-settings/custom-requests");
-        break;
-
-      case "waitlist_available":
-        router.push("/(app)/account-settings/waitlist");
-        break;
-
-      case "promotion":
-      case "marketing":
-        if (data.provider_slug) {
-          router.push({
-            pathname: "/(app)/partner-profile",
-            params: { slug: String(data.provider_slug) },
-          });
-        } else {
-          router.push("/(app)/(tabs)/explore");
-        }
-        break;
-
-      case "explore_post":
-        if (id) {
-          router.push({ pathname: "/(app)/explore-post", params: { id } });
-        } else {
-          router.push("/(app)/(tabs)/explore");
-        }
-        break;
-
-      default:
-        // Fallback: go to home
-        router.push("/(app)/(tabs)/home");
-        break;
-    }
+    const n: Notification = {
+      id: String(notif.id ?? notif.notification_id ?? "push"),
+      type,
+      title: opts?.title ?? String(notif.title ?? ""),
+      message: opts?.body ?? String(notif.message ?? notif.body ?? notif.alert ?? ""),
+      is_read: true,
+      created_at: new Date().toISOString(),
+      data: { ...data },
+      link: link || undefined,
+      action_url: link || undefined,
+    };
+    navigateFromNotification(n);
   } catch {
     // Silently fail on routing errors
   }
@@ -246,14 +145,27 @@ function usePushRegistration() {
           OneSignal.login(user.id);
 
           OneSignal.Notifications.addEventListener("click", (event: NotificationClickEvent) => {
-            const additionalData = event.notification.additionalData as
-              | Record<string, unknown>
-              | undefined;
-            if (additionalData) {
-              handleNotificationRoute(additionalData);
-            }
+            const additionalData = (event.notification.additionalData ?? {}) as Record<string, unknown>;
+            const raw = event.notification as {
+              launchUrl?: string;
+              launchURL?: string;
+              title?: string;
+              body?: string;
+            };
+            const launchUrl =
+              typeof raw.launchUrl === "string"
+                ? raw.launchUrl
+                : typeof raw.launchURL === "string"
+                  ? raw.launchURL
+                  : undefined;
+            handleNotificationRoute(additionalData, {
+              launchUrl,
+              title: raw.title,
+              body: raw.body,
+            });
           });
 
+          // Show immediately in the notification shade while the app is open (not queued by us).
           OneSignal.Notifications.addEventListener("foregroundWillDisplay", (event: NotificationWillDisplayEvent) => {
             event.getNotification().display();
           });

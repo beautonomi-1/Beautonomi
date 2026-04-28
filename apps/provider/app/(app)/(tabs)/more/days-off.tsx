@@ -399,7 +399,7 @@ export function DaysOffContent() {
                 mode="date"
                 display={Platform.OS === "ios" ? "spinner" : "default"}
                 minimumDate={new Date()}
-                onChange={(_, d) => {
+                onChange={(_: any, d?: Date) => {
                   setShowDatePicker(Platform.OS === "ios");
                   if (d) {
                     setSelectedDate(d);
@@ -436,7 +436,7 @@ export function DaysOffContent() {
                     mode="date"
                     display={Platform.OS === "ios" ? "spinner" : "default"}
                     minimumDate={selectedDate}
-                    onChange={(_, d) => {
+                    onChange={(_: any, d?: Date) => {
                       setShowEndDatePicker(Platform.OS === "ios");
                       if (d) setSelectedEndDate(d);
                     }}

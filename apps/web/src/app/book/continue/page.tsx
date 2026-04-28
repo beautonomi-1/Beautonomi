@@ -1,6 +1,7 @@
 "use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getHoldTimeRemaining, serverNowToClockOffsetMs } from "@beautonomi/utils";
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, Suspense } from "react";
@@ -92,6 +93,8 @@ interface HoldData {
   address_snapshot: Record<string, any> | null;
   hold_status: string;
   expires_at: string;
+  /** From GET /api/public/booking-holds/[id] — align client countdown with server. */
+  server_now?: string | null;
   metadata?: Record<string, any>;
   /** From hold metadata when the slot was reserved with a service package */
   package_id?: string;
@@ -105,13 +108,6 @@ interface HoldData {
   payment_wallet?: boolean;
   gift_cards?: boolean;
   cancellation_policy?: HoldCancellationPolicy | null;
-}
-
-function getHoldTimeRemaining(expiresAt: string): { minutes: number; seconds: number; expired: boolean } {
-  const diff = new Date(expiresAt).getTime() - Date.now();
-  if (!Number.isFinite(diff) || diff <= 0) return { minutes: 0, seconds: 0, expired: true };
-  const totalSeconds = Math.floor(diff / 1000);
-  return { minutes: Math.floor(totalSeconds / 60), seconds: totalSeconds % 60, expired: false };
 }
 
 /** Same rules as customer app checkout — require explicit ack when policy has material terms. */
@@ -132,12 +128,15 @@ function cancellationPolicyRequiresCustomerAck(policy: HoldCancellationPolicy | 
   return true;
 }
 
-function HoldSlotCountdown({ expiresAt }: { expiresAt: string }) {
-  const [tick, setTick] = useState(() => getHoldTimeRemaining(expiresAt));
+function HoldSlotCountdown({ expiresAt, clockOffsetMs }: { expiresAt: string; clockOffsetMs: number }) {
+  const [tick, setTick] = useState(() => getHoldTimeRemaining(expiresAt, clockOffsetMs));
   useEffect(() => {
-    const id = setInterval(() => setTick(getHoldTimeRemaining(expiresAt)), 1000);
+    setTick(getHoldTimeRemaining(expiresAt, clockOffsetMs));
+  }, [expiresAt, clockOffsetMs]);
+  useEffect(() => {
+    const id = setInterval(() => setTick(getHoldTimeRemaining(expiresAt, clockOffsetMs)), 1000);
     return () => clearInterval(id);
-  }, [expiresAt]);
+  }, [expiresAt, clockOffsetMs]);
   const urgent = !tick.expired && tick.minutes < 2;
   return (
     <div
@@ -293,6 +292,7 @@ function BookContinueContent() {
   const [requestingNow, setRequestingNow] = useState(false);
   /** Mirrors customer app: disable checkout when the hold clock hits zero without waiting for a refetch. */
   const [isSlotExpired, setIsSlotExpired] = useState(false);
+  const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0);
   const [cancellationPolicyAccepted, setCancellationPolicyAccepted] = useState(false);
   const [subscribeRecurring, setSubscribeRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">("weekly");
@@ -328,6 +328,11 @@ function BookContinueContent() {
         if (!data?.hold_id && !data?.booking_services_snapshot) {
           throw new Error("Invalid hold data");
         }
+        if (typeof (data as { server_now?: string }).server_now === "string" && (data as { server_now: string }).server_now.trim()) {
+          setServerClockOffsetMs(serverNowToClockOffsetMs((data as { server_now: string }).server_now));
+        } else {
+          setServerClockOffsetMs(0);
+        }
         const holdData: HoldData = {
           hold_id: data.hold_id ?? data.id ?? holdId,
           provider_id: data.provider_id,
@@ -341,6 +346,7 @@ function BookContinueContent() {
           address_snapshot: data.address_snapshot,
           hold_status: data.hold_status,
           expires_at: data.expires_at,
+          server_now: (data as { server_now?: string | null }).server_now ?? null,
           metadata: data.metadata,
           package_id: typeof (data as { package_id?: string }).package_id === "string"
             ? (data as { package_id: string }).package_id
@@ -500,19 +506,19 @@ function BookContinueContent() {
       setIsSlotExpired(false);
       return;
     }
-    if (getHoldTimeRemaining(hold.expires_at).expired) {
+    if (getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
       setIsSlotExpired(true);
       return;
     }
     setIsSlotExpired(false);
     const timer = setInterval(() => {
-      if (getHoldTimeRemaining(hold.expires_at).expired) {
+      if (getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
         setIsSlotExpired(true);
         clearInterval(timer);
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [hold?.expires_at]);
+  }, [hold?.expires_at, serverClockOffsetMs]);
 
   useEffect(() => {
     if (!hold) return;
@@ -642,10 +648,10 @@ function BookContinueContent() {
 
   const handleRequestNow = useCallback(async () => {
     if (!hold || !user) {
-      router.push(`/login?return_to=${encodeURIComponent(`/book/continue?hold_id=${holdId}`)}`);
+      router.push(`/login?next=${encodeURIComponent(`/book/continue?hold_id=${holdId}`)}`);
       return;
     }
-    if (hold.expires_at && getHoldTimeRemaining(hold.expires_at).expired) {
+    if (hold.expires_at && getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
       setValidationError("This time slot has expired. Please go back and select a new time.");
       return;
     }
@@ -702,12 +708,12 @@ function BookContinueContent() {
     } finally {
       setRequestingNow(false);
     }
-  }, [hold, user, holdId, addonIds, tipAmount, clientInfo, clientForm, router, cancellationPolicyAccepted]);
+  }, [hold, user, holdId, addonIds, tipAmount, clientInfo, clientForm, router, cancellationPolicyAccepted, serverClockOffsetMs]);
 
   const handleComplete = async () => {
     if (!holdId || !hold) return;
 
-    if (hold.expires_at && getHoldTimeRemaining(hold.expires_at).expired) {
+    if (hold.expires_at && getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
       setValidationError("This time slot has expired. Please go back and select a new time.");
       return;
     }
@@ -883,10 +889,15 @@ function BookContinueContent() {
       router.replace(successUrl);
     } catch (err) {
       /* Keep the review screen so the user can retry without losing form data. */
-      const msg =
+      let msg =
         err instanceof FetchError
           ? err.message
           : "Failed to complete booking. Please try again.";
+      if (err instanceof FetchError && err.status === 409 && err.code === "HOLD_IN_FLIGHT") {
+        msg =
+          err.message?.trim() ||
+          "This booking is already being processed. Please wait a moment, then try again.";
+      }
       setValidationError(msg);
       setStatus("review");
     }
@@ -1005,7 +1016,7 @@ function BookContinueContent() {
             Review your booking
           </h1>
 
-          {hold.expires_at ? <HoldSlotCountdown expiresAt={hold.expires_at} /> : null}
+          {hold.expires_at ? <HoldSlotCountdown expiresAt={hold.expires_at} clockOffsetMs={serverClockOffsetMs} /> : null}
 
           {/* Booking summary — aligned with provider portal: Services, Add-ons, Travel, Promo, Tip, Total */}
           <div

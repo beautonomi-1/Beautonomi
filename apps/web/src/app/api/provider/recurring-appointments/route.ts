@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { createBookingFromRecurringSeries } from "@/lib/recurring/create-booking-from-series";
 import {
   ADVANCED_RECURRENCE_UPGRADE,
   SUBSCRIPTION_UPGRADE_SHORT,
@@ -22,6 +24,8 @@ const createRecurringSchema = z.object({
   is_active: z.boolean().optional().default(true),
   frequency: z.string().min(1).optional().nullable(),
   preferred_time: z.string().optional().nullable(),
+  location_type: z.enum(["at_salon", "at_home"]).optional().nullable(),
+  payment_method: z.enum(["card", "cash"]).optional().nullable(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -68,7 +72,7 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (locationId) {
-      listQuery = listQuery.eq("location_id", locationId);
+      listQuery = listQuery.or(`location_id.eq.${locationId},location_id.is.null`);
     }
 
     const { data: appointments, error, count } = await listQuery;
@@ -145,7 +149,28 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    return successResponse(appointment);
+    const admin = getSupabaseAdmin();
+    const initialVisit = await createBookingFromRecurringSeries(
+      admin,
+      appointment as any,
+      validated.start_date
+    );
+    const warnings: string[] = [];
+    if ("bookingId" in initialVisit) {
+      await admin
+        .from("recurring_appointments")
+        .update({ last_booking_date: validated.start_date, updated_at: new Date().toISOString() })
+        .eq("id", appointment.id);
+    } else {
+      warnings.push(`Recurring series was created, but the first calendar visit was not created: ${initialVisit.error}`);
+    }
+
+    return successResponse({
+      ...appointment,
+      last_booking_date: "bookingId" in initialVisit ? validated.start_date : appointment.last_booking_date,
+      _warnings: warnings,
+      _initial_booking_id: "bookingId" in initialVisit ? initialVisit.bookingId : null,
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(error, "Invalid request data", 400);

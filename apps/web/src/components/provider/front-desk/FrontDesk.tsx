@@ -28,9 +28,9 @@
 import React, { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
-import { useFrontDeskData } from "@/lib/front-desk/useFrontDeskData";
+import { formatFrontDeskRangeCaption, useFrontDeskData } from "@/lib/front-desk/useFrontDeskData";
 import { matchesQueueTab, getQueueCounts } from "@/lib/front-desk/operationalState";
-import type { FrontDeskBooking } from "@/lib/front-desk/types";
+import type { FrontDeskBooking, FrontDeskMetricRange } from "@/lib/front-desk/types";
 import { openViewMode } from "@/stores/appointment-sidebar-store";
 import { providerApi } from "@/lib/provider-portal/api";
 import { CommandBar } from "./CommandBar";
@@ -49,12 +49,14 @@ export function FrontDesk() {
   const { selectedLocationId, salons, setSelectedLocation } = useProviderPortal();
   const { selectedAppointmentId } = useAppointmentSidebar();
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [metricRange, setMetricRange] = useState<FrontDeskMetricRange>("today");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<string>("all");
   const [loadingAppointment, setLoadingAppointment] = useState<string | null>(null);
 
-  const { bookings, staff, locations, services, loading, error, refetch } = useFrontDeskData({
+  const { bookings, metricBookings, staff, locations, services, loading, error, refetch } = useFrontDeskData({
     date: selectedDate,
+    metricRange,
     locationId: selectedLocationId,
     query: searchQuery,
   });
@@ -69,7 +71,45 @@ export function FrontDesk() {
     return bookings.filter((b) => matchesQueueTab(b, activeTab));
   }, [bookings, activeTab]);
 
-  const queueCounts = useMemo(() => getQueueCounts(bookings), [bookings]);
+  const rangeCaption = useMemo(
+    () => formatFrontDeskRangeCaption(metricRange, selectedDate),
+    [metricRange, selectedDate],
+  );
+
+  const headerSubtitle = useMemo(() => {
+    const n = filteredBookings.length;
+    const unit = n === 1 ? "appointment" : "appointments";
+    return `${rangeCaption} • ${n} ${unit}`;
+  }, [filteredBookings.length, rangeCaption]);
+
+  const emptyState = useMemo(() => {
+    const q = searchQuery.trim();
+    if (q) {
+      return {
+        description: `No matches for "${q}" in this period (${rangeCaption}). Clear search or change the metrics range (Today / Week / …) above.`,
+        action: { label: "Clear search", onClick: () => setSearchQuery("") } as const,
+      };
+    }
+    if (activeTab !== "all") {
+      return {
+        description: `Nothing in this queue for ${rangeCaption}. Try another queue tab or choose All.`,
+        action: { label: "Show all queues", onClick: () => setActiveTab("all") } as const,
+      };
+    }
+    return {
+      description:
+        locationsList.length > 1
+          ? `No bookings for ${rangeCaption} at this location. Switch location or pick another date in the bar above.`
+          : `No bookings for ${rangeCaption}. Pick another date in the calendar or create an appointment.`,
+      action:
+        format(selectedDate, "yyyy-MM-dd") !== format(new Date(), "yyyy-MM-dd")
+          ? ({ label: "Jump to today", onClick: () => setSelectedDate(new Date()) } as const)
+          : undefined,
+    };
+  }, [activeTab, locationsList.length, rangeCaption, searchQuery, selectedDate]);
+
+  const dayQueueCounts = useMemo(() => getQueueCounts(bookings), [bookings]);
+  const queueCounts = useMemo(() => getQueueCounts(metricBookings), [metricBookings]);
 
   const handleCardClick = async (b: FrontDeskBooking) => {
     setLoadingAppointment(b.id);
@@ -93,7 +133,7 @@ export function FrontDesk() {
         <div className="container mx-auto px-3 py-4 sm:px-6 sm:py-8 lg:p-8 bg-[#FDFDFD] min-h-[60vh] min-w-0 max-w-full overflow-x-hidden">
           <PageHeader
             title="Front Desk"
-            subtitle="Manage today's appointments"
+            subtitle="Loading appointments…"
             breadcrumbs={[
               { label: "Home", href: "/" },
               { label: "Provider", href: "/provider" },
@@ -119,7 +159,7 @@ export function FrontDesk() {
       <div className="flex flex-col min-h-0 w-full min-w-0 max-w-full overflow-x-hidden bg-[#FDFDFD] rounded-2xl transition-all duration-500">
         <PageHeader
           title="Front Desk"
-          subtitle={`${format(selectedDate, "EEEE, MMM d")} • ${bookings.length} appointments`}
+          subtitle={headerSubtitle}
           breadcrumbs={[
             { label: "Home", href: "/" },
             { label: "Provider", href: "/provider" },
@@ -139,13 +179,13 @@ export function FrontDesk() {
             onRefetch={refetch}
           />
 
-          {queueCounts.needs_confirmation > 0 && (
+          {dayQueueCounts.needs_confirmation > 0 && (
             <div
               role="status"
               className="rounded-2xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 shadow-sm"
             >
-              <span className="font-semibold">{queueCounts.needs_confirmation}</span>
-              {queueCounts.needs_confirmation === 1 ? " booking needs " : " bookings need "}
+              <span className="font-semibold">{dayQueueCounts.needs_confirmation}</span>
+              {dayQueueCounts.needs_confirmation === 1 ? " booking needs " : " bookings need "}
               your confirmation before check-in or at-home steps. Use{" "}
               <button
                 type="button"
@@ -162,6 +202,8 @@ export function FrontDesk() {
             counts={queueCounts}
             activeFilter={activeTab}
             onFilterChange={setActiveTab}
+            metricRange={metricRange}
+            onMetricRangeChange={setMetricRange}
           />
         </div>
 
@@ -193,7 +235,8 @@ export function FrontDesk() {
                   <div className="py-16">
                     <EmptyState
                       title="No appointments"
-                      description="No appointments match your filters"
+                      description={emptyState.description}
+                      action={emptyState.action}
                     />
                   </div>
                 )}

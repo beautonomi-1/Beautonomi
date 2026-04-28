@@ -110,9 +110,11 @@ export async function GET(
           package_id,
           offering_id,
           product_id,
+          product_variant_id,
           quantity,
           offerings:offering_id(id, title, duration_minutes),
-          products:product_id(id, name, retail_price, sku, brand)
+          products:product_id(id, name, retail_price, sku, brand),
+          product_variants:product_variant_id(id, option_values, retail_price, sku)
         `)
         .in("package_id", packageIds);
 
@@ -144,6 +146,15 @@ export async function GET(
               }
             | null
             | undefined;
+          const variantRow = item.product_variants as
+            | {
+                id: string;
+                option_values?: Record<string, string> | null;
+                retail_price?: number | null;
+                sku?: string | null;
+              }
+            | null
+            | undefined;
           if (offeringRow) {
             itemsByPackage[item.package_id].push({
               id: offeringRow.id,
@@ -155,11 +166,14 @@ export async function GET(
           } else if (productRow) {
             itemsByPackage[item.package_id].push({
               id: productRow.id,
-              title: productRow.name,
+              title: variantRow?.option_values
+                ? `${productRow.name} — ${Object.values(variantRow.option_values).join(" / ")}`
+                : productRow.name,
               type: "product",
-              price: productRow.retail_price ?? null,
-              sku: productRow.sku ?? null,
+              price: variantRow?.retail_price ?? productRow.retail_price ?? null,
+              sku: variantRow?.sku ?? productRow.sku ?? null,
               brand: productRow.brand ?? null,
+              product_variant_id: item.product_variant_id ?? null,
               quantity: item.quantity,
             });
           }

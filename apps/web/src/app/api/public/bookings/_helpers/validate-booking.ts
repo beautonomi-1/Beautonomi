@@ -1211,7 +1211,12 @@ export async function validateBooking(
       .maybeSingle();
 
     const isExpired = membership?.expires_at ? new Date(membership.expires_at) < new Date() : false;
-    const active = membership?.status === "active" && !isExpired && membership?.plan?.is_active !== false;
+    const planProviderId = membership?.plan?.provider_id ?? null;
+    const active =
+      membership?.status === "active" &&
+      !isExpired &&
+      membership?.plan?.is_active !== false &&
+      planProviderId === draft.provider_id;
 
     if (active) {
       membershipPlanId = membership.plan?.id || null;

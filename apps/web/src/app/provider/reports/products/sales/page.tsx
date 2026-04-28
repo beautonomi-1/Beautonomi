@@ -12,6 +12,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface ProductSalesData {
@@ -39,6 +40,7 @@ interface ProductSalesData {
 }
 
 export default function ProductSalesReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -50,7 +52,7 @@ export default function ProductSalesReport() {
 
   useEffect(() => {
     loadReport();
-  }, [dateRange]);
+  }, [dateRange, selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -64,6 +66,7 @@ export default function ProductSalesReport() {
       if (dateRange.to) {
         params.append("to", dateRange.to.toISOString());
       }
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: ProductSalesData }>(
         `/api/provider/reports/products/sales?${params.toString()}`

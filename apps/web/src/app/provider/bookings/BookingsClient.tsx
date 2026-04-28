@@ -27,7 +27,7 @@ import {
   PlayCircle,
   Banknote,
 } from "lucide-react";
-import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { clearFetcherCache, fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Appointment, Salon, TeamMember, ServiceItem } from "@/lib/provider-portal/types";
 import type { YocoPayment } from "@/lib/provider-portal/types";
@@ -201,7 +201,7 @@ export function BookingsClient({
 
       const response = await fetcher.get<{ data: ProviderBookingListItem[] }>(
         `/api/provider/bookings?${params.toString()}`,
-        { timeoutMs: 10000 },
+        { timeoutMs: 10000, staleTimeMs: 0 },
       );
 
       setBookings(response.data);
@@ -376,6 +376,9 @@ export function BookingsClient({
   // live pending/in-progress tallies. Computed over the full bookings set
   // so the strip stays useful even while the list below is filtered.
   const statsSnapshot = useMemo(() => {
+    if (!hasMounted) {
+      return { count: 0, revenue: 0, pendingCount: 0, inProgressCount: 0 };
+    }
     const now = new Date();
     let rangeStart = 0;
     let rangeEnd = Number.POSITIVE_INFINITY;
@@ -411,7 +414,7 @@ export function BookingsClient({
       }
     }
     return { count, revenue, pendingCount, inProgressCount };
-  }, [bookings, statsRange]);
+  }, [bookings, hasMounted, statsRange]);
 
   const statsRangeLabel = useMemo(() => {
     if (statsRange === "today") return "Today";
@@ -428,20 +431,21 @@ export function BookingsClient({
 
   // ─── Sidebar helpers ───────────────────────────────────────────────────────
   const handleBookingClick = useCallback((booking: ProviderBookingListItem) => {
+    const firstService = (booking.services as any)?.[0] || {};
     const apt: Appointment = {
       id: booking.id,
       booking_id: booking.id,
       ref_number: booking.booking_number || "",
       client_name: booking.customer_name || "Customer",
-      service_id: (booking.services as any)?.[0]?.offering_id || "",
-      service_name: (booking.services as any)?.[0]?.offering_name || "Service",
+      service_id: firstService.offering_id || firstService.service_id || "",
+      service_name: firstService.offering_name || firstService.service_name || "Service",
       scheduled_date: new Date(booking.scheduled_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
       scheduled_time: new Date(booking.scheduled_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
-      duration_minutes: (booking.services as any)?.[0]?.duration || 60,
+      duration_minutes: firstService.duration_minutes || firstService.duration || 60,
       price: booking.total_amount || 0,
       status: booking.status as any,
-      team_member_name: booking.staff_name || "",
-      team_member_id: (booking as any).staff_id || "",
+      team_member_name: firstService.staff_name || booking.staff_name || "",
+      team_member_id: firstService.staff_id || (booking as any).staff_id || "",
       location_type: booking.location_type || "at_salon",
       payment_status: (booking as any).payment_status || "",
       created_by: booking.customer_name || "",
@@ -451,10 +455,12 @@ export function BookingsClient({
   }, []);
 
   const handleAppointmentUpdated = useCallback((_updated: Appointment) => {
+    clearFetcherCache();
     loadBookingsRef.current?.(true);
   }, []);
 
   const handleAppointmentDeleted = useCallback((_id: string) => {
+    clearFetcherCache();
     loadBookingsRef.current?.(true);
   }, []);
 
@@ -1130,9 +1136,16 @@ export function BookingsClient({
           teamMembers={teamMembers}
           services={services}
           locations={locations}
-          onAppointmentCreated={() => loadBookings()}
+          onAppointmentCreated={() => {
+            clearFetcherCache();
+            loadBookings();
+          }}
           onAppointmentUpdated={handleAppointmentUpdated}
           onAppointmentDeleted={handleAppointmentDeleted}
+          onRefresh={() => {
+            clearFetcherCache();
+            loadBookingsRef.current?.(true);
+          }}
         />
       </div>
     </RoleGuard>

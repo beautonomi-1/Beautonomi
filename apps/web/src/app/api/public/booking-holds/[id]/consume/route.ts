@@ -76,6 +76,17 @@ const consumeBodySchema = z.object({
       frequency: z.enum(["weekly", "biweekly", "monthly"]),
     })
     .optional(),
+  paystack_callback_url: z
+    .string()
+    .trim()
+    .optional()
+    .refine(
+      (v) => {
+        if (!v) return true;
+        return v.startsWith("customer://") || v.startsWith("exp://") || v.startsWith("https://");
+      },
+      { message: "Invalid paystack_callback_url" },
+    ),
 });
 
 export async function POST(
@@ -160,6 +171,7 @@ export async function POST(
     const loyaltyPointsUsed = parsed.data.loyalty_points_used;
     const membershipPlanId = parsed.data.membership_plan_id;
     const subscribeRecurringReq = parsed.data.subscribe_recurring;
+    const paystackCallbackUrl = parsed.data.paystack_callback_url;
 
     if (giftCardCode?.trim()) {
       const giftCardsEnabled = await isGiftCardsEnabledForTenant(marketTenantId);
@@ -499,6 +511,10 @@ export async function POST(
       };
     }
 
+    if (paystackCallbackUrl) {
+      draft.paystack_callback_url = paystackCallbackUrl;
+    }
+
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL
         ? process.env.NEXT_PUBLIC_APP_URL
@@ -641,6 +657,7 @@ export async function POST(
       booking_id: bookingData?.data?.booking_id,
       booking_number: bookingData?.data?.booking_number,
       payment_url: bookingData?.data?.payment_url,
+      payment_reference: bookingData?.data?.payment_reference,
       ...(recurring_subscription ? { recurring_subscription } : {}),
     });
   } catch (error) {

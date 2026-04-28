@@ -34,6 +34,32 @@ export function OrganizationSchema({ baseUrl }: { baseUrl: string }) {
   );
 }
 
+export function WebSiteSchema({ baseUrl }: { baseUrl: string }) {
+  const origin = baseUrl.replace(/\/$/, "");
+
+  const websiteSchema = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "Beautonomi",
+    alternateName: "Beautonomi Beauty Services",
+    url: origin,
+    potentialAction: {
+      "@type": "SearchAction",
+      target: `${origin}/search?q={search_term_string}`,
+      "query-input": "required name=search_term_string",
+    },
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{
+        __html: JSON.stringify(websiteSchema),
+      }}
+    />
+  );
+}
+
 export function BreadcrumbSchema({
   baseUrl,
   items,

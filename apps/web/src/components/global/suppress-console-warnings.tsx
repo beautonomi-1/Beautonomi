@@ -123,6 +123,9 @@ export default function SuppressConsoleWarnings() {
         ? `${error.name}: ${error.message}`
         : String(error);
       const lowerMessage = errorMessage.toLowerCase();
+      const isSupabaseAuthLockError =
+        errorMessage.includes('Lock ') &&
+        errorMessage.includes('was released because another request stole it');
       
       // Suppress AbortErrors and FetchTimeoutError from cancelled requests
       // These are expected when requests are cancelled during component unmounts or navigation
@@ -134,7 +137,7 @@ export default function SuppressConsoleWarnings() {
       const isCancelledRequest = lowerMessage.includes('request was cancelled') ||
           (error instanceof Error && error.name === 'FetchTimeoutError' && errorMessage.includes('cancelled'));
       
-      if (isAbortError || isCancelledRequest) {
+      if (isAbortError || isCancelledRequest || isSupabaseAuthLockError) {
         event.preventDefault(); // Prevent default error logging
         return;
       }

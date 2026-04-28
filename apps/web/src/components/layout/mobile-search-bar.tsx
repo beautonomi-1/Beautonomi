@@ -483,6 +483,7 @@ const MobileSearchBar: React.FC = () => {
                     <AddressAutocomplete
                       onChange={handleAddressSelect}
                       placeholder="Search for an address..."
+                      geocodeTypes={["address"]}
                       className="w-full"
                     />
                     

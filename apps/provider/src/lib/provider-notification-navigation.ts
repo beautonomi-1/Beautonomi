@@ -32,6 +32,8 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
   const productOrderIdFromData =
     typeof data.product_order_id === "string" && data.product_order_id.trim()
       ? data.product_order_id.trim()
+      : typeof data.order_id === "string" && data.order_id.trim()
+        ? data.order_id.trim()
       : "";
 
   const ticketIdFromData = typeof data.ticket_id === "string" && data.ticket_id.trim() ? data.ticket_id.trim() : "";
@@ -113,7 +115,9 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
 
   const nType = (n.type ?? "").toLowerCase();
   if (nType.includes("booking") || nType.includes("appointment")) {
-    router.push("/(app)/(tabs)/calendar" as never);
+    // Prefer the bookings hub over calendar so pending/new-booking alerts are not
+    // confused with a calendar-only "front desk" view.
+    router.push("/(app)/(tabs)/bookings" as never);
     return;
   }
   if (nType.includes("message") || nType.includes("chat")) {

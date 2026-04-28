@@ -15,7 +15,7 @@ const bodySchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("postal_code"), postal_code: z.string().min(1), version: z.number().int().optional() }),
   z.object({
     type: z.literal("custom_polygon"),
-    geojson: z.object({ type: z.string(), coordinates: z.any() }),
+    geojson: z.object({ type: z.literal("Polygon"), coordinates: z.any() }),
     version: z.number().int().optional(),
   }),
 ]);

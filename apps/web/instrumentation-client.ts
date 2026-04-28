@@ -1,3 +1,4 @@
+import type { BrowserOptions } from "@sentry/react";
 import * as Sentry from "@sentry/nextjs";
 import { SENTRY_DSN, SENTRY_TRACES_SAMPLE_RATE } from "./src/lib/sentry-client-config";
 import { scrubSentryEvent, scrubSentryTransaction } from "./src/lib/sentry/before-send";
@@ -18,8 +19,9 @@ if (SENTRY_DSN) {
     ],
     replaysSessionSampleRate: 0.1,
     replaysOnErrorSampleRate: 1.0,
-    beforeSend: scrubSentryEvent,
-    beforeSendTransaction: scrubSentryTransaction,
+    // pnpm can surface two physical @sentry/core installs; Event types are nominally distinct without the cast
+    beforeSend: scrubSentryEvent as NonNullable<BrowserOptions["beforeSend"]>,
+    beforeSendTransaction: scrubSentryTransaction as NonNullable<BrowserOptions["beforeSendTransaction"]>,
   });
 }
 

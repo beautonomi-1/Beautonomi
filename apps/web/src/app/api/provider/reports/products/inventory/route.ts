@@ -9,6 +9,7 @@ import {
 
 export async function GET(request: NextRequest) {
   try {
+    // Inventory is provider-wide: product stock is not currently tracked by location.
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);    const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,

@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Info, Link as LinkIcon, Edit, History, Settings } from "lucide-react";
+import { Info, Link as LinkIcon, Edit, History } from "lucide-react";
 import { toast } from "sonner";
 import NextLink from "next/link";
 import { MessagePreviewDialog } from "./components/MessagePreviewDialog";
@@ -255,31 +255,6 @@ export default function ProviderAutomations() {
       {/* Don't show content if subscription is required */}
       {!subscriptionRequired && (
         <>
-          {/* Top-up Card */}
-      <SectionCard className="mb-6 bg-gradient-to-r from-[#FF0077]/10 to-[#D60565]/10 border-[#FF0077]/20">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <Info className="w-5 h-5 text-[#FF0077]" />
-              <h3 className="font-semibold">Ensure your text messages send with automatic top-ups</h3>
-            </div>
-            <p className="text-sm text-gray-600">
-              Never miss a message. Set up automatic top-ups to keep your communications flowing.
-            </p>
-          </div>
-          <Button 
-            className="bg-[#FF0077] hover:bg-[#D60565] whitespace-nowrap"
-            onClick={() => {
-              // Navigate to Twilio integration settings
-              window.location.href = "/provider/settings/integrations";
-            }}
-          >
-            <Settings className="w-4 h-4 mr-2" />
-            Set up
-          </Button>
-        </div>
-      </SectionCard>
-
       {/* Quick Links Card */}
       <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         <SectionCard className="w-full md:w-auto">
@@ -293,6 +268,9 @@ export default function ProviderAutomations() {
               ) : (
                 <p className="text-2xl font-semibold text-gray-400">N/A</p>
               )}
+              <p className="text-xs text-gray-500 mt-1 max-w-[220px]">
+                SMS is included with your platform subscription; volume follows your plan limits.
+              </p>
             </div>
             <Button 
               variant="outline" 
@@ -447,6 +425,7 @@ export default function ProviderAutomations() {
       {/* Message Preview/Edit Dialog */}
       {selectedAutomation && (
         <MessagePreviewDialog
+          key={selectedAutomation.id}
           open={previewDialogOpen}
           onClose={() => {
             setPreviewDialogOpen(false);

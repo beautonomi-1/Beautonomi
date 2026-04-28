@@ -1,10 +1,37 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { YOCO_WEBHOOK_EVENTS } from "@/lib/payments/yoco";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { applyPosProductStockDecrements } from "@/lib/provider-sales/pos-product-stock";
+
+function yocoAmountCents(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value && typeof value === "object") {
+    const amount = (value as { amount?: unknown }).amount;
+    if (typeof amount === "number" && Number.isFinite(amount)) return amount;
+  }
+  return 0;
+}
+
+function yocoCurrency(data: Record<string, unknown>, fallback: string): string {
+  if (typeof data.currency === "string" && data.currency.trim()) return data.currency.trim();
+  const amount = data.amount;
+  if (amount && typeof amount === "object") {
+    const currency = (amount as { currency?: unknown }).currency;
+    if (typeof currency === "string" && currency.trim()) return currency.trim();
+  }
+  return fallback;
+}
+
+function normalizeYocoStatus(status: unknown): "successful" | "failed" | "pending" {
+  const value = String(status ?? "").toLowerCase();
+  if (["successful", "success", "succeeded", "completed", "paid"].includes(value)) return "successful";
+  if (["failed", "declined", "cancelled", "canceled", "voided"].includes(value)) return "failed";
+  return "pending";
+}
 /**
  * POST /api/provider/yoco/webhook
  *
@@ -34,7 +61,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = await getSupabaseServer(request);
+    // Yoco webhooks are server-to-server callbacks, so there is no provider session.
+    // Use service role after signature verification setup lookup so accounting writes are not blocked by RLS.
+    const supabase = getSupabaseAdmin();
     const event = JSON.parse(body);
 
     // Verify webhook signature
@@ -180,15 +209,21 @@ async function handlePaymentNotification(
   supabase: SupabaseClient
 ) {
   const id = data.id as string | undefined;
-  const amount = data.amount as number | undefined;
-  const currency = data.currency as string | undefined;
-  const status = data.status as string | undefined;
+  const amount = yocoAmountCents(data.amount);
+  const currency = yocoCurrency(data, LAST_RESORT_CURRENCY);
+  const status = normalizeYocoStatus(data.status);
   const metadata = (data.metadata ?? {}) as Record<string, unknown>;
 
   if (!id || !metadata?.provider_id) {
     console.error("Missing payment ID or provider ID in webhook data");
     return;
   }
+
+  const { data: yocoPaymentRow } = await supabase
+    .from("provider_yoco_payments")
+    .select("sale_id")
+    .eq("yoco_payment_id", id)
+    .maybeSingle();
 
   const { error } = await supabase
     .from("provider_yoco_payments")
@@ -200,6 +235,65 @@ async function handlePaymentNotification(
 
   if (error) {
     console.error("Error updating payment status:", error);
+  }
+
+  const saleId = ((metadata?.sale_id as string | undefined) ?? (yocoPaymentRow as { sale_id?: string | null } | null)?.sale_id ?? null);
+  if (status === "successful" && saleId) {
+    const { data: saleBefore } = await supabase
+      .from("sales")
+      .select("id, payment_status")
+      .eq("id", saleId)
+      .maybeSingle();
+    const shouldDecrementStock = (saleBefore as { payment_status?: string } | null)?.payment_status !== "completed";
+
+    const { error: saleError } = await supabase
+      .from("sales")
+      .update({
+        payment_status: "completed",
+        payment_provider: "yoco",
+        payment_provider_id: id,
+        payment_method: "yoco",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", saleId)
+      .neq("payment_status", "completed");
+    if (saleError) {
+      console.error("Yoco webhook: failed to mark POS sale completed:", saleError);
+      throw new Error(`Failed to complete POS sale for Yoco payment ${id}: ${saleError.message}`);
+    }
+    if (shouldDecrementStock) {
+      const { data: saleItems } = await supabase
+        .from("sale_items")
+        .select("item_type, item_id, product_variant_id, quantity")
+        .eq("sale_id", saleId);
+      const stockItems = (saleItems || []).map((row: Record<string, unknown>) => ({
+        type: row.item_type as string,
+        item_id: (row.item_id as string | null) ?? null,
+        product_variant_id: (row.product_variant_id as string | null) ?? null,
+        quantity: Number(row.quantity ?? 1),
+      }));
+      try {
+        await applyPosProductStockDecrements(supabase, stockItems);
+      } catch (stockError) {
+        // Payment is already captured; leave the sale complete and surface stock drift for ops.
+        console.error("Yoco webhook: POS sale completed but stock decrement failed:", stockError);
+      }
+    }
+  } else if (status === "failed" && saleId) {
+    const { error: saleError } = await supabase
+      .from("sales")
+      .update({
+        payment_status: "failed",
+        payment_provider: "yoco",
+        payment_provider_id: id,
+        payment_method: "yoco",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", saleId)
+      .eq("payment_status", "pending");
+    if (saleError) {
+      console.error("Yoco webhook: failed to mark POS sale failed:", saleError);
+    }
   }
 
   // If payment successful, create booking_payment record
@@ -217,8 +311,7 @@ async function handlePaymentNotification(
     
     // If booking is missing location_id and it's an at_salon booking, set it to provider's first location
     if (booking && !booking.location_id && booking.location_type === "at_salon") {
-      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-      const supabaseAdmin = await getSupabaseAdmin();
+      const supabaseAdmin = getSupabaseAdmin();
       
       const { data: providerLocations } = await supabaseAdmin
         .from("provider_locations")
@@ -247,6 +340,7 @@ async function handlePaymentNotification(
       const { data: existingPayment } = await supabase
         .from("booking_payments")
         .select("id")
+        .eq("payment_provider", "yoco")
         .eq("payment_provider_id", id)
         .maybeSingle();
       if (existingPayment) {
@@ -279,6 +373,10 @@ async function handlePaymentNotification(
         });
       
       if (paymentError) {
+        if (paymentError.code === "23505") {
+          console.log(`Yoco payment ${id} was recorded concurrently, skipping duplicate`);
+          return;
+        }
         console.error("Error creating booking_payment:", paymentError);
         throw new Error(`Failed to create booking_payment for Yoco payment ${id}: ${paymentError.message}`);
       } else {
@@ -329,9 +427,9 @@ async function handleRefundSuccess(
   supabase: SupabaseClient
 ) {
   const id = data.id as string | undefined;
-  const amount = (data.amount as number) ?? 0;
+  const amountCents = yocoAmountCents(data.amount);
   const metadata = (data.metadata ?? {}) as Record<string, unknown>;
-  const originalAmount = data.original_amount as number | undefined;
+  const originalAmount = yocoAmountCents(data.original_amount);
   const yocoPaymentId = metadata?.payment_id as string | undefined;
 
   // Resolve provider_id and appointment_id from payment for RLS and booking sync
@@ -361,7 +459,7 @@ async function handleRefundSuccess(
     }
   }
 
-  const currency = (data.currency as string) ?? lastResortCurrency;
+  const currency = yocoCurrency(data, lastResortCurrency);
 
   // Idempotency: skip if refund already recorded
   if (id) {
@@ -382,7 +480,7 @@ async function handleRefundSuccess(
       provider_id: providerId,
       yoco_refund_id: id,
       payment_id: yocoPaymentId,
-      amount,
+      amount: amountCents,
       currency: currency || lastResortCurrency,
       status: "successful",
       created_at: new Date().toISOString(),
@@ -392,17 +490,16 @@ async function handleRefundSuccess(
     await supabase
       .from("provider_yoco_payments")
       .update({
-        refund_status: amount === originalAmount ? "fully_refunded" : "partially_refunded",
-        refund_amount: amount,
+        refund_status: amountCents === originalAmount ? "fully_refunded" : "partially_refunded",
+        refund_amount: amountCents,
         updated_at: new Date().toISOString(),
       })
       .eq("yoco_payment_id", yocoPaymentId);
   }
 
   // Sync to booking: create booking_refund so booking total_refunded and payment_status stay in sync
-  if (bookingId && amount > 0) {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-    const supabaseAdmin = await getSupabaseAdmin();
+  if (bookingId && amountCents > 0) {
+    const supabaseAdmin = getSupabaseAdmin();
 
     // Idempotency: skip if we already recorded this Yoco refund as a booking_refund
     const { data: existingRefund } = await supabaseAdmin
@@ -414,7 +511,7 @@ async function handleRefundSuccess(
       return;
     }
 
-    const amountInCurrency = amount / 100; // Yoco amounts are in cents
+    const amountInCurrency = amountCents / 100; // Yoco amounts are in cents
 
     // Optionally link to the booking_payment that was created when the Yoco payment succeeded
     const { data: bookingPayment } = await supabaseAdmin

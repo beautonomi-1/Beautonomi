@@ -31,9 +31,11 @@ interface PackageItem {
   id: string;
   offering_id?: string | null;
   product_id?: string | null;
+  product_variant_id?: string | null;
   quantity: number;
   offering?: { id: string; title: string; duration_minutes: number; price: number } | null;
   product?: { id: string; name: string; retail_price: number } | null;
+  product_variant?: ProductVariant | null;
 }
 
 interface ServicePackage {
@@ -59,13 +61,30 @@ interface ProductOption {
   id: string;
   name: string;
   retail_price: number;
+  has_variants?: boolean;
+  variants?: ProductVariant[];
+}
+
+interface ProductVariant {
+  id: string;
+  option_values?: Record<string, string> | null;
+  retail_price: number;
+  sku?: string | null;
+  quantity?: number | null;
 }
 
 interface FormItem {
   offering_id?: string;
   product_id?: string;
+  product_variant_id?: string | null;
   quantity: number;
   label: string;
+}
+
+function formatVariantLabel(variant?: ProductVariant | null): string {
+  if (!variant) return "";
+  const optionLabel = variant.option_values ? Object.values(variant.option_values).filter(Boolean).join(" / ") : "";
+  return optionLabel || variant.sku || "Variant";
 }
 
 export default function PackagesScreen() {
@@ -78,7 +97,7 @@ export default function PackagesScreen() {
   const [showItemPicker, setShowItemPicker] = useState(false);
 
   const { data: rawPackages, loading, error: packagesLoadError, refresh: refreshPackages } = useApi<unknown>("/api/provider/packages");
-  const { data: services, error: servicesLoadError, refresh: refreshServices } = useApi<ServiceOption[]>("/api/provider/services");
+  const { data: services, error: servicesLoadError, refresh: refreshServices } = useApi<ServiceOption[]>("/api/provider/services?include_variants=true");
   const { data: rawProducts, error: productsLoadError, refresh: refreshProducts } = useApi<unknown>("/api/provider/products?limit=500");
   const { execute: createPackage, loading: creating } = useApiPost<any, any>("/api/provider/packages");
   const { execute: updatePkg, loading: updating } = useApiMutation("patch");
@@ -148,8 +167,9 @@ export default function PackagesScreen() {
       items: (pkg.items ?? []).map((it) => ({
         offering_id: it.offering_id ?? undefined,
         product_id: it.product_id ?? undefined,
+        product_variant_id: it.product_variant_id ?? undefined,
         quantity: it.quantity,
-        label: it.offering?.title ?? it.product?.name ?? "Item",
+        label: it.offering?.title ?? (it.product ? `${it.product.name}${formatVariantLabel(it.product_variant) ? ` — ${formatVariantLabel(it.product_variant)}` : ""}` : "Item"),
       })),
     });
     setShowForm(true);
@@ -166,7 +186,7 @@ export default function PackagesScreen() {
   function addProductItem(prod: ProductOption) {
     setForm((p) => ({
       ...p,
-      items: [...p.items, { product_id: prod.id, quantity: 1, label: prod.name }],
+    items: [...p.items, { product_id: prod.id, quantity: 1, label: prod.name }],
     }));
     setShowItemPicker(false);
   }
@@ -186,6 +206,21 @@ export default function PackagesScreen() {
     }));
   }
 
+  function updateItemVariant(index: number, product: ProductOption, variant: ProductVariant | null) {
+    setForm((p) => ({
+      ...p,
+      items: p.items.map((it, i) => (
+        i === index
+          ? {
+              ...it,
+              product_variant_id: variant?.id ?? undefined,
+              label: variant ? `${product.name} — ${formatVariantLabel(variant)}` : product.name,
+            }
+          : it
+      )),
+    }));
+  }
+
   async function handleSave() {
     if (!form.name.trim()) {
       Alert.alert("Required", "Package name is required");
@@ -199,6 +234,15 @@ export default function PackagesScreen() {
       Alert.alert("Required", "Add at least one service or product");
       return;
     }
+    const missingVariant = form.items.find((item) => {
+      if (!item.product_id) return false;
+      const product = products.find((p) => p.id === item.product_id);
+      return Boolean(product?.has_variants && (product.variants?.length ?? 0) > 0 && !item.product_variant_id);
+    });
+    if (missingVariant) {
+      Alert.alert("Variant required", "Choose the exact product variant included in this package.");
+      return;
+    }
 
     const payload = {
       name: form.name.trim(),
@@ -209,6 +253,7 @@ export default function PackagesScreen() {
       items: form.items.map((it) => ({
         offering_id: it.offering_id || undefined,
         product_id: it.product_id || undefined,
+        product_variant_id: it.product_variant_id || undefined,
         quantity: it.quantity,
       })),
     };
@@ -325,7 +370,7 @@ export default function PackagesScreen() {
                     <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                       <Ionicons name={item.offering_id ? "cut-outline" : "cube-outline"} size={14} color="#6b7280" />
                       <Text style={{ marginLeft: 6, fontSize: 12, color: Colors.gray[700] }} numberOfLines={1}>
-                        {item.offering?.title ?? item.product?.name ?? "Item"}
+                        {item.offering?.title ?? (item.product ? `${item.product.name}${formatVariantLabel(item.product_variant) ? ` — ${formatVariantLabel(item.product_variant)}` : ""}` : "Item")}
                       </Text>
                     </View>
                     {item.quantity > 1 && (
@@ -435,6 +480,42 @@ export default function PackagesScreen() {
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{item.label}</Text>
+                    {item.product_id && (() => {
+                      const product = products.find((p) => p.id === item.product_id);
+                      if (!product?.has_variants || !product.variants?.length) return null;
+                      return (
+                        <View style={{ marginTop: 8 }}>
+                          <Text style={{ marginBottom: 6, fontSize: 11, fontWeight: "700", color: "#6d28d9", textTransform: "uppercase" }}>
+                            Variant
+                          </Text>
+                          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                            {product.variants.map((variant) => {
+                              const selected = item.product_variant_id === variant.id;
+                              return (
+                                <TouchableOpacity
+                                  key={variant.id}
+                                  onPress={() => updateItemVariant(idx, product, variant)}
+                                  style={{
+                                    marginRight: 8,
+                                    marginBottom: 8,
+                                    borderRadius: 999,
+                                    borderWidth: 1,
+                                    borderColor: selected ? "#7c3aed" : Colors.gray[200],
+                                    backgroundColor: selected ? "#f3e8ff" : Colors.white,
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 6,
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 12, fontWeight: "600", color: selected ? "#6d28d9" : Colors.gray[700] }}>
+                                    {formatVariantLabel(variant)}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      );
+                    })()}
                   </View>
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
                     <TouchableOpacity onPress={() => updateItemQty(idx, item.quantity - 1)} style={{ marginRight: 8 }}>
@@ -513,7 +594,11 @@ export default function PackagesScreen() {
                   <Ionicons name="cube-outline" size={18} color="#8b5cf6" />
                   <View style={{ marginLeft: 10 }}>
                     <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{prod.name}</Text>
-                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{`${getTenantDefaultCurrency()} ${prod.retail_price}`}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
+                      {prod.has_variants && (prod.variants?.length ?? 0) > 0
+                        ? `${prod.variants?.length} variants`
+                        : `${getTenantDefaultCurrency()} ${prod.retail_price}`}
+                    </Text>
                   </View>
                 </View>
                 <Ionicons name="add-circle-outline" size={22} color="#8b5cf6" />

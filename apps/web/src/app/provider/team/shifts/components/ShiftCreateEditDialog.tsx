@@ -202,16 +202,21 @@ export function ShiftCreateEditDialog({
             <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
               <Switch
                 checked={formData.isAlternating}
-                onCheckedChange={(checked) => setFormData({ ...formData, isAlternating: checked })}
+                onCheckedChange={(checked) => setFormData({
+                  ...formData,
+                  isAlternating: checked,
+                  isRepeating: checked ? true : formData.isRepeating,
+                  repeatPattern: checked ? "biweekly" : formData.repeatPattern,
+                })}
                 className="mt-1"
               />
               <div className="flex-1">
                 <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                   <Repeat className="w-4 h-4" />
-                  Alternating Hours (Bi-weekly Schedule)
+                  Alternating Week Shift
                 </Label>
                 <p className="text-xs text-gray-500 mt-1">
-                  Set up alternating hours that repeat every other week
+                  Repeat this shift every other week from the selected date.
                 </p>
               </div>
             </div>
@@ -220,7 +225,7 @@ export function ShiftCreateEditDialog({
               <div className="ml-0 sm:ml-12 space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div>
                   <Label htmlFor="alternatingWeek" className="text-sm font-medium">
-                    Which Week?
+                    Starting Week
                   </Label>
                   <Select
                     value={formData.alternatingWeek}
@@ -235,7 +240,7 @@ export function ShiftCreateEditDialog({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-gray-500 mt-1.5">
-                    Select which week this schedule applies to. The opposite week will be automatically set as off.
+                    Week 1 starts on the selected date. Week 2 starts one week later. Create a second alternating shift if the other week has different hours.
                   </p>
                 </div>
               </div>
@@ -249,7 +254,11 @@ export function ShiftCreateEditDialog({
             <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
               <Switch
                 checked={formData.isRepeating}
-                onCheckedChange={(checked) => setFormData({ ...formData, isRepeating: checked })}
+                onCheckedChange={(checked) => setFormData({
+                  ...formData,
+                  isRepeating: checked,
+                  isAlternating: checked ? formData.isAlternating : false,
+                })}
                 className="mt-1"
               />
               <div className="flex-1">
@@ -258,7 +267,7 @@ export function ShiftCreateEditDialog({
                   Repeating Shift
                 </Label>
                 <p className="text-xs text-gray-500 mt-1">
-                  Create a repeating shift pattern
+                  Repeat this shift from the selected date using the pattern below.
                 </p>
               </div>
             </div>
@@ -272,6 +281,7 @@ export function ShiftCreateEditDialog({
                   <Select
                     value={formData.repeatPattern}
                     onValueChange={(value) => setFormData({ ...formData, repeatPattern: value })}
+                    disabled={formData.isAlternating}
                   >
                     <SelectTrigger className="mt-1.5 min-h-[44px] touch-manipulation">
                       <SelectValue />

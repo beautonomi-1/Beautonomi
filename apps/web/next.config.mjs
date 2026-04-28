@@ -203,6 +203,28 @@ const nextConfig = {
           { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
         ],
       },
+      // Low-search-value policy pages should be crawlable enough to see noindex,
+      // but must not compete with the public marketplace pages in Google/Bing.
+      {
+        source: '/cookie-policy',
+        headers: [
+          { key: 'X-Robots-Tag', value: 'noindex, follow, noarchive' },
+          { key: 'Cache-Control', value: 's-maxage=3600, stale-while-revalidate=86400' },
+        ],
+      },
+      {
+        source: '/manifest.webmanifest',
+        headers: [
+          { key: 'Content-Type', value: 'application/manifest+json; charset=utf-8' },
+          { key: 'Cache-Control', value: 'public, max-age=3600, stale-while-revalidate=86400' },
+        ],
+      },
+      {
+        source: '/icon.svg',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
       // CORS for public booking / search endpoints — open to all origins so that
       // express booking links embedded in third-party sites work correctly.
       {

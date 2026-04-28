@@ -27,6 +27,7 @@ import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { isValidProviderBookingStatusTransition } from "@/lib/bookings/booking-status-transitions";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
+import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 
 function mapStatusToDatabase(frontendStatus: string): string {
   return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
@@ -66,6 +67,7 @@ type BookingDbRow = Record<string, unknown> & {
   customer_id?: string;
   provider_id?: string;
   status?: string;
+  current_stage?: string | null;
   location_type?: string;
   location_id?: string;
   address_line1?: string;
@@ -105,7 +107,6 @@ type BookingDbRow = Record<string, unknown> & {
   payment_status?: string;
   special_requests?: string | null;
   loyalty_points_earned?: number;
-  current_stage?: string | null;
   created_at?: string;
   updated_at?: string;
   version?: number;
@@ -1063,7 +1064,7 @@ export async function PATCH(
 
     // Refetch booking with all joins to include staff names, services, products
     // Note: staff is accessed via booking_services.staff, not directly from bookings
-    const { data: initialBooking, error: fetchError } = await supabase
+    const { data: initialBooking, error: fetchError } = await supabaseAdminPatch
       .from("bookings")
       .select(
         `
@@ -1101,12 +1102,10 @@ export async function PATCH(
     }
 
     let updatedBooking: typeof initialBooking = initialBooking;
-
-    // Use admin client for booking_services - bypasses RLS until migration 203 is applied
-    const supabaseAdmin = getSupabaseAdmin();
+    const supabaseAdmin = supabaseAdminPatch;
 
     const refetchBookingAfterBookingServicesMutation = async () => {
-      const { data: refetched } = await supabase
+      const { data: refetched } = await supabaseAdminPatch
         .from("bookings")
         .select(
           `
@@ -1144,7 +1143,7 @@ export async function PATCH(
     // Replace entire service line (explicit array from client)
     if (services !== undefined && Array.isArray(services)) {
       // Delete existing services
-      await supabaseAdmin
+      await supabaseAdminPatch
         .from("booking_services")
         .delete()
         .eq("booking_id", id);
@@ -1170,7 +1169,7 @@ export async function PATCH(
           };
         });
 
-        const { error: servicesError } = await supabaseAdmin
+        const { error: servicesError } = await supabaseAdminPatch
           .from("booking_services")
           .insert(servicesToInsert);
 
@@ -1180,7 +1179,7 @@ export async function PATCH(
         }
       }
       // Refetch so response includes new services
-      const { data: refetchedServices } = await supabase
+      const { data: refetchedServices } = await supabaseAdminPatch
         .from("bookings")
         .select(
           `
@@ -1214,26 +1213,26 @@ export async function PATCH(
     } else if (scheduled_at) {
       // Pure reschedule (or staff + time): chain booking_services from new anchor so rows stay
       // consistent with bookings.scheduled_at and conflict detection.
-      await rescheduleBookingServicesSequential(supabaseAdmin, id, scheduled_at, {
+      await rescheduleBookingServicesSequential(supabaseAdminPatch, id, scheduled_at, {
         ...(staff_id !== undefined ? { staffId: staff_id } : {}),
       });
       await refetchBookingAfterBookingServicesMutation();
     } else if (staff_id !== undefined) {
-      await updateAllBookingServicesStaff(supabaseAdmin, id, staff_id);
+      await updateAllBookingServicesStaff(supabaseAdminPatch, id, staff_id);
       await refetchBookingAfterBookingServicesMutation();
     }
 
     // Update products if provided
     if (products !== undefined && Array.isArray(products)) {
       // Delete existing products
-      await supabase
+      await supabaseAdminPatch
         .from("booking_products")
         .delete()
         .eq("booking_id", id);
 
       // Insert new products
       if (products.length > 0) {
-        const { data: bookingServices } = await supabase
+        const { data: bookingServices } = await supabaseAdminPatch
           .from("booking_services")
           .select("staff_id")
           .eq("booking_id", id)
@@ -1251,7 +1250,7 @@ export async function PATCH(
           staff_id: primaryStaffId,
         }));
 
-        const { error: productsError } = await supabase
+        const { error: productsError } = await supabaseAdminPatch
           .from("booking_products")
           .insert(productsToInsert);
 
@@ -1259,6 +1258,15 @@ export async function PATCH(
           console.error("Error updating booking_products:", productsError);
           // Non-fatal - booking was updated successfully
         }
+      }
+
+      try {
+        await syncAppointmentProductOrder(supabaseAdminPatch as never, id);
+      } catch (orderSyncError) {
+        console.error(
+          `[provider/bookings patch] failed to sync appointment product order for booking ${id}:`,
+          orderSyncError,
+        );
       }
     }
 
@@ -1380,23 +1388,29 @@ export async function PATCH(
           try {
             const { data: deductedProducts } = await supabaseAdmin
               .from("booking_products")
-              .select("id, product_id, quantity")
+              .select("id, product_id, product_variant_id, quantity")
               .eq("booking_id", id)
               .not("stock_deducted_at", "is", null);
             if (Array.isArray(deductedProducts) && deductedProducts.length > 0) {
               for (const row of deductedProducts as Array<{
                 id: string;
                 product_id: string | null;
+                product_variant_id?: string | null;
                 quantity: number | null;
               }>) {
                 if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
-                const { error: incErr } = await supabaseAdmin.rpc(
-                  "increment_product_stock",
-                  {
-                    p_product_id: row.product_id,
+                const { error: incErr } = row.product_variant_id
+                  ? await (supabaseAdmin.rpc as any)("increment_product_variant_stock", {
+                    p_variant_id: row.product_variant_id,
                     p_quantity: row.quantity,
-                  },
-                );
+                  })
+                  : await supabaseAdmin.rpc(
+                    "increment_product_stock",
+                    {
+                      p_product_id: row.product_id,
+                      p_quantity: row.quantity,
+                    },
+                  );
                 if (incErr) {
                   console.error(
                     `[provider PATCH cancel] increment_product_stock failed for booking ${id}, row ${row.id}:`,
@@ -1499,7 +1513,7 @@ export async function PATCH(
           try {
             const { data: pendingProducts } = await supabaseAdmin
               .from("booking_products")
-              .select("id, product_id, quantity")
+              .select("id, product_id, product_variant_id, quantity")
               .eq("booking_id", id)
               .is("stock_deducted_at", null);
             if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
@@ -1507,16 +1521,22 @@ export async function PATCH(
               for (const row of pendingProducts as Array<{
                 id: string;
                 product_id: string | null;
+                product_variant_id?: string | null;
                 quantity: number | null;
               }>) {
                 if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
-                const { error: decErr } = await supabaseAdmin.rpc(
-                  "decrement_product_stock",
-                  {
-                    p_product_id: row.product_id,
+                const { error: decErr } = row.product_variant_id
+                  ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
+                    p_variant_id: row.product_variant_id,
                     p_quantity: row.quantity,
-                  },
-                );
+                  })
+                  : await supabaseAdmin.rpc(
+                    "decrement_product_stock",
+                    {
+                      p_product_id: row.product_id,
+                      p_quantity: row.quantity,
+                    },
+                  );
                 if (decErr) {
                   console.error(
                     `[provider PATCH complete] decrement_product_stock failed for booking ${id}, row ${row.id}:`,
@@ -1761,6 +1781,15 @@ export async function PATCH(
       }
     }
 
+    try {
+      await syncAppointmentProductOrder(supabaseAdminPatch as never, id);
+    } catch (orderSyncError) {
+      console.error(
+        `[provider/bookings patch] failed to refresh appointment product order for booking ${id}:`,
+        orderSyncError,
+      );
+    }
+
     // Transform the fetched booking to match Booking type (same as GET endpoint)
     const bookingData = updatedBooking as BookingDbRow;
     const transformedBooking: Booking = {
@@ -1770,6 +1799,7 @@ export async function PATCH(
       provider_id: bookingData.provider_id,
       status: mapStatusFromDatabase(bookingData.status),
       db_status: bookingData.status as BookingStatus,
+      current_stage: bookingData.current_stage || null,
       location_type: bookingData.location_type,
       location_id: bookingData.location_id,
       address: bookingData.address_line1 ? {

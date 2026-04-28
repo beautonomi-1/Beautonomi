@@ -46,7 +46,7 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
       { icon: "calendar-outline", label: "Closed Periods", subtitle: "Holidays & closures", route: "/(app)/(tabs)/more/settings/closed-periods", color: "#dc2626" },
       { icon: "document-text-outline", label: "Note Templates", subtitle: "Reusable booking notes", route: "/(app)/(tabs)/more/settings/note-templates", color: "#0ea5e9" },
       { icon: "document-outline", label: "Forms", subtitle: "Intake, consent & waivers", route: "/(app)/(tabs)/more/settings/forms", color: "#0d9488" },
-      { icon: "flash-outline", label: "Automations", subtitle: "Follow-ups & marketing", route: "/(app)/(tabs)/more/settings/automations", color: "#f59e0b" },
+      { icon: "flash-outline", label: "Automations", subtitle: "Automated messages & reminders", route: "/(app)/(tabs)/more/settings/automations", color: "#f59e0b" },
     ],
   },
   {

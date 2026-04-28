@@ -6,6 +6,7 @@
 import { createHash } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolvePublicAuthPolicyForTenant } from "@/lib/config/resolve-public-auth-policy";
 import type {
   PublicConfigBundle,
   GetPublicConfigBundleParams,
@@ -432,6 +433,8 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       }
     : { enabled: false, check_in_enabled: true, escalation_enabled: true, cooldown_seconds: 300, ui_copy: {} };
 
+  const auth = await resolvePublicAuthPolicyForTenant(tenantId);
+
   return {
     meta: {
       env: environment,
@@ -451,6 +454,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     amplitude,
     third_party,
     branding,
+    auth,
     flags,
     modules: {
       on_demand,

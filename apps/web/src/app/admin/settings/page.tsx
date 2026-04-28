@@ -194,6 +194,18 @@ interface PlatformSettings {
     whatsapp_from: string;
     enabled: boolean;
   };
+  /** Supabase Auth (email) policy; optional on legacy API responses. */
+  auth?: {
+    email_provider_enabled: boolean;
+    secure_email_change: boolean;
+    secure_password_change: boolean;
+    require_current_password: boolean;
+    prevent_leaked_passwords: boolean;
+    minimum_password_length: number;
+    password_requirements: "none" | "letters_and_digits" | "lowercase_uppercase_number";
+    email_otp_expiration_seconds: number;
+    email_otp_length: number;
+  };
 }
 
 export default function AdminSettings() {

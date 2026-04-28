@@ -25,8 +25,8 @@ export default function AboutScreen() {
             source={{ uri: `${base}/about` }}
             style={styles.webview}
             startInLoadingState
-            onError={(e) => setWebError(e.nativeEvent.description || "Could not load page")}
-            onHttpError={(e) => setWebError(`HTTP ${e.nativeEvent.statusCode}`)}
+            onError={(e: any) => setWebError(e.nativeEvent.description || "Could not load page")}
+            onHttpError={(e: any) => setWebError(`HTTP ${e.nativeEvent.statusCode}`)}
             renderLoading={() => (
               <View style={styles.loading}>
                 <ActivityIndicator size="large" color={Colors.primary} />

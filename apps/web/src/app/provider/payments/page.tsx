@@ -22,10 +22,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function ProviderPayments() {
+  const [hasMounted, setHasMounted] = useState(false);
   const [payments, setPayments] = useState<PaymentTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [dateRange, setDateRange] = useState<string>("month");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -34,12 +43,12 @@ export default function ProviderPayments() {
     try {
       setIsLoading(true);
       const filters: FilterParams = {
-        search: searchQuery || undefined,
+        search: debouncedSearchQuery || undefined,
       };
 
       const now = new Date();
       if (dateRange === "today") {
-        const today = now.toISOString().split("T")[0];
+        const today = formatLocalDate(now);
         filters.date_from = today;
         filters.date_to = today;
       } else if (dateRange === "week") {
@@ -48,11 +57,11 @@ export default function ProviderPayments() {
         weekStart.setDate(now.getDate() - day);
         const weekEnd = new Date(now);
         weekEnd.setDate(now.getDate() + (6 - day));
-        filters.date_from = weekStart.toISOString().split("T")[0];
-        filters.date_to = weekEnd.toISOString().split("T")[0];
+        filters.date_from = formatLocalDate(weekStart);
+        filters.date_to = formatLocalDate(weekEnd);
       } else if (dateRange === "month") {
-        filters.date_from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-        filters.date_to = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
+        filters.date_from = formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
+        filters.date_to = formatLocalDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
       }
 
       const pagination: PaginationParams = { page, limit: 20 };
@@ -65,22 +74,35 @@ export default function ProviderPayments() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, dateRange, searchQuery]);
+  }, [page, dateRange, debouncedSearchQuery]);
 
   useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasMounted) return;
     loadPayments();
-  }, [loadPayments]);
+  }, [hasMounted, loadPayments]);
 
   useEffect(() => {
+    if (!hasMounted) return;
     const debounceTimer = setTimeout(() => {
-      if (page === 1) {
-        loadPayments();
-      } else {
+      setDebouncedSearchQuery(searchQuery);
+      if (page !== 1) {
         setPage(1);
       }
     }, 300);
     return () => clearTimeout(debounceTimer);
-  }, [searchQuery]);
+  }, [hasMounted, page, searchQuery]);
+
+  if (!hasMounted) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <p className="text-sm text-gray-600">Loading payments...</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <LoadingTimeout loadingMessage="Loading payments..." />;
@@ -152,7 +174,7 @@ export default function ProviderPayments() {
                   <div className="min-w-0">
                     <p className="font-medium text-sm">{payment.ref_number}</p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {new Date(payment.payment_date).toLocaleDateString()}
+                      {formatPaymentDate(payment.payment_date)}
                     </p>
                   </div>
                   <p className="font-semibold text-sm shrink-0">
@@ -190,7 +212,7 @@ export default function ProviderPayments() {
                 {payments.map((payment) => (
                   <TableRow key={payment.id}>
                     <TableCell className="font-medium">{payment.ref_number}</TableCell>
-                    <TableCell>{new Date(payment.payment_date).toLocaleDateString()}</TableCell>
+                    <TableCell>{formatPaymentDate(payment.payment_date)}</TableCell>
                     <TableCell>
                       {payment.appointment_duration ? `${payment.appointment_duration} min` : "-"}
                     </TableCell>
@@ -218,4 +240,14 @@ export default function ProviderPayments() {
       )}
     </div>
   );
+}
+
+function formatPaymentDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-ZA", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
 }

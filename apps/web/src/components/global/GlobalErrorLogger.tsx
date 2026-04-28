@@ -9,6 +9,11 @@ const DEBUG_LOG_URL =
     : undefined;
 const SESSION_ID = "50ed8b";
 
+function isSupabaseAuthLockError(value: unknown): boolean {
+  const message = value instanceof Error ? value.message : String(value ?? "");
+  return message.includes("Lock ") && message.includes("was released because another request stole it");
+}
+
 function sendLog(data: Record<string, any>) {
   if (!DEBUG_LOG_URL) return;
   fetch(DEBUG_LOG_URL, {
@@ -36,6 +41,7 @@ export default function GlobalErrorLogger() {
     };
     const onRejection = (event: PromiseRejectionEvent) => {
       const err = event.reason;
+      if (isSupabaseAuthLockError(err)) return;
       sendLog({
         location: "GlobalErrorLogger.unhandledrejection",
         message: "unhandledrejection",

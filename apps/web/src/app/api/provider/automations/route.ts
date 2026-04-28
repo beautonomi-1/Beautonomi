@@ -7,6 +7,7 @@ import { z } from "zod";
 
 const createAutomationSchema = z.object({
   name: z.string().min(1, "Name is required"),
+  description: z.string().optional(),
   trigger_type: z.string().min(1, "Trigger type is required"),
   trigger_config: z.record(z.string(), z.any()).optional().default({}),
   action_type: z.enum(["email", "sms", "notification", "whatsapp"]),
@@ -114,7 +115,8 @@ export async function POST(request: NextRequest) {
       const { data: existingAutomations } = await supabase
         .from("marketing_automations")
         .select("id")
-        .eq("provider_id", providerId);
+        .eq("provider_id", providerId)
+        .eq("is_template", false);
 
       if ((existingAutomations?.length || 0) >= automationAccess.maxAutomations) {
         return errorResponse(
@@ -133,6 +135,7 @@ export async function POST(request: NextRequest) {
       .insert({
         provider_id: providerId,
         ...validated,
+        is_template: false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

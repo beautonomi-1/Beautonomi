@@ -5,6 +5,7 @@ import {
   successResponse,
   errorResponse,
   handleApiError,
+  getOffsetPaginationParams,
 } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
@@ -38,32 +39,40 @@ export async function GET(request: NextRequest) {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
+    const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 50, maxLimit: 100 });
 
-    const { data, error } = await supabase.from("product_return_requests")
+    const { data: tenantProviders } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("tenant_id", tenantId);
+    const tenantProviderIds = (tenantProviders ?? []).map((p) => p.id);
+    if (tenantProviderIds.length === 0) {
+      return successResponse({
+        returns: [],
+        total: 0,
+        pagination: { limit, offset, has_more: false },
+      });
+    }
+
+    const { data, error, count } = await supabase.from("product_return_requests")
       .select(
         `*, order:product_orders(id, order_number, currency, total_amount, provider:providers(id, business_name))`,
+        { count: "exact" },
       )
       .eq("customer_id", user.id)
-      .order("created_at", { ascending: false });
+      .in("provider_id", tenantProviderIds)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (error) throw error;
-    const rows = (data ?? []) as Array<{ order?: { provider?: { id?: string | null } | null } | null }>;
-    const providerIds = [
-      ...new Set(
-        rows
-          .map((r) => r.order?.provider?.id ?? null)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    ];
-    const { data: tenantProviders } = providerIds.length
-      ? await supabase.from("providers").select("id").in("id", providerIds).eq("tenant_id", tenantId)
-      : { data: [] as Array<{ id: string }> };
-    const allowedProviderIds = new Set((tenantProviders ?? []).map((p) => p.id));
     return successResponse({
-      returns: rows.filter((r) => {
-        const providerId = r.order?.provider?.id;
-        return providerId != null && allowedProviderIds.has(providerId);
-      }),
+      returns: data ?? [],
+      total: count ?? 0,
+      pagination: {
+        limit,
+        offset,
+        has_more: offset + limit < (count ?? 0),
+      },
     });
   } catch (err) {
     return handleApiError(err, "Failed to fetch return requests");

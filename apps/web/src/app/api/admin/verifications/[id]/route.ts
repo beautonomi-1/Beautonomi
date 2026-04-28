@@ -127,21 +127,48 @@ export async function PATCH(
     if (verifiedUserId && (status === "approved" || status === "rejected")) {
       try {
         const adminClient = getSupabaseAdmin();
-        const { data: provider } = await adminClient
+        await adminClient
+          .from("users")
+          .update({
+            identity_verified: status === "approved",
+            identity_verification_status: status,
+            identity_verification_reviewed_at: new Date().toISOString(),
+          })
+          .eq("id", verifiedUserId);
+
+        const { data: ownerProvider } = await adminClient
           .from("providers")
           .select("id")
           .eq("user_id", verifiedUserId)
           .limit(1)
           .maybeSingle();
-        if (provider?.id) {
+        let providerId = ownerProvider?.id ?? null;
+        if (!providerId) {
+          const { data: staffProvider } = await adminClient
+            .from("provider_staff")
+            .select("provider_id")
+            .eq("user_id", verifiedUserId)
+            .eq("is_active", true)
+            .order("created_at", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          providerId = staffProvider?.provider_id ?? null;
+        }
+
+        if (providerId) {
           const kycStatus = status === "approved" ? "approved" : "rejected";
           await adminClient
             .from("provider_verification_status")
             .upsert(
               {
-                provider_id: provider.id,
+                provider_id: providerId,
                 status: kycStatus,
                 last_reviewed_at: new Date().toISOString(),
+                metadata: {
+                  manual_verification_id: id,
+                  manual_reviewed_by_user_id: user.id,
+                  manual_rejection_reason: status === "rejected" ? rejection_reason ?? null : null,
+                },
                 updated_at: new Date().toISOString(),
               },
               { onConflict: "provider_id" }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
@@ -157,7 +157,7 @@ export function ProviderOpsTrackerPage() {
                         <div key={step} className={`h-3 w-3 rounded-full ${step < row.current_step ? "bg-green-400" : step === row.current_step ? "bg-blue-500 ring-2 ring-blue-200" : "bg-gray-200"}`} />
                       ))}
                     </div>
-                    <Link to={adminSpaTo(`/admin/provider-ops/tracker/${row.user_id}`)} onClick={(e) => e.stopPropagation()} className="ml-2 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">View</Link>
+                    <Link to={adminSpaTo(`/admin/provider-ops/tracker/${row.user_id}`)} onClick={(e: MouseEvent<HTMLAnchorElement>) => e.stopPropagation()} className="ml-2 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">View</Link>
                   </div>
                 </div>
                 {isExpanded && row.draft_summary && (

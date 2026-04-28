@@ -24,6 +24,7 @@ export interface ProviderDashboardStats {
   at_salon_no_show: number;
 
   revenue_this_month: number;
+  revenue_this_week: number;
   revenue_today: number;
   revenue_growth: number;
 

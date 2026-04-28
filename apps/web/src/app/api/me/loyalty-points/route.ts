@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { handleApiError, successResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { handleApiError, successResponse, requireRoleInApi, getOffsetPaginationParams } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -23,9 +23,7 @@ export async function GET(request: NextRequest) {
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    const url = new URL(request.url);
-    const limit = parseInt(url.searchParams.get("limit") || "20");
-    const offset = parseInt(url.searchParams.get("offset") || "0");
+    const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 20, maxLimit: 100 });
 
     let available_balance = 0;
     let total_earned = 0;

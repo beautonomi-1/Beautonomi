@@ -39,7 +39,7 @@ const DialogContent = React.forwardRef<
     /** When true, omit the default sr-only "Dialog" title — children must include a visible `DialogTitle` for a11y. */
     suppressFallbackTitle?: boolean
   }
->(({ className, children, hideClose, suppressFallbackTitle, "aria-describedby": ariaDescribedby, onOpenAutoFocus, ...props }, ref) => {
+>(({ className, children, hideClose, suppressFallbackTitle, "aria-describedby": ariaDescribedby, onOpenAutoFocus, onPointerDownOutside, onInteractOutside, ...props }, ref) => {
   const contentRef = React.useRef<HTMLDivElement>(null);
   const mergedRef = (node: HTMLDivElement | null) => {
     (contentRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
@@ -57,6 +57,27 @@ const DialogContent = React.forwardRef<
       first?.focus();
     });
   };
+  const isAddressAutocompletePortalTarget = (target: EventTarget | null) =>
+    target instanceof Element &&
+    Boolean(target.closest("[data-address-autocomplete-listbox='true']"));
+  const handlePointerDownOutside: React.ComponentPropsWithoutRef<
+    typeof DialogPrimitive.Content
+  >["onPointerDownOutside"] = (e) => {
+    onPointerDownOutside?.(e);
+    if (e.defaultPrevented) return;
+    if (isAddressAutocompletePortalTarget(e.detail.originalEvent.target)) {
+      e.preventDefault();
+    }
+  };
+  const handleInteractOutside: React.ComponentPropsWithoutRef<
+    typeof DialogPrimitive.Content
+  >["onInteractOutside"] = (e) => {
+    onInteractOutside?.(e);
+    if (e.defaultPrevented) return;
+    if (isAddressAutocompletePortalTarget(e.target)) {
+      e.preventDefault();
+    }
+  };
   return (
   <DialogPortal>
     <DialogOverlay />
@@ -64,6 +85,8 @@ const DialogContent = React.forwardRef<
       ref={mergedRef}
       aria-describedby={ariaDescribedby ?? undefined}
       onOpenAutoFocus={handleOpenAutoFocus}
+      onPointerDownOutside={handlePointerDownOutside}
+      onInteractOutside={handleInteractOutside}
       className={cn(
         "fixed z-[9999] left-[50%] top-[50%] grid w-full max-w-[95vw] sm:max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white sm:bg-white p-4 sm:p-6 shadow-xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-none sm:rounded-xl m-0 sm:m-4 overflow-hidden max-h-[95vh] overflow-y-auto",
         className

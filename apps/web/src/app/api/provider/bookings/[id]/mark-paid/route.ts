@@ -39,11 +39,13 @@ export async function POST(
     }
 
     // Validate input
-    const { 
-      payment_method, 
-      amount, 
+    const {
+      payment_method,
+      amount,
       notes,
-      reference 
+      reference,
+      payment_provider,
+      idempotency_key,
     } = body;
 
     const validPaymentMethods = ['cash', 'card', 'bank_transfer', 'other'];
@@ -175,17 +177,59 @@ export async function POST(
       );
     }
 
+    const stableReference =
+      typeof reference === "string" && reference.trim()
+        ? reference.trim()
+        : typeof idempotency_key === "string" && idempotency_key.trim()
+          ? idempotency_key.trim()
+          : request.headers.get("Idempotency-Key")?.trim() || null;
+    const hasTerminalReference = typeof reference === "string" && reference.trim().length > 0;
+
     let paymentProvider = 'other';
     if (effectivePaymentMethod === 'cash') {
       paymentProvider = 'cash';
     } else if (effectivePaymentMethod === 'card') {
-      paymentProvider = 'yoco';
+      paymentProvider = payment_provider === "yoco" || hasTerminalReference ? "yoco" : "other";
+    }
+
+    if (paymentProvider === "yoco" && !stableReference) {
+      return errorResponse(
+        "Yoco terminal payments require a stable payment reference or Idempotency-Key",
+        "YOCO_REFERENCE_REQUIRED",
+        400
+      );
     }
 
     let payment: any = null;
     let paymentError: any = null;
 
-    try {
+    if (stableReference) {
+      const { data: existingPayment, error: existingPaymentError } = await supabaseAdmin
+        .from("booking_payments")
+        .select()
+        .eq("payment_provider", paymentProvider)
+        .eq("payment_provider_id", stableReference)
+        .maybeSingle();
+
+      if (existingPaymentError) {
+        return errorResponse(
+          existingPaymentError.message || "Could not verify existing payment reference",
+          "PAYMENT_REFERENCE_LOOKUP_ERROR",
+          500,
+          existingPaymentError
+        );
+      }
+
+      if (existingPayment) {
+        return successResponse({
+          payment: existingPayment,
+          message: "Payment already recorded"
+        });
+      }
+    }
+
+    if (!stableReference) {
+      try {
       const { data: rpcPayment, error: rpcError } = await supabaseAdmin.rpc(
         'create_booking_payment',
         {
@@ -196,7 +240,7 @@ export async function POST(
           p_status: 'completed',
           p_notes: notes || `Payment received via ${payment_method}`,
           p_created_by: user.id,
-          p_reference: reference || null,
+          p_reference: stableReference || null,
         }
       );
 
@@ -205,8 +249,9 @@ export async function POST(
       } else if (rpcError && !rpcError.message?.includes('function') && !rpcError.message?.includes('does not exist')) {
         paymentError = rpcError;
       }
-    } catch {
-      console.log("RPC function not available, using direct insert");
+      } catch {
+        console.log("RPC function not available, using direct insert");
+      }
     }
 
     if (!payment && !paymentError) {
@@ -222,8 +267,16 @@ export async function POST(
         ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
       };
 
-      if (reference) {
-        paymentData.payment_provider_id = reference;
+      if (stableReference) {
+        paymentData.payment_provider_id = stableReference;
+        paymentData.payment_provider_data = {
+          source: paymentProvider === "yoco" ? "provider_mark_paid_yoco_terminal" : "provider_mark_paid",
+          reference: stableReference,
+          idempotency_key:
+            typeof idempotency_key === "string" && idempotency_key.trim()
+              ? idempotency_key.trim()
+              : request.headers.get("Idempotency-Key")?.trim() || null,
+        };
       }
       
       // Try insert with status
@@ -267,7 +320,21 @@ export async function POST(
             }
           }
         } else {
-          paymentError = insertError;
+          if (insertError.code === "23505" && stableReference) {
+            const { data: existingPayment } = await supabaseAdmin
+              .from("booking_payments")
+              .select()
+              .eq("payment_provider", paymentProvider)
+              .eq("payment_provider_id", stableReference)
+              .maybeSingle();
+            if (existingPayment) {
+              payment = existingPayment;
+            } else {
+              paymentError = insertError;
+            }
+          } else {
+            paymentError = insertError;
+          }
         }
       } else {
         payment = paymentInserted;
@@ -324,7 +391,7 @@ export async function POST(
           payment_id: payment.id,
           amount: paymentAmount,
           payment_method,
-          reference: reference || null,
+          reference: stableReference || null,
         },
         created_by: user.id,
       });
@@ -355,10 +422,8 @@ export async function POST(
       }
     }
 
-    // Verify the trigger updated the booking correctly
-    // Wait a moment for trigger to execute, then check
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
+    // Verify the trigger updated the booking correctly. PostgreSQL row triggers run
+    // in the same statement, so this must be visible immediately.
     const { data: updatedBooking } = await supabaseAdmin
       .from("bookings")
       .select("total_paid, payment_status")

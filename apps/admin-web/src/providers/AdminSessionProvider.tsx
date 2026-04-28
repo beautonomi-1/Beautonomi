@@ -32,6 +32,7 @@ interface AdminSessionContextValue {
   isLoading: boolean;
   isError: boolean;
   errorStatus: number | null;
+  errorCode: string | null;
   refetchBootstrap: () => void;
   signOut: () => Promise<void>;
   canAccess: (section: AdminSection) => boolean;
@@ -115,6 +116,8 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
       isError: bootstrapQuery.isError,
       errorStatus:
         bootstrapQuery.error instanceof AdminApiError ? bootstrapQuery.error.status : null,
+      errorCode:
+        bootstrapQuery.error instanceof AdminApiError ? bootstrapQuery.error.code ?? null : null,
       refetchBootstrap: () => {
         void bootstrapQuery.refetch();
       },

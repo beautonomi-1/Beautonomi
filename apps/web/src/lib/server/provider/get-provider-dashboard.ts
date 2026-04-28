@@ -9,10 +9,31 @@ import { formatProviderPortalLimitMessage } from "@/lib/subscriptions/subscripti
 import { mapStatusToProvider } from "@/lib/utils/booking-status";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import { fromBusinessTime, formatInTz, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 
 const DASHBOARD_CACHE_TTL_MS = 5000;
 const MAX_DASHBOARD_CACHE_ENTRIES = 400;
 const dashboardResponseCache = new Map<string, { expiresAt: number; data: any }>();
+
+const PENDING_BOOKING_STATUSES = new Set(["pending", "pending_payment"]);
+const CONFIRMED_BOOKING_STATUSES = new Set(["confirmed", "waiting", "checked_in"]);
+const ACTIVE_BOOKING_STATUSES = new Set([
+  "pending",
+  "pending_payment",
+  "confirmed",
+  "waiting",
+  "checked_in",
+  "in_progress",
+]);
+const SCHEDULE_COUNT_STATUSES = new Set([
+  "pending",
+  "pending_payment",
+  "confirmed",
+  "waiting",
+  "checked_in",
+  "in_progress",
+  "completed",
+]);
 
 function pruneDashboardResponseCache(now: number): void {
   for (const [key, entry] of dashboardResponseCache.entries()) {
@@ -59,7 +80,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const cacheKey = `${providerId}:${locationId || "all"}`;
+    const cacheKey = `${providerId}:${locationId || "all"}:${includeInsights ? "insights" : "base"}`;
     const cached = dashboardResponseCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       const cachedResponse = successResponse(cached.data);
@@ -69,7 +90,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
 
     const { data: providerData, error: providerError } = await supabaseAdmin
       .from('providers')
-      .select('id, tenant_id, status, business_name, rating_average, review_count, offers_mobile_services, max_service_distance_km')
+      .select('id, tenant_id, status, business_name, rating_average, review_count, offers_mobile_services, max_service_distance_km, timezone')
       .eq('id', providerId)
       .maybeSingle();
     if (providerError || !providerData) {
@@ -91,15 +112,27 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const supportsSalon = (salonLocationCount ?? 0) > 0;
     const maxServiceDistanceKm = providerData.max_service_distance_km ?? null;
 
+    const providerTz = resolveTz((providerData as { timezone?: string | null }).timezone);
     const now = new Date();
-    const startOfToday = new Date(now);
-    startOfToday.setHours(0, 0, 0, 0);
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    const businessNow = nowInTz(providerTz);
+    const startOfTodayLocal = new Date(businessNow);
+    startOfTodayLocal.setHours(0, 0, 0, 0);
+    const startOfToday = fromBusinessTime(startOfTodayLocal, providerTz);
+    const startOfWeekLocal = new Date(startOfTodayLocal);
+    startOfWeekLocal.setDate(startOfTodayLocal.getDate() - startOfTodayLocal.getDay());
+    const startOfWeek = fromBusinessTime(startOfWeekLocal, providerTz);
+    const startOfMonth = fromBusinessTime(
+      new Date(businessNow.getFullYear(), businessNow.getMonth(), 1, 0, 0, 0, 0),
+      providerTz,
+    );
+    const startOfLastMonth = fromBusinessTime(
+      new Date(businessNow.getFullYear(), businessNow.getMonth() - 1, 1, 0, 0, 0, 0),
+      providerTz,
+    );
+    const endOfLastMonth = fromBusinessTime(
+      new Date(businessNow.getFullYear(), businessNow.getMonth(), 0, 23, 59, 59, 999),
+      providerTz,
+    );
 
     // Optimize: Get only necessary fields for faster queries
     // Load status, created_at, scheduled_at, and location_type in parallel with finance data
@@ -154,6 +187,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     }
     
     // Count by status (single pass through array - faster than multiple filters)
+    let activeBookings = 0;
     let confirmedBookings = 0;
     let completedBookings = 0;
     let cancelledBookings = 0;
@@ -175,42 +209,83 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     let atSalonNoShow = 0;
     
     for (const booking of allBookings) {
+      const status = String(booking.status || "");
+      const isAtHome = booking.location_type === "at_home";
+      const isAtSalon = booking.location_type === "at_salon";
+
+      if (ACTIVE_BOOKING_STATUSES.has(status)) {
+        activeBookings++;
+      }
+
       // Count by status
-      switch (booking.status) {
-        case 'confirmed': 
-          confirmedBookings++; 
-          if (booking.location_type === 'at_home') atHomeConfirmed++;
-          else if (booking.location_type === 'at_salon') atSalonConfirmed++;
-          break;
-        case 'completed': 
-          completedBookings++; 
-          if (booking.location_type === 'at_home') atHomeCompleted++;
-          else if (booking.location_type === 'at_salon') atSalonCompleted++;
-          break;
-        case 'cancelled': 
-          cancelledBookings++; 
-          if (booking.location_type === 'at_home') atHomeCancelled++;
-          else if (booking.location_type === 'at_salon') atSalonCancelled++;
-          break;
-        case 'no_show': 
-          noShowBookings++; 
-          if (booking.location_type === 'at_home') atHomeNoShow++;
-          else if (booking.location_type === 'at_salon') atSalonNoShow++;
-          break;
-        case 'pending': 
-          pendingBookings++; 
-          if (booking.location_type === 'at_home') atHomePending++;
-          else if (booking.location_type === 'at_salon') atSalonPending++;
-          break;
-        // Note: 'in_progress' status exists but is not shown in dashboard status breakdown
-        // It's counted in active_bookings calculation
+      if (CONFIRMED_BOOKING_STATUSES.has(status)) {
+        confirmedBookings++;
+        if (isAtHome) atHomeConfirmed++;
+        else if (isAtSalon) atSalonConfirmed++;
+      } else if (PENDING_BOOKING_STATUSES.has(status)) {
+        pendingBookings++;
+        if (isAtHome) atHomePending++;
+        else if (isAtSalon) atSalonPending++;
+      } else {
+        switch (status) {
+          case 'completed': 
+            completedBookings++; 
+            if (isAtHome) atHomeCompleted++;
+            else if (isAtSalon) atSalonCompleted++;
+            break;
+          case 'cancelled': 
+            cancelledBookings++; 
+            if (isAtHome) atHomeCancelled++;
+            else if (isAtSalon) atSalonCancelled++;
+            break;
+          case 'no_show': 
+            noShowBookings++; 
+            if (isAtHome) atHomeNoShow++;
+            else if (isAtSalon) atSalonNoShow++;
+            break;
+        }
+      }
+
+      // Count by location_type
+      if (isAtHome) {
+        atHomeBookings++;
+      } else if (isAtSalon) {
+        atSalonBookings++;
+      }
+    }
+
+    // Calculate time-based metrics in single pass (optimized)
+    let upcomingBookingsToday = 0;
+    let bookingsScheduledThisWeek = 0;
+    let bookingsScheduledThisMonth = 0;
+    
+    const todayEndLocal = new Date(startOfTodayLocal);
+    todayEndLocal.setDate(startOfTodayLocal.getDate() + 1);
+    const todayEnd = fromBusinessTime(todayEndLocal, providerTz);
+    const startOfNextWeekLocal = new Date(startOfWeekLocal);
+    startOfNextWeekLocal.setDate(startOfWeekLocal.getDate() + 7);
+    const startOfNextWeek = fromBusinessTime(startOfNextWeekLocal, providerTz);
+    const startOfNextMonth = fromBusinessTime(
+      new Date(businessNow.getFullYear(), businessNow.getMonth() + 1, 1, 0, 0, 0, 0),
+      providerTz,
+    );
+    
+    for (const booking of allBookings) {
+      const scheduledDate = booking.scheduled_at ? new Date(booking.scheduled_at) : null;
+      const status = String(booking.status || "");
+      
+      if (!scheduledDate || !SCHEDULE_COUNT_STATUSES.has(status)) continue;
+      
+      if (scheduledDate >= startOfToday && scheduledDate < todayEnd) {
+        upcomingBookingsToday++;
       }
       
-      // Count by location_type
-      if (booking.location_type === 'at_home') {
-        atHomeBookings++;
-      } else if (booking.location_type === 'at_salon') {
-        atSalonBookings++;
+      if (scheduledDate >= startOfWeek && scheduledDate < startOfNextWeek) {
+        bookingsScheduledThisWeek++;
+      }
+      
+      if (scheduledDate >= startOfMonth && scheduledDate < startOfNextMonth) {
+        bookingsScheduledThisMonth++;
       }
     }
 
@@ -315,36 +390,6 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         ? Math.round(((revenueThisMonth - revenueLastMonth) / Math.abs(revenueLastMonth)) * 100)
         : 0;
 
-    // Calculate time-based metrics in single pass (optimized)
-    let upcomingBookingsToday = 0;
-    let bookingsScheduledThisWeek = 0;
-    let bookingsScheduledThisMonth = 0;
-    
-    const todayEnd = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
-    const startOfNextWeek = new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    
-    for (const booking of allBookings) {
-      const scheduledDate = booking.scheduled_at ? new Date(booking.scheduled_at) : null;
-      
-      if (!scheduledDate) continue; // Skip unscheduled bookings
-      
-      // Upcoming bookings today (scheduled for today, not created today)
-      if (booking.status === 'confirmed' && scheduledDate >= startOfToday && scheduledDate < todayEnd) {
-        upcomingBookingsToday++;
-      }
-      
-      // Bookings scheduled this week (not created this week)
-      if (scheduledDate >= startOfWeek && scheduledDate < startOfNextWeek) {
-        bookingsScheduledThisWeek++;
-      }
-      
-      // Bookings scheduled this month (not created this month)
-      if (scheduledDate >= startOfMonth && scheduledDate < startOfNextMonth) {
-        bookingsScheduledThisMonth++;
-      }
-    }
-
     // Keep dashboard available balance aligned with finance/payout APIs:
     // apply hold-days and exclude direct walk-in earnings that are not held by platform.
     const providerTenantId =
@@ -420,6 +465,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
             }>;
             customers: { full_name: string; phone: string } | null;
             is_group_booking?: boolean;
+            group_booking_id?: string | null;
             group_booking_ref?: string | null;
             package_name?: string | null;
             products?: Array<{ product_name?: string; quantity?: number }>;
@@ -441,6 +487,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
             }>;
             customers: { full_name: string; phone: string } | null;
             is_group_booking?: boolean;
+            group_booking_id?: string | null;
             group_booking_ref?: string | null;
             package_name?: string | null;
             products?: Array<{ product_name?: string; quantity?: number }>;
@@ -457,16 +504,18 @@ export async function getProviderDashboardResponse(request: NextRequest) {
 
     if (includeInsights) {
       const weekStart = subDays(startOfToday, 6);
+      const weekStartLocal = new Date(startOfTodayLocal);
+      weekStartLocal.setDate(startOfTodayLocal.getDate() - 6);
       const revenueByDay = new Map<string, number>();
       for (let i = 0; i < 7; i += 1) {
-        const d = new Date(weekStart);
-        d.setDate(weekStart.getDate() + i);
+        const d = new Date(weekStartLocal);
+        d.setDate(weekStartLocal.getDate() + i);
         revenueByDay.set(format(d, "yyyy-MM-dd"), 0);
       }
       for (const r of parsedRows) {
         if (r.transaction_type !== "provider_earnings") continue;
         if (r.createdDate < weekStart || r.createdDate > now) continue;
-        const key = format(r.createdDate, "yyyy-MM-dd");
+        const key = formatInTz(r.createdDate, "yyyy-MM-dd", providerTz);
         revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + r.netValue);
       }
       const weeklyRevenue = Array.from(revenueByDay.entries()).map(([day, revenue]) => ({ day, revenue }));
@@ -528,6 +577,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
           location_type,
           location_id,
           is_group_booking,
+          group_booking_id,
           customers:users!bookings_customer_id_fkey(full_name, phone),
           group_bookings!bookings_group_booking_id_fkey(ref_number),
           service_packages!bookings_package_id_fkey(name),
@@ -579,6 +629,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
                 }
               : null,
             is_group_booking: Boolean(b.is_group_booking),
+            group_booking_id: b.group_booking_id ?? null,
             group_booking_ref: group?.ref_number ?? null,
             package_name: pkg?.name ?? null,
             products: (b.booking_products || []).map((p: any) => ({
@@ -673,8 +724,9 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     }
     
     // Calculate performance metrics
-    const completionRate = totalBookings > 0 ? (completedBookings / totalBookings) * 100 : 0;
-    const noShowRate = totalBookings > 0 ? (noShowBookings / totalBookings) * 100 : 0;
+    const terminalBookings = completedBookings + cancelledBookings + noShowBookings;
+    const completionRate = terminalBookings > 0 ? (completedBookings / terminalBookings) * 100 : 0;
+    const noShowRate = terminalBookings > 0 ? (noShowBookings / terminalBookings) * 100 : 0;
 
     // Fetch gamification data (points, badge, milestones) - use admin client
     const { data: gamificationData } = await supabaseAdmin
@@ -779,7 +831,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const payload = {
       // Booking counts
       total_bookings: totalBookings,
-      active_bookings: totalBookings - cancelledBookings - noShowBookings,
+      active_bookings: activeBookings,
       confirmed_bookings: confirmedBookings,
       completed_bookings: completedBookings,
       cancelled_bookings: cancelledBookings,

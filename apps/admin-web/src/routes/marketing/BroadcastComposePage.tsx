@@ -41,6 +41,16 @@ export function BroadcastComposePage() {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [url, setUrl] = useState("");
+  /** OneSignal internal / campaign name (not shown on device) */
+  const [internalName, setInternalName] = useState("");
+  const [subtitle, setSubtitle] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [sendAfterLocal, setSendAfterLocal] = useState(""); // datetime-local value
+  const [priority, setPriority] = useState<"" | "5" | "10">("");
+  const [iosInterruption, setIosInterruption] = useState<"" | "passive" | "active" | "time_sensitive" | "critical">(
+    "",
+  );
+  const [additionalDataJson, setAdditionalDataJson] = useState("{\n}");
   const [status, setStatus] = useState<string | null>(null);
 
   const configQ = useQuery({
@@ -67,12 +77,41 @@ export function BroadcastComposePage() {
       }
       if (channel === "push") {
         if (!title.trim()) throw new Error("Push notifications require a title.");
-        return adminApi.postJson<{ message?: string }>("/api/admin/broadcast/push", {
+        let additional_data: Record<string, unknown> | undefined;
+        try {
+          const parsed = JSON.parse(additionalDataJson || "{}") as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            additional_data = parsed as Record<string, unknown>;
+          } else {
+            throw new Error("Additional data must be a JSON object.");
+          }
+        } catch (e) {
+          throw new Error(e instanceof Error ? e.message : "Invalid additional data JSON");
+        }
+        let send_after: string | undefined;
+        if (sendAfterLocal.trim()) {
+          const d = new Date(sendAfterLocal);
+          if (Number.isNaN(d.getTime())) throw new Error("Invalid schedule date.");
+          send_after = d.toISOString();
+        }
+        return adminApi.postJson<{
+          message?: string;
+          recipients?: number;
+          notification_id?: string;
+          delivery?: string;
+        }>("/api/admin/broadcast/push", {
           title: title.trim(),
           message: message.trim(),
           recipient_type: recipientType,
           user_ids,
           url: url.trim() || undefined,
+          name: internalName.trim() || undefined,
+          subtitle: subtitle.trim() || undefined,
+          image: imageUrl.trim() || undefined,
+          send_after,
+          priority: priority === "5" || priority === "10" ? parseInt(priority, 10) : undefined,
+          ios_interruption_level: iosInterruption || undefined,
+          additional_data: Object.keys(additional_data).length > 0 ? additional_data : undefined,
         });
       }
       if (channel === "sms") {
@@ -91,10 +130,35 @@ export function BroadcastComposePage() {
       });
     },
     onSuccess: (res) => {
-      const r = res as { recipients?: number; message?: string };
-      if (typeof r.recipients === "number") setStatus(`Queued for ${r.recipients} recipients.`);
-      else if (typeof r.message === "string") setStatus(r.message);
-      else setStatus("Sent.");
+      const r = res as { recipients?: number; message?: string; notification_id?: string; delivery?: string };
+      if (channel === "push") {
+        const parts: string[] = [];
+        if (typeof r.message === "string" && r.message.trim()) {
+          parts.push(r.message.trim());
+        } else if (typeof r.recipients === "number") {
+          parts.push(
+            r.delivery === "scheduled"
+              ? `Scheduled in OneSignal for ${r.recipients} user account(s).`
+              : `Submitted to OneSignal for ${r.recipients} user account(s) — not queued in Beautonomi; devices usually receive the push within seconds.`,
+          );
+        } else {
+          parts.push("Broadcast request completed.");
+        }
+        if (r.notification_id) {
+          parts.push(`OneSignal message id: ${r.notification_id}`);
+        }
+        setStatus(parts.join(" "));
+        return;
+      }
+      if (typeof r.message === "string" && r.message.trim()) {
+        setStatus(r.message.trim());
+        return;
+      }
+      if (typeof r.recipients === "number") {
+        setStatus(`Submitted for ${r.recipients} recipient(s).`);
+        return;
+      }
+      setStatus("Sent.");
     },
     onError: (e: Error) => setStatus(e.message),
   });
@@ -114,6 +178,11 @@ export function BroadcastComposePage() {
       </p>
 
       <AdminPanel>
+        <p className="text-sm text-gray-600">
+          Customer and provider broadcasts use the same API: the request is sent to OneSignal immediately. “Queued” was a
+          misleading label — we never buffer sends in Beautonomi. Large audiences may see staggered device delivery on
+          OneSignal’s side.
+        </p>
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-600">Channel</label>
@@ -192,6 +261,30 @@ export function BroadcastComposePage() {
             </div>
           ) : null}
 
+          {channel === "push" ? (
+            <div>
+              <label className="block text-xs font-medium text-gray-600">Internal / campaign name (OneSignal, optional)</label>
+              <input
+                className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={internalName}
+                onChange={(e) => setInternalName(e.target.value)}
+                placeholder="e.g. April retention — customers"
+                maxLength={128}
+              />
+            </div>
+          ) : null}
+
+          {channel === "push" ? (
+            <div>
+              <label className="block text-xs font-medium text-gray-600">Subtitle (iOS, optional)</label>
+              <input
+                className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={subtitle}
+                onChange={(e) => setSubtitle(e.target.value)}
+              />
+            </div>
+          ) : null}
+
           {channel === "email" ? (
             <div>
               <label className="block text-xs font-medium text-gray-600">Subject</label>
@@ -214,12 +307,83 @@ export function BroadcastComposePage() {
 
           {channel === "push" ? (
             <div>
-              <label className="block text-xs font-medium text-gray-600">Deep link URL (optional)</label>
+              <label className="block text-xs font-medium text-gray-600">Deep link / launch URL (optional)</label>
               <input
                 className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://… or app deep link"
+              />
+            </div>
+          ) : null}
+
+          {channel === "push" ? (
+            <div>
+              <label className="block text-xs font-medium text-gray-600">Image URL (optional, big picture / rich push)</label>
+              <input
+                className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
                 placeholder="https://…"
+              />
+            </div>
+          ) : null}
+
+          {channel === "push" ? (
+            <div className="grid max-w-2xl gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-600">Schedule send (optional, local time → UTC)</label>
+                <input
+                  type="datetime-local"
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  value={sendAfterLocal}
+                  onChange={(e) => setSendAfterLocal(e.target.value)}
+                />
+                <p className="mt-1 text-xs text-gray-500">Empty = send as soon as OneSignal accepts the message.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600">Android priority (optional)</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value as "" | "5" | "10")}
+                >
+                  <option value="">Default</option>
+                  <option value="5">Normal (5)</option>
+                  <option value="10">High (10)</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-600">iOS interruption level (optional)</label>
+                <select
+                  className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  value={iosInterruption}
+                  onChange={(e) =>
+                    setIosInterruption(
+                      e.target.value as "" | "passive" | "active" | "time_sensitive" | "critical",
+                    )
+                  }
+                >
+                  <option value="">Default</option>
+                  <option value="passive">Passive</option>
+                  <option value="active">Active</option>
+                  <option value="time_sensitive">Time sensitive</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+            </div>
+          ) : null}
+
+          {channel === "push" ? (
+            <div>
+              <label className="block text-xs font-medium text-gray-600">
+                Additional <code className="text-xs">data</code> fields (JSON object, merged with admin_broadcast)
+              </label>
+              <textarea
+                className="mt-1 w-full min-h-[100px] rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+                value={additionalDataJson}
+                onChange={(e) => setAdditionalDataJson(e.target.value)}
+                spellCheck={false}
               />
             </div>
           ) : null}

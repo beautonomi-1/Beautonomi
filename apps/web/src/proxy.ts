@@ -20,6 +20,58 @@ const APEX_TO_WWW: Record<string, string> = {
   'beautonomi.co.za': 'www.beautonomi.co.za',
 };
 
+function normalizeHost(host: string | null): string | null {
+  const value = host?.trim();
+  if (!value) return null;
+  return value.split(':')[0]?.toLowerCase() ?? null;
+}
+
+function configuredAdminHosts(): Set<string> {
+  const raw = process.env.ADMIN_HOSTS || process.env.ADMIN_HOST || '';
+  return new Set(
+    raw
+      .split(',')
+      .map((host) => normalizeHost(host))
+      .filter((host): host is string => Boolean(host)),
+  );
+}
+
+function primaryAdminHost(): string | null {
+  return configuredAdminHosts().values().next().value ?? null;
+}
+
+function adminHostRoutingEnabled(): boolean {
+  return process.env.ENABLE_ADMIN_HOST_ROUTING !== 'false' && configuredAdminHosts().size > 0;
+}
+
+function isAdminHost(host: string | null): boolean {
+  return adminHostRoutingEnabled() && host !== null && configuredAdminHosts().has(host);
+}
+
+function isFrameworkOrStaticPath(pathname: string): boolean {
+  return (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/images') ||
+    pathname.startsWith('/icons') ||
+    pathname.startsWith('/fonts') ||
+    pathname === '/favicon.ico' ||
+    pathname === '/manifest.webmanifest' ||
+    pathname === '/api/public/manifest.webmanifest' ||
+    pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico|css|js|mjs|map|woff2?|ttf|eot|json)$/i) !== null
+  );
+}
+
+function isAdminHostAuthSupportPath(pathname: string): boolean {
+  return (
+    pathname === '/forgot-password' ||
+    pathname.startsWith('/forgot-password/') ||
+    pathname === '/auth/callback' ||
+    pathname.startsWith('/auth/callback/') ||
+    pathname === '/account-settings/login-and-security/reset-password' ||
+    pathname.startsWith('/account-settings/login-and-security/reset-password/')
+  );
+}
+
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
   return ALLOWED_ORIGINS.some((allowed) =>
@@ -61,16 +113,53 @@ export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const origin = request.headers.get('origin');
 
+    // PWA manifest must always stay public. Some preview deployments still
+    // routed this through auth despite the matcher exclusion, so bypass here too.
+    if (pathname === '/manifest.webmanifest' || pathname === '/api/public/manifest.webmanifest') {
+      return NextResponse.next();
+    }
+
     // Digital Asset Links / AASA: Google & Apple fetch `https://<apex>/.well-known/...` — must be 200, no redirect.
     if (pathname.startsWith('/.well-known/')) {
       return NextResponse.next();
     }
-    const host = request.headers.get('host')?.split(':')[0]?.toLowerCase();
+    const host = normalizeHost(request.headers.get('host'));
+    const adminHost = primaryAdminHost();
+    if (
+      adminHostRoutingEnabled() &&
+      adminHost &&
+      !isAdminHost(host) &&
+      (pathname === '/admin' || pathname.startsWith('/admin/'))
+    ) {
+      const url = request.nextUrl.clone();
+      url.hostname = adminHost;
+      return withNoIndexAdmin(NextResponse.redirect(url, 307));
+    }
+
     const wwwHost = host ? APEX_TO_WWW[host] : undefined;
     if (wwwHost) {
       const url = request.nextUrl.clone();
       url.hostname = wwwHost;
       return NextResponse.redirect(url, 308);
+    }
+
+    if (isAdminHost(host)) {
+      if (pathname === '/') {
+        return withNoIndexAdmin(NextResponse.rewrite(new URL('/admin', request.url)));
+      }
+
+      if (
+        pathname.startsWith('/api') ||
+        pathname === '/admin' ||
+        pathname.startsWith('/admin/') ||
+        pathname.startsWith('/.well-known/') ||
+        isFrameworkOrStaticPath(pathname) ||
+        isAdminHostAuthSupportPath(pathname)
+      ) {
+        // Continue through the existing API, admin-auth, and static handling below.
+      } else {
+        return withNoIndexAdmin(NextResponse.redirect(new URL('/admin', request.url)));
+      }
     }
 
     /**
@@ -220,7 +309,7 @@ export async function proxy(request: NextRequest) {
     // Create Supabase client for proxy
     const response = NextResponse.next({
       request: {
-        headers: request.headers,
+        headers: new Headers(request.headers),
       },
     });
 
@@ -445,6 +534,6 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     '/api/:path*',
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|webmanifest)$).*)',
   ],
 };

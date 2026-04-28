@@ -41,9 +41,10 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get("to")
       ? new Date(searchParams.get("to")!)
       : new Date();
+    const locationId = searchParams.get("location_id") || undefined;
 
     // Get bookings with packages (both via package_id and via booking_services with service_type='package')
-    const { data: bookings, error: bookingsError } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select(
         `
@@ -75,6 +76,12 @@ export async function GET(request: NextRequest) {
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString())
       .in("status", ["confirmed", "completed"]);
+
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: bookings, error: bookingsError } = await bookingsQuery;
 
     if (bookingsError) {
       return handleApiError(

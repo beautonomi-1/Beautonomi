@@ -456,6 +456,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 value={locationSearchQuery}
                 onChange={handleAddressSelect}
                 placeholder="Search for an address..."
+                geocodeTypes={["address"]}
                 className="w-full"
               />
             </div>

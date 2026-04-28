@@ -27,11 +27,29 @@ const tabs = [
   { value: "data", label: "Data" },
   { value: "sharing", label: "Sharing" },
   { value: "services", label: "Services" },
-];
+] as const;
 
-const PrivacyPage = ({ initial }: { initial: PrivacyPageInitial | null }) => {
+type PrivacyTabValue = (typeof tabs)[number]["value"];
+
+function isPrivacyTabValue(value: string): value is PrivacyTabValue {
+  return tabs.some((tab) => tab.value === value);
+}
+
+const PrivacyPage = ({
+  initial,
+  initialTab = "account",
+  accountHomeHref = "/account-settings",
+  accountHomeLabel = "Account",
+  loginSecurityHref = "/account-settings/login-and-security",
+}: {
+  initial: PrivacyPageInitial | null;
+  initialTab?: PrivacyTabValue;
+  accountHomeHref?: string;
+  accountHomeLabel?: string;
+  loginSecurityHref?: string;
+}) => {
   const s = initial?.settings;
-  const [activeTab, setActiveTab] = useState("account");
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   // Account tab states
   const [accountVisibility, setAccountVisibility] = useState(() => s?.accountVisibility ?? false);
@@ -274,10 +292,10 @@ const PrivacyPage = ({ initial }: { initial: PrivacyPageInitial | null }) => {
           <div
             className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mt-8 mb-12"
           >
-            <BackButton href="/account-settings" />
+            <BackButton href={accountHomeHref} />
             <Breadcrumb
               items={[
-                { label: "Account", href: "/account-settings" },
+                { label: accountHomeLabel, href: accountHomeHref },
                 { label: "Privacy & sharing" },
               ]}
             />
@@ -288,7 +306,13 @@ const PrivacyPage = ({ initial }: { initial: PrivacyPageInitial | null }) => {
               Privacy and sharing
             </h1>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => {
+                if (isPrivacyTabValue(value)) setActiveTab(value);
+              }}
+              className="w-full"
+            >
               <TabsList className="mb-6 grid grid-cols-4 w-full h-auto p-1 bg-gray-100 rounded-xl shadow-inner border border-gray-200">
                 {tabs.map((tab) => (
                   <TabsTrigger
@@ -575,7 +599,7 @@ const PrivacyPage = ({ initial }: { initial: PrivacyPageInitial | null }) => {
                       <span className="font-mono font-medium text-gray-600">DELETE</span> to confirm.
                       Prefer a break first? Use{" "}
                       <a
-                        href="/account-settings/login-and-security"
+                        href={loginSecurityHref}
                         className="text-gray-700 underline underline-offset-2 hover:text-gray-900"
                       >
                         Login &amp; security

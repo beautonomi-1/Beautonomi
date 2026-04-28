@@ -79,6 +79,7 @@ export function ServiceZoneMapEditor({
   const [saving, setSaving] = useState(false);
   const [layers, setLayers] = useState<MapLayersPayload | null>(null);
   const [pendingGeom, setPendingGeom] = useState<GeoJSON.Polygon | null>(null);
+  const [pendingIntent, setPendingIntent] = useState<DrawIntent>("none");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [layersVersion, setLayersVersion] = useState(0);
   const [layerError, setLayerError] = useState<string | null>(null);
@@ -194,6 +195,7 @@ export function ServiceZoneMapEditor({
             return;
           }
           setPendingGeom(poly);
+          setPendingIntent(drawIntentRef.current);
           setConfirmOpen(true);
         });
       };
@@ -449,6 +451,7 @@ export function ServiceZoneMapEditor({
     setDrawIntent("none");
     setConfirmOpen(false);
     setPendingGeom(null);
+    setPendingIntent("none");
     try {
       drawRef.current?.deleteAll();
       drawRef.current?.changeMode("simple_select");
@@ -464,7 +467,7 @@ export function ServiceZoneMapEditor({
     }
     setSaving(true);
     try {
-      const intent = drawIntentRef.current;
+      const intent = pendingIntent;
       if (intent === "include") {
         const res = await adminApi.postJson<{ included?: number; matched_areas?: number; truncated?: boolean }>(
           `/api/admin/service-zones/${zoneId}/include-drawn`,
@@ -496,7 +499,7 @@ export function ServiceZoneMapEditor({
     setLayerVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const intentLabel = drawIntentRef.current === "include" ? "inclusion" : "exclusion";
+  const intentLabel = pendingIntent === "include" ? "inclusion" : "exclusion";
 
   return (
     <div className="relative">
@@ -612,7 +615,7 @@ export function ServiceZoneMapEditor({
         onClose={cancelDraw}
         title={`Add ${intentLabel} area?`}
         description={
-          drawIntentRef.current === "include"
+          pendingIntent === "include"
             ? "This shape will auto-include intersecting postal areas and recompute coverage."
             : "This shape is subtracted from included areas. You can remove it later from the exclusions list."
         }
@@ -638,7 +641,7 @@ export function ServiceZoneMapEditor({
         }
       >
         <p className="text-sm text-gray-600">
-          {drawIntentRef.current === "include"
+          {pendingIntent === "include"
             ? "The drawn polygon will be matched against the postal-area dataset and qualifying areas will be added."
             : "The drawn polygon will be saved as a custom exclusion zone."}
         </p>

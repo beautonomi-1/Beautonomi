@@ -12,6 +12,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { useResponsive } from "@/hooks/useResponsive";
 import { trackScreenView } from "@/lib/analytics";
+import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { Colors } from "@/constants/colors";
 import { PROVIDER_REPORT_CATEGORIES, type ProviderReportItem } from "./reportCatalog";
 
@@ -46,9 +47,7 @@ export default function ReportsIndex() {
   const { isTablet } = useResponsive();
   const { selectedLocationId } = useProvider();
   const [search, setSearch] = useState("");
-  const analyticsUrl = selectedLocationId
-    ? `/api/provider/analytics?location_id=${encodeURIComponent(selectedLocationId)}`
-    : `/api/provider/analytics`;
+  const analyticsUrl = appendReportLocation("/api/provider/analytics?period=month", selectedLocationId);
   const { data: analytics, loading: analyticsLoading, error: analyticsError } = useApi<AnalyticsSummary>(analyticsUrl);
 
   useEffect(() => {

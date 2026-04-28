@@ -7,6 +7,11 @@ export {
   toIsoUtcTimestamp,
 } from "./dates";
 export {
+  formatFrontDeskRangeCaption,
+  getMetricRangeParams,
+  type FrontDeskMetricRange,
+} from "./front-desk/metricRange";
+export {
   addMoney,
   currencySelectLabel,
   formatMoney,
@@ -101,6 +106,10 @@ export {
   type BookingPricingResult,
 } from "./booking/calculateBookingPricing";
 export { mapToBookingStatusEnum } from "./booking/mapToBookingStatusEnum";
+export {
+  getHoldTimeRemaining,
+  serverNowToClockOffsetMs,
+} from "./booking/holdTimeRemaining";
 export { safeNum } from "./safeNum";
 export {
   coerceChipMultiValue,

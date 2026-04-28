@@ -50,6 +50,16 @@ type AdditionalChargeRow = {
   paid_at?: string | null;
 };
 
+type ProviderLocationRow = {
+  id?: string | null;
+  name?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+};
+
 type BookingReceiptRow = {
   id: string;
   tenant_id?: string | null;
@@ -71,6 +81,7 @@ type BookingReceiptRow = {
   payment_status?: string | null;
   customer?: unknown;
   provider?: unknown;
+  location?: ProviderLocationRow | null;
   booking_services?: BookingServiceRow[] | null;
   booking_addons?: BookingAddonRow[] | null;
   booking_products?: BookingProductRow[] | null;
@@ -175,9 +186,17 @@ export async function GET(
           business_name,
           user_id,
           phone,
-          address,
           receipt_header,
           receipt_footer
+        ),
+        location:provider_locations!bookings_location_id_fkey(
+          id,
+          name,
+          address_line1,
+          address_line2,
+          city,
+          state,
+          postal_code
         ),
         booking_services:booking_services(
           id,
@@ -354,10 +373,30 @@ export async function GET(
         .maybeSingle();
       providerOwnerEmail = (ownerRow as { email?: string | null } | null)?.email ?? "";
     }
+    let providerLocation = booking.location ?? null;
+    if (!providerLocation) {
+      const { data: primaryLocation } = await supabase
+        .from("provider_locations")
+        .select("id, name, address_line1, address_line2, city, state, postal_code")
+        .eq("provider_id", booking.provider_id)
+        .eq("is_active", true)
+        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      providerLocation = primaryLocation as ProviderLocationRow | null;
+    }
     const providerForReceipt: Record<string, unknown> = {
       ...providerRaw,
       owner_email: providerOwnerEmail,
       email: providerOwnerEmail,
+      address: {
+        line1: providerLocation?.address_line1 || "",
+        line2: providerLocation?.address_line2 || "",
+        city: providerLocation?.city || "",
+        state: providerLocation?.state || "",
+        postal_code: providerLocation?.postal_code || "",
+      },
     };
 
     const bRaw = bookingRaw as Record<string, unknown>;

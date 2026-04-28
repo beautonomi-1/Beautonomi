@@ -48,7 +48,7 @@ interface CookieConsentContextValue {
 const CookieConsentContext = createContext<CookieConsentContextValue | null>(null);
 
 export function CookieConsentProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, session, isLoading: authLoading } = useAuth();
   const [isReady, setIsReady] = useState(false);
   const [consent, setConsent] = useState<StoredCookieConsent | null>(null);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -62,7 +62,8 @@ export function CookieConsentProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    if (!user) {
+    if (authLoading) return;
+    if (!user || !session) {
       setServerAnalyticsAllowed(null);
       return;
     }
@@ -83,7 +84,7 @@ export function CookieConsentProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [authLoading, session, user?.id]);
 
   const showBanner = useMemo(() => {
     if (!isReady) return false;
@@ -112,7 +113,7 @@ export function CookieConsentProvider({ children }: { children: ReactNode }) {
   );
 
   const syncAccountAnalyticsIfPossible = useCallback(async (analytics: boolean) => {
-    if (!user) return;
+    if (!user || !session) return;
     try {
       await fetch("/api/me/privacy-settings", {
         method: "PATCH",
@@ -123,7 +124,7 @@ export function CookieConsentProvider({ children }: { children: ReactNode }) {
     } catch {
       /* non-blocking */
     }
-  }, [user]);
+  }, [session, user]);
 
   const acceptAll = useCallback(() => {
     const next = buildAcceptAll();

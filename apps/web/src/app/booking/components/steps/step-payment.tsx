@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, CreditCard, Calendar, MapPin, Wallet, Gift, Banknote, Check, Plus, Shield, ArrowLeft, Lock, Info, Heart, Repeat } from "lucide-react";
+import { CheckCircle, CreditCard, Calendar, MapPin, Wallet, Gift, Banknote, Check, Plus, Shield, ArrowLeft, Lock, Info, Heart, Repeat, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -24,12 +24,22 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 import { reconcileBookingInstantWithSlotLabel } from "@/lib/bookings/reconcile-booking-instant-with-slot-label";
+import { getHoldTimeRemaining, serverNowToClockOffsetMs } from "@beautonomi/utils";
 
 type PublicBookingCreateResult = {
   booking_id: string;
   booking_number: string;
   payment_url?: string | null;
   recurring_subscription?: { created: boolean; pending?: boolean; message?: string };
+};
+
+type HoldVerificationResponse = {
+  data?: {
+    expires_at?: string | null;
+    server_now?: string | null;
+  };
+  expires_at?: string | null;
+  server_now?: string | null;
 };
 
 interface SavedCard {
@@ -100,6 +110,60 @@ function roundTipAmount(amount: number): number {
 /** Common preset percentages for gratuity (computed from subtotal after discounts). */
 const TIP_PERCENT_PRESETS = [10, 15, 18, 20] as const;
 
+function HoldCountdown({
+  expiresAt,
+  clockOffsetMs,
+  onBackToCalendar,
+}: {
+  expiresAt: string;
+  clockOffsetMs: number;
+  onBackToCalendar: () => void | Promise<void>;
+}) {
+  const [tick, setTick] = useState(() => getHoldTimeRemaining(expiresAt, clockOffsetMs));
+
+  useEffect(() => {
+    setTick(getHoldTimeRemaining(expiresAt, clockOffsetMs));
+  }, [expiresAt, clockOffsetMs]);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick(getHoldTimeRemaining(expiresAt, clockOffsetMs)), 1000);
+    return () => clearInterval(id);
+  }, [expiresAt, clockOffsetMs]);
+
+  const urgent = !tick.expired && tick.minutes < 2;
+
+  return (
+    <div
+      role="status"
+      className="rounded-2xl border p-4 flex gap-3 items-start"
+      style={{
+        backgroundColor: tick.expired ? "rgba(254, 242, 242, 0.95)" : urgent ? "rgba(255, 251, 235, 0.95)" : "rgba(239, 246, 255, 0.95)",
+        borderColor: tick.expired ? "#fecaca" : urgent ? "#fde68a" : "#bfdbfe",
+      }}
+    >
+      <Clock className="h-5 w-5 shrink-0 mt-0.5" style={{ color: tick.expired ? "#dc2626" : urgent ? "#d97706" : "#2563eb" }} />
+      <div className="min-w-0 flex-1 text-sm font-medium" style={{ color: tick.expired ? "#991b1b" : urgent ? "#92400e" : "#1e40af" }}>
+        {tick.expired ? (
+          <>
+            <p>Your reserved slot has expired. Go back and pick a new time to continue.</p>
+            <Button type="button" variant="outline" className="mt-3 w-full" onClick={onBackToCalendar}>
+              Back to calendar
+            </Button>
+          </>
+        ) : (
+          <p>
+            Slot held for{" "}
+            <span className="tabular-nums">
+              {tick.minutes}:{String(tick.seconds).padStart(2, "0")}
+            </span>
+            . Complete checkout before the timer ends.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function StepPayment({
   bookingState,
   updateBookingState,
@@ -110,9 +174,15 @@ export default function StepPayment({
   // Prefer hold created by the new booking flow (bookingState.holdId); fall back
   // to URL param for bookings started from the old /book/[slug] flow.
   const holdId = bookingState.holdId || searchParams.get("hold_id")?.trim() || null;
+  const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(bookingState.holdExpiresAt ?? null);
+  const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0);
+  const [isHoldLoading, setIsHoldLoading] = useState(false);
+  const [isHoldExpired, setIsHoldExpired] = useState(false);
+  const [holdLoadError, setHoldLoadError] = useState<string | null>(null);
   const adCampaignId = searchParams.get("campaign_id")?.trim() || null;
   const { user, isLoading: authLoading } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
+  const paymentInFlightRef = useRef(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [tipAmount, setTipAmount] = useState(bookingState.tipAmount || 0);
   const [tipPercentSelection, setTipPercentSelection] = useState<number | null>(
@@ -166,6 +236,81 @@ export default function StepPayment({
     const example = formatCurrency(1, tenantCurrency);
     return `We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. ${example}) may be placed and reversed—this confirms your card for future use.`;
   }, [tenantCurrency]);
+
+  const returnToCalendarForHold = async () => {
+    updateBookingState({
+      holdId: null,
+      holdExpiresAt: null,
+      selectedTimeSlot: null,
+      selectedSlotStart: null,
+      selectedSlotEnd: null,
+      selectedSlotAvailableStaffIds: null,
+      availabilityRefreshToken: Date.now(),
+    });
+    await onNavigateToStep("calendar");
+  };
+
+  useEffect(() => {
+    setHoldExpiresAt(bookingState.holdExpiresAt ?? null);
+  }, [bookingState.holdExpiresAt]);
+
+  useEffect(() => {
+    if (!holdId) {
+      setHoldExpiresAt(null);
+      setIsHoldExpired(false);
+      setHoldLoadError("Missing hold ID");
+      setIsHoldLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsHoldLoading(true);
+    setHoldLoadError(null);
+
+    fetcher
+      .get<HoldVerificationResponse>(`/api/public/booking-holds/${holdId}`, { staleTimeMs: 0 })
+      .then((res) => {
+        if (cancelled) return;
+        const data = res?.data ?? res;
+        const expiresAt = typeof data?.expires_at === "string" ? data.expires_at : bookingState.holdExpiresAt ?? null;
+        const serverNow = typeof data?.server_now === "string" ? data.server_now : null;
+        setServerClockOffsetMs(serverNow ? serverNowToClockOffsetMs(serverNow) : 0);
+        setHoldExpiresAt(expiresAt);
+        setIsHoldExpired(expiresAt ? getHoldTimeRemaining(expiresAt, serverNow ? serverNowToClockOffsetMs(serverNow) : 0).expired : false);
+        setHoldLoadError(null);
+      })
+      .catch((error: { status?: number; code?: string; message?: string }) => {
+        if (cancelled) return;
+        const expired =
+          error?.status === 410 ||
+          error?.code === "HOLD_INVALID" ||
+          error?.code === "HOLD_EXPIRED";
+        setIsHoldExpired(expired);
+        setHoldLoadError(expired ? "Hold expired" : error?.message || "Could not verify your slot hold");
+      })
+      .finally(() => {
+        if (!cancelled) setIsHoldLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [holdId, bookingState.holdExpiresAt]);
+
+  useEffect(() => {
+    if (!holdExpiresAt) {
+      setIsHoldExpired(false);
+      return;
+    }
+    setIsHoldExpired(getHoldTimeRemaining(holdExpiresAt, serverClockOffsetMs).expired);
+    const id = setInterval(() => {
+      if (getHoldTimeRemaining(holdExpiresAt, serverClockOffsetMs).expired) {
+        setIsHoldExpired(true);
+        clearInterval(id);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [holdExpiresAt, serverClockOffsetMs]);
 
 
   // When Paystack / gift cards / cash are disabled, switch away from that method
@@ -593,6 +738,10 @@ export default function StepPayment({
   };
 
   const handlePayment = async () => {
+    if (paymentInFlightRef.current) {
+      return;
+    }
+
     // Check authentication before proceeding
     if (!user && !authLoading) {
       setIsLoginModalOpen(true);
@@ -621,6 +770,33 @@ export default function StepPayment({
       return;
     }
 
+    if (!holdId) {
+      toast.error("Your time slot is not reserved yet. Please choose an available time.");
+      await returnToCalendarForHold();
+      return;
+    }
+
+    if (isHoldLoading) {
+      toast.info("Verifying your reserved time slot...");
+      return;
+    }
+
+    if (
+      isHoldExpired ||
+      (holdExpiresAt && getHoldTimeRemaining(holdExpiresAt, serverClockOffsetMs).expired)
+    ) {
+      toast.error("Your hold expired. Please select your time slot again.", { duration: 6000 });
+      await returnToCalendarForHold();
+      return;
+    }
+
+    if (holdLoadError && !holdExpiresAt) {
+      toast.error("Could not verify your reserved time slot. Please choose another time.");
+      await returnToCalendarForHold();
+      return;
+    }
+
+    paymentInFlightRef.current = true;
     setIsProcessing(true);
     let bookingResult: PublicBookingCreateResult | null = null;
 
@@ -651,7 +827,7 @@ export default function StepPayment({
           error.code === "HOLD_INVALID" ||
           error.code === "HOLD_EXPIRED";
         if (isHoldExpired) {
-          updateBookingState({ holdId: null, selectedTimeSlot: null });
+          updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
           toast.error(
             "Your hold expired. Please select your time slot again.",
             { duration: 6000 }
@@ -660,13 +836,19 @@ export default function StepPayment({
           return;
         }
 
+        const slotConflictCodes = new Set([
+          "CONFLICT",
+          "AVAILABILITY_OVERLAP",
+          "BOOKING_SLOT_CONFLICT",
+          "RESOURCE_UNAVAILABLE",
+        ]);
+        const messageLooksLikeSlotConflict =
+          /slot|time|overlap|unavailable|already booked|conflict|resource/i.test(error.message ?? "");
         const isAvailabilityConflict =
-          error.status === 409 ||
-          error.code === "CONFLICT" ||
-          error.code === "AVAILABILITY_OVERLAP" ||
-          /overlap|unavailable|already booked|conflict/i.test(error.message ?? "");
+          slotConflictCodes.has(error.code) ||
+          (error.status === 409 && messageLooksLikeSlotConflict);
         if (isAvailabilityConflict) {
-          updateBookingState({ holdId: null, selectedTimeSlot: null });
+          updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
           toast.error(
             "That time slot was just taken. Please choose another time.",
             { duration: 6000 }
@@ -794,6 +976,7 @@ export default function StepPayment({
         });
       }
     } finally {
+      paymentInFlightRef.current = false;
       setIsProcessing(false);
     }
   };
@@ -803,6 +986,21 @@ export default function StepPayment({
       {/* Booking Summary */}
       <div className="space-y-4">
         <h2 className="text-2xl font-semibold text-gray-900">{t("booking.reviewBooking")}</h2>
+        {holdExpiresAt ? (
+          <HoldCountdown
+            expiresAt={holdExpiresAt}
+            clockOffsetMs={serverClockOffsetMs}
+            onBackToCalendar={returnToCalendarForHold}
+          />
+        ) : (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex gap-3 items-start text-sm text-amber-900">
+            <Clock className="h-5 w-5 shrink-0 mt-0.5 text-amber-600" />
+            <div>
+              <p className="font-medium">Your time slot still needs to be reserved.</p>
+              <p className="mt-1">Go back to the calendar and choose an available slot before checkout.</p>
+            </div>
+          </div>
+        )}
 
         {/* Services */}
         <div className="p-4 bg-gray-50 rounded-lg space-y-3">
@@ -1612,7 +1810,16 @@ export default function StepPayment({
           return (
             <Button
               onClick={handlePayment}
-              disabled={isProcessing || isChargingCard || !bookingState.clientInfo || (cancellationPolicy != null && !acceptedCancellationPolicy)}
+              disabled={
+                isProcessing ||
+                isChargingCard ||
+                isHoldLoading ||
+                isHoldExpired ||
+                !holdId ||
+                !holdExpiresAt ||
+                !bookingState.clientInfo ||
+                (cancellationPolicy != null && !acceptedCancellationPolicy)
+              }
               className="w-full h-14 text-base font-semibold bg-primary hover:bg-primary-hover disabled:opacity-50 touch-target flex items-center justify-center gap-2"
             >
               {(isProcessing || isChargingCard) ? (

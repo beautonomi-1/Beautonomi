@@ -71,8 +71,9 @@ export default function ExpressBookingLinksPage() {
 
     try {
       await providerApi.deleteExpressBookingLink(id);
+      setLinks((current) => current.filter((link) => link.id !== id));
       toast.success("Link deleted");
-      loadLinks();
+      void loadLinks();
     } catch (error) {
       console.error("Failed to delete link:", error);
       toast.error("Failed to delete link");
@@ -398,7 +399,16 @@ export default function ExpressBookingLinksPage() {
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         link={selectedLink}
-        onSuccess={loadLinks}
+        onSuccess={(savedLink) => {
+          setLinks((current) => {
+            const existingIndex = current.findIndex((item) => item.id === savedLink.id);
+            if (existingIndex === -1) {
+              return [savedLink, ...current];
+            }
+            return current.map((item) => (item.id === savedLink.id ? savedLink : item));
+          });
+          void loadLinks();
+        }}
       />
     </div>
   );
@@ -414,7 +424,7 @@ function ExpressBookingLinkDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   link: ExpressBookingLink | null;
-  onSuccess: () => void;
+  onSuccess: (savedLink: ExpressBookingLink) => void;
 }) {
   const [formData, setFormData] = useState({
     name: "",
@@ -537,13 +547,14 @@ function ExpressBookingLinkDialog({
       }
 
       if (link) {
-        await providerApi.updateExpressBookingLink(link.id, linkData);
+        const savedLink = await providerApi.updateExpressBookingLink(link.id, linkData);
         toast.success("Link updated");
+        onSuccess(savedLink);
       } else {
-        await providerApi.createExpressBookingLink(linkData);
+        const savedLink = await providerApi.createExpressBookingLink(linkData);
         toast.success("Link created");
+        onSuccess(savedLink);
       }
-      onSuccess();
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save link:", error);

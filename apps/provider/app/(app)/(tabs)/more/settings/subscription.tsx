@@ -48,6 +48,18 @@ interface Subscription {
   /** Set when an admin changed the plan and Paystack needs alignment */
   paystack_sync_pending?: boolean | null;
   paystack_sync_note?: string | null;
+  latest_order?: {
+    id: string;
+    plan_id?: string | null;
+    billing_period?: string | null;
+    status?: string | null;
+    failure_reason?: string | null;
+  } | null;
+  billing_issue?: {
+    type: string;
+    message: string;
+    action: string;
+  } | null;
   plan?: {
     id: string;
     name: string;
@@ -129,6 +141,28 @@ function statusLabel(sub: Subscription): string {
   if (s === "inactive") return "Inactive";
   if (s === "cancelled") return "Cancelled";
   return s;
+}
+
+function billingActionLabel(sub: Subscription | null): string | null {
+  if (!sub || isFreeTierSubscription(sub)) return null;
+  if (sub.status === "past_due") return "Pay now / update card";
+  if (sub.paystack_sync_pending) return "Complete billing";
+  if (sub.billing_issue?.action === "retry_payment") return "Retry payment";
+  if (sub.billing_issue?.action === "complete_payment") return "Complete payment";
+  if (sub.cancelled_at) return "Resume billing";
+  if (sub.status === "expired" || sub.status === "cancelled" || sub.status === "inactive") return "Reactivate plan";
+  if (sub.status === "active" && sub.auto_renew === false) return "Extend plan";
+  return null;
+}
+
+function statusPillClasses(sub: Subscription): { bg: string; text: string } {
+  if (sub.cancelled_at) return { bg: "bg-amber-100", text: "text-amber-900" };
+  if (sub.status === "past_due") return { bg: "bg-red-100", text: "text-red-800" };
+  if (sub.status === "expired" || sub.status === "cancelled" || sub.status === "inactive") {
+    return { bg: "bg-gray-100", text: "text-gray-700" };
+  }
+  if (sub.status === "trial" || sub.status === "trialing") return { bg: "bg-blue-100", text: "text-blue-800" };
+  return { bg: "bg-green-100", text: "text-green-800" };
 }
 
 export default function SubscriptionScreen() {
@@ -228,6 +262,28 @@ export default function SubscriptionScreen() {
       Alert.alert("No payment link", "Unable to start renewal. Please try again or contact support.");
     }
     refresh();
+  }
+
+  async function handleBillingAction() {
+    const latest = subscription?.latest_order;
+    const retryPlan = latest?.plan_id
+      ? plans?.find(
+          (p) =>
+            p.plan_id === latest.plan_id &&
+            (!latest.billing_period || p.billing_period === latest.billing_period),
+        )
+      : null;
+
+    if (
+      retryPlan &&
+      (subscription?.billing_issue?.action === "retry_payment" ||
+        subscription?.billing_issue?.action === "complete_payment")
+    ) {
+      await handleUpgrade(retryPlan.id);
+      return;
+    }
+
+    await handleRenew();
   }
 
   async function handleUpgrade(planId: string) {
@@ -338,14 +394,10 @@ export default function SubscriptionScreen() {
   }
 
   const paidSubscriber = subscription && !isFreeTierSubscription(subscription);
-  const showRenew =
-    subscription &&
-    subscription.status === "active" &&
-    !subscription.cancelled_at &&
-    Boolean(subscription.expires_at) &&
-    paidSubscriber;
+  const billingCta = billingActionLabel(subscription);
   const showCancel =
     subscription && subscription.status === "active" && !subscription.cancelled_at && paidSubscriber;
+  const statusPill = subscription ? statusPillClasses(subscription) : null;
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
@@ -413,7 +465,9 @@ export default function SubscriptionScreen() {
                 <>
                   <Text style={twStyle("mt-2 text-sm text-gray-600")}>
                     {subscription.expires_at
-                      ? `Renews ${formatDate(subscription.expires_at)}`
+                      ? subscription.auto_renew
+                        ? `Auto-renews ${formatDate(subscription.expires_at)}`
+                        : `Paid until ${formatDate(subscription.expires_at)}`
                       : null}
                   </Text>
                 </>
@@ -421,12 +475,12 @@ export default function SubscriptionScreen() {
             </View>
             <View
               style={twStyle(
-                `rounded-full px-3 py-1.5 ${subscription.cancelled_at ? "bg-amber-100" : "bg-green-100"}`
+                `rounded-full px-3 py-1.5 ${statusPill?.bg ?? "bg-gray-100"}`
               )}
             >
               <Text
                 style={twStyle(
-                  `text-xs font-semibold ${subscription.cancelled_at ? "text-amber-900" : "text-green-800"}`
+                  `text-xs font-semibold ${statusPill?.text ?? "text-gray-700"}`
                 )}
               >
                 {statusLabel(subscription)}
@@ -448,6 +502,21 @@ export default function SubscriptionScreen() {
             </View>
           ) : null}
 
+          {subscription.billing_issue ? (
+            <View style={twStyle("mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
+              <Text style={twStyle("text-sm font-semibold text-amber-900")}>
+                {subscription.billing_issue.type === "payment_failed"
+                  ? "Payment was not completed"
+                  : subscription.billing_issue.type === "past_due"
+                    ? "Payment action needed"
+                    : "Billing action needed"}
+              </Text>
+              <Text style={twStyle("mt-1 text-sm leading-5 text-amber-900")}>
+                {subscription.billing_issue.message}
+              </Text>
+            </View>
+          ) : null}
+
           {showCancel ? (
             <TouchableOpacity
               style={twStyle("mt-4 rounded-2xl border border-red-200 bg-white py-3")}
@@ -464,14 +533,14 @@ export default function SubscriptionScreen() {
               </Text>
             </View>
           ) : null}
-          {showRenew ? (
+          {billingCta ? (
             <TouchableOpacity
               style={[twStyle("mt-3 rounded-2xl py-3.5"), { backgroundColor: ACCENT }]}
-              onPress={handleRenew}
+              onPress={handleBillingAction}
               activeOpacity={0.9}
             >
               <Text style={twStyle("text-center text-sm font-semibold text-white")}>
-                Renew or update payment method
+                {billingCta}
               </Text>
             </TouchableOpacity>
           ) : null}

@@ -24,6 +24,7 @@ import {
   formatReportRangeCaption,
   type ReportDateRangeKey,
 } from "@/lib/reportDateRanges";
+import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
 const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
@@ -58,7 +59,7 @@ export default function PaymentsReport() {
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
   const { from, to } = getReportDateRange(dateRange);
   const rangeCaption = formatReportRangeCaption(from, to);
-  const paymentsReportUrl = `/api/provider/reports/payments?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  const paymentsReportUrl = appendReportLocation(`/api/provider/reports/payments?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, refresh } = useApi<PaymentsData>(paymentsReportUrl);
 
   const handleExport = useCallback(async () => {

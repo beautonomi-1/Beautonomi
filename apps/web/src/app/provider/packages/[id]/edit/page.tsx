@@ -33,15 +33,32 @@ interface Product {
   sku?: string;
   brand?: string;
   is_active?: boolean;
+  has_variants?: boolean;
+  variants?: ProductVariant[];
+}
+
+interface ProductVariant {
+  id: string;
+  option_values?: Record<string, string> | null;
+  retail_price: number;
+  sku?: string | null;
+  quantity?: number | null;
 }
 
 interface PackageItem {
   type: "service" | "product";
   offering_id?: string;
   product_id?: string;
+  product_variant_id?: string | null;
   quantity: number;
   offering?: OfferingCard;
   product?: Product;
+  product_variant?: ProductVariant | null;
+}
+
+function formatVariantLabel(variant: ProductVariant): string {
+  const optionLabel = variant.option_values ? Object.values(variant.option_values).filter(Boolean).join(" / ") : "";
+  return optionLabel || variant.sku || "Variant";
 }
 
 export default function EditPackagePage({
@@ -75,7 +92,7 @@ export default function EditPackagePage({
       setIsLoadingData(true);
       const [pkgResponse, servicesResponse, productsResponse] = await Promise.all([
         fetcher.get<unknown>(`/api/provider/packages/${id}`),
-        fetcher.get<{ data: OfferingCard[] }>("/api/provider/services"),
+        fetcher.get<{ data: OfferingCard[] }>("/api/provider/services?include_variants=true"),
         fetcher.get<unknown>("/api/provider/products?limit=1000"),
       ]);
 
@@ -119,8 +136,10 @@ export default function EditPackagePage({
         return {
           type: "product" as const,
           product_id: pid,
+            product_variant_id: item.product_variant_id != null ? String(item.product_variant_id) : undefined,
           quantity: Number(item.quantity) || 1,
           product: allProducts.find((p) => p.id === pid),
+            product_variant: allProducts.find((p) => p.id === pid)?.variants?.find((v) => v.id === item.product_variant_id) ?? null,
         };
       });
       setItems(existingItems);
@@ -159,8 +178,10 @@ export default function EditPackagePage({
         item.type = "product";
         item.offering_id = undefined;
         item.product_id = "";
+        item.product_variant_id = undefined;
         item.offering = undefined;
         item.product = undefined;
+        item.product_variant = undefined;
       }
     } else if (field === "offering_id") {
       item.offering_id = value;
@@ -168,6 +189,11 @@ export default function EditPackagePage({
     } else if (field === "product_id") {
       item.product_id = value;
       item.product = products.find((p) => p.id === value);
+      item.product_variant_id = undefined;
+      item.product_variant = undefined;
+    } else if (field === "product_variant_id") {
+      item.product_variant_id = value || undefined;
+      item.product_variant = item.product?.variants?.find((variant) => variant.id === value) ?? null;
     } else {
       (item as any)[field] = value;
     }
@@ -193,6 +219,13 @@ export default function EditPackagePage({
           newErrors[`item_${i}`] = "Please select a service";
         else if (item.type === "product" && !item.product_id)
           newErrors[`item_${i}`] = "Please select a product";
+        else if (
+          item.type === "product" &&
+          item.product?.has_variants &&
+          (item.product.variants?.length ?? 0) > 0 &&
+          !item.product_variant_id
+        )
+          newErrors[`item_${i}`] = "Please select a product variant";
         if (item.quantity < 1)
           newErrors[`quantity_${i}`] = "Quantity must be at least 1";
       });
@@ -221,7 +254,7 @@ export default function EditPackagePage({
         items: items.map((item) => ({
           ...(item.type === "service"
             ? { offering_id: item.offering_id }
-            : { product_id: item.product_id }),
+            : { product_id: item.product_id, product_variant_id: item.product_variant_id || undefined }),
           quantity: item.quantity,
         })),
       };
@@ -405,7 +438,7 @@ export default function EditPackagePage({
               {items.map((item, index) => (
                 <div
                   key={index}
-                  className="border rounded-lg p-4 space-y-3 bg-gray-50"
+                  className="rounded-2xl border bg-white p-4 shadow-sm space-y-3"
                 >
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium text-gray-700">
@@ -462,23 +495,48 @@ export default function EditPackagePage({
                           </SelectContent>
                         </Select>
                       ) : (
-                        <Select
-                          value={item.product_id ?? ""}
-                          onValueChange={(v) => updateItem(index, "product_id", v)}
-                        >
-                          <SelectTrigger
-                            className={`h-9 ${errors[`item_${index}`] ? "border-red-500" : ""}`}
+                        <div className="space-y-2">
+                          <Select
+                            value={item.product_id ?? ""}
+                            onValueChange={(v) => updateItem(index, "product_id", v)}
                           >
-                            <SelectValue placeholder="Select product" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {products.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                            <SelectTrigger
+                              className={`h-9 ${errors[`item_${index}`] ? "border-red-500" : ""}`}
+                            >
+                              <SelectValue placeholder="Select product" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {products.map((p) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  {p.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {item.product?.has_variants && (item.product.variants?.length ?? 0) > 0 && (
+                            <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
+                              <Label className="text-xs text-purple-900">Variant</Label>
+                              <Select
+                                value={item.product_variant_id ?? ""}
+                                onValueChange={(v) => updateItem(index, "product_variant_id", v)}
+                              >
+                                <SelectTrigger className="mt-1 h-9 bg-white">
+                                  <SelectValue placeholder="Choose variant" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {item.product.variants?.map((variant) => (
+                                    <SelectItem key={variant.id} value={variant.id}>
+                                      {formatVariantLabel(variant)} - {item.product?.currency || LAST_RESORT_CURRENCY} {variant.retail_price}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <p className="mt-1 text-xs text-purple-700">
+                                Pick the exact size, colour, or option included in this package.
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       )}
                       {errors[`item_${index}`] && (
                         <p className="text-xs text-red-500 mt-1">

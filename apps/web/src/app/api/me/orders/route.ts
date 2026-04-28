@@ -5,6 +5,7 @@ import {
   successResponse,
   errorResponse,
   handleApiError,
+  getPaginationParams,
 } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
@@ -42,10 +43,8 @@ export async function GET(request: NextRequest) {
     const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const { page, limit, offset } = getPaginationParams(request);
     const status = searchParams.get("status");
-    const offset = (page - 1) * limit;
     const { data: tenantProviders } = await supabase
       .from("providers")
       .select("id")
@@ -213,6 +212,9 @@ export async function POST(request: NextRequest) {
 
     if (freshCartErr) throw freshCartErr;
     const validatedCartItems = freshCartItems || cartItems;
+    if (!validatedCartItems || validatedCartItems.length === 0) {
+      return errorResponse("No cart items found for this provider", "EMPTY_CART", 400);
+    }
 
     const stockErrors: string[] = [];
     for (const item of validatedCartItems) {

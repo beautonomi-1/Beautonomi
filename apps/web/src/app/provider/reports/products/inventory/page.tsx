@@ -125,7 +125,7 @@ export default function InventoryReport() {
       <div className="space-y-6">
         <PageHeader
           title="Inventory"
-          subtitle="Monitor product inventory and stock levels"
+          subtitle="Monitor provider-wide product inventory and stock levels"
           actions={
             <Button variant="outline" onClick={handleExport}>
               <Download className="w-4 h-4 mr-2" />
@@ -133,6 +133,9 @@ export default function InventoryReport() {
             </Button>
           }
         />
+        <p className="text-sm text-gray-500">
+          Inventory is provider-wide because product stock is not currently tracked per location.
+        </p>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

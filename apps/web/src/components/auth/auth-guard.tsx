@@ -51,7 +51,11 @@ export default function AuthGuard({
               // Session exists, just wait a bit more for user to load
               return;
             }
-          } catch {
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error ?? "");
+            if (message.includes("Lock ") && message.includes("was released because another request stole it")) {
+              return;
+            }
             // If check fails, proceed with redirect (safer to redirect than stay on protected page)
           }
           

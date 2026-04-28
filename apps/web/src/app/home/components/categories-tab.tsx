@@ -29,50 +29,47 @@ const CategoriesTab: React.FC = () => {
         setIsLoading(true);
         setError(null);
         
-        // Fetch providers grouped by country and city
+        // Fetch compact home discovery data instead of the full search payload.
         const response = await fetcher.get<{
           data: {
-            providers: Array<{
-              id: string;
-              business_name: string;
+            browseByCity: Array<{
               city: string;
               country: string;
-              slug: string;
+              count?: number;
+              businesses?: string[];
             }>;
           };
           error: null;
-        }>("/api/public/search?limit=1000");
+        }>("/api/public/home");
 
-        const providers = response.data.providers || [];
+        const cityRows = response.data.browseByCity || [];
 
         // Group providers by country and city
         const grouped: CountryData = {};
         const countrySet = new Set<string>();
 
-        providers.forEach((provider) => {
-          if (!provider.country || !provider.city) return;
+        cityRows.forEach((row) => {
+          if (!row.country || !row.city) return;
 
-          const countryKey = provider.country.toLowerCase().replace(/\s+/g, "-");
+          const countryKey = row.country.toLowerCase().replace(/\s+/g, "-");
           countrySet.add(countryKey);
 
           if (!grouped[countryKey]) {
             grouped[countryKey] = [];
           }
 
-          let cityData = grouped[countryKey].find((c) => c.name === provider.city);
+          let cityData = grouped[countryKey].find((c) => c.name === row.city);
           if (!cityData) {
             cityData = {
-              name: provider.city,
+              name: row.city,
               businesses: [],
               provider_count: 0,
             };
             grouped[countryKey].push(cityData);
           }
 
-          if (!cityData.businesses.includes(provider.business_name)) {
-            cityData.businesses.push(provider.business_name);
-            cityData.provider_count = (cityData.provider_count || 0) + 1;
-          }
+          cityData.businesses = row.businesses ?? [];
+          cityData.provider_count = row.count ?? row.businesses?.length ?? 0;
         });
 
         // Create tabs from countries found

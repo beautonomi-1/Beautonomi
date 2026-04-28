@@ -444,7 +444,7 @@ export default function CustomRequestDetailScreen() {
                 value={scheduledAt}
                 mode="datetime"
                 minimumDate={new Date()}
-                onChange={(_, d) => {
+                onChange={(_: any, d?: Date) => {
                   if (d) setScheduledAt(d);
                   setShowDatePicker(Platform.OS === "ios");
                 }}

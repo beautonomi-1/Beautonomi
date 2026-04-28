@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+import * as ExpoLinking from "expo-linking";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
@@ -390,12 +391,14 @@ export default function ProductCheckoutScreen() {
     }
 
     // 2. Initialize Paystack payment for remaining amount (amount in kobo/cents)
+    const paystackReturnPath =
+      Platform.OS === "web" ? undefined : ExpoLinking.createURL("shop/paystack");
     const paystackRes = await api.post<{ authorization_url: string; reference: string }>(
       "/api/paystack/initialize",
       {
         email: customerEmail,
         amount: Math.round(amountDue * 100),
-        callback_url: "customer://product-orders",
+        ...(paystackReturnPath ? { callback_url: paystackReturnPath } : {}),
         metadata: {
           product_order_id: order.id,
           order_number: order.order_number,
@@ -423,9 +426,13 @@ export default function ProductCheckoutScreen() {
     if (Platform.OS === "web") {
       window.location.href = url;
     } else {
-      await WebBrowser.openBrowserAsync(url, {
-        presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-      });
+      if (paystackReturnPath) {
+        await WebBrowser.openAuthSessionAsync(url, paystackReturnPath);
+      } else {
+        await WebBrowser.openBrowserAsync(url, {
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+        });
+      }
 
       const reference = paystackRes.data.reference;
       if (reference) {

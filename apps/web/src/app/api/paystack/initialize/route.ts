@@ -27,7 +27,12 @@ const initializeSchema = z
       .refine(
         (v) => {
           if (!v) return true;
-          return v.startsWith("https://") || v.startsWith("http://") || v.startsWith("customer://");
+          return (
+            v.startsWith("https://") ||
+            v.startsWith("http://") ||
+            v.startsWith("customer://") ||
+            v.startsWith("exp://")
+          );
         },
         { message: "Invalid callback URL" },
       ),
@@ -80,10 +85,19 @@ export async function POST(request: NextRequest) {
     const body = initializeSchema.parse(await request.json());
 
     const rawMeta = body.metadata || {};
+    const bookingIdForCallback =
+      (typeof rawMeta.bookingId === "string" && rawMeta.bookingId.trim()
+        ? rawMeta.bookingId.trim()
+        : null) ||
+      (typeof rawMeta.booking_id === "string" && rawMeta.booking_id.trim()
+        ? rawMeta.booking_id.trim()
+        : null);
     const defaultCallbackUrl =
       rawMeta.type === "product_order"
         ? `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/shop/payment-callback`
-        : `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/booking/callback`;
+        : bookingIdForCallback
+          ? `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/checkout/success?booking_id=${encodeURIComponent(bookingIdForCallback)}`
+          : `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/checkout/success`;
     const callbackUrl = body.callback_url?.trim() || defaultCallbackUrl;
     const supabase = await getSupabaseServer(request);
 
@@ -117,13 +131,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const bookingIdFromMeta =
-      (typeof rawMeta.bookingId === "string" && rawMeta.bookingId.trim()
-        ? rawMeta.bookingId.trim()
-        : null) ||
-      (typeof rawMeta.booking_id === "string" && rawMeta.booking_id.trim()
-        ? rawMeta.booking_id.trim()
-        : null);
+    const bookingIdFromMeta = bookingIdForCallback;
     if (bookingIdFromMeta && !productOrderIdRaw) {
       const { data: bookingRow, error: bookingErr } = await supabase
         .from("bookings")

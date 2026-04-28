@@ -12,6 +12,16 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
+import {
+  RECEIPT_PDF,
+  drawPdfFooter,
+  drawPdfHeader,
+  drawPdfInfoGrid,
+  drawPdfLineItems,
+  drawPdfSectionTitle,
+  drawPdfTotals,
+  moneyPdf,
+} from "@/lib/receipts/pdf-design";
 
 /**
  * GET /api/provider/invoices/[id]/download
@@ -130,12 +140,7 @@ async function generateInvoicePDF(invoice: any, tenantRegionConfig: import("@/li
   const fallbackLocale = getTenantLocaleTagFromRegionConfig(tenantRegionConfig);
   const currency = fallbackCurrency;
 
-  const money = (amount: number) => {
-    return new Intl.NumberFormat(fallbackLocale, {
-      style: "currency",
-      currency: currency.length === 3 ? currency : fallbackCurrency,
-    }).format(amount);
-  };
+  const money = (amount: number) => moneyPdf(amount, currency.length === 3 ? currency : fallbackCurrency, fallbackLocale);
 
   const fmtDate = (date: string) => {
     return new Date(date).toLocaleDateString(fallbackLocale, {
@@ -150,113 +155,68 @@ async function generateInvoicePDF(invoice: any, tenantRegionConfig: import("@/li
   const providerDisplayName = provider?.business_name ?? (provider as { name?: string })?.name ?? "Provider";
   const statusLabel = (invoice.status || "draft").replace(/_/g, " ").toUpperCase();
 
-  const doc = new PDFDocument({ size: "A4", margin: 50 });
+  const doc = new PDFDocument({ size: "A4", margin: 50, bufferPages: true });
   const chunks: Buffer[] = [];
   doc.on("data", (chunk: Buffer) => chunks.push(chunk));
 
-  // Header
-  doc.fontSize(22).fillColor("#FF0077").text("Beautonomi", { continued: true });
-  doc.fontSize(10).fillColor("#666").text("  Platform Invoice", { align: "left" });
-  doc.moveDown(0.5);
-  doc.fillColor("#FF0077").fontSize(16).text(invoice.invoice_number);
-  doc.fillColor("#333").fontSize(10);
-  doc.text(`Issue Date: ${fmtDate(invoice.issue_date)}`);
-  doc.text(`Due Date: ${fmtDate(invoice.due_date)}`);
-  doc.text(`Status: ${statusLabel}`);
-  doc.moveDown(0.5);
+  drawPdfHeader(doc, {
+    title: "Platform invoice",
+    subtitle: "Beautonomi subscription and platform services",
+    documentNumber: invoice.invoice_number,
+    status: statusLabel,
+  });
 
-  // Divider
-  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#FF0077").lineWidth(2).stroke();
-  doc.moveDown(0.8);
-
-  // Bill To
-  doc.fontSize(9).fillColor("#666").text("BILL TO", { underline: false });
-  doc.fontSize(11).fillColor("#333").text(providerDisplayName);
-  if (billingAddress.address_line1) doc.fontSize(10).text(billingAddress.address_line1);
   const cityCountry = [billingAddress.city, billingAddress.country].filter(Boolean).join(", ");
-  if (cityCountry) doc.text(cityCountry);
-  if (provider?.billing_email) doc.text(provider.billing_email);
-  if (provider?.billing_phone) doc.text(provider.billing_phone);
-  doc.moveDown(0.5);
+  drawPdfInfoGrid(doc, [
+    {
+      label: "Bill to",
+      lines: [providerDisplayName, billingAddress.address_line1, cityCountry, provider?.billing_email, provider?.billing_phone],
+    },
+    {
+      label: "Invoice dates",
+      lines: [`Issued ${fmtDate(invoice.issue_date)}`, `Due ${fmtDate(invoice.due_date)}`],
+    },
+    {
+      label: "Billing period",
+      lines: [`${fmtDate(invoice.period_start)} to ${fmtDate(invoice.period_end)}`],
+    },
+  ]);
 
-  // Billing Period
-  doc.fontSize(9).fillColor("#666").text("BILLING PERIOD");
-  doc.fontSize(10).fillColor("#333").text(`${fmtDate(invoice.period_start)} to ${fmtDate(invoice.period_end)}`);
-  doc.moveDown(0.8);
+  drawPdfLineItems(
+    doc,
+    ((invoice.line_items || []) as any[]).map((item) => ({
+      description: item.description || "Invoice line item",
+      detail: `Qty ${item.quantity ?? 1} · Unit ${money(Number(item.unit_price || 0))}`,
+      amount: money(Number(item.total_price || 0)),
+    })),
+    { title: "Invoice details" },
+  );
 
-  // Line items table header
-  const colX = { desc: 50, qty: 340, unit: 400, total: 480 };
-  doc.fontSize(9).fillColor("#666");
-  doc.text("Description", colX.desc, doc.y, { width: 280 });
-  const headerY = doc.y - 12;
-  doc.text("Qty", colX.qty, headerY, { width: 50, align: "right" });
-  doc.text("Unit Price", colX.unit, headerY, { width: 70, align: "right" });
-  doc.text("Total", colX.total, headerY, { width: 65, align: "right" });
-  doc.moveDown(0.3);
-  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#ddd").lineWidth(1).stroke();
-  doc.moveDown(0.3);
-
-  // Line items
-  doc.fillColor("#333").fontSize(10);
-  for (const item of (invoice.line_items || []) as any[]) {
-    const rowY = doc.y;
-    doc.text(item.description || "", colX.desc, rowY, { width: 280 });
-    const textY = Math.max(doc.y - 12, rowY);
-    doc.text(String(item.quantity ?? 1), colX.qty, textY, { width: 50, align: "right" });
-    doc.text(money(Number(item.unit_price || 0)), colX.unit, textY, { width: 70, align: "right" });
-    doc.text(money(Number(item.total_price || 0)), colX.total, textY, { width: 65, align: "right" });
-    doc.moveDown(0.2);
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#eee").lineWidth(0.5).stroke();
-    doc.moveDown(0.2);
-  }
-
-  doc.moveDown(0.5);
-
-  // Totals — right-aligned summary
-  const summaryX = 380;
-  const valX = 480;
-  const summaryLine = (label: string, value: string, bold = false) => {
-    const y = doc.y;
-    doc.fontSize(bold ? 12 : 10).text(label, summaryX, y, { width: 90, align: "left" });
-    doc.fontSize(bold ? 12 : 10).text(value, valX, y, { width: 65, align: "right" });
-    doc.moveDown(0.3);
-  };
-
-  summaryLine("Subtotal:", money(Number(invoice.subtotal || 0)));
-  summaryLine(`Tax (${invoice.tax_rate ?? 0}%):`, money(Number(invoice.tax_amount || 0)));
-
-  doc.moveTo(summaryX, doc.y).lineTo(545, doc.y).strokeColor("#333").lineWidth(1.5).stroke();
-  doc.moveDown(0.3);
-  summaryLine("Total:", money(Number(invoice.total_amount || 0)), true);
-  doc.moveTo(summaryX, doc.y).lineTo(545, doc.y).strokeColor("#333").lineWidth(1.5).stroke();
-  doc.moveDown(0.3);
-
-  if (Number(invoice.amount_paid ?? 0) > 0) {
-    summaryLine("Amount Paid:", money(Number(invoice.amount_paid)));
-    const amountDue = Number(invoice.amount_due ?? invoice.total_amount ?? 0);
-    if (amountDue > 0) {
-      doc.fillColor("red");
-      summaryLine("Amount Due:", money(amountDue), true);
-      doc.fillColor("#333");
-    }
-  }
+  const amountDue = Number(invoice.amount_due ?? invoice.total_amount ?? 0);
+  drawPdfTotals(
+    doc,
+    [
+      { label: "Subtotal", value: money(Number(invoice.subtotal || 0)) },
+      { label: `Tax (${invoice.tax_rate ?? 0}%)`, value: money(Number(invoice.tax_amount || 0)) },
+      ...(Number(invoice.amount_paid ?? 0) > 0
+        ? [{ label: "Amount paid", value: money(Number(invoice.amount_paid)), tone: "success" as const }]
+        : []),
+      ...(amountDue > 0 ? [{ label: "Amount due", value: money(amountDue), tone: "danger" as const }] : []),
+    ],
+    { label: "Total", value: money(Number(invoice.total_amount || 0)) },
+  );
 
   // Notes
   if (invoice.notes) {
     doc.moveDown(0.5);
-    doc.fontSize(9).fillColor("#666").text("NOTES");
-    doc.fontSize(10).fillColor("#333").text(invoice.notes);
+    drawPdfSectionTitle(doc, "Notes");
+    doc.fontSize(10).fillColor(RECEIPT_PDF.ink).text(invoice.notes);
   }
 
-  // Footer
-  doc.moveDown(2);
-  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#ddd").lineWidth(0.5).stroke();
-  doc.moveDown(0.5);
-  doc.fontSize(9).fillColor("#666").text(
-    "Thank you for using Beautonomi. For questions about this invoice, please contact support.",
-    { align: "center" }
+  drawPdfFooter(
+    doc,
+    "Thank you for using Beautonomi. For questions about this invoice, please contact support.\nThis is an automatically generated invoice.",
   );
-  doc.text("This is an automatically generated invoice.", { align: "center" });
 
   doc.end();
   return new Promise<Buffer>((resolve) => {

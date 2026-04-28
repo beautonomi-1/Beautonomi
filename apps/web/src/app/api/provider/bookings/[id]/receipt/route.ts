@@ -85,7 +85,7 @@ export async function GET(
         *,
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
         locations:provider_locations(id, name, address_line1, address_line2, city, state, postal_code),
-        providers:providers!bookings_provider_id_fkey(id, business_name, user_id, phone, address, receipt_prefix, receipt_next_number, receipt_header, receipt_footer),
+        providers:providers!bookings_provider_id_fkey(id, business_name, user_id, phone, receipt_prefix, receipt_next_number, receipt_header, receipt_footer),
         group_bookings!bookings_group_booking_id_fkey(ref_number),
         booking_services(
           id,
@@ -173,10 +173,19 @@ export async function GET(
         .maybeSingle();
       providerOwnerEmail = (ownerRow as { email?: string | null } | null)?.email ?? "";
     }
-    const address = provider.address && typeof provider.address === "object"
-      ? provider.address
-      : { line1: "", line2: "", city: "", state: "", postal_code: "" };
-    const loc = b.locations;
+    let loc = b.locations;
+    if (!loc) {
+      const { data: primaryLocation } = await supabaseAdmin
+        .from("provider_locations")
+        .select("id, name, address_line1, address_line2, city, state, postal_code")
+        .eq("provider_id", bookingProviderId)
+        .eq("is_active", true)
+        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      loc = primaryLocation;
+    }
     const customer = b.customers || {};
 
     // Build line items for invoice display (include guest_name for group bookings)
@@ -284,11 +293,11 @@ export async function GET(
         email: providerOwnerEmail,
         phone: provider.phone || "",
         address: {
-          line1: loc?.address_line1 || address?.line1 || "",
-          line2: loc?.address_line2 || address?.line2 || "",
-          city: loc?.city || address?.city || "",
-          state: loc?.state || address?.state || "",
-          postal_code: loc?.postal_code || address?.postal_code || "",
+          line1: loc?.address_line1 || "",
+          line2: loc?.address_line2 || "",
+          city: loc?.city || "",
+          state: loc?.state || "",
+          postal_code: loc?.postal_code || "",
         },
       },
       customer: {

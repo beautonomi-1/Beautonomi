@@ -519,9 +519,15 @@ function LocationDialog({
                   onInputChange={(value) => setFormData((prev) => ({ ...prev, address_line1: value }))}
                   placeholder="Start typing an address..."
                   country={formData.country || "ZA"}
+                  geocodeTypes={["address"]}
                   className="relative z-[1]"
                   required
                 />
+              </div>
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-3">
+                <p className="text-xs text-slate-600">
+                  Can&apos;t find the exact street number? Use the map pin and drag it to the door or gate.
+                </p>
                 <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setLocationMapPickerOpen(true)}>
                   <MapPin className="w-4 h-4 mr-2" />
                   Drop pin on map

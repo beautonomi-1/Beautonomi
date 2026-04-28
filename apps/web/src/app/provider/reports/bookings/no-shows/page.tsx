@@ -12,6 +12,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays, format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface NoShowsData {
@@ -41,6 +42,7 @@ interface NoShowsData {
 }
 
 export default function NoShowsReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -52,7 +54,7 @@ export default function NoShowsReport() {
 
   useEffect(() => {
     loadReport();
-  }, [dateRange]);
+  }, [dateRange, selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -66,6 +68,7 @@ export default function NoShowsReport() {
       if (dateRange.to) {
         params.append("to", dateRange.to.toISOString());
       }
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: NoShowsData }>(
         `/api/provider/reports/bookings/no-shows?${params.toString()}`

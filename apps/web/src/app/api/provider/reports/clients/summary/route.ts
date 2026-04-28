@@ -41,9 +41,10 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get("to")
       ? new Date(searchParams.get("to")!)
       : new Date();
+    const locationId = searchParams.get("location_id") || undefined;
 
     // Get all bookings for this provider (simplified query to avoid nested join issues)
-    const { data: bookings, error: bookingsError } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from('bookings')
       .select(`
         id,
@@ -55,6 +56,10 @@ export async function GET(request: NextRequest) {
       .eq('provider_id', providerId)
       .gte('scheduled_at', fromDate.toISOString())
       .lte('scheduled_at', toDate.toISOString());
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+    const { data: bookings, error: bookingsError } = await bookingsQuery;
 
     if (bookingsError) {
       console.error("Error fetching bookings:", bookingsError);

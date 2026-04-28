@@ -1,5 +1,5 @@
-import { Suspense, useState, useEffect, useMemo, useRef } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Suspense, useState, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import { Link, NavLink, Outlet, useNavigate, type NavLinkRenderProps } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Menu, LogOut, Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { AdminApiError } from "@beautonomi/admin-api-client";
@@ -259,7 +259,7 @@ export function AdminChrome() {
                     <li key={item.href}>
                       <NavLink
                         to={adminSpaTo(item.href)}
-                        className={({ isActive }) =>
+                        className={({ isActive }: NavLinkRenderProps) =>
                           cn(
                             "flex min-h-11 items-center rounded-xl border border-transparent text-gray-700 transition-colors hover:bg-primary/5 hover:text-gray-900 touch-manipulation",
                             isActive && "border-primary/15 bg-primary/10 font-medium text-primary shadow-sm",
@@ -269,7 +269,7 @@ export function AdminChrome() {
                         onClick={() => setSidebarOpen(false)}
                         title={sidebarCollapsed ? item.title : undefined}
                       >
-                        {({ isActive }) => (
+                        {({ isActive }: NavLinkRenderProps) => (
                           <>
                             <span className={cn("flex items-center", sidebarCollapsed ? "" : "gap-2")}>
                               <item.icon
@@ -507,7 +507,7 @@ export function AdminChrome() {
                         <Link
                           to={to}
                           className="block rounded-lg px-2 py-2 text-left text-gray-800 hover:bg-primary/5"
-                          onClick={(e) => {
+                          onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => {
                             const details = (e.currentTarget.closest("details") as HTMLDetailsElement | null);
                             if (details) details.open = false;
                           }}

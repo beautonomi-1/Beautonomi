@@ -118,6 +118,11 @@ const formatTimeAgo = (timestamp: string) => {
   return time.toLocaleDateString();
 };
 
+const realtimeChannelKey = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 type FilterTab = "all" | "unread";
 
 export function NotificationsClient({
@@ -183,17 +188,23 @@ export function NotificationsClient({
   useEffect(() => {
     if (!user?.id) return;
     const supabase = getSupabaseClient();
-    const channel = supabase
-      .channel(`notifications:provider:${user.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
-        () => {
-          void loadNotifications({ silent: true });
-        }
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel(`notifications:provider:${user.id}:${realtimeChannelKey()}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+          () => {
+            void loadNotifications({ silent: true });
+          }
+        )
+        .subscribe();
+    } catch (error) {
+      console.warn("Provider notifications realtime subscription failed:", error);
+    }
     return () => {
+      if (!channel) return;
       try {
         supabase.removeChannel(channel);
       } catch {
@@ -320,9 +331,12 @@ export function NotificationsClient({
         ) : (
           <>
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-gray-600">
-                {totalUnread > 0 ? `${totalUnread} unread` : "All caught up"}
-              </p>
+              <div>
+                <p className="text-sm text-gray-600">
+                  {totalUnread > 0 ? `${totalUnread} unread` : "All caught up"}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">Tap a notification to mark it read and lower the counter.</p>
+              </div>
               {totalUnread > 0 && (
                 <Button variant="outline" size="sm" onClick={handleMarkAllRead}>
                   Mark all read

@@ -4,6 +4,7 @@ import {
   getCachedConfigBundle,
   clearConfigBundleCache,
   type PublicConfigBundle,
+  DEFAULT_AUTH,
 } from "@/lib/config-bundle";
 
 interface ConfigBundleContextValue {
@@ -23,6 +24,7 @@ const defaultBundle: PublicConfigBundle = {
   amplitude: {},
   third_party: {},
   branding: {},
+  auth: { ...DEFAULT_AUTH },
   flags: {},
   modules: {
     on_demand: {

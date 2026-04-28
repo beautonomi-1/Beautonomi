@@ -55,7 +55,8 @@ export async function POST(request: NextRequest) {
     const { data: automations, error: automationsError } = await supabaseAdmin
       .from("marketing_automations")
       .select("*")
-      .eq("is_active", true);
+      .eq("is_active", true)
+      .eq("is_template", false);
 
     if (automationsError) {
       throw automationsError;

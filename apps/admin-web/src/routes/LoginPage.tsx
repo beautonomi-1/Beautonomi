@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Shield } from "lucide-react";
+import { AdminApiError } from "@beautonomi/admin-api-client";
 import { ALL_ADMIN_ROLES } from "@beautonomi/admin-access";
 import type { UserRole } from "@beautonomi/types";
 import { signInWithPassword, signOut } from "@/lib/authSignIn";
@@ -59,6 +60,7 @@ export function LoginPage() {
   const fromState = (location.state as { from?: string } | null)?.from;
   const rawNext = params.get("next") || fromState || "";
   const safeNext = safeAdminNextParam(rawNext);
+  const enrollNext = encodeURIComponent(`/admin/${safeNext}`);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -92,6 +94,11 @@ export function LoginPage() {
       await qc.invalidateQueries({ queryKey: adminQueryKeys.root });
       navigate(adminSpaTo(`/admin/${safeNext}`), { replace: true });
     } catch (e) {
+      if (e instanceof AdminApiError && e.code === "MFA_REQUIRED") {
+        navigate(adminSpaTo(`/admin/mfa/enroll?next=${enrollNext}`), { replace: true });
+        setLoading(false);
+        return;
+      }
       setFormError(e instanceof Error ? e.message : "Could not load admin session.");
       await signOut();
       setLoading(false);
@@ -108,11 +115,7 @@ export function LoginPage() {
       };
       const hasVerifiedTotp = (lf.data?.totp ?? []).some((f) => f.status === "verified");
       if (!hasVerifiedTotp) {
-        await signOut();
-        setFormError(
-          "This organization requires two-factor authentication for administrators. Enroll a TOTP authenticator on your account, then sign in again."
-        );
-        setLoading(false);
+        navigate(adminSpaTo(`/admin/mfa/enroll?next=${enrollNext}`), { replace: true });
         return;
       }
     }

@@ -152,7 +152,7 @@ export default function ActivityScreen() {
                 {formatCurrency(stats.available_balance ?? 0)}
               </Text>
             </View>
-            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Available balance</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Available to withdraw</Text>
           </View>
           <View style={{ minWidth: "45%", flex: 1, marginRight: 12, marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>

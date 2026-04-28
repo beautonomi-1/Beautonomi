@@ -61,7 +61,7 @@ export function ProductReturnsContent() {
   // §Provider-audit 2026-04 (C3): web lets the provider pick the return
   // method at approval time. Mobile previously hardcoded `drop_off`, which
   // broke couriers that use pickup. Expose the same two-option chooser.
-  const [returnMethod, setReturnMethod] = useState<"drop_off" | "ship_back">("drop_off");
+  const [returnMethod, setReturnMethod] = useState<"drop_off" | "courier">("drop_off");
 
   const url = `/api/provider/returns?limit=50${statusFilter ? `&status=${statusFilter}` : ""}`;
   const { data, loading, error, refresh } = useApi<ReturnsListResponse>(url);
@@ -228,7 +228,7 @@ export function ProductReturnsContent() {
                   <View style={{ flexDirection: "row", gap: 8 }}>
                     {([
                       { value: "drop_off", label: "Drop off" },
-                      { value: "ship_back", label: "Ship back" },
+                      { value: "courier", label: "Ship back" },
                     ] as const).map((opt) => {
                       const selected = returnMethod === opt.value;
                       return (
@@ -303,7 +303,7 @@ export function ProductReturnsContent() {
               <TouchableOpacity
                 onPress={() => {
                   setRejectNoteModal(false);
-                  performAction("reject", rejectNote.trim() ? { note: rejectNote.trim() } : undefined);
+                  performAction("reject", rejectNote.trim() ? { provider_notes: rejectNote.trim() } : undefined);
                 }}
                 style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#DC2626", alignItems: "center" }}
               >

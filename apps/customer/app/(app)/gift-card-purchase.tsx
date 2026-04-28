@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -41,8 +42,17 @@ export default function GiftCardPurchaseScreen() {
     if (finalAmount <= 0 || loading) return;
     setLoading(true);
     try {
+      const beforeCards = await api.get<{ gift_cards?: { id?: string }[] }>("/api/me/gift-cards").catch(() => null);
+      const existingGiftCardIds = new Set(
+        (beforeCards?.data?.gift_cards ?? [])
+          .map((card) => card.id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      );
       const body: Record<string, unknown> = { amount: finalAmount, quantity, currency: tenantCurrency };
       if (provider_id) body.provider_id = provider_id;
+      if (Platform.OS !== "web") {
+        body.callback_url = ExpoLinking.createURL("account-settings/payments");
+      }
       const res = await api.post<{ order_id: string; payment_url: string; reference: string }>(
         "/api/public/gift-cards/purchase",
         body
@@ -57,12 +67,57 @@ export default function GiftCardPurchaseScreen() {
         Alert.alert("Error", "Payment link not available");
         return;
       }
-      await WebBrowser.openBrowserAsync(paymentUrl, {
-        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-      });
+      let reference =
+        typeof data?.reference === "string"
+          ? data.reference
+          : typeof data?.data?.reference === "string"
+            ? data.data.reference
+            : null;
+      if (Platform.OS !== "web") {
+        const returnUrl = ExpoLinking.createURL("account-settings/payments");
+        const browserResult = await WebBrowser.openAuthSessionAsync(paymentUrl, returnUrl);
+        if (browserResult.type === "success" && browserResult.url) {
+          try {
+            const parsed = ExpoLinking.parse(browserResult.url);
+            const query = parsed.queryParams ?? {};
+            const returnedRef = query.reference ?? query.trxref;
+            reference = Array.isArray(returnedRef)
+              ? returnedRef[0] ?? reference
+              : typeof returnedRef === "string" && returnedRef.trim()
+                ? returnedRef.trim()
+                : reference;
+          } catch {
+            // Keep the server-issued reference fallback.
+          }
+        }
+      } else {
+        await WebBrowser.openBrowserAsync(paymentUrl, {
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+        });
+      }
+      if (reference) {
+        await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+      }
+      let issued = false;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const cards = await api.get<{ gift_cards?: { id?: string }[] }>("/api/me/gift-cards").catch(() => null);
+        const list = cards?.data?.gift_cards;
+        if (
+          Array.isArray(list) &&
+          list.some((card) => typeof card.id === "string" && !existingGiftCardIds.has(card.id))
+        ) {
+          issued = true;
+          break;
+        }
+        if (attempt < 9) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
       Alert.alert(
-        "Payment",
-        "If you completed your payment, the gift card will appear in your account shortly.",
+        issued ? "Gift card ready" : "Payment pending",
+        issued
+          ? "Your gift card has been issued and is available under Payments."
+          : "If you completed your payment, the gift card will appear in your account shortly.",
         [{ text: "OK", onPress: () => router.back() }],
       );
     } catch (e) {

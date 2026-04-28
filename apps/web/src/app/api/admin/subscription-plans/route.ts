@@ -1,16 +1,19 @@
-import { NextRequest } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { NextRequest } from "next/server";
+import { randomUUID } from "crypto";
+import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { z } from 'zod';
 import { createPlan, updatePlan } from '@/lib/payments/paystack-complete';
 import { convertToSmallestUnit } from '@/lib/payments/paystack';
 import { getPaystackSecretKey } from '@/lib/payments/paystack-server';
-import { resolveAdminTenantContext } from '@/lib/tenant/scoped-overrides';
-import { resolveAdminApiTenantId } from '@/lib/tenant/admin-request-tenant';
-import { getTenantRegionConfig } from '@/lib/regions/config';
+import {
+  fetchOptionalTenantListMerged,
+  resolveAdminTenantContext,
+} from "@/lib/tenant/scoped-overrides";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 // Complex feature gating structure matching migration 133
 const featureGatingSchema = z.object({
@@ -72,8 +75,19 @@ const featureGatingSchema = z.object({
   }).optional(),
 });
 
+function makePlanSlug(name: string, explicit?: string | null): string {
+  if (explicit?.trim()) return explicit.trim().slice(0, 120);
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 72) || "plan";
+  return `${base}-${randomUUID().slice(0, 8)}`;
+}
+
 const createPlanSchema = z.object({
   name: z.string().min(1, 'Plan name is required'),
+  slug: z.string().min(1).max(120).optional(),
   description: z.string().optional(),
   price_monthly: z.number().min(0).optional(),
   price_yearly: z.number().min(0).optional(),
@@ -105,9 +119,9 @@ function applyScopeFilter(query: any, scopeTenantId: string | null) {
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const { currentTenantId } = await resolveAdminTenantContext(request, undefined, user.role ?? null);
-    const scopedPlans = await fetchScopedListMerged<Record<string, unknown>>({
+    const scopedPlans = await fetchOptionalTenantListMerged<Record<string, unknown>>({
       supabase,
       table: "subscription_plans",
       tenantId: currentTenantId,
@@ -129,7 +143,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
     const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
       request,
@@ -195,10 +209,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Create plan in database
+    const slug = makePlanSlug(data.name, data.slug);
+
     const { data: plan, error: planError } = await supabase
       .from('subscription_plans')
       .insert({
         tenant_id: scopeTenantId,
+        slug,
         name: data.name,
         description: data.description,
         price_monthly: data.price_monthly,
@@ -241,7 +258,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
     const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
       request,

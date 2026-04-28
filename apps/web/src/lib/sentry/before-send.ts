@@ -81,11 +81,26 @@ function scrubBody(value: unknown, depth = 0): unknown {
   return out;
 }
 
+function eventText(event: ErrorEvent): string {
+  const values = event.exception?.values?.map((v) => `${v.type ?? ""} ${v.value ?? ""}`).join(" ") ?? "";
+  const message = typeof event.message === "string" ? event.message : "";
+  return `${message} ${values}`;
+}
+
+function isSupabaseAuthLockEvent(event: ErrorEvent): boolean {
+  const text = eventText(event);
+  return text.includes("Lock ") && text.includes("was released because another request stole it");
+}
+
 /**
  * Sentry beforeSend hook. Strips PII, credentials, and full webhook bodies.
  * Applied to server, edge, and browser clients so shape of event is the same everywhere.
  */
 export function scrubSentryEvent(event: ErrorEvent, _hint?: EventHint): ErrorEvent | null {
+  if (isSupabaseAuthLockEvent(event)) {
+    return null;
+  }
+
   if (event.user) {
     // Only keep an opaque user id, never email/ip/username.
     const id = event.user.id;

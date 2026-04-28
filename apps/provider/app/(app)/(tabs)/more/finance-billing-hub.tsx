@@ -7,7 +7,10 @@ import { twStyle } from "@/lib/twStyle";
 
 /** All items use native screens (no portal) */
 const FINANCE_ITEMS = [
-  { icon: "wallet-outline" as const, label: "Earnings & summary", subtitle: "Total earnings, balance, transactions", route: "/(app)/(tabs)/more/finance", color: "#22c55e" },
+  { icon: "wallet-outline" as const, label: "Earnings & summary", subtitle: "Period earnings, payout balance, transactions", route: "/(app)/(tabs)/more/finance", color: "#22c55e" },
+  { icon: "phone-portrait-outline" as const, label: "Yoco payments", subtitle: "Connect Yoco and manage card devices", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
+  { icon: "ribbon-outline" as const, label: "Subscription & plan", subtitle: "Upgrade, renew, cancel or change billing", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
+  { icon: "business-outline" as const, label: "Payout bank accounts", subtitle: "Add, verify and manage payout accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669" },
   { icon: "card-outline" as const, label: "Payroll", subtitle: "Pay runs, approve, mark paid", route: "/(app)/(tabs)/more/payroll", color: "#0d9488" },
   { icon: "document-text-outline" as const, label: "Invoices", subtitle: "Create, view, send invoices", route: "/(app)/(tabs)/more/invoices", color: "#6366f1" },
   { icon: "arrow-down-circle-outline" as const, label: "Payouts", subtitle: "Request payouts, view history", route: "/(app)/(tabs)/more/payouts", color: "#059669" },

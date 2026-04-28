@@ -97,7 +97,7 @@ function ProductDetailContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, session, isLoading: authLoading } = useAuth();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
 
@@ -147,7 +147,8 @@ function ProductDetailContent() {
   }, [selectedVariantId]);
 
   useEffect(() => {
-    if (!user || !productId) {
+    if (authLoading) return;
+    if (!user || !session || !productId) {
       setIsInWishlist(false);
       return;
     }
@@ -171,11 +172,11 @@ function ProductDetailContent() {
     return () => {
       cancelled = true;
     };
-  }, [user, productId]);
+  }, [authLoading, session, user, productId]);
 
   const handleToggleWishlist = useCallback(async () => {
     if (!productId || isWishlistLoading) return;
-    if (!user) {
+    if (!user || !session) {
       const q = providerSlugParam ? `?provider=${encodeURIComponent(providerSlugParam)}` : "";
       router.push(`/account-settings?redirect=${encodeURIComponent(`/shop/${productId}${q}`)}`);
       return;
@@ -184,7 +185,7 @@ function ProductDetailContent() {
     try {
       const res = await fetch("/api/me/wishlists/toggle", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify({ item_type: "product", item_id: productId }),
       });
       const json = await res.json().catch(() => ({}));
@@ -205,25 +206,25 @@ function ProductDetailContent() {
     } finally {
       setIsWishlistLoading(false);
     }
-  }, [productId, isWishlistLoading, user, providerSlugParam, router]);
+  }, [productId, isWishlistLoading, user, session, providerSlugParam, router]);
 
-  const handleAddToCart = useCallback(async () => {
-    if (!product || addingToCart) return;
+  const handleAddToCart = useCallback(async (): Promise<boolean> => {
+    if (!product || addingToCart) return false;
     if (hasVariants && !selectedVariantId) {
       setCartMessage({ text: "Please select a variant", type: "error" });
-      return;
+      return false;
     }
-    if (!user) {
+    if (!user || !session) {
       const q = providerSlugParam ? `?provider=${encodeURIComponent(providerSlugParam)}` : "";
       router.push(`/account-settings?redirect=${encodeURIComponent(`/shop/${product.id}${q}`)}`);
-      return;
+      return false;
     }
     setAddingToCart(true);
     setCartMessage(null);
     try {
       const res = await fetch("/api/me/cart", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify({
           product_id: product.id,
           quantity,
@@ -237,6 +238,7 @@ function ProductDetailContent() {
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
         }
+        return true;
       } else if (res.status === 401) {
         setCartMessage({
           text: "Please sign in to add to cart.",
@@ -249,9 +251,19 @@ function ProductDetailContent() {
       }
     } catch {
       setCartMessage({ text: "Something went wrong", type: "error" });
+    } finally {
+      setAddingToCart(false);
     }
-    setAddingToCart(false);
-  }, [product, quantity, addingToCart, user, router, hasVariants, selectedVariantId, providerSlugParam]);
+    return false;
+  }, [product, quantity, addingToCart, user, session, router, hasVariants, selectedVariantId, providerSlugParam]);
+
+  const handleCheckoutNow = useCallback(async () => {
+    if (!product || addingToCart) return;
+    const added = await handleAddToCart();
+    if (added) {
+      router.push(`/shop/checkout?provider_id=${encodeURIComponent(product.provider.id)}`);
+    }
+  }, [product, addingToCart, handleAddToCart, router]);
 
   useEffect(() => {
     if (!productId) {
@@ -635,12 +647,14 @@ function ProductDetailContent() {
                   >
                     View cart
                   </Link>
-                  <Link
-                    href={`/shop/checkout?provider_id=${encodeURIComponent(product.provider.id)}`}
-                    className="inline-flex items-center justify-center rounded-xl border-2 border-pink-600 bg-white px-4 py-3 text-sm font-semibold text-pink-700 transition hover:bg-pink-50"
+                  <button
+                    type="button"
+                    onClick={handleCheckoutNow}
+                    disabled={addingToCart || maxQty <= 0}
+                    className="inline-flex items-center justify-center rounded-xl border-2 border-pink-600 bg-white px-4 py-3 text-sm font-semibold text-pink-700 transition hover:bg-pink-50 disabled:opacity-50"
                   >
-                    Checkout now
-                  </Link>
+                    {addingToCart ? "Adding…" : "Add & checkout"}
+                  </button>
                 </div>
                 {cartMessage && (
                   <div

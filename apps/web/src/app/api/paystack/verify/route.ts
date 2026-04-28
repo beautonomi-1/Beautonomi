@@ -17,10 +17,9 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-team";
-import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
-import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
+import { processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/charge-success";
 
 /**
  * GET /api/paystack/verify
@@ -196,6 +195,53 @@ export async function GET(request: NextRequest) {
         });
       }
 
+      if (metadata?.gift_card_order_id) {
+        const admin = getSupabaseAdmin();
+        const giftCardOrderId = String(metadata.gift_card_order_id);
+        const { data: orderLookup } = await admin
+          .from("gift_card_orders")
+          .select("purchaser_user_id")
+          .eq("id", giftCardOrderId)
+          .maybeSingle();
+        if (!orderLookup) {
+          return notFoundResponse("Gift card order not found");
+        }
+        if ((orderLookup as { purchaser_user_id?: string | null }).purchaser_user_id !== user.id) {
+          return errorResponse(
+            "You can only confirm your own gift card purchases.",
+            "FORBIDDEN",
+            403,
+          );
+        }
+        await processSuccessfulPayment(data.data, admin);
+        return successResponse({
+          status: "success",
+          type: "gift_card_order",
+          giftCardOrderId,
+          message: "Gift card purchase confirmed",
+        });
+      }
+
+      if (metadata?.kind === "card_verification") {
+        await processSuccessfulPayment(data.data, getSupabaseAdmin());
+        return successResponse({
+          status: "success",
+          type: "card_verification",
+          message: "Card verification confirmed",
+        });
+      }
+
+      if (metadata?.ads_budget_order_id) {
+        await processSuccessfulPayment(data.data, getSupabaseAdmin());
+        return successResponse({
+          status: "success",
+          type: "ads_budget_order",
+          adsBudgetOrderId: String(metadata.ads_budget_order_id),
+          campaignId: metadata.campaign_id ? String(metadata.campaign_id) : null,
+          message: "Ads payment confirmed",
+        });
+      }
+
       // Handle booking payments
       const bookingId = metadata.bookingId || metadata.booking_id;
 
@@ -243,102 +289,8 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const paymentStatusBefore =
-        (booking.payment_status as string) || "pending";
-
-      // 1. Record Paystack payment in booking_payments (RLS blocks customer INSERT; use admin).
-      //    Trigger update_booking_payment_status syncs payment_status + total_paid (deposit vs full).
       const admin = getSupabaseAdmin();
-      const paystackTxId =
-        data.data.id !== undefined && data.data.id !== null
-          ? String(data.data.id)
-          : null;
-      const amountMajor = data.data.amount / 100;
-      let newPaymentRow = false;
-      if (paystackTxId) {
-        const { data: existingBp } = await admin
-          .from("booking_payments")
-          .select("id")
-          .eq("payment_provider", "paystack")
-          .eq("payment_provider_id", paystackTxId)
-          .maybeSingle();
-        if (!existingBp) {
-          const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
-          const { error: bpErr } = await admin.from("booking_payments").insert({
-            booking_id: bookingId,
-            ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
-            amount: amountMajor,
-            payment_method: "card",
-            payment_provider: "paystack",
-            payment_provider_id: paystackTxId,
-            status: "completed",
-            notes: `Payment verified via Paystack (client redirect). Ref: ${reference}`,
-            payment_provider_data: {
-              paystack_reference: reference,
-              paystack_metadata: metadata,
-              source: "paystack_verify_route",
-            },
-          });
-          if (bpErr && bpErr.code !== "23505") {
-            console.error("booking_payments insert from verify failed:", bpErr);
-          } else if (!bpErr) {
-            newPaymentRow = true;
-          }
-        }
-      }
-
-      await syncBookingAfterPaystackSuccess(admin, bookingId, {
-        paymentReference: reference,
-        paymentProvider: "paystack",
-      });
-
-      // Failsafe: if the DB trigger set payment_status to "partially_paid" because it
-      // only sums booking_payments rows and doesn't account for wallet/gift card amounts, we fix it here.
-      {
-        const { data: fsRow } = await admin
-          .from("bookings")
-          .select("total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, status, provider_id, confirmed_at")
-          .eq("id", bookingId)
-          .maybeSingle();
-        if (fsRow) {
-          const fsTotalAmount = Number((fsRow as Record<string, unknown>).total_amount ?? 0);
-          const fsTotalPaid = Number((fsRow as Record<string, unknown>).total_paid ?? 0);
-          const fsTotalRefunded = Number((fsRow as Record<string, unknown>).total_refunded ?? 0);
-          const fsWalletAmount = Number((fsRow as Record<string, unknown>).wallet_amount ?? 0);
-          const fsGiftCardAmount = Number((fsRow as Record<string, unknown>).gift_card_amount ?? 0);
-          const fsEffectivePaid = Math.max(0, fsTotalPaid - fsTotalRefunded);
-          const fsPs = (fsRow as Record<string, unknown>).payment_status as string || "pending";
-          if (
-            fsTotalAmount > 0 &&
-            fsEffectivePaid + fsWalletAmount + fsGiftCardAmount >= fsTotalAmount - 0.01 &&
-            fsPs !== "paid"
-          ) {
-            const fsUpdates: Record<string, unknown> = { payment_status: "paid" };
-            // Re-apply auto-confirm in case it was skipped due to partially_paid status
-            if (fsRow.provider_id) {
-              const { getAppointmentSettingsFromDB } = await import("@/lib/provider-portal/appointment-settings");
-              const fsSettings = await getAppointmentSettingsFromDB(admin, fsRow.provider_id as string);
-              const fsStatus = (fsRow as Record<string, unknown>).status as string;
-              if (!fsSettings.requireConfirmationForBookings && fsStatus !== "confirmed" && fsStatus !== "completed") {
-                fsUpdates.status = "confirmed";
-                if (!(fsRow as Record<string, unknown>).confirmed_at) {
-                  fsUpdates.confirmed_at = new Date().toISOString();
-                }
-              }
-            }
-            await admin.from("bookings").update(fsUpdates).eq("id", bookingId);
-          }
-        }
-      }
-
-      try {
-        await tryCreateCustomerRecurringFromPaystackChargeMetadata(
-          admin,
-          metadata as Record<string, unknown>,
-        );
-      } catch (recurringErr) {
-        console.error("[recurring] paystack verify booking path:", recurringErr);
-      }
+      await processSuccessfulPayment(data.data, admin);
 
       const { data: afterPay } = await admin
         .from("bookings")
@@ -346,107 +298,12 @@ export async function GET(request: NextRequest) {
         .eq("id", bookingId)
         .maybeSingle();
       const psAfter = ((afterPay?.payment_status as string) || "pending") as string;
-      const paymentJustCleared =
-        paymentStatusBefore === "pending" &&
-        (psAfter === "paid" || psAfter === "partially_paid");
-
-      let providerOwnerUserId: string | null = null;
-      if (booking.provider_id) {
-        const { data: prov } = await supabase
-          .from("providers")
-          .select("user_id")
-          .eq("id", booking.provider_id)
-          .maybeSingle();
-        providerOwnerUserId = prov?.user_id ?? null;
-      }
-
-      if (paymentJustCleared && newPaymentRow) {
-        void import("@/lib/notifications/insert-notification").then(async ({ insertNotifications }) => {
-          const rows = [
-            {
-              user_id: booking.customer_id as string,
-              type: "booking_confirmation",
-              title: "Booking Confirmed",
-              message: `Your booking ${booking.ref_number || booking.booking_number} has been confirmed.`,
-              data: { booking_id: bookingId, amount: data.data.amount / 100 } as Record<string, unknown>,
-              action_url: `/account-settings/bookings/${bookingId}`,
-            },
-            ...(providerOwnerUserId ? [{
-              user_id: providerOwnerUserId as string,
-              type: "new_appointment",
-              title: "New Booking Received",
-              message: `New booking ${booking.ref_number || booking.booking_number} confirmed.`,
-              data: { booking_id: bookingId, amount: data.data.amount / 100 } as Record<string, unknown>,
-              action_url: `/provider/bookings/${bookingId}`,
-            }] : []),
-          ];
-          await insertNotifications(rows);
-        });
-      }
-
-      // Gift card capture (only on first recorded Paystack payment for this tx)
-      if (paymentJustCleared && newPaymentRow && metadata.gift_card_id && metadata.gift_card_amount) {
-        const giftCardAmount = parseFloat(metadata.gift_card_amount);
-        await supabase.rpc("deduct_gift_card_balance", {
-          p_gift_card_id: metadata.gift_card_id,
-          p_amount: giftCardAmount,
-          p_booking_id: bookingId,
-        });
-      }
-
-      // 4. Deduct loyalty points if used (idempotent: check for existing redemption for this booking)
-      if (paymentJustCleared && newPaymentRow && metadata.loyalty_points_used && parseInt(metadata.loyalty_points_used) > 0) {
-        const pointsUsed = parseInt(metadata.loyalty_points_used);
-        const { data: existing } = await supabase
-          .from("loyalty_point_transactions")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("reference_id", bookingId)
-          .eq("reference_type", "booking")
-          .eq("transaction_type", "redeemed")
-          .maybeSingle();
-        if (!existing) {
-          await supabase.from("loyalty_point_transactions").insert({
-            user_id: user.id,
-            points: pointsUsed,
-            transaction_type: "redeemed",
-            description: `Redeemed for booking`,
-            reference_id: bookingId,
-            reference_type: "booking",
-          });
-          await supabase.from("bookings").update({ loyalty_points_used: pointsUsed }).eq("id", bookingId);
-        }
-      }
-
-      // 5. Apply coupon usage
-      if (paymentJustCleared && newPaymentRow && metadata.coupon_code) {
-        const { data: promo } = await supabase
-          .from("promotions")
-          .select("current_uses")
-          .eq("code", metadata.coupon_code)
-          .single();
-
-        if (promo) {
-          await supabase
-            .from("promotions")
-            .update({ current_uses: (promo.current_uses || 0) + 1 })
-            .eq("code", metadata.coupon_code);
-        }
-
-        await supabase.from("promotion_uses").insert({
-          promotion_code: metadata.coupon_code,
-          user_id: user.id,
-          booking_id: bookingId,
-          used_at: new Date().toISOString(),
-        });
-      }
 
       return successResponse({
         status: "success",
         bookingId: bookingId,
         message: "Payment verified successfully",
         payment_status: psAfter,
-        duplicate: !newPaymentRow && !paymentJustCleared,
       });
     }
 

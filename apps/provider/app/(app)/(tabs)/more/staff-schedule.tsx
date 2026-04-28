@@ -479,7 +479,7 @@ export default function StaffScheduleScreen() {
 
       <View style={{ backgroundColor: "#EEF2FF", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}>
         <Text style={{ fontSize: 13, color: "#3730A3", lineHeight: 18 }}>
-          Schedules define when each staff member is available for bookings. You can set multiple shifts per day (split shifts).
+          Weekly schedules repeat every week and define when this staff member is normally available for bookings. Use the web Scheduled Shifts page for split shifts, date-specific overrides, or alternating-week patterns.
         </Text>
       </View>
 

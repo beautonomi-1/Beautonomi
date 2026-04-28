@@ -74,7 +74,7 @@ const NearestProvidersSection = ({
         }
 
         const params = new URLSearchParams();
-        if (lat && lng) {
+        if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
           params.set("lat", lat.toString());
           params.set("lng", lng.toString());
         }

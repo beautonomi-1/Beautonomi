@@ -23,7 +23,8 @@ export async function calculateStaffCommission(
   providerId: string,
   staffId: string,
   fromDate: Date,
-  toDate: Date
+  toDate: Date,
+  locationId?: string | null
 ): Promise<CommissionResult> {
   const result: CommissionResult = {
     serviceCommission: 0,
@@ -194,7 +195,7 @@ export async function calculateStaffCommission(
   }
 
   // 6. Sales table (standalone product sales with staff_id)
-  const { data: sales } = await supabaseAdmin
+  let salesQuery = supabaseAdmin
     .from("sales")
     .select("id, staff_id, total_amount, sale_date")
     .eq("provider_id", providerId)
@@ -202,6 +203,10 @@ export async function calculateStaffCommission(
     .gte("sale_date", fromDate.toISOString())
     .lte("sale_date", toDate.toISOString())
     .eq("payment_status", "completed");
+  if (locationId) {
+    salesQuery = salesQuery.eq("location_id", locationId);
+  }
+  const { data: sales } = await salesQuery;
 
   if (sales) {
     const { data: saleItemsData } = await supabaseAdmin
@@ -294,7 +299,8 @@ export async function calculateAllStaffCommissions(
   providerId: string,
   fromDate: Date,
   toDate: Date,
-  staffIdFilter?: string
+  staffIdFilter?: string,
+  locationId?: string | null
 ): Promise<Map<string, CommissionResult>> {
   const results = new Map<string, CommissionResult>();
 
@@ -318,7 +324,8 @@ export async function calculateAllStaffCommissions(
       providerId,
       staff.id,
       fromDate,
-      toDate
+      toDate,
+      locationId
     );
     results.set(staff.id, commission);
   }

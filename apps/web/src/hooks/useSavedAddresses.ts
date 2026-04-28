@@ -32,7 +32,7 @@ export interface SavedAddress {
  * `undefined` = no seed (always load on client). An array (including empty) skips one redundant client fetch after auth.
  */
 export function useSavedAddresses(initialAddresses?: SavedAddress[] | null) {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, session, isLoading: authLoading } = useAuth();
   const initialRef = useRef(initialAddresses);
   initialRef.current = initialAddresses;
   const skipHydrateLoadOnce = useRef(
@@ -47,7 +47,7 @@ export function useSavedAddresses(initialAddresses?: SavedAddress[] | null) {
   const [error, setError] = useState<string | null>(null);
 
   const loadAddresses = useCallback(async (attempt = 0) => {
-    if (!user) {
+    if (!user || !session) {
       setAddresses([]);
       setIsLoading(false);
       setError(null);
@@ -79,11 +79,11 @@ export function useSavedAddresses(initialAddresses?: SavedAddress[] | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [session, user]);
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user) {
+    if (!user || !session) {
       setAddresses([]);
       setIsLoading(false);
       setError(null);
@@ -97,7 +97,7 @@ export function useSavedAddresses(initialAddresses?: SavedAddress[] | null) {
       return;
     }
     void loadAddresses();
-  }, [user, authLoading, loadAddresses]);
+  }, [user, session, authLoading, loadAddresses]);
 
   const saveAddress = async (addressData: Omit<SavedAddress, "id" | "created_at" | "updated_at">) => {
     try {

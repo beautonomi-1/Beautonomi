@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useCallback } from "react";
+import { useEffect, useRef, useMemo, useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,6 +7,7 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { formatFrontDeskRangeCaption, getMetricRangeParams, type FrontDeskMetricRange } from "@beautonomi/utils";
 import { playRingtone } from "@/lib/on-demand/ringtone";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -34,6 +35,14 @@ interface TodayBookingRow {
   services?: { name?: string; offering_name?: string; duration_minutes?: number }[];
 }
 
+const METRIC_RANGES: Array<{ id: FrontDeskMetricRange; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "today", label: "Today" },
+  { id: "week", label: "Week" },
+  { id: "month", label: "Month" },
+  { id: "year", label: "Year" },
+];
+
 function serviceLine(s?: { name?: string; offering_name?: string; duration_minutes?: number }): string {
   const n = s?.name || s?.offering_name || "Service";
   const d = s?.duration_minutes;
@@ -49,27 +58,34 @@ export default function WaitingRoomScreen() {
   const { isTablet } = useResponsive();
   const { selectedLocationId } = useProvider();
   const onDemandConfig = useModuleConfig("on_demand");
+  const [metricRange, setMetricRange] = useState<FrontDeskMetricRange>("today");
   const prevWaitingQueueCountRef = useRef<number | null>(null);
   const prevPendingConfirmCountRef = useRef<number | null>(null);
   const ringtoneStopRef = useRef<(() => void) | null>(null);
 
-  const todayStr = format(new Date(), "yyyy-MM-dd");
   const waitingRoomUrl = selectedLocationId
     ? `/api/provider/waiting-room?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/waiting-room";
   const { data: entries, loading: waitingLoading, error: waitingError, refresh: refreshWaiting } =
     useApi<WaitingRoomEntry[]>(waitingRoomUrl);
 
-  const bookingsUrl =
-    selectedLocationId != null
-      ? `/api/provider/bookings?start_date=${todayStr}&end_date=${todayStr}&limit=500&location_id=${encodeURIComponent(selectedLocationId)}`
-      : `/api/provider/bookings?start_date=${todayStr}&end_date=${todayStr}&limit=500`;
+  /** Same calendar window as web Front Desk metrics (bounded “All” = last 90 days). Lists below still filter to today. */
+  const bookingsRangeUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    const dates = getMetricRangeParams(metricRange, new Date());
+    if (dates.start) params.set("start_date", dates.start);
+    if (dates.end) params.set("end_date", dates.end);
+    params.set("limit", "1000");
+    if (selectedLocationId != null) params.set("location_id", selectedLocationId);
+    return `/api/provider/bookings?${params.toString()}`;
+  }, [metricRange, selectedLocationId]);
+
   const {
     data: rawBookings,
     loading: bookingsLoading,
     error: bookingsError,
     refresh: refreshBookings,
-  } = useApi<TodayBookingRow[]>(bookingsUrl);
+  } = useApi<TodayBookingRow[]>(bookingsRangeUrl);
 
   const { execute: patchWaitingRoom } = useApiMutation("patch");
 
@@ -104,7 +120,7 @@ export default function WaitingRoomScreen() {
   const waitingList = (entries ?? []).filter((e) => e.status === "waiting");
   const inServiceList = (entries ?? []).filter((e) => e.status === "in_service");
 
-  const { pendingToday, scheduleToday, bookedCount, pendingCount } = useMemo(() => {
+  const { pendingToday, scheduleToday, pendingCount } = useMemo(() => {
     const list = Array.isArray(rawBookings) ? rawBookings : [];
     const today = new Date();
     const onToday = list.filter((b) => {
@@ -118,10 +134,25 @@ export default function WaitingRoomScreen() {
     return {
       pendingToday: pending,
       scheduleToday: schedule,
-      bookedCount: onToday.filter(isActiveScheduleBooking).length,
       pendingCount: pending.length,
     };
   }, [rawBookings]);
+
+  const metricSummary = useMemo(() => {
+    const list = Array.isArray(rawBookings) ? rawBookings : [];
+    return {
+      pendingCount: list.filter((b) => b.db_status === "pending").length,
+      bookedCount: list.filter(isActiveScheduleBooking).length,
+      completedCount: list.filter((b) => b.status === "completed").length,
+    };
+  }, [rawBookings]);
+
+  const metricRangeLabel = METRIC_RANGES.find((range) => range.id === metricRange)?.label ?? "Today";
+
+  const headerSubtitle = useMemo(
+    () => `${formatFrontDeskRangeCaption(metricRange, new Date())} · Today’s lists below`,
+    [metricRange],
+  );
 
   useEffect(() => {
     if (
@@ -157,7 +188,7 @@ export default function WaitingRoomScreen() {
   if (scheduleStillLoading) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Front Desk" subtitle="Today · schedule & check-ins" showBack />
+        <ScreenHeader title="Front Desk" subtitle="Loading schedule…" showBack />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -168,7 +199,7 @@ export default function WaitingRoomScreen() {
   if (scheduleLoadError) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Front Desk" subtitle="Today · schedule & check-ins" showBack />
+        <ScreenHeader title="Front Desk" subtitle="Could not load schedule" showBack />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={bookingsError ?? "Could not load today's bookings"} onRetry={onRefresh} />
         </View>
@@ -178,7 +209,7 @@ export default function WaitingRoomScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Front Desk" subtitle="Same data as calendar — today" showBack />
+      <ScreenHeader title="Front Desk" subtitle={headerSubtitle} showBack />
 
       <ScrollView
         style={twStyle("flex-1")}
@@ -187,22 +218,52 @@ export default function WaitingRoomScreen() {
           <RefreshControl refreshing={waitingLoading || bookingsLoading} onRefresh={onRefresh} tintColor="#1a1f3c" />
         }
       >
+        <View style={twStyle("mx-4 mb-3")}>
+          <Text style={twStyle("mb-2 text-[10px] font-black uppercase tracking-widest text-gray-500")}>Metrics</Text>
+          <View style={twStyle("flex-row flex-wrap")}>
+            {METRIC_RANGES.map((range) => {
+              const active = metricRange === range.id;
+              return (
+                <TouchableOpacity
+                  key={range.id}
+                  onPress={() => setMetricRange(range.id)}
+                  style={[
+                    twStyle(active ? "mb-2 mr-2 rounded-full bg-gray-900 px-3 py-2" : "mb-2 mr-2 rounded-full border border-gray-200 bg-white px-3 py-2"),
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Show ${range.label.toLowerCase()} front desk metrics`}
+                >
+                  <Text style={twStyle(active ? "text-xs font-bold text-white" : "text-xs font-semibold text-gray-700")}>
+                    {range.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
         {/* Attention row */}
         <View style={twStyle("mx-4 mb-4 flex-row flex-wrap")}>
           <View style={[twStyle("min-w-[30%] flex-1 rounded-xl border border-amber-200 bg-amber-50 p-3"), { marginRight: 8, marginBottom: 8 }]}>
             <Text style={twStyle("text-xs font-semibold text-amber-800")}>Needs action</Text>
-            <Text style={twStyle("text-2xl font-bold text-amber-900")}>{pendingCount}</Text>
-            <Text style={twStyle("text-[10px] text-amber-700")}>Pending confirm</Text>
+            <Text style={twStyle("text-2xl font-bold text-amber-900")}>{metricSummary.pendingCount}</Text>
+            <Text style={twStyle("text-[10px] text-amber-700")}>Pending · {metricRangeLabel}</Text>
           </View>
           <View style={[twStyle("min-w-[30%] flex-1 rounded-xl border border-teal-200 bg-teal-50 p-3"), { marginRight: 8, marginBottom: 8 }]}>
-            <Text style={twStyle("text-xs font-semibold text-teal-800")}>Booked today</Text>
-            <Text style={twStyle("text-2xl font-bold text-teal-900")}>{bookedCount}</Text>
-            <Text style={twStyle("text-[10px] text-teal-700")}>Active appts</Text>
+            <Text style={twStyle("text-xs font-semibold text-teal-800")}>Booked</Text>
+            <Text style={twStyle("text-2xl font-bold text-teal-900")}>{metricSummary.bookedCount}</Text>
+            <Text style={twStyle("text-[10px] text-teal-700")}>Active · {metricRangeLabel}</Text>
           </View>
           <View style={[twStyle("min-w-[30%] flex-1 rounded-xl border border-gray-200 bg-gray-50 p-3"), { marginBottom: 8 }]}>
             <Text style={twStyle("text-xs font-semibold text-gray-700")}>Check-in queue</Text>
             <Text style={twStyle("text-2xl font-bold text-gray-900")}>{waitingList.length}</Text>
             <Text style={twStyle("text-[10px] text-gray-600")}>Waiting now</Text>
+          </View>
+          <View style={[twStyle("min-w-[30%] flex-1 rounded-xl border border-emerald-200 bg-emerald-50 p-3"), { marginBottom: 8 }]}>
+            <Text style={twStyle("text-xs font-semibold text-emerald-800")}>Completed</Text>
+            <Text style={twStyle("text-2xl font-bold text-emerald-900")}>{metricSummary.completedCount}</Text>
+            <Text style={twStyle("text-[10px] text-emerald-700")}>Done · {metricRangeLabel}</Text>
           </View>
         </View>
 

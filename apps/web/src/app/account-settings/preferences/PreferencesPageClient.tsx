@@ -17,7 +17,17 @@ import { expandLanguagePreferenceOptions } from "./expand-language-options";
 
 type PreferenceField = "language" | "currency" | "timezone" | null;
 
-const GlobalPreferences: React.FC<{ initial: PreferencesPageInitial | null }> = ({ initial }) => {
+const GlobalPreferences: React.FC<{
+  initial: PreferencesPageInitial | null;
+  accountHomeHref?: string;
+  accountHomeLabel?: string;
+  showBottomNav?: boolean;
+}> = ({
+  initial,
+  accountHomeHref = "/account-settings",
+  accountHomeLabel = "Account Settings",
+  showBottomNav = true,
+}) => {
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const tenantTimezone =
@@ -264,11 +274,11 @@ const GlobalPreferences: React.FC<{ initial: PreferencesPageInitial | null }> = 
           <Breadcrumb 
             items={[
               { label: "Home", href: "/" },
-              { label: "Account Settings", href: "/account-settings" },
+              { label: accountHomeLabel, href: accountHomeHref },
               { label: "Global preferences" }
             ]} 
           />
-          <BackButton href="/account-settings" />
+          <BackButton href={accountHomeHref} />
 
           <div className="mt-6">
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">
@@ -311,7 +321,7 @@ const GlobalPreferences: React.FC<{ initial: PreferencesPageInitial | null }> = 
             )}
           </div>
         </div>
-        <BottomNav />
+        {showBottomNav ? <BottomNav /> : null}
       </div>
   );
 };

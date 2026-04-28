@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, type ComponentType, type PropsWithChildren } from "react";
 import {
   View,
   Text,
@@ -39,6 +39,10 @@ interface BottomSheetProps {
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+const GestureRoot = GestureHandlerRootView as ComponentType<
+  PropsWithChildren<{ style?: { flex: number } }>
+>;
 
 const SNAP_HEIGHTS = {
   auto: SCREEN_HEIGHT * 0.8,
@@ -106,7 +110,7 @@ export function BottomSheet({
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={closeSheet}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureRoot style={{ flex: 1 }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -182,7 +186,7 @@ export function BottomSheet({
             <SafeAreaView edges={["bottom"]} />
           </Animated.View>
         </KeyboardAvoidingView>
-      </GestureHandlerRootView>
+      </GestureRoot>
     </Modal>
   );
 }

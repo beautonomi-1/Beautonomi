@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Pressable, ActivityIndicator, Platform } from "react-native";
 import { router } from "expo-router";
-import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import type { Booking } from "@/types/api";
+import { fetchAllBookingsPages } from "@/features/bookings/fetchAllBookingsPages";
 
 function parseValidDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value) return null;
@@ -64,19 +64,17 @@ export default function AccountBookingsScreen() {
     setError(null);
     try {
       const { sort_by, sort_dir } = sortPresetToParams(sortPreset);
-      const res = await api.get<any>(
-        `/api/me/bookings?status=${encodeURIComponent(tab)}&limit=100&page=1&sort_by=${encodeURIComponent(sort_by)}&sort_dir=${encodeURIComponent(sort_dir)}`
-      );
+      const res = await fetchAllBookingsPages({
+        status: tab,
+        sortBy: sort_by as "scheduled_at" | "created_at",
+        sortDir: sort_dir as "asc" | "desc",
+      });
       if (gen !== requestGeneration.current) return;
       if (res.error) {
         setError(res.error.message || "Failed to load");
         setBookings([]);
       } else {
-        const body = res.data as Booking[] | { items?: Booking[]; data?: Booking[] } | undefined;
-        const list = Array.isArray(body)
-          ? body
-          : (body && typeof body === "object" ? body.items ?? body.data : undefined);
-        setBookings(Array.isArray(list) ? list : []);
+        setBookings(res.data ?? []);
       }
     } catch (e) {
       if (gen !== requestGeneration.current) return;

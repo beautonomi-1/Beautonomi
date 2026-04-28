@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
-import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * DELETE /api/admin/subscription-plans/[id]
@@ -17,9 +16,8 @@ export async function DELETE(
 ) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
-    const tenantId = await resolveAdminApiTenantId(request);
 
     // Fetch the plan first
     const { data: plan, error: fetchErr } = await supabase
@@ -31,13 +29,12 @@ export async function DELETE(
     if (fetchErr) throw fetchErr;
     if (!plan) return notFoundResponse("Subscription plan not found");
 
-    // Check if any provider subscriptions are active on this plan
+    // Any active subscriber anywhere blocks hard-delete (tenant filter would hide cross-market rows).
     const { count: activeCount } = await supabase
       .from("provider_subscriptions")
       .select("id", { count: "exact", head: true })
       .eq("plan_id", id)
-      .eq("status", "active")
-      .eq("tenant_id", tenantId);
+      .eq("status", "active");
 
     let action: "soft_delete" | "hard_delete";
 
@@ -90,11 +87,21 @@ export async function PATCH(
 ) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
 
     const body = await request.json() as Record<string, unknown>;
-    const allowedFields = ["name", "description", "is_active", "is_popular", "display_order", "features", "price_monthly", "price_yearly"];
+    const allowedFields = [
+      "slug",
+      "name",
+      "description",
+      "is_active",
+      "is_popular",
+      "display_order",
+      "features",
+      "price_monthly",
+      "price_yearly",
+    ];
     const updateData: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (field in body) updateData[field] = body[field];

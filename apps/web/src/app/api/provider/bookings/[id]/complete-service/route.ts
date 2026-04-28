@@ -9,6 +9,7 @@ import { awardPointsForBooking, checkProviderMilestones } from "@/lib/services/p
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 
 function resolveLoyaltyBaseAmount(booking: {
   subtotal?: number | null;
@@ -217,7 +218,7 @@ export async function POST(
         const supabaseAdmin = getSupabaseAdmin();
         const { data: pendingProducts } = await supabaseAdmin
           .from("booking_products")
-          .select("id, product_id, quantity")
+          .select("id, product_id, product_variant_id, quantity")
           .eq("booking_id", id)
           .is("stock_deducted_at", null);
         if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
@@ -225,16 +226,22 @@ export async function POST(
           for (const row of pendingProducts as Array<{
             id: string;
             product_id: string | null;
+            product_variant_id?: string | null;
             quantity: number | null;
           }>) {
             if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
-            const { error: decErr } = await supabaseAdmin.rpc(
-              "decrement_product_stock",
-              {
-                p_product_id: row.product_id,
+            const { error: decErr } = row.product_variant_id
+              ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
+                p_variant_id: row.product_variant_id,
                 p_quantity: row.quantity,
-              },
-            );
+              })
+              : await supabaseAdmin.rpc(
+                "decrement_product_stock",
+                {
+                  p_product_id: row.product_id,
+                  p_quantity: row.quantity,
+                },
+              );
             if (decErr) {
               console.error(
                 `[complete-service] decrement_product_stock failed for booking ${id}, row ${row.id}:`,
@@ -250,6 +257,12 @@ export async function POST(
         }
       } catch (stockErr) {
         console.error("[complete-service] failed to deduct retail stock:", stockErr);
+      }
+
+      try {
+        await syncAppointmentProductOrder(getSupabaseAdmin() as never, id);
+      } catch (orderSyncError) {
+        console.error(`[complete-service] failed to sync appointment product order for ${id}:`, orderSyncError);
       }
 
       // §Release-audit 2026-04: notify the customer that their appointment

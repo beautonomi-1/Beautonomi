@@ -28,13 +28,13 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get("to")
       ? new Date(searchParams.get("to")!)
       : new Date();
+    const locationId = searchParams.get("location_id") || undefined;
 
     // Get bookings with product add-ons and paid product orders in date range.
     // Product orders cover online product checkout and provider walk-in/new-sale flows.
-    const [bookingsResult, salesResult] = await Promise.all([
-      supabaseAdmin
-        .from('bookings')
-        .select(`
+    let bookingsQuery = supabaseAdmin
+      .from('bookings')
+      .select(`
           id,
           booking_products (
             id,
@@ -50,18 +50,23 @@ export async function GET(request: NextRequest) {
             )
           )
         `)
-        .eq('provider_id', providerId)
-        // §Release-audit 2026-04: previous list included 'arrived' and
-        // 'started', which are not members of the booking_status enum — the
-        // Postgres in-clause silently excluded them, so mid-service product
-        // usage never showed up in sales reports. Use the real lifecycle
-        // states that indicate the booking actually happened.
-        .in('status', ['completed', 'confirmed', 'in_progress', 'checked_in'])
-        .gte('scheduled_at', fromDate.toISOString())
-        .lte('scheduled_at', toDate.toISOString()),
-      supabaseAdmin
-        .from('product_orders')
-        .select(`
+      .eq('provider_id', providerId)
+      // §Release-audit 2026-04: previous list included 'arrived' and
+      // 'started', which are not members of the booking_status enum — the
+      // Postgres in-clause silently excluded them, so mid-service product
+      // usage never showed up in sales reports. Use the real lifecycle
+      // states that indicate the booking actually happened.
+      .in('status', ['completed', 'confirmed', 'in_progress', 'checked_in'])
+      .gte('scheduled_at', fromDate.toISOString())
+      .lte('scheduled_at', toDate.toISOString());
+
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+
+    let salesQuery = supabaseAdmin
+      .from('product_orders')
+      .select(`
           id,
           product_order_items (
             id,
@@ -78,10 +83,21 @@ export async function GET(request: NextRequest) {
             )
           )
         `)
-        .eq('provider_id', providerId)
-        .eq('payment_status', 'paid')
-        .gte('created_at', fromDate.toISOString())
-        .lte('created_at', toDate.toISOString())
+      .eq('provider_id', providerId)
+      .eq('payment_status', 'paid')
+      // Appointment product orders are fulfillment mirrors. Their revenue is
+      // counted from booking_products above, so exclude them here.
+      .or('order_source.is.null,order_source.neq.appointment')
+      .gte('created_at', fromDate.toISOString())
+      .lte('created_at', toDate.toISOString());
+
+    if (locationId) {
+      salesQuery = salesQuery.eq("collection_location_id", locationId);
+    }
+
+    const [bookingsResult, salesResult] = await Promise.all([
+      bookingsQuery,
+      salesQuery,
     ]);
 
     const { data: bookings, error: bookingsError } = bookingsResult;

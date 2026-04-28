@@ -194,7 +194,7 @@ export default function LocationsSettingsScreen() {
         Alert.alert("Location permission", "Allow location access to place a map pin from your current position.");
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
       const lat = loc.coords.latitude;
       const lng = loc.coords.longitude;
       const reverse = await api.post<any>("/api/mapbox/reverse-geocode", {
@@ -469,6 +469,7 @@ export default function LocationsSettingsScreen() {
             }}
             countryCode={countryFilterIso2FromStorage(form.country) ?? "ZA"}
             defaultCountryName={form.country.trim() || undefined}
+            geocodeTypes={["address"]}
             proximity={
               form.latitude != null && form.longitude != null
                 ? { latitude: form.latitude, longitude: form.longitude }

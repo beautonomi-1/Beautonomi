@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, handleApiError, errorResponse, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
@@ -13,18 +13,15 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 
-async function getProviderId(request: NextRequest): Promise<string | null> {
-  const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+async function getProviderId(userId: string, request: NextRequest): Promise<string | null> {
   const supabase = getSupabaseAdmin();
-  const { data: byOwner } = await supabase.from("providers").select("id").eq("user_id", user.id).limit(1).maybeSingle();
-  if (byOwner) return byOwner.id;
-  const { data: staff } = await supabase.from("provider_staff").select("provider_id").eq("user_id", user.id).limit(1).maybeSingle();
-  return staff?.provider_id ?? null;
+  return getProviderIdForUser(userId, supabase as never, { request });
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const providerId = await getProviderId(request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const providerId = await getProviderId(user.id, request);
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
     const supabase = getSupabaseAdmin();
@@ -45,7 +42,7 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
-    const providerId = await getProviderId(request);
+    const providerId = await getProviderId(user.id, request);
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
     const supabase = getSupabaseAdmin();
@@ -181,11 +178,10 @@ export async function POST(request: NextRequest) {
     if (!email) return errorResponse("User email required for payment", "VALIDATION", 400);
 
     const reference = generateTransactionReference("ads_budget", order.id);
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-    const callbackUrl =
-      paymentRedirect === "provider_inapp"
-        ? `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}`
-        : `${baseUrl}/provider/settings/ads?payment_success=1&order_id=${encodeURIComponent(order.id)}`;
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin || "").replace(/\/$/, "");
+    const callbackUrl = `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&context=${
+      paymentRedirect === "provider_inapp" ? "app" : "web"
+    }`;
 
     const paystackData = await initializePaystackTransaction({
       email,

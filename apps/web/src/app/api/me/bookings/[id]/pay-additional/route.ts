@@ -106,7 +106,7 @@ export async function POST(
     }
 
     const reference = generateTransactionReference("additional", `${id}:${charge_id}`);
-    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success`;
+    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/account-settings/bookings/${encodeURIComponent(id)}/payment-callback?charge_id=${encodeURIComponent(charge_id)}`;
 
     const paystackData = await initializePaystackTransaction({
       email,

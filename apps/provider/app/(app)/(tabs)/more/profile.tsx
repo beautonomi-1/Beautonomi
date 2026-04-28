@@ -304,7 +304,7 @@ export default function ProfileScreen() {
         if (data?.email_change_pending) {
           Alert.alert(
             "Confirm your email",
-            "Check your new email and click the confirmation link to complete the change."
+            "We sent links to your current email and your new address. Open each to finish the change (both may be required).",
           );
         } else {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

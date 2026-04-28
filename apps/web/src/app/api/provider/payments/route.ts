@@ -1,6 +1,57 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+
+type BookingPaymentRow = {
+  id: string;
+  booking_id: string;
+  amount: number | string | null;
+  payment_method: string | null;
+  payment_provider: string | null;
+  status: string | null;
+  notes: string | null;
+  created_at: string;
+  created_by: string | null;
+  booking?: {
+    id: string;
+    provider_id?: string | null;
+    scheduled_at: string | null;
+    duration_minutes: number | null;
+    ref_number: string | null;
+    booking_number: string | null;
+  } | Array<{
+    id: string;
+    provider_id?: string | null;
+    scheduled_at: string | null;
+    duration_minutes: number | null;
+    ref_number: string | null;
+    booking_number: string | null;
+  }> | null;
+};
+
+type ProviderPaymentBookingRow = {
+  id: string;
+  provider_id?: string | null;
+  scheduled_at: string | null;
+  duration_minutes: number | null;
+  ref_number: string | null;
+  booking_number: string | null;
+};
+
+function mapPaymentMethod(method: string | null) {
+  switch (method) {
+    case "yoco":
+      return "yoco";
+    case "paystack":
+    case "card":
+      return "card";
+    case "cash":
+    case "bank_transfer":
+    case "other":
+    default:
+      return "cash";
+  }
+}
 
 /**
  * GET /api/provider/payments
@@ -11,73 +62,101 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
-
-    const { data: providerRow } = await supabaseAdmin
-      .from("providers")
-      .select("tenant_id")
-      .eq("id", providerId)
-      .maybeSingle();
-    const providerTenantId = (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
 
     const { searchParams } = new URL(request.url);
     
     // Parse query parameters
     const search = searchParams.get('search');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const parsedPage = Number.parseInt(searchParams.get('page') || '1', 10);
+    const parsedLimit = Number.parseInt(searchParams.get('limit') || '20', 10);
+    const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 20;
     const offset = (page - 1) * limit;
     const dateFrom = searchParams.get('date_from');
     const dateTo = searchParams.get('date_to');
     const paymentMethod = searchParams.get('payment_method');
     const teamMemberId = searchParams.get('team_member_id');
 
-    // Get bookings for this provider
-    let bookingsQuery = supabaseAdmin
-      .from('bookings')
-      .select('id, scheduled_at, ref_number, booking_number')
-      .eq('provider_id', providerId);
+    const listPaymentsWithoutEmbeddedJoin = async (): Promise<{
+      payments: BookingPaymentRow[];
+      count: number;
+    }> => {
+      const { data: bookingRows, error: bookingsError } = await supabaseAdmin
+        .from("bookings")
+        .select("id, provider_id, scheduled_at, duration_minutes, ref_number, booking_number")
+        .eq("provider_id", providerId);
 
-    if (dateFrom) {
-      bookingsQuery = bookingsQuery.gte('scheduled_at', `${dateFrom}T00:00:00`);
-    }
-    if (dateTo) {
-      bookingsQuery = bookingsQuery.lte('scheduled_at', `${dateTo}T23:59:59`);
-    }
+      if (bookingsError) {
+        throw bookingsError;
+      }
 
-    const { data: bookings, error: bookingsError } = await bookingsQuery;
+      const bookings = (bookingRows || []) as ProviderPaymentBookingRow[];
+      if (bookings.length === 0) {
+        return { payments: [], count: 0 };
+      }
 
-    if (bookingsError) {
-      throw bookingsError;
-    }
+      const bookingById = new Map(bookings.map((booking) => [booking.id, booking]));
+      const bookingIds = bookings.map((booking) => booking.id);
+      const chunks: string[][] = [];
+      for (let i = 0; i < bookingIds.length; i += 500) {
+        chunks.push(bookingIds.slice(i, i + 500));
+      }
 
-    const bookingIds = bookings?.map(b => b.id) || [];
-    const bookingMap = new Map(bookings?.map(b => [b.id, b]) || []);
+      const allPayments: BookingPaymentRow[] = [];
+      for (const chunk of chunks) {
+        let query = supabaseAdmin
+          .from("booking_payments")
+          .select(
+            "id, booking_id, amount, payment_method, payment_provider, status, notes, created_at, created_by",
+          )
+          .in("booking_id", chunk)
+          .order("created_at", { ascending: false });
 
-    if (bookingIds.length === 0) {
-      return successResponse({
-        data: [],
-        total: 0,
-        page,
-        limit,
-        total_pages: 1,
-      });
-    }
+        if (dateFrom) {
+          query = query.gte("created_at", `${dateFrom}T00:00:00`);
+        }
+        if (dateTo) {
+          query = query.lte("created_at", `${dateTo}T23:59:59.999`);
+        }
+        if (paymentMethod) {
+          query = query.eq("payment_method", paymentMethod);
+        }
+        if (teamMemberId) {
+          query = query.eq("created_by", teamMemberId);
+        }
 
-    // Get booking payments (scope by tenant_id when present — defense in depth vs booking_id list)
-    let paymentsQuery = supabaseAdmin
+        const { data, error } = await query;
+        if (error) {
+          throw error;
+        }
+
+        for (const payment of (data || []) as BookingPaymentRow[]) {
+          const booking = bookingById.get(payment.booking_id);
+          if (booking) {
+            allPayments.push({ ...payment, booking });
+          }
+        }
+      }
+
+      allPayments.sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+
+      return {
+        payments: allPayments.slice(offset, offset + limit),
+        count: allPayments.length,
+      };
+    };
+
+    // Scope through the booking join. This avoids oversized `.in(booking_id, ...)`
+    // queries and does not depend on optional booking_payments.tenant_id rollout state.
+    const buildPaymentsQuery = (bookingRelation: string) => {
+      let query = supabaseAdmin
       .from('booking_payments')
       .select(`
         id,
@@ -89,29 +168,57 @@ export async function GET(request: NextRequest) {
         notes,
         created_at,
         created_by,
-        bookings!inner(
+        booking:${bookingRelation}(
           id,
+          provider_id,
           scheduled_at,
           duration_minutes,
           ref_number,
           booking_number
         )
       `, { count: 'exact' })
-      .in('booking_id', bookingIds);
-    if (providerTenantId) {
-      paymentsQuery = paymentsQuery.eq('tenant_id', providerTenantId);
+      .eq('booking.provider_id', providerId);
+
+      query = query.order('created_at', { ascending: false });
+
+      // Apply filters
+      if (dateFrom) {
+        query = query.gte('created_at', `${dateFrom}T00:00:00`);
+      }
+      if (dateTo) {
+        query = query.lte('created_at', `${dateTo}T23:59:59.999`);
+      }
+      if (paymentMethod) {
+        query = query.eq('payment_method', paymentMethod);
+      }
+      if (teamMemberId) {
+        query = query.eq('created_by', teamMemberId);
+      }
+
+      return query.range(offset, offset + limit - 1);
+    };
+
+    let paymentResult: {
+      data: unknown[] | null;
+      error: unknown;
+      count: number | null;
+    } = await buildPaymentsQuery("bookings!booking_payments_booking_id_fkey!inner");
+    if (paymentResult.error) {
+      // Older Supabase schema cache deployments may not know the generated FK
+      // hint yet. Fall back to the unhinted relationship instead of 500ing.
+      paymentResult = await buildPaymentsQuery("bookings!inner");
     }
-    paymentsQuery = paymentsQuery.order('created_at', { ascending: false });
 
-    // Apply filters
-    if (paymentMethod) {
-      paymentsQuery = paymentsQuery.eq('payment_method', paymentMethod);
+    let payments: unknown[] | null = paymentResult.data;
+    let paymentsError = paymentResult.error;
+    let count = paymentResult.count;
+
+    if (paymentsError) {
+      const fallback = await listPaymentsWithoutEmbeddedJoin();
+      payments = fallback.payments;
+      paymentsError = null;
+      count = fallback.count;
     }
-
-    // Apply pagination
-    paymentsQuery = paymentsQuery.range(offset, offset + limit - 1);
-
-    const { data: payments, error: paymentsError, count } = await paymentsQuery;
 
     if (paymentsError) {
       throw paymentsError;
@@ -119,7 +226,8 @@ export async function GET(request: NextRequest) {
 
     // Get team member info if needed
     const teamMemberIds = new Set<string>();
-    payments?.forEach((p: any) => {
+    const paymentRows = (payments || []) as unknown as BookingPaymentRow[];
+    paymentRows.forEach((p) => {
       if (p.created_by) {
         teamMemberIds.add(p.created_by);
       }
@@ -128,16 +236,16 @@ export async function GET(request: NextRequest) {
     let teamMembersMap = new Map();
     if (teamMemberIds.size > 0) {
       const { data: teamMembers } = await supabaseAdmin
-        .from('provider_staff')
-        .select('id, name')
+        .from('users')
+        .select('id, full_name')
         .in('id', Array.from(teamMemberIds));
       
-      teamMembersMap = new Map(teamMembers?.map(tm => [tm.id, tm.name]) || []);
+      teamMembersMap = new Map(teamMembers?.map(tm => [tm.id, tm.full_name]) || []);
     }
 
     // Map to PaymentTransaction format
-    const transactions = (payments || []).map((p: any) => {
-      const booking = p.bookings || bookingMap.get(p.booking_id);
+    const transactions = paymentRows.map((p) => {
+      const booking = Array.isArray(p.booking) ? p.booking[0] : p.booking;
       const teamMemberName = p.created_by ? teamMembersMap.get(p.created_by) : undefined;
 
       return {
@@ -148,12 +256,7 @@ export async function GET(request: NextRequest) {
         appointment_duration: booking?.duration_minutes,
         team_member_id: p.created_by || undefined,
         team_member_name: teamMemberName,
-        method: p.payment_method === 'yoco' ? 'yoco' : 
-                p.payment_method === 'paystack' ? 'card' :
-                p.payment_method === 'card' ? 'card' :
-                p.payment_method === 'cash' ? 'cash' :
-                p.payment_method === 'bank_transfer' ? 'cash' : // Map bank_transfer to cash for display
-                'cash', // Default fallback
+        method: mapPaymentMethod(p.payment_method),
         amount: Number(p.amount || 0),
         status: p.status === 'completed' ? 'completed' : 
                 p.status === 'pending' ? 'pending' : 'failed',
@@ -171,11 +274,6 @@ export async function GET(request: NextRequest) {
         t.team_member_name?.toLowerCase().includes(searchLower) ||
         t.method.toLowerCase().includes(searchLower)
       );
-    }
-
-    // Apply team member filter if provided
-    if (teamMemberId) {
-      filteredTransactions = filteredTransactions.filter(t => t.team_member_id === teamMemberId);
     }
 
     const totalPages = count ? Math.ceil(count / limit) : 1;

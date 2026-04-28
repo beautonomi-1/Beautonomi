@@ -4,6 +4,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointment-settings";
 import { checkBookingConflict, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
 import { resolveTz, fromBusinessTime } from "@/lib/dates/provider-tz";
+import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 
 type SeriesRow = {
   id: string;
@@ -17,6 +18,13 @@ type SeriesRow = {
 };
 
 type ServiceLine = { offering_id: string; staff_id?: string | null };
+type ProductLine = {
+  product_id: string;
+  product_variant_id?: string | null;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+};
 
 function toHhMmSs(t: string | null | undefined): string {
   const s = (t || "10:00:00").trim();
@@ -42,6 +50,30 @@ function resolveServiceLines(row: SeriesRow): ServiceLine[] {
   return [];
 }
 
+function resolveProductLines(row: SeriesRow): ProductLine[] {
+  const meta = row.metadata as { cart_items?: Array<Record<string, unknown>> } | null;
+  if (!Array.isArray(meta?.cart_items)) return [];
+  return meta.cart_items
+    .filter((item) => item?.type === "product" && typeof item.product_id === "string")
+    .map((item) => {
+      const quantity = Math.max(1, Math.floor(Number(item.quantity || 1)) || 1);
+      const unitPrice = Number(item.unit_price ?? item.unitPrice ?? 0) || 0;
+      const totalPrice = Number(item.total ?? item.total_price ?? item.totalPrice ?? unitPrice * quantity) || 0;
+      return {
+        product_id: String(item.product_id),
+        product_variant_id:
+          typeof item.product_variant_id === "string"
+            ? item.product_variant_id
+            : typeof item.productVariantId === "string"
+              ? item.productVariantId
+              : null,
+        quantity,
+        unit_price: unitPrice,
+        total_price: totalPrice,
+      };
+    });
+}
+
 const BUFFER_MINUTES = 15;
 
 /**
@@ -64,6 +96,7 @@ export async function createBookingFromRecurringSeries(
   if (lines.length === 0) {
     return { error: "no_services" };
   }
+  const productLines = resolveProductLines(row);
 
   const timeStr = toHhMmSs(row.start_time || row.preferred_time);
 
@@ -103,6 +136,7 @@ export async function createBookingFromRecurringSeries(
     if (!o) return { error: `unknown_offering:${line.offering_id}` };
     subtotal += Number(o.price || 0);
   }
+  subtotal += productLines.reduce((sum, p) => sum + Number(p.total_price || 0), 0);
 
   // Pass provider's tax_rate_percent directly to avoid a second DB lookup.
   // getEffectiveTaxRate treats null as "unset" and falls back to platform default.
@@ -242,6 +276,9 @@ export async function createBookingFromRecurringSeries(
     service_fee_amount: serviceFeeAmount,
     service_fee_paid_by: "customer",
   };
+  if ((row as { payment_method?: string | null }).payment_method === "cash" || (row as { payment_method?: string | null }).payment_method === "card") {
+    bookingData.payment_status = "paid";
+  }
 
   if (primaryStaffId && !allowOverride) {
     const { data: bookingId, error: rpcError } = await admin.rpc("create_booking_with_locking", {
@@ -273,6 +310,15 @@ export async function createBookingFromRecurringSeries(
       })
       .eq("id", bookingId as string);
 
+    await insertRecurringBookingProductsAndPayments(
+      admin,
+      bookingId as string,
+      productLines,
+      primaryStaffId,
+      row,
+      totalAmount
+    );
+
     return { bookingId: bookingId as string };
   }
 
@@ -301,5 +347,61 @@ export async function createBookingFromRecurringSeries(
     return { error: `booking_services_failed: ${bsErr.message}` };
   }
 
+  await insertRecurringBookingProductsAndPayments(
+    admin,
+    bookingId,
+    productLines,
+    primaryStaffId,
+    row,
+    totalAmount
+  );
+
   return { bookingId };
+}
+
+async function insertRecurringBookingProductsAndPayments(
+  admin: SupabaseClient,
+  bookingId: string,
+  productLines: ProductLine[],
+  primaryStaffId: string | null,
+  row: SeriesRow,
+  totalAmount: number
+): Promise<void> {
+  if (productLines.length > 0) {
+    const { error } = await admin.from("booking_products").insert(
+      productLines.map((product) => ({
+        booking_id: bookingId,
+        product_id: product.product_id,
+        product_variant_id: product.product_variant_id ?? null,
+        quantity: product.quantity,
+        unit_price: product.unit_price,
+        total_price: product.total_price,
+        staff_id: primaryStaffId,
+      }))
+    );
+    if (error) {
+      console.warn(`Failed to insert recurring booking products for ${bookingId}:`, error);
+    } else {
+      try {
+        await syncAppointmentProductOrder(admin, bookingId);
+      } catch (orderSyncError) {
+        console.warn(`Failed to sync recurring appointment product order for ${bookingId}:`, orderSyncError);
+      }
+    }
+  }
+
+  const paymentMethod = (row as { payment_method?: string | null }).payment_method;
+  if ((paymentMethod === "cash" || paymentMethod === "card") && totalAmount > 0) {
+    const { error } = await admin.from("booking_payments").insert({
+      booking_id: bookingId,
+      amount: totalAmount,
+      payment_method: paymentMethod,
+      payment_provider: paymentMethod === "card" ? "manual" : "cash",
+      status: "completed",
+      notes: `${paymentMethod === "card" ? "Manual card" : "Cash"} payment recorded for recurring visit creation`,
+    });
+    if (error) {
+      console.warn(`Failed to insert recurring booking payment for ${bookingId}:`, error);
+    }
+  }
 }

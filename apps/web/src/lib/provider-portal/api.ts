@@ -213,7 +213,7 @@ export interface ProviderApi {
   ): Promise<PaginatedResponse<RecurringAppointment>>;
   createRecurringAppointment(data: Partial<RecurringAppointment>): Promise<RecurringAppointment>;
   updateRecurringAppointment(id: string, data: Partial<RecurringAppointment>): Promise<RecurringAppointment>;
-  updateRecurringSeries(seriesId: string, data: Partial<RecurringAppointment>): Promise<void>;
+  updateRecurringSeries(seriesId: string, data: Partial<RecurringAppointment>): Promise<RecurringAppointment>;
   deleteRecurringAppointment(id: string, deleteSeries?: boolean): Promise<void>;
 
   // Resources
@@ -753,7 +753,7 @@ export class ProviderApiClient implements ProviderApi {
 
       const response = await fetcher.get<{ data: any[] }>(
         `/api/provider/bookings?${params.toString()}`,
-        { timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS }
+        { timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS, staleTimeMs: 0 }
       );
       const bookings = response.data || [];
       return transformBookingRowsToAppointments(bookings, filters, pagination);
@@ -775,7 +775,9 @@ export class ProviderApiClient implements ProviderApi {
       // When id is composite (e.g. "uuid-svc-0" from expanded calendar), use root booking id
       const bookingId = rootBookingId(id);
       const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.get<{ data: any }>(`/api/provider/bookings/${bookingId}`);
+      const response = await fetcher.get<{ data: any }>(`/api/provider/bookings/${bookingId}`, {
+        staleTimeMs: 0,
+      });
       const booking = response.data;
       
       // Transform using same logic as listAppointments for consistency
@@ -1304,6 +1306,8 @@ export class ProviderApiClient implements ProviderApi {
         total_paid: booking.total_paid || 0,
         total_refunded: booking.total_refunded || 0,
         payment_status: booking.payment_status,
+        current_stage: booking.current_stage,
+        booking_id: booking.id,
         travel_fee: booking.travel_fee || 0,
         // Services array for detailed view
         services: booking.services || [],
@@ -1501,7 +1505,8 @@ export class ProviderApiClient implements ProviderApi {
       }
 
       const response = await fetcher.get<PaginatedResponse<PaymentTransaction>>(
-        `/api/provider/payments?${params.toString()}`
+        `/api/provider/payments?${params.toString()}`,
+        { staleTimeMs: 0 },
       );
       
       return {
@@ -2350,6 +2355,7 @@ export class ProviderApiClient implements ProviderApi {
         end_time: s.end_time,
         notes: s.notes,
         is_recurring: s.is_recurring,
+        recurring_pattern: s.recurring_pattern,
         source: s.source || "shift",
       }));
     } catch (error: any) {
@@ -2385,6 +2391,7 @@ export class ProviderApiClient implements ProviderApi {
         end_time: s.end_time,
         notes: s.notes,
         is_recurring: s.is_recurring,
+        recurring_pattern: s.recurring_pattern,
       };
     } catch (error: any) {
       await this.handleApiError(
@@ -2421,6 +2428,7 @@ export class ProviderApiClient implements ProviderApi {
         end_time: s.end_time,
         notes: s.notes,
         is_recurring: s.is_recurring,
+        recurring_pattern: s.recurring_pattern,
       };
     } catch (error: any) {
       await this.handleApiError(
@@ -3127,7 +3135,8 @@ export class ProviderApiClient implements ProviderApi {
     if (filters?.location_id) params.set("location_id", filters.location_id);
 
     const res = (await fetcher.get(
-      `/api/provider/recurring-appointments?${params.toString()}`
+      `/api/provider/recurring-appointments?${params.toString()}`,
+      { staleTimeMs: 0 }
     )) as {
       data?: { data?: any[]; total?: number; page?: number; total_pages?: number };
     };
@@ -3179,6 +3188,14 @@ export class ProviderApiClient implements ProviderApi {
             ? "monthly"
             : null;
     const cartItems = (data as { cart_items?: unknown }).cart_items;
+    const serviceLines = Array.isArray(cartItems)
+      ? cartItems
+          .filter((item: any) => item?.type === "service" && item?.service_id)
+          .map((item: any) => ({
+            offering_id: item.service_id,
+            staff_id: data.team_member_id || undefined,
+          }))
+      : [];
     const baseMeta =
       data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
         ? { ...(data.metadata as Record<string, unknown>) }
@@ -3189,6 +3206,18 @@ export class ProviderApiClient implements ProviderApi {
       price: data.price ?? 0,
     };
     if (Array.isArray(cartItems)) metadata.cart_items = cartItems;
+    if (serviceLines.length > 0) metadata.services = serviceLines;
+    if ((data as any).location_type === "at_home") {
+      metadata.address = {
+        line1: (data as any).address_line1 ?? null,
+        line2: (data as any).address_line2 ?? null,
+        city: (data as any).address_city ?? null,
+        postal_code: (data as any).address_postal_code ?? null,
+        country: (data as any).address_country ?? null,
+        latitude: (data as any).address_latitude ?? null,
+        longitude: (data as any).address_longitude ?? null,
+      };
+    }
 
     const sched = (data.scheduled_time || "10:00").trim();
     const preferred_time =
@@ -3210,6 +3239,10 @@ export class ProviderApiClient implements ProviderApi {
       is_active: data.status !== "cancelled",
       metadata,
       preferred_time,
+      location_type: (data as any).location_type ?? undefined,
+      payment_method: (data as any).payment_method === "cash" || (data as any).payment_method === "card"
+        ? (data as any).payment_method
+        : undefined,
     };
     if (simpleFreq) body.frequency = simpleFreq;
     const res = (await fetcher.post(`/api/provider/recurring-appointments`, body)) as {
@@ -3258,8 +3291,8 @@ export class ProviderApiClient implements ProviderApi {
   async updateRecurringSeries(
     seriesId: string,
     data: Partial<RecurringAppointment>
-  ): Promise<void> {
-    await this.updateRecurringAppointment(seriesId, data);
+  ): Promise<RecurringAppointment> {
+    return this.updateRecurringAppointment(seriesId, data);
   }
 
   async deleteRecurringAppointment(id: string, deleteSeries?: boolean): Promise<void> {
@@ -3451,7 +3484,7 @@ export class ProviderApiClient implements ProviderApi {
 
   async listExpressBookingLinks(): Promise<ExpressBookingLink[]> {
     const { fetcher } = await import("@/lib/http/fetcher");
-    const res = await fetcher.get<{ data: any[] }>("/api/provider/express-booking");
+    const res = await fetcher.get<{ data: any[] }>("/api/provider/express-booking", { staleTimeMs: 0 });
     const rows = res.data ?? [];
     return Array.isArray(rows) ? rows.map((r) => this.mapExpressLinkFromApi(r)) : [];
   }

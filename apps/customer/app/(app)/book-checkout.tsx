@@ -29,12 +29,17 @@ import { haptic } from "@/lib/haptics";
 import { Skeleton } from "@/components/Skeleton";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import * as WebBrowser from "expo-web-browser";
+import * as ExpoLinking from "expo-linking";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearPendingExcludeHoldId } from "@/lib/booking-flow-hold";
 import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
 import { useConfigBundle, useFeatureFlag, useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import {
+  formatMoney,
+  getHoldTimeRemaining,
+  serverNowToClockOffsetMs,
+} from "@beautonomi/utils";
 import type { SavedPaymentMethod } from "@/types/api";
 import { APP_URL } from "@/config/public-env";
 import { webTermsOfServiceUrl } from "@/lib/legal-web";
@@ -69,6 +74,8 @@ interface HoldData {
   location_name?: string;
   staff_name?: string;
   expires_at?: string;
+  /** From GET /api/public/booking-holds/[id] — align client countdown with server. */
+  server_now?: string | null;
   deposit_required?: boolean;
   deposit_percentage?: number;
   deposit_amount?: number;
@@ -112,6 +119,7 @@ interface ConsumeResponse {
   booking_id?: string;
   booking_number?: string;
   payment_url?: string | null;
+  payment_reference?: string | null;
   recurring_subscription?: { created: boolean; pending?: boolean; message?: string };
 }
 
@@ -172,30 +180,30 @@ function formatTimeOnly(s: string) {
 }
 
 function formatCurrency(amount: number, currency = getTenantDefaultCurrency()) {
+  if (typeof amount !== "number" || !Number.isFinite(amount)) {
+    return "—";
+  }
   const fallback = getTenantDefaultCurrency();
   return formatMoney(amount, currency ?? fallback);
 }
 
-function getTimeRemaining(expiresAt: string): { minutes: number; seconds: number; expired: boolean } {
-  const diff = new Date(expiresAt).getTime() - Date.now();
-  if (!Number.isFinite(diff) || diff <= 0) return { minutes: 0, seconds: 0, expired: true };
-  const totalSeconds = Math.floor(diff / 1000);
-  return { minutes: Math.floor(totalSeconds / 60), seconds: totalSeconds % 60, expired: false };
-}
-
 /* ─── Countdown Bar ─── */
-function CountdownBar({ expiresAt, t }: { expiresAt: string; t: (key: string, opts?: Record<string, string | number>) => string }) {
-  const [countdown, setCountdown] = useState(() => getTimeRemaining(expiresAt));
+function CountdownBar({ expiresAt, clockOffsetMs, t }: { expiresAt: string; clockOffsetMs: number; t: (key: string, opts?: Record<string, string | number>) => string }) {
+  const [countdown, setCountdown] = useState(() => getHoldTimeRemaining(expiresAt, clockOffsetMs));
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    setCountdown(getHoldTimeRemaining(expiresAt, clockOffsetMs));
+  }, [expiresAt, clockOffsetMs]);
+
+  useEffect(() => {
     timerRef.current = setInterval(() => {
-      const remaining = getTimeRemaining(expiresAt);
+      const remaining = getHoldTimeRemaining(expiresAt, clockOffsetMs);
       setCountdown(remaining);
       if (remaining.expired && timerRef.current) clearInterval(timerRef.current);
     }, 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [expiresAt]);
+  }, [expiresAt, clockOffsetMs]);
 
   const isUrgent = countdown.minutes < 2;
   const bgColor = countdown.expired ? "#FEF2F2" : isUrgent ? "#FFFBEB" : "#EFF6FF";
@@ -554,6 +562,7 @@ export default function BookCheckoutScreen() {
   /** Shown after a successful booking before navigating to booking-detail */
   const [bookingConfirmedData, setBookingConfirmedData] = useState<{ bookingId?: string; providerName?: string; date?: string; time?: string; services?: string; bookingStatus?: string } | null>(null);
   const [consuming, setConsuming] = useState(false);
+  const consumeInFlightRef = useRef(false);
   const [requestingNow, setRequestingNow] = useState(false);
   const onDemandAcceptEnabled = useFeatureFlag("on_demand_accept_customer_enabled");
   const onDemandModule = useModuleConfig("on_demand");
@@ -612,6 +621,7 @@ export default function BookCheckoutScreen() {
   const [tipAmount, setTipAmount] = useState(0);
   const [tipCustomInput, setTipCustomInput] = useState("");
   const [isSlotExpired, setIsSlotExpired] = useState(false);
+  const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0);
   const [addonsList, setAddonsList] = useState<AddonOption[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [isGroupBooking, setIsGroupBooking] = useState(false);
@@ -689,6 +699,12 @@ export default function BookCheckoutScreen() {
             ? (meta.primary_package_id as string).trim()
             : undefined);
 
+        const sNow = (data as { server_now?: unknown }).server_now;
+        if (typeof sNow === "string" && sNow.trim()) {
+          setServerClockOffsetMs(serverNowToClockOffsetMs(sNow));
+        } else {
+          setServerClockOffsetMs(0);
+        }
         const holdData: HoldData = {
           hold_id: (data.hold_id ?? data.id ?? hold_id) as string,
           provider_on_demand_accept_enabled: (data as { provider_on_demand_accept_enabled?: boolean }).provider_on_demand_accept_enabled,
@@ -705,6 +721,7 @@ export default function BookCheckoutScreen() {
           location_name: data.location_name as string | undefined,
           staff_name: data.staff_name as string | undefined,
           expires_at: data.expires_at as string | undefined,
+          server_now: (data as { server_now?: string | null }).server_now,
           deposit_required: data.deposit_required as boolean | undefined,
           deposit_percentage: data.deposit_percentage as number | undefined,
           deposit_amount: data.deposit_amount as number | undefined,
@@ -782,20 +799,20 @@ export default function BookCheckoutScreen() {
       setIsSlotExpired(false);
       return;
     }
-    if (getTimeRemaining(hold.expires_at).expired) {
+    if (getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
       setIsSlotExpired(true);
       return;
     }
     // Reset to false when a fresh (non-expired) hold is loaded
     setIsSlotExpired(false);
     const timer = setInterval(() => {
-      if (getTimeRemaining(hold.expires_at!).expired) {
+      if (getHoldTimeRemaining(hold.expires_at!, serverClockOffsetMs).expired) {
         setIsSlotExpired(true);
         clearInterval(timer);
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [hold?.expires_at]);
+  }, [hold?.expires_at, serverClockOffsetMs]);
 
   useEffect(() => {
     if (!hold?.provider_id) return;
@@ -1314,9 +1331,14 @@ export default function BookCheckoutScreen() {
         const match = (d?.provider_memberships ?? []).find(
           (m) => m.provider_id === hold.provider_id,
         );
-        if (match && (match.discount_percent ?? 0) > 0) {
-          setMembershipDiscountPercent(Number(match.discount_percent) || 0);
-          setMembershipPlanName(match.plan_name ?? "Member discount");
+        const rawPct = match != null ? Number(match.discount_percent) : NaN;
+        if (match != null && Number.isFinite(rawPct) && rawPct > 0 && rawPct <= 100) {
+          setMembershipDiscountPercent(rawPct);
+          setMembershipPlanName(
+            typeof match.plan_name === "string" && match.plan_name.trim()
+              ? match.plan_name.trim()
+              : "Member discount",
+          );
         } else {
           setMembershipDiscountPercent(0);
           setMembershipPlanName(null);
@@ -1552,7 +1574,7 @@ export default function BookCheckoutScreen() {
 
   const handleRequestNow = useCallback(async () => {
     if (!hold_id || !hold || !user) return;
-    if (hold.expires_at && getTimeRemaining(hold.expires_at).expired) {
+    if (hold.expires_at && getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
       setError("This time slot has expired. Please go back and select a new time.");
       return;
     }
@@ -1614,9 +1636,10 @@ export default function BookCheckoutScreen() {
     } finally {
       setRequestingNow(false);
     }
-  }, [hold_id, hold, user, cancellationPolicyAccepted, t]);
+  }, [hold_id, hold, user, cancellationPolicyAccepted, t, serverClockOffsetMs]);
 
   const handleComplete = useCallback(async () => {
+    if (consumeInFlightRef.current) return;
     if (!hold_id || !hold) return;
 
     if (!user) {
@@ -1627,7 +1650,7 @@ export default function BookCheckoutScreen() {
       return;
     }
 
-    if (hold.expires_at && getTimeRemaining(hold.expires_at).expired) {
+    if (hold.expires_at && getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
       setError("This time slot has expired. Please go back and select a new time.");
       return;
     }
@@ -1674,6 +1697,7 @@ export default function BookCheckoutScreen() {
       return;
     }
 
+    consumeInFlightRef.current = true;
     setConsuming(true);
     setError(null);
 
@@ -1741,6 +1765,9 @@ export default function BookCheckoutScreen() {
       if (subscribeRecurring && user && !routeRescheduleBookingId && !isGroupBooking) {
         payload.subscribe_recurring = { enabled: true, frequency: recurringFrequency };
       }
+      if (Platform.OS !== "web" && paymentMethod === "card") {
+        payload.paystack_callback_url = ExpoLinking.createURL("book/paystack");
+      }
 
       const res = await api.post<ConsumeResponse>(
         `/api/public/booking-holds/${hold_id}/consume`,
@@ -1793,6 +1820,16 @@ export default function BookCheckoutScreen() {
           setError(t("checkout.holdExpiredFallback", "Your hold has expired. Please go back and select a new time."));
           return;
         }
+        if (errStatus === 409 && errCode === "HOLD_IN_FLIGHT") {
+          setError(
+            (res.error as { message?: string }).message?.trim() ||
+              t(
+                "checkout.holdInFlight",
+                "This booking is already being processed. Please wait a moment, then try again.",
+              ),
+          );
+          return;
+        }
         if (errStatus === 409 || errCode === "CONFLICT") {
           setError(t("checkout.slotTakenFallback", "That time slot was just taken. Please go back and choose another time."));
           return;
@@ -1823,10 +1860,37 @@ export default function BookCheckoutScreen() {
       };
 
       if (paymentUrl && paymentMethod === "card") {
-        await WebBrowser.openBrowserAsync(paymentUrl, {
-          presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-        });
+        let returnedPaymentReference: string | null = data?.payment_reference ?? null;
+        if (Platform.OS !== "web") {
+          const authResult = await WebBrowser.openAuthSessionAsync(
+            paymentUrl,
+            ExpoLinking.createURL("book/paystack"),
+          );
+          if (authResult.type === "success" && authResult.url) {
+            try {
+              const parsed = ExpoLinking.parse(authResult.url);
+              const query = parsed.queryParams ?? {};
+              const ref = query.reference ?? query.trxref;
+              returnedPaymentReference = Array.isArray(ref)
+                ? ref[0] ?? returnedPaymentReference
+                : typeof ref === "string" && ref.trim()
+                  ? ref.trim()
+                  : returnedPaymentReference;
+            } catch {
+              // Keep the server-issued reference fallback below.
+            }
+          }
+        } else {
+          await WebBrowser.openBrowserAsync(paymentUrl, {
+            presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+          });
+        }
         if (saveCard) refreshCards();
+        if (returnedPaymentReference) {
+          await api
+            .get(`/api/paystack/verify?reference=${encodeURIComponent(returnedPaymentReference)}`)
+            .catch(() => {});
+        }
 
         let confirmedBookingId = bookingId;
         let confirmedBookingStatus: string | undefined;
@@ -1901,10 +1965,11 @@ export default function BookCheckoutScreen() {
     } catch (e) {
       setError(getApiErrorMessage(e, "Failed to complete"));
     } finally {
+      consumeInFlightRef.current = false;
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
-  }, [hold_id, hold, user, bookContinueReturnTo, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied, cancellationPolicyAccepted, refreshSession, t]);
+  }, [hold_id, hold, user, bookContinueReturnTo, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied, cancellationPolicyAccepted, serverClockOffsetMs, refreshSession, t]);
 
   /* ─── Loading skeleton ─── */
   if (loading) {
@@ -2036,7 +2101,7 @@ export default function BookCheckoutScreen() {
             accessibilityRole="none"
           >
             {/* Countdown */}
-            {hold.expires_at && <CountdownBar expiresAt={hold.expires_at} t={t} />}
+            {hold.expires_at && <CountdownBar expiresAt={hold.expires_at} clockOffsetMs={serverClockOffsetMs} t={t} />}
 
             {/* ═══ Provider Identity ═══ */}
             <View style={{
@@ -2664,7 +2729,14 @@ export default function BookCheckoutScreen() {
               {membershipDiscountAmount > 0 && (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                   <Text style={{ fontSize: 13, color: "#059669" }}>
-                    {membershipPlanName ? `${membershipPlanName} (${membershipDiscountPercent}%)` : `Member discount (${membershipDiscountPercent}%)`}
+                    {(() => {
+                      const pct = Number.isFinite(membershipDiscountPercent)
+                        ? Math.round(membershipDiscountPercent)
+                        : 0;
+                      return membershipPlanName
+                        ? `${membershipPlanName} (${pct}%)`
+                        : `Member discount (${pct}%)`;
+                    })()}
                   </Text>
                   <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(membershipDiscountAmount, currency)}</Text>
                 </View>

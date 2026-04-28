@@ -12,9 +12,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "libphonenumber-js": "^1.12.33"
+    "libphonenumber-js": "^1.12.42"
   },
   "devDependencies": {
-    "vitest": "^3.1.1"
+    "vitest": "^3.2.4"
   }
 }

@@ -33,7 +33,13 @@ export async function GET(request: NextRequest) {
 
     if (!subscription) return successResponse(null);
 
-    const sub = subscription as { plan?: Record<string, unknown> };
+    const sub = subscription as {
+      status?: string;
+      cancelled_at?: string | null;
+      paystack_sync_pending?: boolean | null;
+      paystack_sync_note?: string | null;
+      plan?: Record<string, unknown>;
+    };
     if (sub.plan && typeof sub.plan.id === "string") {
       let tenantId: string | null = null;
       try {
@@ -52,10 +58,73 @@ export async function GET(request: NextRequest) {
       await (supabase.from("provider_subscriptions") as any)
         .update({ status: "expired", updated_at: new Date().toISOString() })
         .eq("id", (subscription as any).id);
-      return successResponse({ ...(subscription as any), status: "expired" });
+      sub.status = "expired";
     }
 
-    return successResponse(subscription as any);
+    const { data: latestOrder } = await supabase
+      .from("provider_subscription_orders")
+      .select("id, plan_id, billing_period, amount, currency, status, paystack_reference, paid_at, failed_at, failure_reason, created_at, updated_at")
+      .eq("provider_id", providerId)
+      .in("status", ["pending", "failed"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const order = latestOrder as
+      | {
+          id: string;
+          plan_id?: string | null;
+          billing_period?: string | null;
+          amount?: number | string | null;
+          currency?: string | null;
+          status?: string | null;
+          paystack_reference?: string | null;
+          paid_at?: string | null;
+          failed_at?: string | null;
+          failure_reason?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        }
+      | null;
+
+    const billingIssue =
+      sub.status === "past_due"
+        ? {
+            type: "past_due",
+            message:
+              "Your last subscription payment did not go through. Update your card or pay now to keep premium features active.",
+            action: "pay_now",
+          }
+        : sub.paystack_sync_pending
+          ? {
+              type: "sync_pending",
+              message:
+                sub.paystack_sync_note?.trim() ||
+                "Your plan changed but billing still needs to be confirmed. Complete payment or update your card to finish setup.",
+              action: "update_payment",
+            }
+          : order?.status === "failed"
+            ? {
+                type: "payment_failed",
+                message:
+                  order.failure_reason?.trim() ||
+                  "Your subscription payment was not completed. This can happen when the card has insufficient funds or the bank declines the charge.",
+                action: "retry_payment",
+              }
+            : order?.status === "pending"
+              ? {
+                  type: "payment_pending",
+                  message: "Your subscription checkout is still pending. Complete payment to activate the selected plan.",
+                  action: "complete_payment",
+                }
+              : null;
+
+    return successResponse({
+      ...(subscription as any),
+      status: sub.status,
+      latest_order: order,
+      billing_issue: billingIssue,
+    });
   } catch (error) {
     return handleApiError(error, 'Failed to fetch subscription');
   }

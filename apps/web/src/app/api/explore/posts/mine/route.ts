@@ -30,10 +30,13 @@ export async function GET(request: NextRequest) {
 
     const supabaseAdmin = await getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
-    // Default 500 / max 1000 so provider sees all their posts (was 50/100)
-    const limit = Math.min(parseInt(searchParams.get("limit") || "500", 10), 1000);
+    const rawLimit = parseInt(searchParams.get("limit") || "100", 10);
+    const rawOffset = parseInt(searchParams.get("offset") || "0", 10);
+    const limit = Math.min(100, Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 100));
+    const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
+    const wantsPaginated = searchParams.has("limit") || searchParams.has("offset");
 
-    const { data: rows, error } = await supabaseAdmin
+    const { data: rows, error, count } = await supabaseAdmin
       .from("explore_posts")
       .select(
         `
@@ -52,12 +55,13 @@ export async function GET(request: NextRequest) {
         created_at,
         updated_at,
         providers:provider_id(business_name, slug)
-      `
+      `,
+        { count: "exact" },
       )
       .eq("provider_id", providerId)
       .order("published_at", { ascending: false })
       .order("id", { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
 
     if (error) return handleApiError(error, "Failed to fetch posts");
 
@@ -110,6 +114,18 @@ export async function GET(request: NextRequest) {
       created_at: r.created_at,
       updated_at: r.updated_at,
     }));
+
+    if (wantsPaginated) {
+      return successResponse({
+        posts: data,
+        total: count ?? data.length,
+        pagination: {
+          limit,
+          offset,
+          has_more: offset + limit < (count ?? data.length),
+        },
+      });
+    }
 
     return successResponse(data);
   } catch (error) {

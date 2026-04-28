@@ -15,7 +15,7 @@ import {
 import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api, getApiBaseUrl } from "@/lib/api-client";
 import { webApiTenantHeaders } from "@/config/public-env";
@@ -102,7 +102,8 @@ interface Order {
 
 interface OrdersListResponse {
   orders: Order[];
-  pagination: { page: number; limit: number; total: number; totalPages: number };
+  status_counts?: Record<string, number>;
+  pagination: { page: number; limit: number; total: number; totalPages: number; totalAll?: number };
 }
 
 /* ------------------------------------------------------------------ */
@@ -120,6 +121,8 @@ const STATUS_OPTIONS = [
   { value: "cancelled", label: "Cancelled" },
   { value: "refunded", label: "Refunded" },
 ];
+
+const ACTION_REQUIRED_STATUSES = new Set(["pending", "confirmed", "processing", "ready_for_collection", "shipped"]);
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   pending:               { bg: "#fef3c7", text: "#92400e" },
@@ -235,6 +238,12 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   }, [refresh]);
 
   const allOrders = data?.orders ?? [];
+  const statusCounts = data?.status_counts ?? {};
+  const totalOrderCount = Number(data?.pagination?.totalAll ?? data?.pagination?.total ?? allOrders.length);
+  const actionRequiredCount = Array.from(ACTION_REQUIRED_STATUSES).reduce(
+    (sum, status) => sum + Number(statusCounts[status] ?? 0),
+    0,
+  );
   const orders = search.trim()
     ? allOrders.filter((o) => {
         const q = search.toLowerCase();
@@ -402,6 +411,17 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 
   return (
     <>
+      {actionRequiredCount > 0 && (
+        <View style={twStyle("mx-4 mb-2 rounded-2xl border border-pink-100 bg-pink-50 px-4 py-3")}>
+          <Text style={twStyle("text-sm font-semibold text-pink-800")}>
+            {actionRequiredCount} order{actionRequiredCount === 1 ? "" : "s"} need action
+          </Text>
+          <Text style={twStyle("mt-0.5 text-xs text-pink-700")}>
+            Check pending, processing, ready, or shipped orders.
+          </Text>
+        </View>
+      )}
+
       {/* ── Search ── */}
       <View style={[twStyle("mx-4 mb-2 flex-row items-center rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5")]}>
         <Ionicons name="search-outline" size={15} color="#9ca3af" />
@@ -432,18 +452,48 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         >
           {STATUS_OPTIONS.map((opt) => {
             const active = statusFilter === opt.value;
+            const count = opt.value ? Number(statusCounts[opt.value] ?? 0) : totalOrderCount;
+            const needsAction = Boolean(opt.value && ACTION_REQUIRED_STATUSES.has(opt.value) && count > 0);
             return (
               <TouchableOpacity
                 key={opt.value || "all"}
                 onPress={() => setStatusFilter(opt.value)}
-                style={twStyle(
-                  `rounded-full px-3.5 py-1.5 ${active ? "bg-pink-600" : "border border-gray-200 bg-white"}`
-                )}
+                style={[
+                  twStyle("flex-row items-center rounded-full px-3.5 py-1.5"),
+                  active
+                    ? { backgroundColor: "#db2777" }
+                    : {
+                        backgroundColor: needsAction ? "#fdf2f8" : "#fff",
+                        borderWidth: 1,
+                        borderColor: needsAction ? "#fbcfe8" : "#e5e7eb",
+                      },
+                ]}
                 accessibilityLabel={`Filter by ${opt.label}`}
               >
                 <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`)}>
                   {opt.label}
                 </Text>
+                <View
+                  style={{
+                    marginLeft: 6,
+                    minWidth: 20,
+                    alignItems: "center",
+                    borderRadius: 999,
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    backgroundColor: active ? "rgba(255,255,255,0.2)" : needsAction ? "#db2777" : "#f3f4f6",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: active || needsAction ? "#fff" : "#4b5563",
+                      fontSize: 10,
+                      fontWeight: "800",
+                    }}
+                  >
+                    {count > 99 ? "99+" : count}
+                  </Text>
+                </View>
               </TouchableOpacity>
             );
           })}
@@ -1004,10 +1054,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 }
 
 export default function ProductOrdersScreen() {
+  const { order } = useLocalSearchParams<{ order?: string }>();
+  const deepLinkOrderId = typeof order === "string" ? order : Array.isArray(order) ? order[0] : undefined;
+
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Product Orders" showBack subtitle="Customer orders" />
-      <ProductOrdersContent />
+      <ProductOrdersContent deepLinkOrderId={deepLinkOrderId} />
     </ScreenContainer>
   );
 }

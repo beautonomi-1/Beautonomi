@@ -5,6 +5,7 @@
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createHash } from "crypto";
 
 export interface AuctionParams {
   /** Active market / host — only campaigns for providers in this tenant compete */
@@ -24,6 +25,15 @@ export interface AuctionWinner {
   bid_cpc: number;
   quality_score: number;
   relevance: number;
+}
+
+export function buildAdReachKey(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
+  const realIp = request.headers.get("x-real-ip")?.trim() ?? "";
+  const userAgent = request.headers.get("user-agent")?.trim() ?? "";
+  const acceptLanguage = request.headers.get("accept-language")?.trim() ?? "";
+  const raw = [forwarded || realIp || "unknown-ip", userAgent || "unknown-agent", acceptLanguage].join("|");
+  return createHash("sha256").update(raw).digest("hex").slice(0, 32);
 }
 
 /**
@@ -211,7 +221,8 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
  */
 export async function recordAdImpressions(
   winners: AuctionWinner[],
-  idempotencyPrefix: string
+  idempotencyPrefix: string,
+  attribution?: Record<string, unknown>
 ): Promise<void> {
   if (winners.length === 0) return;
   const supabase = getSupabaseAdmin();
@@ -220,7 +231,7 @@ export async function recordAdImpressions(
     provider_id: w.provider_id,
     event_type: "impression",
     idempotency_key: `${idempotencyPrefix}:impression:${w.campaign_id}:${i}`,
-    attribution: { source: "search", rank: i + 1 },
+    attribution: { source: "search", ...(attribution ?? {}), rank: i + 1 },
   }));
   await supabase.from("ads_events").upsert(rows, {
     onConflict: "idempotency_key",

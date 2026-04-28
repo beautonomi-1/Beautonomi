@@ -5,12 +5,24 @@ import RoleGuard from "@/components/auth/RoleGuard";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { DollarSign, Calendar, Wallet, FileText, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Badge } from "@/components/ui/badge";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 interface NextDateData {
   payout_schedule: string;
@@ -35,12 +47,26 @@ interface PayoutItem {
   processed_at?: string;
 }
 
+interface PayoutAccount {
+  id: string;
+  account_name: string;
+  account_number_last4: string;
+  bank_name: string | null;
+  active: boolean;
+}
+
 export default function ProviderPayoutsCenter() {
   const [nextDate, setNextDate] = useState<NextDateData | null>(null);
   const [earnings, setEarnings] = useState<FinanceEarnings | null>(null);
   const [payouts, setPayouts] = useState<PayoutItem[]>([]);
+  const [accounts, setAccounts] = useState<PayoutAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showRequestDialog, setShowRequestDialog] = useState(false);
+  const [payoutAmount, setPayoutAmount] = useState("");
+  const [payoutNotes, setPayoutNotes] = useState("");
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [isRequesting, setIsRequesting] = useState(false);
   const { format: fmt } = useReportCurrency();
 
   useEffect(() => {
@@ -48,14 +74,20 @@ export default function ProviderPayoutsCenter() {
       try {
         setLoading(true);
         setLoadError(null);
-        const [nextRes, financeRes, payoutsRes] = await Promise.allSettled([
+        const [nextRes, financeRes, payoutsRes, accountsRes] = await Promise.allSettled([
           fetcher.get<{ data: NextDateData }>("/api/provider/payouts/next-date"),
           fetcher.get<{ data: { earnings: FinanceEarnings } }>("/api/provider/finance?range=month"),
           fetcher.get<{ data: PayoutItem[] }>("/api/provider/payouts"),
+          fetcher.get<{ data: PayoutAccount[] }>("/api/provider/payout-accounts"),
         ]);
         if (nextRes.status === "fulfilled") setNextDate(nextRes.value.data ?? null);
         if (financeRes.status === "fulfilled") setEarnings((financeRes.value.data as any)?.earnings ?? null);
         if (payoutsRes.status === "fulfilled") setPayouts(Array.isArray(payoutsRes.value.data) ? payoutsRes.value.data : []);
+        if (accountsRes.status === "fulfilled") {
+          const list = Array.isArray(accountsRes.value.data) ? accountsRes.value.data : [];
+          setAccounts(list);
+          if (list.length > 0) setSelectedAccountId((current) => current || list[0].id);
+        }
         if (nextRes.status === "rejected" && financeRes.status === "rejected") {
           setLoadError("Failed to load payout data. Please refresh.");
         }
@@ -67,6 +99,59 @@ export default function ProviderPayoutsCenter() {
     };
     load();
   }, []);
+
+  const refreshPayoutData = async () => {
+    const [financeRes, payoutsRes, accountsRes] = await Promise.allSettled([
+      fetcher.get<{ data: { earnings: FinanceEarnings } }>("/api/provider/finance?range=month"),
+      fetcher.get<{ data: PayoutItem[] }>("/api/provider/payouts"),
+      fetcher.get<{ data: PayoutAccount[] }>("/api/provider/payout-accounts"),
+    ]);
+    if (financeRes.status === "fulfilled") setEarnings((financeRes.value.data as any)?.earnings ?? null);
+    if (payoutsRes.status === "fulfilled") setPayouts(Array.isArray(payoutsRes.value.data) ? payoutsRes.value.data : []);
+    if (accountsRes.status === "fulfilled") {
+      const list = Array.isArray(accountsRes.value.data) ? accountsRes.value.data : [];
+      setAccounts(list);
+      if (list.length > 0) setSelectedAccountId((current) => current || list[0].id);
+    }
+  };
+
+  const handleRequestPayout = async () => {
+    const amount = Number(payoutAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a valid payout amount");
+      return;
+    }
+    const minimum = earnings?.minimum_payout_amount ?? 100;
+    if (amount < minimum) {
+      toast.error(`Minimum payout is ${fmt(minimum)}`);
+      return;
+    }
+    if (!earnings || amount > earnings.available_balance) {
+      toast.error("Amount exceeds available balance");
+      return;
+    }
+    if (accounts.length === 0) {
+      toast.error("Add a payout account first");
+      return;
+    }
+    try {
+      setIsRequesting(true);
+      await fetcher.post("/api/provider/payouts", {
+        amount,
+        notes: payoutNotes.trim() || null,
+        bank_account_id: selectedAccountId || accounts[0]?.id,
+      });
+      toast.success("Payout request submitted");
+      setShowRequestDialog(false);
+      setPayoutAmount("");
+      setPayoutNotes("");
+      await refreshPayoutData();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to request payout");
+    } finally {
+      setIsRequesting(false);
+    }
+  };
 
   const statusBadge = (status: string) => {
     const map: Record<string, string> = {
@@ -122,12 +207,10 @@ export default function ProviderPayoutsCenter() {
                   </p>
                 </div>
               </div>
-              <Link href="/provider/finance">
-                <Button>
-                  <Wallet className="mr-2 h-4 w-4" />
-                  Request payout / Finance
-                </Button>
-              </Link>
+              <Button onClick={() => setShowRequestDialog(true)}>
+                <Wallet className="mr-2 h-4 w-4" />
+                Request payout
+              </Button>
             </div>
           </SectionCard>
 
@@ -224,6 +307,93 @@ export default function ProviderPayoutsCenter() {
             </Link>
           )}
         </SectionCard>
+
+        <Dialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Request payout</DialogTitle>
+              <DialogDescription>
+                Request a withdrawal up to your all-time available balance.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border bg-emerald-50 p-3">
+                  <p className="text-xs text-emerald-700">Available</p>
+                  <p className="text-xl font-semibold text-emerald-950">{fmt(earnings?.available_balance ?? 0)}</p>
+                </div>
+                <div className="rounded-xl border bg-white p-3">
+                  <p className="text-xs text-gray-500">Minimum</p>
+                  <p className="text-xl font-semibold text-gray-950">{fmt(earnings?.minimum_payout_amount ?? 100)}</p>
+                </div>
+              </div>
+              <div>
+                <Label>Payout amount</Label>
+                <Input
+                  type="number"
+                  min={earnings?.minimum_payout_amount ?? 100}
+                  max={earnings?.available_balance ?? 0}
+                  step="0.01"
+                  value={payoutAmount}
+                  onChange={(event) => setPayoutAmount(event.target.value)}
+                  placeholder="Enter amount"
+                />
+              </div>
+              {accounts.length > 0 ? (
+                <div>
+                  <Label>Pay out to</Label>
+                  <select
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    value={selectedAccountId || accounts[0]?.id}
+                    onChange={(event) => setSelectedAccountId(event.target.value)}
+                  >
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.account_name} ****{account.account_number_last4}
+                        {account.bank_name ? ` (${account.bank_name})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  Add a bank account from Finance or Payout Accounts before requesting a payout.
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Link href="/provider/finance">
+                      <Button size="sm" variant="outline">Open Finance</Button>
+                    </Link>
+                    <Link href="/provider/settings/payout-accounts">
+                      <Button size="sm" variant="outline">Payout Accounts</Button>
+                    </Link>
+                  </div>
+                </div>
+              )}
+              <div>
+                <Label>Notes (optional)</Label>
+                <Textarea
+                  value={payoutNotes}
+                  onChange={(event) => setPayoutNotes(event.target.value)}
+                  placeholder="Add any notes for finance"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowRequestDialog(false)}>Cancel</Button>
+              <Button
+                onClick={handleRequestPayout}
+                disabled={
+                  isRequesting ||
+                  accounts.length === 0 ||
+                  !payoutAmount ||
+                  Number(payoutAmount) < (earnings?.minimum_payout_amount ?? 100) ||
+                  Number(payoutAmount) > (earnings?.available_balance ?? 0)
+                }
+              >
+                {isRequesting ? "Submitting..." : "Request payout"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </RoleGuard>
   );

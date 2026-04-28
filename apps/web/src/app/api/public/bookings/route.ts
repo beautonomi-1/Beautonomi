@@ -307,10 +307,11 @@ export async function POST(request: NextRequest) {
         }
 
         stage = "stale_pending_cancel";
-        // 2.7. Cancel any stale pending/pending_payment bookings by this user for the
-        //      same provider and overlapping time window before conflict check runs.
-        //      This prevents "slot taken" false positives when the customer retries
-        //      after a failed/abandoned payment attempt.
+        // 2.7. Cancel any stale unpaid online bookings by this user for the same
+        //      provider and nearby time window before conflict checks run.
+        //      Auto-confirmed Paystack bookings can have status='confirmed' while
+        //      payment_status='pending', so status-only cleanup leaves the
+        //      customer's own abandoned payment attempt blocking the retry.
         {
           const selectedDt = new Date(draft.selected_datetime);
           const windowStart = new Date(selectedDt.getTime() - 4 * 60 * 60 * 1000); // -4 h
@@ -326,7 +327,10 @@ export async function POST(request: NextRequest) {
             })
             .eq("customer_id", user.id)
             .eq("provider_id", draft.provider_id)
-            .in("status", ["pending", "pending_payment"])
+            .eq("booking_source", "online")
+            .eq("payment_status", "pending")
+            .or("payment_provider.eq.paystack,payment_provider.is.null")
+            .in("status", ["pending", "pending_payment", "confirmed"])
             .gte("scheduled_at", windowStart.toISOString())
             .lte("scheduled_at", windowEnd.toISOString());
         }
@@ -454,7 +458,7 @@ export async function POST(request: NextRequest) {
             return paymentResult;
           }
 
-          const { paymentUrl } = paymentResult;
+          const { paymentUrl, paymentReference } = paymentResult;
           bookingIdPendingRelease = "";
 
           stage = "post_effects";
@@ -503,6 +507,7 @@ export async function POST(request: NextRequest) {
             booking_id: booking.id,
             booking_number: booking.booking_number,
             payment_url: paymentUrl,
+            payment_reference: paymentReference ?? null,
             ...(recurring_subscription ? { recurring_subscription } : {}),
             // Display hints for confirmation screen — respect admin settings
             display: {

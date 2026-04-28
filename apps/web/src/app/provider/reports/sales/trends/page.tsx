@@ -12,6 +12,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { RevenueChart } from "../../components/RevenueChart";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface RevenueTrendsData {
@@ -29,6 +30,7 @@ interface RevenueTrendsData {
 }
 
 export default function RevenueTrendsReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [period, setPeriod] = useState("month");
   const [data, setData] = useState<RevenueTrendsData | null>(null);
@@ -37,7 +39,7 @@ export default function RevenueTrendsReport() {
 
   useEffect(() => {
     loadReport();
-  }, [period]);
+  }, [period, selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -46,6 +48,7 @@ export default function RevenueTrendsReport() {
 
       const params = new URLSearchParams();
       params.append("period", period);
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: RevenueTrendsData }>(
         `/api/provider/reports/sales/trends?${params.toString()}`

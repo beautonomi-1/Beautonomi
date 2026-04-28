@@ -89,6 +89,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [isMounted, setIsMounted] = useState(false);
   const [hasTriedIPLocation, setHasTriedIPLocation] = useState(false);
+  const [portalKind, setPortalKind] = useState<string | null>(null);
   const { addresses, isLoading: _addressesLoading, loadAddresses } = useSavedAddresses();
   const { recentLocations, addLocation } = useRecentLocations();
   const { availability, checkAvailability } = useServiceAvailability();
@@ -111,6 +112,16 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const searchToggleRef = useRef<HTMLButtonElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const effectiveRole = authRole ?? user?.role ?? null;
+  const isProviderLikeUser =
+    effectiveRole === "provider_owner" ||
+    effectiveRole === "provider_staff" ||
+    portalKind === "provider" ||
+    portalKind === "provider_onboarding";
+  const showProviderContextBanner =
+    Boolean(user && isProviderLikeUser) &&
+    !pathname?.startsWith("/provider") &&
+    !pathname?.startsWith("/admin");
 
   const persistUserLocation = useCallback(
     (data: { latitude: number; longitude: number; address: string }) => {
@@ -186,6 +197,30 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!user || effectiveRole === "provider_owner" || effectiveRole === "provider_staff") {
+      setPortalKind(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetcher.get<{ data?: { portal?: string } }>("/api/me/portal", {
+          staleTimeMs: 60_000,
+          timeoutMs: 5000,
+        });
+        if (!cancelled) setPortalKind(res.data?.portal ?? null);
+      } catch {
+        if (!cancelled) setPortalKind(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, effectiveRole]);
 
   // Fetch search suggestions with debouncing
   useEffect(() => {
@@ -702,6 +737,34 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
 
   return (
     <header className="relative bg-white border-b shadow-sm sticky top-0 z-[100] isolate">
+      {showProviderContextBanner && (
+        <div className="border-b border-pink-100 bg-gradient-to-r from-pink-50 via-white to-rose-50">
+          <div className="max-w-[2340px] mx-auto px-4 md:px-6 lg:px-20 py-2.5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-950">You are signed in as a provider</p>
+                <p className="text-xs text-gray-600">
+                  You are viewing the customer marketplace. Manage bookings, campaigns, and your business from the provider portal.
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <Link
+                  href="/provider/settings/ads"
+                  className="inline-flex min-h-9 items-center justify-center rounded-full border border-pink-200 bg-white px-3 py-1.5 text-xs font-semibold text-pink-700 shadow-sm hover:bg-pink-50"
+                >
+                  Manage Paid Ads
+                </Link>
+                <Link
+                  href="/provider/dashboard"
+                  className="inline-flex min-h-9 items-center justify-center rounded-full bg-gray-950 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-gray-800"
+                >
+                  Return to Dashboard
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Address Selector Bar - Top Most */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-[2340px] mx-auto px-4 md:px-6 lg:px-20">

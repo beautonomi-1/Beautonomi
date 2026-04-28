@@ -141,7 +141,9 @@ function applyGapAvoidance(
   workStart: string,
   workEnd: string,
   _date: string,
-  timezone?: string
+  timezone?: string,
+  requiredMinutes = 60,
+  slotInterval = 15,
 ): TimeSlot[] {
   const minutesInBookingZone = (value: string): number => {
     const d = new Date(value);
@@ -162,8 +164,8 @@ function applyGapAvoidance(
     const endSlot = slots.find((s) => {
       const slotMinutes = timeToMinutes(s.time);
       const endMinutes = timeToMinutes(workEnd);
-      // Find last slot that fits before work end
-      return slotMinutes < endMinutes && slotMinutes + 60 >= endMinutes;
+      // Find last slot that fits the actual requested booking span before work end.
+      return slotMinutes < endMinutes && slotMinutes + requiredMinutes <= endMinutes && slotMinutes + requiredMinutes + slotInterval > endMinutes;
     });
 
     return slots.filter((s) => s === startSlot || s === endSlot);
@@ -176,10 +178,10 @@ function applyGapAvoidance(
   existingBookings.forEach((booking) => {
     const bookingStartMinutes = minutesInBookingZone(booking.scheduled_start_at);
     
-    // Find slot 15 minutes before appointment
+    // Find slot one grid interval before appointment
     const beforeSlot = slots.find((s) => {
       const slotMinutes = timeToMinutes(s.time);
-      return slotMinutes === bookingStartMinutes - 15;
+      return slotMinutes === bookingStartMinutes - slotInterval;
     });
     if (beforeSlot) {
       adjacentSlots.add(beforeSlot.time);
@@ -334,7 +336,16 @@ export function calculateAvailableSlots(
 
   // Apply gap avoidance if enabled
   if (avoidGaps) {
-    return applyGapAvoidance(availableSlots, existingBookings, minutesToTime(overallWorkStart), minutesToTime(overallWorkEnd), date, timezone);
+    return applyGapAvoidance(
+      availableSlots,
+      existingBookings,
+      minutesToTime(overallWorkStart),
+      minutesToTime(overallWorkEnd),
+      date,
+      timezone,
+      duration + travelBuffer,
+      slotInterval,
+    );
   }
 
   return availableSlots;

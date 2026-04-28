@@ -31,9 +31,15 @@ const addressSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-
     const supabase = await getSupabaseServer(request);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return errorResponse("Authentication required", "AUTH_REQUIRED", 401);
+    }
 
     const { data: addresses, error } = await supabase
       .from("user_addresses")

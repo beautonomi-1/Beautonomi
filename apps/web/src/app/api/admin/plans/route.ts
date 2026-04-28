@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
-import { fetchScopedListMerged, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
+import {
+  fetchOptionalTenantListMerged,
+  fetchScopedListMerged,
+  resolveAdminTenantContext,
+} from "@/lib/tenant/scoped-overrides";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
@@ -18,7 +22,7 @@ export async function GET(request: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin();
     const { currentTenantId } = await resolveAdminTenantContext(request, undefined, user.role ?? null);
 
-    const scopedSubscriptionPlans = await fetchScopedListMerged<Record<string, unknown>>({
+    const scopedSubscriptionPlans = await fetchOptionalTenantListMerged<Record<string, unknown>>({
       supabase: supabaseAdmin,
       table: "subscription_plans",
       tenantId: currentTenantId,

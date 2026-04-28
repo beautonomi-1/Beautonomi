@@ -51,6 +51,13 @@ interface ZoneWithSelection {
   is_selected: boolean;
 }
 
+const numberOrDefault = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const formatMoney = (value: unknown) => numberOrDefault(value, 0).toFixed(2);
+
 export default function ServiceZonesPage() {
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -163,9 +170,9 @@ export default function ServiceZonesPage() {
     setSelectedPlatformZone(zoneWithSelection.platform_zone);
     setEditingSelection(zoneWithSelection.selection);
     setFormData({
-      travel_fee: zoneWithSelection.selection.travel_fee,
-      currency: zoneWithSelection.selection.currency,
-      travel_time_minutes: zoneWithSelection.selection.travel_time_minutes,
+      travel_fee: numberOrDefault(zoneWithSelection.selection.travel_fee, 0),
+      currency: zoneWithSelection.selection.currency || tenantCurrency,
+      travel_time_minutes: numberOrDefault(zoneWithSelection.selection.travel_time_minutes, 30),
       description: zoneWithSelection.selection.description || "",
       is_active: zoneWithSelection.selection.is_active,
     });
@@ -404,10 +411,10 @@ export default function ServiceZonesPage() {
                       </div>
                       <div className="space-y-1 text-sm text-gray-600">
                         <p>
-                          <strong>Your Travel Fee:</strong> {zoneWithSelection.selection?.currency} {zoneWithSelection.selection?.travel_fee.toFixed(2)}
+                          <strong>Your Travel Fee:</strong> {zoneWithSelection.selection?.currency || tenantCurrency} {formatMoney(zoneWithSelection.selection?.travel_fee)}
                         </p>
                         <p>
-                          <strong>Travel Time:</strong> {zoneWithSelection.selection?.travel_time_minutes} minutes
+                          <strong>Travel Time:</strong> {numberOrDefault(zoneWithSelection.selection?.travel_time_minutes, 30)} minutes
                         </p>
                         <p>
                           <strong>Zone Details:</strong> {getZoneDetails(zoneWithSelection.platform_zone)}

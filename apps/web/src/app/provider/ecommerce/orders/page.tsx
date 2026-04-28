@@ -26,9 +26,12 @@ interface ProductOrder {
   total_amount: number;
   payment_status: string;
   fulfillment_type: string;
+  order_source?: string | null;
+  booking_id?: string | null;
+  customer_name?: string | null;
   tracking_number: string | null;
   created_at: string;
-  customer: { id: string; full_name: string; email: string };
+  customer?: { id: string; full_name: string; email: string } | null;
   items: {
     id: string;
     product_name: string;
@@ -37,6 +40,8 @@ interface ProductOrder {
     product_variant?: { option_values?: Record<string, string> } | null;
   }[];
 }
+
+type ProductOrderStatusCounts = Record<string, number>;
 
 const STATUS_ACTIONS: Record<string, { next: string; label: string; color: string }[]> = {
   pending: [
@@ -69,6 +74,19 @@ const STATUS_OPTIONS = [
   "refunded",
 ];
 
+const ACTION_REQUIRED_STATUSES = new Set(["pending", "confirmed", "processing", "ready_for_collection", "shipped"]);
+
+const STATUS_FILTER_TABS = [
+  { value: "", label: "All" },
+  { value: "pending", label: "Pending" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "processing", label: "Processing" },
+  { value: "ready_for_collection", label: "Ready for collection" },
+  { value: "shipped", label: "Shipped" },
+  { value: "delivered", label: "Delivered" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
 const STATUS_BADGE: Record<string, "default" | "destructive" | "outline" | "secondary"> = {
   pending: "outline",
   confirmed: "secondary",
@@ -89,6 +107,8 @@ export default function ProviderProductOrdersPage() {
   const [prefetchedFocusOrder, setPrefetchedFocusOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
+  const [statusCounts, setStatusCounts] = useState<ProductOrderStatusCounts>({});
+  const [totalOrderCount, setTotalOrderCount] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -109,11 +129,17 @@ export default function ProviderProductOrdersPage() {
       if (statusFilter) params.set("status", statusFilter);
 
       const res = await fetcher.get<{
-        data: { orders: ProductOrder[]; pagination: { totalPages: number } };
+        data: {
+          orders: ProductOrder[];
+          status_counts?: ProductOrderStatusCounts;
+          pagination: { totalPages: number; totalAll?: number };
+        };
       }>(`/api/provider/product-orders?${params}`);
 
       if (res?.data) {
         setOrders(res.data.orders);
+        setStatusCounts(res.data.status_counts ?? {});
+        setTotalOrderCount(Number(res.data.pagination.totalAll ?? 0));
         setTotalPages(res.data.pagination.totalPages);
       }
     } catch {
@@ -155,6 +181,15 @@ export default function ProviderProductOrdersPage() {
     if (orders.some((o) => o.id === prefetchedFocusOrder.id)) return orders;
     return [prefetchedFocusOrder, ...orders];
   }, [orders, prefetchedFocusOrder]);
+
+  const actionRequiredCount = useMemo(
+    () =>
+      Array.from(ACTION_REQUIRED_STATUSES).reduce(
+        (sum, orderStatus) => sum + Number(statusCounts[orderStatus] ?? 0),
+        0,
+      ),
+    [statusCounts],
+  );
 
   useEffect(() => {
     if (!focusOrderId || loading) return;
@@ -207,7 +242,14 @@ export default function ProviderProductOrdersPage() {
     <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden px-1 sm:px-0">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Product Orders</h1>
-        <p className="text-sm text-gray-500 mt-1">Manage customer product purchases and fulfillment</p>
+        <p className="text-sm text-gray-500 mt-1">
+          Manage customer product purchases and fulfillment
+          {actionRequiredCount > 0 && (
+            <span className="ml-2 font-medium text-pink-700">
+              {actionRequiredCount} need action
+            </span>
+          )}
+        </p>
       </div>
 
       {error && (
@@ -218,20 +260,40 @@ export default function ProviderProductOrdersPage() {
       )}
 
       <div className="flex items-center gap-3 flex-wrap">
-        {["", "pending", "confirmed", "processing", "shipped", "ready_for_collection", "delivered", "cancelled"].map(
-          (s) => (
+        {STATUS_FILTER_TABS.map(
+          ({ value, label }) => {
+            const count = value ? Number(statusCounts[value] ?? 0) : totalOrderCount;
+            const isSelected = statusFilter === value;
+            const needsAction = Boolean(value && ACTION_REQUIRED_STATUSES.has(value) && count > 0);
+            return (
             <button
-              key={s}
-              onClick={() => { setStatusFilter(s); setPage(1); }}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                statusFilter === s
+              key={value || "all"}
+              onClick={() => { setStatusFilter(value); setPage(1); }}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+                isSelected
                   ? "bg-pink-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
+                  : needsAction
+                    ? "bg-pink-50 text-pink-800 ring-1 ring-pink-200 hover:bg-pink-100"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200",
+              )}
             >
-              {s ? s.replace(/_/g, " ") : "All"}
+              <span>{label}</span>
+              <span
+                className={cn(
+                  "min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] font-bold leading-none",
+                  isSelected
+                    ? "bg-white/20 text-white"
+                    : needsAction
+                      ? "bg-pink-600 text-white"
+                      : "bg-white text-gray-600 ring-1 ring-gray-200",
+                )}
+              >
+                {count > 99 ? "99+" : count}
+              </span>
             </button>
-          ),
+            );
+          },
         )}
       </div>
 
@@ -255,6 +317,7 @@ export default function ProviderProductOrdersPage() {
               const platformFee = Number(o.platform_fee ?? 0);
               const totalAmount = Number(o.total_amount ?? 0);
               const providerEarnings = Math.max(0, totalAmount - platformFee);
+              const isAppointmentOrder = o.order_source === "appointment";
               return (
                 <div
                   key={o.id}
@@ -275,10 +338,13 @@ export default function ProviderProductOrdersPage() {
                         <Badge variant={o.payment_status === "paid" ? "default" : "outline"}>
                           {o.payment_status}
                         </Badge>
+                        {o.order_source === "appointment" && (
+                          <Badge variant="outline">appointment pickup</Badge>
+                        )}
                       </div>
                       <p className="text-sm text-gray-700 break-words">
-                        <span className="font-medium">{o.customer?.full_name}</span>{" "}
-                        <span className="text-gray-400">({o.customer?.email})</span>
+                        <span className="font-medium">{o.customer?.full_name || o.customer_name || "Appointment customer"}</span>{" "}
+                        {o.customer?.email && <span className="text-gray-400">({o.customer.email})</span>}
                       </p>
                       <div className="mt-2 space-y-1">
                         {o.items?.map((item) => (
@@ -306,11 +372,17 @@ export default function ProviderProductOrdersPage() {
                         {deliveryFee > 0 && <p>Delivery: {formatMoney(deliveryFee)}</p>}
                         {discountAmount > 0 && <p>Discount: -{formatMoney(discountAmount)}</p>}
                         {platformFee > 0 && <p>Platform fee: -{formatMoney(platformFee)}</p>}
-                        <p className="font-medium text-gray-700">Provider earnings: {formatMoney(providerEarnings)}</p>
+                        <p className="font-medium text-gray-700">
+                          {isAppointmentOrder
+                            ? "Included in booking total"
+                            : `Provider earnings: ${formatMoney(providerEarnings)}`}
+                        </p>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
                         {new Date(o.created_at).toLocaleDateString()} ·{" "}
-                        {o.fulfillment_type === "delivery" ? "Delivery" : "Collection"}
+                        {isAppointmentOrder
+                          ? "Appointment pickup"
+                          : o.fulfillment_type === "delivery" ? "Delivery" : "Collection"}
                       </p>
                       <select
                         value={o.status}

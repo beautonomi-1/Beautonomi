@@ -159,6 +159,15 @@ export const NotificationPayloadSchema = z.object({
   url: z.string().url().optional(),
   image: z.string().url().optional(),
   data: z.record(z.string(), z.unknown()).optional(),
+  /** iOS subtitle (OneSignal `subtitle.en`) */
+  subtitle: z.string().optional(),
+  /** OneSignal internal message name (dashboard) */
+  name: z.string().max(128).optional(),
+  /** ISO 8601 UTC — `send_after` for scheduled delivery */
+  send_after: z.string().optional(),
+  /** 1–10; common: 5 normal, 10 high (Android) */
+  priority: z.number().int().min(1).max(10).optional(),
+  ios_interruption_level: z.enum(["passive", "active", "time_sensitive", "critical"]).optional(),
 }).passthrough();
 
 export type NotificationPayload = z.infer<typeof NotificationPayloadSchema>;
@@ -304,6 +313,10 @@ async function sendOneSignalNotification(
     sms_body?: string;
     live_activities?: unknown;
     template_id?: string;
+    /** OneSignal internal message name (dashboard) */
+    name?: string;
+    /** ISO 8601 UTC */
+    send_after?: string;
     content_available?: boolean;
     mutable_content?: boolean;
     priority?: number;
@@ -375,6 +388,12 @@ async function sendOneSignalNotification(
   }
   if (payload.ios_interruption_level) {
     notification.ios_interruption_level = payload.ios_interruption_level;
+  }
+  if (payload.name && String(payload.name).trim()) {
+    notification.name = String(payload.name).trim().slice(0, 128);
+  }
+  if (payload.send_after && String(payload.send_after).trim()) {
+    notification.send_after = String(payload.send_after).trim();
   }
 
   // Email content
@@ -598,6 +617,15 @@ export async function sendToUsers(
   if (payload.image) notificationPayload.big_picture = payload.image;
   if (playerIds.length > 0 && normalizedChannels.includes("push")) {
     notificationPayload.include_player_ids = playerIds;
+  }
+  if (typeof payload.subtitle === "string" && payload.subtitle.trim()) {
+    notificationPayload.subtitle = { en: payload.subtitle.trim() };
+  }
+  if (typeof payload.name === "string" && payload.name.trim()) {
+    notificationPayload.name = payload.name.trim().slice(0, 128);
+  }
+  if (typeof payload.send_after === "string" && payload.send_after.trim()) {
+    notificationPayload.send_after = payload.send_after.trim();
   }
   const passthrough = payload as Record<string, unknown>;
   if (passthrough.priority !== undefined) notificationPayload.priority = passthrough.priority;

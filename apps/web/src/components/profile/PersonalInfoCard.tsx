@@ -148,7 +148,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                 required
               />
               <p className="text-xs text-zinc-500 mt-1">
-                You'll need to verify your new email address
+                We may email your current and new address to confirm the change
               </p>
             </div>
           )}

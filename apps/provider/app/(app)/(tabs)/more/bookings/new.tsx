@@ -182,7 +182,7 @@ function sanitizeProviderFormResponsesForApi(
 }
 
 type DiscountType = "percentage" | "fixed";
-type PaymentMethod = "cash" | "card" | "online";
+type PaymentMethod = "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link";
 
 /**
  * §Release-audit 2026-04: accept the provider's IANA timezone and delegate to
@@ -213,9 +213,11 @@ function readCreateBookingWarnings(data: unknown): string[] | undefined {
 
 const DATE_RANGE_DAYS = 90;
 const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { label: "Pay Later", value: "pay_later", icon: "time-outline" },
   { label: "Cash", value: "cash", icon: "cash-outline" },
-  { label: "Card (Yoco)", value: "card", icon: "card-outline" },
-  { label: "Pay later / link", value: "online", icon: "globe-outline" },
+  { label: "Manual Card", value: "card", icon: "card-outline" },
+  { label: "Yoco Terminal", value: "yoco_pos", icon: "phone-portrait-outline" },
+  { label: "Payment Link", value: "payment_link", icon: "send-outline" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -299,6 +301,7 @@ export default function NewBookingScreen() {
     [providerFormsRaw],
   );
   const { execute: createBooking, loading: creating } = useApiPost<any, any>("/api/provider/bookings");
+  const [creatingRecurring, setCreatingRecurring] = useState(false);
 
   // --- Client search ---
   const [clientSearch, setClientSearch] = useState("");
@@ -441,10 +444,13 @@ export default function NewBookingScreen() {
   const [promoApplied, setPromoApplied] = useState<{ code: string; discount: number; discountType: string; discountValue: number } | null>(null);
   const [promoValidating, setPromoValidating] = useState(false);
   const [promoError, setPromoError] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pay_later");
   const [paymentOption, setPaymentOption] = useState<"full" | "deposit">("full");
   const [depositPercentage, setDepositPercentage] = useState<number>(30);
   const [referralSourceId, setReferralSourceId] = useState<string>("");
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrencePattern, setRecurrencePattern] = useState<"daily" | "weekly" | "biweekly" | "monthly">("weekly");
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [, setCheckingAvailability] = useState(false);
@@ -943,6 +949,10 @@ export default function NewBookingScreen() {
     if (!selectedDate) return "Please select a date";
     if (!selectedTime) return "Please select a time";
     if (selectedServices.length === 0 && selectedProducts.length === 0) return "Please select at least one service or product";
+    if (isRecurring) {
+      if (!selectedClient?.customer_id) return "Repeating visits must use a saved client. Select the client from search results first.";
+      if (selectedServices.length === 0) return "Repeating visits need at least one service.";
+    }
     if ((staffList?.length ?? 0) > 0 && selectedServices.length > 0) {
       const missingStaff = selectedServices.some((s) => !s.staffId);
       if (missingStaff) return "Please assign staff for each service";
@@ -1067,39 +1077,41 @@ export default function NewBookingScreen() {
           };
 
     const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime, schedulingTimezone);
+    const selectedServicePayloads = selectedServices.map((s) => {
+      const svc = services?.find((sv) => sv.id === s.serviceId);
+      const addonDuration = s.addOnIds.reduce((acc, aoId) => {
+        const ao = svc?.add_ons?.find((a: { id: string; duration_minutes?: number }) => a.id === aoId);
+        return acc + (ao?.duration_minutes || 0);
+      }, 0);
+      return {
+        service_id: s.serviceId,
+        staff_id: s.staffId || undefined,
+        add_on_ids: s.addOnIds.length > 0 ? s.addOnIds : undefined,
+        price: svc?.price || 0,
+        duration_minutes: (svc?.duration_minutes || 60) + addonDuration,
+        currency: svc?.currency || getTenantDefaultCurrency(),
+        name: svc?.title || "Service",
+        ...(s.customization ? { customization: s.customization } : {}),
+      };
+    });
+    const selectedProductPayloads = selectedProducts.map((p) => {
+      const unit = safeNum(p.unitPrice);
+      const qty = Math.max(1, Math.floor(safeNum(p.quantity)) || 1);
+      return {
+        productId: p.productId,
+        productName: p.productName,
+        quantity: qty,
+        unitPrice: unit,
+        totalPrice: unit * qty,
+        productVariantId: p.productVariantId || null,
+      };
+    });
 
     const payload: Record<string, unknown> = {
       ...clientPayload,
       scheduled_at: scheduledAt,
-      services: selectedServices.map((s) => {
-        const svc = services?.find((sv) => sv.id === s.serviceId);
-        // Include add-on durations so the server builds the correct booking window
-        const addonDuration = s.addOnIds.reduce((acc, aoId) => {
-          const ao = svc?.add_ons?.find((a: { id: string; duration_minutes?: number }) => a.id === aoId);
-          return acc + (ao?.duration_minutes || 0);
-        }, 0);
-        return {
-          service_id: s.serviceId,
-          staff_id: s.staffId || undefined,
-          add_on_ids: s.addOnIds.length > 0 ? s.addOnIds : undefined,
-          price: svc?.price || 0,
-          duration_minutes: (svc?.duration_minutes || 60) + addonDuration,
-          currency: svc?.currency || getTenantDefaultCurrency(),
-          ...(s.customization ? { customization: s.customization } : {}),
-        };
-      }),
-      products: selectedProducts.map((p) => {
-        const unit = safeNum(p.unitPrice);
-        const qty = Math.max(1, Math.floor(safeNum(p.quantity)) || 1);
-        return {
-          productId: p.productId,
-          productName: p.productName,
-          quantity: qty,
-          unitPrice: unit,
-          totalPrice: unit * qty,
-          productVariantId: p.productVariantId || null,
-        };
-      }),
+      services: selectedServicePayloads,
+      products: selectedProductPayloads,
       location_type: locationType,
       location_id: locationType === "at_salon" ? selectedLocationId : undefined,
       special_requests: notes.trim() || undefined,
@@ -1142,6 +1154,113 @@ export default function NewBookingScreen() {
       if (addressLatitude != null && addressLongitude != null) {
         payload.address_latitude = addressLatitude;
         payload.address_longitude = addressLongitude;
+      }
+    }
+
+    if (isRecurring && selectedClient?.customer_id) {
+      setCreatingRecurring(true);
+      try {
+        const recurrenceInterval = recurrencePattern === "biweekly" ? 2 : 1;
+        const recurrenceFreq =
+          recurrencePattern === "daily"
+            ? "DAILY"
+            : recurrencePattern === "monthly"
+              ? "MONTHLY"
+              : "WEEKLY";
+        const cartItems = [
+          ...selectedServicePayloads.map((s) => ({
+            id: s.service_id,
+            type: "service" as const,
+            name: s.name,
+            quantity: 1,
+            unit_price: s.price,
+            total: s.price,
+            service_id: s.service_id,
+            staff_id: s.staff_id,
+            duration_minutes: s.duration_minutes,
+          })),
+          ...selectedProductPayloads.map((p) => ({
+            id: p.productId,
+            type: "product" as const,
+            name: p.productName,
+            quantity: p.quantity,
+            unit_price: p.unitPrice,
+            total: p.totalPrice,
+            product_id: p.productId,
+            product_variant_id: p.productVariantId,
+          })),
+        ];
+        const recurringBody: Record<string, unknown> = {
+          customer_id: selectedClient.customer_id,
+          service_id: selectedServicePayloads[0]?.service_id,
+          staff_id: selectedServicePayloads[0]?.staff_id,
+          location_id: locationType === "at_salon" ? selectedLocationId : null,
+          recurrence_rule: `FREQ=${recurrenceFreq};INTERVAL=${recurrenceInterval}`,
+          start_date: format(selectedDate, "yyyy-MM-dd"),
+          end_date: recurrenceEndDate.trim() || undefined,
+          start_time: selectedTime.length >= 5 ? `${selectedTime.slice(0, 5)}:00` : "10:00:00",
+          notes: notes.trim() || undefined,
+          is_active: true,
+          frequency: recurrencePattern,
+          preferred_time: selectedTime.slice(0, 5),
+          location_type: locationType,
+          payment_method: paymentMethod === "cash" || paymentMethod === "card" ? paymentMethod : undefined,
+          metadata: {
+            duration_minutes: summary.totalMinutes,
+            price: summary.total,
+            cart_items: cartItems,
+            services: selectedServicePayloads.map((s) => ({
+              offering_id: s.service_id,
+              staff_id: s.staff_id,
+            })),
+            ...(locationType === "at_home"
+              ? {
+                  address: {
+                    line1: addressLine1.trim() || null,
+                    line2: addressLine2.trim() || null,
+                    city: addressCity.trim() || null,
+                    state: addressStateProv.trim() || null,
+                    postal_code: addressPostalCode.trim() || null,
+                    country: addressCountry.trim() || null,
+                    latitude: addressLatitude,
+                    longitude: addressLongitude,
+                  },
+                }
+              : {}),
+          },
+        };
+        const recurringResult = await api.post<any>("/api/provider/recurring-appointments", recurringBody);
+        if (recurringResult.error) {
+          const msg = String((recurringResult.error as { message?: string })?.message || "Failed to create repeating visit");
+          Alert.alert("Error", msg);
+          return;
+        }
+        AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
+        const recurringData = recurringResult.data;
+        const warnings = readCreateBookingWarnings(recurringData);
+        const initialBookingId =
+          recurringData && typeof recurringData === "object" && recurringData !== null && "_initial_booking_id" in recurringData
+            ? String((recurringData as { _initial_booking_id?: unknown })._initial_booking_id || "")
+            : "";
+        if (paymentMethod === "yoco_pos" && initialBookingId) {
+          const extra = warnings?.length ? `\n\n${warnings.join("\n")}` : "";
+          Alert.alert(
+            "Repeating visit created",
+            `The first appointment is on the calendar. Use your Yoco terminal to complete card payment.${extra}`,
+            [{ text: "Continue", onPress: () => router.replace(`/(app)/(tabs)/bookings/${initialBookingId}?collectYoco=1` as never) }],
+          );
+        } else {
+          Alert.alert(
+            "Repeating visit created",
+            warnings?.length
+              ? `Series created, with a note:\n\n${warnings.join("\n")}`
+              : "Series created and the first appointment is on the calendar.",
+          );
+          router.replace("/(app)/(tabs)/more/recurring-appointments" as never);
+        }
+        return;
+      } finally {
+        setCreatingRecurring(false);
       }
     }
 
@@ -1198,13 +1317,13 @@ export default function NewBookingScreen() {
         ? String((responseData as { id: unknown }).id)
         : "";
     const cardChargeTotal =
-      paymentMethod === "card"
+      paymentMethod === "yoco_pos"
         ? paymentOption === "deposit"
           ? Math.ceil((summary.total * depositPercentage) / 100)
           : summary.total
         : 0;
     const goYoco =
-      paymentMethod === "card" && cardChargeTotal > 0 && newBookingId.length > 0;
+      paymentMethod === "yoco_pos" && cardChargeTotal > 0 && newBookingId.length > 0;
 
     const navigateYoco = () => {
       router.replace(`/(app)/(tabs)/bookings/${newBookingId}?collectYoco=1` as never);
@@ -1223,7 +1342,8 @@ export default function NewBookingScreen() {
       } else {
         Alert.alert("Success", "Booking created successfully");
       }
-      router.back();
+      // Return to the bookings list hub (avoids a stale "new booking" screen on back stack).
+      router.replace("/(app)/(tabs)/bookings" as never);
     }
   }
 
@@ -1337,7 +1457,7 @@ export default function NewBookingScreen() {
             paymentOption={paymentOption}
             depositPercentage={depositPercentage}
             packageName={selectedPackageId ? (packagesList.find((p) => p.id === selectedPackageId)?.name ?? null) : null}
-            creating={creating}
+            creating={creating || creatingRecurring}
             onConfirm={handleCreate}
             onBack={() => setShowConfirmation(false)}
           />
@@ -1639,6 +1759,7 @@ export default function NewBookingScreen() {
                     label="Search address"
                     value={addressSearchValue}
                     countryCode={mapboxCountryIso}
+                    geocodeTypes={["address"]}
                     placeholder="Start typing street or place…"
                     onSelect={(parsed) => {
                       setAddressSearchValue(parsed.full_address);
@@ -1894,7 +2015,9 @@ export default function NewBookingScreen() {
                         >
                           <Ionicons name="remove" size={14} color="#6b7280" />
                         </TouchableOpacity>
-                        <Text style={twStyle("text-sm font-medium text-gray-900 w-5 text-center")}>{p.quantity}</Text>
+                        <View style={twStyle("min-w-[32px] rounded-md bg-white px-2 py-1")}>
+                          <Text style={twStyle("text-center text-base font-bold text-gray-950")}>{p.quantity}</Text>
+                        </View>
                         <TouchableOpacity
                           onPress={() => setSelectedProducts((prev) => prev.map((pp, i) => i === idx ? { ...pp, quantity: pp.quantity + 1 } : pp))}
                           style={twStyle("h-7 w-7 items-center justify-center rounded-md border border-gray-200")}
@@ -2053,15 +2176,15 @@ export default function NewBookingScreen() {
 
               {/* -------- PAYMENT METHOD -------- */}
               <SectionLabel label="Payment Method" />
-              <View style={twStyle("mb-4 flex-row")}>
+              <View style={twStyle("mb-4 flex-row flex-wrap justify-between")}>
                 {PAYMENT_METHODS.map((pm, idx) => (
                   <TouchableOpacity
                     key={pm.value}
-                    style={[twStyle(`flex-1 flex-row items-center justify-center rounded-xl border py-3 ${
+                    style={[twStyle(`flex-row items-center justify-center rounded-xl border py-3 ${
                       paymentMethod === pm.value
                         ? "border-gray-900 bg-gray-900"
                         : "border-gray-200 bg-white"
-                    }`), idx < PAYMENT_METHODS.length - 1 ? { marginRight: 8 } : undefined]}
+                    }`), { width: "48%", marginBottom: idx < PAYMENT_METHODS.length - 1 ? 8 : 0 }]}
                     onPress={() => setPaymentMethod(pm.value)}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: paymentMethod === pm.value }}
@@ -2081,6 +2204,62 @@ export default function NewBookingScreen() {
                     </Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+
+              {/* -------- RECURRING -------- */}
+              <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+                <View style={twStyle("flex-row items-center justify-between")}>
+                  <View style={twStyle("flex-1 pr-3")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-900")}>Repeating visit</Text>
+                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                      Creates a recurring series and puts the first appointment on the calendar now.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={isRecurring}
+                    onValueChange={setIsRecurring}
+                    trackColor={{ false: "#d1d5db", true: "#818cf8" }}
+                    thumbColor={isRecurring ? "#6366f1" : "#f4f4f5"}
+                    accessibilityLabel="Repeating visit"
+                  />
+                </View>
+                {isRecurring ? (
+                  <View style={twStyle("mt-3")}>
+                    {!selectedClient ? (
+                      <Text style={twStyle("mb-2 text-xs text-amber-700")}>
+                        Select an existing saved client to create a repeating visit.
+                      </Text>
+                    ) : null}
+                    <View style={twStyle("flex-row flex-wrap")}>
+                      {(["daily", "weekly", "biweekly", "monthly"] as const).map((pattern) => (
+                        <TouchableOpacity
+                          key={pattern}
+                          style={[twStyle(`rounded-lg border px-3 py-2 ${
+                            recurrencePattern === pattern
+                              ? "border-gray-900 bg-gray-900"
+                              : "border-gray-200 bg-white"
+                          }`), { marginRight: 8, marginBottom: 8 }]}
+                          onPress={() => setRecurrencePattern(pattern)}
+                        >
+                          <Text style={twStyle(`text-xs font-semibold ${
+                            recurrencePattern === pattern ? "text-white" : "text-gray-700"
+                          }`)}>
+                            {pattern === "biweekly" ? "Bi-weekly" : pattern.charAt(0).toUpperCase() + pattern.slice(1)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <TextInput
+                      style={twStyle("rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-base text-gray-900")}
+                      placeholder="Optional end date (YYYY-MM-DD)"
+                      placeholderTextColor="#9ca3af"
+                      value={recurrenceEndDate}
+                      onChangeText={setRecurrenceEndDate}
+                      keyboardType="numbers-and-punctuation"
+                      accessibilityLabel="Recurring end date"
+                    />
+                  </View>
+                ) : null}
               </View>
 
               {/* -------- DEPOSIT OPTION -------- */}
@@ -2154,25 +2333,21 @@ export default function NewBookingScreen() {
               </View>
 
               {/* -------- REFERRAL SOURCE -------- */}
-              {referralSources.length > 0 && (
-                <>
-                  <SectionLabel label="Where did this client come from?" />
-                  <View style={twStyle("mb-4")}>
-                    <ChipCombobox
-                      singleSelect
-                      value={referralSourceId || null}
-                      onChange={(v) => setReferralSourceId(v ?? "")}
-                      staticSuggestions={[
-                        { value: "", label: "— None / Not specified —" },
-                        ...referralSources.map((s) => ({ value: s.id, label: s.name })),
-                      ]}
-                      allowFreeForm={false}
-                      placeholder="Select referral source"
-                      accessibilityLabel="Referral source"
-                    />
-                  </View>
-                </>
-              )}
+              <SectionLabel label="Where did this client come from?" />
+              <View style={twStyle("mb-4")}>
+                <ChipCombobox
+                  singleSelect
+                  value={referralSourceId || null}
+                  onChange={(v) => setReferralSourceId(v ?? "")}
+                  staticSuggestions={[
+                    { value: "", label: "— None / Not specified —" },
+                    ...referralSources.map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                  allowFreeForm={false}
+                  placeholder={referralSources.length > 0 ? "Select referral source" : "No sources configured yet"}
+                  accessibilityLabel="Referral source"
+                />
+              </View>
 
               {/* -------- PROVIDER INTAKE / CONSENT FORMS -------- */}
               {(formsLoading || formsError || activeProviderForms.length > 0) && (
@@ -2375,6 +2550,11 @@ export default function NewBookingScreen() {
           title="Select Time"
           snapHeight="half"
         >
+          <View style={twStyle("mb-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2")}>
+            <Text style={twStyle("text-xs leading-5 text-blue-800")}>
+              Provider-created bookings save immediately. Countdown timers only apply to customer checkout holds; held checkout slots show here as unavailable.
+            </Text>
+          </View>
           {availableSlotsLoading && timePickerRows.length === 0 ? (
             <Text style={twStyle("py-4 text-center text-sm text-gray-500")}>Loading times…</Text>
           ) : null}
@@ -2423,7 +2603,7 @@ export default function NewBookingScreen() {
                       >
                         <Text
                           style={twStyle(
-                            `text-sm font-medium ${
+                            `text-center text-sm font-medium ${
                               unavailable
                                 ? "text-red-300 line-through"
                                 : isActive
@@ -2434,6 +2614,11 @@ export default function NewBookingScreen() {
                         >
                           {row.time}
                         </Text>
+                        {unavailable && row.reason ? (
+                          <Text style={twStyle("mt-0.5 max-w-[96px] text-center text-[10px] text-red-400")} numberOfLines={2}>
+                            {row.reason}
+                          </Text>
+                        ) : null}
                       </TouchableOpacity>
                     );
                   })}
@@ -2678,9 +2863,14 @@ function formatNewBookingPaymentLabel(method: string): string {
     case "cash":
       return "Cash";
     case "card":
-      return "Card (Yoco)";
+      return "Manual Card";
+    case "yoco_pos":
+      return "Yoco Terminal";
+    case "payment_link":
+      return "Payment Link";
+    case "pay_later":
     case "online":
-      return "Pay later / link";
+      return "Pay Later";
     default:
       return method ? method.charAt(0).toUpperCase() + method.slice(1) : "—";
   }

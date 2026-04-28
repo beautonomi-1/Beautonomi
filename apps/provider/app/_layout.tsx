@@ -1,7 +1,7 @@
 import "../global.css";
 import "@/lib/i18n";
 import { useEffect } from "react";
-import { Platform, View } from "react-native";
+import { Platform, Text, TouchableOpacity, View } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
@@ -57,9 +57,26 @@ function SplashController() {
 }
 
 function ForceUpdateGate({ children }: { children: React.ReactNode }) {
-  const { updateRequired } = useForceUpdate();
+  const { updateRequired, openUpdate } = useForceUpdate();
   if (updateRequired) {
-    return <View style={{ flex: 1, backgroundColor: "#fff" }} />;
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff", padding: 24 }}>
+        <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827", textAlign: "center" }}>
+          Update required
+        </Text>
+        <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 22, color: "#4B5563", textAlign: "center" }}>
+          A newer version of Beautonomi Partner is required to keep bookings, payments, and provider tools working correctly.
+        </Text>
+        <TouchableOpacity
+          onPress={openUpdate}
+          accessibilityRole="button"
+          accessibilityLabel="Update Beautonomi Partner now"
+          style={{ marginTop: 24, minHeight: 48, borderRadius: 14, backgroundColor: "#111827", paddingHorizontal: 28, paddingVertical: 14 }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700" }}>Update now</Text>
+        </TouchableOpacity>
+      </View>
+    );
   }
   return <>{children}</>;
 }

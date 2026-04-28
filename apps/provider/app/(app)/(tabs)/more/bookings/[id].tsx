@@ -221,6 +221,15 @@ type BookingDetail = {
   provider_points_earned?: number | null;
 };
 
+type AppointmentProductOrderResponse = {
+  orders?: {
+    id: string;
+    order_number?: string | null;
+    status?: string | null;
+    payment_status?: string | null;
+  }[];
+};
+
 type BookingResourceRow = {
   id: string;
   resource_id: string;
@@ -333,22 +342,17 @@ export default function BookingDetailScreen() {
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
   const { data, loading, error, refresh } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
 
-  // §Provider-audit 2026-04: `useApi` cache has a 20s stale window, so
-  // returning from the calendar / list after a lifecycle mutation (elsewhere,
-  // e.g. from another device or web) could show stale data. Refetch on focus
-  // so the provider always sees the latest booking state.
-  useFocusEffect(
-    useCallback(() => {
-      if (id) {
-        void refresh();
-      }
-    }, [id, refresh]),
-  );
   // §Release-audit 2026-04: provider timezone for tz-aware reschedule. Falls
   // back to device local via buildZonedIsoForWallClock when unavailable.
   const { provider: providerProfile } = useProvider();
   const providerTimezone = providerProfile?.timezone ?? null;
   const bookingIdStr = typeof id === "string" ? id : Array.isArray(id) ? id[0] ?? "" : "";
+  const appointmentProductOrdersUrl =
+    bookingIdStr && (data?.products?.length ?? 0) > 0
+      ? `/api/provider/product-orders?booking_id=${encodeURIComponent(bookingIdStr)}&limit=1`
+      : "";
+  const { data: appointmentProductOrdersData } = useApi<AppointmentProductOrderResponse>(appointmentProductOrdersUrl);
+  const appointmentProductOrder = appointmentProductOrdersData?.orders?.[0] ?? null;
   const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -466,11 +470,25 @@ export default function BookingDetailScreen() {
   );
   const additionalCharges: AdditionalCharge[] = additionalChargesData?.charges ?? [];
 
-  const { data: bookingResourcesData } = useApi<{ resources: BookingResourceRow[] }>(
+  const { data: bookingResourcesData, refresh: refreshResources } = useApi<{ resources: BookingResourceRow[] }>(
     `/api/provider/bookings/${id}/resources`,
     { enabled: !!id }
   );
   const bookingResources = bookingResourcesData?.resources ?? [];
+
+  const refreshBookingDetail = useCallback(async () => {
+    await Promise.all([refresh(), refreshCharges(), refreshResources()]);
+  }, [refresh, refreshCharges, refreshResources]);
+
+  // Refetch all detail satellite data on focus; otherwise payment/add-on/resource
+  // state can stay stale after web or another-device changes.
+  useFocusEffect(
+    useCallback(() => {
+      if (id) {
+        void refreshBookingDetail();
+      }
+    }, [id, refreshBookingDetail]),
+  );
 
   // Request payment (additional charge + notify customer)
   const [showRequestPayment, setShowRequestPayment] = useState(false);
@@ -531,14 +549,13 @@ export default function BookingDetailScreen() {
       const res = await api.fetch<{ url: string }>(`/api/provider/bookings/${id}/consent-document`, {
         method: "POST",
         body: formData,
-        headers: { "Content-Type": "multipart/form-data" },
       });
       if (res.error) {
         Alert.alert("Error", String(res.error));
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert("Success", "Consent document uploaded");
-        await refresh();
+        await refreshBookingDetail();
       }
     } catch {
       Alert.alert("Error", "Failed to upload document");
@@ -950,7 +967,7 @@ export default function BookingDetailScreen() {
       `Booking #${b.booking_number ?? String(id).slice(0, 8)}`,
       "",
       `Provider: ${providerProfile?.business_name ?? "—"}`,
-      `When: ${formatDateTimeSafe(b.scheduled_at)} ${formatTimeSafe(b.scheduled_at)}`,
+      `When: ${formatDateTimeSafe(b.scheduled_at)}`,
       `Status: ${b.status}`,
       "",
       ...services.map((svc) => {
@@ -1105,7 +1122,9 @@ export default function BookingDetailScreen() {
     const chargeForBooking = yocoPendingChargeAmountRef.current ?? yocoTerminalAmount;
     const res = await postMutation(`/api/provider/bookings/${id}/mark-paid`, {
       payment_method: "card",
+      payment_provider: "yoco",
       reference: result.reference,
+      idempotency_key: `yoco:${id}:${result.reference}`,
       amount: Number(chargeForBooking.toFixed(2)),
     });
     if (res.error) {
@@ -1361,6 +1380,7 @@ export default function BookingDetailScreen() {
     const res = await postMutation(`/api/provider/bookings/${id}/mark-paid`, {
       payment_method: markPaidMethod,
       amount: Number(yocoTerminalAmount.toFixed(2)),
+      idempotency_key: `manual:${id}:${markPaidMethod}:${Number(yocoTerminalAmount.toFixed(2))}:${Number(b.total_paid ?? 0).toFixed(2)}`,
     });
     setMarkingPaid(false);
     if (res.error) {
@@ -1756,7 +1776,7 @@ export default function BookingDetailScreen() {
               // §Provider-launch (audit 2026-04): pull-to-refresh on booking detail.
               setRefreshing(true);
               try {
-                await refresh();
+                await refreshBookingDetail();
               } finally {
                 setRefreshing(false);
               }
@@ -2674,6 +2694,24 @@ export default function BookingDetailScreen() {
                 </View>
               );
             })}
+            {appointmentProductOrder ? (
+              <TouchableOpacity
+                onPress={() =>
+                  router.push(
+                    `/(app)/(tabs)/more/product-orders?order=${encodeURIComponent(appointmentProductOrder.id)}` as never,
+                  )
+                }
+                style={twStyle("mt-1 rounded-xl border border-amber-200 bg-amber-50 p-3 flex-row items-center justify-between")}
+              >
+                <View style={twStyle("flex-1 pr-3")}>
+                  <Text style={twStyle("text-sm font-semibold text-amber-950")}>Product pickup linked</Text>
+                  <Text style={twStyle("text-xs text-amber-800 mt-0.5")}>
+                    {appointmentProductOrder.order_number ?? "Product order"} · {(appointmentProductOrder.status ?? "confirmed").replace(/_/g, " ")}
+                  </Text>
+                </View>
+                <Text style={twStyle("text-sm font-semibold text-amber-800")}>Fulfill</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
 

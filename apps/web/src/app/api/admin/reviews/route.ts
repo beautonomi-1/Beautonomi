@@ -30,9 +30,55 @@ export async function GET(request: NextRequest) {
     const customerId = searchParams.get("customer_id");
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
+    const search = searchParams.get("search")?.trim() ?? "";
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = (page - 1) * limit;
+
+    let searchOrFilter: string | null = null;
+    if (search) {
+      const safeIlike = search.replace(/[%_]/g, "");
+
+      const { data: matchingBookings } = await supabase
+        .from("bookings")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .ilike("booking_number", `%${search}%`)
+        .limit(300);
+
+      const { data: matchingCustomers } = await supabase
+        .from("users")
+        .select("id")
+        .or(`full_name.ilike.%${search}%,email.ilike.%${search}%`)
+        .limit(300);
+
+      const { data: matchingSearchProviders } = await supabase
+        .from("providers")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .ilike("business_name", `%${search}%`)
+        .limit(300);
+
+      const bookingIds = (matchingBookings ?? []).map((b: { id: string }) => b.id);
+      const customerIds = (matchingCustomers ?? []).map((u: { id: string }) => u.id);
+      const nameMatchedProviderIds = (matchingSearchProviders ?? []).map((p: { id: string }) => p.id);
+
+      const orParts: string[] = [];
+      if (safeIlike) {
+        orParts.push(`comment.ilike.%${safeIlike}%`);
+      }
+      if (bookingIds.length) orParts.push(`booking_id.in.(${bookingIds.join(",")})`);
+      if (customerIds.length) orParts.push(`customer_id.in.(${customerIds.join(",")})`);
+      if (nameMatchedProviderIds.length) {
+        orParts.push(`provider_id.in.(${nameMatchedProviderIds.join(",")})`);
+      }
+      // No clause would match (e.g. only wildcards) — return no rows
+      if (orParts.length === 0) {
+        searchOrFilter = "id.eq.00000000-0000-0000-0000-000000000000";
+      } else {
+        searchOrFilter = orParts.join(",");
+      }
+    }
 
     let query = supabase
       .from("reviews")
@@ -61,8 +107,11 @@ export async function GET(request: NextRequest) {
         booking:bookings(id, booking_number, status)
       `)
       .in("provider_id", tenantProviderIds.length > 0 ? tenantProviderIds : ["__none__"])
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order("created_at", { ascending: false });
+
+    if (searchOrFilter) {
+      query = query.or(searchOrFilter);
+    }
 
     // Apply filters
     if (status === "visible") {
@@ -92,6 +141,8 @@ export async function GET(request: NextRequest) {
       query = query.lte("created_at", endDate);
     }
 
+    query = query.range(offset, offset + limit - 1);
+
     const { data: reviews, error } = await query;
 
     if (error) {
@@ -103,6 +154,10 @@ export async function GET(request: NextRequest) {
       .from("reviews")
       .select("*", { count: "exact", head: true })
       .in("provider_id", tenantProviderIds.length > 0 ? tenantProviderIds : ["__none__"]);
+
+    if (searchOrFilter) {
+      countQuery = countQuery.or(searchOrFilter);
+    }
 
     if (status === "visible") {
       countQuery = countQuery.eq("is_visible", true);

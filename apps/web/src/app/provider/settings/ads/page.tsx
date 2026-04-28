@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { fetcher } from "@/lib/http/fetcher";
+import { formatApiErrorMessage } from "@/lib/http/api-error";
 import { toast } from "sonner";
 import {
   Plus,
@@ -18,6 +19,7 @@ import {
   Play,
   MousePointer,
   Eye,
+  Users,
   Banknote,
   ShoppingBag,
 } from "lucide-react";
@@ -52,12 +54,34 @@ type Campaign = {
 
 type GlobalCategory = { id: string; name: string; slug: string };
 
+function isTimeBasedCampaign(campaign: Campaign | null): boolean {
+  return campaign?.billing_model === "time_based";
+}
+
+function isImpressionPackCampaign(campaign: Campaign | null): boolean {
+  return Boolean(campaign && campaign.billing_model !== "time_based" && campaign.pack_impressions != null);
+}
+
+function canEditBudgetFields(campaign: Campaign | null): boolean {
+  return Boolean(campaign && !isTimeBasedCampaign(campaign) && !isImpressionPackCampaign(campaign));
+}
+
+function campaignModelLabel(campaign: Campaign): string {
+  if (isTimeBasedCampaign(campaign)) return "time boost";
+  if (isImpressionPackCampaign(campaign)) return "impression pack";
+  return "CPC budget";
+}
+
 type PerformanceSummary = {
   impressions: number;
+  reach: number;
   clicks: number;
   spend: number;
   sales: number;
 };
+
+const formatCompactNumber = (value: number | null | undefined) =>
+  new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Number(value ?? 0));
 
 type ImpressionPack = { id: string; impressions: number; price_zar: number; display_order: number };
 type TimePack = { id: string; duration_days: number; label: string; price_zar: number; display_order: number };
@@ -92,6 +116,7 @@ export default function ProviderAdsPage() {
   });
 
   const enabled = Boolean(adsConfig?.enabled) || adsEnabled;
+  const cpcBudgetAvailable = availableModels.length === 0 || availableModels.includes("cpc_budget");
 
   const loadCampaigns = async () => {
     try {
@@ -220,19 +245,31 @@ export default function ProviderAdsPage() {
 
   const updateCampaign = async () => {
     if (!editCampaign) return;
+    const canEditBudget = canEditBudgetFields(editCampaign);
+    if (canEditBudget && form.budget) {
+      const nextBudget = parseFloat(form.budget);
+      if (Number.isFinite(nextBudget) && nextBudget > Number(editCampaign.budget ?? 0)) {
+        toast.error("Budget increases require a new paid campaign or pack. Reduce the budget, or buy a new boost.");
+        return;
+      }
+    }
     setUpdating(editCampaign.id);
     try {
-      await fetcher.patch(`/api/provider/ads/campaigns/${editCampaign.id}`, {
-        budget: form.budget ? parseFloat(form.budget) : undefined,
-        daily_budget: form.daily_budget === "" ? null : form.daily_budget ? parseFloat(form.daily_budget) : undefined,
-        bid_cpc: form.bid_cpc ? parseFloat(form.bid_cpc) : undefined,
+      const payload: Record<string, unknown> = {
         targeting: { global_category_ids: form.global_category_ids },
-      });
+      };
+      if (canEditBudget) {
+        payload.budget = form.budget ? parseFloat(form.budget) : undefined;
+        payload.daily_budget =
+          form.daily_budget === "" ? null : form.daily_budget ? parseFloat(form.daily_budget) : undefined;
+        payload.bid_cpc = form.bid_cpc ? parseFloat(form.bid_cpc) : undefined;
+      }
+      await fetcher.patch(`/api/provider/ads/campaigns/${editCampaign.id}`, payload);
       await loadCampaigns();
       setEditCampaign(null);
       toast.success("Campaign updated");
-    } catch {
-      toast.error("Failed to update campaign");
+    } catch (err) {
+      toast.error(formatApiErrorMessage(err, "Failed to update campaign"));
     } finally {
       setUpdating(null);
     }
@@ -244,8 +281,8 @@ export default function ProviderAdsPage() {
       await fetcher.patch(`/api/provider/ads/campaigns/${campaignId}`, { status });
       await loadCampaigns();
       toast.success(status === "active" ? "Campaign activated" : status === "paused" ? "Campaign paused" : "Campaign ended");
-    } catch {
-      toast.error("Failed to update status");
+    } catch (err) {
+      toast.error(formatApiErrorMessage(err, "Failed to update status"));
     } finally {
       setUpdating(null);
     }
@@ -272,47 +309,42 @@ export default function ProviderAdsPage() {
   return (
     <SettingsDetailLayout
       title="Growth & Marketing — Paid ads"
-      subtitle="Create and manage boosted profile campaigns. Placement in search depends on your bid, profile quality, and relevance to the customer. Set daily or total budget and target specific categories."
+      subtitle="Boost your profile in high-intent discovery moments, target the categories that matter, and track the visibility, reach, clicks, and bookings your campaigns generate."
     >
       {!enabled && (
         <Alert className="mb-6">
           <AlertDescription>
-            Sponsored listings are off for this marketplace, or packs are not published yet. A marketplace admin turns this
-            on in <strong>Admin → Control Plane → Ads</strong> (enable the module and activate impression or time packs).
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {enabled && (
-        <Alert className="mb-6 border-indigo-200 bg-indigo-50/80">
-          <AlertDescription className="text-indigo-950">
-            <strong>Where advertising is bought:</strong> you purchase boosts and budgets on this page.{" "}
-            <strong>Who sets pricing:</strong> your marketplace configures packs, models, and disclosure labels in{" "}
-            <strong>Admin → Control Plane → Ads</strong>.{" "}
-            <strong>Where customers see it:</strong> winning campaigns appear as sponsored cards in the Beautonomi customer
-            app and website (search and home).
+            Sponsored listings are not available in your market yet. When ads are available, you will be able to boost your
+            profile and track visibility, reach, clicks, and bookings here.
           </AlertDescription>
         </Alert>
       )}
 
       {/* Ad Performance Dashboard */}
       {enabled && performance && (
-        <SectionCard title="Ad Performance" className="mb-6">
+        <SectionCard title="Ad performance" className="mb-6">
           <p className="text-sm text-muted-foreground mb-4">
-            Track impressions, clicks, spend, and sales generated by your ads.
+            See how many people your ads reached, how often they were shown, and how many customers took action.
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="rounded-lg border p-4 flex items-center gap-3">
               <Eye className="h-8 w-8 text-muted-foreground" />
               <div>
-                <p className="text-2xl font-semibold">{performance.impressions}</p>
+                <p className="text-2xl font-semibold">{formatCompactNumber(performance.impressions)}</p>
                 <p className="text-xs text-muted-foreground">Impressions</p>
+              </div>
+            </div>
+            <div className="rounded-lg border p-4 flex items-center gap-3">
+              <Users className="h-8 w-8 text-muted-foreground" />
+              <div>
+                <p className="text-2xl font-semibold">{formatCompactNumber(performance.reach)}</p>
+                <p className="text-xs text-muted-foreground">Reach</p>
               </div>
             </div>
             <div className="rounded-lg border p-4 flex items-center gap-3">
               <MousePointer className="h-8 w-8 text-muted-foreground" />
               <div>
-                <p className="text-2xl font-semibold">{performance.clicks}</p>
+                <p className="text-2xl font-semibold">{formatCompactNumber(performance.clicks)}</p>
                 <p className="text-xs text-muted-foreground">Clicks</p>
               </div>
             </div>
@@ -326,7 +358,7 @@ export default function ProviderAdsPage() {
             <div className="rounded-lg border p-4 flex items-center gap-3">
               <ShoppingBag className="h-8 w-8 text-muted-foreground" />
               <div>
-                <p className="text-2xl font-semibold">{performance.sales}</p>
+                <p className="text-2xl font-semibold">{formatCompactNumber(performance.sales)}</p>
                 <p className="text-xs text-muted-foreground">Sales (bookings)</p>
               </div>
             </div>
@@ -440,12 +472,13 @@ export default function ProviderAdsPage() {
                 </div>
                 </div>
               )}
-              {packs.length > 0 && (
+              {cpcBudgetAvailable && packs.length > 0 && (
                 <div className="border-t pt-4">
                   <Label className="text-base font-medium">Or set a custom budget</Label>
                   <p className="text-sm text-muted-foreground mb-3">Open-ended budget and bid per click (for advanced use).</p>
                 </div>
               )}
+              {cpcBudgetAvailable && (
               <div className="flex flex-wrap items-end gap-3 p-4 border rounded-lg bg-muted/30">
                 <div>
                   <Label>Total budget ({currencyCode})</Label>
@@ -515,6 +548,7 @@ export default function ProviderAdsPage() {
                   )}
                 </Button>
               </div>
+              )}
             </>
           )}
 
@@ -533,6 +567,7 @@ export default function ProviderAdsPage() {
                       <Badge variant={c.status === "active" ? "default" : "secondary"}>
                         {c.status}
                       </Badge>
+                      <Badge variant="outline">{campaignModelLabel(c)}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {c.billing_model === "time_based"
@@ -555,9 +590,9 @@ export default function ProviderAdsPage() {
                       onClick={() => openEdit(c)}
                       disabled={updating === c.id}
                     >
-                      Edit
+                      {canEditBudgetFields(c) ? "Edit" : "Edit targeting"}
                     </Button>
-                    {c.status === "draft" || c.status === "paused" ? (
+                    {(c.status === "draft" || c.status === "paused") && Number(c.budget) > Number(c.spent ?? 0) ? (
                       <Button
                         size="sm"
                         onClick={() => setStatus(c.id, "active")}
@@ -566,6 +601,8 @@ export default function ProviderAdsPage() {
                         {updating === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
                         Activate
                       </Button>
+                    ) : c.status === "draft" || c.status === "paused" ? (
+                      <Badge variant="outline">awaiting payment</Badge>
                     ) : c.status === "active" ? (
                       <Button
                         variant="outline"
@@ -601,39 +638,57 @@ export default function ProviderAdsPage() {
           <DialogHeader>
             <DialogTitle>Edit campaign</DialogTitle>
             <DialogDescription>
-              Update budget, daily cap, bid, and targeting. You can pause or turn off the campaign at any time.
+              {canEditBudgetFields(editCampaign)
+                ? "Update budget, daily cap, bid, and targeting. Budget increases require a new paid boost."
+                : "This campaign was bought as a pack or time boost. Pricing and dates are locked by the platform model, but targeting can still be refined."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div>
-              <Label>Total budget ({currencyCode})</Label>
-              <Input
-                type="number"
-                min={0}
-                value={form.budget}
-                onChange={(e) => setForm((p) => ({ ...p, budget: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Daily budget ({currencyCode}, optional)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={form.daily_budget}
-                onChange={(e) => setForm((p) => ({ ...p, daily_budget: e.target.value }))}
-                placeholder="No daily cap"
-              />
-            </div>
-            <div>
-              <Label>Bid per click ({currencyCode})</Label>
-              <Input
-                type="number"
-                min={0}
-                step={0.5}
-                value={form.bid_cpc}
-                onChange={(e) => setForm((p) => ({ ...p, bid_cpc: e.target.value }))}
-              />
-            </div>
+            {canEditBudgetFields(editCampaign) ? (
+              <>
+                <div>
+                  <Label>Total budget ({currencyCode})</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={Number(editCampaign?.budget ?? 0)}
+                    value={form.budget}
+                    onChange={(e) => setForm((p) => ({ ...p, budget: e.target.value }))}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    You can lower or re-balance this budget. To add more money, buy a new boost or pack.
+                  </p>
+                </div>
+                <div>
+                  <Label>Daily budget ({currencyCode}, optional)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.daily_budget}
+                    onChange={(e) => setForm((p) => ({ ...p, daily_budget: e.target.value }))}
+                    placeholder="No daily cap"
+                  />
+                </div>
+                <div>
+                  <Label>Bid per click ({currencyCode})</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={form.bid_cpc}
+                    onChange={(e) => setForm((p) => ({ ...p, bid_cpc: e.target.value }))}
+                  />
+                </div>
+              </>
+            ) : (
+              <Alert>
+                <AlertDescription>
+                  {isTimeBasedCampaign(editCampaign)
+                    ? "Time boosts use the duration and price configured by the marketplace. Buy another boost when you want to extend it."
+                    : "Impression packs use the fixed number of impressions and price configured by the marketplace."}
+                </AlertDescription>
+              </Alert>
+            )}
             <div>
               <Label>Target categories</Label>
               <div className="flex flex-wrap gap-2 mt-2">

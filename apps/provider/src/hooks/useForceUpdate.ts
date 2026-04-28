@@ -24,6 +24,16 @@ function compareVersions(a: string, b: string): number {
 
 export function useForceUpdate() {
   const [updateRequired, setUpdateRequired] = useState(false);
+  const [requiredUpdateUrl, setRequiredUpdateUrl] = useState<string | null>(null);
+
+  const openUpdate = () => {
+    const storeUrl =
+      requiredUpdateUrl ??
+      (Platform.OS === "ios"
+        ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
+        : "https://play.google.com/store/apps/details?id=com.beautonomi.partner");
+    Linking.openURL(storeUrl);
+  };
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -48,6 +58,7 @@ export function useForceUpdate() {
           compareVersions(currentVersion, data.minVersion) < 0
         ) {
           setUpdateRequired(true);
+          setRequiredUpdateUrl(data.updateUrl ?? null);
           Alert.alert(
             "Update Required",
             "A new version of Beautonomi is available. Please update to continue using the app.",
@@ -55,15 +66,12 @@ export function useForceUpdate() {
               {
                 text: "Update Now",
                 onPress: () => {
-                  if (data.updateUrl) {
-                    Linking.openURL(data.updateUrl);
-                  } else {
-                    const storeUrl =
-                      Platform.OS === "ios"
-                        ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
-                        : "https://play.google.com/store/apps/details?id=com.beautonomi.partner";
-                    Linking.openURL(storeUrl);
-                  }
+                  const storeUrl =
+                    data.updateUrl ??
+                    (Platform.OS === "ios"
+                      ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
+                      : "https://play.google.com/store/apps/details?id=com.beautonomi.partner");
+                  Linking.openURL(storeUrl);
                 },
               },
             ],
@@ -102,5 +110,5 @@ export function useForceUpdate() {
     check();
   }, []);
 
-  return { updateRequired };
+  return { updateRequired, openUpdate };
 }

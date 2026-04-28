@@ -31,6 +31,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useAuth } from "@/providers/AuthProvider";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { DEFAULT_AUTH } from "@/lib/config-bundle";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
@@ -43,9 +45,7 @@ import { parsePhoneToCountryAndNational } from "@/constants/phone";
 import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
-  isCompleteSupabaseSmsOtp,
-  SUPABASE_AUTH_OTP_LENGTH,
-  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+  isCompleteOtpForLength,
 } from "@/lib/supabase-sms-otp";
 import { resolvePostLoginHref } from "@/lib/post-login-href";
 import { consumePostOnboardingHref } from "@/lib/post-onboarding-redirect";
@@ -135,6 +135,10 @@ export default function CustomerOnboarding() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const { refreshSession, user } = useAuth();
+  const { bundle: configBundle } = useConfigBundle();
+  const authPolicy = configBundle?.auth ?? DEFAULT_AUTH;
+  const smsOtpLen = authPolicy.sms_otp_length;
+  const smsOtpExpirySec = authPolicy.sms_otp_expiration_seconds;
   const { pickWithOptions, pickFromCamera, loading: pickLoading } = useImagePicker();
 
   const [step, setStep] = useState(1);
@@ -285,10 +289,10 @@ export default function CustomerOnboarding() {
       setPendingPhoneE164(e164);
       setOtpCode("");
       setOtpSent(true);
-      setCountdown(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS);
+      setCountdown(smsOtpExpirySec);
       Alert.alert(
         "Code sent",
-        `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code we sent to your phone. Valid for ~${Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60)} min.`
+        `Enter the ${smsOtpLen}-digit code we sent to your phone. Valid for ~${Math.max(1, Math.round(smsOtpExpirySec / 60))} min.`
       );
     } catch (e: unknown) {
       Alert.alert("Failed", (e as { message?: string })?.message ?? "Could not send code. Try again.");
@@ -299,8 +303,8 @@ export default function CustomerOnboarding() {
 
   const handleVerifyOtp = async (codeOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(codeOverride ?? otpCode);
-    if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) {
-      Alert.alert("Invalid code", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS.`);
+    if (!pendingPhoneE164 || !isCompleteOtpForLength(token, smsOtpLen)) {
+      Alert.alert("Invalid code", `Enter the ${smsOtpLen}-digit code from your SMS.`);
       return;
     }
     setOtpVerifying(true);
@@ -684,21 +688,23 @@ export default function CustomerOnboarding() {
 
                   {otpSent && (
                     <View style={{ marginTop: 20 }}>
-                      <SectionLabel required>Enter {SUPABASE_AUTH_OTP_LENGTH}-digit code</SectionLabel>
+                      <SectionLabel required>Enter {smsOtpLen}-digit code</SectionLabel>
                       <OtpDigitRow
-                        length={SUPABASE_AUTH_OTP_LENGTH}
+                        length={smsOtpLen}
                         value={otpCode}
                         onChange={setOtpCode}
-                        onComplete={(code) => { if (!otpVerifying) void handleVerifyOtp(code); }}
+                        onComplete={(code) => {
+                          if (!otpVerifying && isCompleteOtpForLength(code, smsOtpLen)) void handleVerifyOtp(code);
+                        }}
                         disabled={otpVerifying || phoneVerified}
                       />
                       <TouchableOpacity
                         onPress={() => void handleVerifyOtp()}
-                        disabled={!isCompleteSupabaseSmsOtp(otpCode) || otpVerifying || phoneVerified}
+                        disabled={!isCompleteOtpForLength(otpCode, smsOtpLen) || otpVerifying || phoneVerified}
                         style={{
                           marginTop: 12, backgroundColor: PRIMARY, borderRadius: RADIUS_BUTTON,
                           paddingVertical: 14, alignItems: "center",
-                          opacity: !isCompleteSupabaseSmsOtp(otpCode) || otpVerifying ? 0.5 : 1,
+                          opacity: !isCompleteOtpForLength(otpCode, smsOtpLen) || otpVerifying ? 0.5 : 1,
                         }}
                       >
                         {otpVerifying ? (

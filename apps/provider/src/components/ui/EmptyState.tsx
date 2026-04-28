@@ -7,10 +7,11 @@ interface EmptyStateProps {
   title: string;
   description?: string;
   actionLabel?: string;
+  actionAccessibilityLabel?: string;
   onAction?: () => void;
 }
 
-export function EmptyState({ icon = "folder-open-outline", title, description, actionLabel, onAction }: EmptyStateProps) {
+export function EmptyState({ icon = "folder-open-outline", title, description, actionLabel, actionAccessibilityLabel, onAction }: EmptyStateProps) {
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, paddingVertical: 64 }}>
       <View style={{ marginBottom: 16, height: 64, width: 64, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: Colors.gray[100] }}>
@@ -24,6 +25,8 @@ export function EmptyState({ icon = "folder-open-outline", title, description, a
         <TouchableOpacity
           style={{ marginTop: 24, borderRadius: 12, backgroundColor: Colors.gray[900], paddingHorizontal: 24, paddingVertical: 12 }}
           onPress={onAction}
+          accessibilityRole="button"
+          accessibilityLabel={actionAccessibilityLabel ?? actionLabel}
         >
           <Text style={{ fontWeight: "500", color: Colors.white }}>{actionLabel}</Text>
         </TouchableOpacity>

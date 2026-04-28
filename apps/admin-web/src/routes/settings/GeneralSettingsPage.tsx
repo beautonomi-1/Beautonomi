@@ -8,6 +8,7 @@ import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { Mail, Smartphone } from "lucide-react";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -38,6 +39,34 @@ type FeaturesForm = {
 type SocialAuthForm = {
   google: boolean;
   apple: boolean;
+};
+
+type SupabaseAuthPolicyForm = {
+  email_provider_enabled: boolean;
+  secure_email_change: boolean;
+  secure_password_change: boolean;
+  require_current_password: boolean;
+  prevent_leaked_passwords: boolean;
+  minimum_password_length: number;
+  password_requirements: "none" | "letters_and_digits" | "lowercase_uppercase_number";
+  email_otp_expiration_seconds: number;
+  email_otp_length: number;
+  phone_provider_enabled: boolean;
+  phone_confirmations_enabled: boolean;
+  sms_provider: "twilio";
+  sms_otp_expiration_seconds: number;
+  sms_otp_length: number;
+  sms_message_template: string;
+};
+
+type TwilioForm = {
+  enabled: boolean;
+  account_sid: string;
+  auth_token: string;
+  message_service_sid: string;
+  content_sid: string;
+  sms_from: string;
+  whatsapp_from: string;
 };
 
 type OnesignalForm = {
@@ -107,6 +136,32 @@ export function GeneralSettingsPage() {
     rest_api_key: "",
     rest_api_key_provider: "",
   });
+  const [auth, setAuth] = useState<SupabaseAuthPolicyForm>({
+    email_provider_enabled: true,
+    secure_email_change: true,
+    secure_password_change: true,
+    require_current_password: true,
+    prevent_leaked_passwords: true,
+    minimum_password_length: 8,
+    password_requirements: "none",
+    email_otp_expiration_seconds: 3600,
+    email_otp_length: 6,
+    phone_provider_enabled: true,
+    phone_confirmations_enabled: true,
+    sms_provider: "twilio",
+    sms_otp_expiration_seconds: 120,
+    sms_otp_length: 6,
+    sms_message_template: "Your OTP code is {{ .Code }}",
+  });
+  const [twilio, setTwilio] = useState<TwilioForm>({
+    enabled: false,
+    account_sid: "",
+    auth_token: "",
+    message_service_sid: "",
+    content_sid: "",
+    sms_from: "",
+    whatsapp_from: "",
+  });
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -143,6 +198,56 @@ export function GeneralSettingsPage() {
       rest_api_key: "",
       rest_api_key_provider: "",
     });
+    const a = (q.data as { auth?: Partial<SupabaseAuthPolicyForm> }).auth;
+    if (a && typeof a === "object") {
+      setAuth({
+        email_provider_enabled: a.email_provider_enabled !== false,
+        secure_email_change: a.secure_email_change !== false,
+        secure_password_change: a.secure_password_change !== false,
+        require_current_password: a.require_current_password !== false,
+        prevent_leaked_passwords: a.prevent_leaked_passwords !== false,
+        minimum_password_length:
+          typeof a.minimum_password_length === "number" && a.minimum_password_length > 0
+            ? a.minimum_password_length
+            : 8,
+        password_requirements:
+          a.password_requirements === "letters_and_digits" ||
+          a.password_requirements === "lowercase_uppercase_number" ||
+          a.password_requirements === "none"
+            ? a.password_requirements
+            : "none",
+        email_otp_expiration_seconds:
+          typeof a.email_otp_expiration_seconds === "number" && a.email_otp_expiration_seconds > 0
+            ? a.email_otp_expiration_seconds
+            : 3600,
+        email_otp_length:
+          typeof a.email_otp_length === "number" && a.email_otp_length > 0 ? a.email_otp_length : 6,
+        phone_provider_enabled: a.phone_provider_enabled !== false,
+        phone_confirmations_enabled: a.phone_confirmations_enabled !== false,
+        sms_provider: a.sms_provider === "twilio" ? "twilio" : "twilio",
+        sms_otp_expiration_seconds:
+          typeof a.sms_otp_expiration_seconds === "number" && a.sms_otp_expiration_seconds > 0
+            ? a.sms_otp_expiration_seconds
+            : 120,
+        sms_otp_length: typeof a.sms_otp_length === "number" && a.sms_otp_length > 0 ? a.sms_otp_length : 6,
+        sms_message_template:
+          typeof a.sms_message_template === "string" && a.sms_message_template.trim()
+            ? a.sms_message_template.trim()
+            : "Your OTP code is {{ .Code }}",
+      });
+    }
+    const tw = (q.data as { twilio?: Partial<TwilioForm> }).twilio;
+    if (tw && typeof tw === "object") {
+      setTwilio({
+        enabled: tw.enabled !== false,
+        account_sid: (tw as { account_sid?: string }).account_sid === "***" ? "" : (tw as { account_sid?: string }).account_sid ?? "",
+        auth_token: (tw as { auth_token?: string }).auth_token === "***" ? "" : (tw as { auth_token?: string }).auth_token ?? "",
+        message_service_sid: (tw as { message_service_sid?: string }).message_service_sid ?? "",
+        content_sid: (tw as { content_sid?: string }).content_sid ?? "",
+        sms_from: (tw as { sms_from?: string }).sms_from ?? "",
+        whatsapp_from: (tw as { whatsapp_from?: string }).whatsapp_from ?? "",
+      });
+    }
   }, [q.data]);
 
   const saveMut = useMutation({
@@ -169,12 +274,27 @@ export function GeneralSettingsPage() {
             ? { rest_api_key_provider: onesignal.rest_api_key_provider.trim() }
             : {}),
         } as Record<string, unknown>,
+        auth: {
+          ...((existing.auth as Record<string, unknown>) ?? {}),
+          ...auth,
+        } as SupabaseAuthPolicyForm,
+        twilio: {
+          ...((existing.twilio as Record<string, unknown>) ?? {}),
+          enabled: twilio.enabled,
+          account_sid: twilio.account_sid.trim(),
+          message_service_sid: twilio.message_service_sid.trim(),
+          content_sid: twilio.content_sid.trim(),
+          sms_from: twilio.sms_from.trim(),
+          whatsapp_from: twilio.whatsapp_from.trim(),
+          ...(twilio.auth_token.trim() ? { auth_token: twilio.auth_token.trim() } : {}),
+        } as Record<string, unknown>,
       };
       return adminApi.patchJson("/api/admin/settings", merged);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.settings() });
       setOnesignal((p) => ({ ...p, rest_api_key: "", rest_api_key_provider: "" }));
+      setTwilio((p) => ({ ...p, auth_token: "" }));
       setSaved(true);
       setSaveError(null);
       setTimeout(() => setSaved(false), 3000);
@@ -202,7 +322,7 @@ export function GeneralSettingsPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Platform settings"
-        description="Configure branding, localisation, and core platform features."
+        description="Configure branding, localisation, Supabase email auth policy, and core platform features."
         actions={
           <button
             type="button"
@@ -324,6 +444,253 @@ export function GeneralSettingsPage() {
             />
             <span className="text-sm text-gray-700">Enable Apple login/signup</span>
           </label>
+        </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <div className="mb-3 flex items-start gap-2">
+          <Mail className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" aria-hidden />
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Email auth (Supabase)</h3>
+            <p className="mt-1 text-xs text-gray-600">
+              Record the same options you use under Supabase → Authentication so operators have a single checklist.
+              Live enforcement is still in your Supabase project: update both when you change policy.
+            </p>
+          </div>
+        </div>
+        <div className="mb-4 space-y-3">
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={auth.email_provider_enabled}
+              onChange={(e) => setAuth((p) => ({ ...p, email_provider_enabled: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+            />
+            <span className="text-sm text-gray-800">Enable email provider (email sign up and sign in)</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={auth.secure_email_change}
+              onChange={(e) => setAuth((p) => ({ ...p, secure_email_change: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+            />
+            <span className="text-sm text-gray-800">Secure email change (confirm on both old and new address)</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={auth.secure_password_change}
+              onChange={(e) => setAuth((p) => ({ ...p, secure_password_change: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+            />
+            <span className="text-sm text-gray-800">
+              Secure password change (must be recently logged in to change password without reauthentication)
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={auth.require_current_password}
+              onChange={(e) => setAuth((p) => ({ ...p, require_current_password: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+            />
+            <span className="text-sm text-gray-800">Require current password when updating password</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={auth.prevent_leaked_passwords}
+              onChange={(e) => setAuth((p) => ({ ...p, prevent_leaked_passwords: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+            />
+            <span className="text-sm text-gray-800">Prevent use of leaked passwords (HaveIBeenPwned — Supabase Pro+)</span>
+          </label>
+        </div>
+        <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">Minimum password length</label>
+            <input
+              type="number"
+              min={6}
+              max={128}
+              value={auth.minimum_password_length}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!Number.isNaN(n)) setAuth((p) => ({ ...p, minimum_password_length: n }));
+              }}
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <p className="mt-1 text-[11px] text-gray-500">Minimum 6 in Supabase; 8+ is often recommended.</p>
+          </div>
+          <div>
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">Password requirements (character rules)</label>
+            <select
+              value={auth.password_requirements}
+              onChange={(e) =>
+                setAuth((p) => ({
+                  ...p,
+                  password_requirements: e.target.value as SupabaseAuthPolicyForm["password_requirements"],
+                }))
+              }
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="none">No required character classes (default)</option>
+              <option value="letters_and_digits">Letters and digits</option>
+              <option value="lowercase_uppercase_number">Lowercase, uppercase, and numbers</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">Email OTP / link expiration (seconds)</label>
+            <input
+              type="number"
+              min={30}
+              max={604800}
+              value={auth.email_otp_expiration_seconds}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!Number.isNaN(n)) setAuth((p) => ({ ...p, email_otp_expiration_seconds: n }));
+              }}
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">Email OTP length (digits)</label>
+            <input
+              type="number"
+              min={4}
+              max={10}
+              value={auth.email_otp_length}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!Number.isNaN(n)) setAuth((p) => ({ ...p, email_otp_length: n }));
+              }}
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <div className="mb-3 flex items-start gap-2">
+          <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" aria-hidden />
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Phone auth (Supabase)</h3>
+            <p className="mt-1 text-xs text-gray-600">
+              Match <strong>Authentication → Phone</strong> in the Supabase dashboard. The Beautonomi apps read these
+              values from the public config bundle to show or hide phone sign-in and to align SMS OTP copy. SMS still
+              sends through Supabase; Twilio credentials you configure in Supabase (or in platform secrets below) are
+              the live send path.
+            </p>
+          </div>
+        </div>
+        <div className="mb-4 space-y-3">
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={auth.phone_provider_enabled}
+              onChange={(e) => setAuth((p) => ({ ...p, phone_provider_enabled: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+            />
+            <span className="text-sm text-gray-800">Enable phone provider (phone-based login)</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={auth.phone_confirmations_enabled}
+              onChange={(e) => setAuth((p) => ({ ...p, phone_confirmations_enabled: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+            />
+            <span className="text-sm text-gray-800">Enable phone confirmations (require verified phone before sign-in)</span>
+          </label>
+        </div>
+        <div className="mb-1 text-xs font-medium text-gray-700">SMS provider</div>
+        <p className="mb-3 text-xs text-gray-500">Supabase currently wires SMS through Twilio in most setups.</p>
+        <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">SMS OTP expiry (seconds)</label>
+            <input
+              type="number"
+              min={30}
+              max={86400}
+              value={auth.sms_otp_expiration_seconds}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!Number.isNaN(n)) setAuth((p) => ({ ...p, sms_otp_expiration_seconds: n }));
+              }}
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <p className="mt-1 text-[11px] text-gray-500">Default 120s in Supabase; must match your project.</p>
+          </div>
+          <div>
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">SMS OTP length (digits)</label>
+            <input
+              type="number"
+              min={4}
+              max={10}
+              value={auth.sms_otp_length}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!Number.isNaN(n)) setAuth((p) => ({ ...p, sms_otp_length: n }));
+              }}
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">SMS message template</label>
+            <textarea
+              value={auth.sms_message_template}
+              onChange={(e) => setAuth((p) => ({ ...p, sms_message_template: e.target.value }))}
+              rows={2}
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <p className="mt-1 text-[11px] text-gray-500">
+              Use <code className="rounded bg-gray-100 px-1">{"{{ .Code }}"}</code> for the OTP placeholder (Supabase
+              / Twilio).
+            </p>
+          </div>
+        </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <h3 className="mb-1 text-sm font-semibold text-gray-900">Twilio (SMS for Supabase Auth)</h3>
+        <p className="mb-4 text-xs text-gray-600">
+          <strong>Account SID</strong> and <strong>auth token</strong> are stored in{" "}
+          <code className="rounded bg-gray-100 px-1">platform_secrets</code> (never in public config). Enter them here
+          to keep this admin in sync with what you paste under Supabase → Phone → Twilio. <strong>Message Service SID</strong>{" "}
+          and <strong>Content SID</strong> are saved in public <code className="rounded bg-gray-100 px-1">settings.twilio</code>{" "}
+          for your records.
+        </p>
+        <label className="mb-3 flex cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            checked={twilio.enabled}
+            onChange={(e) => setTwilio((p) => ({ ...p, enabled: e.target.checked }))}
+            className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+          />
+          <span className="text-sm text-gray-700">Mark Twilio integration as configured (for your team’s checklist only)</span>
+        </label>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {inp("Twilio Account SID", twilio.account_sid, (v) => setTwilio((p) => ({ ...p, account_sid: v })))}
+          <div>
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">Twilio auth token</label>
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder="Leave blank to keep saved token"
+              value={twilio.auth_token}
+              onChange={(e) => setTwilio((p) => ({ ...p, auth_token: e.target.value }))}
+              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          {inp(
+            "Twilio Message Service SID",
+            twilio.message_service_sid,
+            (v) => setTwilio((p) => ({ ...p, message_service_sid: v })),
+          )}
+          {inp("Twilio Content SID (optional, WhatsApp)", twilio.content_sid, (v) => setTwilio((p) => ({ ...p, content_sid: v })))}
+          {inp("SMS from (E.164 / sender)", twilio.sms_from, (v) => setTwilio((p) => ({ ...p, sms_from: v })))}
+          {inp("WhatsApp from (optional)", twilio.whatsapp_from, (v) => setTwilio((p) => ({ ...p, whatsapp_from: v })))}
         </div>
       </AdminPanel>
 

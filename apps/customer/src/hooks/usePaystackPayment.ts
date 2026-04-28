@@ -7,6 +7,7 @@
  */
 import { useState, useCallback } from "react";
 import * as WebBrowser from "expo-web-browser";
+import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -51,12 +52,13 @@ export function usePaystackPayment() {
       setError(null);
 
       try {
+        const returnUrl = ExpoLinking.createURL("book/paystack");
         const res = await api.post<PaystackInitResponse>("/api/payments/initialize", {
           booking_id: params.booking_id,
           amount: params.amount,
           email: params.email,
           currency: params.currency || getTenantDefaultCurrency(),
-          callback_url: undefined,
+          callback_url: returnUrl,
           metadata: {
             save_card: params.save_card ?? false,
             customer_id: params.customer_id,
@@ -83,9 +85,26 @@ export function usePaystackPayment() {
           save_card: params.save_card ?? false,
         });
 
-        await WebBrowser.openBrowserAsync(data.authorization_url, {
-          presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-        });
+        const browserResult = await WebBrowser.openAuthSessionAsync(data.authorization_url, returnUrl);
+        let reference = data.reference;
+        if (browserResult.type === "success" && browserResult.url) {
+          try {
+            const parsed = ExpoLinking.parse(browserResult.url);
+            const query = parsed.queryParams ?? {};
+            const returnedRef = query.reference ?? query.trxref;
+            reference = Array.isArray(returnedRef)
+              ? returnedRef[0] ?? reference
+              : typeof returnedRef === "string" && returnedRef.trim()
+                ? returnedRef.trim()
+                : reference;
+          } catch {
+            // Fall back to the reference returned by initialize.
+          }
+        }
+
+        if (reference) {
+          await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+        }
 
         let paymentConfirmed = false;
         if (params.booking_id) {
@@ -105,7 +124,7 @@ export function usePaystackPayment() {
         return {
           success: paymentConfirmed,
           dismissed: true,
-          reference: data.reference,
+          reference,
         };
       } catch (e) {
         setError(e instanceof Error ? e.message : "Payment failed");

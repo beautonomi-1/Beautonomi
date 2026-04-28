@@ -65,6 +65,16 @@ export function navigateFromNotification(n: Notification): void {
   const subtype = data.subtype != null ? String(data.subtype).toLowerCase() : "";
   const dataType = data.type != null ? String(data.type).toLowerCase() : "";
 
+  // OneSignal template pushes often include only `booking_id` in additional data (no type);
+  // send users to the booking, not a generic fallthrough screen.
+  const anyBookingIdRaw = data.booking_id ?? (data as { bookingId?: unknown }).bookingId;
+  const directBookingId =
+    anyBookingIdRaw != null && String(anyBookingIdRaw).trim() !== "" ? String(anyBookingIdRaw).trim() : "";
+  if (!nType && !subtype && !dataType && directBookingId && !data.conversation_id) {
+    router.push({ pathname: "/(app)/booking-detail", params: { id: directBookingId } });
+    return;
+  }
+
   // ── On-demand ────────────────────────────────────────────────────────────
   if (subtype === "on_demand_declined" || dataType === "on_demand_declined" || nType === "on_demand_declined") {
     const rid = data.on_demand_request_id != null ? String(data.on_demand_request_id) : "";
@@ -79,6 +89,15 @@ export function navigateFromNotification(n: Notification): void {
       router.push({ pathname: "/(app)/on-demand/result", params: { status: "accepted", requestId: rid } });
       return;
     }
+  }
+  if (subtype === "on_demand_expired" || dataType === "on_demand_expired" || nType === "on_demand_expired") {
+    const rid = data.on_demand_request_id != null ? String(data.on_demand_request_id) : "";
+    if (rid) {
+      router.push({ pathname: "/(app)/on-demand/result", params: { status: "expired", requestId: rid } });
+      return;
+    }
+    router.push("/(app)/(tabs)/bookings" as never);
+    return;
   }
 
   // ── Support tickets ────────────────────────────────────────────────────
@@ -101,8 +120,8 @@ export function navigateFromNotification(n: Notification): void {
   }
 
   // ── Bookings ─────────────────────────────────────────────────────────────
-  if (data.booking_id) {
-    router.push({ pathname: "/(app)/booking-detail", params: { id: data.booking_id } });
+  if (anyBookingIdRaw) {
+    router.push({ pathname: "/(app)/booking-detail", params: { id: String(anyBookingIdRaw) } });
     return;
   }
   if (
@@ -111,7 +130,6 @@ export function navigateFromNotification(n: Notification): void {
     nType === "booking_update" ||
     nType === "booking_status_update" ||
     nType === "booking_reminder" ||
-    nType === "booking_cancelled" ||
     nType === "booking_reschedule" ||
     nType === "payment_required"
   ) {
@@ -124,8 +142,29 @@ export function navigateFromNotification(n: Notification): void {
     router.push("/(app)/account-settings/custom-requests");
     return;
   }
-  if (nType === "custom_request" || nType === "custom_offer" || nType === "custom_request_update") {
+  if (nType === "custom_request" || nType === "custom_offer" || nType === "custom_request_update" || nType === "custom_request_response") {
     router.push("/(app)/account-settings/custom-requests");
+    return;
+  }
+
+  if (nType === "explore_post") {
+    const pid = data.post_id != null ? String(data.post_id) : "";
+    if (pid) {
+      router.push({ pathname: "/(app)/explore-post", params: { id: pid } });
+    } else {
+      router.push("/(app)/(tabs)/explore" as never);
+    }
+    return;
+  }
+  if (nType === "promotion" || nType === "marketing") {
+    if (data.provider_slug) {
+      router.push({
+        pathname: "/(app)/partner-profile",
+        params: { slug: String(data.provider_slug) },
+      });
+    } else {
+      router.push("/(app)/(tabs)/explore" as never);
+    }
     return;
   }
 
@@ -162,6 +201,29 @@ export function navigateFromNotification(n: Notification): void {
   }
   if (nType === "payment_success" || nType === "payment_successful" || nType === "payment_failed" || nType === "refund_processed") {
     router.push("/(app)/account-settings/payments");
+    return;
+  }
+  if (
+    nType === "payment_received" ||
+    nType === "payment_pending" ||
+    nType === "payment_method_expired" ||
+    nType === "partial_payment_received" ||
+    nType === "provider_arrived" ||
+    nType === "booking_confirmed" ||
+    nType === "booking_cancelled" ||
+    nType === "booking_updated" ||
+    nType === "booking_completed"
+  ) {
+    const bid =
+      (data.booking_id != null ? String(data.booking_id) : "") ||
+      (data.bookingId != null ? String(data.bookingId) : "");
+    if (bid) {
+      router.push({ pathname: "/(app)/booking-detail", params: { id: bid } });
+    } else if (nType.startsWith("payment_") || nType === "partial_payment_received") {
+      router.push("/(app)/account-settings/payments");
+    } else {
+      router.push("/(app)/(tabs)/bookings" as never);
+    }
     return;
   }
   if (nType === "support_ticket" || nType === "ticket_update" || nType === "ticket_reply") {

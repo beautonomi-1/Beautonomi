@@ -437,9 +437,9 @@ export interface Shift {
   location_id?: string;
   notes?: string;
   is_recurring?: boolean;
-  recurring_pattern?: { type?: "alternating" | "weekly" | string; [key: string]: unknown };
-  /** "shift" = date-specific staff_shifts row; "schedule" = derived from weekly staff_schedules */
-  source?: "shift" | "schedule";
+  recurring_pattern?: { type?: "alternating" | "weekly" | string; [key: string]: unknown } | null;
+  /** "shift" = staff_shifts row; "schedule"/"location" = derived weekly template/fallback row */
+  source?: "shift" | "schedule" | "location";
 }
 
 export interface Campaign {
@@ -740,8 +740,14 @@ export interface GroupBooking {
   location_name?: string;
   address_line1?: string;
   address_city?: string;
+  address_state?: string;
+  address_country?: string;
   address_postal_code?: string;
+  address_latitude?: number;
+  address_longitude?: number;
+  address_place_name?: string;
   travel_fee?: number;
+  products?: unknown[];
 }
 
 export interface GroupBookingParticipant {

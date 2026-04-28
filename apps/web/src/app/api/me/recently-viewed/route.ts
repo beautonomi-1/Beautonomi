@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 
 const upsertSchema = z.object({
@@ -14,8 +14,15 @@ const upsertSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return successResponse([]);
+    }
 
     const { searchParams } = new URL(request.url);
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") || "24", 10)));
@@ -132,8 +139,15 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return errorResponse("Authentication required", "AUTH_REQUIRED", 401);
+    }
 
     const body = upsertSchema.parse(await request.json());
     const now = new Date().toISOString();
@@ -165,8 +179,15 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return errorResponse("Authentication required", "AUTH_REQUIRED", 401);
+    }
     const { searchParams } = new URL(request.url);
     const providerId = searchParams.get("provider_id");
 

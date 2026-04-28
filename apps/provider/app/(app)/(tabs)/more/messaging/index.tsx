@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
+  TextInput,
 } from "react-native";
 import { useRouter, useLocalSearchParams, useNavigation, useFocusEffect, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -30,6 +31,7 @@ interface Conversation {
   last_message_at: string;
   unread_count: number;
   booking_number: string | null;
+  booking_id?: string | null;
 }
 
 function formatDateTimeSafe(value: unknown): string {
@@ -56,6 +58,7 @@ export default function MessagingListScreen() {
   const customerId = typeof params.customerId === "string" ? params.customerId : undefined;
   const hasRedirected = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState("");
   const { data, loading, error, refresh } = useApi<Conversation[]>("/api/provider/conversations", {
     staleTimeMs: 0,
   });
@@ -100,10 +103,48 @@ export default function MessagingListScreen() {
     };
   }, [provider?.id, refresh]);
 
-  const conversations = useMemo(
-    () => (Array.isArray(data) ? data : []) as Conversation[],
-    [data]
-  );
+  /** One row per client (API may still return multiple rows for legacy data; DB unique enforces one going forward). */
+  const conversations = useMemo(() => {
+    const list = (Array.isArray(data) ? data : []) as Conversation[];
+    const byCustomer = new Map<string, Conversation[]>();
+    for (const c of list) {
+      const k = c.customer_id || c.id;
+      if (!byCustomer.has(k)) byCustomer.set(k, []);
+      byCustomer.get(k)!.push(c);
+    }
+    const onePer: Conversation[] = [];
+    byCustomer.forEach((threads) => {
+      const general = threads.find((t) => t.booking_id == null);
+      const latest = threads
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
+        )[0];
+      const display = general ?? latest;
+      const unreadTotal = threads.reduce((s, t) => s + (t.unread_count ?? 0), 0);
+      onePer.push({
+        ...display,
+        id: display.id,
+        unread_count: unreadTotal,
+      });
+    });
+    onePer.sort(
+      (a, b) => new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
+    );
+    return onePer;
+  }, [data]);
+
+  const filteredConversations = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return conversations;
+    return conversations.filter(
+      (c) =>
+        (c.customer_name || "").toLowerCase().includes(q) ||
+        (c.last_message_preview || "").toLowerCase().includes(q) ||
+        (c.booking_number || "").toLowerCase().includes(q)
+    );
+  }, [conversations, search]);
 
   useEffect(() => {
     if (!customerId || loading || hasRedirected.current || conversations.length === 0) return;
@@ -156,8 +197,49 @@ export default function MessagingListScreen() {
       <ScreenHeader
         title="Messages"
         showBack={canGoBack}
-        subtitle={`${conversations.length} conversation${conversations.length === 1 ? "" : "s"}`}
+        subtitle={`${filteredConversations.length} conversation${filteredConversations.length === 1 ? "" : "s"}`}
       />
+      <View
+        style={{
+          paddingHorizontal: screenPadding,
+          paddingTop: 8,
+          paddingBottom: 4,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+            backgroundColor: Colors.gray[50],
+            borderRadius: 12,
+            paddingHorizontal: 10,
+            paddingVertical: 8,
+          }}
+        >
+          <Ionicons name="search" size={18} color={Colors.gray[400]} style={{ marginRight: 6 }} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search by name, message, or booking #"
+            placeholderTextColor={Colors.gray[400]}
+            style={{ flex: 1, fontSize: 14, color: Colors.gray[900] }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {search.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => setSearch("")}
+              accessibilityLabel="Clear search"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
@@ -166,14 +248,18 @@ export default function MessagingListScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {conversations.length === 0 ? (
+        {filteredConversations.length === 0 ? (
           <EmptyState
             icon="chatbubbles-outline"
-            title="No conversations yet"
-            description="When clients message you (e.g. from a booking or custom request), conversations will appear here."
+            title={conversations.length === 0 ? "No conversations yet" : "No matches"}
+            description={
+              conversations.length === 0
+                ? "When clients message you (e.g. from a booking or custom request), conversations will appear here."
+                : "Try a different search."
+            }
           />
         ) : (
-          conversations.map((conv) => (
+          filteredConversations.map((conv) => (
             <TouchableOpacity
               key={conv.id}
               onPress={() =>

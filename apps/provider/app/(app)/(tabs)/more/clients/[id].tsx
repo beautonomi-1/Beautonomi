@@ -733,6 +733,7 @@ export default function ClientDetailScreen() {
                     defaultCountryName={defaultCountryName}
                     label="Search address"
                     placeholder="Start typing for suggestions…"
+                    geocodeTypes={["address"]}
                     onSelect={(p) => {
                       setHomeParsed(p);
                       setAddressSearchValue(p.full_address);
@@ -1029,7 +1030,7 @@ export default function ClientDetailScreen() {
                   mode="date"
                   display={Platform.OS === "ios" ? "spinner" : "default"}
                   maximumDate={new Date()}
-                  onChange={(_, d) => {
+                  onChange={(_: any, d?: Date) => {
                     setShowDobPicker(Platform.OS === "ios");
                     if (d) setFormDob(formatDateFns(d, "yyyy-MM-dd"));
                   }}

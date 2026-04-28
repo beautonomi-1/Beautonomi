@@ -7,6 +7,7 @@ import { Link, Navigate, Outlet, Route, Routes, useLocation } from "react-router
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { AdminChrome } from "@/components/layout/AdminChrome";
 import { LoginPage } from "@/routes/LoginPage";
+import { MfaEnrollPage } from "@/routes/MfaEnrollPage";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import * as P from "@/lazyAdminPages";
 import { adminSpaTo } from "@/lib/adminSpaPath";
@@ -18,7 +19,7 @@ function adminFullPath(pathname: string, search: string): string {
 }
 
 function RequireAuth() {
-  const { isLoading, isError, errorStatus, bootstrap, refetchBootstrap } = useAdminSession();
+  const { isLoading, isError, errorStatus, errorCode, bootstrap, refetchBootstrap } = useAdminSession();
   const location = useLocation();
   const nextParam = encodeURIComponent(adminFullPath(location.pathname, location.search));
 
@@ -33,6 +34,10 @@ function RequireAuth() {
         <p className="text-sm text-gray-500">Verifying session…</p>
       </div>
     );
+  }
+
+  if (isError && errorCode === "MFA_REQUIRED") {
+    return <Navigate to={adminSpaTo(`/admin/mfa/enroll?next=${nextParam}`)} replace />;
   }
 
   if (isError && errorStatus === 403) {
@@ -81,6 +86,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="login" element={<LoginPage />} />
+      <Route path="mfa/enroll" element={<MfaEnrollPage />} />
       <Route element={<RequireAuth />}>
         <Route element={<AdminChrome />}>
           <Route index element={<Navigate to="/dashboard" replace />} />

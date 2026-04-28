@@ -11,6 +11,7 @@ import { Colors } from "@/constants/colors";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { openNativeStoreReview } from "@/lib/open-store-review";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
+import { formatCurrency } from "@/lib/format";
 /** Profile completion API response (GET /api/provider/profile-completion) */
 type ProfileCompletionItem = {
   id: string;
@@ -25,6 +26,48 @@ type ProfileCompletionData = {
   percentage: number;
   items: ProfileCompletionItem[];
 };
+
+type FinanceSummaryData = {
+  earnings?: {
+    available_balance?: number;
+    pending_payouts?: number;
+    minimum_payout_amount?: number;
+  };
+};
+
+type PayoutAccountSummary = {
+  id: string;
+  account_name?: string | null;
+  bank_name?: string | null;
+  account_number_last4?: string | null;
+  account_number?: string | null;
+  active?: boolean;
+  is_primary?: boolean;
+};
+
+type PayoutScheduleData = {
+  payout_schedule?: string;
+  payout_hold_days?: number;
+  next_payout_date?: string | null;
+  next_payout_description?: string | null;
+};
+
+type TeamAccessData = {
+  can_process_payments?: boolean;
+};
+
+type ProviderNavCounts = {
+  pending_bookings: number;
+  active_product_orders: number;
+  unread_messages: number;
+  waiting_room: number;
+  critical_total: number;
+};
+
+function formatBadgeCount(count: number): string | null {
+  if (count <= 0) return null;
+  return count > 99 ? "99+" : String(count);
+}
 
 /**
  * Map API routes to app routes. Use dedicated screens when they exist so the card deep-links
@@ -120,6 +163,9 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
       { icon: "layers-outline", label: "Catalogue & offerings", subtitle: "Services, products & packages", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899", bg: "#fdf2f8" },
       { icon: "people-circle-outline", label: "Team & scheduling", subtitle: "Staff, shifts & time clock", route: "/(app)/(tabs)/more/team", color: "#14b8a6", bg: "#ccfbf1" },
       { icon: "cash-outline", label: "Finance & billing", subtitle: "Earnings, payroll, invoices & gift cards", route: "/(app)/(tabs)/more/finance-billing-hub", color: "#22c55e", bg: "#f0fdf4" },
+      { icon: "card-outline", label: "Yoco payments", subtitle: "Connect Yoco and manage card devices", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb", bg: "#dbeafe" },
+      { icon: "ribbon-outline", label: "Subscription & plan", subtitle: "Upgrade, renew, cancel or change billing", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6", bg: "#ede9fe" },
+      { icon: "wallet-outline", label: "Payout bank accounts", subtitle: "Add or manage payout accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669", bg: "#d1fae5" },
       { icon: "swap-horizontal-outline", label: "Transactions & history", subtitle: "Payments, fees & sales", route: "/(app)/(tabs)/more/transactions-hub", color: "#0d9488", bg: "#ccfbf1" },
       { icon: "bar-chart-outline", label: "Reports", subtitle: "Analytics, activity & insights", route: "/(app)/(tabs)/more/reports", color: "#3b82f6", bg: "#eff6ff" },
       { icon: "images-outline", label: "Gallery", subtitle: "Portfolio & photos", route: "/(app)/(tabs)/more/gallery", color: "#f43f5e", bg: "#fff1f2" },
@@ -149,6 +195,9 @@ const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; rout
   { icon: "layers-outline", label: "Catalogue", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899" },
   { icon: "megaphone-outline", label: "Buy ads", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
   { icon: "card-outline", label: "Memberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
+  { icon: "phone-portrait-outline", label: "Yoco", route: "/(app)/(tabs)/more/settings/yoco-devices", color: "#2563eb" },
+  { icon: "ribbon-outline", label: "Subscription", route: "/(app)/(tabs)/more/settings/subscription", color: "#8b5cf6" },
+  { icon: "wallet-outline", label: "Bank accounts", route: "/(app)/(tabs)/more/settings/payout-accounts", color: "#059669" },
 ];
 
 export default function MoreScreen() {
@@ -170,14 +219,43 @@ export default function MoreScreen() {
     email?: string | null;
     phone?: string | null;
     avatar_url?: string | null;
+    /** From GET /api/me/profile: business (`providers`) rating when the user is owner/staff */
+    provider_rating_average?: number | null;
+    provider_review_count?: number | null;
   };
   const { data: meProfile, refresh: refreshMeProfile } = useApi<MeProfileLite>("/api/me/profile", { staleTimeMs: 45_000 });
+  const { data: financeSummary, refresh: refreshFinanceSummary } = useApi<FinanceSummaryData>("/api/provider/finance?range=month", { staleTimeMs: 30_000 });
+  const { data: payoutAccounts, loading: payoutAccountsLoading, refresh: refreshPayoutAccounts } = useApi<PayoutAccountSummary[]>("/api/provider/payout-accounts", { staleTimeMs: 30_000 });
+  const { data: payoutSchedule, refresh: refreshPayoutSchedule } = useApi<PayoutScheduleData>("/api/provider/payouts/next-date", { staleTimeMs: 60_000 });
+  const { data: teamAccess } = useApi<TeamAccessData>("/api/provider/team-access", { staleTimeMs: 60_000 });
+  const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>("/api/provider/nav-counts", { staleTimeMs: 30_000 });
   const completion = completionData ?? null;
   const completionItems = completion?.items ?? [];
   const completionPct = completion?.percentage ?? 0;
   const showCompletionCard = completionItems.length > 0 && completionPct < 100;
   const firstIncompleteRoute = completionItems.find((i) => !i.completed)?.route;
   const showCompletionError = !completionLoading && !!completionError && !completionData;
+  const availablePayout = Number(financeSummary?.earnings?.available_balance ?? 0);
+  const pendingPayouts = Number(financeSummary?.earnings?.pending_payouts ?? 0);
+  const minimumPayout = Number(financeSummary?.earnings?.minimum_payout_amount ?? 100);
+  const accounts = Array.isArray(payoutAccounts) ? payoutAccounts : [];
+  const primaryPayoutAccount =
+    accounts.find((account) => account.is_primary === true) ??
+    accounts.find((account) => account.active !== false) ??
+    accounts[0];
+  const hasPayoutAccount = accounts.length > 0;
+  const payoutAccountLast4 = primaryPayoutAccount?.account_number_last4 ?? primaryPayoutAccount?.account_number?.slice(-4);
+  const canRequestPayouts = teamAccess?.can_process_payments !== false;
+  const requestPayoutDisabledReason = !canRequestPayouts
+    ? "Requires payment-processing permission"
+    : !hasPayoutAccount
+      ? "Add a bank account first"
+      : availablePayout < minimumPayout
+        ? `Minimum payout is ${formatCurrency(minimumPayout)}`
+        : null;
+  const nextPayoutDate = payoutSchedule?.next_payout_date
+    ? new Date(payoutSchedule.next_payout_date)
+    : null;
 
   function completionItemLabel(item: ProfileCompletionItem) {
     return t(`provider.profileCompletionItems.${item.id}` as never);
@@ -187,17 +265,44 @@ export default function MoreScreen() {
     useCallback(() => {
       void refreshCompletion();
       void refreshMeProfile();
-    }, [refreshCompletion, refreshMeProfile])
+      void refreshFinanceSummary();
+      void refreshPayoutAccounts();
+      void refreshPayoutSchedule();
+      void refreshNavCounts();
+    }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule, refreshNavCounts])
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refreshCompletion(), refreshMeProfile()]);
+      await Promise.all([
+        refreshCompletion(),
+        refreshMeProfile(),
+        refreshFinanceSummary(),
+        refreshPayoutAccounts(),
+        refreshPayoutSchedule(),
+        refreshNavCounts(),
+      ]);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshCompletion, refreshMeProfile]);
+  }, [refreshCompletion, refreshMeProfile, refreshFinanceSummary, refreshPayoutAccounts, refreshPayoutSchedule, refreshNavCounts]);
+
+  const getRouteBadgeCount = useCallback(
+    (route: string): number => {
+      if (route.includes("/bookings")) {
+        return Number(navCounts?.pending_bookings ?? 0) + Number(navCounts?.waiting_room ?? 0);
+      }
+      if (route.includes("products-ecommerce-hub") || route.includes("product-orders") || route.includes("orders-hub")) {
+        return Number(navCounts?.active_product_orders ?? 0);
+      }
+      if (route.includes("engagement-hub") || route.includes("messaging")) {
+        return Number(navCounts?.unread_messages ?? 0);
+      }
+      return 0;
+    },
+    [navCounts],
+  );
 
   const headerInitials = useMemo(() => {
     const n = (meProfile?.full_name || user?.email || "").trim();
@@ -287,15 +392,165 @@ export default function MoreScreen() {
             </View>
           )}
           <View style={{ marginLeft: 14, flex: 1 }}>
-            <Text style={{ fontSize: 20, fontWeight: "700", letterSpacing: -0.5, color: Colors.gray[900] }}>
-              My profile
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <Text
+                style={{
+                  fontSize: 20,
+                  fontWeight: "700",
+                  letterSpacing: -0.5,
+                  color: Colors.gray[900],
+                  flexGrow: 1,
+                  flexShrink: 1,
+                }}
+              >
+                My profile
+              </Text>
+              {meProfile?.provider_rating_average != null && (
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push("/(app)/(tabs)/more/reviews" as never);
+                  }}
+                  style={{ flexDirection: "row", alignItems: "center" }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Business rating ${meProfile.provider_rating_average.toFixed(1)} from ${meProfile.provider_review_count ?? 0} reviews. Opens reviews.`}
+                >
+                  <Ionicons name="star" size={16} color="#f59e0b" style={{ marginRight: 3 }} />
+                  <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
+                    {meProfile.provider_rating_average.toFixed(1)}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>({meProfile.provider_review_count ?? 0})</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }} numberOfLines={2}>
               {headerSubtitle}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
         </TouchableOpacity>
+
+        {/* Payouts - web payout center parity: balance, request action, and bank setup above the fold */}
+        <View
+          style={{
+            marginBottom: 16,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: "#bbf7d0",
+            backgroundColor: "#ecfdf5",
+            padding: 16,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 14,
+                backgroundColor: "#d1fae5",
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 12,
+              }}
+            >
+              <Ionicons name="wallet-outline" size={24} color="#047857" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: "#047857", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                Provider payouts
+              </Text>
+              <Text style={{ marginTop: 2, fontSize: 28, fontWeight: "800", color: "#064e3b", letterSpacing: -0.8 }}>
+                {formatCurrency(availablePayout)}
+              </Text>
+              <Text style={{ marginTop: 2, fontSize: 13, color: "#047857" }}>
+                All-time available to withdraw
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <View style={{ borderRadius: 999, backgroundColor: "#d1fae5", paddingHorizontal: 10, paddingVertical: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#065f46" }}>
+                Min {formatCurrency(minimumPayout)}
+              </Text>
+            </View>
+            {pendingPayouts > 0 && (
+              <View style={{ borderRadius: 999, backgroundColor: "#fef3c7", paddingHorizontal: 10, paddingVertical: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: "#92400e" }}>
+                  {formatCurrency(pendingPayouts)} pending
+                </Text>
+              </View>
+            )}
+            {nextPayoutDate && Number.isFinite(nextPayoutDate.getTime()) && (
+              <View style={{ borderRadius: 999, backgroundColor: "#e0f2fe", paddingHorizontal: 10, paddingVertical: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: "#075985" }}>
+                  Next run {nextPayoutDate.toLocaleDateString()}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <TouchableOpacity
+            onPress={() => handleMenuPress(hasPayoutAccount ? "/(app)/(tabs)/more/payouts" : "/(app)/(tabs)/more/settings/payout-accounts")}
+            activeOpacity={0.75}
+            style={{
+              marginTop: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              borderRadius: 14,
+              backgroundColor: hasPayoutAccount ? "#047857" : "#111827",
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={hasPayoutAccount ? "Request payout" : "Set up bank account for payouts"}
+          >
+            <Ionicons name={hasPayoutAccount ? "cash-outline" : "business-outline"} size={20} color="#fff" />
+            <Text style={{ marginLeft: 8, flex: 1, fontSize: 15, fontWeight: "700", color: "#fff" }}>
+              {hasPayoutAccount ? "Request payout" : "Set up bank account"}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.8)" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => handleMenuPress("/(app)/(tabs)/more/settings/payout-accounts")}
+            activeOpacity={0.75}
+            style={{
+              marginTop: 10,
+              flexDirection: "row",
+              alignItems: "center",
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: "#a7f3d0",
+              backgroundColor: "#fff",
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Bank account setup"
+          >
+            <Ionicons name={hasPayoutAccount ? "checkmark-circle" : "alert-circle"} size={20} color={hasPayoutAccount ? "#059669" : "#d97706"} />
+            <View style={{ marginLeft: 8, flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.gray[900] }}>
+                Bank account setup
+              </Text>
+              <Text style={{ marginTop: 1, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>
+                {payoutAccountsLoading
+                  ? "Checking payout account..."
+                  : hasPayoutAccount
+                    ? `${primaryPayoutAccount?.bank_name || "Bank account"}${payoutAccountLast4 ? ` • •••• ${payoutAccountLast4}` : ""}`
+                    : "Add a bank account before requesting payouts"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+          </TouchableOpacity>
+
+          {requestPayoutDisabledReason && (
+            <Text style={{ marginTop: 10, fontSize: 12, color: "#92400e", lineHeight: 16 }}>
+              {requestPayoutDisabledReason}
+            </Text>
+          )}
+        </View>
 
         {/* Highlight ads + memberships above the fold (also listed under “Grow your business”) */}
         <View style={{ marginBottom: 16, flexDirection: "row", gap: 12 }}>
@@ -371,25 +626,33 @@ export default function MoreScreen() {
 
         {/* Quick actions - customer-style 2x2 grid (shortens perceived page length) */}
         <View style={{ marginBottom: 20, flexDirection: "row", flexWrap: "wrap" }}>
-          {QUICK_ACTIONS.map((action) => (
-            <TouchableOpacity
-              key={action.route}
-              onPress={() => handleMenuPress(action.route)}
-              activeOpacity={0.7}
-              style={{ flex: 1, minWidth: "45%", marginRight: 12, marginBottom: 12, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], alignItems: "center", paddingVertical: 16 }}
-              accessibilityRole="button"
-              accessibilityLabel={action.label}
-            >
-              <View
-                style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, marginBottom: 8, backgroundColor: `${action.color}20` }}
+          {QUICK_ACTIONS.map((action) => {
+            const badge = formatBadgeCount(getRouteBadgeCount(action.route));
+            return (
+              <TouchableOpacity
+                key={action.route}
+                onPress={() => handleMenuPress(action.route)}
+                activeOpacity={0.7}
+                style={{ flex: 1, minWidth: "45%", marginRight: 12, marginBottom: 12, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], alignItems: "center", paddingVertical: 16 }}
+                accessibilityRole="button"
+                accessibilityLabel={badge ? `${action.label}, ${badge} alerts` : action.label}
               >
-                <Ionicons name={action.icon} size={20} color={action.color} />
-              </View>
-              <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700], textAlign: "center" }} numberOfLines={2}>
-                {action.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <View
+                  style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, marginBottom: 8, backgroundColor: `${action.color}20` }}
+                >
+                  <Ionicons name={action.icon} size={20} color={action.color} />
+                  {badge ? (
+                    <View style={{ position: "absolute", right: -8, top: -8, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center", paddingHorizontal: 5 }}>
+                      <Text style={{ fontSize: 10, fontWeight: "800", color: "#fff" }}>{badge}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700], textAlign: "center" }} numberOfLines={2}>
+                  {action.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Profile completion load error - non-blocking message with retry */}
@@ -538,39 +801,47 @@ export default function MoreScreen() {
               </TouchableOpacity>
               {isExpanded && (
                 <View style={{ overflow: "hidden", borderBottomLeftRadius: 16, borderBottomRightRadius: 16, borderWidth: 1, borderTopWidth: 0, borderColor: Colors.gray[100], backgroundColor: Colors.white }}>
-                  {section.items.map((item, idx) => (
-                    <TouchableOpacity
-                      key={item.route}
-                      style={{
-                        minHeight: 52,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        paddingHorizontal: 16,
-                        paddingVertical: 10,
-                        borderBottomWidth: idx < section.items.length - 1 ? 1 : 0,
-                        borderBottomColor: Colors.gray[50],
-                      }}
-                      onPress={() => handleMenuPress(item.route)}
-                      activeOpacity={0.6}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${item.label}: ${item.subtitle}`}
-                    >
-                      <View
-                        style={{ minHeight: 32, minWidth: 32, backgroundColor: item.bg, alignItems: "center", justifyContent: "center", borderRadius: 8 }}
+                  {section.items.map((item, idx) => {
+                    const badge = formatBadgeCount(getRouteBadgeCount(item.route));
+                    return (
+                      <TouchableOpacity
+                        key={item.route}
+                        style={{
+                          minHeight: 52,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          paddingHorizontal: 16,
+                          paddingVertical: 10,
+                          borderBottomWidth: idx < section.items.length - 1 ? 1 : 0,
+                          borderBottomColor: Colors.gray[50],
+                        }}
+                        onPress={() => handleMenuPress(item.route)}
+                        activeOpacity={0.6}
+                        accessibilityRole="button"
+                        accessibilityLabel={badge ? `${item.label}: ${item.subtitle}. ${badge} alerts.` : `${item.label}: ${item.subtitle}`}
                       >
-                        <Ionicons name={item.icon} size={16} color={item.color} />
-                      </View>
-                      <View style={{ marginLeft: 12, flex: 1 }}>
-                        <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
-                          {item.label}
-                        </Text>
-                        <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-                          {item.subtitle}
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
-                    </TouchableOpacity>
-                  ))}
+                        <View
+                          style={{ minHeight: 32, minWidth: 32, backgroundColor: item.bg, alignItems: "center", justifyContent: "center", borderRadius: 8 }}
+                        >
+                          <Ionicons name={item.icon} size={16} color={item.color} />
+                        </View>
+                        <View style={{ marginLeft: 12, flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
+                            {item.label}
+                          </Text>
+                          <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
+                            {item.subtitle}
+                          </Text>
+                        </View>
+                        {badge ? (
+                          <View style={{ marginRight: 8, minWidth: 22, height: 22, borderRadius: 11, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center", paddingHorizontal: 6 }}>
+                            <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>{badge}</Text>
+                          </View>
+                        ) : null}
+                        <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               )}
             </View>

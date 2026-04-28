@@ -11,6 +11,7 @@ import { Download, TrendingUp, TrendingDown } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
+import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface BusinessComparisonData {
@@ -37,6 +38,7 @@ interface BusinessComparisonData {
 }
 
 export default function BusinessComparisonReport() {
+  const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [period, setPeriod] = useState("month");
   const [data, setData] = useState<BusinessComparisonData | null>(null);
@@ -45,7 +47,7 @@ export default function BusinessComparisonReport() {
 
   useEffect(() => {
     loadReport();
-  }, [period]);
+  }, [period, selectedLocationId]);
 
   const loadReport = async () => {
     try {
@@ -54,6 +56,7 @@ export default function BusinessComparisonReport() {
 
       const params = new URLSearchParams();
       params.append("period", period);
+      appendLocation(params);
 
       const response = await fetcher.get<{ data: BusinessComparisonData }>(
         `/api/provider/reports/business/comparison?${params.toString()}`

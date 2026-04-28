@@ -110,8 +110,17 @@ export default function RecurringAppointmentsPage() {
 
     try {
       await providerApi.deleteRecurringAppointment(appointment.id, deleteSeries);
+      setAppointments((current) =>
+        deleteSeries
+          ? current.filter(
+              (item) =>
+                item.client_id !== appointment.client_id ||
+                item.service_id !== appointment.service_id
+            )
+          : current.filter((item) => item.id !== appointment.id)
+      );
       toast.success(deleteSeries ? "Series deleted" : "Appointment deleted");
-      loadAppointments();
+      void loadAppointments();
     } catch (error) {
       console.error("Failed to delete appointment:", error);
       toast.error(
@@ -345,7 +354,22 @@ export default function RecurringAppointmentsPage() {
           onOpenChange={setIsEditDialogOpen}
           appointment={selectedAppointment}
           editMode={editMode}
-          onSuccess={loadAppointments}
+          onSuccess={(savedAppointment) => {
+            setAppointments((current) =>
+              current.map((item) =>
+                item.id === savedAppointment.id
+                  ? {
+                      ...item,
+                      ...savedAppointment,
+                      client_name: savedAppointment.client_name || item.client_name,
+                      service_name: savedAppointment.service_name || item.service_name,
+                      team_member_name: savedAppointment.team_member_name || item.team_member_name,
+                    }
+                  : item
+              )
+            );
+            void loadAppointments();
+          }}
         />
       )}
     </div>
@@ -364,7 +388,7 @@ function RecurringAppointmentEditDialog({
   onOpenChange: (open: boolean) => void;
   appointment: RecurringAppointment;
   editMode: "single" | "series";
-  onSuccess: () => void;
+  onSuccess: (savedAppointment: RecurringAppointment) => void;
 }) {
   const router = useRouter();
   const initialForm = useMemo(() => {
@@ -428,11 +452,15 @@ function RecurringAppointmentEditDialog({
 
     try {
       const metadata = mergedMetadata();
+      let savedAppointment: RecurringAppointment;
       if (editMode === "series") {
         const freq = simpleFrequencyFromPattern(formData.recurrence_pattern as RecurrencePattern);
-        await providerApi.updateRecurringSeries(appointment.series_id, {
+        savedAppointment = await providerApi.updateRecurringSeries(appointment.series_id, {
           scheduled_date: formData.scheduled_date,
           scheduled_time: formData.scheduled_time,
+          client_name: appointment.client_name,
+          service_name: appointment.service_name,
+          team_member_name: appointment.team_member_name,
           duration_minutes: formData.duration_minutes,
           price: formData.price,
           notes: formData.notes,
@@ -448,9 +476,12 @@ function RecurringAppointmentEditDialog({
         });
         toast.success("Series updated");
       } else {
-        await providerApi.updateRecurringAppointment(appointment.id, {
+        savedAppointment = await providerApi.updateRecurringAppointment(appointment.id, {
           scheduled_date: formData.scheduled_date,
           scheduled_time: formData.scheduled_time,
+          client_name: appointment.client_name,
+          service_name: appointment.service_name,
+          team_member_name: appointment.team_member_name,
           duration_minutes: formData.duration_minutes,
           price: formData.price,
           notes: formData.notes,
@@ -458,7 +489,7 @@ function RecurringAppointmentEditDialog({
         });
         toast.success("Appointment updated");
       }
-      onSuccess();
+      onSuccess(savedAppointment);
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to update appointment:", error);

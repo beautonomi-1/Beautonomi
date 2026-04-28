@@ -34,10 +34,10 @@ import { changeLanguage } from "@/lib/i18n";
 import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
-  isCompleteSupabaseSmsOtp,
-  SUPABASE_AUTH_OTP_LENGTH,
-  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+  isCompleteOtpForLength,
 } from "@/lib/supabase-sms-otp";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { DEFAULT_AUTH } from "@/lib/config-bundle";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { navigateAfterCustomerAuth, navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
@@ -155,6 +155,13 @@ export default function LoginScreen() {
     signUpWithEmail,
   } = useAuth();
 
+  const { bundle: configBundle } = useConfigBundle();
+  const auth = configBundle?.auth ?? DEFAULT_AUTH;
+  const emailOtpLen = auth.email_otp_length;
+  const emailOtpExpiryMin = Math.max(1, Math.round(auth.email_otp_expiration_seconds / 60));
+  const smsOtpLen = auth.sms_otp_length;
+  const smsOtpExpiryMin = Math.max(1, Math.round(auth.sms_otp_expiration_seconds / 60));
+
   // Referral: `/login?ref=` (web query or universal link) → signup with ref
   useEffect(() => {
     const raw = params.ref;
@@ -230,7 +237,28 @@ export default function LoginScreen() {
 
   const fullPhone = `${countryCode}${stripLeadingZero(phoneNumber.replace(/\D/g, ""))}`.trim();
   const hasSocialAuth = socialAuth.google || socialAuth.apple;
+  const showAltAfterPhone =
+    hasSocialAuth || auth.email_provider_enabled || !auth.phone_provider_enabled;
   const selectedCountry = COUNTRY_CODES.find((c) => c.code === countryCode);
+
+  useEffect(() => {
+    if (auth.email_provider_enabled) return;
+    if (!showEmailForm) return;
+    setShowEmailForm(false);
+    setEmailOtpMode(false);
+    setEmailOtpSent(false);
+    setEmailOtpCode("");
+    setPendingEmailOtp("");
+  }, [auth.email_provider_enabled, showEmailForm]);
+
+  useEffect(() => {
+    if (auth.phone_provider_enabled) return;
+    if (!otpSent) return;
+    if (showEmailForm) return;
+    setOtpSent(false);
+    setToken("");
+    setPendingPhone("");
+  }, [auth.phone_provider_enabled, otpSent, showEmailForm]);
   const filteredCountries = countrySearch
     ? COUNTRY_CODES.filter((c) => c.label.toLowerCase().includes(countrySearch.toLowerCase()))
     : COUNTRY_CODES;
@@ -246,6 +274,10 @@ export default function LoginScreen() {
   }
 
   async function handleSendOtp() {
+    if (!auth.phone_provider_enabled) {
+      Alert.alert("Not available", "Phone sign-in is not enabled for this platform.");
+      return;
+    }
     if (!phoneNumber.trim()) {
       Alert.alert("Error", "Please enter your phone number");
       return;
@@ -339,8 +371,8 @@ export default function LoginScreen() {
 
   async function handleVerifyOtp(otpOverride?: string) {
     const otpToken = normalizeSupabaseSmsOtpToken(otpOverride ?? token);
-    if (!isCompleteSupabaseSmsOtp(otpToken)) {
-      Alert.alert("Error", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS`);
+    if (!isCompleteOtpForLength(otpToken, smsOtpLen)) {
+      Alert.alert("Error", `Enter the ${smsOtpLen}-digit code from your SMS`);
       return;
     }
     const phoneToVerify = pendingPhone || fullPhone;
@@ -363,6 +395,10 @@ export default function LoginScreen() {
   }
 
   async function handleSendEmailOtp() {
+    if (!auth.email_provider_enabled) {
+      Alert.alert("Not available", "Email sign-in is not enabled for this platform.");
+      return;
+    }
     const trimmed = email.trim();
     if (!trimmed) {
       Alert.alert("Error", "Please enter your email");
@@ -415,8 +451,8 @@ export default function LoginScreen() {
 
   async function handleVerifyEmailOtp(otpOverride?: string) {
     const otpToken = normalizeSupabaseSmsOtpToken(otpOverride ?? emailOtpCode);
-    if (!isCompleteSupabaseSmsOtp(otpToken)) {
-      Alert.alert("Error", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your email`);
+    if (!isCompleteOtpForLength(otpToken, emailOtpLen)) {
+      Alert.alert("Error", `Enter the ${emailOtpLen}-digit code from your email`);
       return;
     }
     const addr = pendingEmailOtp || email.trim();
@@ -568,8 +604,13 @@ export default function LoginScreen() {
         >
           Welcome to Beautonomi
         </Text>
-        <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", marginBottom: 28 }}>
+        <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 6 }}>
           {t("auth.login")} or {t("auth.signup").toLowerCase()} to continue
+        </Text>
+        <Text
+          style={{ textAlign: "center", fontSize: 14, color: "#9CA3AF", lineHeight: 20, marginBottom: 28, fontWeight: "500" }}
+        >
+          Book beauty and wellness — tailored to you.
         </Text>
 
         {statusMessage ? (
@@ -604,13 +645,13 @@ export default function LoginScreen() {
           </View>
         ) : null}
 
-        {otpSent ? (
+        {otpSent && auth.phone_provider_enabled ? (
           <>
             <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 }}>
               {t("auth.verifyCode")}
             </Text>
             <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12 }}>
-              Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
+              Enter the {smsOtpLen}-digit code sent to{" "}
               <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{pendingPhone}</Text>
             </Text>
             {/* §UX-audit 2026-04: inline success banner — replaces the Alert.alert. */}
@@ -628,19 +669,19 @@ export default function LoginScreen() {
                 marginBottom: 12,
               }}
               accessibilityRole="alert"
-              accessibilityLabel={`We sent a ${SUPABASE_AUTH_OTP_LENGTH}-digit code to ${pendingPhone}`}
+              accessibilityLabel={`We sent a ${smsOtpLen}-digit code to ${pendingPhone}`}
             >
               <Ionicons name="checkmark-circle" size={18} color="#059669" />
               <Text style={{ flex: 1, color: "#065F46", fontSize: 13, lineHeight: 18 }}>
-                Code sent. Valid for about{" "}
-                {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} min.
+                Code sent. Valid for about {smsOtpExpiryMin} min.
               </Text>
             </View>
             <OtpDigitRow
+              length={smsOtpLen}
               value={token}
               onChange={setToken}
               onComplete={(code) => {
-                if (!loading && isCompleteSupabaseSmsOtp(code)) void handleVerifyOtp(code);
+                if (!loading && isCompleteOtpForLength(code, smsOtpLen)) void handleVerifyOtp(code);
               }}
               disabled={loading}
               autoFocus
@@ -649,7 +690,7 @@ export default function LoginScreen() {
 
             <TouchableOpacity
               onPress={() => void handleVerifyOtp()}
-              disabled={loading || !isCompleteSupabaseSmsOtp(token)}
+              disabled={loading || !isCompleteOtpForLength(token, smsOtpLen)}
               style={{
                 backgroundColor: PRIMARY,
                 borderRadius: RADIUS_BUTTON,
@@ -819,10 +860,11 @@ export default function LoginScreen() {
                   Verification code
                 </Text>
                 <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12 }}>
-                  Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
+                  Enter the {emailOtpLen}-digit code sent to{" "}
                   <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>
                     {pendingEmailOtp || email.trim()}
                   </Text>
+                  {` (valid about ${emailOtpExpiryMin} minutes)`}
                 </Text>
                 <View
                   style={{
@@ -843,10 +885,11 @@ export default function LoginScreen() {
                   <Text style={{ flex: 1, color: "#065F46", fontSize: 13 }}>Code sent. Check your inbox.</Text>
                 </View>
                 <OtpDigitRow
+                  length={emailOtpLen}
                   value={emailOtpCode}
                   onChange={setEmailOtpCode}
                   onComplete={(code) => {
-                    if (!loading && isCompleteSupabaseSmsOtp(code)) void handleVerifyEmailOtp(code);
+                    if (!loading && isCompleteOtpForLength(code, emailOtpLen)) void handleVerifyEmailOtp(code);
                   }}
                   disabled={loading}
                   autoFocus
@@ -854,7 +897,7 @@ export default function LoginScreen() {
                 />
                 <TouchableOpacity
                   onPress={() => void handleVerifyEmailOtp()}
-                  disabled={loading || !isCompleteSupabaseSmsOtp(emailOtpCode)}
+                  disabled={loading || !isCompleteOtpForLength(emailOtpCode, emailOtpLen)}
                   style={{
                     backgroundColor: PRIMARY,
                     borderRadius: RADIUS_INPUT,
@@ -913,7 +956,8 @@ export default function LoginScreen() {
             {!isSignup && emailOtpMode && !emailOtpSent && (
               <>
                 <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12 }}>
-                  We&apos;ll email you a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code.
+                  We&apos;ll email you a {emailOtpLen}-digit verification code (valid about {emailOtpExpiryMin}{" "}
+                  {emailOtpExpiryMin === 1 ? "minute" : "minutes"}).
                 </Text>
                 <TouchableOpacity
                   onPress={handleSendEmailOtp}
@@ -984,21 +1028,23 @@ export default function LoginScreen() {
                     Forgot your password?
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => {
-                    setEmailOtpMode(true);
-                    setPassword("");
-                    setEmailOtpSent(false);
-                    setEmailOtpCode("");
-                    setPendingEmailOtp("");
-                  }}
-                  disabled={loading}
-                  style={{ paddingVertical: 8 }}
-                >
-                  <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
-                    Sign in with <Text style={{ fontWeight: "700", color: PRIMARY }}>email code</Text> instead
-                  </Text>
-                </TouchableOpacity>
+                {auth.email_provider_enabled && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setEmailOtpMode(true);
+                      setPassword("");
+                      setEmailOtpSent(false);
+                      setEmailOtpCode("");
+                      setPendingEmailOtp("");
+                    }}
+                    disabled={loading}
+                    style={{ paddingVertical: 8 }}
+                  >
+                    <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
+                      Sign in with <Text style={{ fontWeight: "700", color: PRIMARY }}>email code</Text> instead
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </>
             )}
 
@@ -1042,6 +1088,8 @@ export default function LoginScreen() {
           </>
         ) : (
           <>
+            {auth.phone_provider_enabled && (
+              <>
             {/* Phone input with country code */}
             <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
               Phone Number
@@ -1102,9 +1150,8 @@ export default function LoginScreen() {
             </Text>
 
             <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 20, lineHeight: 18 }}>
-              We&apos;ll text a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid about{" "}
-              {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
-              {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). Standard rates apply.{" "}
+              We&apos;ll text a {smsOtpLen}-digit code (valid about {smsOtpExpiryMin}{" "}
+              {smsOtpExpiryMin === 1 ? "minute" : "minutes"}). Standard rates apply.{" "}
               <Text
                 style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
                 onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}
@@ -1148,43 +1195,72 @@ export default function LoginScreen() {
                 <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Continue</Text>
               )}
             </TouchableOpacity>
+              </>
+            )}
 
-            {hasSocialAuth && (
+            {showAltAfterPhone && (
               <>
-                {/* Separator */}
+                {auth.phone_provider_enabled && (
                 <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 24 }}>
                   <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
                   <Text style={{ marginHorizontal: contentPadding, fontSize: 13, color: "#9CA3AF" }}>or</Text>
                   <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
                 </View>
-
-                {/* Social login */}
-                {socialAuth.google && (
-                  <TouchableOpacity
-                    onPress={() => void handleSocialOAuth("google")}
-                    disabled={loading}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderWidth: 1,
-                      borderColor: "#E5E7EB",
-                      borderRadius: RADIUS_INPUT,
-                      paddingVertical: 14,
-                      marginBottom: 12,
-                      backgroundColor: "#fff",
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Continue with Google"
-                  >
-                    <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
-                    <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
-                  </TouchableOpacity>
                 )}
 
-                {socialAuth.apple && (
+                {hasSocialAuth && (
+                  <>
+                    {socialAuth.google && (
+                      <TouchableOpacity
+                        onPress={() => void handleSocialOAuth("google")}
+                        disabled={loading}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderWidth: 1,
+                          borderColor: "#E5E7EB",
+                          borderRadius: RADIUS_INPUT,
+                          paddingVertical: 14,
+                          marginBottom: 12,
+                          backgroundColor: "#fff",
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Continue with Google"
+                      >
+                        <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
+                        <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {socialAuth.apple && (
+                      <TouchableOpacity
+                        onPress={() => void handleSocialOAuth("apple")}
+                        disabled={loading}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderWidth: 1,
+                          borderColor: "#E5E7EB",
+                          borderRadius: RADIUS_INPUT,
+                          paddingVertical: 14,
+                          marginBottom: 12,
+                          backgroundColor: "#fff",
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Continue with Apple"
+                      >
+                        <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
+                        <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                )}
+
+                {auth.email_provider_enabled && (
                   <TouchableOpacity
-                    onPress={() => void handleSocialOAuth("apple")}
+                    onPress={() => setShowEmailForm(true)}
                     disabled={loading}
                     style={{
                       flexDirection: "row",
@@ -1198,35 +1274,14 @@ export default function LoginScreen() {
                       backgroundColor: "#fff",
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel="Continue with Apple"
+                    accessibilityLabel="Continue with email"
                   >
-                    <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
-                    <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
+                    <Ionicons name="mail-outline" size={20} color="#6B7280" style={{ marginRight: 10 }} />
+                    <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with email</Text>
                   </TouchableOpacity>
                 )}
               </>
             )}
-
-            <TouchableOpacity
-              onPress={() => setShowEmailForm(true)}
-              disabled={loading}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 1,
-                borderColor: "#E5E7EB",
-                borderRadius: RADIUS_INPUT,
-                paddingVertical: 14,
-                marginBottom: 12,
-                backgroundColor: "#fff",
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Continue with email"
-            >
-              <Ionicons name="mail-outline" size={20} color="#6B7280" style={{ marginRight: 10 }} />
-              <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with email</Text>
-            </TouchableOpacity>
 
             {/* Sign up link */}
             <View style={{ marginTop: 16 }}>

@@ -7,7 +7,6 @@ import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 
 /**
@@ -43,10 +42,11 @@ export async function POST(
     }
 
     // Validate input
-    const { 
-      payment_method, 
-      notes,
-      reference 
+    const {
+      payment_method,
+      reference,
+      payment_provider,
+      idempotency_key,
     } = body;
 
     const validPaymentMethods = ['cash', 'card', 'bank_transfer', 'other'];
@@ -62,7 +62,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, provider_id, tenant_id, customer_id, booking_number, ref_number, currency, total_amount, location_id")
+      .select("id, provider_id, tenant_id, customer_id, booking_number, ref_number, currency, total_amount, total_paid, location_id")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -107,15 +107,6 @@ export async function POST(
       return notFoundResponse("Additional charge not found");
     }
 
-    // Check if already paid
-    if (charge.status === 'paid') {
-      return errorResponse(
-        "This charge has already been paid",
-        "ALREADY_PAID",
-        400
-      );
-    }
-
     const chargeAmount = Number(charge.amount);
     const currency = charge.currency || booking.currency || lastResortCurrency;
 
@@ -123,91 +114,45 @@ export async function POST(
     if (effectiveMethod === 'cash') {
       paymentProvider = 'cash';
     } else if (effectiveMethod === 'card') {
-      paymentProvider = 'yoco';
+      paymentProvider = payment_provider === "yoco" || (typeof reference === "string" && reference.trim()) ? "yoco" : "other";
     }
 
-    const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
-    const paymentData: Record<string, unknown> = {
-      booking_id: bookingId,
-      amount: chargeAmount,
-      payment_method: effectiveMethod,
-      payment_provider: paymentProvider,
-      status: 'completed',
-      notes: notes || `Additional charge payment: ${charge.description} (via ${payment_method})`,
-      created_by: user.id,
-      ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
-      payment_provider_data: {
-        additional_charge_id: chargeId,
-        charge_description: charge.description,
-      },
-    };
-
-    if (reference) {
-      paymentData.payment_provider_id = reference;
-    }
-
-    // Insert payment record
-    const { data: payment, error: paymentError } = await supabaseAdmin
-      .from("booking_payments")
-      .insert(paymentData)
-      .select()
-      .single();
-
-    if (paymentError) {
-      console.error("Error creating payment record:", paymentError);
+    const stableReference =
+      typeof reference === "string" && reference.trim()
+        ? reference.trim()
+        : typeof idempotency_key === "string" && idempotency_key.trim()
+          ? idempotency_key.trim()
+          : request.headers.get("Idempotency-Key")?.trim() || `additional_charge_${chargeId}_${effectiveMethod}`;
+    if (paymentProvider === "yoco" && !(typeof reference === "string" && reference.trim())) {
       return errorResponse(
-        paymentError.message || "Failed to create payment record",
-        "PAYMENT_CREATE_ERROR",
-        500
+        "Yoco additional-charge payments require the terminal payment reference.",
+        "YOCO_REFERENCE_REQUIRED",
+        400
       );
     }
 
-    // Update additional charge status to paid
-    const { error: updateError } = await supabaseAdmin
-      .from("additional_charges")
-      .update({
-        status: 'paid',
-        paid_at: new Date().toISOString(),
-      })
-      .eq("id", chargeId);
+    const { error: settlementError } = await supabaseAdmin.rpc(
+      "record_walk_in_additional_charge_payment",
+      {
+        p_booking_id: bookingId,
+        p_charge_id: chargeId,
+        p_provider_id: providerId,
+        p_tenant_id: (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+        p_payment_provider: paymentProvider,
+        p_payment_method: effectiveMethod,
+        p_reference: stableReference,
+        p_created_by: user.id,
+      }
+    );
 
-    if (updateError) {
-      console.error("Error updating charge status:", updateError);
-      // Payment was created but charge status update failed - log but don't fail
+    if (settlementError) {
+      return errorResponse(
+        settlementError.message || "Failed to settle additional charge payment",
+        "ADDITIONAL_CHARGE_SETTLEMENT_ERROR",
+        500,
+        settlementError
+      );
     }
-
-    // Update booking total_amount so booking total = services + all additional charges (aligned with Paystack flow)
-    const bookingTotalAmount = Number((booking as any).total_amount || 0);
-    const { error: bookingUpdateError } = await supabaseAdmin
-      .from("bookings")
-      .update({
-        total_amount: bookingTotalAmount + chargeAmount,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", bookingId);
-
-    if (bookingUpdateError) {
-      console.warn("Error updating booking total_amount:", bookingUpdateError);
-    }
-
-    const walkInLedgerTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
-      tenant_id: (booking as { tenant_id?: string | null }).tenant_id ?? null,
-      provider_id: (booking as { provider_id?: string | null }).provider_id ?? null,
-    });
-
-    // Audit/reporting ledger row (walk-in = provider took payment; not included in payout balance)
-    await supabaseAdmin.from("finance_transactions").insert({
-      booking_id: bookingId,
-      provider_id: booking.provider_id,
-      tenant_id: walkInLedgerTenantId,
-      transaction_type: "walk_in_additional_charge",
-      amount: chargeAmount,
-      fees: 0,
-      commission: 0,
-      net: chargeAmount,
-      description: `Walk-in additional charge: ${charge.description || "Add-on"}`,
-      created_at: new Date().toISOString(),
-    });
 
     // Create booking event
     await supabaseAdmin
@@ -220,7 +165,7 @@ export async function POST(
           description: charge.description,
           amount: chargeAmount,
           payment_method,
-          payment_id: payment.id,
+          payment_reference: stableReference,
         },
         created_by: user.id,
       });
@@ -253,7 +198,7 @@ export async function POST(
             amount: `${currency} ${chargeAmount.toFixed(2)}`,
             booking_number: bookingRef,
             payment_method: payment_method,
-            transaction_id: payment.id,
+            transaction_id: stableReference,
             booking_id: bookingId,
             charge_description: charge.description,
           },
@@ -268,7 +213,10 @@ export async function POST(
     }
 
     return successResponse({
-      payment,
+      payment: {
+        provider: paymentProvider,
+        reference: stableReference,
+      },
       charge: {
         ...charge,
         status: 'paid',

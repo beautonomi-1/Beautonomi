@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPublicConfigBundle } from "@/lib/config";
 import type { Platform, Environment } from "@/lib/config/types";
+import { DEFAULT_PUBLIC_AUTH } from "@/lib/config/auth-policy-public";
 import { resolveActiveMarketFromRequest } from "@/lib/tenant/resolve-active-market";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
@@ -93,6 +94,7 @@ export async function GET(request: NextRequest) {
           active_market_country: market.countryCode,
           active_market_source: market.source,
         },
+        auth: { ...DEFAULT_PUBLIC_AUTH },
         amplitude: {
           api_key_public: null,
           environment: "production",

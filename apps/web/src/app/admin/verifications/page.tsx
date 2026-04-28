@@ -58,6 +58,13 @@ interface Verification {
     full_name: string;
     email: string;
   } | null;
+  provider?: {
+    id: string;
+    business_name?: string | null;
+    slug?: string | null;
+    verification_status?: string | null;
+    relationship: "owner" | "staff";
+  } | null;
 }
 
 export default function AdminVerifications() {
@@ -319,7 +326,8 @@ export default function AdminVerifications() {
             <DialogHeader>
               <DialogTitle className="text-xl sm:text-2xl">Review Verification</DialogTitle>
               <DialogDescription className="text-sm sm:text-base">
-                Review the verification document and approve or reject it.
+                Review the submitted identity document and update the verification status. Provider submissions are linked to
+                the business profile while Sumsub is being rolled out.
               </DialogDescription>
             </DialogHeader>
 
@@ -369,6 +377,23 @@ export default function AdminVerifications() {
                         </p>
                       </div>
                     </div>
+                    {selectedVerification.provider && (
+                      <div className="flex items-start gap-2 sm:gap-3 sm:col-span-2">
+                        <UserCheck className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs sm:text-sm text-gray-500">Provider</p>
+                          <p className="text-sm sm:text-base font-medium">
+                            {selectedVerification.provider.business_name || "Provider profile"}
+                          </p>
+                          <p className="text-xs text-gray-500 capitalize">
+                            {selectedVerification.provider.relationship} account
+                            {selectedVerification.provider.verification_status
+                              ? ` · provider status: ${selectedVerification.provider.verification_status}`
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-start gap-2 sm:gap-3">
                       <Globe className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 mt-0.5 flex-shrink-0" />
                       <div>
@@ -625,7 +650,7 @@ function VerificationList({
             <thead className="backdrop-blur-sm bg-white/60 border-b border-white/40">
               <tr>
                 <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  User
+                  Applicant
                 </th>
                 <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Document
@@ -656,6 +681,16 @@ function VerificationList({
                         {verification.user.full_name}
                       </div>
                       <div className="text-sm text-gray-500">{verification.user.email}</div>
+                      {verification.provider && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className="text-[11px] capitalize">
+                            Provider {verification.provider.relationship}
+                          </Badge>
+                          <span className="text-xs text-gray-600">
+                            {verification.provider.business_name || "Provider profile"}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 lg:px-6 py-4">
@@ -705,6 +740,13 @@ function VerificationList({
                   </h3>
                   {getStatusBadge(verification.status)}
                 </div>
+                {verification.provider && (
+                  <div className="mb-2">
+                    <Badge variant="outline" className="text-[11px] capitalize">
+                      Provider {verification.provider.relationship}: {verification.provider.business_name || "Provider profile"}
+                    </Badge>
+                  </div>
+                )}
                 <div className="space-y-1 text-xs sm:text-sm">
                   <div className="flex items-center gap-2 text-gray-600">
                     <Mail className="w-3 h-3 flex-shrink-0" />

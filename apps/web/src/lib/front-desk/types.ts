@@ -29,6 +29,9 @@ export type QueueTabId =
   | "ready_to_pay"
   | "completed";
 
+/** Date range used for front-desk metric cards. */
+export type { FrontDeskMetricRange } from "@beautonomi/utils";
+
 /** Extended booking with operational state for front desk */
 export interface FrontDeskBooking extends Booking {
   /** Operational badge derived from status + timing */

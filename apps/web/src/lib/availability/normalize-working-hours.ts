@@ -15,6 +15,8 @@ const DAY_KEYS = [
   "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
 ] as const;
 
+const CLOSED_TIME = "00:00";
+
 type DayKey = (typeof DAY_KEYS)[number];
 
 interface FormatADay {
@@ -47,13 +49,13 @@ export function normalizeWorkingHours(
       : hasIsOpen
         ? day.is_open === false
         : false;
-    const openTime = (day.open_time || day.open || "09:00").toString().trim();
-    const closeTime = (day.close_time || day.close || "18:00").toString().trim();
+    const openTime = (day.open_time || day.open || CLOSED_TIME).toString().trim();
+    const closeTime = (day.close_time || day.close || CLOSED_TIME).toString().trim();
 
     const normalized: FormatADay = {
       is_open: !isClosed,
-      open_time: isClosed ? "09:00" : openTime,
-      close_time: isClosed ? "18:00" : closeTime,
+      open_time: openTime,
+      close_time: closeTime,
     };
 
     if (Array.isArray(day.breaks) && day.breaks.length > 0) {
@@ -66,14 +68,6 @@ export function normalizeWorkingHours(
   }
 
   if (Object.keys(result).length === 0) return null;
-
-  // Ensure all 7 days are present so partial saves don't leave gaps
-  // that resolveWorkingHoursDay treats as closed
-  for (const dayKey of DAY_KEYS) {
-    if (!result[dayKey]) {
-      result[dayKey] = { is_open: true, open_time: "09:00", close_time: "18:00" };
-    }
-  }
 
   return result;
 }
