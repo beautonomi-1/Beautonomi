@@ -303,7 +303,7 @@ export async function POST(
         })
         .eq("group_booking_id", id)
         .eq("provider_id", providerId)
-        .in("status", ["confirmed", "booked", "waiting", "checked_in"]);
+        .in("status", ["confirmed", "waiting", "checked_in"]);
       if (bookingsError) throw bookingsError;
       const { data } = await admin
         .from("group_bookings")
@@ -326,7 +326,7 @@ export async function POST(
         })
         .eq("group_booking_id", id)
         .eq("provider_id", providerId)
-        .in("status", ["in_progress", "started"]);
+        .in("status", ["in_progress"]);
       if (bookingsError) throw bookingsError;
       const { data, error } = await admin
         .from("group_bookings")

@@ -45,11 +45,6 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    // Use admin client so providers are visible regardless of status — matching
-    // the SSR getPublicProviderDetail loader. The anon client with RLS blocks any
-    // provider whose status != 'active', causing the profile to load (SSR = admin)
-    // but all client-side tab fetches to 404 (API routes = anon).
-    const supabase = getSupabaseAdmin();
     let tenantId: string;
     try {
       tenantId = await resolveTenantIdWithZaFallback(request);
@@ -60,6 +55,11 @@ export async function GET(
         { status: 503 }
       );
     }
+    // Use admin client so providers are visible regardless of status — matching
+    // the SSR getPublicProviderDetail loader. The anon client with RLS blocks any
+    // provider whose status != 'active', causing the profile to load (SSR = admin)
+    // but all client-side tab fetches to 404 (API routes = anon).
+    const supabase = getSupabaseAdmin();
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { slug: rawSlug } = await params;
