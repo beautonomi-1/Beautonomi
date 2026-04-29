@@ -706,7 +706,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, 10);
 
-      const bookingLimit = await checkBookingLimit(providerId);
+      const bookingLimit = await checkBookingLimit(providerId, supabaseAdmin);
       bookingEligibility = {
         can_accept_online_bookings: bookingLimit.canProceed,
         booking_limit_message: bookingLimit.canProceed

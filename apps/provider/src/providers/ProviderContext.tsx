@@ -121,7 +121,10 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
   const fetchProfile = useCallback(async () => {
     const myId = ++fetchIdRef.current;
     const timeoutId = setTimeout(() => {
-      if (fetchIdRef.current === myId) setLoading(false);
+      if (fetchIdRef.current === myId) {
+        setLoading(false);
+        setProfileLoadError((prev) => prev ?? "Profile is taking longer than expected. Pull to refresh or check your connection.");
+      }
     }, PROFILE_LOAD_TIMEOUT_MS);
     try {
       try {

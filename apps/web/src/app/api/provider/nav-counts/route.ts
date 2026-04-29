@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getProviderIdForUser, handleApiError, notFoundResponse, requireRoleInApi, successResponse } from "@/lib/supabase/api-helpers";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 const ACTIVE_PRODUCT_ORDER_STATUSES = ["pending", "confirmed", "processing", "ready_for_collection", "shipped"];
 
@@ -13,7 +13,7 @@ const ACTIVE_PRODUCT_ORDER_STATUSES = ["pending", "confirmed", "processing", "re
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
@@ -38,11 +38,13 @@ export async function GET(request: NextRequest) {
         .eq("provider_id", providerId)
         .gt("unread_count_provider", 0)
         .or("is_archived_provider.is.null,is_archived_provider.eq.false"),
+      // Mirror the waiting-room GET filter: checked_in | waiting | confirmed + must have checked_in_time set
       supabase
         .from("bookings")
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
-        .in("status", ["checked_in", "waiting"]),
+        .in("status", ["checked_in", "waiting", "confirmed"])
+        .not("checked_in_time", "is", null),
     ]);
 
     for (const result of [pendingBookings, activeProductOrders, unreadConversations, waitingRoom]) {

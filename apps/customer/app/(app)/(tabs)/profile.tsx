@@ -61,6 +61,9 @@ export default function ProfileScreen() {
     : {};
   type ChecklistItem = { id: string; label: string; completed: boolean; required?: boolean };
   const lastProfileSummarySuccessAt = useRef(0);
+  /** Skip one focus refetch so initial load isn’t duplicated (useEffect already fetches). */
+  const skipProfileFocusRefetchOnce = useRef(true);
+  const lastProfileTabFocusRefetchAt = useRef(0);
 
   const [profileData, setProfileData] = useState<{
     completion: number;
@@ -178,6 +181,7 @@ export default function ProfileScreen() {
       setProfileData(null);
       lastProfileSummarySuccessAt.current = 0;
       hasLoadedOnce.current = false;
+      skipProfileFocusRefetchOnce.current = true;
       setReferralBanner({ loaded: false, enabled: true, link: null, amountFormatted: null });
       return;
     }
@@ -197,12 +201,19 @@ export default function ProfileScreen() {
     void fetchProfileData();
   }, [user, fetchProfileData, profileCacheKey]);
 
-  // Stale-while-revalidate: show cached data; background refresh if tab refocused after 60s
+  // Refresh when returning to this tab (e.g. after changing avatar in Personal info) without
+  // duplicating the initial useEffect fetch; debounce stops bursts when switching tabs quickly.
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
       if (lastProfileSummarySuccessAt.current === 0) return;
-      if (Date.now() - lastProfileSummarySuccessAt.current < 60_000) return;
+      if (skipProfileFocusRefetchOnce.current) {
+        skipProfileFocusRefetchOnce.current = false;
+        return;
+      }
+      const now = Date.now();
+      if (now - lastProfileTabFocusRefetchAt.current < 1500) return;
+      lastProfileTabFocusRefetchAt.current = now;
       void fetchProfileData();
     }, [user, fetchProfileData]),
   );

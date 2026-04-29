@@ -521,12 +521,16 @@ export default function BookScreen() {
     /** When returning from checkout to change time — exclude this hold from availability (same as web). */
     hold_id?: string | string[];
   }>();
-  const slug =
+  const slugFromParam =
     typeof slugParam === "string"
       ? slugParam
       : Array.isArray(slugParam)
         ? slugParam[0] ?? ""
         : "";
+  // Accept provider_id (UUID) as fallback when no slug is provided —
+  // the public API now resolves UUIDs in the [slug] route segment.
+  const providerIdParam = typeof provider_id === "string" ? provider_id : "";
+  const slug = slugFromParam || providerIdParam;
   const holdIdFromRoute =
     typeof holdIdParam === "string"
       ? holdIdParam.trim()
@@ -804,7 +808,11 @@ export default function BookScreen() {
   }, [serviceFilterText, servicesData]);
 
   const loadProviderAndServices = useCallback(async () => {
-    if (!slug) return;
+    if (!slug) {
+      setLoading(false);
+      setError(t("booking.providerNotFound"));
+      return;
+    }
     setLoading(true);
     setError(null);
     setPackageIdForCheckout(null);

@@ -3273,7 +3273,6 @@ export function AppointmentSidebar({
                         placeholder="Search for address..."
                         label="Street address *"
                         country="ZA"
-                        geocodeTypes={["address"]}
                         inputClassName="rounded-lg"
                       />
                       <Input

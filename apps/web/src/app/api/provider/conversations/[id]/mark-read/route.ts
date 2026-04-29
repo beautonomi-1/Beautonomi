@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -14,18 +13,15 @@ type Params = { params: Promise<{ id: string }> };
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { id: conversationId } = await params;
-    const permissionCheck = await requirePermission("view_messages", request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    const { user: _user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const admin = getSupabaseAdmin();
+    const providerId = await getProviderIdForUser(_user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    const { data: conversation } = await supabase
+    const { data: conversation } = await admin
       .from("conversations")
       .select("id")
       .eq("id", conversationId)
@@ -37,7 +33,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const now = new Date().toISOString();
-    const admin = getSupabaseAdmin();
 
     const { error: msgError } = await admin
       .from("messages")

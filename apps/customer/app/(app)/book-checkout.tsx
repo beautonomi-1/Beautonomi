@@ -557,6 +557,13 @@ export default function BookCheckoutScreen() {
     pickRouteParam(routePackageId)?.trim() || pickRouteParam(routePrimaryPackageId)?.trim() || undefined;
   const { user, refreshSession } = useAuth();
   const [hold, setHold] = useState<HoldData | null>(null);
+  // Derive effective provider slug for API calls: prefer the route param (always a real slug),
+  // fall back to hold.provider_id (UUID) since all public provider routes now accept UUIDs.
+  // This fixes deep-link / on-demand flows where only hold_id is passed with no slug param.
+  const effectiveProviderSlug = useMemo(
+    () => provider_slug || hold?.provider_id || "",
+    [provider_slug, hold?.provider_id]
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   /** Shown after a successful booking before navigating to booking-detail */
@@ -826,14 +833,15 @@ export default function BookCheckoutScreen() {
   }, [hold?.provider_id]);
 
   useEffect(() => {
-    if (!provider_slug) return;
+    if (!effectiveProviderSlug) return;
     api.get<{ enabled?: boolean; data?: { enabled?: boolean } }>(
-      `/api/public/providers/${encodeURIComponent(provider_slug)}/group-booking-settings`
+      `/api/public/providers/${encodeURIComponent(effectiveProviderSlug)}/group-booking-settings`
     ).then((res) => {
       const data = (res as any).data ?? res;
       setGroupBookingEnabled(!!data?.enabled);
     }).catch(() => setGroupBookingEnabled(false));
-  }, [provider_slug]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveProviderSlug]);
 
   useEffect(() => {
     if (!hold) return;
@@ -906,10 +914,10 @@ export default function BookCheckoutScreen() {
 
   // Fetch provider products when we have slug (for add-to-booking products)
   useEffect(() => {
-    if (!provider_slug) return;
+    if (!effectiveProviderSlug) return;
     api
       .get<{ id: string; name: string; retail_price: number; currency: string }[] | { data?: unknown }>(
-        `/api/public/providers/${encodeURIComponent(provider_slug)}/products`
+        `/api/public/providers/${encodeURIComponent(effectiveProviderSlug)}/products`
       )
       .then((res) => {
         if (res.error) return;
@@ -956,10 +964,11 @@ export default function BookCheckoutScreen() {
         );
       })
       .catch(() => setProductsList([]));
-  }, [provider_slug]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveProviderSlug]);
 
   useEffect(() => {
-    if (productPrefillFromLinkAppliedRef.current || !provider_slug || productsList.length === 0) return;
+    if (productPrefillFromLinkAppliedRef.current || !effectiveProviderSlug || productsList.length === 0) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -999,12 +1008,13 @@ export default function BookCheckoutScreen() {
     return () => {
       cancelled = true;
     };
-  }, [provider_slug, productsList]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveProviderSlug, productsList]);
 
   // Fetch provider packages (optional add-to-booking)
   useEffect(() => {
-    if (!provider_slug) return;
-    let url = `/api/public/providers/${encodeURIComponent(provider_slug)}/packages`;
+    if (!effectiveProviderSlug) return;
+    let url = `/api/public/providers/${encodeURIComponent(effectiveProviderSlug)}/packages`;
     if (hold?.location_id) url += `?location_id=${encodeURIComponent(hold.location_id)}`;
     api
       .get<{ id: string; name: string; description?: string; price: number; currency: string }[] | { data?: unknown }>(url)
@@ -1015,7 +1025,8 @@ export default function BookCheckoutScreen() {
         setPackagesList(Array.isArray(arr) ? arr.map((p: any) => ({ id: p.id, name: p.name || "Package", description: p.description, price: Number(p.price) || 0, currency: p.currency || getTenantDefaultCurrency() })) : []);
       })
       .catch(() => setPackagesList([]));
-  }, [provider_slug, hold?.location_id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveProviderSlug, hold?.location_id]);
 
   /** After packages load, keep route `package_id` only if that package is available (e.g. location-scoped list). */
   useEffect(() => {
@@ -2029,7 +2040,7 @@ export default function BookCheckoutScreen() {
 
   /** Re-open book with the same services/staff/venue so editing date/time or services works (params-only navigation used to drop cart state). */
   const navigateToEditBooking = (step: "date" | "service") => {
-    if (!provider_slug) {
+    if (!effectiveProviderSlug) {
       router.back();
       return;
     }
@@ -2040,7 +2051,7 @@ export default function BookCheckoutScreen() {
     router.replace({
       pathname: "/(app)/book",
       params: {
-        slug: provider_slug,
+        slug: effectiveProviderSlug,
         step,
         ...(offeringIds ? { service_ids: offeringIds } : {}),
         ...(hold.staff_id ? { staff_id: hold.staff_id } : {}),

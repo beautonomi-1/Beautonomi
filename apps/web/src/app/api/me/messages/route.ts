@@ -128,7 +128,7 @@ async function markAsRead(
   userId: string,
   role: "customer" | "provider"
 ) {
-  const admin = await getSupabaseAdmin();
+  const admin = getSupabaseAdmin();
   const now = new Date().toISOString();
   await Promise.all([
     admin

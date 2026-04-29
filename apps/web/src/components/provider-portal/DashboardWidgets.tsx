@@ -458,7 +458,7 @@ export function TodaySummaryWidget({
       </div>
 
       {pendingCheckouts > 0 && (
-        <Link href="/provider/sales/pending">
+        <Link href="/provider/sales">
           <Button
             variant="secondary"
             className="w-full mt-4 bg-white/10 hover:bg-white/20 text-white border-0"

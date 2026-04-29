@@ -63,11 +63,11 @@ export default function MessagingListScreen() {
     staleTimeMs: 0,
   });
 
-  // §Provider-audit 2026-04 (round 9): subscribe to conversation row updates
-  // so an incoming customer message bumps the list preview / unread counter
-  // immediately. Without this, providers on the conversations list had to
-  // pull-to-refresh (or leave and re-enter) before new messages surfaced,
-  // which contradicted the unread badge on the tab bar.
+  // Keep a stable ref so the channel effect doesn't need refresh in its deps
+  // (changing refresh identity causes subscribe/re-subscribe races).
+  const refreshRef = useRef(refresh);
+  useEffect(() => { refreshRef.current = refresh; }, [refresh]);
+
   useEffect(() => {
     if (!provider?.id) return;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -75,7 +75,7 @@ export default function MessagingListScreen() {
       if (refreshTimer) return;
       refreshTimer = setTimeout(() => {
         refreshTimer = null;
-        void refresh();
+        void refreshRef.current();
       }, 400);
     };
 
@@ -101,7 +101,9 @@ export default function MessagingListScreen() {
         // Ignore
       }
     };
-  }, [provider?.id, refresh]);
+  // Only re-subscribe when provider id changes, not when refresh changes identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider?.id]);
 
   /** One row per client (API may still return multiple rows for legacy data; DB unique enforces one going forward). */
   const conversations = useMemo(() => {

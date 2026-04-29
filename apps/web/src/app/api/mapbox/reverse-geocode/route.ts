@@ -35,16 +35,30 @@ export async function POST(request: Request) {
       );
     }
 
-    const mapbox = await getMapboxService();
-    const result = await mapbox.reverseGeocode({
-      longitude: validationResult.data.longitude,
-      latitude: validationResult.data.latitude,
-    });
+    try {
+      const mapbox = await getMapboxService();
+      const result = await mapbox.reverseGeocode({
+        longitude: validationResult.data.longitude,
+        latitude: validationResult.data.latitude,
+      });
 
-    return NextResponse.json({
-      data: result,
-      error: null,
-    });
+      return NextResponse.json({
+        data: result,
+        error: null,
+      });
+    } catch (mapboxError: any) {
+      if (
+        mapboxError.message?.includes("not configured") ||
+        mapboxError.message?.includes("MAPBOX_ACCESS_TOKEN")
+      ) {
+        console.warn("Mapbox not configured, returning null for reverse geocode");
+        return NextResponse.json({
+          data: null,
+          error: null,
+        });
+      }
+      throw mapboxError;
+    }
   } catch (error: any) {
     console.error("Error in reverse geocode:", error);
     return NextResponse.json(

@@ -582,7 +582,6 @@ export default function BusinessDetailsScreen() {
                 placeholder="Start typing address…"
                 countryCode={countryFilterIso2FromStorage(form.country ?? "") ?? "ZA"}
                 defaultCountryName={form.country?.trim() || undefined}
-                geocodeTypes={["address"]}
               />
             </View>
             <View style={twStyle("mb-4 flex-row")}>

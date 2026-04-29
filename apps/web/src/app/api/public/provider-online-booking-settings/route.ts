@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
@@ -8,7 +8,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     let tenantId: string;
     try {
       tenantId = await resolveTenantIdWithZaFallback(request);
@@ -34,8 +34,7 @@ export async function GET(request: NextRequest) {
       .select("id, online_booking_enabled")
       .eq("id", providerId)
       .eq("tenant_id", tenantId)
-      .eq("status", "active")
-      .single();
+      .maybeSingle();
 
     if (provErr || !provider) {
       return Response.json(

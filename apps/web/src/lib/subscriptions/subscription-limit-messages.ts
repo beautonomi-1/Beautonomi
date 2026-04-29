@@ -57,6 +57,11 @@ export function formatProviderPortalLimitMessage(limitCheck: LimitCheckResult, a
   const r = limitCheck.reason;
   const plan = limitCheck.planName?.trim();
 
+  /** RPC/transport failure — not the same as “at limit” or “no plan”. */
+  if (r === "Unable to check booking limit") {
+    return `We couldn’t verify your online booking allowance just now. Pull to refresh, or open ${actionLabel} settings if this continues. Limits still apply when customers book.`;
+  }
+
   if (r === "No active subscription plan" || r.includes("No active subscription")) {
     const settingsHint =
       actionLabel.toLowerCase() === "plan"

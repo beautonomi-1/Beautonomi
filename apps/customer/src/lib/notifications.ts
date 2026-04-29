@@ -12,6 +12,7 @@ export interface Notification {
     booking_id?: string;
     ticket_id?: string;
     order_id?: string;
+    product_order_id?: string;
     request_id?: string;
     review_id?: string;
     on_demand_request_id?: string;
@@ -48,6 +49,23 @@ export function formatNotificationTime(iso: string): string {
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
   return d.toLocaleDateString();
+}
+
+function getLinkParam(link: string, key: string): string {
+  if (!link) return "";
+  try {
+    const parsed = new URL(link, "https://beautonomi.local");
+    return parsed.searchParams.get(key)?.trim() ?? "";
+  } catch {
+    const match = link.match(new RegExp(`[?&]${key}=([^&#]+)`, "i"));
+    return match?.[1] ? decodeURIComponent(match[1]).trim() : "";
+  }
+}
+
+function getUuidAfterSegment(link: string, segment: string): string {
+  const escaped = segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = link.match(new RegExp(`${escaped}/([a-f0-9-]{36})`, "i"));
+  return match?.[1] ?? "";
 }
 
 /**
@@ -114,6 +132,15 @@ export function navigateFromNotification(n: Notification): void {
     router.push({ pathname: "/(app)/chat", params: { id: data.conversation_id } });
     return;
   }
+  const linkedConversationId =
+    getLinkParam(link, "conversation") ||
+    getLinkParam(link, "conversation_id") ||
+    getUuidAfterSegment(link, "messages") ||
+    getUuidAfterSegment(link, "messaging");
+  if (linkedConversationId) {
+    router.push({ pathname: "/(app)/chat", params: { id: linkedConversationId } });
+    return;
+  }
   if (nType === "new_message" || nType === "message" || nType === "chat_message") {
     router.push("/(app)/(tabs)/chats" as never);
     return;
@@ -169,8 +196,14 @@ export function navigateFromNotification(n: Notification): void {
   }
 
   // ── Product orders ───────────────────────────────────────────────────────
-  if (data.order_id) {
-    router.push({ pathname: "/(app)/product-order-detail", params: { id: data.order_id } });
+  const productOrderId =
+    (data.product_order_id != null ? String(data.product_order_id).trim() : "") ||
+    (data.order_id != null ? String(data.order_id).trim() : "") ||
+    getLinkParam(link, "product_order_id") ||
+    getLinkParam(link, "order_id") ||
+    getLinkParam(link, "order");
+  if (productOrderId) {
+    router.push({ pathname: "/(app)/product-order-detail", params: { id: productOrderId } });
     return;
   }
   if (nType === "order_update" || nType === "product_order_update" || nType === "order_confirmed" || nType === "order_shipped" || nType === "order_delivered") {

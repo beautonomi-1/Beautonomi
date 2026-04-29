@@ -2,20 +2,8 @@
  * Fetch config bundle from backend. Uses backend URL – no auth required for public bundle.
  * On Expo web at localhost:8081/8082 (or when APP_URL unset) we use http://localhost:3000.
  */
-import { APP_URL, withWebApiTenantHeaders, DEFAULT_REGION_CURRENCY } from "@/config/public-env";
+import { getBackendUrl, withWebApiTenantHeaders, DEFAULT_REGION_CURRENCY } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
-
-function getBackendUrl(): string {
-  if (typeof window !== "undefined") {
-    const o = window.location.origin;
-    if (o === "http://localhost:8081" || o === "http://localhost:8082" || !APP_URL?.trim()) {
-      return "http://localhost:3000";
-    }
-  }
-  const url = APP_URL?.trim();
-  if (!url && __DEV__) return "http://localhost:3000";
-  return url || "";
-}
 
 export type Platform = "web" | "customer" | "provider";
 export type Environment = "production" | "staging" | "development";

@@ -11,7 +11,7 @@ function normalizeProvider(p: Record<string, unknown>): PublicProviderCard {
   const o = p as Record<string, unknown>;
   return {
     id: String(o.id ?? ""),
-    slug: String(o.slug ?? ""),
+    slug: String(o.slug ?? o.provider_slug ?? o.id ?? ""),
     business_name: String(o.business_name ?? o.businessName ?? ""),
     business_type: (o.business_type ?? o.businessType ?? "salon") as "freelancer" | "salon",
     rating: Number(o.rating ?? 0),

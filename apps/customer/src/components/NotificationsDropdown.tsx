@@ -9,7 +9,9 @@ import {
   ActivityIndicator,
   StyleSheet,
   Platform,
+  Alert,
 } from "react-native";
+import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -34,7 +36,7 @@ interface NotificationsDropdownProps {
 export function NotificationsDropdown({ visible, onClose }: NotificationsDropdownProps) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { refetchUnreadCount } = useNotifications();
+  const { refetchUnreadCount, adjustUnreadCount, replaceUnreadCount } = useNotifications();
   const [list, setList] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -61,29 +63,59 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
     if (visible && user?.id) load();
   }, [visible, user?.id, load]);
 
-  const markRead = async (id: string) => {
+  const markRead = async (id: string, rollbackIfUnread: boolean) => {
     try {
       await api.post(`/api/me/notifications/${id}/read`);
       setList((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
       await refetchUnreadCount();
     } catch {
-      // ignore
+      if (rollbackIfUnread) adjustUnreadCount(1);
     }
   };
 
   const markAllRead = async () => {
     try {
+      replaceUnreadCount(0);
       await api.post("/api/me/notifications/mark-all-read");
       setList((prev) => prev.map((n) => ({ ...n, is_read: true })));
       await refetchUnreadCount();
     } catch {
-      // ignore
+      await refetchUnreadCount();
     }
+  };
+
+  const deleteNotification = async (n: Notification) => {
+    const wasUnread = !n.is_read;
+    const snapshot = list;
+    setList((prev) => prev.filter((item) => item.id !== n.id));
+    if (wasUnread) adjustUnreadCount(-1);
+    const res = await api.delete(`/api/me/notifications/${encodeURIComponent(n.id)}`);
+    if (res.error) {
+      setList(snapshot);
+      if (wasUnread) adjustUnreadCount(1);
+      Alert.alert("Error", res.error.message || "Could not delete notification.");
+      return;
+    }
+    await refetchUnreadCount();
+  };
+
+  const confirmDelete = (n: Notification) => {
+    Alert.alert("Delete notification?", "This removes it from your list.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => void deleteNotification(n),
+      },
+    ]);
   };
 
   const handleItemPress = (n: Notification) => {
     haptic.selection();
-    if (!n.is_read) markRead(n.id);
+    if (!n.is_read) {
+      adjustUnreadCount(-1);
+      void markRead(n.id, true);
+    }
     onClose();
     navigateFromNotification(n);
   };
@@ -119,7 +151,10 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
         >
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Notifications</Text>
+            <View style={styles.headerTitleBlock}>
+              <Text style={styles.title}>Notifications</Text>
+              <Text style={styles.swipeHint}>Swipe left on a row to delete</Text>
+            </View>
             {hasUnread && (
               <TouchableOpacity
                 onPress={() => {
@@ -152,20 +187,40 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
               showsVerticalScrollIndicator={true}
             >
               {list.map((n) => (
-                <TouchableOpacity
+                <ReanimatedSwipeable
                   key={n.id}
-                  activeOpacity={0.7}
-                  onPress={() => handleItemPress(n)}
-                  style={[styles.row, !n.is_read && styles.rowUnread]}
+                  friction={2}
+                  overshootRight={false}
+                  rightThreshold={40}
+                  renderRightActions={() => (
+                    <View style={styles.swipeDeleteBg}>
+                      <TouchableOpacity
+                        onPress={() => confirmDelete(n)}
+                        accessibilityLabel="Delete notification"
+                        accessibilityRole="button"
+                        style={styles.swipeDeleteBtn}
+                      >
+                        <Ionicons name="trash-outline" size={22} color="#fff" />
+                        <Text style={styles.swipeDeleteLabel}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 >
-                  {!n.is_read && <View style={styles.unreadDot} />}
-                  <View style={styles.rowContent}>
-                    <Text style={styles.rowTitle} numberOfLines={1}>{n.title}</Text>
-                    <Text style={styles.rowMessage} numberOfLines={2}>{n.message}</Text>
-                    <Text style={styles.rowTime}>{formatNotificationTime(n.created_at)}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => handleItemPress(n)}
+                    style={[styles.row, !n.is_read && styles.rowUnread]}
+                    accessibilityHint="Swipe left to delete. Opens related screen."
+                  >
+                    {!n.is_read && <View style={styles.unreadDot} />}
+                    <View style={styles.rowContent}>
+                      <Text style={styles.rowTitle} numberOfLines={1}>{n.title}</Text>
+                      <Text style={styles.rowMessage} numberOfLines={2}>{n.message}</Text>
+                      <Text style={styles.rowTime}>{formatNotificationTime(n.created_at)}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+                  </TouchableOpacity>
+                </ReanimatedSwipeable>
               ))}
             </ScrollView>
           )}
@@ -205,17 +260,43 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[100],
   },
+  headerTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
+  },
   title: {
     fontSize: 18,
     fontWeight: "700",
     color: Colors.gray[900],
+  },
+  swipeHint: {
+    marginTop: 4,
+    fontSize: 12,
+    color: Colors.gray[500],
+  },
+  swipeDeleteBg: {
+    width: 80,
+    backgroundColor: "#ef4444",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  swipeDeleteBtn: {
+    padding: 16,
+    alignItems: "center",
+  },
+  swipeDeleteLabel: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#fff",
   },
   markAllRead: {
     fontSize: 14,

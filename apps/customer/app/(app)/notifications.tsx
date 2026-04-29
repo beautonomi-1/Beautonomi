@@ -51,7 +51,7 @@ function extractTotalUnread(payload: unknown): number | undefined {
 export default function NotificationsScreen() {
   useScreenTracking("Notifications");
   const { user } = useAuth();
-  const { refetchUnreadCount } = useNotifications();
+  const { refetchUnreadCount, adjustUnreadCount, replaceUnreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web")
@@ -182,26 +182,31 @@ export default function NotificationsScreen() {
   }, [user?.id, refetchUnreadCount]);
 
   const markRead = useCallback(
-    async (id: string) => {
+    async (id: string, wasUnread: boolean) => {
+      if (wasUnread) adjustUnreadCount(-1);
       try {
         const res = await api.post(`/api/me/notifications/${id}/read`);
         if (res.error) {
+          if (wasUnread) adjustUnreadCount(1);
           Alert.alert("Error", res.error.message || "Could not mark as read.");
           return;
         }
         setList((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
         await refetchUnreadCount();
       } catch (e) {
+        if (wasUnread) adjustUnreadCount(1);
         Alert.alert("Error", e instanceof Error ? e.message : "Could not mark as read.");
       }
     },
-    [refetchUnreadCount],
+    [refetchUnreadCount, adjustUnreadCount],
   );
 
   const markAllRead = useCallback(async () => {
+    replaceUnreadCount(0);
     try {
       const res = await api.post("/api/me/notifications/mark-all-read");
       if (res.error) {
+        await refetchUnreadCount();
         Alert.alert("Error", res.error.message || "Could not mark all as read.");
         return;
       }
@@ -209,11 +214,13 @@ export default function NotificationsScreen() {
       setTotalUnreadHint(0);
       await refetchUnreadCount();
     } catch (e) {
+      await refetchUnreadCount();
       Alert.alert("Error", e instanceof Error ? e.message : "Could not mark all as read.");
     }
-  }, [refetchUnreadCount]);
+  }, [refetchUnreadCount, replaceUnreadCount]);
 
-  const deleteNotification = useCallback(async (notificationId: string) => {
+  const deleteNotification = useCallback(async (notificationId: string, wasUnread: boolean) => {
+    if (wasUnread) adjustUnreadCount(-1);
     let snapshot: Notification[] = [];
     setList((prev) => {
       snapshot = prev;
@@ -222,11 +229,12 @@ export default function NotificationsScreen() {
     const res = await api.delete(`/api/me/notifications/${encodeURIComponent(notificationId)}`);
     if (res.error) {
       setList(snapshot);
+      if (wasUnread) adjustUnreadCount(1);
       Alert.alert("Error", res.error.message || "Could not delete notification.");
       return;
     }
     await refetchUnreadCount();
-  }, [refetchUnreadCount]);
+  }, [refetchUnreadCount, adjustUnreadCount]);
 
   const confirmDelete = useCallback(
     (n: Notification) => {
@@ -235,7 +243,7 @@ export default function NotificationsScreen() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => void deleteNotification(n.id),
+          onPress: () => void deleteNotification(n.id, !n.is_read),
         },
       ]);
     },
@@ -244,7 +252,7 @@ export default function NotificationsScreen() {
 
   const onPress = useCallback(
     (n: Notification) => {
-      if (!n.is_read) void markRead(n.id);
+      if (!n.is_read) void markRead(n.id, true);
       navigateFromNotification(n);
     },
     [markRead],
@@ -395,6 +403,7 @@ export default function NotificationsScreen() {
             <Text style={styles.prefsLinkText}>Email, SMS & push</Text>
             <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
           </TouchableOpacity>
+          <Text style={styles.gestureHint}>Swipe left on a row to delete</Text>
         </View>
 
         {loading && list.length === 0 ? (
@@ -545,6 +554,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     color: Colors.primary,
+  },
+  gestureHint: {
+    marginTop: 8,
+    fontSize: 12,
+    color: Colors.gray[500],
   },
   loaderWrap: {
     flex: 1,

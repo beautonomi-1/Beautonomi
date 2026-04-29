@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
@@ -27,9 +27,17 @@ export async function POST(
     if (!user) return notFoundResponse("User not found");
 
     const supabase = await getSupabaseServer(request);
-    const supabaseAdmin = await getSupabaseAdmin();
+    const supabaseAdmin = getSupabaseAdmin();
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id: bookingId } = await params;
+
+    // Proxy group:UUID ids — mark-paid maps to group-bookings endpoint
+    if (bookingId.startsWith("group:")) {
+      const groupId = bookingId.slice("group:".length);
+      const groupUrl = new URL(`/api/provider/group-bookings/${groupId}`, request.url);
+      groupUrl.searchParams.set("action", "mark_paid");
+      return NextResponse.redirect(groupUrl, 307);
+    }
     const body = await request.json();
 
     // Get provider ID
@@ -90,6 +98,8 @@ export async function POST(
       "pending",
       "booked",
       "confirmed",
+      "waiting",
+      "checked_in",
       "started",
       "in_progress",
       "completed",

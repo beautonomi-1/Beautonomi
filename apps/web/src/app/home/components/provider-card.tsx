@@ -199,9 +199,11 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     return () => observer.disconnect();
   }, [provider.campaign_id, provider.id, provider.is_sponsored]);
 
-  const profileHref = provider.is_sponsored && provider.campaign_id
-    ? `/partner-profile?slug=${encodeURIComponent(provider.slug)}&campaign_id=${provider.campaign_id}`
-    : `/partner-profile?slug=${encodeURIComponent(provider.slug)}`;
+  const providerLookup = (provider.slug || "").trim() || provider.id;
+  const profileParams = new URLSearchParams({ slug: providerLookup });
+  if (provider.id) profileParams.set("provider_id", provider.id);
+  if (provider.is_sponsored && provider.campaign_id) profileParams.set("campaign_id", provider.campaign_id);
+  const profileHref = `/partner-profile?${profileParams.toString()}`;
 
   return (
     <Link

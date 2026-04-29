@@ -483,12 +483,15 @@ export default function StaffScheduleScreen() {
         </Text>
       </View>
 
-      {/* ── Add team member CTA: one flow with shifts on Team screen ── */}
+      {/* ── Add team member CTA: opens team list add sheet, then return here to set shifts ── */}
       <TouchableOpacity
         style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 py-2.5")}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          router.push("/(app)/(tabs)/more/team?add=1" as never);
+          router.push({
+            pathname: "/(app)/(tabs)/more/team-list",
+            params: { add: "1" },
+          } as never);
         }}
         accessibilityLabel="Add team member and set shifts"
         accessibilityRole="button"

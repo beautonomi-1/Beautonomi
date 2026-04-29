@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost } from "@/hooks/useApi";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useFocusedApi } from "@/hooks/useFocusedApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -289,6 +290,7 @@ export default function ClientsScreen() {
       const res = await api.get<ApiClient[]>(url);
       if (res.error) {
         setHasMore(false);
+        Alert.alert("Could not load more clients", getApiErrorMessage(res.error, "Please try again."));
         return;
       }
       const page = Array.isArray(res.data) ? res.data : [];

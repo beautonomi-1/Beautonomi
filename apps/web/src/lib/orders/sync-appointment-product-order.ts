@@ -23,6 +23,82 @@ function paymentStatusForBooking(status?: string | null): string {
   return status === "paid" ? "paid" : "pending";
 }
 
+function recurringSeriesAligned(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  if (a == null && b == null) return true;
+  if (a != null && b != null) return a === b;
+  return false;
+}
+
+type BookingRowForRelink = {
+  id: string;
+  provider_id: string;
+  customer_id: string | null;
+  scheduled_at: string | null;
+  /** When set, must match the other booking’s series to relink; when both null, time match alone is enough. */
+  recurring_series_id: string | null;
+};
+
+/**
+ * Edge cases: a fulfillment row was linked to another booking (duplicate visit row,
+ * cron retry, or pre-link migration). Before upsert, point `product_orders.booking_id`
+ * at this booking when the slot + customer + series match the linked booking.
+ */
+async function relinkMislinkedAppointmentProductOrder(
+  supabase: SupabaseClient,
+  booking: BookingRowForRelink,
+): Promise<void> {
+  const bookingId = booking.id;
+  if (!booking.customer_id || !booking.scheduled_at) return;
+
+  const { data: already } = await supabase
+    .from("product_orders")
+    .select("id")
+    .eq("booking_id", bookingId)
+    .maybeSingle();
+  if (already) return;
+
+  const targetMs = new Date(booking.scheduled_at).getTime();
+  if (!Number.isFinite(targetMs)) return;
+
+  const { data: candidates } = await supabase
+    .from("product_orders")
+    .select("id, booking_id")
+    .eq("provider_id", booking.provider_id)
+    .eq("customer_id", booking.customer_id)
+    .eq("order_source", "appointment")
+    .neq("booking_id", bookingId)
+    .not("booking_id", "is", null)
+    .limit(40);
+
+  if (!candidates?.length) return;
+
+  const seriesSelf = booking.recurring_series_id;
+
+  for (const c of candidates) {
+    const otherBookingId = c.booking_id as string;
+    const { data: ob } = await supabase
+      .from("bookings")
+      .select("scheduled_at, recurring_series_id")
+      .eq("id", otherBookingId)
+      .maybeSingle();
+    if (!ob) continue;
+
+    const row = ob as { scheduled_at?: string | null; recurring_series_id?: string | null };
+    const otherMs = row.scheduled_at ? new Date(row.scheduled_at).getTime() : NaN;
+    if (!Number.isFinite(otherMs) || otherMs !== targetMs) continue;
+    if (!recurringSeriesAligned(seriesSelf, row.recurring_series_id ?? null)) continue;
+
+    const { error } = await supabase
+      .from("product_orders")
+      .update({ booking_id: bookingId })
+      .eq("id", c.id);
+    if (!error) return;
+  }
+}
+
 /**
  * Mirror appointment retail lines into product_orders as a fulfillment task.
  *
@@ -39,6 +115,7 @@ export async function syncAppointmentProductOrder(
       `
       id, booking_number, provider_id, customer_id, tenant_id, location_id,
       status, payment_status, currency, scheduled_at, customer_name, customer_phone,
+      recurring_series_id,
       customers:users!bookings_customer_id_fkey(id, full_name, phone),
       booking_products(
         id, product_id, product_variant_id, quantity, unit_price, total_price,
@@ -54,6 +131,14 @@ export async function syncAppointmentProductOrder(
 
   const products = ((booking as any).booking_products || []) as BookingProductRow[];
   const validProducts = products.filter((p) => p.product_id && Number(p.quantity || 0) > 0);
+
+  await relinkMislinkedAppointmentProductOrder(supabase, {
+    id: (booking as any).id,
+    provider_id: (booking as any).provider_id,
+    customer_id: (booking as any).customer_id ?? null,
+    scheduled_at: (booking as any).scheduled_at ?? null,
+    recurring_series_id: (booking as any).recurring_series_id ?? null,
+  });
 
   const { data: existing } = await supabase
     .from("product_orders")
@@ -128,8 +213,25 @@ export async function syncAppointmentProductOrder(
       })
       .select("id")
       .single();
-    if (insertError) throw insertError;
-    orderId = String((inserted as any).id);
+    if (insertError) {
+      const { data: raced } = await supabase
+        .from("product_orders")
+        .select("id")
+        .eq("booking_id", bookingId)
+        .maybeSingle();
+      if (raced) {
+        orderId = String((raced as any).id);
+        const { error: updateAfterRace } = await supabase
+          .from("product_orders")
+          .update(orderPayload)
+          .eq("id", orderId);
+        if (updateAfterRace) throw updateAfterRace;
+      } else {
+        throw insertError;
+      }
+    } else {
+      orderId = String((inserted as any).id);
+    }
   }
 
   await supabase.from("product_order_items").delete().eq("order_id", orderId);

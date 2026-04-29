@@ -119,6 +119,38 @@ const STATUS_COLOR: Record<string, string> = {
   ended: "#94a3b8",
 };
 
+function campaignModelLabel(campaign: Campaign): string {
+  if (isTimeBasedCampaign(campaign)) return "time boost";
+  if (isImpressionPackCampaign(campaign)) return "impression pack";
+  return "CPC budget";
+}
+
+function formatMoney(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(Number(amount ?? 0));
+  } catch {
+    return `${currency} ${Number(amount ?? 0).toFixed(2)}`;
+  }
+}
+
+function campaignSummaryLine(c: Campaign, currency: string): string {
+  if (c.billing_model === "time_based") {
+    const d = c.duration_days;
+    const daysLabel = d == null ? "?" : d === 1 ? "1 day" : `${d} days`;
+    const paid = formatMoney(Number(c.budget), currency);
+    const end = c.end_at ? ` · Ends ${new Date(c.end_at).toLocaleDateString()}` : "";
+    return `${daysLabel} boost · ${paid} paid${end}`;
+  }
+  if (c.pack_impressions != null) {
+    return `${c.pack_impressions} impressions · ${formatMoney(Number(c.budget), currency)} paid · ${formatMoney(Number(c.spent), currency)} spent`;
+  }
+  const daily =
+    c.daily_budget != null ? ` · Daily cap ${formatMoney(Number(c.daily_budget), currency)}` : "";
+  const bid =
+    c.bid_cpc != null && Number(c.bid_cpc) > 0 ? ` · Bid ${formatMoney(Number(c.bid_cpc), currency)}/click` : "";
+  return `Total budget ${formatMoney(Number(c.budget), currency)} · Spent ${formatMoney(Number(c.spent), currency)}${daily}${bid}`;
+}
+
 export default function AdsSettingsScreen() {
   const router = useRouter();
   const tenantCurrency = getTenantDefaultCurrency();
@@ -182,7 +214,13 @@ export default function AdsSettingsScreen() {
       } else {
         setPacks(Array.isArray(pd) ? (pd as ImpressionPack[]) : []);
       }
-      setGlobalCategories(Array.isArray(catRes.data) ? catRes.data : []);
+      const rawCat = catRes.data as GlobalCategory[] | { data?: GlobalCategory[] } | null | undefined;
+      const catList = Array.isArray(rawCat)
+        ? rawCat
+        : rawCat && typeof rawCat === "object" && Array.isArray((rawCat as { data?: GlobalCategory[] }).data)
+          ? (rawCat as { data: GlobalCategory[] }).data
+          : [];
+      setGlobalCategories(catList);
     } catch {
       setCampaigns([]);
       setPerformance(null);
@@ -343,21 +381,31 @@ export default function AdsSettingsScreen() {
   }, [editCampaign, editForm, loadAll]);
 
   const handleSetStatus = useCallback(
-    async (campaignId: string, status: "active" | "paused" | "ended") => {
-      setUpdating(campaignId);
-      try {
-        const res = await api.patch(`/api/provider/ads/campaigns/${campaignId}`, { status });
-        if (res.error) {
-          Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update status"));
-          return;
+    (campaignId: string, status: "active" | "paused" | "ended") => {
+      const run = async () => {
+        setUpdating(campaignId);
+        try {
+          const res = await api.patch(`/api/provider/ads/campaigns/${campaignId}`, { status });
+          if (res.error) {
+            Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update status"));
+            return;
+          }
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          loadAll();
+        } catch (e: unknown) {
+          Alert.alert("Error", getApiErrorMessage(e, "Failed to update status"));
+        } finally {
+          setUpdating(null);
         }
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        loadAll();
-      } catch (e: unknown) {
-        Alert.alert("Error", getApiErrorMessage(e, "Failed to update status"));
-      } finally {
-        setUpdating(null);
+      };
+      if (status === "ended") {
+        Alert.alert("End campaign", "This will stop the campaign. You can still view it in the list.", [
+          { text: "Cancel", style: "cancel" },
+          { text: "End", style: "destructive", onPress: () => void run() },
+        ]);
+        return;
       }
+      void run();
     },
     [loadAll]
   );
@@ -375,7 +423,7 @@ export default function AdsSettingsScreen() {
   if (!enabled) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Ads" subtitle="Reach more customers and track impact" onBack={() => router.back()} />
+        <ScreenHeader title="Paid ads" subtitle="Sponsored listings when available in your market" onBack={() => router.back()} />
         <View style={[twStyle("flex-1 px-4 pt-8"), { paddingHorizontal: screenPadding }]}>
           <View style={twStyle("rounded-2xl border border-gray-200 bg-amber-50 p-6")}>
             <Ionicons name="megaphone-outline" size={40} color="#b45309" />
@@ -393,7 +441,7 @@ export default function AdsSettingsScreen() {
   if (loading && campaigns.length === 0 && !performance) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Ads" subtitle="Campaigns & performance" onBack={() => router.back()} />
+        <ScreenHeader title="Paid ads" subtitle="Loading campaigns…" onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -403,7 +451,11 @@ export default function AdsSettingsScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Ads" subtitle="Reach more customers and track campaign impact" onBack={() => router.back()} />
+      <ScreenHeader
+        title="Paid ads"
+        subtitle="Boost discovery, target categories, track reach and bookings"
+        onBack={() => router.back()}
+      />
       <ScrollView
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
@@ -414,9 +466,9 @@ export default function AdsSettingsScreen() {
           {/* Performance */}
           {performance && (
             <View style={twStyle("mb-6")}>
-              <Text style={twStyle("text-sm font-semibold text-gray-700 mb-3")}>Performance</Text>
+              <Text style={twStyle("text-sm font-semibold text-gray-700 mb-1")}>Ad performance</Text>
               <Text style={twStyle("text-xs text-gray-500 mb-3")}>
-                Visibility, unique reach, clicks, and bookings generated by your sponsored campaigns.
+                Impressions, unique reach, clicks, spend, and bookings from your ads.
               </Text>
               <View style={twStyle("flex-row flex-wrap")}>
                 <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mr-2 mb-2"), { minWidth: "45%" }]}>
@@ -436,7 +488,9 @@ export default function AdsSettingsScreen() {
                 </View>
                 <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mb-2"), { minWidth: "45%" }]}>
                   <Ionicons name="wallet-outline" size={20} color="#6b7280" />
-                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{tenantCurrency} {Number(performance.spend).toFixed(2)}</Text>
+                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>
+                    {formatMoney(Number(performance.spend), tenantCurrency)}
+                  </Text>
                   <Text style={twStyle("text-xs text-gray-500")}>Spend</Text>
                 </View>
                 <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mr-2 mb-2"), { minWidth: "45%" }]}>
@@ -444,6 +498,40 @@ export default function AdsSettingsScreen() {
                   <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{formatCompactNumber(performance.sales)}</Text>
                   <Text style={twStyle("text-xs text-gray-500")}>Sales (bookings)</Text>
                 </View>
+              </View>
+            </View>
+          )}
+
+          {globalCategories.length > 0 && (timePacks.length > 0 || packs.length > 0) && (
+            <View style={twStyle("mb-5")}>
+              <Text style={twStyle("text-sm font-semibold text-gray-700 mb-1")}>Target categories (optional)</Text>
+              <Text style={twStyle("text-xs text-gray-500 mb-2")}>
+                For packs and boosts below. None selected = all category searches.
+              </Text>
+              <View style={twStyle("flex-row flex-wrap gap-2")}>
+                {globalCategories.map((cat) => {
+                  const selected = createForm.global_category_ids.includes(cat.id);
+                  return (
+                    <TouchableOpacity
+                      key={cat.id}
+                      onPress={() =>
+                        setCreateForm((p) => ({
+                          ...p,
+                          global_category_ids: selected
+                            ? p.global_category_ids.filter((x) => x !== cat.id)
+                            : [...p.global_category_ids, cat.id],
+                        }))
+                      }
+                      style={twStyle(
+                        `rounded-full px-3 py-1.5 border ${
+                          selected ? "bg-gray-900 border-gray-900" : "bg-white border-gray-200"
+                        }`
+                      )}
+                    >
+                      <Text style={twStyle(`text-sm ${selected ? "text-white font-medium" : "text-gray-600"}`)}>{cat.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           )}
@@ -497,7 +585,9 @@ export default function AdsSettingsScreen() {
                   >
                     <Text style={twStyle("text-lg font-bold text-gray-900")}>{tp.duration_days}</Text>
                     <Text style={twStyle("text-xs text-gray-500")}>{tp.duration_days === 1 ? "day" : "days"}</Text>
-                    <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>{tenantCurrency} {Number(tp.price_zar).toFixed(2)}</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>
+                      {formatMoney(Number(tp.price_zar), tenantCurrency)}
+                    </Text>
                     {creatingPackId === tp.id ? (
                       <ActivityIndicator size="small" color="#111" style={{ marginTop: 8 }} />
                     ) : (
@@ -524,7 +614,9 @@ export default function AdsSettingsScreen() {
                   >
                     <Text style={twStyle("text-lg font-bold text-gray-900")}>{pack.impressions}</Text>
                     <Text style={twStyle("text-xs text-gray-500")}>impressions</Text>
-                    <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>{tenantCurrency} {Number(pack.price_zar).toFixed(2)}</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>
+                      {formatMoney(Number(pack.price_zar), tenantCurrency)}
+                    </Text>
                     {creatingPackId === pack.id ? (
                       <ActivityIndicator size="small" color="#111" style={{ marginTop: 8 }} />
                     ) : (
@@ -541,86 +633,97 @@ export default function AdsSettingsScreen() {
             <View style={twStyle("flex-row items-center justify-between mb-3")}>
               <Text style={twStyle("text-sm font-semibold text-gray-700")}>Campaigns</Text>
               {cpcBudgetAvailable && (
-                <ActionButton label="Create campaign" onPress={() => setCreateOpen(true)} variant="primary" size="sm" icon="add" />
+                <ActionButton label="New campaign" onPress={() => setCreateOpen(true)} variant="primary" size="sm" icon="add" />
               )}
             </View>
             {campaigns.length === 0 ? (
               <View style={twStyle("rounded-2xl border border-gray-200 bg-gray-50 p-8 items-center")}>
                 <Ionicons name="megaphone-outline" size={32} color="#9ca3af" />
-                <Text style={twStyle("mt-2 text-sm text-gray-600 text-center")}>No campaigns yet. Create one or buy an impression pack above.</Text>
+                <Text style={twStyle("mt-2 text-sm text-gray-600 text-center")}>
+                  {cpcBudgetAvailable
+                    ? "No campaigns yet. Create a CPC campaign or buy a pack above."
+                    : "No campaigns yet. Buy a boost or impression pack above."}
+                </Text>
               </View>
             ) : (
               <View style={twStyle("gap-3")}>
-                {campaigns.map((c) => (
-                  <View key={c.id} style={twStyle("rounded-2xl border border-gray-200 bg-white p-4")}>
-                    <View style={twStyle("flex-row items-center justify-between flex-wrap")}>
-                      <View style={twStyle("flex-row items-center gap-2 flex-wrap")}>
-                        <View style={[twStyle("rounded-lg px-2 py-1"), { backgroundColor: `${STATUS_COLOR[c.status] ?? "#6b7280"}20` }]}>
-                          <Text style={[twStyle("text-xs font-semibold"), { color: STATUS_COLOR[c.status] ?? "#6b7280" }]}>{c.status}</Text>
-                        </View>
-                        {c.billing_model === "time_based" && c.duration_days && (
-                          <Text style={twStyle("text-xs text-emerald-600")}>{c.duration_days} day boost</Text>
-                        )}
-                        {c.billing_model !== "time_based" && c.pack_impressions != null && (
-                          <Text style={twStyle("text-xs text-gray-500")}>{c.pack_impressions} impressions</Text>
-                        )}
-                        {(c.status === "draft" || c.status === "paused") && Number(c.budget) <= Number(c.spent ?? 0) && (
-                          <Text style={twStyle("text-xs text-amber-600")}>awaiting payment</Text>
-                        )}
-                      </View>
-                      {updating === c.id ? (
-                        <ActivityIndicator size="small" color="#111" />
-                      ) : (
-                        <View style={twStyle("flex-row gap-2")}>
-                          {c.status === "draft" && Number(c.budget) > Number(c.spent ?? 0) && (
-                            <TouchableOpacity onPress={() => handleSetStatus(c.id, "active")} style={twStyle("bg-green-600 px-3 py-1.5 rounded-lg")}>
-                              <Text style={twStyle("text-white text-xs font-medium")}>Activate</Text>
-                            </TouchableOpacity>
-                          )}
-                          {c.status === "active" && (
-                            <TouchableOpacity onPress={() => handleSetStatus(c.id, "paused")} style={twStyle("bg-amber-500 px-3 py-1.5 rounded-lg")}>
-                              <Text style={twStyle("text-white text-xs font-medium")}>Pause</Text>
-                            </TouchableOpacity>
-                          )}
-                          {c.status === "paused" && Number(c.budget) > Number(c.spent ?? 0) && (
-                            <TouchableOpacity onPress={() => handleSetStatus(c.id, "active")} style={twStyle("bg-green-600 px-3 py-1.5 rounded-lg")}>
-                              <Text style={twStyle("text-white text-xs font-medium")}>Resume</Text>
-                            </TouchableOpacity>
-                          )}
-                          {(c.status === "draft" || c.status === "paused") && (
-                            <TouchableOpacity onPress={() => openEdit(c)} style={twStyle("border border-gray-300 px-3 py-1.5 rounded-lg")}>
-                              <Text style={twStyle("text-gray-700 text-xs font-medium")}>
-                                {canEditBudgetFields(c) ? "Edit" : "Target"}
+                {campaigns.map((c) => {
+                  const hasBudgetLeft = Number(c.budget) > Number(c.spent ?? 0);
+                  const canActivate = (c.status === "draft" || c.status === "paused") && hasBudgetLeft;
+                  const showAwaitingPayment =
+                    (c.status === "draft" || c.status === "paused") && !hasBudgetLeft;
+                  return (
+                    <View key={c.id} style={twStyle("rounded-2xl border border-gray-200 bg-white p-4")}>
+                      <View style={twStyle("flex-row items-start justify-between gap-2 flex-wrap")}>
+                        <View style={twStyle("flex-1 min-w-[60%]")}>
+                          <View style={twStyle("flex-row items-center gap-2 flex-wrap mb-1")}>
+                            <Text style={twStyle("text-sm font-semibold text-gray-900")}>Campaign</Text>
+                            <View
+                              style={[twStyle("rounded-md px-2 py-0.5"), { backgroundColor: `${STATUS_COLOR[c.status] ?? "#6b7280"}22` }]}
+                            >
+                              <Text style={[twStyle("text-xs font-semibold"), { color: STATUS_COLOR[c.status] ?? "#6b7280" }]}>
+                                {c.status}
                               </Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                    <View style={twStyle("flex-row mt-3 gap-4 flex-wrap")}>
-                      <Text style={twStyle("text-sm text-gray-600")}>Paid: {tenantCurrency} {Number(c.budget).toFixed(2)}</Text>
-                      {c.billing_model === "time_based" ? (
-                        <>
-                          {c.end_at && (
-                            <Text style={twStyle("text-sm text-gray-600")}>
-                              Ends: {new Date(c.end_at).toLocaleDateString()}
+                            </View>
+                            <View style={twStyle("rounded-md border border-gray-200 px-2 py-0.5")}>
+                              <Text style={twStyle("text-xs font-medium text-gray-600")}>{campaignModelLabel(c)}</Text>
+                            </View>
+                            {showAwaitingPayment ? (
+                              <Text style={twStyle("text-xs font-medium text-amber-700")}>awaiting payment</Text>
+                            ) : null}
+                          </View>
+                          <Text style={twStyle("text-sm text-gray-600 leading-5")}>{campaignSummaryLine(c, tenantCurrency)}</Text>
+                          {(c.targeting?.global_category_ids?.length ?? 0) > 0 ? (
+                            <Text style={twStyle("text-xs text-gray-500 mt-1")}>
+                              Targeting: {c.targeting!.global_category_ids!.length} categor
+                              {c.targeting!.global_category_ids!.length === 1 ? "y" : "ies"}
                             </Text>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <Text style={twStyle("text-sm text-gray-600")}>Spent: {tenantCurrency} {Number(c.spent).toFixed(2)}</Text>
-                          {c.daily_budget != null && <Text style={twStyle("text-sm text-gray-600")}>Daily: {tenantCurrency} {Number(c.daily_budget).toFixed(2)}</Text>}
-                        </>
-                      )}
+                          ) : null}
+                        </View>
+                        {updating === c.id ? <ActivityIndicator size="small" color="#111" /> : null}
+                      </View>
+
+                      <View style={twStyle("flex-row flex-wrap gap-2 mt-3")}>
+                        <TouchableOpacity
+                          onPress={() => openEdit(c)}
+                          disabled={updating === c.id}
+                          style={twStyle("rounded-lg border border-gray-300 bg-white px-3 py-2")}
+                        >
+                          <Text style={twStyle("text-gray-800 text-xs font-medium")}>
+                            {canEditBudgetFields(c) ? "Edit" : "Edit targeting"}
+                          </Text>
+                        </TouchableOpacity>
+                        {canActivate ? (
+                          <TouchableOpacity
+                            onPress={() => handleSetStatus(c.id, "active")}
+                            disabled={updating === c.id}
+                            style={twStyle("rounded-lg bg-green-600 px-3 py-2")}
+                          >
+                            <Text style={twStyle("text-white text-xs font-semibold")}>Activate</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {c.status === "active" ? (
+                          <TouchableOpacity
+                            onPress={() => handleSetStatus(c.id, "paused")}
+                            disabled={updating === c.id}
+                            style={twStyle("rounded-lg border border-amber-300 bg-amber-50 px-3 py-2")}
+                          >
+                            <Text style={twStyle("text-amber-900 text-xs font-semibold")}>Pause</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {c.status !== "ended" ? (
+                          <TouchableOpacity
+                            onPress={() => handleSetStatus(c.id, "ended")}
+                            disabled={updating === c.id}
+                            style={twStyle("rounded-lg px-3 py-2")}
+                          >
+                            <Text style={twStyle("text-gray-500 text-xs font-medium")}>End</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
                     </View>
-                    {(c.targeting?.global_category_ids?.length ?? 0) > 0 && (
-                      <Text style={twStyle("text-xs text-gray-400 mt-1")}>
-                        Targeting: {c.targeting!.global_category_ids!.length} categor{c.targeting!.global_category_ids!.length === 1 ? "y" : "ies"}
-                      </Text>
-                    )}
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </View>

@@ -138,6 +138,9 @@ export function mapStatusFromProvider(providerStatus: ProviderBookingStatus | st
     completed: "completed",
     cancelled: "cancelled",
     no_show: "no_show",
+    /** Salon waiting-room / check-in micro-states (PATCH body uses same strings as DB). */
+    waiting: "waiting",
+    checked_in: "checked_in",
   };
   const mapped = mapping[providerStatus];
   if (!mapped) {

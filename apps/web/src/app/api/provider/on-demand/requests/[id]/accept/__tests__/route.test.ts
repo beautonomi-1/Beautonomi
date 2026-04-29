@@ -9,6 +9,7 @@ import { createMockSupabaseClient, MOCK_USERS } from "@/__tests__/helpers/mock-s
 const mockRequireRoleInApi = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseServer = vi.fn();
+const mockGetRequestNowAvailability = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", () => ({
   requireRoleInApi: (...args: any[]) => mockRequireRoleInApi(...args),
@@ -26,6 +27,10 @@ vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(),
 }));
 
+vi.mock("@/lib/on-demand/request-now-availability", () => ({
+  getRequestNowAvailability: (...args: unknown[]) => mockGetRequestNowAvailability(...args),
+}));
+
 vi.mock("@/app/api/public/bookings/_helpers/validate-booking", () => ({ validateBooking: vi.fn() }));
 vi.mock("@/app/api/public/bookings/_helpers/create-booking-record", () => ({ createBookingRecord: vi.fn() }));
 
@@ -34,17 +39,28 @@ describe("POST /api/provider/on-demand/requests/[id]/accept", () => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: MOCK_USERS.provider_owner });
     mockGetProviderIdForUser.mockResolvedValue("provider-id-123");
+    mockGetRequestNowAvailability.mockResolvedValue({ enabled: true, providerAcceptWindowSeconds: 30 });
   });
 
   it("returns 409 when select returns no row (already handled or expired)", async () => {
     const supabase = createMockSupabaseClient();
-    const chain = {
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      gt: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-    };
-    supabase.from.mockReturnValue(chain);
+    supabase.from.mockImplementation((table: string) => {
+      const chain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        gt: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({
+          data:
+            table === "provider_online_booking_settings"
+              ? { on_demand_accept_enabled: true }
+              : table === "providers"
+                ? { tenant_id: "tenant-1" }
+                : null,
+          error: null,
+        }),
+      };
+      return chain;
+    });
     mockGetSupabaseServer.mockResolvedValue(supabase);
 
     const { POST } = await import("../route");

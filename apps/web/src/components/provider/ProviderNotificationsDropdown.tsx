@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -144,10 +144,39 @@ export function ProviderNotificationsDropdown() {
   const router = useRouter();
   const { user } = useAuth();
 
+  const loadNotifications = useCallback(async (silent: boolean, opts?: { staleTimeMs?: number }) => {
+    if (!user?.id) return;
+    try {
+      if (!silent) setIsLoading(true);
+      const staleMs = opts?.staleTimeMs ?? 15_000;
+      const response = await fetcher.get<{ data: NotificationResponse }>("/api/provider/notifications", {
+        staleTimeMs: staleMs,
+      });
+      const notificationData: NotificationResponse = response.data ?? {
+        notifications: [],
+        total_unread: 0,
+      };
+      setNotifications(notificationData.notifications || []);
+      setTotalUnread(notificationData.total_unread || 0);
+    } catch (error) {
+      if (error instanceof FetchTimeoutError && error.message.includes("cancelled")) {
+        return;
+      }
+      console.error("Failed to load notifications:", error);
+      if (!silent) {
+        toast.error("Failed to load notifications");
+        setNotifications([]);
+        setTotalUnread(0);
+      }
+    } finally {
+      if (!silent) setIsLoading(false);
+    }
+  }, [user?.id]);
+
   useEffect(() => {
     // Only fetch notifications when user is authenticated (avoids 401 from API)
     if (user?.id) {
-      loadNotifications();
+      void loadNotifications(false);
     } else {
       setIsLoading(false);
       setNotifications([]);
@@ -240,7 +269,9 @@ export function ProviderNotificationsDropdown() {
 
     const pollMs =
       process.env.NODE_ENV === "development" ? 60_000 : 300_000;
-    const interval = user?.id ? setInterval(loadNotifications, pollMs) : undefined;
+    const interval = user?.id
+      ? setInterval(() => void loadNotifications(true), pollMs)
+      : undefined;
 
     return () => {
       if (subscription) {
@@ -252,46 +283,30 @@ export function ProviderNotificationsDropdown() {
       }
       if (interval) clearInterval(interval);
     };
-  }, [user?.id]);
-
-  const loadNotifications = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetcher.get<{ data: NotificationResponse }>('/api/provider/notifications');
-      // API returns { data: { notifications: [], total_unread: 0 } }
-      const notificationData: NotificationResponse = response.data ?? { notifications: [], total_unread: 0 };
-      setNotifications(notificationData.notifications || []);
-      setTotalUnread(notificationData.total_unread || 0);
-    } catch (error) {
-      // Suppress AbortErrors from cancelled requests (component unmounts, navigation)
-      if (error instanceof FetchTimeoutError && error.message.includes('cancelled')) {
-        return; // Silently ignore cancelled requests
-      }
-      console.error('Failed to load notifications:', error);
-      // Don't show error toast on initial load
-      if (!isLoading) {
-        toast.error('Failed to load notifications');
-      }
-      setNotifications([]);
-      setTotalUnread(0);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [user?.id, loadNotifications]);
 
   const handleNotificationClick = async (notification: Notification) => {
-    if (!notification.read) {
+    const wasUnread = !notification.read;
+    const unreadBefore = totalUnread;
+    if (wasUnread) {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)),
+      );
+      setTotalUnread((prev) => Math.max(0, prev - 1));
+    }
+    if (wasUnread) {
       try {
         await fetcher.post(`/api/provider/notifications/${notification.id}/read`, {});
+      } catch (error) {
+        console.error("Failed to mark notification as read:", error);
         setNotifications((prev) =>
           prev.map((n) =>
-            n.id === notification.id ? { ...n, read: true } : n
-          )
+            n.id === notification.id ? { ...n, read: false } : n,
+          ),
         );
-        setTotalUnread((prev) => Math.max(0, prev - 1));
-      } catch (error) {
-        console.error('Failed to mark notification as read:', error);
-        toast.error('Could not mark notification as read');
+        setTotalUnread(unreadBefore);
+        toast.error("Could not mark notification as read");
+        return;
       }
     }
 
@@ -309,37 +324,63 @@ export function ProviderNotificationsDropdown() {
     }
   };
 
-  const handleDeleteNotification = async (e: React.MouseEvent, id: string) => {
+  const handleDeleteNotification = async (
+    e: React.MouseEvent,
+    notification: Notification,
+  ) => {
+    e.preventDefault();
     e.stopPropagation();
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this notification? It will be removed from your list.")
+    ) {
+      return;
+    }
+    const wasUnread = !notification.read;
+    const prevList = notifications;
+    const prevUnread = totalUnread;
+    setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
+    if (wasUnread) {
+      setTotalUnread((u) => Math.max(0, u - 1));
+    }
     try {
-      await fetcher.delete(`/api/provider/notifications/${id}`);
-      setNotifications((prev) => {
-        const removed = prev.find((n) => n.id === id);
-        if (removed && !removed.read) {
-          setTotalUnread((u) => Math.max(0, u - 1));
-        }
-        return prev.filter((n) => n.id !== id);
-      });
+      await fetcher.delete(
+        `/api/provider/notifications/${encodeURIComponent(notification.id)}`,
+      );
     } catch (error) {
-      console.error('Failed to delete notification:', error);
-      toast.error('Failed to delete notification');
+      console.error("Failed to delete notification:", error);
+      setNotifications(prevList);
+      setTotalUnread(prevUnread);
+      toast.error("Failed to delete notification");
     }
   };
 
   const handleMarkAllRead = async () => {
+    const prevNotifications = notifications;
+    const prevUnread = totalUnread;
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setTotalUnread(0);
     try {
-      await fetcher.post('/api/provider/notifications/mark-all-read', {});
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-      setTotalUnread(0);
-      toast.success('All notifications marked as read');
+      await fetcher.post("/api/provider/notifications/mark-all-read", {});
+      toast.success("All notifications marked as read");
     } catch (error) {
-      console.error('Failed to mark all as read:', error);
-      toast.error('Failed to mark all as read');
+      console.error("Failed to mark all as read:", error);
+      setNotifications(prevNotifications);
+      setTotalUnread(prevUnread);
+      toast.error("Failed to mark all as read");
     }
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next && user?.id) {
+          void loadNotifications(true, { staleTimeMs: 0 });
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -361,7 +402,9 @@ export function ProviderNotificationsDropdown() {
         <div className="flex items-center justify-between gap-3 p-3 sm:p-4 border-b sticky top-0 bg-white z-10">
           <div>
             <h3 className="font-semibold text-base sm:text-lg">Notifications</h3>
-            <p className="mt-0.5 text-xs text-gray-500">Tap a notification to mark it read, or use Mark all read.</p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Tap to open · Trash removes from list · Mark all read clears new
+            </p>
           </div>
           <div className="flex items-center gap-2">
             {totalUnread > 0 && (
@@ -457,7 +500,7 @@ export function ProviderNotificationsDropdown() {
                               )}
                               <button
                                 type="button"
-                                onClick={(e) => handleDeleteNotification(e, notification.id)}
+                                onClick={(e) => void handleDeleteNotification(e, notification)}
                                 className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
                                 title="Delete notification"
                               >

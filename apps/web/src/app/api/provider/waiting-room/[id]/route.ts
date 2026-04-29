@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
@@ -25,7 +25,7 @@ export async function GET(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
@@ -64,7 +64,7 @@ export async function GET(
 
     // Transform booking to waiting room entry
     let wrStatus: "waiting" | "in_service" | "completed" | "left" = "waiting";
-    if (booking.status === "started") {
+    if (booking.status === "in_progress" || booking.status === "started") {
       wrStatus = "in_service";
     } else if (booking.status === "completed") {
       wrStatus = "completed";
@@ -113,7 +113,7 @@ export async function PATCH(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
     const body = await request.json();
 
@@ -147,7 +147,7 @@ export async function PATCH(
     // Map waiting room status to booking status
     let bookingStatus = booking.status;
     if (validationResult.data.status === "in_service") {
-      bookingStatus = "started";
+      bookingStatus = "in_progress";
     } else if (validationResult.data.status === "completed") {
       bookingStatus = "completed";
     } else if (validationResult.data.status === "waiting") {
@@ -200,7 +200,7 @@ export async function PATCH(
 
     // Transform back to waiting room entry format
     let wrStatus: "waiting" | "in_service" | "completed" | "left" = "waiting";
-    if (updatedBooking.status === "started") {
+    if (updatedBooking.status === "in_progress" || updatedBooking.status === "started") {
       wrStatus = "in_service";
     } else if (updatedBooking.status === "completed") {
       wrStatus = "completed";
@@ -249,7 +249,7 @@ export async function DELETE(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {

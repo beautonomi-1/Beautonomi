@@ -14,6 +14,7 @@ import {
   Package,
   Zap,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
@@ -112,7 +113,7 @@ export function CustomerNotificationsDropdown() {
   const { user, session, isLoading: authLoading } = useAuth();
   const loadAttemptRef = useRef(0);
 
-  const loadNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async (silent = false, opts?: { staleTimeMs?: number }) => {
     if (!user?.id || !session) {
       setNotifications([]);
       setTotalUnread(0);
@@ -121,11 +122,11 @@ export function CustomerNotificationsDropdown() {
     }
     const attempt = ++loadAttemptRef.current;
     try {
-      setIsLoading(true);
-      // 30 s stale: notifications update every 2 minutes via the polling interval
-      // and in real-time via Supabase Realtime. A short cache prevents redundant
-      // network requests on every re-mount (e.g. tab switch, page navigation).
-      const response = await fetcher.get<{ data?: NotificationResponse } & NotificationResponse>('/api/me/notifications', { staleTimeMs: 30_000 });
+      if (!silent) setIsLoading(true);
+      // Default 30s stale: polling + realtime keep data fresh; opening the popover
+      // passes staleTimeMs: 0 so users never see a cached list after acting elsewhere.
+      const staleMs = opts?.staleTimeMs ?? 30_000;
+      const response = await fetcher.get<{ data?: NotificationResponse } & NotificationResponse>('/api/me/notifications', { staleTimeMs: staleMs });
       const data = response.data ?? response;
       setNotifications(data.notifications || []);
       setTotalUnread(data.total_unread || 0);
@@ -135,13 +136,15 @@ export function CustomerNotificationsDropdown() {
         console.error('Failed to load notifications:', error);
       }
       // Avoid noisy toasts on the very first load; show on refresh / later attempts.
-      if (attempt > 1) {
+      if (!silent && attempt > 1) {
         toast.error('Failed to load notifications');
       }
-      setNotifications([]);
-      setTotalUnread(0);
+      if (!silent) {
+        setNotifications([]);
+        setTotalUnread(0);
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, [session, user?.id]);
 
@@ -153,7 +156,7 @@ export function CustomerNotificationsDropdown() {
       setTotalUnread(0);
       return;
     }
-    loadNotifications();
+    void loadNotifications(false);
 
     const supabase = getSupabaseClient();
     const enableRealtime = process.env.NODE_ENV === "production";
@@ -166,7 +169,7 @@ export function CustomerNotificationsDropdown() {
             "postgres_changes",
             { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
             () => {
-              loadNotifications();
+              void loadNotifications(true);
             }
           )
           .subscribe();
@@ -175,7 +178,7 @@ export function CustomerNotificationsDropdown() {
       }
     }
 
-    const interval = setInterval(loadNotifications, 120000);
+    const interval = setInterval(() => void loadNotifications(true), 120000);
 
     return () => {
       if (channel) {
@@ -190,19 +193,26 @@ export function CustomerNotificationsDropdown() {
   }, [authLoading, session, user?.id, loadNotifications]);
 
   const handleNotificationClick = async (notification: Notification) => {
-    // Mark as read
-    if (!notification.read) {
+    const wasUnread = !notification.read;
+    const unreadBefore = totalUnread;
+    if (wasUnread) {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)),
+      );
+      setTotalUnread((prev) => Math.max(0, prev - 1));
+    }
+    if (wasUnread) {
       try {
         await fetcher.post(`/api/me/notifications/${notification.id}/read`);
+      } catch (error) {
+        console.error("Failed to mark notification as read:", error);
         setNotifications((prev) =>
           prev.map((n) =>
-            n.id === notification.id ? { ...n, read: true } : n
-          )
+            n.id === notification.id ? { ...n, read: false } : n,
+          ),
         );
-        setTotalUnread((prev) => Math.max(0, prev - 1));
-      } catch (error) {
-        console.error('Failed to mark notification as read:', error);
-        toast.error('Could not mark as read. Try again.');
+        setTotalUnread(unreadBefore);
+        toast.error("Could not mark as read. Try again.");
         return;
       }
     }
@@ -228,19 +238,60 @@ export function CustomerNotificationsDropdown() {
   };
 
   const handleMarkAllRead = async () => {
+    const prevNotifications = notifications;
+    const prevUnread = totalUnread;
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setTotalUnread(0);
     try {
-      await fetcher.post('/api/me/notifications/mark-all-read');
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-      setTotalUnread(0);
-      toast.success('All notifications marked as read');
+      await fetcher.post("/api/me/notifications/mark-all-read");
+      toast.success("All notifications marked as read");
     } catch (error) {
-      console.error('Failed to mark all as read:', error);
-      toast.error('Failed to mark all as read');
+      console.error("Failed to mark all as read:", error);
+      setNotifications(prevNotifications);
+      setTotalUnread(prevUnread);
+      toast.error("Failed to mark all as read");
+    }
+  };
+
+  const handleDeleteNotification = async (
+    e: React.MouseEvent,
+    notification: Notification,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this notification? It will be removed from your list.")
+    ) {
+      return;
+    }
+    const wasUnread = !notification.read;
+    const prevList = notifications;
+    const prevUnread = totalUnread;
+    setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
+    if (wasUnread) {
+      setTotalUnread((u) => Math.max(0, u - 1));
+    }
+    try {
+      await fetcher.delete(`/api/me/notifications/${encodeURIComponent(notification.id)}`);
+    } catch (error) {
+      console.error("Failed to delete notification:", error);
+      setNotifications(prevList);
+      setTotalUnread(prevUnread);
+      toast.error("Could not delete notification");
     }
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next && user?.id && session) {
+          void loadNotifications(true, { staleTimeMs: 0 });
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -270,7 +321,9 @@ export function CustomerNotificationsDropdown() {
         <div className="flex items-start justify-between gap-2 px-4 py-3.5 border-b border-gray-100 bg-gradient-to-b from-gray-50/95 to-white rounded-t-2xl">
           <div className="min-w-0">
             <h3 className="font-semibold text-base text-gray-900 tracking-tight">Notifications</h3>
-            <p className="text-[11px] text-gray-500 mt-0.5">Tap an item to open it</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Tap to open · Trash removes from list
+            </p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {totalUnread > 0 && (
@@ -339,19 +392,23 @@ export function CustomerNotificationsDropdown() {
                 const Icon = getNotificationIcon(notification.type);
                 return (
                   <li key={notification.id}>
-                    <button
-                      type="button"
-                      onClick={() => void handleNotificationClick(notification)}
+                    <div
                       className={cn(
-                        "w-full text-left rounded-2xl border px-3 py-3 sm:px-3.5 sm:py-3.5 transition-all touch-manipulation",
+                        "group flex items-stretch gap-0.5 rounded-2xl border transition-all",
                         "border-transparent hover:border-gray-200 hover:bg-white hover:shadow-md",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-1",
                         !notification.read
                           ? "bg-primary/[0.06] border-primary/10 shadow-sm"
                           : "bg-gray-50/40",
                       )}
                     >
-                      <div className="flex items-start gap-3">
+                      <button
+                        type="button"
+                        onClick={() => void handleNotificationClick(notification)}
+                        className={cn(
+                          "flex min-w-0 flex-1 items-start gap-3 rounded-2xl px-3 py-3 text-left sm:px-3.5 sm:py-3.5 touch-manipulation",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-inset",
+                        )}
+                      >
                         <div
                           className={cn(
                             "p-2.5 rounded-xl border flex-shrink-0",
@@ -381,8 +438,20 @@ export function CustomerNotificationsDropdown() {
                             {formatTimeAgo(notification.timestamp)}
                           </span>
                         </div>
-                      </div>
-                    </button>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => void handleDeleteNotification(e, notification)}
+                        className={cn(
+                          "flex-shrink-0 self-start rounded-xl p-2.5 m-1 text-gray-400 hover:text-red-600 hover:bg-red-50",
+                          "opacity-70 group-hover:opacity-100 transition-opacity touch-manipulation",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300",
+                        )}
+                        aria-label="Delete notification"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </li>
                 );
               })}

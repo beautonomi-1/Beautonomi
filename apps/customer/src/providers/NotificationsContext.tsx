@@ -12,6 +12,9 @@ import { supabase } from "@/lib/supabase/client";
 type NotificationsContextValue = {
   unreadCount: number;
   refetchUnreadCount: () => Promise<void>;
+  /** Immediate badge change while mark-read/delete requests run or realtime catches up. */
+  adjustUnreadCount: (delta: number) => void;
+  replaceUnreadCount: (count: number) => void;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -37,6 +40,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       setUnreadCount(0);
     }
   }, [user?.id]);
+
+  const adjustUnreadCount = useCallback((delta: number) => {
+    setUnreadCount((c) => Math.max(0, c + delta));
+  }, []);
+
+  const replaceUnreadCount = useCallback((count: number) => {
+    setUnreadCount(Math.max(0, Math.floor(count)));
+  }, []);
 
   refetchRef.current = refetchUnreadCount;
 
@@ -87,6 +98,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const value: NotificationsContextValue = {
     unreadCount,
     refetchUnreadCount,
+    adjustUnreadCount,
+    replaceUnreadCount,
   };
 
   return (
@@ -102,6 +115,8 @@ export function useNotifications(): NotificationsContextValue {
     return {
       unreadCount: 0,
       refetchUnreadCount: async () => {},
+      adjustUnreadCount: () => {},
+      replaceUnreadCount: () => {},
     };
   }
   return ctx;

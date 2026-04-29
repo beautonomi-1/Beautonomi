@@ -258,6 +258,152 @@ export async function PATCH(
 }
 
 /**
+ * POST /api/provider/group-bookings/[id]?action=...
+ *
+ * Handles synthetic group:<id> actions redirected from the merged bookings
+ * endpoints. This keeps provider app/web group rows actionable instead of
+ * redirecting POST requests to a route with no POST handler.
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const { id } = await params;
+    const action = new URL(request.url).searchParams.get("action") ?? "";
+    const body = await request.json().catch(() => ({}));
+    const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
+    const providerId = await getProviderIdForUser(user.id, supabase);
+
+    if (!providerId) {
+      return notFoundResponse("Provider not found");
+    }
+
+    const { data: groupBooking, error: groupError } = await admin
+      .from("group_bookings")
+      .select("id, status, total_price")
+      .eq("id", id)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+
+    if (groupError) throw groupError;
+    if (!groupBooking) return notFoundResponse("Group booking not found");
+
+    const now = new Date().toISOString();
+
+    if (action === "start_service") {
+      const { error: bookingsError } = await admin
+        .from("bookings")
+        .update({
+          status: "in_progress",
+          current_stage: "service_started",
+          updated_at: now,
+        })
+        .eq("group_booking_id", id)
+        .eq("provider_id", providerId)
+        .in("status", ["confirmed", "booked", "waiting", "checked_in"]);
+      if (bookingsError) throw bookingsError;
+      const { data } = await admin
+        .from("group_bookings")
+        .update({ updated_at: now })
+        .eq("id", id)
+        .eq("provider_id", providerId)
+        .select()
+        .single();
+      return successResponse({ group_booking: data, message: "Group service started" });
+    }
+
+    if (action === "complete_service") {
+      const { error: bookingsError } = await admin
+        .from("bookings")
+        .update({
+          status: "completed",
+          current_stage: "service_completed",
+          completed_at: now,
+          updated_at: now,
+        })
+        .eq("group_booking_id", id)
+        .eq("provider_id", providerId)
+        .in("status", ["in_progress", "started"]);
+      if (bookingsError) throw bookingsError;
+      const { data, error } = await admin
+        .from("group_bookings")
+        .update({ status: "completed", updated_at: now })
+        .eq("id", id)
+        .eq("provider_id", providerId)
+        .select()
+        .single();
+      if (error) throw error;
+      return successResponse({ group_booking: data, message: "Group service completed" });
+    }
+
+    if (action === "mark_paid") {
+      const paymentMethod = body.payment_method === "mobile" ? "other" : body.payment_method;
+      if (!["cash", "card", "bank_transfer", "other"].includes(paymentMethod)) {
+        return errorResponse("Valid payment_method is required (cash, card, bank_transfer, other)", "VALIDATION_ERROR", 400);
+      }
+
+      const { data: bookings, error: bookingsError } = await admin
+        .from("bookings")
+        .select("id, tenant_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status")
+        .eq("group_booking_id", id)
+        .eq("provider_id", providerId)
+        .not("status", "in", "(cancelled,no_show)");
+      if (bookingsError) throw bookingsError;
+
+      const paymentProvider = paymentMethod === "cash" ? "cash" : "other";
+      const rows = (bookings ?? [])
+        .map((booking: any) => {
+          const remaining = Math.max(
+            0,
+            Number(booking.total_amount ?? 0) -
+              Math.max(0, Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0)) -
+              Number(booking.wallet_amount ?? 0) -
+              Number(booking.gift_card_amount ?? 0),
+          );
+          if (remaining <= 0) return null;
+          return {
+            booking_id: booking.id,
+            tenant_id: booking.tenant_id ?? null,
+            amount: remaining,
+            payment_method: paymentMethod,
+            payment_provider: paymentProvider,
+            status: "completed",
+            notes: body.notes || `Group payment received via ${paymentMethod}`,
+            created_by: user.id,
+          };
+        })
+        .filter(Boolean);
+
+      if (rows.length === 0) {
+        return errorResponse("Group booking is already fully paid", "ALREADY_PAID", 400);
+      }
+
+      const { data: payments, error: paymentsError } = await admin
+        .from("booking_payments")
+        .insert(rows)
+        .select();
+      if (paymentsError) throw paymentsError;
+      return successResponse({ payments, message: "Group booking payments recorded" });
+    }
+
+    if (action === "refund") {
+      return errorResponse(
+        "Group booking refunds must be issued from the individual participant bookings so wallet credits and audit trails stay accurate.",
+        "GROUP_REFUND_UNSUPPORTED",
+        400,
+      );
+    }
+
+    return errorResponse("Unsupported group booking action", "UNSUPPORTED_ACTION", 400);
+  } catch (error) {
+    return handleApiError(error, "Failed to apply group booking action");
+  }
+}
+
+/**
  * DELETE /api/provider/group-bookings/[id]
  */
 export async function DELETE(

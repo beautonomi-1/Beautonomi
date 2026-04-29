@@ -1,25 +1,26 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 
 /**
  * DELETE /api/me/conversations/[id]
- * 
- * Delete a conversation (customer side - soft delete)
+ *
+ * Delete a conversation from the customer's view.
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const conversationId = params.id;
+    const { id: conversationId } = await params;
 
     if (!conversationId) {
       return notFoundResponse("Conversation ID is required");
     }
 
-    const supabase = await getSupabaseServer(request);
+    // Use admin client so RLS doesn't block the lookup even if user auth state differs
+    const supabase = getSupabaseAdmin();
 
     // Verify the conversation belongs to this user (as customer)
     const { data: conversation, error: fetchError } = await supabase

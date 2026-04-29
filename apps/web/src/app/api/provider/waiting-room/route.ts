@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
     const locationId = searchParams.get("location_id");
@@ -82,7 +82,8 @@ export async function GET(request: NextRequest) {
       if (status === 'waiting') {
         query = query.in("status", ["waiting", "checked_in", "confirmed"]);
       } else if (status === 'in_service') {
-        query = query.eq("status", "started");
+        // 'in_progress' is the correct booking status for an active service
+        query = query.eq("status", "in_progress");
       } else if (status === 'completed') {
         query = query.eq("status", "completed");
       }
@@ -98,7 +99,7 @@ export async function GET(request: NextRequest) {
     const entries = (bookings || []).map((booking: any) => {
       // Determine waiting room status from booking status
       let wrStatus: "waiting" | "in_service" | "completed" | "left" = "waiting";
-      if (booking.status === "started") {
+      if (booking.status === "in_progress") {
         wrStatus = "in_service";
       } else if (booking.status === "completed") {
         wrStatus = "completed";
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
     const validationResult = createWaitingRoomEntrySchema.safeParse(body);

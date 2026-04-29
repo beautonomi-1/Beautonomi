@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import * as Location from "expo-location";
 import {
   View,
   Text,
@@ -10,6 +11,7 @@ import {
   Alert,
   Modal,
   Image,
+  useWindowDimensions,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
@@ -33,6 +35,9 @@ import {
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
+import { StaticMapImage } from "@/components/ui/StaticMapImage";
+import { AddressMapPinModal } from "@/components/AddressMapPinModal";
+import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
@@ -498,6 +503,10 @@ function Step6Payroll() {
 
 function Step7Location() {
   const { formData, updateFormData } = useOnboardingWizard();
+  const { width: windowWidth } = useWindowDimensions();
+  const [mapPinOpen, setMapPinOpen] = useState(false);
+  const [locating, setLocating] = useState(false);
+
   const addr = formData.address ?? {
     line1: "",
     city: "",
@@ -523,10 +532,81 @@ function Step7Location() {
     });
   };
 
+  const handleUseCurrentLocation = async () => {
+    if (locating) return;
+    setLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Location", "Allow location access to set your address from your current position.");
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const lat = loc.coords.latitude;
+      const lng = loc.coords.longitude;
+      const defaultCountry = addr.country?.trim() || DEFAULT_COUNTRY_NAME;
+      const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
+      if (mapped) {
+        updateFormData({
+          address: {
+            ...addr,
+            line1: mapped.address_line1 || addr.line1 || "Current location",
+            city: mapped.city || addr.city || "",
+            state: mapped.state || addr.state || "",
+            postal_code: mapped.postal_code || addr.postal_code || "",
+            country: mapped.country || defaultCountry,
+            latitude: mapped.latitude,
+            longitude: mapped.longitude,
+          },
+        });
+      } else {
+        updateFormData({
+          address: {
+            ...addr,
+            latitude: lat,
+            longitude: lng,
+          },
+        });
+      }
+    } catch (e) {
+      Alert.alert("Location error", e instanceof Error ? e.message : "Could not read location.");
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  const handleDropPinConfirm = async (lat: number, lng: number) => {
+    const defaultCountry = addr.country?.trim() || DEFAULT_COUNTRY_NAME;
+    const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
+    if (mapped) {
+      updateFormData({
+        address: {
+          ...addr,
+          line1: mapped.address_line1 || addr.line1,
+          city: mapped.city || addr.city,
+          state: mapped.state || addr.state,
+          postal_code: mapped.postal_code || addr.postal_code,
+          country: mapped.country || defaultCountry,
+          latitude: mapped.latitude,
+          longitude: mapped.longitude,
+        },
+      });
+    } else {
+      updateFormData({
+        address: {
+          ...addr,
+          latitude: lat,
+          longitude: lng,
+        },
+      });
+    }
+    setMapPinOpen(false);
+  };
+
   return (
     <View style={twStyle("gap-4")}>
       <Text style={twStyle("text-sm text-gray-600")}>
-        Search and pick a suggestion so we capture accurate coordinates for zones and travel.
+        Search for your street, drop a pin on the map, or use current location — we save coordinates for zones and travel.
       </Text>
       <AddressAutocomplete
         value={addr.line1 || ""}
@@ -541,13 +621,55 @@ function Step7Location() {
         label="Street address"
         countryCode={mapboxCountry}
         defaultCountryName={DEFAULT_COUNTRY_NAME}
-        geocodeTypes={["address"]}
         proximity={
           addr.latitude && addr.longitude
             ? { latitude: addr.latitude, longitude: addr.longitude }
             : undefined
         }
       />
+      <View style={twStyle("flex-row flex-wrap gap-2")}>
+        <TouchableOpacity
+          onPress={() => void handleUseCurrentLocation()}
+          disabled={locating}
+          style={twStyle(
+            `rounded-full border px-3 py-2 flex-row items-center ${locating ? "border-gray-200 bg-gray-100" : "border-blue-200 bg-blue-50"}`,
+          )}
+          accessibilityRole="button"
+          accessibilityLabel="Use current location"
+        >
+          {locating ? (
+            <ActivityIndicator size="small" color="#2563eb" />
+          ) : (
+            <Ionicons name="locate-outline" size={16} color="#2563eb" />
+          )}
+          <Text style={twStyle("ml-1.5 text-xs font-semibold text-blue-700")}>
+            {locating ? "Locating…" : "Current location"}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setMapPinOpen(true)}
+          style={twStyle("rounded-full border border-gray-200 bg-white px-3 py-2 flex-row items-center")}
+          accessibilityRole="button"
+          accessibilityLabel="Drop pin on map"
+        >
+          <Ionicons name="map-outline" size={16} color="#374151" />
+          <Text style={twStyle("ml-1.5 text-xs font-semibold text-gray-700")}>Drop pin on map</Text>
+        </TouchableOpacity>
+      </View>
+
+      {addr.latitude != null && addr.longitude != null ? (
+        <View style={twStyle("items-center")}>
+          <StaticMapImage
+            latitude={addr.latitude}
+            longitude={addr.longitude}
+            width={Math.min(windowWidth - 48, 400)}
+            height={140}
+            zoom={15}
+          />
+          <Text style={twStyle("mt-1.5 text-center text-xs text-gray-500")}>Map preview · edit lines below if needed</Text>
+        </View>
+      ) : null}
+
       <View>
         <Text style={twStyle(labelCls)}>Apt / suite (optional)</Text>
         <TextInput
@@ -572,6 +694,19 @@ function Step7Location() {
           style={twStyle(inputCls)}
         />
       </View>
+
+      <AddressMapPinModal
+        visible={mapPinOpen}
+        onClose={() => setMapPinOpen(false)}
+        onPickCoordinates={(lat, lng) => {
+          void handleDropPinConfirm(lat, lng);
+        }}
+        initialCoordinate={
+          addr.latitude != null && addr.longitude != null
+            ? { latitude: addr.latitude, longitude: addr.longitude }
+            : null
+        }
+      />
     </View>
   );
 }

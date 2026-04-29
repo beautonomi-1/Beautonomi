@@ -35,6 +35,7 @@ const PROVIDER_BOOKING_TEMPLATE_KEYS = new Set([
   "provider_weather_alert",
   "provider_dispute_opened",
   "provider_dispute_resolved",
+  "provider_custom_request",
 ]);
 
 /**
@@ -57,7 +58,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
     const onDemandRequestId = String(
       data.on_demand_request_id ?? data.id ?? "",
     );
-    const productOrderId = String(data.product_order_id ?? "").trim();
+    const productOrderId = String(data.product_order_id ?? data.order_id ?? "").trim();
 
     // ── Superadmin template pushes (OneSignal data = { template_key, ...variables }) ──
     if (templateKey === "provider_new_message") {
@@ -109,6 +110,23 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       } else {
         router.push("/(app)/(tabs)/more/orders-hub" as never);
       }
+      return;
+    }
+
+    if (templateKey === "provider_on_demand_request") {
+      if (onDemandRequestId) {
+        router.push({
+          pathname: "/(app)/on-demand/incoming/[id]",
+          params: { id: onDemandRequestId },
+        });
+      } else {
+        router.push("/(app)/(tabs)/bookings");
+      }
+      return;
+    }
+
+    if (templateKey === "provider_waiting_room" || templateKey === "provider_check_in") {
+      router.push("/(app)/(tabs)/more/waiting-room");
       return;
     }
 

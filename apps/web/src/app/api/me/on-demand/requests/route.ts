@@ -8,39 +8,8 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
 import { z } from "zod";
-
-type OnDemandModuleEnv = "production" | "staging" | "development";
-
-/** Match `on_demand_module_config.environment` — never hard-code production only (preview/staging rows exist). */
-function resolveOnDemandModuleEnvironment(): OnDemandModuleEnv {
-  const explicit = process.env.ON_DEMAND_CONFIG_ENV?.trim().toLowerCase();
-  if (explicit === "production" || explicit === "staging" || explicit === "development") {
-    return explicit;
-  }
-  if (process.env.VERCEL_ENV === "production") return "production";
-  if (process.env.VERCEL_ENV === "preview") return "staging";
-  if (process.env.VERCEL_ENV === "development") return "development";
-  return process.env.NODE_ENV === "production" ? "production" : "development";
-}
-
-async function fetchProviderAcceptWindowSeconds(admin: ReturnType<typeof getSupabaseAdmin>): Promise<number> {
-  const primary = resolveOnDemandModuleEnvironment();
-  const order: OnDemandModuleEnv[] = [primary, "production", "staging", "development"];
-  const seen = new Set<OnDemandModuleEnv>();
-  for (const env of order) {
-    if (seen.has(env)) continue;
-    seen.add(env);
-    const { data } = await admin
-      .from("on_demand_module_config")
-      .select("provider_accept_window_seconds")
-      .eq("environment", env)
-      .maybeSingle();
-    const w = Number((data as { provider_accept_window_seconds?: number } | null)?.provider_accept_window_seconds);
-    if (Number.isFinite(w) && w > 0) return Math.floor(w);
-  }
-  return 30;
-}
 
 const createRequestSchema = z.object({
   provider_id: z.string().uuid("Invalid provider ID"),
@@ -71,6 +40,30 @@ export async function POST(request: NextRequest) {
 
     const admin = getSupabaseAdmin();
 
+    const { data: providerRow } = await admin
+      .from("providers")
+      .select("id, tenant_id, user_id")
+      .eq("id", provider_id)
+      .maybeSingle();
+
+    if (!providerRow) {
+      return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
+    }
+
+    const requestNow = await getRequestNowAvailability({
+      tenantId: (providerRow as { tenant_id?: string | null }).tenant_id ?? null,
+      userId: user.id,
+      role: "customer",
+      surface: "customer",
+    });
+    if (!requestNow.enabled) {
+      return errorResponse(
+        "Request Now is currently unavailable.",
+        "ON_DEMAND_DISABLED",
+        403,
+      );
+    }
+
     const { data: obSettings } = await admin
       .from("provider_online_booking_settings")
       .select("on_demand_accept_enabled")
@@ -84,7 +77,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const windowSeconds = await fetchProviderAcceptWindowSeconds(admin);
+    const windowSeconds = requestNow.providerAcceptWindowSeconds;
     const now = new Date();
     const expiresAt = new Date(now.getTime() + windowSeconds * 1000);
 
@@ -132,18 +125,15 @@ export async function POST(request: NextRequest) {
 
     // Notify provider app (owner + staff) so they get a push when app is closed/background
     try {
-      const { data: providerRow } = await admin
-        .from("providers")
-        .select("user_id")
-        .eq("id", provider_id)
-        .single();
       const { data: staffRows } = await admin
         .from("provider_staff")
         .select("user_id")
         .eq("provider_id", provider_id)
         .eq("is_active", true);
       const userIds = new Set<string>();
-      if (providerRow?.user_id) userIds.add(providerRow.user_id);
+      if ((providerRow as { user_id?: string | null })?.user_id) {
+        userIds.add((providerRow as { user_id: string }).user_id);
+      }
       (staffRows || []).forEach((s: { user_id: string }) => {
         if (s.user_id) userIds.add(s.user_id);
       });

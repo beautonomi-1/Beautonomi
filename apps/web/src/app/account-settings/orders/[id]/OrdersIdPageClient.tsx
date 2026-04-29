@@ -18,7 +18,11 @@ interface ProductOrder {
   tax_amount: number;
   delivery_fee: number;
   discount_amount?: number;
+  platform_fee?: number | null;
+  wallet_amount?: number | null;
   total_amount: number;
+  payment_status?: string | null;
+  payment_method?: string | null;
   tracking_number: string | null;
   carrier?: string | null;
   tracking_url?: string | null;
@@ -42,6 +46,7 @@ interface ProductOrder {
     product_variant?: { id: string; option_values?: Record<string, string> } | null;
   }>;
   provider: { id: string; business_name: string; slug: string; logo_url: string | null };
+  customer?: { id: string; full_name?: string | null; email?: string | null; phone?: string | null } | null;
   delivery_address?: {
     label: string | null;
     address_line1: string;
@@ -98,6 +103,7 @@ export default function OrderDetailPage() {
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [order, setOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -142,6 +148,55 @@ export default function OrderDetailPage() {
   const idx = timelineIndex(order.status);
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
   const sym = (order.currency && String(order.currency).trim()) || tenantCurrency;
+  const walletAmount = Number(order.wallet_amount ?? 0);
+  const platformFee = Number(order.platform_fee ?? 0);
+  const onlineAmountDue = Math.max(0, Number(order.total_amount ?? 0) - walletAmount);
+  const canPayOnline =
+    order.payment_status === "pending" &&
+    (order.payment_method === "paystack" || order.payment_method == null) &&
+    onlineAmountDue > 0;
+
+  const handlePayOnline = async () => {
+    if (!canPayOnline || paying) return;
+    const email = order.customer?.email?.trim();
+    if (!email) {
+      setErrorMsg("Add an email address to your account before paying this order online.");
+      return;
+    }
+
+    setPaying(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/paystack/initialize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          amount: Math.round(onlineAmountDue * 100),
+          metadata: {
+            product_order_id: order.id,
+            order_number: order.order_number,
+            type: "product_order",
+          },
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      const url = json?.data?.authorization_url;
+      if (!res.ok || !url) {
+        const message =
+          json?.error?.message ||
+          json?.message ||
+          "We could not start payment for this order. Please try again.";
+        setErrorMsg(message);
+        return;
+      }
+      window.location.href = url;
+    } catch {
+      setErrorMsg("Unable to start payment. Please check your network and try again.");
+    } finally {
+      setPaying(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -172,6 +227,11 @@ export default function OrderDetailPage() {
             Download receipt
           </a>
         </div>
+        {errorMsg && (
+          <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMsg}
+          </div>
+        )}
 
         {/* Timeline */}
         <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
@@ -350,11 +410,35 @@ export default function OrderDetailPage() {
             {Number(order.tax_amount) > 0 && (
               <div className="flex justify-between"><span className="text-gray-500">Tax</span><span>{sym} {Number(order.tax_amount).toFixed(2)}</span></div>
             )}
+            {platformFee > 0 && (
+              <div className="flex justify-between"><span className="text-gray-500">Platform fee</span><span>{sym} {platformFee.toFixed(2)}</span></div>
+            )}
+            {walletAmount > 0 && (
+              <div className="flex justify-between text-emerald-700"><span>Paid from wallet</span><span>{sym} {walletAmount.toFixed(2)}</span></div>
+            )}
+            {order.payment_status && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">Payment status</span>
+                <span className={order.payment_status === "paid" ? "font-semibold text-emerald-700" : order.payment_status === "failed" ? "font-semibold text-red-600" : "font-semibold text-amber-600"}>
+                  {order.payment_status.replace(/_/g, " ")}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-gray-100 pt-3 text-lg font-bold">
               <span>Total</span>
               <span className="text-pink-600">{sym} {Number(order.total_amount).toFixed(2)}</span>
             </div>
           </div>
+          {canPayOnline && (
+            <button
+              type="button"
+              onClick={handlePayOnline}
+              disabled={paying}
+              className="mt-5 w-full rounded-xl bg-pink-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+            >
+              {paying ? "Starting payment..." : `Pay ${sym} ${onlineAmountDue.toFixed(2)} online`}
+            </button>
+          )}
         </div>
 
         {/* Provider */}

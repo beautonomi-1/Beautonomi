@@ -166,10 +166,12 @@ export default function ChatsScreen() {
           )
         );
         const name = item.provider?.business_name || "Provider";
-        if (item.provider_id) {
+        // Prefer navigating by conversation id — avoids a redundant get-or-create round-trip.
+        // Fall back to provider_id (triggers get-or-create) only when id is missing.
+        if (item.id) {
+          router.push({ pathname: "/(app)/chat", params: { id: item.id, provider_name: name } });
+        } else if (item.provider_id) {
           router.push({ pathname: "/(app)/chat", params: { provider_id: item.provider_id, provider_name: name } });
-        } else {
-          router.push({ pathname: "/(app)/chat", params: { id: item.id } });
         }
       };
       const openActions = () => {

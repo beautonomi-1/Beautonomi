@@ -37,6 +37,24 @@ function fetchCartCount(setCount: (n: number) => void, isUser: boolean) {
     .catch(() => setCount(0));
 }
 
+function fetchChatUnreadCount(setCount: (n: number) => void, isUser: boolean) {
+  if (!isUser) {
+    setCount(0);
+    return;
+  }
+  api
+    .get<Array<{ unread_count_customer?: number }> | { data?: Array<{ unread_count_customer?: number }> }>(
+      "/api/me/conversations",
+    )
+    .then((res) => {
+      const raw = res.data;
+      const conversations = Array.isArray(raw) ? raw : raw?.data ?? [];
+      const total = conversations.reduce((sum, item) => sum + Math.max(0, item.unread_count_customer ?? 0), 0);
+      setCount(total);
+    })
+    .catch(() => setCount(0));
+}
+
 export default function TabsLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -44,6 +62,7 @@ export default function TabsLayout() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [cartCount, setCartCount] = useState(0);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
 
   useEffect(() => {
     if (!isSentryEnabled()) return;
@@ -53,6 +72,7 @@ export default function TabsLayout() {
   useFocusEffect(
     useCallback(() => {
       fetchCartCount(setCartCount, !!user);
+      fetchChatUnreadCount(setChatUnreadCount, !!user);
     }, [user]),
   );
 
@@ -240,8 +260,28 @@ export default function TabsLayout() {
         options={{
           title: t("customer.messages"),
           tabBarIcon: ({ focused, color }) => (
-            <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
+            <View style={{ minWidth: 24, minHeight: 24, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name={focused ? "chatbubble" : "chatbubble-outline"} size={24} color={color} />
+              {chatUnreadCount > 0 && (
+                <View
+                  style={{
+                    position: "absolute",
+                    top: -4,
+                    right: -10,
+                    minWidth: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    backgroundColor: Colors.primary,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingHorizontal: 4,
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }} numberOfLines={1}>
+                    {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                  </Text>
+                </View>
+              )}
             </View>
           ),
         }}

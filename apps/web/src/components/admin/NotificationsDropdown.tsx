@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -111,43 +111,57 @@ export default function NotificationsDropdown() {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const { user } = useAuth();
+  /** After at least one successful fetch for the current session user, use silent refresh (no spinner). */
+  const hasLoadedActivityOnceRef = useRef(false);
+  const lastUserIdRef = useRef<string | undefined>(undefined);
+
+  const loadActivities = useCallback(async (silent: boolean) => {
+    try {
+      if (!silent) setIsLoading(true);
+      const response = await fetcher.get<{ data?: ActivityResponse } & ActivityResponse>('/api/admin/activity');
+      const data = response.data ?? response;
+      setActivities(data.activities || []);
+      setTotalUnread(data.total_unread || 0);
+      hasLoadedActivityOnceRef.current = true;
+    } catch (error) {
+      console.error('Failed to load activities:', error);
+      if (!silent) {
+        setActivities([]);
+        setTotalUnread(0);
+      }
+    } finally {
+      if (!silent) setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user?.id) {
+      lastUserIdRef.current = undefined;
+      hasLoadedActivityOnceRef.current = false;
       setIsLoading(false);
       setActivities([]);
       setTotalUnread(0);
       return;
     }
-    loadActivities();
+    if (lastUserIdRef.current !== user.id) {
+      lastUserIdRef.current = user.id;
+      hasLoadedActivityOnceRef.current = false;
+    }
 
-    const interval = setInterval(loadActivities, 120000);
+    const silent = hasLoadedActivityOnceRef.current;
+    void loadActivities(silent);
+
+    const interval = setInterval(() => void loadActivities(true), 120000);
     let fastInterval: NodeJS.Timeout | null = null;
     if (open) {
-      fastInterval = setInterval(loadActivities, 30000);
+      fastInterval = setInterval(() => void loadActivities(true), 30000);
     }
 
     return () => {
       clearInterval(interval);
       if (fastInterval) clearInterval(fastInterval);
     };
-  }, [open, user?.id]);
-
-  const loadActivities = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetcher.get<{ data?: ActivityResponse } & ActivityResponse>('/api/admin/activity');
-      const data = response.data ?? response;
-      setActivities(data.activities || []);
-      setTotalUnread(data.total_unread || 0);
-    } catch (error) {
-      console.error('Failed to load activities:', error);
-      setActivities([]);
-      setTotalUnread(0);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [open, user?.id, loadActivities]);
 
   const handleActivityClick = (link: string) => {
     setOpen(false);
@@ -173,9 +187,14 @@ export default function NotificationsDropdown() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-96 p-0">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="font-semibold text-lg">Notifications</h3>
-          <div className="flex items-center gap-2">
+        <div className="flex items-start justify-between gap-3 p-4 border-b">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-lg">Notifications</h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Live queue items — tap to open in admin
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
             {totalUnread > 0 && (
               <Badge variant="secondary" className="text-xs">
                 {totalUnread} new
@@ -186,6 +205,7 @@ export default function NotificationsDropdown() {
               size="icon"
               onClick={() => setOpen(false)}
               className="h-8 w-8 rounded"
+              aria-label="Close"
             >
               <X className="w-4 h-4" />
             </Button>

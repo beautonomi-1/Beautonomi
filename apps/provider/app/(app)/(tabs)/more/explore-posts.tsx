@@ -7,10 +7,13 @@ import {
   Alert,
   RefreshControl,
   TextInput,
-  Linking,
+  Dimensions,
+  StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Video, ResizeMode } from "expo-av";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -26,6 +29,9 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { Image, type ImageStyle as ExpoImageStyle } from "expo-image";
+import { getWebProviderBaseUrl } from "@/lib/web-url";
+import { pushInAppBrowser } from "@/lib/in-app-web";
+import { tabScreenScrollBottomPadding } from "@/constants/layout";
 
 interface ExplorePost {
   id: string;
@@ -41,6 +47,7 @@ interface ExplorePost {
   primary_category_id?: string | null;
   tags?: string[];
   offering_id?: string | null;
+  offering?: { id: string; name: string; price?: number; duration_minutes?: number } | null;
   created_at: string;
   updated_at: string;
 }
@@ -74,9 +81,74 @@ function formatDateSafe(value: unknown): string {
   return parsed.toLocaleDateString();
 }
 
+function isVideoUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov");
+}
+
+function formatPublishedLine(post: ExplorePost): string {
+  if (post.status !== "published") return "Draft — not on Explore yet";
+  if (typeof post.published_at === "string" && post.published_at) {
+    try {
+      const d = new Date(post.published_at);
+      if (Number.isFinite(d.getTime())) {
+        return `Published ${d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return "Published";
+}
+
+function explorePublicBase(): string {
+  return getWebProviderBaseUrl().replace(/\/$/, "");
+}
+
+/** Square media preview for feed cards — video shows native preview via expo-av. */
+function ExploreFeedMediaThumb({
+  uri,
+  height,
+}: {
+  uri: string;
+  height: number;
+}) {
+  const video = isVideoUrl(uri);
+  if (!video) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{ width: "100%", height, borderRadius: 0 } as ExpoImageStyle}
+        contentFit="cover"
+        accessibilityLabel="Post image"
+      />
+    );
+  }
+  return (
+    <View style={{ width: "100%", height, backgroundColor: "#111" }}>
+      <Video
+        source={{ uri }}
+        style={StyleSheet.absoluteFillObject}
+        resizeMode={ResizeMode.COVER}
+        shouldPlay={false}
+        isMuted
+        useNativeControls={false}
+      />
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFillObject, { alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.25)" }]}>
+          <Ionicons name="play-circle" size={52} color="rgba(255,255,255,0.95)" />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 type PickedAsset = { uri: string; mimeType?: string; fileName?: string };
 
 export default function ExplorePostsScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const windowWidth = Dimensions.get("window").width;
   const { screenPadding } = useResponsive();
   const params = useLocalSearchParams<{ create?: string }>();
   const [refreshing, setRefreshing] = useState(false);
@@ -96,6 +168,13 @@ export default function ExplorePostsScreen() {
   const [editCaption, setEditCaption] = useState("");
   const [editPublishNow, setEditPublishNow] = useState(true);
   const [editPrimaryCategorySlug, setEditPrimaryCategorySlug] = useState<string | null>(null);
+  const [editTagInput, setEditTagInput] = useState("");
+  const [editOfferingId, setEditOfferingId] = useState<string | null>(null);
+  /** Existing media URLs (from API); user can remove before save */
+  const [editRemoteUrls, setEditRemoteUrls] = useState<string[]>([]);
+  /** New library/camera picks — uploaded on save */
+  const [editLocalAssets, setEditLocalAssets] = useState<PickedAsset[]>([]);
+  const [editUploading, setEditUploading] = useState(false);
   const [extraPosts, setExtraPosts] = useState<ExplorePost[]>([]);
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
 
@@ -119,6 +198,17 @@ export default function ExplorePostsScreen() {
     return [];
   }, [data]);
   const posts = useMemo(() => [...firstPagePosts, ...extraPosts], [firstPagePosts, extraPosts]);
+
+  const analyticsTotals = useMemo(() => {
+    let views = 0;
+    let likes = 0;
+    for (const p of posts) {
+      views += typeof p.view_count === "number" ? p.view_count : 0;
+      likes += typeof p.like_count === "number" ? p.like_count : 0;
+    }
+    return { views, likes };
+  }, [posts]);
+
   const canLoadMorePosts =
     !Array.isArray(data) &&
     (typeof data?.total === "number"
@@ -214,8 +304,17 @@ export default function ExplorePostsScreen() {
     setEditMode(false);
     setEditCaption(post.caption ?? "");
     setEditPublishNow(post.status === "published");
-    setEditPrimaryCategorySlug(null);
-  }, []);
+    const cat = post.primary_category_id
+      ? categories.find((c) => c.id === post.primary_category_id)
+      : null;
+    setEditPrimaryCategorySlug(cat?.slug ?? null);
+    setEditTagInput(
+      Array.isArray(post.tags) && post.tags.length ? post.tags.join(", ") : "",
+    );
+    setEditOfferingId(post.offering_id ?? null);
+    setEditRemoteUrls([...(post.media_urls ?? [])]);
+    setEditLocalAssets([]);
+  }, [categories]);
 
   const handleDelete = useCallback(
     (post: ExplorePost) => {
@@ -244,24 +343,151 @@ export default function ExplorePostsScreen() {
     [deletePost, refresh]
   );
 
+  const editMediaSlotsLeft = 5 - editRemoteUrls.length - editLocalAssets.length;
+
   const handleSaveEdit = useCallback(async () => {
     if (!viewPost) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const payload: { caption: string | null; status: "draft" | "published"; primary_category_slug?: string | null } = {
-      caption: editCaption.trim() || null,
-      status: editPublishNow ? "published" : "draft",
-    };
-    if (editPrimaryCategorySlug !== undefined) payload.primary_category_slug = editPrimaryCategorySlug ?? null;
-    const { data: updated, error: err } = await updatePost(`/api/explore/posts/${viewPost.id}`, payload);
-    if (err) {
-      Alert.alert("Error", err);
+    const totalMedia = editRemoteUrls.length + editLocalAssets.length;
+    if (totalMedia === 0) {
+      Alert.alert("Add media", "Select at least one photo or video.");
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    if (updated) setViewPost(updated);
-    setEditMode(false);
-    refresh();
-  }, [viewPost, editCaption, editPublishNow, editPrimaryCategorySlug, updatePost, refresh]);
+    if (totalMedia > 5) {
+      Alert.alert("Too many media", "Explore posts can include up to 5 photos or videos.");
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setEditUploading(true);
+    try {
+      const uploadedPaths: string[] = [];
+      for (const asset of editLocalAssets) {
+        const formData = new FormData();
+        appendFormDataFileNative(formData, "file", {
+          uri: asset.uri,
+          type: asset.mimeType ?? "image/jpeg",
+          name: asset.fileName ?? "image.jpg",
+        });
+        const res = await api.fetch<{ path: string }>("/api/explore/upload", {
+          method: "POST",
+          body: formData,
+        });
+        if (res.error || !res.data?.path) {
+          Alert.alert("Upload failed", res.error?.message ?? "Could not upload file.");
+          return;
+        }
+        uploadedPaths.push(res.data.path);
+      }
+      const media_urls = [...editRemoteUrls, ...uploadedPaths];
+      const tags = [
+        ...new Set(
+          editTagInput
+            .split(/[,]+/)
+            .map((t) => t.trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      ].slice(0, 20);
+
+      const payload: Record<string, unknown> = {
+        caption: editCaption.trim() || null,
+        status: editPublishNow ? "published" : "draft",
+        primary_category_slug: editPrimaryCategorySlug ?? null,
+        tags,
+        media_urls,
+        offering_id: editOfferingId,
+      };
+
+      const { data: updated, error: err } = await updatePost(
+        `/api/explore/posts/${viewPost.id}`,
+        payload,
+      );
+      if (err) {
+        Alert.alert("Error", err);
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (updated) setViewPost(updated);
+      setEditMode(false);
+      setEditLocalAssets([]);
+      refresh();
+    } finally {
+      setEditUploading(false);
+    }
+  }, [
+    viewPost,
+    editCaption,
+    editPublishNow,
+    editPrimaryCategorySlug,
+    editTagInput,
+    editOfferingId,
+    editRemoteUrls,
+    editLocalAssets,
+    updatePost,
+    refresh,
+  ]);
+
+  const pickMediaForEdit = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow access to your photos to add media to your post.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images", "videos"],
+      allowsMultipleSelection: true,
+      quality: 0.9,
+      videoMaxDuration: 60,
+    });
+    if (result.canceled) return;
+    const newAssets: PickedAsset[] = result.assets.map((a) => ({
+      uri: a.uri,
+      mimeType: a.mimeType ?? (a.type === "video" ? "video/mp4" : "image/jpeg"),
+      fileName: a.fileName ?? (a.type === "video" ? "video.mp4" : "image.jpg"),
+    }));
+    setEditLocalAssets((prev) => {
+      const room = 5 - editRemoteUrls.length - prev.length;
+      if (room <= 0) {
+        Alert.alert("Limit reached", "You can add up to 5 photos or videos per post.");
+        return prev;
+      }
+      return [...prev, ...newAssets.slice(0, room)];
+    });
+  }, [editRemoteUrls.length]);
+
+  const pickFromCameraForEdit = useCallback(async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow camera access to capture photos or videos for your post.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images", "videos"],
+      quality: 0.9,
+      videoMaxDuration: 60,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const a = result.assets[0];
+    const asset: PickedAsset = {
+      uri: a.uri,
+      mimeType: a.mimeType ?? (a.type === "video" ? "video/mp4" : "image/jpeg"),
+      fileName: a.fileName ?? (a.type === "video" ? "video.mp4" : "image.jpg"),
+    };
+    setEditLocalAssets((prev) => {
+      const room = 5 - editRemoteUrls.length - prev.length;
+      if (room <= 0) {
+        Alert.alert("Limit reached", "You can add up to 5 photos or videos per post.");
+        return prev;
+      }
+      return [...prev, asset];
+    });
+  }, [editRemoteUrls.length]);
+
+  const removeEditRemote = useCallback((index: number) => {
+    setEditRemoteUrls((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const removeEditLocal = useCallback((index: number) => {
+    setEditLocalAssets((prev) => prev.filter((_, i) => i !== index));
+  }, []);
 
   const openCreate = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -380,13 +606,26 @@ export default function ExplorePostsScreen() {
   const createHeaderAction = (
     <TouchableOpacity
       onPress={openCreate}
-      style={twStyle("flex-row items-center rounded-xl bg-[#ec4899] px-4 py-2")}
-      accessibilityLabel="Create post"
+      style={twStyle("h-11 w-11 items-center justify-center rounded-full bg-[#ec4899] shadow-sm")}
+      accessibilityLabel="Create new Explore post"
       accessibilityRole="button"
+      hitSlop={6}
     >
-      <Ionicons name="add" size={18} color="#fff" />
-      <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>Create post</Text>
+      <Ionicons name="add" size={26} color="#fff" />
     </TouchableOpacity>
+  );
+
+  const openExploreFeed = useCallback(() => {
+    const url = `${explorePublicBase()}/explore`;
+    pushInAppBrowser(router, url, "Explore");
+  }, [router]);
+
+  const openPublicPost = useCallback(
+    (postId: string) => {
+      const url = `${explorePublicBase()}/explore/${postId}`;
+      pushInAppBrowser(router, url, "Post on Explore");
+    },
+    [router],
   );
 
   if (loading && !data) {
@@ -395,7 +634,7 @@ export default function ExplorePostsScreen() {
         <ScreenHeader
           title="Explore"
           showBack
-          subtitle="Posts for Explore feed"
+          subtitle="Your Explore posts"
           rightAction={createHeaderAction}
         />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
@@ -411,7 +650,7 @@ export default function ExplorePostsScreen() {
         <ScreenHeader
           title="Explore"
           showBack
-          subtitle="Posts for Explore feed"
+          subtitle="Your Explore posts"
           rightAction={createHeaderAction}
         />
         <View style={twStyle("flex-1 justify-center px-4")}>
@@ -421,18 +660,21 @@ export default function ExplorePostsScreen() {
     );
   }
 
+  const scrollBottomPad = tabScreenScrollBottomPadding(insets.bottom, 24) + 64;
+
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Explore" showBack subtitle="Posts for Explore feed" rightAction={createHeaderAction} />
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <ScreenHeader title="Explore" showBack subtitle="Your Explore posts" rightAction={createHeaderAction} />
 
-      <ScrollView
-        style={twStyle("flex-1")}
-        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        showsVerticalScrollIndicator={false}
-      >
+        <ScrollView
+          style={twStyle("flex-1")}
+          contentContainerStyle={{ paddingBottom: scrollBottomPad }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          showsVerticalScrollIndicator={false}
+        >
         {posts.length === 0 ? (
           <EmptyState
             icon="camera-outline"
@@ -457,12 +699,33 @@ export default function ExplorePostsScreen() {
                 <Text style={twStyle("text-xs font-semibold text-white")}>Post now</Text>
               </TouchableOpacity>
             </View>
+            <View
+              style={twStyle("mb-4 flex-row flex-wrap items-center gap-y-2 rounded-xl border border-gray-100 bg-gray-50 p-4")}
+            >
+              <View style={twStyle("mr-6 flex-row items-center gap-2")}>
+                <Ionicons name="eye-outline" size={20} color="#6b7280" />
+                <Text style={twStyle("text-sm text-gray-600")}>Total views</Text>
+                <Text style={twStyle("text-base font-semibold text-gray-900")}>{analyticsTotals.views}</Text>
+              </View>
+              <View style={twStyle("mr-6 flex-row items-center gap-2")}>
+                <Ionicons name="heart-outline" size={20} color="#6b7280" />
+                <Text style={twStyle("text-sm text-gray-600")}>Total likes</Text>
+                <Text style={twStyle("text-base font-semibold text-gray-900")}>{analyticsTotals.likes}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={openExploreFeed}
+                style={twStyle("ml-auto flex-row items-center gap-1")}
+                accessibilityRole="button"
+                accessibilityLabel="Open Explore feed in browser"
+              >
+                <Ionicons name="open-outline" size={18} color="#db2777" />
+                <Text style={twStyle("text-sm font-semibold text-[#db2777]")}>View Explore</Text>
+              </TouchableOpacity>
+            </View>
             <View>
               {posts.map((post, idx) => {
                 const thumb = post.media_urls?.[0];
-                const isVideo =
-                  thumb &&
-                  /\.(mp4|webm|mov)$/i.test(thumb);
+                const tileSize = windowWidth - screenPadding * 2;
                 return (
                 <TouchableOpacity
                     key={post.id}
@@ -470,18 +733,9 @@ export default function ExplorePostsScreen() {
                     activeOpacity={0.85}
                     style={[twStyle("overflow-hidden rounded-2xl border border-gray-200 bg-white"), idx > 0 ? { marginTop: 16 } : undefined]}
                   >
-                    <View style={twStyle("aspect-square bg-gray-100")}>
-                      {thumb && !isVideo ? (
-                        <Image
-                          source={{ uri: thumb }}
-                          style={twStyle("h-full w-full") as ExpoImageStyle}
-                          contentFit="cover"
-                          accessibilityLabel="Post image"
-                        />
-                      ) : thumb && isVideo ? (
-                        <View style={twStyle("h-full w-full items-center justify-center bg-gray-200")}>
-                          <Ionicons name="videocam" size={48} color="#9ca3af" />
-                        </View>
+                    <View style={[twStyle("overflow-hidden bg-gray-100"), { width: "100%", aspectRatio: 1 }]}>
+                      {thumb ? (
+                        <ExploreFeedMediaThumb uri={thumb} height={tileSize} />
                       ) : (
                         <View style={twStyle("h-full w-full items-center justify-center")}>
                           <Ionicons name="image-outline" size={48} color="#d1d5db" />
@@ -495,7 +749,7 @@ export default function ExplorePostsScreen() {
                       >
                         {post.caption || "No caption"}
                       </Text>
-                      <View style={twStyle("mt-2 flex-row flex-wrap items-center")}>
+                      <View style={twStyle("mt-2 flex-row flex-wrap items-center gap-y-1")}>
                         <View
                           style={[twStyle(`rounded-full px-2.5 py-0.5 ${
                             post.status === "published"
@@ -514,9 +768,21 @@ export default function ExplorePostsScreen() {
                           </Text>
                         </View>
                         <Text style={twStyle("text-xs text-gray-500")}>
-                          {post.like_count} likes · {post.comment_count ?? 0} comments
+                          {post.like_count ?? 0} likes · {post.comment_count ?? 0} comments ·{" "}
+                          {typeof post.view_count === "number" ? post.view_count : 0} views
                         </Text>
                       </View>
+                      {post.status === "published" ? (
+                        <TouchableOpacity
+                          onPress={() => openPublicPost(post.id)}
+                          style={twStyle("mt-2 flex-row items-center self-start")}
+                          accessibilityRole="button"
+                          accessibilityLabel="View this post on the public Explore page"
+                        >
+                          <Ionicons name="open-outline" size={14} color="#db2777" />
+                          <Text style={twStyle("ml-1 text-xs font-medium text-[#db2777]")}>View on Explore</Text>
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
                   </TouchableOpacity>
                 );
@@ -537,7 +803,33 @@ export default function ExplorePostsScreen() {
             </View>
           </>
         )}
-      </ScrollView>
+        </ScrollView>
+
+        <TouchableOpacity
+          onPress={openCreate}
+          style={{
+            position: "absolute",
+            right: 12,
+            bottom: tabScreenScrollBottomPadding(insets.bottom, 8),
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: "#ec4899",
+            alignItems: "center",
+            justifyContent: "center",
+            elevation: 6,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.22,
+            shadowRadius: 5,
+          }}
+          accessibilityLabel="Create new Explore post"
+          accessibilityRole="button"
+          activeOpacity={0.9}
+        >
+          <Ionicons name="add" size={30} color="#fff" />
+        </TouchableOpacity>
+      </View>
 
       <BottomSheet
         visible={createOpen}
@@ -706,16 +998,100 @@ export default function ExplorePostsScreen() {
       {viewPost && (
         <BottomSheet
           visible={!!viewPost}
-          onClose={() => !updating && setViewPost(null)}
+          onClose={() => !updating && !editUploading && setViewPost(null)}
           title={editMode ? "Edit post" : "Post"}
+          snapHeight="full"
           subtitle={
             editMode
               ? undefined
-              : `${viewPost.like_count} likes · ${viewPost.comment_count ?? 0} comments`
+              : `${viewPost.like_count} likes · ${viewPost.comment_count ?? 0} comments · ${
+                  typeof viewPost.view_count === "number" ? viewPost.view_count : 0
+                } views`
           }
         >
           {editMode ? (
-            <>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={twStyle("pb-2")}
+            >
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Photos & videos</Text>
+              <Text style={twStyle("mb-3 text-xs text-gray-500")}>
+                Up to 5 total. Remove items or add new ones — matches the web editor.
+              </Text>
+              <View style={twStyle("mb-3 flex-row gap-2")}>
+                <TouchableOpacity
+                  onPress={pickMediaForEdit}
+                  disabled={editMediaSlotsLeft <= 0 || editUploading}
+                  style={twStyle(
+                    `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-4 px-2 ${editMediaSlotsLeft <= 0 ? "opacity-50" : ""}`,
+                  )}
+                >
+                  <Ionicons name="images-outline" size={22} color="#9ca3af" />
+                  <Text style={twStyle("ml-2 text-center text-xs font-medium text-gray-600")}>Library</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={pickFromCameraForEdit}
+                  disabled={editMediaSlotsLeft <= 0 || editUploading}
+                  style={twStyle(
+                    `flex-1 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-4 px-2 ${editMediaSlotsLeft <= 0 ? "opacity-50" : ""}`,
+                  )}
+                >
+                  <Ionicons name="camera-outline" size={22} color="#9ca3af" />
+                  <Text style={twStyle("ml-2 text-center text-xs font-medium text-gray-600")}>Camera</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+                {editRemoteUrls.length + editLocalAssets.length}/5 selected
+              </Text>
+              {editRemoteUrls.length + editLocalAssets.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={twStyle("-mx-1 mb-4")}
+                >
+                  {editRemoteUrls.map((url, i) => (
+                    <View key={`r-${url}-${i}`} style={twStyle("mr-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100")}>
+                      {isVideoUrl(url) ? (
+                        <View style={twStyle("h-full w-full")}>
+                          <ExploreFeedMediaThumb uri={url} height={80} />
+                        </View>
+                      ) : (
+                        <Image
+                          source={{ uri: url }}
+                          style={twStyle("h-full w-full") as ExpoImageStyle}
+                          contentFit="cover"
+                        />
+                      )}
+                      <TouchableOpacity
+                        onPress={() => removeEditRemote(i)}
+                        style={twStyle("absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60")}
+                        accessibilityLabel="Remove media"
+                      >
+                        <Ionicons name="close" size={14} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {editLocalAssets.map((asset, i) => (
+                    <View key={`l-${asset.uri}-${i}`} style={twStyle("mr-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100")}>
+                      <Image
+                        source={{ uri: asset.uri }}
+                        style={twStyle("h-full w-full") as ExpoImageStyle}
+                        contentFit="cover"
+                      />
+                      <TouchableOpacity
+                        onPress={() => removeEditLocal(i)}
+                        style={twStyle("absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60")}
+                        accessibilityLabel="Remove new upload"
+                      >
+                        <Ionicons name="close" size={14} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              ) : null}
+
               <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Caption</Text>
               <TextInput
                 style={twStyle("mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -725,23 +1101,92 @@ export default function ExplorePostsScreen() {
                 onChangeText={setEditCaption}
                 multiline
               />
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Tags (optional)</Text>
+              <TextInput
+                style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                placeholder="e.g. braids, balayage (comma-separated)"
+                placeholderTextColor="#9ca3af"
+                value={editTagInput}
+                onChangeText={setEditTagInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {offerings.length > 0 ? (
+                <>
+                  <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Link a service (optional)</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4 -mx-1")}>
+                    <TouchableOpacity
+                      onPress={() => setEditOfferingId(null)}
+                      style={[
+                        twStyle("mr-2 rounded-full px-4 py-2"),
+                        editOfferingId === null ? twStyle("bg-violet-600") : twStyle("bg-gray-100"),
+                      ]}
+                    >
+                      <Text
+                        style={twStyle(
+                          editOfferingId === null ? "text-sm font-medium text-white" : "text-sm text-gray-600",
+                        )}
+                      >
+                        None
+                      </Text>
+                    </TouchableOpacity>
+                    {offerings.map((o) => (
+                      <TouchableOpacity
+                        key={o.id}
+                        onPress={() => setEditOfferingId(o.id)}
+                        style={[
+                          twStyle("mr-2 max-w-[200px] rounded-full px-4 py-2"),
+                          editOfferingId === o.id ? twStyle("bg-violet-600") : twStyle("bg-gray-100"),
+                        ]}
+                      >
+                        <Text
+                          style={twStyle(
+                            editOfferingId === o.id ? "text-sm font-medium text-white" : "text-sm text-gray-600",
+                          )}
+                          numberOfLines={1}
+                        >
+                          {o.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              ) : null}
               {categories.length > 0 ? (
                 <>
                   <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Category</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4 -mx-1")}>
                     <TouchableOpacity
                       onPress={() => setEditPrimaryCategorySlug(null)}
-                      style={[twStyle("rounded-full px-4 py-2 mr-2"), editPrimaryCategorySlug === null ? twStyle("bg-indigo-600") : twStyle("bg-gray-100")]}
+                      style={[
+                        twStyle("mr-2 rounded-full px-4 py-2"),
+                        editPrimaryCategorySlug === null ? twStyle("bg-indigo-600") : twStyle("bg-gray-100"),
+                      ]}
                     >
-                      <Text style={twStyle(editPrimaryCategorySlug === null ? "text-white text-sm font-medium" : "text-gray-600 text-sm")}>None</Text>
+                      <Text
+                        style={twStyle(
+                          editPrimaryCategorySlug === null ? "text-sm font-medium text-white" : "text-sm text-gray-600",
+                        )}
+                      >
+                        None
+                      </Text>
                     </TouchableOpacity>
                     {categories.map((c) => (
                       <TouchableOpacity
                         key={c.id}
                         onPress={() => setEditPrimaryCategorySlug(c.slug)}
-                        style={[twStyle("rounded-full px-4 py-2 mr-2"), editPrimaryCategorySlug === c.slug ? twStyle("bg-indigo-600") : twStyle("bg-gray-100")]}
+                        style={[
+                          twStyle("mr-2 rounded-full px-4 py-2"),
+                          editPrimaryCategorySlug === c.slug ? twStyle("bg-indigo-600") : twStyle("bg-gray-100"),
+                        ]}
                       >
-                        <Text style={twStyle(editPrimaryCategorySlug === c.slug ? "text-white text-sm font-medium" : "text-gray-600 text-sm")}>{c.name}</Text>
+                        <Text
+                          style={twStyle(
+                            editPrimaryCategorySlug === c.slug ? "text-sm font-medium text-white" : "text-sm text-gray-600",
+                          )}
+                        >
+                          {c.name}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -771,48 +1216,88 @@ export default function ExplorePostsScreen() {
               </View>
               <View style={twStyle("flex-row")}>
                 <TouchableOpacity
-                  onPress={() => setEditMode(false)}
+                  onPress={() => {
+                    setEditMode(false);
+                    setEditLocalAssets([]);
+                    if (viewPost) {
+                      setEditRemoteUrls([...(viewPost.media_urls ?? [])]);
+                      setEditTagInput(
+                        Array.isArray(viewPost.tags) && viewPost.tags.length ? viewPost.tags.join(", ") : "",
+                      );
+                      setEditOfferingId(viewPost.offering_id ?? null);
+                    }
+                  }}
                   style={[twStyle("flex-1 rounded-xl border border-gray-300 py-3"), { marginRight: 12 }]}
                 >
                   <Text style={twStyle("text-center text-sm font-medium text-gray-700")}>Cancel</Text>
                 </TouchableOpacity>
                 <View style={twStyle("flex-1")}>
                   <ActionButton
-                    label={updating ? "Saving…" : "Save"}
+                    label={
+                      editUploading ? "Uploading…" : updating ? "Saving…" : "Save"
+                    }
                     onPress={handleSaveEdit}
-                    loading={updating}
+                    loading={updating || editUploading}
                     fullWidth
                   />
                 </View>
               </View>
-            </>
+            </ScrollView>
           ) : (
             <>
-              {viewPost.media_urls?.[0] && !/\.(mp4|webm|mov)$/i.test(viewPost.media_urls[0]) ? (
-                <View style={twStyle("mb-4 aspect-square overflow-hidden rounded-xl bg-gray-100")}>
-                  <Image
-                    source={{ uri: viewPost.media_urls[0] }}
-                    style={twStyle("h-full w-full") as ExpoImageStyle}
-                    contentFit="cover"
-                  />
-                </View>
-              ) : null}
-              {viewPost.media_urls?.[0] && /\.(mp4|webm|mov)$/i.test(viewPost.media_urls[0]) ? (
-                <TouchableOpacity
-                  onPress={() => {
-                    const u = viewPost.media_urls![0];
-                    void Linking.openURL(u).catch(() => {
-                      Alert.alert("Video", "Could not open this link.");
-                    });
-                  }}
-                  style={twStyle("mb-4 aspect-square items-center justify-center rounded-xl bg-gray-900")}
-                  accessibilityRole="button"
-                  accessibilityLabel="Open video"
-                >
-                  <Ionicons name="videocam-outline" size={40} color="#fff" />
-                  <Text style={twStyle("mt-2 text-xs font-medium text-white")}>Tap to open video</Text>
-                </TouchableOpacity>
-              ) : null}
+              {(() => {
+                const urls = viewPost.media_urls ?? [];
+                const pageW = Math.max(280, windowWidth - screenPadding * 2);
+                if (urls.length === 0) return null;
+                return (
+                  <View style={{ marginBottom: 16, alignItems: "center" }}>
+                    <ScrollView
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      style={{ width: pageW }}
+                    >
+                      {urls.map((url, idx) => (
+                        <View key={`${url}-${idx}`} style={{ width: pageW }}>
+                          <View
+                            style={{
+                              width: "100%",
+                              aspectRatio: 1,
+                              borderRadius: 12,
+                              overflow: "hidden",
+                              backgroundColor: "#f3f4f6",
+                            }}
+                          >
+                            {isVideoUrl(url) ? (
+                              <Video
+                                source={{ uri: url }}
+                                style={StyleSheet.absoluteFillObject}
+                                resizeMode={ResizeMode.COVER}
+                                useNativeControls
+                                shouldPlay={false}
+                                isLooping
+                              />
+                            ) : (
+                              <Image
+                                source={{ uri: url }}
+                                style={twStyle("h-full w-full") as ExpoImageStyle}
+                                contentFit="cover"
+                                accessibilityLabel={`Post media ${idx + 1} of ${urls.length}`}
+                              />
+                            )}
+                          </View>
+                          {urls.length > 1 ? (
+                            <Text style={twStyle("mt-1 text-center text-xs text-gray-400")}>
+                              {idx + 1} / {urls.length}
+                            </Text>
+                          ) : null}
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+                );
+              })()}
+              <Text style={twStyle("mb-2 text-xs text-gray-500")}>{formatPublishedLine(viewPost)}</Text>
               {viewPost.primary_category_id ? (
                 <View style={twStyle("mb-3 flex-row flex-wrap")}>
                   <View style={twStyle("rounded-full bg-indigo-50 px-2.5 py-1")}>
@@ -822,12 +1307,32 @@ export default function ExplorePostsScreen() {
                   </View>
                 </View>
               ) : null}
-              <Text style={twStyle("mb-2 text-sm text-gray-700")}>
+              {Array.isArray(viewPost.tags) && viewPost.tags.length > 0 ? (
+                <View style={twStyle("mb-3 flex-row flex-wrap gap-1")}>
+                  {viewPost.tags.map((t) => (
+                    <View key={t} style={twStyle("rounded-full bg-gray-100 px-2 py-1")}>
+                      <Text style={twStyle("text-xs font-medium text-gray-700")}>#{t}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              {viewPost.offering?.name ? (
+                <View style={twStyle("mb-3 rounded-xl border border-violet-100 bg-violet-50 px-3 py-2")}>
+                  <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-violet-700")}>
+                    Linked service
+                  </Text>
+                  <Text style={twStyle("mt-0.5 text-sm font-medium text-violet-900")}>{viewPost.offering.name}</Text>
+                  {typeof viewPost.offering.price === "number" ? (
+                    <Text style={twStyle("text-xs text-violet-700")}>From your catalog · tap Explore to book</Text>
+                  ) : null}
+                </View>
+              ) : null}
+              <Text style={twStyle("mb-3 text-sm leading-5 text-gray-700")}>
                 {viewPost.caption || "No caption"}
               </Text>
-              <View style={twStyle("mb-4 flex-row flex-wrap")}>
+              <View style={twStyle("mb-4 flex-row flex-wrap items-center gap-x-3 gap-y-2")}>
                 <View
-                  style={[twStyle(`rounded-full px-2.5 py-1 ${viewPost.status === "published" ? "bg-green-100" : "bg-gray-100"}`), { marginRight: 8, marginBottom: 8 }]}
+                  style={[twStyle(`rounded-full px-2.5 py-1 ${viewPost.status === "published" ? "bg-green-100" : "bg-gray-100"}`)]}
                 >
                   <Text
                     style={twStyle(`text-xs font-medium ${viewPost.status === "published" ? "text-green-800" : "text-gray-600"}`)}
@@ -835,11 +1340,33 @@ export default function ExplorePostsScreen() {
                     {viewPost.status}
                   </Text>
                 </View>
-                {typeof viewPost.view_count === "number" && (
-                  <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 8 }]}>{viewPost.view_count} views</Text>
-                )}
+                <View style={twStyle("flex-row items-center gap-1")}>
+                  <Ionicons name="heart-outline" size={16} color="#6b7280" />
+                  <Text style={twStyle("text-xs text-gray-600")}>{viewPost.like_count ?? 0}</Text>
+                </View>
+                <View style={twStyle("flex-row items-center gap-1")}>
+                  <Ionicons name="chatbubble-outline" size={16} color="#6b7280" />
+                  <Text style={twStyle("text-xs text-gray-600")}>{viewPost.comment_count ?? 0}</Text>
+                </View>
+                <View style={twStyle("flex-row items-center gap-1")}>
+                  <Ionicons name="eye-outline" size={16} color="#6b7280" />
+                  <Text style={twStyle("text-xs text-gray-600")}>
+                    {typeof viewPost.view_count === "number" ? viewPost.view_count : 0}
+                  </Text>
+                </View>
               </View>
-              <View style={twStyle("mb-4 flex-row")}>
+              {viewPost.status === "published" ? (
+                <TouchableOpacity
+                  onPress={() => openPublicPost(viewPost.id)}
+                  style={twStyle("mb-4 flex-row items-center justify-center rounded-xl border border-pink-200 bg-pink-50 py-3")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open this post on the public Explore site"
+                >
+                  <Ionicons name="open-outline" size={18} color="#db2777" />
+                  <Text style={twStyle("ml-2 text-sm font-semibold text-[#db2777]")}>View on Explore</Text>
+                </TouchableOpacity>
+              ) : null}
+              <View style={twStyle("mb-4 flex-row gap-2")}>
                 <TouchableOpacity
                   onPress={() => {
                     setEditCaption(viewPost.caption ?? "");
@@ -848,9 +1375,17 @@ export default function ExplorePostsScreen() {
                       ? categories.find((c) => c.id === viewPost.primary_category_id)
                       : null;
                     setEditPrimaryCategorySlug(cat?.slug ?? null);
+                    setEditTagInput(
+                      Array.isArray(viewPost.tags) && viewPost.tags.length
+                        ? viewPost.tags.join(", ")
+                        : "",
+                    );
+                    setEditOfferingId(viewPost.offering_id ?? null);
+                    setEditRemoteUrls([...(viewPost.media_urls ?? [])]);
+                    setEditLocalAssets([]);
                     setEditMode(true);
                   }}
-                  style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3"), { marginRight: 12 }]}
+                  style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3")}
                 >
                   <Ionicons name="pencil-outline" size={18} color="#6366f1" />
                   <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-600")}>Edit</Text>

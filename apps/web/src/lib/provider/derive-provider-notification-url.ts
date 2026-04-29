@@ -119,7 +119,7 @@ export function deriveProviderPortalNotificationUrl(
       if (pathname === "/account-settings/messages" || pathname.startsWith("/account-settings/messages")) {
         const conv = searchParams.get("conversation");
         if (conv && isProviderNotificationUuid(conv)) {
-          return `/provider/messaging?id=${encodeURIComponent(conv)}`;
+          return `/provider/messaging?conversationId=${encodeURIComponent(conv)}`;
         }
         return "/provider/messaging";
       }
@@ -138,7 +138,7 @@ export function deriveProviderPortalNotificationUrl(
     return `/provider/bookings/${String(d.booking_id).trim()}`;
   }
   if (isProviderNotificationUuid(d.conversation_id)) {
-    return `/provider/messaging?id=${encodeURIComponent(String(d.conversation_id).trim())}`;
+    return `/provider/messaging?conversationId=${encodeURIComponent(String(d.conversation_id).trim())}`;
   }
   if (isProviderNotificationUuid(d.appointment_id)) {
     return `/provider/calendar`;

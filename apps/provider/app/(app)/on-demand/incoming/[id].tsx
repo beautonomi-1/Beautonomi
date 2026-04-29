@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { useFeatureFlag, useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { playRingtone } from "@/lib/on-demand/ringtone";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -32,10 +32,22 @@ export default function OnDemandIncomingScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
+
+  // Guard: if no valid request id, redirect to bookings rather than hitting /requests/undefined
+  useEffect(() => {
+    if (!id) {
+      router.replace("/(app)/(tabs)/bookings" as never);
+    }
+  }, [id, router]);
+
   const onDemandConfig = useModuleConfig("on_demand");
+  const acceptGlobalEnabled = useFeatureFlag("on_demand_accept_enabled");
+  const acceptProviderEnabled = useFeatureFlag("on_demand_accept_provider_enabled");
+  const requestNowEnabled = Boolean(onDemandConfig?.enabled && acceptGlobalEnabled && acceptProviderEnabled);
   const ringtoneStopRef = useRef<(() => void) | null>(null);
   const { data, loading, error, refresh } = useApi<OnDemandRequest>(
-    `/api/provider/on-demand/requests/${id}`
+    id ? `/api/provider/on-demand/requests/${id}` : "",
+    { enabled: Boolean(id && requestNowEnabled) },
   );
   const { execute: acceptRequest, loading: accepting } = useApiMutation("post");
   const { execute: declineRequest, loading: declining } = useApiMutation("post");
@@ -125,6 +137,19 @@ export default function OnDemandIncomingScreen() {
         <ScreenHeader title="Incoming request" onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (!requestNowEnabled) {
+    return (
+      <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
+        <ScreenHeader title="Incoming request" onBack={() => router.back()} />
+        <View style={twStyle("flex-1 justify-center px-4")}>
+          <ErrorState
+            message="Request Now is currently disabled. Enable it in platform settings and your online booking settings before accepting instant requests."
+          />
         </View>
       </ScreenContainer>
     );

@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
 import type { Booking } from "@/types/beautonomi";
 import {
   mapStatusToProvider,
@@ -545,12 +544,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check permission to edit appointments
-    const permissionCheck = await requirePermission('edit_appointments', request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -605,7 +599,7 @@ export async function PATCH(
     const hasUpdates = status || scheduled_at || staff_id || special_requests !== undefined ||
         subtotal !== undefined || 
         total_amount !== undefined || tip_amount !== undefined ||
-        discount_amount !== undefined || discount_reason !== undefined ||
+        discount_amount !== undefined || discount_code !== undefined || discount_reason !== undefined ||
         tax_amount !== undefined ||
         cancellation_reason !== undefined || cancellation_fee !== undefined ||
         location_type || location_id || address_line1 || travel_fee !== undefined ||
@@ -1024,7 +1018,7 @@ export async function PATCH(
     }
 
     // Use service role: RLS only allows the provider *owner* to UPDATE bookings; staff with
-    // edit_appointments already passed requirePermission + branch checks above.
+    // Role check already passed requireRoleInApi + branch checks above.
     // Enforce optimistic lock: UPDATE only succeeds if version still matches the row we read.
     const { data: updatedRows, error: updateError } = await supabaseAdminPatch
       .from("bookings")

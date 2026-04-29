@@ -4,13 +4,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
+  requireRoleInApi,
   successResponse,
   handleApiError,
   getProviderIdForUser,
   normalizePhoneToE164,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import {
@@ -73,12 +73,7 @@ async function _waitForUserProfileRow(
  */
 export async function POST(request: NextRequest) {
   try {
-    // Check permission to edit clients (pass request for Bearer token from mobile)
-    const permissionCheck = await requirePermission("edit_clients", request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = await getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);

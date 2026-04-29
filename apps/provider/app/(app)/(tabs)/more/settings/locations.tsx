@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
 import {
@@ -12,7 +12,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
-import { api } from "@/lib/api-client";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -28,7 +27,9 @@ import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { getCachedConfigBundle } from "@/lib/config-bundle";
-import { countryFilterIso2FromStorage, mapGeocodeFeatureToAddressParts } from "@beautonomi/utils";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
+import { AddressMapPinModal } from "@/components/AddressMapPinModal";
+import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 
 function tenantCountryFallback(): string {
   return getCachedConfigBundle()?.meta?.tenant_region?.name?.trim() || "";
@@ -127,6 +128,14 @@ export default function LocationsSettingsScreen() {
   const [form, setForm] = useState<LocationForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<Partial<Record<keyof LocationForm, string>>>({});
   const [locating, setLocating] = useState(false);
+  const [mapPinVisible, setMapPinVisible] = useState(false);
+
+  const pinInitialCoordinate = useMemo(() => {
+    if (form.latitude != null && form.longitude != null) {
+      return { latitude: form.latitude, longitude: form.longitude };
+    }
+    return null;
+  }, [form.latitude, form.longitude]);
 
   const {
     data: locations,
@@ -197,23 +206,20 @@ export default function LocationsSettingsScreen() {
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
       const lat = loc.coords.latitude;
       const lng = loc.coords.longitude;
-      const reverse = await api.post<any>("/api/mapbox/reverse-geocode", {
-        latitude: lat,
-        longitude: lng,
-      });
-      const feature = reverse?.data?.data ?? reverse?.data ?? null;
-      if (feature) {
-        const mapped = mapGeocodeFeatureToAddressParts(feature, {
-          defaultCountryName: form.country.trim() || tenantCountryFallback() || "South Africa",
-        });
+      const defaultCountry = form.country.trim() || tenantCountryFallback() || "South Africa";
+      const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
+      if (mapped) {
         updateField("address_line1", mapped.address_line1 || form.address_line1 || "Current location");
         updateField("city", mapped.city || form.city || "—");
         updateField("state", mapped.state || "");
         updateField("postal_code", mapped.postal_code || "");
-        updateField("country", mapped.country || form.country || tenantCountryFallback() || "South Africa");
+        updateField("country", mapped.country || defaultCountry);
+        updateField("latitude", mapped.latitude);
+        updateField("longitude", mapped.longitude);
+      } else {
+        updateField("latitude", lat);
+        updateField("longitude", lng);
       }
-      updateField("latitude", lat);
-      updateField("longitude", lng);
       setErrors((prev) => ({ ...prev, address_line1: undefined, city: undefined, country: undefined }));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } catch (e) {
@@ -222,6 +228,29 @@ export default function LocationsSettingsScreen() {
       setLocating(false);
     }
   }, [locating, form.address_line1, form.city, form.country]);
+
+  const handleDropPinConfirm = useCallback(
+    async (lat: number, lng: number) => {
+      const defaultCountry = form.country.trim() || tenantCountryFallback() || "South Africa";
+      const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
+      if (mapped) {
+        updateField("address_line1", mapped.address_line1);
+        updateField("city", mapped.city);
+        updateField("state", mapped.state);
+        updateField("postal_code", mapped.postal_code);
+        updateField("country", mapped.country);
+        updateField("latitude", mapped.latitude);
+        updateField("longitude", mapped.longitude);
+      } else {
+        updateField("latitude", lat);
+        updateField("longitude", lng);
+      }
+      setMapPinVisible(false);
+      setErrors((prev) => ({ ...prev, address_line1: undefined, city: undefined, country: undefined }));
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    },
+    [form.country],
+  );
 
   function validateForm(): boolean {
     const newErrors: Partial<Record<keyof LocationForm, string>> = {};
@@ -469,31 +498,41 @@ export default function LocationsSettingsScreen() {
             }}
             countryCode={countryFilterIso2FromStorage(form.country) ?? "ZA"}
             defaultCountryName={form.country.trim() || undefined}
-            geocodeTypes={["address"]}
             proximity={
               form.latitude != null && form.longitude != null
                 ? { latitude: form.latitude, longitude: form.longitude }
                 : undefined
             }
           />
-          <TouchableOpacity
-            onPress={() => {
-              void handleUseCurrentLocationPin();
-            }}
-            disabled={locating}
-            style={twStyle("mt-2.5 self-start rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 flex-row items-center")}
-            accessibilityLabel="Use current location pin"
-            accessibilityRole="button"
-          >
-            {locating ? (
-              <ActivityIndicator size="small" color="#2563eb" />
-            ) : (
-              <Ionicons name="locate-outline" size={16} color="#2563eb" />
-            )}
-            <Text style={twStyle("ml-1.5 text-xs font-semibold text-blue-700")}>
-              {locating ? "Locating…" : "Use current location pin"}
-            </Text>
-          </TouchableOpacity>
+          <View style={twStyle("mt-2.5 flex-row flex-wrap gap-2")}>
+            <TouchableOpacity
+              onPress={() => {
+                void handleUseCurrentLocationPin();
+              }}
+              disabled={locating}
+              style={twStyle("rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 flex-row items-center")}
+              accessibilityLabel="Use current location"
+              accessibilityRole="button"
+            >
+              {locating ? (
+                <ActivityIndicator size="small" color="#2563eb" />
+              ) : (
+                <Ionicons name="locate-outline" size={16} color="#2563eb" />
+              )}
+              <Text style={twStyle("ml-1.5 text-xs font-semibold text-blue-700")}>
+                {locating ? "Locating…" : "Current location"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setMapPinVisible(true)}
+              style={twStyle("rounded-full border border-gray-200 bg-white px-3 py-1.5 flex-row items-center")}
+              accessibilityLabel="Drop pin on map"
+              accessibilityRole="button"
+            >
+              <Ionicons name="map-outline" size={16} color="#374151" />
+              <Text style={twStyle("ml-1.5 text-xs font-semibold text-gray-700")}>Drop pin on map</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {form.latitude != null && form.longitude != null && (
@@ -598,6 +637,15 @@ export default function LocationsSettingsScreen() {
           />
         </View>
       </BottomSheet>
+
+      <AddressMapPinModal
+        visible={mapPinVisible}
+        onClose={() => setMapPinVisible(false)}
+        onPickCoordinates={(lat, lng) => {
+          void handleDropPinConfirm(lat, lng);
+        }}
+        initialCoordinate={pinInitialCoordinate}
+      />
 
       {/* Floating add button */}
       {locations && locations.length > 0 && (

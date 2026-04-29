@@ -146,6 +146,14 @@ export interface SearchAddressOptions {
   proximity?: { longitude: number; latitude: number };
   /** ISO 3166-1 alpha-2 (default from device locale). */
   country?: string;
+  /**
+   * Mapbox forward-geocode `types` filter. Omit for full fuzzy results (places, localities,
+   * neighborhoods, addresses, POIs) — same as provider/web autocomplete. Pass e.g. `["address"]`
+   * only when you need street-only matches.
+   */
+  types?: string[];
+  /** Max suggestions (server allows 1–10; default 10). */
+  limit?: number;
 }
 
 export async function searchAddress(
@@ -176,11 +184,18 @@ export async function searchAddress(
         body: JSON.stringify(body),
       }),
     );
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) return [];
+    const json = (await res.json().catch(() => ({}))) as {
+      data?: unknown;
+      error?: { code?: string; message?: string };
+    };
+    if (!res.ok) {
+      return [];
+    }
     const payload = json?.data;
     const list = Array.isArray(payload) ? payload : [];
-    return list.map(normalizeGeocodeFeature).filter((s) => s.place_name && s.center[0] !== 0 && s.center[1] !== 0);
+    return list
+      .map(normalizeGeocodeFeature)
+      .filter((s) => s.place_name && s.center[0] !== 0 && s.center[1] !== 0);
   } catch {
     return [];
   }

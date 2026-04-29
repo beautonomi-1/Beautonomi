@@ -914,7 +914,6 @@ export function GroupBookingDialog({
                       placeholder="Search street address..."
                       country="ZA"
                       defaultCountryName="South Africa"
-                      geocodeTypes={["address"]}
                       onInputChange={(value) =>
                         setFormData(prev => ({ ...prev, address_place_name: value, address_line1: value }))
                       }

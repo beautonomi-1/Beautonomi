@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -207,6 +207,8 @@ export default function BookingsListScreen() {
   // every successful refresh so the provider has visible feedback that
   // the list auto-updated (websocket or polling). Purely cosmetic.
   const [isLive, setIsLive] = useState(false);
+  /** Only true while this tab/screen is focused — realtime unsubscribes when pushing booking detail (calendar parity). */
+  const [bookingsListFocused, setBookingsListFocused] = useState(true);
 
   // §Provider-audit 2026-04 (round 6): debounce search input so every
   // keystroke doesn't refetch. Matches the clients screen pattern.
@@ -266,23 +268,40 @@ export default function BookingsListScreen() {
   //     calendar.tsx behaviour so both surfaces converge.
   useFocusEffect(
     useCallback(() => {
+      setBookingsListFocused(true);
       refresh();
+      return () => setBookingsListFocused(false);
     }, [refresh]),
   );
 
+  // Keep a stable ref to the latest refresh so the realtime effect doesn't
+  // need to re-subscribe every time refresh changes identity (which happens
+  // on every data fetch, causing "cannot add postgres_changes after subscribe").
+  const refreshRef = useRef(refresh);
+  useEffect(() => { refreshRef.current = refresh; }, [refresh]);
+
+  /**
+   * Unique suffix per subscription so `supabase.channel(name)` never reuses a channel
+   * that is already subscribed (fixes "cannot add postgres_changes callbacks … after
+   * subscribe()" under React Strict Mode / fast remount). Matches dashboard pattern of
+   * scoping subs to focus — unsubscribe when navigating to booking detail.
+   */
+  const bookingsRealtimeGenRef = useRef(0);
+
   useEffect(() => {
-    if (!provider?.id) return;
+    if (!bookingsListFocused || !provider?.id) return;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleRefresh = () => {
       if (refreshTimer) return;
       refreshTimer = setTimeout(() => {
         refreshTimer = null;
-        refresh();
+        refreshRef.current();
       }, 400);
     };
 
+    const topic = `bookings-list:${provider.id}:${++bookingsRealtimeGenRef.current}`;
     const channel = supabase
-      .channel(`bookings-list:${provider.id}`)
+      .channel(topic)
       .on(
         "postgres_changes" as never,
         {
@@ -303,7 +322,7 @@ export default function BookingsListScreen() {
       if (refreshTimer) clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
-  }, [provider?.id, refresh]);
+  }, [bookingsListFocused, provider?.id]);
 
   const filtered = useMemo(() => {
     const allBookings: Booking[] = Array.isArray(data) ? data : [];

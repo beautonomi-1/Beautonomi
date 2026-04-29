@@ -99,7 +99,7 @@ export function AddressAutocomplete({
         const iso = mapboxCountryIso();
         const body: Record<string, unknown> = {
           query: text,
-          limit: 8,
+          limit: 10,
         };
         if (geocodeTypes?.length) body.types = geocodeTypes;
         if (iso) body.country = iso;

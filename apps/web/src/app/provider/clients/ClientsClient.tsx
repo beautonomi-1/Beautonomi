@@ -844,8 +844,7 @@ function ClientCreateEditDialog({
                   value={formData.address_display || ""}
                   country="ZA"
                   defaultCountryName="South Africa"
-                  placeholder="Start typing to search — Mapbox autocomplete"
-                  geocodeTypes={["address"]}
+                  placeholder="Start typing to search for an address"
                   className="mt-1.5"
                   inputClassName="min-h-[44px] touch-manipulation w-full"
                   onInputChange={(v) =>

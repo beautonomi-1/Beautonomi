@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -45,7 +45,11 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer();
+    // Use admin client so providers are visible regardless of status — matching
+    // the SSR getPublicProviderDetail loader. The anon client with RLS blocks any
+    // provider whose status != 'active', causing the profile to load (SSR = admin)
+    // but all client-side tab fetches to 404 (API routes = anon).
+    const supabase = getSupabaseAdmin();
     let tenantId: string;
     try {
       tenantId = await resolveTenantIdWithZaFallback(request);
@@ -79,187 +83,42 @@ export async function GET(
     }
 
 
-    // Fetch provider - use left join for users to avoid filtering out providers if user doesn't exist
-    // Note: accepts_custom_requests may not exist in all databases, so we'll fetch it separately if needed
+    // Fetch provider. The admin client bypasses RLS so providers with any status
+    // are accessible — consistent with the SSR getPublicProviderDetail loader.
+    // Accept UUIDs in the slug position so mobile deep-links with only provider_id work.
+    const PROVIDER_SELECT = `
+      id, slug, business_name, business_type, description,
+      rating_average, review_count, thumbnail_url, avatar_url,
+      gallery, is_featured, is_verified, currency,
+      years_in_business, tax_rate_percent, tips_enabled, timezone, website,
+      social_media_links, accepts_custom_requests,
+      response_rate, response_time_hours, languages_spoken,
+      offers_mobile_services, minimum_mobile_booking_amount,
+      user_id, users(include_in_search_engines)
+    `;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decodedSlug);
+
     let provider: any;
     let providerError: any;
-    const initial = await supabase
-      .from("providers")
-      .select(`
-        id,
-        slug,
-        business_name,
-        business_type,
-        description,
-        rating_average,
-        review_count,
-        thumbnail_url,
-        avatar_url,
-        gallery,
-        is_featured,
-        is_verified,
-        currency,
-        years_in_business,
-        tax_rate_percent,
-        tips_enabled,
-        timezone,
-        website,
-        social_media_links,
-        accepts_custom_requests,
-        response_rate,
-        response_time_hours,
-        languages_spoken,
-        offers_mobile_services,
-        minimum_mobile_booking_amount,
-        user_id,
-        users(include_in_search_engines)
-      `)
-      .eq("slug", decodedSlug)
-      .eq("tenant_id", tenantId)
-      .eq("status", "active")
-      .maybeSingle(); // Use maybeSingle instead of single to avoid errors if not found
-    provider = initial.data;
-    providerError = initial.error;
 
-    // If not found with decoded slug, try original slug
-    if (providerError || !provider) {
-      const retry = await supabase
-        .from("providers")
-        .select(`
-          id,
-          slug,
-          business_name,
-          business_type,
-          description,
-          rating_average,
-          review_count,
-          thumbnail_url,
-          avatar_url,
-          gallery,
-          is_featured,
-          is_verified,
-          currency,
-          years_in_business,
-          tax_rate_percent,
-          tips_enabled,
-          timezone,
-          offers_mobile_services,
-          minimum_mobile_booking_amount,
-          user_id,
-          users(include_in_search_engines)
-        `)
-        .eq("slug", slug)
-        .eq("tenant_id", tenantId)
-        .eq("status", "active")
-        .maybeSingle(); // Use maybeSingle instead of single
-      
-      provider = retry.data;
-      providerError = retry.error;
+    if (isUuid) {
+      const r = await supabase.from("providers").select(PROVIDER_SELECT).eq("id", decodedSlug).eq("tenant_id", tenantId).maybeSingle();
+      provider = r.data; providerError = r.error;
+    } else {
+      const r = await supabase.from("providers").select(PROVIDER_SELECT).eq("slug", decodedSlug).eq("tenant_id", tenantId).maybeSingle();
+      provider = r.data; providerError = r.error;
+      // Fallback: try original (non-decoded) slug
+      if (!provider && !providerError) {
+        const r2 = await supabase.from("providers").select(PROVIDER_SELECT).eq("slug", slug).eq("tenant_id", tenantId).maybeSingle();
+        provider = r2.data; providerError = r2.error;
+      }
     }
 
     if (providerError || !provider) {
-      console.error(`[Provider API] Provider not found. Slug: ${decodedSlug}, Original: ${slug}, Error:`, providerError);
-      console.error(`[Provider API] Error details:`, {
-        code: providerError?.code,
-        message: providerError?.message,
-        details: providerError?.details,
-        hint: providerError?.hint,
-      });
-      
-      // Try to find by ID if slug looks like a UUID
-      if (slug.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-        const { data: providerById, error: idError } = await supabase
-          .from("providers")
-          .select(`
-            id,
-            slug,
-            business_name,
-            business_type,
-            description,
-            rating_average,
-            review_count,
-            thumbnail_url,
-            avatar_url,
-            gallery,
-            is_featured,
-            is_verified,
-            currency,
-            years_in_business,
-            tax_rate_percent,
-            tips_enabled,
-            timezone,
-            user_id,
-            users(include_in_search_engines)
-          `)
-          .eq("id", slug)
-          .eq("tenant_id", tenantId)
-          .eq("status", "active")
-          .single();
-        
-        if (providerById && !idError) {
-          provider = providerById;
-          providerError = null;
-        }
-      }
-      
-      if (providerError || !provider) {
-        // Last attempt: try without status filter (in case status is not 'active' but provider exists)
-        const lastAttempt = await supabase
-          .from("providers")
-          .select(`
-            id,
-            slug,
-            business_name,
-            business_type,
-            description,
-            rating_average,
-            review_count,
-            thumbnail_url,
-            avatar_url,
-            gallery,
-            is_featured,
-            is_verified,
-            currency,
-            years_in_business,
-            tax_rate_percent,
-            tips_enabled,
-            timezone,
-            status,
-            user_id,
-            users(include_in_search_engines)
-          `)
-          .eq("slug", decodedSlug)
-          .eq("tenant_id", tenantId)
-          .single();
-        
-        if (lastAttempt.data && !lastAttempt.error) {
-          const nonPublicStatuses = ["suspended", "deactivated", "banned", "deleted"];
-          if (nonPublicStatuses.includes(lastAttempt.data.status)) {
-            return NextResponse.json(
-              { data: null, error: { message: "Provider not found", code: "NOT_FOUND" } },
-              { status: 404 }
-            );
-          }
-          provider = lastAttempt.data;
-          providerError = null;
-        } else {
-          return NextResponse.json(
-            {
-              data: null,
-              error: {
-                message: "Provider not found",
-                code: "NOT_FOUND",
-                details: {
-                  slug: decodedSlug,
-                  originalSlug: slug,
-                  error: providerError?.message || "No provider found with this slug",
-                },
-              },
-            },
-            { status: 404 }
-          );
-        }
-      }
+      return NextResponse.json(
+        { data: null, error: { message: "Provider not found", code: "NOT_FOUND" } },
+        { status: 404 }
+      );
     }
 
 

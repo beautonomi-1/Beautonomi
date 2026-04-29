@@ -136,10 +136,11 @@ export default function CustomerOnboarding() {
   const { width: windowWidth } = useWindowDimensions();
   const { refreshSession, user } = useAuth();
   const { bundle: configBundle } = useConfigBundle();
+  const tenantRegionName = configBundle?.meta?.tenant_region?.name?.trim();
   const authPolicy = configBundle?.auth ?? DEFAULT_AUTH;
   const smsOtpLen = authPolicy.sms_otp_length;
   const smsOtpExpirySec = authPolicy.sms_otp_expiration_seconds;
-  const { pickWithOptions, pickFromCamera, loading: pickLoading } = useImagePicker();
+  const { pickWithOptions, loading: pickLoading } = useImagePicker();
 
   const [step, setStep] = useState(1);
   const [initializing, setInitializing] = useState(true);
@@ -151,6 +152,7 @@ export default function CustomerOnboarding() {
   /* Step 2 */
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [avatarFileName, setAvatarFileName] = useState("avatar.jpg");
+  const [avatarMimeType, setAvatarMimeType] = useState("image/jpeg");
 
   /* Step 3 */
   const [dobYear, setDobYear] = useState("");
@@ -173,13 +175,14 @@ export default function CustomerOnboarding() {
 
   /* Step 5 */
   const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
   const [city, setCity] = useState("");
   const [province, setProvince] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [country, setCountry] = useState("South Africa");
   const [alreadyHasAddress, setAlreadyHasAddress] = useState(false);
   const [addressPickerOpen, setAddressPickerOpen] = useState(false);
-  /** Set when user picks from Mapbox search, map result, or current location */
+  /** Set when user picks from search, map pin, or current location */
   const [addressLatitude, setAddressLatitude] = useState<number | null>(null);
   const [addressLongitude, setAddressLongitude] = useState<number | null>(null);
 
@@ -193,6 +196,12 @@ export default function CustomerOnboarding() {
     const t = setInterval(() => setCountdown((c) => c - 1), 1000);
     return () => clearInterval(t);
   }, [countdown]);
+
+  /* Default country from tenant when config loads (only if user hasn’t changed from initial SA) */
+  useEffect(() => {
+    if (!tenantRegionName) return;
+    setCountry((c) => (c === "South Africa" ? tenantRegionName : c));
+  }, [tenantRegionName]);
 
   /* ── Init: prefill from profile ── */
   useEffect(() => {
@@ -335,6 +344,7 @@ export default function CustomerOnboarding() {
     const s = sel.structured;
     if (s) {
       setAddressLine1(s.address_line1);
+      setAddressLine2((s.address_line2 ?? "").trim());
       setCity(s.city && s.city !== "—" ? s.city : "");
       setProvince(s.state ?? "");
       setPostalCode(s.postal_code ?? "");
@@ -345,19 +355,13 @@ export default function CustomerOnboarding() {
     setAddressPickerOpen(false);
   }, []);
 
-  const handlePickPhoto = () => {
-    Alert.alert("Profile photo", "Choose an option", [
-      { text: "Camera", onPress: async () => {
-        const res = await pickFromCamera();
-        if (res) { setAvatarUri(res.uri); setAvatarFileName(res.fileName || "avatar.jpg"); }
-      }},
-      { text: "Photo Library", onPress: async () => {
-        const res = await pickWithOptions();
-        if (res) { setAvatarUri(res.uri); setAvatarFileName(res.fileName || "avatar.jpg"); }
-      }},
-      { text: "Cancel", style: "cancel" },
-    ]);
-  };
+  const handlePickPhoto = useCallback(async () => {
+    const res = await pickWithOptions();
+    if (!res) return;
+    setAvatarUri(res.uri);
+    setAvatarFileName(res.fileName || "avatar.jpg");
+    setAvatarMimeType(res.mimeType?.trim() || "image/jpeg");
+  }, [pickWithOptions]);
 
   /* ── Save step data to API ── */
   const saveStep = async (): Promise<boolean> => {
@@ -371,7 +375,11 @@ export default function CustomerOnboarding() {
         case 2:
           if (avatarUri && !avatarUri.startsWith("http")) {
             const fd = new FormData();
-            appendFormDataFileNative(fd, "file", { uri: avatarUri, name: avatarFileName, type: "image/jpeg" });
+            appendFormDataFileNative(fd, "file", {
+              uri: avatarUri,
+              name: avatarFileName,
+              type: avatarMimeType || "image/jpeg",
+            });
             const res = await api.post<{ url?: string }>("/api/me/avatar", fd);
             if (res.error) throw new Error(getApiErrorMessage(res.error, "Upload failed"));
             const url = res.data?.url;
@@ -398,10 +406,11 @@ export default function CustomerOnboarding() {
               label: "Home",
               is_default: true,
               address_line1: addressLine1.trim(),
+              address_line2: addressLine2.trim() || null,
               city: city.trim(),
               state: province.trim() || null,
               postal_code: postalCode.trim() || null,
-              country: country.trim() || "South Africa",
+              country: country.trim() || tenantRegionName || "South Africa",
             };
             if (addressLatitude != null && addressLongitude != null) {
               payload.latitude = addressLatitude;
@@ -552,36 +561,42 @@ export default function CustomerOnboarding() {
             </View>
           )}
 
-          {/* ── Step 2: Photo ── */}
+          {/* ── Step 2: Photo — single picker flow matches personal-info (no double system dialogs) */}
           {step === 2 && (
             <View style={{ marginTop: 24, alignItems: "center" }}>
               <StepIcon name="camera" />
               <StepTitle title="Add a profile photo" subtitle="Help providers recognise you. You can always update later." />
-              <TouchableOpacity
-                onPress={handlePickPhoto}
+              <Pressable
+                onPress={() => void handlePickPhoto()}
                 disabled={pickLoading}
-                style={{
-                  width: 120, height: 120, borderRadius: 60, overflow: "hidden",
-                  backgroundColor: "#F1F5F9", borderWidth: 2, borderColor: PRIMARY + "30",
-                  alignItems: "center", justifyContent: "center", marginBottom: 16,
-                }}
+                style={{ alignItems: "center", opacity: pickLoading ? 0.65 : 1 }}
               >
-                {avatarUri ? (
-                  <Image source={{ uri: avatarUri }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
-                ) : (
-                  <Ionicons name="camera-outline" size={40} color={PRIMARY + "80"} />
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handlePickPhoto}
-                disabled={pickLoading}
-                style={{ borderWidth: 1, borderColor: "#E2E8F0", borderRadius: RADIUS_BUTTON, paddingHorizontal: 20, paddingVertical: 10 }}
-              >
-                <Text style={{ fontSize: 14, color: "#475569", fontWeight: "500" }}>
-                  {avatarUri ? "Change photo" : "Choose photo"}
+                <View
+                  style={{
+                    width: 120,
+                    height: 120,
+                    borderRadius: 60,
+                    overflow: "hidden",
+                    backgroundColor: "#F1F5F9",
+                    borderWidth: 2,
+                    borderColor: PRIMARY + "30",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {avatarUri ? (
+                    <Image source={{ uri: avatarUri }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+                  ) : (
+                    <Ionicons name="camera-outline" size={40} color={PRIMARY + "80"} />
+                  )}
+                </View>
+                <Text style={{ marginTop: 14, fontSize: 15, fontWeight: "600", color: "#334155" }}>
+                  {pickLoading ? "Opening…" : avatarUri ? "Change photo" : "Tap to add a photo"}
                 </Text>
-              </TouchableOpacity>
-              <Text style={[hintStyle, { marginTop: 10 }]}>JPEG, PNG or WebP · max 5 MB</Text>
+                <Text style={[hintStyle, { marginTop: 6, textAlign: "center", paddingHorizontal: 12 }]}>
+                  Camera or photo library · Optional · JPEG, PNG or WebP · max 5 MB
+                </Text>
+              </Pressable>
             </View>
           )}
 
@@ -770,13 +785,13 @@ export default function CustomerOnboarding() {
                       marginBottom: 16,
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel="Search address with Mapbox, map pin, or current location"
+                    accessibilityLabel="Search for your address, drop a pin on the map, or use current location"
                   >
                     <Ionicons name="map-outline" size={22} color={PRIMARY} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A" }}>Find on map</Text>
                       <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
-                        Mapbox search, drop a pin, or use current location
+                        Search, drop a pin, or use current location — same as when you book
                       </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color={PRIMARY} />
@@ -810,7 +825,16 @@ export default function CustomerOnboarding() {
                     setAddressLongitude(null);
                   }
                 }}
-                placeholder="e.g. 12 Main Street — or use Find on map above"
+                placeholder="e.g. 12 Main Street — or open Find on map above"
+                style={inputStyle}
+                placeholderTextColor="#94A3B8"
+              />
+
+              <SectionLabel>Apartment, suite, unit (optional)</SectionLabel>
+              <TextInput
+                value={addressLine2}
+                onChangeText={setAddressLine2}
+                placeholder="e.g. Unit 4B, Estate name"
                 style={inputStyle}
                 placeholderTextColor="#94A3B8"
               />
@@ -839,7 +863,7 @@ export default function CustomerOnboarding() {
               <TextInput
                 value={country}
                 onChangeText={setCountry}
-                placeholder="South Africa"
+                placeholder={tenantRegionName || "Country"}
                 style={inputStyle}
                 placeholderTextColor="#94A3B8"
               />

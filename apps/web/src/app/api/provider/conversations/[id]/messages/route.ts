@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkMessageLimit, formatLimitError } from "@/lib/subscriptions/limit-checker";
 import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
+import { insertNotification } from "@/lib/notifications/insert-notification";
 import { z } from "zod";
 
 /**
@@ -17,18 +17,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check permission to view messages
-    const permissionCheck = await requirePermission("view_messages", request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const supabaseAdmin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const { data: conversation, error: convError } = await supabase
+    const { data: conversation, error: convError } = await supabaseAdmin
       .from("conversations")
       .select("id, provider_id")
       .eq("id", id)
@@ -39,8 +35,7 @@ export async function GET(
       return notFoundResponse("Conversation not found");
     }
 
-    // Get messages
-    const { data: messages, error } = await supabase
+    const { data: messages, error } = await supabaseAdmin
       .from("messages")
       .select(`
         id,
@@ -60,26 +55,22 @@ export async function GET(
       throw error;
     }
 
-    // Mark messages as read
-    await supabase
+    await supabaseAdmin
       .from("messages")
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq("conversation_id", id)
       .eq("is_read", false)
       .neq("sender_id", user.id);
 
-    // Update conversation unread count (provider side)
-    await supabase
+    await supabaseAdmin
       .from("conversations")
       .update({ unread_count_provider: 0 })
       .eq("id", id);
 
-    // Fetch sender data using admin client to bypass RLS
     const senderIds = [...new Set((messages || []).map((m: any) => m.sender_id).filter(Boolean))];
     let senderMap: Record<string, any> = {};
     
     if (senderIds.length > 0) {
-      const supabaseAdmin = await getSupabaseAdmin();
       const { data: senders } = await supabaseAdmin
         .from("users")
         .select("id, full_name, email, avatar_url")
@@ -149,18 +140,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check permission to send messages
-    const permissionCheck = await requirePermission("send_messages", request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const supabaseAdmin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const { data: conversation, error: convError } = await supabase
+    const { data: conversation, error: convError } = await supabaseAdmin
       .from("conversations")
       .select("id, provider_id")
       .eq("id", id)
@@ -175,7 +162,7 @@ export async function POST(
     // Messaging is a core feature and should work even without a subscription
     // Only enforce limits if there's an active subscription with explicit limits
     try {
-      const messageLimitCheck = await checkMessageLimit(providerId);
+      const messageLimitCheck = await checkMessageLimit(providerId, supabase);
       
       // Only block if:
       // 1. There's an actual limit (limitValue is not null)
@@ -205,8 +192,7 @@ export async function POST(
     const body = await request.json();
     const validated = sendMessageSchema.parse(body);
 
-    // Create message
-    const { data: message, error: messageError } = await supabase
+    const { data: message, error: messageError } = await supabaseAdmin
       .from("messages")
       .insert({
         conversation_id: id,
@@ -226,11 +212,11 @@ export async function POST(
 
     // Send notification to customer (best-effort)
     try {
-      const { data: convData } = await supabase
-        .from("conversations")
-        .select("customer_id")
-        .eq("id", id)
-        .single();
+        const { data: convData } = await supabaseAdmin
+          .from("conversations")
+          .select("customer_id")
+          .eq("id", id)
+          .single();
 
       if (convData && convData.customer_id) {
         const customerId = convData.customer_id;
@@ -246,7 +232,7 @@ export async function POST(
 
         if (template && template.enabled) {
           // Get provider name for template
-          const { data: providerData } = await supabase
+          const { data: providerData } = await supabaseAdmin
             .from("providers")
             .select("business_name")
             .eq("id", providerId)
@@ -278,30 +264,14 @@ export async function POST(
           );
         }
 
-        // Create in-app notification record
-        try {
-          const { data: notificationExists } = await supabase
-            .from("notifications")
-            .select("id")
-            .limit(1)
-            .maybeSingle();
-          
-          if (notificationExists !== null) {
-            await supabase
-              .from("notifications")
-              .insert({
-                user_id: customerId,
-                type: "new_message",
-                title: "New Message from Provider",
-                message: messagePreview,
-                data: { conversation_id: id, message_id: message.id },
-                is_read: false,
-                created_at: new Date().toISOString(),
-              });
-          }
-        } catch (notifError) {
-          console.debug("Failed to create notification record:", notifError);
-        }
+        await insertNotification({
+          user_id: customerId,
+          type: "new_message",
+          title: "New Message from Provider",
+          message: messagePreview,
+          data: { conversation_id: id, message_id: message.id },
+          action_url: `/account-settings/messages?conversation=${id}`,
+        });
       }
     } catch (notifError) {
       // Don't fail message send if notification fails

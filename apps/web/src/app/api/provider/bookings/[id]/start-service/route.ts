@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import type { Booking } from "@/types/beautonomi";
 
@@ -11,21 +17,16 @@ import type { Booking } from "@/types/beautonomi";
  *
  * Mark service as started (after OTP verification for at-home bookings).
  *
- * §Release-audit 2026-04 (synergy sweep): aligned with `PATCH
- * /api/provider/bookings/[id]` which uses `requirePermission('edit_appointments')`.
- * Previously this route only checked the role tier, so a staff account with
- * `edit_appointments` explicitly disabled could still start a service from
- * mobile — bypassing the permissions matrix the admin UI enforces. Swap to
- * `requirePermission` so the policy is consistent across entry points.
+ * Auth matches GET booking detail and PATCH: any provider_owner / provider_staff
+ * on the account can start service (granular `edit_appointments` alone was
+ * blocking mobile staff without that flag).
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const permissionCheck = await requirePermission('edit_appointments', request);
-    if (!permissionCheck.authorized) return permissionCheck.response!;
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -34,6 +35,7 @@ export async function POST(
     if (id.startsWith("group:")) {
       const groupId = id.slice("group:".length);
       const groupUrl = new URL(`/api/provider/group-bookings/${groupId}`, request.url);
+      groupUrl.searchParams.set("action", "start_service");
       return NextResponse.redirect(groupUrl, 307);
     }
 
@@ -83,6 +85,8 @@ export async function POST(
     if (
       bookingData.status !== "confirmed" &&
       bookingData.status !== "booked" &&
+      bookingData.status !== "waiting" &&
+      bookingData.status !== "checked_in" &&
       bookingData.current_stage !== "provider_arrived"
     ) {
       return errorResponse("Booking must be confirmed and provider must have arrived", "INVALID_STATUS", 400);

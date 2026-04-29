@@ -58,7 +58,9 @@ export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction, l
           ) : null}
         </View>
       </View>
-      {rightAction && <View style={{ marginLeft: 12 }}>{rightAction}</View>}
+      {rightAction ? (
+      <View style={{ marginLeft: 12, flexShrink: 0, alignSelf: "flex-start" }}>{rightAction}</View>
+    ) : null}
     </View>
   );
 }

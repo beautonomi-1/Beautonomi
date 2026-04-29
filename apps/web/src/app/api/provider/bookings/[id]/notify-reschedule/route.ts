@@ -1,7 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { getProviderIdForUser, notFoundResponse, handleApiError, errorResponse, successResponse } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+  successResponse,
+} from "@/lib/supabase/api-helpers";
 import { sendRescheduleNotification } from "@/lib/notifications/appointment-notifications";
 
 /**
@@ -13,9 +19,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const permissionCheck = await requirePermission("edit_appointments", request);
-    if (!permissionCheck.authorized) return permissionCheck.response!;
-    const providerId = await getProviderIdForUser(permissionCheck.user.id);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const providerId = await getProviderIdForUser(user.id);
     if (!providerId) return notFoundResponse("Provider not found");
 
     const supabase = await getSupabaseServer(request);

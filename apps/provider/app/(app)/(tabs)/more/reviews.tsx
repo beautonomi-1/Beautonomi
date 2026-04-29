@@ -145,6 +145,7 @@ export default function ReviewsScreen() {
   };
 
   const reviews: Review[] = data?.reviews ?? [];
+  const reviewTotalCount = data?.pagination?.total ?? reviews.length;
 
   if (loading && !data) {
     return (
@@ -173,7 +174,7 @@ export default function ReviewsScreen() {
       <ScreenHeader
         title="Reviews"
         showBack
-        subtitle={`${reviews.length} review${reviews.length === 1 ? "" : "s"}`}
+        subtitle={`${reviewTotalCount} review${reviewTotalCount === 1 ? "" : "s"}`}
       />
       <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 16 }}>
         {STATUS_FILTERS.map((opt) => (

@@ -13,7 +13,9 @@ export function parsePartnerProfileSlug(sp: SearchParamsLike): string | null {
       ? sp.slug
       : typeof sp.partnerId === "string"
         ? sp.partnerId
-        : null;
+        : typeof sp.provider_id === "string"
+          ? sp.provider_id
+          : null;
   if (!raw) return null;
   try {
     return decodeURIComponent(raw);
