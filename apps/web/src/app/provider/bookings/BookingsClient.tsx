@@ -37,7 +37,7 @@ import Pagination from "@/components/ui/pagination";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/provider/PageHeader";
 import type { Booking } from "@/types/beautonomi";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { SyncIndicator } from "@/components/provider/SyncIndicator";
 import { BookingConflictAlert } from "@/components/provider/BookingConflictAlert";
@@ -89,6 +89,7 @@ export function BookingsClient({
   initialError: string | null;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { selectedLocationId, provider } = useProviderPortal();
 
   // View mode — §Hydration 2026-04: initial state MUST match server render
@@ -124,7 +125,18 @@ export function BookingsClient({
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<BookingStatus>("all");
+  const initialStatus = searchParams.get("status");
+  const [statusFilter, setStatusFilter] = useState<BookingStatus>(
+    initialStatus === "pending" ||
+      initialStatus === "confirmed" ||
+      initialStatus === "in_progress" ||
+      initialStatus === "completed" ||
+      initialStatus === "cancelled" ||
+      initialStatus === "no_show"
+      ? initialStatus
+      : "all",
+  );
+  const paymentStatusFilter = searchParams.get("payment_status");
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const deferredSearch = useDeferredValue(searchQuery);
@@ -191,6 +203,7 @@ export function BookingsClient({
 
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
+      if (paymentStatusFilter) params.set("payment_status", paymentStatusFilter);
 
       const loc = locationFilter !== "all" ? locationFilter : selectedLocationId;
       if (loc) params.set("location_id", loc);
@@ -219,7 +232,7 @@ export function BookingsClient({
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [statusFilter, dateRange, locationFilter, selectedLocationId]);
+  }, [statusFilter, paymentStatusFilter, dateRange, locationFilter, selectedLocationId]);
 
   useEffect(() => { loadBookings(); }, [loadBookings]);
 

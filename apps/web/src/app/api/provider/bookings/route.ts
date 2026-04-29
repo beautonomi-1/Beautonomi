@@ -183,6 +183,11 @@ async function handleGetProviderBookings(request: NextRequest) {
       }
     }
 
+    const paymentStatus = searchParams.get("payment_status");
+    if (paymentStatus && paymentStatus !== "all") {
+      query = query.eq("payment_status", paymentStatus);
+    }
+
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
     if (startDate) {
@@ -741,7 +746,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
           
           if (insertError) {
             console.error("Error manually creating user profile:", insertError);
-            // Don't fail the booking, but log the error
+            throw new Error(`Failed to create customer profile: ${insertError.message ?? "unknown error"}`);
           }
         } else {
           // Update user profile with any additional info if needed
@@ -1422,10 +1427,27 @@ async function handleCreateProviderBooking(request: NextRequest) {
         .insert(bookingProductsData);
 
       if (bpError) {
-        console.error("Error creating booking_products:", bpError);
-        // Don't fail the booking creation, just log the error
+        console.error("Error creating booking_products — rolling back booking:", bpError);
+        await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
+        throw new Error(`Failed to create booking products: ${bpError.message ?? "unknown error"}`);
       } else {
         console.log("Booking products created:", bookingProductsData.length);
+      }
+
+      try {
+        await syncAppointmentProductOrder(supabaseAdmin as never, booking.id);
+      } catch (orderSyncError) {
+        console.error(
+          `[provider/bookings create] failed to sync appointment product order — rolling back booking ${booking.id}:`,
+          orderSyncError,
+        );
+        await supabaseAdmin.from("product_orders").delete().eq("booking_id", booking.id);
+        await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
+        throw new Error(
+          orderSyncError instanceof Error
+            ? `Failed to create appointment product order: ${orderSyncError.message}`
+            : "Failed to create appointment product order",
+        );
       }
 
       // §Provider-audit 2026-04 (round 3): if this booking is being
@@ -1479,15 +1501,6 @@ async function handleCreateProviderBooking(request: NextRequest) {
             stockErr,
           );
         }
-      }
-
-      try {
-        await syncAppointmentProductOrder(supabaseAdmin as never, booking.id);
-      } catch (orderSyncError) {
-        console.error(
-          `[provider/bookings create] failed to sync appointment product order for booking ${booking.id}:`,
-          orderSyncError,
-        );
       }
     }
 

@@ -76,6 +76,10 @@ export const ProviderCard = React.memo(function ProviderCard({
       lat?: string;
       lng?: string;
     } = { slug: provider.slug };
+    if (!params.slug && provider.id) {
+      params.slug = provider.id;
+      params.provider_id = provider.id;
+    }
     if (provider.is_sponsored && provider.campaign_id && provider.id) {
       params.campaign_id = provider.campaign_id;
       params.provider_id = provider.id;

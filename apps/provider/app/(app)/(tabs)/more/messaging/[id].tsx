@@ -148,6 +148,15 @@ export default function ChatScreen() {
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
 
+  const refreshRef = useRef(refresh);
+  const markReadRef = useRef(markRead);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+  useEffect(() => {
+    markReadRef.current = markRead;
+  }, [markRead]);
+
   // §Provider-audit 2026-04 (round 6): mark-read dependencies previously
   // included the whole `conversation` object, which re-references on every
   // refresh (realtime update, manual refresh). That caused a mark-read
@@ -155,8 +164,8 @@ export default function ChatScreen() {
   // now fire exactly once per thread open (per conversationId).
   useEffect(() => {
     if (!conversationId) return;
-    markRead(`/api/provider/conversations/${conversationId}/mark-read`, {});
-  }, [conversationId, markRead]);
+    markReadRef.current(`/api/provider/conversations/${conversationId}/mark-read`, {});
+  }, [conversationId]);
 
   // Reset the "first scroll" flag whenever we switch threads so the
   // initial scroll-to-bottom runs again for the new conversation even
@@ -215,7 +224,7 @@ export default function ChatScreen() {
           // server-side. Without this the conversations list kept the
           // unread badge until the user closed & reopened the thread.
           if (m.sender_role === "customer") {
-            markRead(
+            markReadRef.current(
               `/api/provider/conversations/${conversationId}/mark-read`,
               {},
             );
@@ -237,7 +246,7 @@ export default function ChatScreen() {
               updated.id && msg.id === updated.id ? { ...msg, read_at: updated.read_at ?? null } : msg
             )
           );
-          refresh();
+          void refreshRef.current();
         }
       )
       .subscribe();
@@ -249,7 +258,8 @@ export default function ChatScreen() {
         // Ignore
       }
     };
-  }, [conversationId, refresh, markRead]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
 
   const handleSend = useCallback(async () => {
     const text = message.trim();

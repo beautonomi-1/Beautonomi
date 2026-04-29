@@ -367,7 +367,6 @@ export default function ProfilePage() {
             <AddressAutocomplete
               inputId="provider-profile-address"
               value={formData.address?.line1 || ""}
-              geocodeTypes={["address"]}
               onChange={(addr) => {
                 setFormData({
                   ...formData,

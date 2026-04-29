@@ -19,7 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
-import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
+import { APP_URL, getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
@@ -658,6 +658,55 @@ export default function BookingDetailScreen() {
     if (!bid) return;
     haptic.light();
     try {
+      const base = getBackendUrl().replace(/\/$/, "");
+      const filename = `booking-${booking.booking_number ?? bid}.pdf`.replace(/[^\w.-]+/g, "_");
+      const pdfPath = `/api/bookings/${encodeURIComponent(bid)}/receipt/pdf`;
+
+      const tryBearerDownload = async (): Promise<boolean> => {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token || !base) return false;
+        const pdfUrl = `${base}${pdfPath}`;
+        const init = withWebApiTenantHeaders({
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "omit",
+        });
+
+        if (Platform.OS === "web") {
+          const response = await fetch(pdfUrl, init);
+          if (!response.ok) return false;
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          if (typeof window !== "undefined") {
+            const a = document.createElement("a");
+            a.href = objectUrl;
+            a.download = filename;
+            a.rel = "noopener";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+          }
+          return true;
+        }
+
+        if (!FileSystem.cacheDirectory) return false;
+        const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+        const headers = new Headers(init.headers as HeadersInit | undefined);
+        const dl = await FileSystem.downloadAsync(pdfUrl, fileUri, {
+          headers: Object.fromEntries(headers.entries()),
+        });
+        if (dl.status !== 200) return false;
+        await Share.share({
+          url: fileUri,
+          title: "Booking receipt",
+          message: `Booking ${booking.booking_number ?? bid}`,
+        });
+        return true;
+      };
+
+      if (await tryBearerDownload()) return;
+
       const res = await api.post<{ url?: string }>(
         `/api/bookings/${encodeURIComponent(bid)}/receipt/signed-url`,
         {},
@@ -678,7 +727,6 @@ export default function BookingDetailScreen() {
         Alert.alert("Download receipt", "File storage is not available on this device.");
         return;
       }
-      const filename = `booking-${booking.booking_number ?? bid}.pdf`.replace(/[^\w.-]+/g, "_");
       const fileUri = `${FileSystem.cacheDirectory}${filename}`;
       const dl = await FileSystem.downloadAsync(url, fileUri);
       if (dl.status !== 200) {

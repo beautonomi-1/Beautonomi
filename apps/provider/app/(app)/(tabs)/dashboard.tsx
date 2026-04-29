@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { InteractionManager, View, Text, TouchableOpacity, Platform } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -453,6 +453,9 @@ export default function DashboardScreen() {
     secondaryEnabled,
   ]);
 
+  const dashboardRefreshRef = useRef(refreshRealtimeDashboardData);
+  useEffect(() => { dashboardRefreshRef.current = refreshRealtimeDashboardData; }, [refreshRealtimeDashboardData]);
+
   useEffect(() => {
     if (!isFocused || !provider?.id) return;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -460,7 +463,7 @@ export default function DashboardScreen() {
       if (refreshTimer) return;
       refreshTimer = setTimeout(() => {
         refreshTimer = null;
-        refreshRealtimeDashboardData();
+        dashboardRefreshRef.current();
       }, 500);
     };
 
@@ -484,7 +487,8 @@ export default function DashboardScreen() {
       if (refreshTimer) clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
-  }, [isFocused, provider?.id, refreshRealtimeDashboardData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFocused, provider?.id]);
 
   const m = metrics;
   const statColumns = isTablet ? (columns >= 3 ? 4 : 2) : 2;

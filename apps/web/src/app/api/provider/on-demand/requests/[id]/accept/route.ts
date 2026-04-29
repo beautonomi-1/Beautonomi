@@ -8,6 +8,7 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
 import { validateBooking } from "@/app/api/public/bookings/_helpers/validate-booking";
 import { createBookingRecord } from "@/app/api/public/bookings/_helpers/create-booking-record";
 import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
@@ -31,6 +32,38 @@ export async function POST(
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
+
+    const { data: providerSettings } = await supabase
+      .from("provider_online_booking_settings")
+      .select("on_demand_accept_enabled")
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    if (!providerSettings?.on_demand_accept_enabled) {
+      return errorResponse(
+        "On-demand requests are disabled for this provider.",
+        "PROVIDER_ON_DEMAND_DISABLED",
+        403,
+      );
+    }
+
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const requestNow = await getRequestNowAvailability({
+      tenantId: (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+      userId: user.id,
+      role: user.role as string,
+      surface: "provider",
+    });
+    if (!requestNow.enabled) {
+      return errorResponse(
+        "Request Now is currently unavailable.",
+        "ON_DEMAND_DISABLED",
+        403,
+      );
+    }
 
     const now = new Date().toISOString();
     const { data: requestRow, error: fetchError } = await supabase

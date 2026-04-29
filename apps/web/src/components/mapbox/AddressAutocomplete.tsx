@@ -143,7 +143,7 @@ export default function AddressAutocomplete({
         types?: string[];
       } = {
         query: searchQuery,
-        limit: 8,
+        limit: 10,
       };
       if (countryIso) {
         payload.country = countryIso;

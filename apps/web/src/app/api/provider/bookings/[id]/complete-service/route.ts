@@ -1,8 +1,14 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import type { Booking } from "@/types/beautonomi";
 import { awardPointsForBooking, checkProviderMilestones } from "@/lib/services/provider-gamification";
@@ -41,24 +47,25 @@ function resolveLoyaltyBaseAmount(booking: {
  * customer loyalty points (only on completion), and deducts any product
  * stock tied to the booking.
  *
- * §Release-audit 2026-04 (synergy sweep): aligned with `PATCH
- * /api/provider/bookings/[id]` which uses `requirePermission('edit_appointments')`.
- * Previously this route only checked the role tier, so a staff account with
- * `edit_appointments` disabled could still complete a service from mobile
- * (and trigger loyalty point awards + stock deduction as a side effect) —
- * bypassing the permissions matrix the admin UI enforces.
+ * Auth matches PATCH booking: provider_owner / provider_staff can complete.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const permissionCheck = await requirePermission('edit_appointments', request);
-    if (!permissionCheck.authorized) return permissionCheck.response!;
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
+
+    // Proxy group:UUID ids — complete maps to the group-bookings PATCH endpoint
+    if (id.startsWith("group:")) {
+      const groupId = id.slice("group:".length);
+      const groupUrl = new URL(`/api/provider/group-bookings/${groupId}`, request.url);
+      groupUrl.searchParams.set("action", "complete_service");
+      return NextResponse.redirect(groupUrl, 307);
+    }
 
     // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);

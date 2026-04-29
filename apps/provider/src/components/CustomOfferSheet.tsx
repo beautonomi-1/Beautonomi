@@ -14,7 +14,9 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
-import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { getCachedConfigBundle, getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 
 export interface CustomOfferSheetProps {
   visible: boolean;
@@ -66,8 +68,12 @@ export function CustomOfferSheet({
     d.setHours(d.getHours() + 1);
     return d;
   });
+  const [addressSearchValue, setAddressSearchValue] = useState("");
   const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
   const [addressCity, setAddressCity] = useState("");
+  const [addressState, setAddressState] = useState("");
+  const [addressPostalCode, setAddressPostalCode] = useState("");
   const [addressCountry, setAddressCountry] = useState("");
   const [travelFee, setTravelFee] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -88,8 +94,12 @@ export function CustomOfferSheet({
     d.setMinutes(0, 0, 0);
     d.setHours(d.getHours() + 1);
     setScheduledAt(d);
+    setAddressSearchValue("");
     setAddressLine1("");
+    setAddressLine2("");
     setAddressCity("");
+    setAddressState("");
+    setAddressPostalCode("");
     setAddressCountry("");
     setTravelFee("");
   }, []);
@@ -138,7 +148,10 @@ export function CustomOfferSheet({
       payload.scheduled_at = scheduledAt.toISOString();
       if (locationType === "at_home") {
         if (addressLine1.trim()) payload.address_line1 = addressLine1.trim();
+        if (addressLine2.trim()) payload.address_line2 = addressLine2.trim();
         if (addressCity.trim()) payload.address_city = addressCity.trim();
+        if (addressState.trim()) payload.address_state = addressState.trim();
+        if (addressPostalCode.trim()) payload.address_postal_code = addressPostalCode.trim();
         if (addressCountry.trim()) payload.address_country = addressCountry.trim();
         const fee = Number(travelFee);
         if (!Number.isNaN(fee) && fee >= 0) payload.travel_fee = fee;
@@ -329,11 +342,45 @@ export function CustomOfferSheet({
         {locationType === "at_home" && (
           <>
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Address (for at home)</Text>
+            <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+              Search for the client&apos;s address, then edit lines below if needed.
+            </Text>
+            <AddressAutocomplete
+              label="Search address"
+              value={addressSearchValue}
+              countryCode={countryFilterIso2FromStorage(addressCountry) ?? "ZA"}
+              defaultCountryName={
+                addressCountry.trim() ||
+                getCachedConfigBundle()?.meta?.tenant_region?.name?.trim() ||
+                undefined
+              }
+              placeholder="Start typing street or area…"
+              onSelect={(addr: ParsedAddress) => {
+                setAddressSearchValue(addr.full_address);
+                setAddressLine1(addr.address_line1);
+                setAddressCity(addr.city);
+                setAddressState(addr.state);
+                setAddressPostalCode(addr.postal_code);
+                setAddressCountry(addr.country);
+              }}
+              onBlur={(q) => {
+                if (!addressLine1.trim() && q.trim()) setAddressLine1(q.trim());
+              }}
+            />
+            <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Street line</Text>
             <TextInput
               style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={addressLine1}
               onChangeText={setAddressLine1}
               placeholder="Street address"
+              placeholderTextColor="#9ca3af"
+            />
+            <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Unit / suite (optional)</Text>
+            <TextInput
+              style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+              value={addressLine2}
+              onChangeText={setAddressLine2}
+              placeholder="Apartment, estate gate, etc."
               placeholderTextColor="#9ca3af"
             />
             <View style={twStyle("mb-2 flex-row")}>
@@ -349,6 +396,22 @@ export function CustomOfferSheet({
                 value={addressCountry}
                 onChangeText={setAddressCountry}
                 placeholder="Country"
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+            <View style={twStyle("mb-2 flex-row")}>
+              <TextInput
+                style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginRight: 8 }]}
+                value={addressState}
+                onChangeText={setAddressState}
+                placeholder="Province / state"
+                placeholderTextColor="#9ca3af"
+              />
+              <TextInput
+                style={twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                value={addressPostalCode}
+                onChangeText={setAddressPostalCode}
+                placeholder="Postal code"
                 placeholderTextColor="#9ca3af"
               />
             </View>

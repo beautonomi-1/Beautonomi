@@ -1,7 +1,7 @@
 /**
  * Add location – POST /api/provider/locations. Required: name, address_line1, city, country.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Platform,
   TouchableOpacity,
   ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -26,8 +27,11 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
+import { AddressMapPinModal } from "@/components/AddressMapPinModal";
+import { StaticMapImage } from "@/components/ui/StaticMapImage";
+import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { Colors } from "@/constants/colors";
-import { countryFilterIso2FromStorage, mapGeocodeFeatureToAddressParts } from "@beautonomi/utils";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { getCachedConfigBundle } from "@/lib/config-bundle";
 
@@ -37,6 +41,7 @@ function tenantCountryFallback(): string {
 
 export default function AddLocationScreen() {
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
   const { bundle } = useConfigBundle();
   const countrySeeded = useRef(false);
   const [saving, setSaving] = useState(false);
@@ -60,7 +65,15 @@ export default function AddLocationScreen() {
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [locating, setLocating] = useState(false);
+  const [mapPinVisible, setMapPinVisible] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const pinInitialCoordinate = useMemo(() => {
+    if (latitude != null && longitude != null) {
+      return { latitude, longitude };
+    }
+    return null;
+  }, [latitude, longitude]);
 
   const { t } = useTranslation();
   const FIELD_LABELS: Record<string, string> = {
@@ -139,23 +152,20 @@ export default function AddLocationScreen() {
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
       const lat = loc.coords.latitude;
       const lng = loc.coords.longitude;
-      const reverse = await api.post<any>("/api/mapbox/reverse-geocode", {
-        latitude: lat,
-        longitude: lng,
-      });
-      const feature = reverse?.data?.data ?? reverse?.data ?? null;
-      if (feature) {
-        const mapped = mapGeocodeFeatureToAddressParts(feature, {
-          defaultCountryName: country.trim() || tenantCountryFallback() || "South Africa",
-        });
+      const defaultCountry = country.trim() || tenantCountryFallback() || "South Africa";
+      const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
+      if (mapped) {
         setAddressLine1(mapped.address_line1 || address_line1 || "Current location");
         setCity(mapped.city || city || "—");
         setState(mapped.state || "");
         setPostalCode(mapped.postal_code || "");
-        setCountry(mapped.country || country || tenantCountryFallback() || "South Africa");
+        setCountry(mapped.country || defaultCountry);
+        setLatitude(mapped.latitude);
+        setLongitude(mapped.longitude);
+      } else {
+        setLatitude(lat);
+        setLongitude(lng);
       }
-      setLatitude(lat);
-      setLongitude(lng);
       if (errors.address_line1 || errors.city || errors.country) {
         setErrors((e) => ({ ...e, address_line1: "", city: "", country: "" }));
       }
@@ -166,6 +176,31 @@ export default function AddLocationScreen() {
       setLocating(false);
     }
   }, [locating, country, address_line1, city, errors.address_line1, errors.city, errors.country]);
+
+  const handleDropPinConfirm = useCallback(
+    async (lat: number, lng: number) => {
+      const defaultCountry = country.trim() || tenantCountryFallback() || "South Africa";
+      const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
+      if (mapped) {
+        setAddressLine1(mapped.address_line1);
+        setCity(mapped.city);
+        setState(mapped.state);
+        setPostalCode(mapped.postal_code);
+        setCountry(mapped.country);
+        setLatitude(mapped.latitude);
+        setLongitude(mapped.longitude);
+      } else {
+        setLatitude(lat);
+        setLongitude(lng);
+      }
+      setMapPinVisible(false);
+      if (errors.address_line1 || errors.city || errors.country) {
+        setErrors((e) => ({ ...e, address_line1: "", city: "", country: "" }));
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    },
+    [country, errors.address_line1, errors.city, errors.country],
+  );
 
   return (
     <ScreenContainer scrollable={false}>
@@ -236,42 +271,75 @@ export default function AddLocationScreen() {
                 label={undefined}
                 countryCode={countryFilterIso2FromStorage(country) ?? "ZA"}
                 defaultCountryName={country.trim() || undefined}
-                geocodeTypes={["address"]}
                 proximity={
                   latitude != null && longitude != null && !(latitude === 0 && longitude === 0)
                     ? { latitude, longitude }
                     : undefined
                 }
               />
-              <TouchableOpacity
-                onPress={() => {
-                  void handleUseCurrentLocationPin();
-                }}
-                disabled={locating}
-                style={{
-                  marginTop: 10,
-                  alignSelf: "flex-start",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: "#bfdbfe",
-                  backgroundColor: "#eff6ff",
-                  paddingHorizontal: 12,
-                  paddingVertical: 7,
-                }}
-                accessibilityLabel="Use current location pin"
-                accessibilityRole="button"
-              >
-                {locating ? (
-                  <ActivityIndicator size="small" color="#2563eb" />
-                ) : (
-                  <Ionicons name="locate-outline" size={16} color="#2563eb" />
-                )}
-                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: "#1d4ed8" }}>
-                  {locating ? "Locating…" : "Use current location pin"}
-                </Text>
-              </TouchableOpacity>
+              <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    void handleUseCurrentLocationPin();
+                  }}
+                  disabled={locating}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: "#bfdbfe",
+                    backgroundColor: "#eff6ff",
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                  }}
+                  accessibilityLabel="Use current location"
+                  accessibilityRole="button"
+                >
+                  {locating ? (
+                    <ActivityIndicator size="small" color="#2563eb" />
+                  ) : (
+                    <Ionicons name="locate-outline" size={16} color="#2563eb" />
+                  )}
+                  <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: "#1d4ed8" }}>
+                    {locating ? "Locating…" : "Current location"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setMapPinVisible(true)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: Colors.gray[200],
+                    backgroundColor: Colors.white,
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                  }}
+                  accessibilityLabel="Drop pin on map"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="map-outline" size={16} color={Colors.gray[700]} />
+                  <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>
+                    Drop pin on map
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {latitude != null && longitude != null ? (
+                <View style={{ marginTop: 12, overflow: "hidden", borderRadius: 16 }}>
+                  <StaticMapImage
+                    latitude={latitude}
+                    longitude={longitude}
+                    width={Math.min(windowWidth - 32, 400)}
+                    height={150}
+                    zoom={15}
+                  />
+                  <Text style={{ marginTop: 6, fontSize: 12, color: Colors.gray[500], textAlign: "center" }}>
+                    Map preview
+                  </Text>
+                </View>
+              ) : null}
               {errors.address_line1 ? (
                 <Text style={{ marginTop: 4, fontSize: 14, color: "#ef4444" }}>
                   {errors.address_line1 === "validation.required"
@@ -388,6 +456,14 @@ export default function AddLocationScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <AddressMapPinModal
+        visible={mapPinVisible}
+        onClose={() => setMapPinVisible(false)}
+        onPickCoordinates={(lat: number, lng: number) => {
+          void handleDropPinConfirm(lat, lng);
+        }}
+        initialCoordinate={pinInitialCoordinate}
+      />
     </ScreenContainer>
   );
 }

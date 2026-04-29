@@ -42,6 +42,8 @@ import {
   Monitor,
   PiggyBank,
   CreditCard,
+  CalendarRange,
+  Undo2,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -86,6 +88,7 @@ const navigationSections: NavSection[] = [
     items: [
       { icon: Clock, label: "Waitlist", href: "/provider/waitlist", permission: "view_calendar" },
       { icon: Repeat, label: "Recurring", href: "/provider/recurring-appointments", permission: "view_calendar" },
+      { icon: UsersRound, label: "Group Bookings", href: "/provider/group-bookings", permission: "view_calendar" },
       { icon: UserCheck, label: "Waiting Room", href: "/provider/waiting-room", permission: "view_calendar" },
       { icon: Monitor, label: "Front desk", href: "/provider/front-desk", permission: "view_calendar" },
       { icon: UsersRound, label: "Clients", href: "/provider/clients", permission: "view_clients" },
@@ -95,8 +98,26 @@ const navigationSections: NavSection[] = [
     title: "Schedule",
     items: [
       { icon: CalendarClock, label: "Schedule", href: "/provider/schedule", permission: "view_calendar" },
+      { icon: Clock, label: "Operating Hours", href: "/provider/settings/operating-hours", permission: "edit_settings" },
+      { icon: CalendarRange, label: "Shifts", href: "/provider/team/shifts", permission: "view_team" },
       { icon: CalendarOff, label: "Time Blocks", href: "/provider/time-blocks", permission: "view_calendar" },
       { icon: CalendarOff, label: "Days Off", href: "/provider/team/days-off", permission: "view_team" },
+      { icon: CalendarOff, label: "Closed Periods", href: "/provider/settings/appointment-activity/closed-periods", permission: "edit_settings" },
+    ],
+  },
+  {
+    title: "Resources & Forms",
+    items: [
+      { icon: Layers, label: "Resources & Forms", href: "/provider/resources-forms", permission: "edit_settings" },
+      { icon: Package, label: "Resources", href: "/provider/resources", permission: "edit_settings" },
+      { icon: FileText, label: "Forms", href: "/provider/forms", permission: "edit_settings" },
+    ],
+  },
+  {
+    title: "Orders",
+    items: [
+      { icon: ShoppingBag, label: "Orders", href: "/provider/ecommerce/orders", permission: "view_sales" },
+      { icon: Undo2, label: "Returns", href: "/provider/ecommerce/returns", permission: "view_sales" },
     ],
   },
   {
@@ -106,27 +127,24 @@ const navigationSections: NavSection[] = [
       { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" },
       { icon: CreditCard, label: "Payments", href: "/provider/payments", permission: "view_sales" },
       { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" },
+      { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "view_sales" },
+      { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings" },
+      { icon: CreditCard, label: "Subscription", href: "/provider/subscription" },
       { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" },
       { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" },
       { icon: Trophy, label: "Rewards & Badges", href: "/provider/gamification" },
       { icon: Grid3x3, label: "Catalogue", href: "/provider/catalogue", permission: "view_products" },
       { icon: Sparkles, label: "Packages", href: "/provider/packages", permission: "view_services" },
+      { icon: TicketCheck, label: "Memberships", href: "/provider/settings/services/memberships", permission: "view_services" },
     ],
   },
   {
     title: "E-Commerce",
     items: [
       { icon: Store, label: "E-Commerce", href: "/provider/ecommerce", permission: "view_products" },
-      { icon: Package, label: "Orders", href: "/provider/orders", permission: "view_sales" },
+      { icon: Store, label: "Products", href: "/provider/ecommerce/products", permission: "view_products" },
       { icon: ShoppingBag, label: "Walk-in Sale", href: "/provider/ecommerce/walk-in", permission: "view_sales" },
       { icon: Truck, label: "Shipping", href: "/provider/ecommerce/shipping", permission: "edit_settings" },
-    ],
-  },
-  {
-    title: "Resources & Forms",
-    items: [
-      { icon: Layers, label: "Resources", href: "/provider/resources", permission: "edit_settings" },
-      { icon: FileText, label: "Forms", href: "/provider/forms", permission: "edit_settings" },
     ],
   },
   {
@@ -134,11 +152,13 @@ const navigationSections: NavSection[] = [
     items: [
       { icon: Sparkles, label: "Explore Content", href: "/provider/explore", permission: "create_explore_posts" },
       { icon: Users, label: "Team", href: "/provider/team", permission: "view_team" },
+      { icon: Users, label: "Team members", href: "/provider/team/members", permission: "view_team" },
       { icon: PiggyBank, label: "Payroll", href: "/provider/team/payroll", permission: "view_team" },
       { icon: DollarSign, label: "My Earnings", href: "/provider/team/my-earnings", permission: "view_team" },
       { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" },
       { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" },
       { icon: Megaphone, label: "Marketing", href: "/provider/marketing/automations", permission: "edit_settings" },
+      { icon: Megaphone, label: "Paid Ads", href: "/provider/settings/ads", permission: "edit_settings" },
       { icon: Link2, label: "Booking links", href: "/provider/express-booking", permission: "edit_settings" },
     ],
   },
@@ -146,7 +166,7 @@ const navigationSections: NavSection[] = [
 
 const bottomItems: NavItem[] = [
   { icon: HelpCircle, label: "Help & Support", href: "/help" },
-  { icon: TicketCheck, label: "My Tickets", href: "/help/submit-ticket" },
+  { icon: TicketCheck, label: "My Tickets", href: "/help/my-tickets" },
   { icon: Settings, label: "Settings", href: "/provider/settings" },
 ];
 
@@ -159,11 +179,23 @@ const routePrefixMap: Record<string, string> = {
   "/provider/reports": "/provider/reports",
   "/provider/gamification": "/provider/gamification",
   "/provider/ecommerce": "/provider/ecommerce",
+  "/provider/ecommerce/orders": "/provider/ecommerce/orders",
+  "/provider/ecommerce/returns": "/provider/ecommerce/returns",
+  "/provider/ecommerce/products": "/provider/ecommerce/products",
   "/provider/orders": "/provider/orders",
   "/provider/resources": "/provider/resources",
+  "/provider/resources-forms": "/provider/resources-forms",
   "/provider/forms": "/provider/forms",
   "/provider/schedule": "/provider/schedule",
   "/provider/time-blocks": "/provider/time-blocks",
+  "/provider/group-bookings": "/provider/group-bookings",
+  "/provider/settings/operating-hours": "/provider/settings/operating-hours",
+  "/provider/settings/appointment-activity/closed-periods": "/provider/settings/appointment-activity/closed-periods",
+  "/provider/settings/payout-accounts": "/provider/settings/payout-accounts",
+  "/provider/settings/sales/yoco-integration": "/provider/settings/sales/yoco-integration",
+  "/provider/settings/services/memberships": "/provider/settings/services/memberships",
+  "/provider/settings/ads": "/provider/settings/ads",
+  "/provider/subscription": "/provider/subscription",
   "/provider/payouts": "/provider/payouts",
   "/provider/recurring-appointments": "/provider/recurring-appointments",
   "/provider/express-booking": "/provider/express-booking",

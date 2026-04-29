@@ -222,7 +222,7 @@ export async function validateBooking(
   );
 
   // ── Subscription limit ───────────────────────────────────────────────────
-  const bookingLimitCheck = await checkBookingLimit(provider.id);
+  const bookingLimitCheck = await checkBookingLimit(provider.id, supabaseAdmin);
   if (!bookingLimitCheck.canProceed) {
     const publicMessage = formatPublicCustomerBookingLimitMessage(bookingLimitCheck);
     console.error("[validateBooking] booking limit denied for provider", provider.id, {

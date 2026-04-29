@@ -297,7 +297,7 @@ export async function POST(
       }
     };
 
-    const bookingLimitCheck = await checkBookingLimit(hold.provider_id);
+    const bookingLimitCheck = await checkBookingLimit(hold.provider_id, adminSupabase);
     if (!bookingLimitCheck.canProceed) {
       const publicMessage = formatPublicCustomerBookingLimitMessage(bookingLimitCheck);
       console.error("[booking-holds/consume] booking limit denied", hold.provider_id, {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -22,23 +22,22 @@ export async function GET(
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    const supabase = await getSupabaseServer();
-    const { slug } = await params;
+    const supabase = getSupabaseAdmin();
+    const rawSlug = (await params).slug;
+    let slug: string;
+    try { slug = decodeURIComponent(rawSlug); } catch { slug = rawSlug; }
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
 
-    // Get provider by slug
-    const { data: provider, error: providerError } = await supabase
+    // Use admin client to bypass RLS — consistent with the SSR profile loader
+    const { data: provider } = await supabase
       .from("providers")
-      .select("id, status")
-      .eq("slug", slug)
-      .eq("status", "active")
+      .select("id")
       .eq("tenant_id", tenantId)
-      .single();
+      .eq(isUuid ? "id" : "slug", slug)
+      .maybeSingle();
 
-    if (providerError || !provider) {
-      return NextResponse.json(
-        { error: "Provider not found" },
-        { status: 404 }
-      );
+    if (!provider) {
+      return NextResponse.json({ error: "Provider not found" }, { status: 404 });
     }
 
     // Get products available for retail sales (include has_variants).

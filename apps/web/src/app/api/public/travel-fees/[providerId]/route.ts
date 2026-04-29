@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 import { requirePublicTenant } from '@/lib/tenant/require-public-tenant';
 import { getTenantRegionConfig } from '@/lib/regions/config';
@@ -22,7 +22,7 @@ export async function GET(
     }
     const { tenantId } = tenantRes;
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { providerId } = await params;
 
     const { data: provOk } = await supabase

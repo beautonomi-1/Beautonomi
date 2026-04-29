@@ -28,6 +28,22 @@ export const revalidate = 60;
  * 
  * Optimized to run queries in parallel for better performance
  */
+function withHomeSectionAliases<T extends Record<string, unknown>>(data: T): T & {
+  top_rated: unknown;
+  browse_by_city: unknown;
+  all_providers: unknown;
+  adsDisclosureLabel?: unknown;
+} {
+  return {
+    ...data,
+    // Keep public clients resilient while web/native gradually converge on camelCase.
+    top_rated: data.topRated ?? data.top_rated ?? [],
+    browse_by_city: data.browseByCity ?? data.browse_by_city ?? [],
+    all_providers: data.all ?? data.all_providers ?? [],
+    adsDisclosureLabel: data.ads_disclosure_label ?? data.adsDisclosureLabel,
+  };
+}
+
 export async function GET(request: Request) {
   try {
     // Prefer admin client for broad read access, but probe it first.
@@ -45,14 +61,14 @@ export async function GET(request: Request) {
         console.error("Supabase client not available in /api/public/home");
         return NextResponse.json(
           {
-            data: {
+            data: withHomeSectionAliases({
               all: [],
               topRated: [],
               nearest: [],
               hottest: [],
               upcoming: [],
               browseByCity: [],
-            },
+            }),
             error: "Database connection not available",
           },
           { status: 503 }
@@ -67,14 +83,14 @@ export async function GET(request: Request) {
       console.error("Tenant resolution failed in /api/public/home:", tenantErr);
       return NextResponse.json(
         {
-          data: {
+          data: withHomeSectionAliases({
             all: [],
             topRated: [],
             nearest: [],
             hottest: [],
             upcoming: [],
             browseByCity: [],
-          },
+          }),
           error: { message: "Tenant not configured", code: "TENANT_UNAVAILABLE" },
         },
         { status: 503 }
@@ -371,10 +387,10 @@ export async function GET(request: Request) {
           const providerMap = new Map<string, { name: string; slug: string; rating: number; review_count: number }>();
           if (providersData) {
             (providersData as any[]).forEach((p: any) => {
-              if (p.business_name && p.slug) {
+              if (p.business_name && (p.slug || p.id)) {
                 providerMap.set(p.id, { 
                   name: p.business_name, 
-                  slug: p.slug,
+                  slug: p.slug || p.id,
                   rating: p.rating_average || 0,
                   review_count: p.review_count || 0
                 });
@@ -968,7 +984,7 @@ export async function GET(request: Request) {
 
       return {
         id: provider.id,
-        slug: provider.slug,
+        slug: provider.slug || provider.id,
         business_name: provider.business_name,
         business_type: provider.business_type || 'salon', // Default to salon if not specified
         rating: provider.rating_average || 0, // Map rating_average to rating
@@ -1212,7 +1228,7 @@ export async function GET(request: Request) {
             
             return {
               id: provider.id,
-              slug: provider.slug,
+              slug: provider.slug || provider.id,
               business_name: provider.business_name,
               business_type: provider.business_type || 'salon',
               rating: provider.rating_average || 0,
@@ -1328,7 +1344,7 @@ export async function GET(request: Request) {
                 const priceInfo = fallbackPriceMap.get(provider.id);
                 return {
                   id: provider.id,
-                  slug: provider.slug,
+                  slug: provider.slug || provider.id,
                   business_name: provider.business_name,
                   business_type: provider.business_type || 'salon',
                   rating: provider.rating_average || 0,
@@ -1445,7 +1461,7 @@ export async function GET(request: Request) {
               const priceInfo = cityPriceMap.get(provider.id);
               return {
                 id: provider.id,
-                slug: provider.slug,
+                slug: provider.slug || provider.id,
                 business_name: provider.business_name,
                 business_type: provider.business_type || 'salon',
                 rating: provider.rating_average || 0,
@@ -1558,7 +1574,7 @@ export async function GET(request: Request) {
             const priceInfo = featuredPriceMap.get(provider.id);
             return {
               id: provider.id,
-              slug: provider.slug,
+              slug: provider.slug || provider.id,
               business_name: provider.business_name,
               business_type: provider.business_type || 'salon',
               rating: provider.rating_average || 0,
@@ -1663,7 +1679,7 @@ export async function GET(request: Request) {
               const priceInfo = fallbackPriceMap.get(provider.id);
               return {
                 id: provider.id,
-                slug: provider.slug,
+                slug: provider.slug || provider.id,
                 business_name: provider.business_name,
                 business_type: provider.business_type || 'salon',
                 rating: provider.rating_average || 0,
@@ -1787,7 +1803,7 @@ export async function GET(request: Request) {
               const existing = allMap.get(p.id);
               const card = existing ? { ...existing, is_sponsored: true, campaign_id: winnerCampaignMap.get(p.id) ?? null } : {
                 id: p.id,
-                slug: p.slug,
+                slug: p.slug || p.id,
                 business_name: p.business_name,
                 business_type: p.business_type || "salon",
                 rating: p.rating_average ?? 0,
@@ -1875,7 +1891,7 @@ export async function GET(request: Request) {
       };
     }
 
-    const response = NextResponse.json({ ...result, data });
+    const response = NextResponse.json({ ...result, data: withHomeSectionAliases(data) });
     response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     return response;
   } catch (error: any) {
@@ -1883,14 +1899,14 @@ export async function GET(request: Request) {
     console.error("Unexpected error in /api/public/home:", err.message, err.stack);
     // Return empty data instead of error to prevent page crash
     const errorResponse = NextResponse.json({
-      data: {
+      data: withHomeSectionAliases({
         all: [],
         topRated: [],
         nearest: [],
         hottest: [],
         upcoming: [],
         browseByCity: [],
-      },
+      }),
       error: null,
     }, { status: 200 }); // Return 200 with empty data instead of 500
     

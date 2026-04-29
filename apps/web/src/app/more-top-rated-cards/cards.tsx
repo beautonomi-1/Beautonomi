@@ -17,10 +17,11 @@ export default function Cards() {
         setIsLoading(true);
         setError(null);
         const response = await fetcher.get<{
-          data: { top_rated: PublicProviderCard[] };
+          data: { topRated?: PublicProviderCard[]; top_rated?: PublicProviderCard[] };
           error: null;
         }>("/api/public/home");
-        setProviders(response.data.top_rated || []);
+        const topRated = response.data?.topRated ?? response.data?.top_rated ?? [];
+        setProviders(Array.isArray(topRated) ? topRated : []);
       } catch (err) {
         const errorMessage =
           err instanceof FetchTimeoutError

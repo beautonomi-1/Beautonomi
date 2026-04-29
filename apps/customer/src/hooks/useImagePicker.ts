@@ -2,6 +2,7 @@
  * Pick image from camera or library for uploads (profile, attachments, etc.)
  */
 import { useState, useCallback } from "react";
+import { Alert, Platform } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 
 export interface PickImageResult {
@@ -24,6 +25,11 @@ export function useImagePicker() {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
         setError("Permission to access photos is required");
+        Alert.alert(
+          "Photos access needed",
+          "Allow Beautonomi to access your photos so you can choose a profile picture.",
+          [{ text: "OK" }],
+        );
         return null;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -56,6 +62,11 @@ export function useImagePicker() {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") {
         setError("Camera permission is required");
+        Alert.alert(
+          "Camera access needed",
+          "Allow Beautonomi to use your camera so you can take a profile photo.",
+          [{ text: "OK" }],
+        );
         return null;
       }
       const result = await ImagePicker.launchCameraAsync({
@@ -81,9 +92,27 @@ export function useImagePicker() {
   }, []);
 
   const pickWithOptions = useCallback(async (): Promise<PickImageResult | null> => {
-    // On mobile we could show an action sheet; for now default to library
-    return pickFromLibrary();
-  }, [pickFromLibrary]);
+    if (Platform.OS === "web") {
+      return pickFromLibrary();
+    }
+    return new Promise((resolve) => {
+      Alert.alert("Profile photo", "Choose an option", [
+        {
+          text: "Take photo",
+          onPress: () => {
+            void pickFromCamera().then(resolve);
+          },
+        },
+        {
+          text: "Choose from library",
+          onPress: () => {
+            void pickFromLibrary().then(resolve);
+          },
+        },
+        { text: "Cancel", style: "cancel", onPress: () => resolve(null) },
+      ]);
+    });
+  }, [pickFromCamera, pickFromLibrary]);
 
   return {
     pickFromLibrary,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { checkResourceAvailability } from "@/lib/resources/assignment";
 
@@ -19,8 +19,11 @@ export async function POST(
     if (tenantRes instanceof Response) return tenantRes;
     const { tenantId } = tenantRes;
 
-    const supabase = await getSupabaseServer();
-    const { slug } = await params;
+    const supabase = getSupabaseAdmin();
+    const rawSlug = (await params).slug;
+    let slug: string;
+    try { slug = decodeURIComponent(rawSlug); } catch { slug = rawSlug; }
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
     const body = await request.json().catch(() => ({}));
 
     const resourceIds = Array.isArray(body.resource_ids)
@@ -56,12 +59,12 @@ export async function POST(
       );
     }
 
+    // Use admin client to bypass RLS — consistent with the SSR profile loader
     const { data: provider } = await supabase
       .from("providers")
       .select("id")
-      .eq("slug", decodeURIComponent(slug))
-      .eq("status", "active")
       .eq("tenant_id", tenantId)
+      .eq(isUuid ? "id" : "slug", slug)
       .maybeSingle();
 
     if (!provider) {

@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
  */
 async function getLocationFromIpApi(ip: string) {
   try {
-    const response = await fetch(`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,city,zip,lat,lon,regionName,timezone,query`, {
+    const response = await fetch(`https://ip-api.com/json/${ip}?fields=status,message,country,countryCode,city,zip,lat,lon,regionName,timezone,query`, {
       headers: {
         "User-Agent": "Beautonomi/1.0",
       },

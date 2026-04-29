@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
-    const bookingLimit = await checkBookingLimit(providerId);
+    const bookingLimit = await checkBookingLimit(providerId, supabase);
 
     return successResponse({
       can_accept_online_bookings: bookingLimit.canProceed,

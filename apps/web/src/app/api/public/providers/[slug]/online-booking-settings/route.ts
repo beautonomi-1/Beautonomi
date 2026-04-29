@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 /**
@@ -15,21 +15,19 @@ export async function GET(
     if (tenantRes instanceof Response) return tenantRes;
     const { tenantId } = tenantRes;
 
-    const supabase = await getSupabaseServer();
-    let { slug } = await params;
-    try {
-      slug = decodeURIComponent(slug);
-    } catch {
-      // keep slug as-is if decode fails
-    }
+    const supabase = getSupabaseAdmin();
+    const rawSlug = (await params).slug;
+    let slug: string;
+    try { slug = decodeURIComponent(rawSlug); } catch { slug = rawSlug; }
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
 
+    // Use admin client to bypass RLS — consistent with the SSR profile loader
     const { data: provider, error: provErr } = await supabase
       .from("providers")
       .select("id, online_booking_enabled, waitlist_online_enabled")
-      .eq("slug", slug)
-      .eq("status", "active")
       .eq("tenant_id", tenantId)
-      .single();
+      .eq(isUuid ? "id" : "slug", slug)
+      .maybeSingle();
 
     if (provErr || !provider) {
       return NextResponse.json(

@@ -13,7 +13,8 @@ import type { Router } from "expo-router";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useApiMutation } from "@/hooks/useApi";
+import { fetchAllRecurringAppointmentPages } from "@/lib/fetch-paged-recurring-appointments";
 import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -188,13 +189,40 @@ export default function RecurringAppointmentsScreen() {
   const [editNoEnd, setEditNoEnd] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const recurringUrl = selectedLocationId
-    ? `/api/provider/recurring-appointments?limit=100&location_id=${encodeURIComponent(selectedLocationId)}`
-    : "/api/provider/recurring-appointments?limit=100";
-  const { data, loading, error, errorCode, refresh, mutate } = useApi<RecurringListResponse>(
-    recurringUrl,
-    { staleTimeMs: 0 },
-  );
+  const [data, setData] = useState<RecurringListResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+
+  const loadRecurringList = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setErrorCode(null);
+    const res = await fetchAllRecurringAppointmentPages<RecurringAppointment>(
+      selectedLocationId ?? null,
+    );
+    if (!res.ok) {
+      setData(null);
+      setError(res.message);
+      setErrorCode(res.code);
+    } else {
+      setData({
+        data: res.rows,
+        total: res.total,
+        page: 1,
+        total_pages: 1,
+      });
+    }
+    setLoading(false);
+  }, [selectedLocationId]);
+
+  useEffect(() => {
+    void loadRecurringList();
+  }, [loadRecurringList]);
+
+  const refresh = useCallback(() => loadRecurringList(), [loadRecurringList]);
+  const mutate = useCallback((newData: RecurringListResponse) => setData(newData), []);
+
   const { execute: patchRecurring, loading: patching } = useApiMutation<RecurringAppointment>("patch");
   const { execute: deleteRecurring } = useApiMutation<{ deleted: boolean; deleted_series?: boolean }>("delete");
 

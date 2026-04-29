@@ -14,6 +14,7 @@ import {
   Sparkles,
   Settings,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
@@ -131,10 +132,12 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
         setNotifications(data.notifications || []);
         setTotalUnread(data.total_unread || 0);
       } catch {
-        setNotifications([]);
-        setTotalUnread(0);
+        if (!silent) {
+          setNotifications([]);
+          setTotalUnread(0);
+        }
       } finally {
-        setIsLoading(false);
+        if (!silent) setIsLoading(false);
         setIsRefreshing(false);
       }
     },
@@ -183,15 +186,25 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
 
   const handleNotificationClick = async (notification: InboxNotification) => {
     const isRead = notification.is_read || notification.read;
+    const unreadBefore = totalUnread;
     if (!isRead) {
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notification.id ? { ...n, is_read: true, read: true } : n,
+        ),
+      );
+      setTotalUnread((prev) => Math.max(0, prev - 1));
       try {
         await fetcher.post(`/api/me/notifications/${notification.id}/read`);
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === notification.id ? { ...n, is_read: true, read: true } : n))
-        );
-        setTotalUnread((prev) => Math.max(0, prev - 1));
       } catch {
-        // ignore
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.id === notification.id ? { ...n, is_read: false, read: false } : n,
+          ),
+        );
+        setTotalUnread(unreadBefore);
+        toast.error("Could not mark as read. Try again.");
+        return;
       }
     }
 
@@ -211,13 +224,47 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
   };
 
   const handleMarkAllRead = async () => {
+    const prevNotifications = notifications;
+    const prevUnread = totalUnread;
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true, read: true })));
+    setTotalUnread(0);
     try {
       await fetcher.post("/api/me/notifications/mark-all-read");
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true, read: true })));
-      setTotalUnread(0);
       toast.success("All notifications marked as read");
     } catch {
+      setNotifications(prevNotifications);
+      setTotalUnread(prevUnread);
       toast.error("Failed to mark all as read");
+    }
+  };
+
+  const handleDeleteNotification = async (
+    e: React.MouseEvent,
+    notification: InboxNotification,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this notification? It will be removed from your list.")
+    ) {
+      return;
+    }
+    const isUnread = !(notification.is_read || notification.read);
+    const prevList = notifications;
+    const prevUnread = totalUnread;
+    setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
+    if (isUnread) {
+      setTotalUnread((u) => Math.max(0, u - 1));
+    }
+    try {
+      await fetcher.delete(
+        `/api/me/notifications/${encodeURIComponent(notification.id)}`,
+      );
+    } catch {
+      setNotifications(prevList);
+      setTotalUnread(prevUnread);
+      toast.error("Could not delete notification");
     }
   };
 
@@ -245,7 +292,7 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
             <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">Inbox</h1>
             <p className="text-sm text-gray-500 mt-1">
               {totalUnread > 0
-                ? `${totalUnread} unread — tap a row to open or mark read`
+                ? `${totalUnread} unread — tap a row to open · trash removes an item`
                 : "All caught up — we’ll show new activity here"}
             </p>
           </div>
@@ -351,17 +398,21 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
               const ts = notification.created_at || notification.timestamp || "";
               return (
                 <li key={notification.id}>
-                  <button
-                    type="button"
-                    onClick={() => void handleNotificationClick(notification)}
+                  <div
                     className={cn(
-                      "w-full text-left rounded-2xl border px-4 py-4 transition-all touch-manipulation",
+                      "flex items-stretch gap-0.5 rounded-2xl border transition-all",
                       "border-gray-100 bg-white hover:border-gray-200 hover:shadow-md",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-offset-1",
                       !isRead && "border-primary/15 bg-primary/[0.04] ring-1 ring-primary/10",
                     )}
                   >
-                    <div className="flex items-start gap-3.5">
+                    <button
+                      type="button"
+                      onClick={() => void handleNotificationClick(notification)}
+                      className={cn(
+                        "flex min-w-0 flex-1 items-start gap-3.5 rounded-2xl px-4 py-4 text-left touch-manipulation",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-inset",
+                      )}
+                    >
                       <div
                         className={cn(
                           "p-2.5 rounded-xl border flex-shrink-0 mt-0.5",
@@ -382,8 +433,19 @@ function NotificationsInbox({ initialInbox }: { initialInbox: NotificationsInbox
                         <p className="text-sm text-gray-500 line-clamp-3 leading-relaxed mb-1">{notification.message}</p>
                         <span className="text-[11px] text-gray-400">{formatTimeAgo(ts)}</span>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => void handleDeleteNotification(e, notification)}
+                      className={cn(
+                        "flex-shrink-0 self-start rounded-xl p-3 m-2 text-gray-400 hover:text-red-600 hover:bg-red-50",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300",
+                      )}
+                      aria-label="Delete notification"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </li>
               );
             })}

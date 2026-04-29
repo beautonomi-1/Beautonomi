@@ -421,7 +421,7 @@ export async function GET(request: Request) {
 
       return {
         id: provider.id,
-        slug: provider.slug,
+        slug: provider.slug || provider.id,
         business_name: provider.business_name,
         business_type: provider.business_type,
         rating: provider.rating_average || 0,
@@ -545,7 +545,7 @@ export async function GET(request: Request) {
           const distance_km = sponsoredDistanceMap.get(p.id) ?? null;
           return {
             id: p.id,
-            slug: p.slug,
+            slug: p.slug || p.id,
             business_name: p.business_name,
             business_type: p.business_type || "salon",
             rating: p.rating_average || 0,

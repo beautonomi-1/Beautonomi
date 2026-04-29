@@ -519,7 +519,6 @@ function LocationDialog({
                   onInputChange={(value) => setFormData((prev) => ({ ...prev, address_line1: value }))}
                   placeholder="Start typing an address..."
                   country={formData.country || "ZA"}
-                  geocodeTypes={["address"]}
                   className="relative z-[1]"
                   required
                 />

@@ -94,7 +94,11 @@ export function MessagingClient({
 
   // Handle conversation selection from URL
   useEffect(() => {
-    const conversationId = searchParams.get("conversationId") ?? initialConversationId;
+    const conversationId =
+      searchParams.get("conversationId") ??
+      searchParams.get("id") ??
+      searchParams.get("conversation") ??
+      initialConversationId;
     if (conversationId && conversations.length > 0) {
       const conversation = conversations.find(c => c.id === conversationId);
       if (conversation) {

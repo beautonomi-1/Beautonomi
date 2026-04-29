@@ -2,11 +2,11 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
+  requireRoleInApi,
   successResponse,
   handleApiError,
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
 import { fetchDefaultAddressesForUsers } from "@/lib/provider-portal/user-default-address";
 
 /**
@@ -15,12 +15,7 @@ import { fetchDefaultAddressesForUsers } from "@/lib/provider-portal/user-defaul
  */
 export async function GET(request: NextRequest) {
   try {
-    // Check permission to view clients (pass request for Bearer token from mobile)
-    const permissionCheck = await requirePermission("view_clients", request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const locationId = searchParams.get("location_id");

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
 import {
@@ -23,6 +23,7 @@ const updateRecurringSchema = z.object({
   location_id: z.string().uuid().nullable().optional(),
   frequency: z.string().min(1).optional().nullable(),
   preferred_time: z.string().optional().nullable(),
+  occurrences: z.number().int().min(1).nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -37,7 +38,7 @@ export async function PATCH(
 ) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     const { id } = await params;
     
@@ -118,7 +119,7 @@ export async function DELETE(
 ) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     const { id } = await params;
     const { searchParams } = new URL(request.url);

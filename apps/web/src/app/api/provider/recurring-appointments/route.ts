@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 // Creating up to 12 initial bookings serially can exceed the default 10-second
@@ -79,7 +78,7 @@ function buildInitialOccurrenceDates(params: {
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     
     if (!providerId) {
@@ -150,7 +149,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     
     if (!providerId) {

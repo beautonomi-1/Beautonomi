@@ -81,6 +81,7 @@ import {
   mergeRanges,
   mergeStaffWorkingHours,
   timeStringToMinutes as sharedTimeStringToMinutes,
+  wallClockInTimeZone,
   type MinuteRange,
   type WeeklyHours,
 } from "@beautonomi/utils";
@@ -185,23 +186,51 @@ interface AvailabilitySegment {
   parent_block_id?: string;
 }
 
-function normalizeAvailabilityBlocksToSegments(raw: AvailabilityBlockApi[]): AvailabilitySegment[] {
+/**
+ * Split multi-day availability blocks into per-day segments.
+ * Uses the provider timezone so blocks near midnight aren't assigned to the
+ * wrong calendar day when the device is in a different timezone.
+ */
+function normalizeAvailabilityBlocksToSegments(
+  raw: AvailabilityBlockApi[],
+  tz?: string | null,
+): AvailabilitySegment[] {
   const result: AvailabilitySegment[] = [];
+  const pad = (n: number) => n.toString().padStart(2, "0");
   for (const block of raw) {
     const start = new Date(block.start_at);
     const end = new Date(block.end_at);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
-    const pad = (n: number) => n.toString().padStart(2, "0");
-    let cursor = new Date(start);
+
+    let cursor = new Date(start.getTime());
     while (cursor < end) {
-      const dateStr = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}-${pad(cursor.getDate())}`;
-      const dayStart = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayEnd.getDate() + 1);
-      const segmentStart = cursor < dayStart ? dayStart : cursor;
-      const segmentEnd = end < dayEnd ? end : dayEnd;
-      const startTime = `${pad(segmentStart.getHours())}:${pad(segmentStart.getMinutes())}`;
-      const endTime = `${pad(segmentEnd.getHours())}:${pad(segmentEnd.getMinutes())}`;
+      // Use provider TZ to determine the calendar date of the cursor instant
+      const wc = wallClockInTimeZone(cursor, tz);
+      const dateStr = `${String(wc.year).padStart(4, "0")}-${pad(wc.month)}-${pad(wc.day)}`;
+
+      // Compute start-of-next-day boundary in UTC by advancing the cursor to
+      // midnight+1ms of the provider's next wall-clock day.
+      const nextDayWc = new Date(cursor);
+      // Advance by up to 25 hours (covers all DST transitions) and check date
+      const tryNext = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+      const tryWc = wallClockInTimeZone(tryNext, tz);
+      // Snap to midnight of the next calendar day in provider TZ by binary-search
+      // approximation: advance from cursor until the wall date increments.
+      let boundary = tryNext;
+      if (tryWc.day === wc.day && tryWc.month === wc.month && tryWc.year === wc.year) {
+        // tryNext is still the same calendar day — push one more hour
+        boundary = new Date(cursor.getTime() + 25 * 60 * 60 * 1000);
+      }
+      // Clamp to end
+      const segmentEnd = end < boundary ? end : boundary;
+      const startWc = wallClockInTimeZone(cursor, tz);
+      const endWc = wallClockInTimeZone(segmentEnd < end ? segmentEnd : end, tz);
+      const startTime = `${pad(startWc.hour)}:${pad(startWc.minute)}`;
+      // If segmentEnd === boundary (midnight of next day) show "24:00" style → use "00:00" of next
+      const endTime = segmentEnd >= end
+        ? `${pad(endWc.hour)}:${pad(endWc.minute)}`
+        : "00:00";
+
       result.push({
         id: `${block.id}-${dateStr}-${startTime}`,
         parent_block_id: block.id,
@@ -214,7 +243,7 @@ function normalizeAvailabilityBlocksToSegments(raw: AvailabilityBlockApi[]): Ava
         reason: block.reason,
         _source: "availability_block",
       });
-      cursor = dayEnd;
+      cursor = boundary;
     }
   }
   return result;
@@ -1230,6 +1259,20 @@ function CalendarScreenBody() {
   const startDate = viewMode === "week" ? weekStartStr : viewMode === "3day" ? dateStr : weekStartStr;
   const endDate = viewMode === "week" ? weekEnd : viewMode === "3day" ? threeDayEnd : weekEnd;
   const locationParam = locationFilter !== "all" ? `&location_id=${locationFilter}` : "";
+
+  // TZ-aware "today" key — matches the provider's wall-clock date, not the device's.
+  const providerTz = provider?.timezone ?? null;
+  const providerTodayKey = useMemo(
+    () => formatDateKeyInTimeZone(new Date(), providerTz),
+    // Recompute at most once per render; selectedDate change refreshes the memo
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [providerTz, selectedDate],
+  );
+  const isProviderToday = useCallback(
+    (d: Date) => formatDateKeyInTimeZone(d, providerTz) === providerTodayKey,
+    [providerTz, providerTodayKey],
+  );
+
   const shiftWeekStarts = useMemo(() => weekStartsInRange(startDate, endDate), [startDate, endDate]);
   const primaryShiftWeekStart = shiftWeekStarts[0] ?? weekStartStr;
   const secondaryShiftWeekStart = shiftWeekStarts[1] ?? primaryShiftWeekStart;
@@ -1265,8 +1308,18 @@ function CalendarScreenBody() {
     `/api/provider/time-blocks?date_from=${startDate}&date_to=${endDate}${timeBlocksLocationParam}`,
     { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
   );
+  // Build UTC ISO bounds for availability-blocks so the API's overlap
+  // query (end_at > from AND start_at < to) uses the correct midnight in
+  // the provider timezone — not the device timezone.
+  const availBlockParams = useMemo(() => {
+    const tz = provider?.timezone;
+    const fromIso = buildZonedIsoForWallClock(startDate, "00:00", tz ?? null);
+    const toIso = buildZonedIsoForWallClock(endDate, "23:59", tz ?? null);
+    return `from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`;
+  }, [startDate, endDate, provider?.timezone]);
+
   const { data: availabilityRaw, error: availabilityBlocksError, refresh: refreshAvailabilityBlocks } = useApi<AvailabilityBlockApi[]>(
-    `/api/provider/availability-blocks?from=${encodeURIComponent(startDate)}&to=${encodeURIComponent(endDate)}`,
+    `/api/provider/availability-blocks?${availBlockParams}`,
     { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
   );
   const { data: staffUnavailSegments, error: staffUnavailError, refresh: refreshStaffUnavail } = useApi<AvailabilitySegment[]>(
@@ -1342,6 +1395,9 @@ function CalendarScreenBody() {
     [normalizedApiTimeBlocks, startDate, endDate],
   );
 
+  const calendarRefreshRef = useRef(refresh);
+  useEffect(() => { calendarRefreshRef.current = refresh; }, [refresh]);
+
   useEffect(() => {
     if (!isFocused || !provider?.id) return;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1349,7 +1405,7 @@ function CalendarScreenBody() {
       if (refreshTimer) return;
       refreshTimer = setTimeout(() => {
         refreshTimer = null;
-        refresh();
+        calendarRefreshRef.current();
       }, 400);
     };
 
@@ -1367,7 +1423,8 @@ function CalendarScreenBody() {
       if (refreshTimer) clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
-  }, [isFocused, refresh, provider?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFocused, provider?.id]);
 
   /* ─── Swipe navigation via PanResponder ─── */
   const panResponder = useMemo(
@@ -1652,7 +1709,7 @@ function CalendarScreenBody() {
 
   const availabilitySegments = useMemo(() => {
     if (!availabilityRaw?.length) return [];
-    const normalized = normalizeAvailabilityBlocksToSegments(availabilityRaw);
+    const normalized = normalizeAvailabilityBlocksToSegments(availabilityRaw, provider?.timezone);
     if (locationFilter !== "all") {
       return normalized.filter((s) => s.location_id == null || s.location_id === locationFilter);
     }
@@ -1795,14 +1852,15 @@ function CalendarScreenBody() {
   const bookingCountsByDate = useMemo(() => {
     const counts = new Map<string, number>();
     if (!bookings) return counts;
+    const tz = provider?.timezone ?? null;
     bookings.forEach((b) => {
       const bDate = parseApiDateTime(b.scheduled_at);
       if (!bDate) return;
-      const key = format(bDate, "yyyy-MM-dd");
+      const key = calendarDateKey(bDate, tz);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     });
     return counts;
-  }, [bookings]);
+  }, [bookings, provider?.timezone]);
 
   const staffColumns = useMemo(() => {
     if (viewMode !== "day") return null;
@@ -1829,8 +1887,8 @@ function CalendarScreenBody() {
   }, [viewMode, staffList, staffFilter, bookingsByStaffId, t]);
 
   const todayBookingCount = useMemo(
-    () => bookingCountsByDate.get(format(selectedDate, "yyyy-MM-dd")) ?? 0,
-    [bookingCountsByDate, selectedDate],
+    () => bookingCountsByDate.get(calendarDateKey(selectedDate, provider?.timezone ?? null)) ?? 0,
+    [bookingCountsByDate, selectedDate, provider?.timezone],
   );
 
   const pendingOnSelectedDay = useMemo(
@@ -2820,7 +2878,7 @@ function CalendarScreenBody() {
           </View>
         )}
 
-        {showTimeIndicator && viewMode === "day" && isSameDay(day, new Date()) && (
+        {showTimeIndicator && viewMode === "day" && isProviderToday(day) && (
           <CurrentTimeIndicator
             startHour={startHour}
             slotHeight={SLOT_HEIGHT}
@@ -2977,8 +3035,8 @@ function CalendarScreenBody() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8, paddingHorizontal: 8 }} contentContainerStyle={{ flexDirection: "row" }}>
           {weekDays.map((day) => {
             const isSelected = isSameDay(day, selectedDate);
-            const isToday = isSameDay(day, new Date());
-            const count = bookingCountsByDate.get(format(day, "yyyy-MM-dd")) ?? 0;
+            const isToday = isProviderToday(day);
+            const count = bookingCountsByDate.get(calendarDateKey(day, provider?.timezone ?? null)) ?? 0;
             return (
               <TouchableOpacity
                 key={day.toISOString()}
@@ -3246,7 +3304,7 @@ function CalendarScreenBody() {
                       {threeDays.map((day) => {
                         const key = calendarDateKey(day, provider?.timezone ?? null);
                         const dayBookings = filteredBookingsByDate.get(key) ?? [];
-                        const isToday = isSameDay(day, new Date());
+                        const isToday = isProviderToday(day);
                         const threeDayColWidth = Math.max(MIN_STAFF_COL_WIDTH, availableWidth / 3);
                         return (
                           <View key={key}>
@@ -3267,7 +3325,7 @@ function CalendarScreenBody() {
                     </View>
                   </ScrollView>
                   {/* Full-width current time line across all 3 days when today is in view */}
-                  {viewMode === "3day" && threeDays.some((d) => isSameDay(d, new Date())) && (
+                  {viewMode === "3day" && threeDays.some((d) => isProviderToday(d)) && (
                     <View
                       style={{
                         position: "absolute",
@@ -3332,7 +3390,7 @@ function CalendarScreenBody() {
                     </View>
                   </ScrollView>
                   {/* Full-width current time line across all staff columns */}
-                  {viewMode === "day" && isSameDay(selectedDate, new Date()) && staffColumns && staffColumns.length > 1 && staffScrollContentWidth != null && (
+                  {viewMode === "day" && isProviderToday(selectedDate) && staffColumns && staffColumns.length > 1 && staffScrollContentWidth != null && (
                     <View
                       style={{
                         position: "absolute",
@@ -3374,7 +3432,7 @@ function CalendarScreenBody() {
                     {weekDays.map((day) => {
                       const key = calendarDateKey(day, provider?.timezone ?? null);
                       const dayBookings = filteredBookingsByDate.get(key) ?? [];
-                      const isToday = isSameDay(day, new Date());
+                      const isToday = isProviderToday(day);
                       return (
                         <View key={key}>
                           <View
@@ -3392,7 +3450,7 @@ function CalendarScreenBody() {
                   </View>
                 </ScrollView>
                 {/* Full-width current time line across all 7 days when today is in view */}
-                {viewMode === "week" && weekDays.some((d) => isSameDay(d, new Date())) && (
+                {viewMode === "week" && weekDays.some((d) => isProviderToday(d)) && (
                   <View
                     style={{
                       position: "absolute",

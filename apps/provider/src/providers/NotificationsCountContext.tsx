@@ -3,7 +3,7 @@
  * Shared so the notifications screen can trigger a refresh after mark read/delete.
  * Subscribes to notifications table changes so the badge updates in real time.
  */
-import { createContext, useContext, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform } from "react-native";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
@@ -17,6 +17,8 @@ interface NotificationsCountResponse {
 interface NotificationsCountContextValue {
   totalUnread: number;
   refresh: () => Promise<void>;
+  adjustUnreadCount: (delta: number) => void;
+  replaceUnreadCount: (count: number) => void;
 }
 
 const NotificationsCountContext = createContext<NotificationsCountContextValue | null>(null);
@@ -26,7 +28,25 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
   const { data, refresh } = useApi<NotificationsCountResponse>("/api/provider/notifications?limit=1", {
     enabled: !!session,
   });
-  const totalUnread = data?.total_unread ?? 0;
+  /** Shifts badge immediately; resets when `data.total_unread` changes from the server. */
+  const [countBias, setCountBias] = useState(0);
+  useEffect(() => {
+    setCountBias(0);
+  }, [data?.total_unread]);
+
+  const baseUnread = data?.total_unread ?? 0;
+  const totalUnread = Math.max(0, baseUnread + countBias);
+
+  const adjustUnreadCount = useCallback((delta: number) => {
+    setCountBias((b) => b + delta);
+  }, []);
+
+  const replaceUnreadCount = useCallback(
+    (target: number) => {
+      setCountBias(target - baseUnread);
+    },
+    [baseUnread],
+  );
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -74,8 +94,13 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
   }, [user?.id]);
 
   const contextValue = useMemo<NotificationsCountContextValue>(
-    () => ({ totalUnread, refresh: refreshCount }),
-    [totalUnread, refreshCount],
+    () => ({
+      totalUnread,
+      refresh: refreshCount,
+      adjustUnreadCount,
+      replaceUnreadCount,
+    }),
+    [totalUnread, refreshCount, adjustUnreadCount, replaceUnreadCount],
   );
 
   return (
@@ -91,6 +116,8 @@ export function useNotificationsCount(): NotificationsCountContextValue {
     return {
       totalUnread: 0,
       refresh: async () => {},
+      adjustUnreadCount: () => {},
+      replaceUnreadCount: () => {},
     };
   }
   return ctx;

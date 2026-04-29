@@ -166,11 +166,13 @@ export function NotificationsClient({
         setTotalUnread((data as any).total_unread || 0);
       } catch (error) {
         console.error("Failed to load notifications:", error);
-        toast.error("Failed to load notifications");
-        setNotifications([]);
-        setTotalUnread(0);
+        if (!options?.silent) {
+          toast.error("Failed to load notifications");
+          setNotifications([]);
+          setTotalUnread(0);
+        }
       } finally {
-        setIsLoading(false);
+        if (!options?.silent) setIsLoading(false);
       }
     },
     [user?.id, filter],
@@ -214,15 +216,25 @@ export function NotificationsClient({
   }, [user?.id, loadNotifications]);
 
   const handleNotificationClick = async (notification: Notification) => {
-    if (!notification.read) {
+    const wasUnread = !notification.read;
+    const unreadBefore = totalUnread;
+    if (wasUnread) {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)),
+      );
+      setTotalUnread((prev) => Math.max(0, prev - 1));
+    }
+    if (wasUnread) {
       try {
         await fetcher.post(`/api/provider/notifications/${notification.id}/read`);
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
-        );
-        setTotalUnread((prev) => Math.max(0, prev - 1));
       } catch (error) {
         console.error("Failed to mark notification as read:", error);
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === notification.id ? { ...n, read: false } : n)),
+        );
+        setTotalUnread(unreadBefore);
+        toast.error("Could not mark notification as read");
+        return;
       }
     }
     const url = deriveNotificationUrl(notification);
@@ -233,47 +245,73 @@ export function NotificationsClient({
     }
   };
 
-  const handleDeleteNotification = async (e: React.MouseEvent, id: string) => {
+  const handleDeleteNotification = async (
+    e: React.MouseEvent,
+    notification: Notification,
+  ) => {
+    e.preventDefault();
     e.stopPropagation();
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this notification? It will be removed from your list.")
+    ) {
+      return;
+    }
+    const wasUnread = !notification.read;
+    const prevList = notifications;
+    const prevUnread = totalUnread;
+    setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
+    if (wasUnread) {
+      setTotalUnread((u) => Math.max(0, u - 1));
+    }
     try {
-      await fetcher.delete(`/api/provider/notifications/${id}`);
-      setNotifications((prev) => {
-        const removed = prev.find((n) => n.id === id);
-        if (removed && !removed.read) {
-          setTotalUnread((u) => Math.max(0, u - 1));
-        }
-        return prev.filter((n) => n.id !== id);
-      });
+      await fetcher.delete(
+        `/api/provider/notifications/${encodeURIComponent(notification.id)}`,
+      );
       toast.success("Notification deleted");
     } catch (error) {
       console.error("Failed to delete notification:", error);
+      setNotifications(prevList);
+      setTotalUnread(prevUnread);
       toast.error("Failed to delete notification");
     }
   };
 
   const handleMarkUnread = async (e: React.MouseEvent, notification: Notification) => {
+    e.preventDefault();
     e.stopPropagation();
     if (!notification.read) return;
+    const prevUnread = totalUnread;
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notification.id ? { ...n, read: false } : n)),
+    );
+    setTotalUnread((prev) => prev + 1);
     try {
-      await fetcher.patch(`/api/provider/notifications/${notification.id}`, { is_read: false });
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notification.id ? { ...n, read: false } : n))
-      );
-      setTotalUnread((prev) => prev + 1);
+      await fetcher.patch(`/api/provider/notifications/${notification.id}`, {
+        is_read: false,
+      });
     } catch (error) {
       console.error("Failed to mark as unread:", error);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)),
+      );
+      setTotalUnread(prevUnread);
       toast.error("Failed to mark as unread");
     }
   };
 
   const handleMarkAllRead = async () => {
+    const prevNotifications = notifications;
+    const prevUnread = totalUnread;
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setTotalUnread(0);
     try {
       await fetcher.post("/api/provider/notifications/mark-all-read");
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-      setTotalUnread(0);
       toast.success("All notifications marked as read");
     } catch (error) {
       console.error("Failed to mark all as read:", error);
+      setNotifications(prevNotifications);
+      setTotalUnread(prevUnread);
       toast.error("Failed to mark all as read");
     }
   };
@@ -335,7 +373,9 @@ export function NotificationsClient({
                 <p className="text-sm text-gray-600">
                   {totalUnread > 0 ? `${totalUnread} unread` : "All caught up"}
                 </p>
-                <p className="mt-1 text-xs text-gray-500">Tap a notification to mark it read and lower the counter.</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Tap to open · Trash removes · Mail icon marks unread again
+                </p>
               </div>
               {totalUnread > 0 && (
                 <Button variant="outline" size="sm" onClick={handleMarkAllRead}>
@@ -350,69 +390,79 @@ export function NotificationsClient({
                 const derivedUrl = deriveNotificationUrl(notification);
                 return (
                   <div key={notification.id}>
-                    <button
-                      onClick={() => handleNotificationClick(notification)}
+                    <div
                       className={cn(
-                        "w-full text-left p-4 hover:bg-gray-50 transition-colors",
-                        !notification.read && "bg-blue-50/50"
+                        "flex items-stretch gap-0 border-b border-gray-100 last:border-b-0",
+                        !notification.read && "bg-blue-50/50",
                       )}
                     >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={cn(
-                            "p-2 rounded-lg border flex-shrink-0",
-                            getPriorityColor(notification.priority)
-                          )}
-                        >
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2 mb-1">
-                            <p
-                              className={cn(
-                                "font-medium text-sm text-gray-900",
-                                !notification.read && "font-semibold"
-                              )}
-                            >
-                              {notification.title}
-                            </p>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              {!notification.read && (
-                                <span className="w-2 h-2 bg-[#FF0077] rounded-full mt-1.5" />
-                              )}
-                              {notification.read && (
-                                <button
-                                  onClick={(e) => handleMarkUnread(e, notification)}
-                                  className="p-1 text-gray-400 hover:text-blue-500 transition-colors rounded"
-                                  title="Mark as unread"
-                                >
-                                  <MailOpen className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                              <button
-                                onClick={(e) => handleDeleteNotification(e, notification.id)}
-                                className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
-                                title="Delete notification"
+                      <button
+                        type="button"
+                        onClick={() => void handleNotificationClick(notification)}
+                        className={cn(
+                          "min-w-0 flex-1 text-left p-4 hover:bg-gray-50/80 transition-colors",
+                          !notification.read && "bg-blue-50/50 hover:bg-blue-50/70",
+                        )}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={cn(
+                              "p-2 rounded-lg border flex-shrink-0",
+                              getPriorityColor(notification.priority),
+                            )}
+                          >
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <p
+                                className={cn(
+                                  "font-medium text-sm text-gray-900",
+                                  !notification.read && "font-semibold",
+                                )}
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                                {notification.title}
+                              </p>
+                              {!notification.read && (
+                                <span className="w-2 h-2 bg-[#FF0077] rounded-full mt-1.5 flex-shrink-0" />
+                              )}
+                            </div>
+                            <p className={cn("text-sm text-gray-600 mb-1", !isExpanded && "line-clamp-3")}>
+                              {notification.message}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">{formatTimeAgo(notification.timestamp)}</span>
+                              {!derivedUrl && notification.message.length > 120 && (
+                                <span className="text-xs text-gray-400">
+                                  {isExpanded ? <ChevronUp className="w-3 h-3 inline" /> : <ChevronDown className="w-3 h-3 inline" />}
+                                  <span className="ml-0.5">{isExpanded ? "Less" : "More"}</span>
+                                </span>
+                              )}
                             </div>
                           </div>
-                          <p className={cn("text-sm text-gray-600 mb-1", !isExpanded && "line-clamp-3")}>
-                            {notification.message}
-                          </p>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">{formatTimeAgo(notification.timestamp)}</span>
-                            {!derivedUrl && notification.message.length > 120 && (
-                              <span className="text-xs text-gray-400 cursor-pointer">
-                                {isExpanded ? <ChevronUp className="w-3 h-3 inline" /> : <ChevronDown className="w-3 h-3 inline" />}
-                                <span className="ml-0.5">{isExpanded ? "Less" : "More"}</span>
-                              </span>
-                            )}
-                          </div>
                         </div>
+                      </button>
+                      <div className="flex flex-col justify-start gap-0.5 py-2 pr-2 shrink-0 border-l border-gray-100 bg-white/50">
+                        {notification.read && (
+                          <button
+                            type="button"
+                            onClick={(e) => void handleMarkUnread(e, notification)}
+                            className="p-2 text-gray-400 hover:text-blue-500 transition-colors rounded-lg"
+                            title="Mark as unread"
+                          >
+                            <MailOpen className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => void handleDeleteNotification(e, notification)}
+                          className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg"
+                          title="Delete notification"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    </button>
+                    </div>
                     {isExpanded && (
                       <div className="px-4 pb-3 pt-0 ml-12 text-sm text-gray-600 space-y-2 border-b">
                         <p>{notification.message}</p>

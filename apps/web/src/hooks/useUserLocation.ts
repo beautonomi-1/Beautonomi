@@ -37,7 +37,10 @@ export function useUserLocation() {
         try {
           const response = await fetch("/api/public/ip-geolocation", {
             credentials: "same-origin",
-            cache: "force-cache",
+            // Do not use force-cache here — localStorage handles persistence.
+            // force-cache would permanently cache a null result (private IP,
+            // rate-limit hit, network blip) and block every future attempt.
+            cache: "no-store",
           });
           if (!response.ok) return;
           const json = (await response.json().catch(() => null)) as IpGeoResponse | null;

@@ -145,10 +145,11 @@ export default function MessagesScreen() {
                       : row
                   );
                 });
-                if (c.provider_id) {
+                // Prefer navigating by conversation id — avoids a redundant get-or-create.
+                if (c.id) {
+                  router.push({ pathname: "/(app)/chat", params: { id: c.id, provider_name: c.provider_name || c.provider?.business_name || "Provider" } });
+                } else if (c.provider_id) {
                   router.push({ pathname: "/(app)/chat", params: { provider_id: c.provider_id, provider_name: c.provider_name || c.provider?.business_name || "Provider" } });
-                } else {
-                  router.push({ pathname: "/(app)/chat", params: { id: c.id } });
                 }
               }}
               style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: Colors.gray[100], marginTop: index === 0 ? 0 : 12 }}

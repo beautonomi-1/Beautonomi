@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse } from "@/lib/supabase/api-helpers";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { fetchGroupBookingPolicyFieldsFromDb } from "@/lib/public-booking/group-booking-policy-db";
@@ -18,43 +18,31 @@ export async function GET(
     if (tenantRes instanceof Response) return tenantRes;
     const { tenantId } = tenantRes;
 
-    const { slug } = await params;
-    const supabase = await getSupabaseServer();
-
-    if (!supabase) {
-      // Return default values if database connection is not available
-      return successResponse({
-        enabled: false,
-        maxGroupSize: 10,
-        excludedServices: [],
-        enabledLocations: [],
-      });
-    }
-
-    // Decode slug safely
+    const rawSlug = (await params).slug;
     let decodedSlug: string;
-    try {
-      decodedSlug = decodeURIComponent(slug);
-    } catch {
-      decodedSlug = slug;
-    }
+    try { decodedSlug = decodeURIComponent(rawSlug); } catch { decodedSlug = rawSlug; }
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decodedSlug);
+
+    // Use admin client to bypass RLS — consistent with the SSR profile loader
+    const supabase = getSupabaseAdmin();
 
     let provider: { id: string } | null = null;
 
     const { data: providerData1 } = await supabase
       .from("providers")
       .select("id")
-      .eq("slug", decodedSlug)
       .eq("tenant_id", tenantId)
+      .eq(isUuid ? "id" : "slug", decodedSlug)
       .maybeSingle();
 
     if (providerData1) {
       provider = providerData1;
-    } else {
+    } else if (!isUuid) {
+      // Fallback: try original (non-decoded) slug
       const { data: providerData2 } = await supabase
         .from("providers")
         .select("id")
-        .eq("slug", slug)
+        .eq("slug", rawSlug)
         .eq("tenant_id", tenantId)
         .maybeSingle();
 

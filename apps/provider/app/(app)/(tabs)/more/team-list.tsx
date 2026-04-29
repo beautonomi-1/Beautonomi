@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -7,12 +7,16 @@ import {
   FlatList,
   Alert,
   Switch,
+  ScrollView,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useProvider } from "@/providers/ProviderContext";
+import { getWebProviderBaseUrl } from "@/lib/web-url";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
@@ -29,6 +33,7 @@ import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { Colors } from "@/constants/colors";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -93,16 +98,24 @@ const EMPTY_FORM = {
 
 export default function TeamListScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ add?: string }>();
+  const addIntentDone = useRef(false);
   const { isTablet } = useResponsive();
+  const { provider, selectedLocationId } = useProvider();
+  const isFreelancer = provider?.business_type === "freelancer";
 
-  // Fetch all staff (no location filter) so the full team is visible; filter by location in UI if needed
-  const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access");
+  const staffUrl = useMemo(() => {
+    return selectedLocationId
+      ? `/api/provider/staff?location_id=${encodeURIComponent(selectedLocationId)}`
+      : "/api/provider/staff";
+  }, [selectedLocationId]);
+
+  const { data: teamAccess, loading: teamAccessLoading } =
+    useApi<TeamAccessPayload>("/api/provider/team-access");
   const canManageTeam = teamAccess?.can_manage_team === true;
   const rosterRedacted = teamAccess?.roster_detail_level === "redacted";
 
-  const { data: staff, loading, error: staffError, refresh } = useApi<StaffMember[]>(
-    "/api/provider/staff",
-  );
+  const { data: staff, loading, error: staffError, refresh } = useApi<StaffMember[]>(staffUrl);
   const { data: services } = useApi<ServiceItem[]>("/api/provider/services");
   const { data: locations } = useApi<LocationItem[]>("/api/provider/locations");
   const { execute: createMember, loading: creating } = useApiPost<
@@ -111,6 +124,7 @@ export default function TeamListScreen() {
   >("/api/provider/staff");
   const { execute: updateMember, loading: updating } = useApiMutation("patch");
   const { execute: deleteMember } = useApiMutation("delete");
+  const { execute: postStaffAction } = useApiMutation("post");
 
   // --- Local state ---
   const [refreshing, setRefreshing] = useState(false);
@@ -130,6 +144,21 @@ export default function TeamListScreen() {
       setRefreshing(false);
     }
   }, [refresh]);
+
+  // Reset so a later navigation with ?add=1 can open the sheet again
+  useEffect(() => {
+    if (params.add !== "1") addIntentDone.current = false;
+  }, [params.add]);
+
+  // Deep link / hub "Add member" → open add sheet once team access is known
+  useEffect(() => {
+    if (params.add !== "1" || addIntentDone.current) return;
+    if (teamAccessLoading) return;
+    addIntentDone.current = true;
+    if (isFreelancer || !canManageTeam) return;
+    setForm({ ...EMPTY_FORM });
+    setAddSheetOpen(true);
+  }, [params.add, teamAccessLoading, isFreelancer, canManageTeam]);
 
   // --- Filtering ---
   const filtered = useMemo(() => {
@@ -151,6 +180,9 @@ export default function TeamListScreen() {
   // --- Summary stats ---
   const totalCount = staff?.length ?? 0;
   const activeCount = staff?.filter((s) => s.is_active).length ?? 0;
+  const serviceProvidersCount =
+    staff?.filter((s) => s.role === "provider_staff" || s.role === "provider_manager").length ?? 0;
+  const onShiftCount = activeCount;
   // §Provider-audit 2026-04 (round 8): return null when no staff have been
   // rated yet so the summary card can show "—" instead of a misleading 0.0
   // stars (which looked like the whole team was rated 0/5).
@@ -161,8 +193,22 @@ export default function TeamListScreen() {
     return rated.reduce((sum, s) => sum + (s.average_rating ?? 0), 0) / rated.length;
   }, [staff]);
 
+  const teamListSubtitle = useMemo(() => {
+    const base = `${totalCount} member${totalCount !== 1 ? "s" : ""}`;
+    if (!selectedLocationId || !provider?.locations?.length) return base;
+    const loc = provider.locations.find((l) => l.id === selectedLocationId);
+    return loc?.name ? `${base} · ${loc.name}` : base;
+  }, [totalCount, selectedLocationId, provider?.locations]);
+
   // --- Add member ---
   function openAddSheet() {
+    if (isFreelancer) {
+      Alert.alert(
+        "Salon account required",
+        "Upgrade from freelancer to add team members and unlock full team management.",
+      );
+      return;
+    }
     if (!canManageTeam) {
       Alert.alert("Permission", "Only owners or managers with “Manage team” can add staff.");
       return;
@@ -265,6 +311,36 @@ export default function TeamListScreen() {
     }
     Alert.alert(member.name, "What would you like to do?", [
       { text: "Edit", onPress: () => openEditSheet(member) },
+      ...(canManageTeam && member.email
+        ? [
+            {
+              text: "Send password reset",
+              onPress: async () => {
+                Alert.alert(
+                  "Send password reset",
+                  `Email a password reset link to ${member.name}?`,
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Send",
+                      onPress: async () => {
+                        const { error } = await postStaffAction(
+                          `/api/provider/staff/${member.id}/reset-password`,
+                          {},
+                        );
+                        if (error) Alert.alert("Error", error);
+                        else {
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                          Alert.alert("Reset sent", "Password reset email has been sent.");
+                        }
+                      },
+                    },
+                  ],
+                );
+              },
+            },
+          ]
+        : []),
       {
         text: member.is_active ? "Deactivate" : "Activate",
         onPress: async () => {
@@ -302,6 +378,10 @@ export default function TeamListScreen() {
   }
 
   async function handleSubmit() {
+    if (isFreelancer) {
+      Alert.alert("Salon account required", "Upgrade from freelancer to add team members.");
+      return;
+    }
     if (!canManageTeam) {
       Alert.alert("Permission", "You do not have permission to add team members.");
       return;
@@ -343,9 +423,9 @@ export default function TeamListScreen() {
       <ScreenHeader
         title="Team"
         showBack
-        subtitle={`${totalCount} members`}
+        subtitle={teamListSubtitle}
         rightAction={
-          canManageTeam ? (
+          canManageTeam && !isFreelancer ? (
             <TouchableOpacity
               onPress={openAddSheet}
               style={twStyle("flex-row items-center rounded-xl bg-gray-900 px-4 py-2")}
@@ -360,9 +440,48 @@ export default function TeamListScreen() {
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
-      {/* ── Summary Stats ── */}
-      <View style={twStyle("mb-4 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+      {!teamAccessLoading && !canManageTeam ? (
+        <View
+          style={twStyle("mb-3 mx-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5")}
+        >
+          <Text style={twStyle("text-sm text-amber-900")}>
+            You have read-only team access. Ask an owner or manager with Manage team to add or edit
+            members.
+          </Text>
+        </View>
+      ) : null}
+      {isFreelancer ? (
+        <View
+          style={[
+            twStyle("mb-3 rounded-xl border px-3 py-3"),
+            { borderColor: "rgba(255, 0, 119, 0.2)", backgroundColor: "rgba(255, 0, 119, 0.05)" },
+          ]}
+        >
+          <Text style={twStyle("text-sm text-gray-700")}>
+            <Text style={twStyle("font-semibold text-[#FF0077]")}>You’re set up as a freelancer.</Text>{" "}
+            To add team members and unlock advanced features, upgrade to a salon.
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              const base = getWebProviderBaseUrl().replace(/\/$/, "");
+              pushInAppBrowser(router, `${base}/provider/settings/upgrade-to-salon`, "Upgrade");
+            }}
+            style={twStyle("mt-3 self-start rounded-lg bg-[#FF0077] px-4 py-2.5")}
+            accessibilityLabel="Upgrade to salon"
+            accessibilityRole="button"
+          >
+            <Text style={twStyle("text-sm font-semibold text-white")}>Upgrade to salon</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      {/* ── Summary Stats (aligned with provider web team members) ── */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 4, gap: 12, paddingRight: 4 }}
+        style={twStyle("mb-4")}
+      >
+        <View style={{ width: 132 }}>
           <StatCard
             title="Total"
             value={String(totalCount)}
@@ -370,27 +489,47 @@ export default function TeamListScreen() {
             compact
           />
         </View>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+        <View style={{ width: 132 }}>
           <StatCard
             title="Active"
             value={String(activeCount)}
             icon="checkmark-circle-outline"
             iconColor="#22c55e"
-            iconBg="bg-green-50"
+            iconBg="#dcfce7"
             compact
           />
         </View>
-        <View style={twStyle("flex-1")}>
+        <View style={{ width: 152 }}>
           <StatCard
-            title="Avg Rating"
+            title="Service providers"
+            value={String(serviceProvidersCount)}
+            icon="briefcase-outline"
+            iconColor="#9333ea"
+            iconBg="#f3e8ff"
+            compact
+          />
+        </View>
+        <View style={{ width: 132 }}>
+          <StatCard
+            title="On shift"
+            value={String(onShiftCount)}
+            icon="time-outline"
+            iconColor={Colors.primary}
+            iconBg={Colors.primaryLight}
+            compact
+          />
+        </View>
+        <View style={{ width: 132 }}>
+          <StatCard
+            title="Avg rating"
             value={avgRating == null ? "—" : avgRating.toFixed(1)}
             icon="star-outline"
             iconColor="#f59e0b"
-            iconBg="bg-amber-50"
+            iconBg="#ffedd5"
             compact
           />
         </View>
-      </View>
+      </ScrollView>
 
       {/* ── Search & Filter ── */}
       <View style={twStyle("mb-3")}>

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
@@ -17,44 +17,25 @@ export async function GET(
     if (tenantRes instanceof Response) return tenantRes;
     const { tenantId } = tenantRes;
 
-    const { slug } = await params;
-    const supabase = await getSupabaseServer();
+    const rawSlug = (await params).slug;
+    // Use admin client to bypass RLS — consistent with the SSR profile loader
+    const supabase = getSupabaseAdmin();
 
-    // Decode slug safely
     let decodedSlug: string;
-    try {
-      decodedSlug = decodeURIComponent(slug);
-    } catch {
-      decodedSlug = slug;
-    }
+    try { decodedSlug = decodeURIComponent(rawSlug); } catch { decodedSlug = rawSlug; }
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decodedSlug);
 
-    // Get provider by slug
-    const { data: provider, error: providerError } = await supabase
+    const { data: provider } = await supabase
       .from("providers")
       .select("id")
-      .eq("slug", decodedSlug)
-      .eq("status", "active")
       .eq("tenant_id", tenantId)
-      .single();
+      .eq(isUuid ? "id" : "slug", decodedSlug)
+      .maybeSingle();
 
-    let providerId: string | null = null;
-    
-    if (providerError || !provider) {
-      // Try original slug if decoded fails
-      const retry = await supabase
-        .from("providers")
-        .select("id")
-        .eq("slug", slug)
-        .eq("status", "active")
-        .eq("tenant_id", tenantId)
-        .single();
-      
-      if (retry.error || !retry.data) {
-        return successResponse([]); // Return empty array instead of 404
-      }
-      providerId = retry.data.id;
-    } else {
-      providerId = provider.id;
+    const providerId: string | null = provider?.id ?? null;
+
+    if (!providerId) {
+      return successResponse([]);
     }
 
     const { searchParams } = new URL(request.url);

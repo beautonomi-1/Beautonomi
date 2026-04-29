@@ -348,7 +348,7 @@ export async function POST(request: Request) {
     }
 
     // Check staff limit using new limit checker
-    const staffLimitCheck = await checkStaffLimit(providerId);
+    const staffLimitCheck = await checkStaffLimit(providerId, supabase);
     if (!staffLimitCheck.canProceed) {
       return errorResponse(
         formatLimitError(staffLimitCheck, "Plan"),

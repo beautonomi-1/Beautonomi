@@ -1,7 +1,7 @@
 /**
  * Edit location – GET/PATCH/DELETE /api/provider/locations/[id].
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   Switch,
   ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -30,8 +31,16 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
+import { AddressMapPinModal } from "@/components/AddressMapPinModal";
+import { StaticMapImage } from "@/components/ui/StaticMapImage";
+import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
+import { getCachedConfigBundle } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
-import { countryFilterIso2FromStorage, mapGeocodeFeatureToAddressParts } from "@beautonomi/utils";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
+
+function tenantCountryFallback(): string {
+  return getCachedConfigBundle()?.meta?.tenant_region?.name?.trim() || "";
+}
 
 type LocationData = {
   id: string;
@@ -52,6 +61,7 @@ type LocationData = {
 
 export default function EditLocationScreen() {
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
   const { id } = useLocalSearchParams<{ id: string }>();
   const locationId = Array.isArray(id) ? id[0] : id;
   const { data, loading, error, refresh } = useApi<LocationData>(
@@ -75,6 +85,14 @@ export default function EditLocationScreen() {
   const [is_active, setIsActive] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [locating, setLocating] = useState(false);
+  const [mapPinVisible, setMapPinVisible] = useState(false);
+
+  const pinInitialCoordinate = useMemo(() => {
+    if (latitude != null && longitude != null) {
+      return { latitude, longitude };
+    }
+    return null;
+  }, [latitude, longitude]);
 
   const { t } = useTranslation();
   const FIELD_LABELS: Record<string, string> = {
@@ -195,23 +213,20 @@ export default function EditLocationScreen() {
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
       const lat = loc.coords.latitude;
       const lng = loc.coords.longitude;
-      const reverse = await api.post<any>("/api/mapbox/reverse-geocode", {
-        latitude: lat,
-        longitude: lng,
-      });
-      const feature = reverse?.data?.data ?? reverse?.data ?? null;
-      if (feature) {
-        const mapped = mapGeocodeFeatureToAddressParts(feature, {
-          defaultCountryName: country.trim() || "South Africa",
-        });
+      const defaultCountry = country.trim() || tenantCountryFallback() || "South Africa";
+      const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
+      if (mapped) {
         setAddressLine1(mapped.address_line1 || address_line1 || "Current location");
         setCity(mapped.city || city || "—");
         setState(mapped.state || "");
         setPostalCode(mapped.postal_code || "");
-        setCountry(mapped.country || country || "South Africa");
+        setCountry(mapped.country || defaultCountry);
+        setLatitude(mapped.latitude);
+        setLongitude(mapped.longitude);
+      } else {
+        setLatitude(lat);
+        setLongitude(lng);
       }
-      setLatitude(lat);
-      setLongitude(lng);
       if (errors.address_line1 || errors.city || errors.country) {
         setErrors((e) => ({ ...e, address_line1: "", city: "", country: "" }));
       }
@@ -222,6 +237,31 @@ export default function EditLocationScreen() {
       setLocating(false);
     }
   }, [locating, country, address_line1, city, errors.address_line1, errors.city, errors.country]);
+
+  const handleDropPinConfirm = useCallback(
+    async (lat: number, lng: number) => {
+      const defaultCountry = country.trim() || tenantCountryFallback() || "South Africa";
+      const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
+      if (mapped) {
+        setAddressLine1(mapped.address_line1);
+        setCity(mapped.city);
+        setState(mapped.state);
+        setPostalCode(mapped.postal_code);
+        setCountry(mapped.country);
+        setLatitude(mapped.latitude);
+        setLongitude(mapped.longitude);
+      } else {
+        setLatitude(lat);
+        setLongitude(lng);
+      }
+      setMapPinVisible(false);
+      if (errors.address_line1 || errors.city || errors.country) {
+        setErrors((e) => ({ ...e, address_line1: "", city: "", country: "" }));
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    },
+    [country, errors.address_line1, errors.city, errors.country],
+  );
 
   if (!locationId) {
     return (
@@ -295,7 +335,7 @@ export default function EditLocationScreen() {
             <View style={twStyle("mb-4")}>
               <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address *</Text>
               <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-                Search for an address to fill city, state, postal code and coordinates automatically, or type manually.
+                Search, drop a pin on the map, or use current location — then edit the lines below if needed.
               </Text>
               <AddressAutocomplete
                 value={address_line1}
@@ -316,31 +356,55 @@ export default function EditLocationScreen() {
                 label={undefined}
                 countryCode={countryFilterIso2FromStorage(country) ?? "ZA"}
                 defaultCountryName={country.trim() || undefined}
-                geocodeTypes={["address"]}
                 proximity={
                   latitude != null && longitude != null && !(latitude === 0 && longitude === 0)
                     ? { latitude, longitude }
                     : undefined
                 }
               />
-              <TouchableOpacity
-                onPress={() => {
-                  void handleUseCurrentLocationPin();
-                }}
-                disabled={locating}
-                style={twStyle("mt-2.5 self-start rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 flex-row items-center")}
-                accessibilityLabel="Use current location pin"
-                accessibilityRole="button"
-              >
-                {locating ? (
-                  <ActivityIndicator size="small" color="#2563eb" />
-                ) : (
-                  <Ionicons name="locate-outline" size={16} color="#2563eb" />
-                )}
-                <Text style={twStyle("ml-1.5 text-xs font-semibold text-blue-700")}>
-                  {locating ? "Locating…" : "Use current location pin"}
-                </Text>
-              </TouchableOpacity>
+              <View style={twStyle("mt-2.5 flex-row flex-wrap gap-2")}>
+                <TouchableOpacity
+                  onPress={() => {
+                    void handleUseCurrentLocationPin();
+                  }}
+                  disabled={locating}
+                  style={twStyle(
+                    `rounded-full border px-3 py-1.5 flex-row items-center ${locating ? "border-gray-200 bg-gray-100" : "border-blue-200 bg-blue-50"}`,
+                  )}
+                  accessibilityLabel="Use current location"
+                  accessibilityRole="button"
+                >
+                  {locating ? (
+                    <ActivityIndicator size="small" color="#2563eb" />
+                  ) : (
+                    <Ionicons name="locate-outline" size={16} color="#2563eb" />
+                  )}
+                  <Text style={twStyle("ml-1.5 text-xs font-semibold text-blue-700")}>
+                    {locating ? "Locating…" : "Current location"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setMapPinVisible(true)}
+                  style={twStyle("rounded-full border border-gray-200 bg-white px-3 py-1.5 flex-row items-center")}
+                  accessibilityLabel="Drop pin on map"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="map-outline" size={16} color="#374151" />
+                  <Text style={twStyle("ml-1.5 text-xs font-semibold text-gray-700")}>Drop pin on map</Text>
+                </TouchableOpacity>
+              </View>
+              {latitude != null && longitude != null ? (
+                <View style={twStyle("mt-3 overflow-hidden rounded-2xl")}>
+                  <StaticMapImage
+                    latitude={latitude}
+                    longitude={longitude}
+                    width={Math.min(windowWidth - 32, 400)}
+                    height={150}
+                    zoom={15}
+                  />
+                  <Text style={twStyle("mt-1.5 text-center text-xs text-gray-500")}>Map preview</Text>
+                </View>
+              ) : null}
               {errors.address_line1 ? (
                 <Text style={twStyle("mt-1 text-sm text-red-500")}>
                   {errors.address_line1 === "validation.required"
@@ -470,6 +534,14 @@ export default function EditLocationScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <AddressMapPinModal
+        visible={mapPinVisible}
+        onClose={() => setMapPinVisible(false)}
+        onPickCoordinates={(lat, lng) => {
+          void handleDropPinConfirm(lat, lng);
+        }}
+        initialCoordinate={pinInitialCoordinate}
+      />
     </ScreenContainer>
   );
 }

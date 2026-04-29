@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as FileSystem from "expo-file-system/legacy";
+import * as WebBrowser from "expo-web-browser";
+import * as ExpoLinking from "expo-linking";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { getBackendUrl, webApiTenantHeaders } from "@/config/public-env";
@@ -117,32 +119,34 @@ export default function ProductOrderDetailScreen() {
   const { fetchOrderDetail } = useProductOrders();
   const [order, setOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
 
-  useEffect(() => {
+  const loadOrder = useCallback(async () => {
     if (!id) {
       setLoading(false);
       setErrorMsg("Order ID is missing");
       return;
     }
-    (async () => {
-      setLoading(true);
-      setErrorMsg(null);
-      try {
-        const result = await fetchOrderDetail(id);
-        if (result.data) {
-          setOrder(result.data);
-        } else {
-          setErrorMsg(result.error || "Order not found");
-        }
-      } catch {
-        setErrorMsg("Unable to load order. Please check your connection.");
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const result = await fetchOrderDetail(id);
+      if (result.data) {
+        setOrder(result.data);
+      } else {
+        setErrorMsg(result.error || "Order not found");
       }
-      setLoading(false);
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when id changes
-  }, [id]);
+    } catch {
+      setErrorMsg("Unable to load order. Please check your connection.");
+    }
+    setLoading(false);
+  }, [id, fetchOrderDetail]);
+
+  useEffect(() => {
+    void loadOrder();
+  }, [loadOrder]);
 
   if (loading) {
     return (
@@ -183,6 +187,92 @@ export default function ProductOrderDetailScreen() {
     user?.phone?.trim() ||
     null;
   const paymentMethodLabel = formatPaymentMethod(order.payment_method ?? undefined);
+  const onlineAmountDue = Math.max(0, Number(order.total_amount ?? 0) - walletAmt);
+  const canPayOnline =
+    order.payment_status === "pending" &&
+    (order.payment_method === "paystack" || order.payment_method == null) &&
+    onlineAmountDue > 0;
+
+  const handlePayOnline = async () => {
+    if (!canPayOnline || paying) return;
+    const email = buyerEmail;
+    if (!email) {
+      Alert.alert(
+        "Email required",
+        "Add an email address to your account before paying this order online.",
+      );
+      return;
+    }
+
+    setPaying(true);
+    try {
+      const paystackReturnPath =
+        Platform.OS === "web" ? undefined : ExpoLinking.createURL("shop/paystack");
+      const paystackRes = await api.post<{ authorization_url: string; reference: string }>(
+        "/api/paystack/initialize",
+        {
+          email,
+          amount: Math.round(onlineAmountDue * 100),
+          ...(paystackReturnPath ? { callback_url: paystackReturnPath } : {}),
+          metadata: {
+            product_order_id: order.id,
+            order_number: order.order_number,
+            type: "product_order",
+            mobile_app: "customer",
+          },
+        },
+      );
+
+      if (paystackRes.error || !paystackRes.data?.authorization_url) {
+        Alert.alert(
+          "Payment unavailable",
+          (paystackRes.error as { message?: string } | null)?.message ??
+            "We could not start payment for this order. Please try again.",
+        );
+        return;
+      }
+
+      const url = paystackRes.data.authorization_url;
+      if (Platform.OS === "web") {
+        window.location.href = url;
+        return;
+      }
+
+      await WebBrowser.openAuthSessionAsync(url, paystackReturnPath);
+
+      const reference = paystackRes.data.reference;
+      if (reference) {
+        await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+      }
+
+      let paid = false;
+      const maxAttempts = 10;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const check = await fetchOrderDetail(order.id);
+        if (check.data) setOrder(check.data);
+        if (check.data?.payment_status === "paid") {
+          paid = true;
+          break;
+        }
+        if (attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
+
+      if (paid) {
+        Alert.alert("Payment successful", `Your order ${order.order_number} has been paid.`);
+      } else {
+        Alert.alert(
+          "Payment pending",
+          "If you completed payment, it may take a few moments to confirm. Refresh this order shortly.",
+        );
+      }
+    } catch (e) {
+      Alert.alert("Payment failed", e instanceof Error ? e.message : "Could not complete payment.");
+    } finally {
+      setPaying(false);
+    }
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
@@ -580,6 +670,44 @@ export default function ProductOrderDetailScreen() {
               <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>Payment method</Text>
               <Text style={{ fontSize: 14, color: "#111827" }}>{paymentMethodLabel}</Text>
             </View>
+          ) : null}
+          {order.payment_status ? (
+            <View style={{ marginTop: 10 }}>
+              <Text style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 2 }}>Payment status</Text>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: "700",
+                  color: order.payment_status === "paid" ? "#059669" : order.payment_status === "failed" ? "#DC2626" : "#D97706",
+                }}
+              >
+                {order.payment_status.replace(/_/g, " ")}
+              </Text>
+            </View>
+          ) : null}
+          {canPayOnline ? (
+            <TouchableOpacity
+              onPress={handlePayOnline}
+              disabled={paying}
+              style={{
+                marginTop: 14,
+                borderRadius: 12,
+                backgroundColor: paying ? "#D1D5DB" : PRIMARY,
+                paddingVertical: 13,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Pay order online"
+            >
+              {paying ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={{ color: "#fff", fontWeight: "700" }}>
+                  Pay {fmt(onlineAmountDue)} online
+                </Text>
+              )}
+            </TouchableOpacity>
           ) : null}
         </View>
 

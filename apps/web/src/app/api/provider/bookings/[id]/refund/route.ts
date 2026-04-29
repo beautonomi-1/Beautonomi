@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
@@ -29,10 +29,18 @@ export async function POST(
     const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
-    const supabaseAdmin = await getSupabaseAdmin();
+    const supabaseAdmin = getSupabaseAdmin();
     const hostTenantId = await resolveTenantIdWithZaFallback(request);
     const { id: bookingId } = await params;
     const body = await request.json();
+
+    // Proxy group:UUID ids — refund maps to the group-bookings endpoint
+    if (bookingId.startsWith("group:")) {
+      const groupId = bookingId.slice("group:".length);
+      const groupUrl = new URL(`/api/provider/group-bookings/${groupId}`, request.url);
+      groupUrl.searchParams.set("action", "refund");
+      return NextResponse.redirect(groupUrl, 307);
+    }
 
     // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);

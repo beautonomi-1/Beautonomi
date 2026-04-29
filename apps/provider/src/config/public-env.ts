@@ -76,6 +76,22 @@ export const SUPABASE_ANON_KEY = getEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY") ?? "";
 /** Backend (Next.js) URL. Optional for API; required for forgot-password (reset link opens APP_URL/auth/callback). */
 export const APP_URL = getEnv("EXPO_PUBLIC_APP_URL") ?? "";
 
+/**
+ * Resolved backend base for public fetches (config bundle, map WebView, Mapbox).
+ * Expo web on localhost:8081/8082 or empty APP_URL → http://localhost:3000; native dev with empty APP_URL → localhost.
+ */
+export function getBackendUrl(): string {
+  if (typeof window !== "undefined") {
+    const o = window.location.origin;
+    if (o === "http://localhost:8081" || o === "http://localhost:8082" || !APP_URL?.trim()) {
+      return "http://localhost:3000";
+    }
+  }
+  const url = APP_URL?.trim();
+  if (!url && typeof __DEV__ !== "undefined" && __DEV__) return "http://localhost:3000";
+  return url || "";
+}
+
 /** OneSignal App ID – optional; push notifications disabled if unset */
 export const ONE_SIGNAL_APP_ID = getEnv("EXPO_PUBLIC_ONESIGNAL_APP_ID");
 

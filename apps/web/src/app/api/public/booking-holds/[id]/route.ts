@@ -14,6 +14,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
 
 export async function GET(
   request: NextRequest,
@@ -101,7 +102,14 @@ export async function GET(
       .select("on_demand_accept_enabled")
       .eq("provider_id", hold.provider_id)
       .maybeSingle();
-    const provider_on_demand_accept_enabled = Boolean(obSettings?.on_demand_accept_enabled);
+    const requestNow = await getRequestNowAvailability({
+      tenantId,
+      role: "customer",
+      surface: "customer",
+    });
+    const provider_on_demand_accept_enabled = Boolean(
+      requestNow.enabled && obSettings?.on_demand_accept_enabled,
+    );
 
     const { data: providerRow } = await supabase
       .from("providers")

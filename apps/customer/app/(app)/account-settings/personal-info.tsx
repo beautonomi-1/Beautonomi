@@ -191,7 +191,7 @@ export default function PersonalInfoScreen() {
       appendFormDataFileNative(formData, "file", {
         uri: result.uri,
         name: result.fileName || "avatar.jpg",
-        type: "image/jpeg",
+        type: result.mimeType?.trim() || "image/jpeg",
       });
       const res = await api.post<{ url?: string }>("/api/me/avatar", formData);
       if (res.error) {
@@ -288,7 +288,13 @@ export default function PersonalInfoScreen() {
         >
           {/* Profile photo card */}
           <View style={[cardStyle, { alignItems: "center", paddingVertical: 24 }]}>
-            <Pressable onPress={uploadAvatar} disabled={pickLoading} accessibilityLabel="Change profile photo" accessibilityRole="button">
+            <Pressable
+              onPress={uploadAvatar}
+              disabled={pickLoading}
+              accessibilityLabel="Change profile photo"
+              accessibilityRole="button"
+              style={({ pressed }) => [{ alignItems: "center", opacity: pickLoading ? 0.6 : pressed ? 0.85 : 1 }]}
+            >
               <View style={{ width: 112, height: 112, borderRadius: 56, overflow: "hidden", borderWidth: 3, borderColor: Colors.primary + "20" }}>
                 {profile.avatar_url ? (
                   <Image source={{ uri: profile.avatar_url }} style={{ width: "100%", height: "100%" }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
@@ -300,9 +306,9 @@ export default function PersonalInfoScreen() {
                   </View>
                 )}
               </View>
+              <Text style={{ fontSize: 14, color: Colors.primary, marginTop: 12, fontWeight: "500" }}>Tap to change photo</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>Required for your profile</Text>
             </Pressable>
-            <Text style={{ fontSize: 14, color: Colors.primary, marginTop: 12, fontWeight: "500" }}>Tap to change photo</Text>
-            <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>Required for your profile</Text>
           </View>
 
           {/* Basic info card */}

@@ -7,6 +7,7 @@ import {
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
 
 /**
  * GET /api/provider/on-demand/requests
@@ -21,6 +22,21 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
+
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const requestNow = await getRequestNowAvailability({
+      tenantId: (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+      userId: user.id,
+      role: user.role as string,
+      surface: "provider",
+    });
+    if (!requestNow.enabled) {
+      return successResponse([]);
+    }
 
     const now = new Date().toISOString();
     const { data, error } = await supabase

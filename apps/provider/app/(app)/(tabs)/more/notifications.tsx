@@ -15,6 +15,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatTimeAgo } from "@/lib/format";
+import { navigateFromProviderNotification } from "@/lib/provider-notification-navigation";
 import { Colors } from "@/constants/colors";
 
 interface Notification {
@@ -38,6 +39,9 @@ interface Notification {
     product_order_id?: string;
     order_id?: string;
     return_request_id?: string;
+    on_demand_request_id?: string;
+    ticket_id?: string;
+    [key: string]: unknown;
   };
 }
 
@@ -87,100 +91,6 @@ function getNotificationIcon(type: string): {
     default:
       return { name: "notifications-outline", color: "#6b7280", bg: Colors.gray[100] };
   }
-}
-
-function getNotificationRoute(notif: Notification): string | null {
-  const link = notif.link ?? notif.action_url ?? "";
-  if (link.includes("/provider/ecommerce/orders") || link.includes("ecommerce/orders")) {
-    const m = link.match(/order=([a-f0-9-]+)/i) || link.match(/\/orders\/([a-f0-9-]+)/i);
-    const oid = m?.[1] ?? notif.data?.product_order_id ?? notif.data?.order_id;
-    if (oid) {
-      return `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(oid)}`;
-    }
-    return "/(app)/(tabs)/more/orders-hub";
-  }
-  if (link.includes("/provider/ecommerce/returns") || link.includes("ecommerce/returns")) {
-    return "/(app)/(tabs)/more/orders-hub?tab=returns";
-  }
-  if (link.includes("/product-orders")) {
-    const oid = notif.data?.product_order_id ?? notif.data?.order_id;
-    if (oid) {
-      return `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(oid)}`;
-    }
-    return "/(app)/(tabs)/more/orders-hub";
-  }
-
-  if (notif.data?.booking_id) {
-    return `/(app)/(tabs)/bookings/${notif.data.booking_id}`;
-  }
-  if (notif.data?.client_id) {
-    return `/(app)/(tabs)/more/clients/${notif.data.client_id}`;
-  }
-  const conversationId = notif.data?.conversation_id;
-  if (
-    conversationId &&
-    (notif.type === "new_message" || notif.type === "provider_new_message")
-  ) {
-    return `/(app)/(tabs)/chats/${conversationId}`;
-  }
-  if (notif.type === "new_message" || notif.type === "provider_new_message") {
-    return "/(app)/(tabs)/chats";
-  }
-
-  if (
-    notif.type === "product_return_requested" ||
-    notif.type === "product_return_approved" ||
-    notif.type === "product_return_rejected" ||
-    notif.type === "product_return_refunded"
-  ) {
-    return "/(app)/(tabs)/more/orders-hub?tab=returns";
-  }
-
-  const productOrderId = notif.data?.product_order_id ?? notif.data?.order_id;
-  if (productOrderId) {
-    return `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(productOrderId)}`;
-  }
-  if (notif.type === "new_review" || notif.type === "provider_new_review") {
-    return "/(app)/(tabs)/more/reviews";
-  }
-  if (notif.type === "low_stock_alert") {
-    return "/(app)/(tabs)/more/products";
-  }
-  if (
-    notif.type === "payment_received" ||
-    notif.type === "payout_sent" ||
-    notif.type === "payment_failed" ||
-    notif.type.startsWith("provider_payout_") ||
-    notif.type === "provider_earnings_summary" ||
-    notif.type === "custom_order_paid"
-  ) {
-    return "/(app)/(tabs)/more/finance";
-  }
-  if (
-    notif.type === "staff_invitation" ||
-    notif.type === "staff_schedule_change" ||
-    notif.type === "team_update"
-  ) {
-    return "/(app)/(tabs)/more/team";
-  }
-  if (
-    notif.type === "provider_availability_changed" ||
-    notif.type === "provider_holiday_mode" ||
-    notif.type === "provider_holiday_mode_ending"
-  ) {
-    return "/(app)/(tabs)/more/settings/hours";
-  }
-  if (notif.type === "provider_break_scheduled") {
-    return "/(app)/(tabs)/calendar";
-  }
-  if (
-    notif.type === "provider_onboarding_welcome" ||
-    notif.type === "provider_profile_approved" ||
-    notif.type === "provider_profile_rejected"
-  ) {
-    return "/(app)/(tabs)/more/settings/verification";
-  }
-  return null;
 }
 
 function isBookingType(type: string): boolean {
@@ -301,7 +211,7 @@ export default function NotificationsScreen() {
   const [filter, setFilter] = useState<FilterValue>("all");
 
   const { session } = useAuth();
-  const { refresh: refreshCount } = useNotificationsCount();
+  const { refresh: refreshCount, adjustUnreadCount, replaceUnreadCount } = useNotificationsCount();
   const {
     data: rawData,
     loading,
@@ -363,12 +273,14 @@ export default function NotificationsScreen() {
       is_read: true,
     }));
     mutate(updated);
+    replaceUnreadCount(0);
     const { error } = await postAction(
       "/api/provider/notifications/mark-all-read",
       {},
     );
     if (error) {
       mutate(previous);
+      await refreshCount();
       Alert.alert("Error", error);
     } else {
       await refreshCount();
@@ -376,11 +288,9 @@ export default function NotificationsScreen() {
   }
 
   const navigateToNotification = useCallback(
-    (notif: Notification) => {
-      const route = getNotificationRoute(notif);
-      if (route) {
-        router.push(route as never);
-      }
+    (notif: Notification): boolean => {
+      navigateFromProviderNotification(router, notif);
+      return true;
     },
     [router],
   );
@@ -393,10 +303,16 @@ export default function NotificationsScreen() {
       // optimistic mutate handles the badge locally; failures roll back.
       const alreadyRead =
         !!notif.read_at || !!notif.is_read || !!notif.read;
-      navigateToNotification(notif);
+      const navigated = navigateToNotification(notif);
+      // If no deep-link route exists, stay on the notifications screen — the
+      // notification is still marked read so the badge clears correctly.
+      if (!navigated && !alreadyRead) {
+        // Nothing to show; fall through to mark-read below.
+      }
       if (alreadyRead) return;
 
       const readTs = new Date().toISOString();
+      adjustUnreadCount(-1);
       if (notifications) {
         const updated = notifications.map((n) =>
           n.id === notif.id ? { ...n, read_at: readTs, is_read: true } : n,
@@ -408,6 +324,7 @@ export default function NotificationsScreen() {
         { read_at: readTs, is_read: true },
       );
       if (error) {
+        adjustUnreadCount(1);
         // Roll back optimistic update on failure so the badge reflects reality.
         if (notifications) {
           mutate(notifications);
@@ -416,15 +333,18 @@ export default function NotificationsScreen() {
         await refreshCount();
       }
     },
-    [notifications, patchNotification, mutate, refreshCount, navigateToNotification],
+    [notifications, patchNotification, mutate, refreshCount, navigateToNotification, adjustUnreadCount],
   );
 
   const handleDelete = useCallback(
     async (notif: Notification) => {
+      const wasUnread = isUnread(notif);
+      if (wasUnread) adjustUnreadCount(-1);
       const { error } = await deleteNotification(
         `/api/provider/notifications/${notif.id}`
       );
       if (error) {
+        if (wasUnread) adjustUnreadCount(1);
         Alert.alert("Error", error);
       } else if (notifications) {
         const updated = notifications.filter((n) => n.id !== notif.id);
@@ -432,7 +352,7 @@ export default function NotificationsScreen() {
         await refreshCount();
       }
     },
-    [notifications, deleteNotification, mutate, refreshCount],
+    [notifications, deleteNotification, mutate, refreshCount, adjustUnreadCount],
   );
 
   const notifKeyExtractor = useCallback((n: Notification) => n.id, []);
@@ -472,7 +392,7 @@ export default function NotificationsScreen() {
 
       <View style={{ flex: 1, minHeight: 0 }}>
       <Text style={{ marginBottom: 12, fontSize: 12, color: Colors.gray[500] }}>
-        Tap a notification to mark it read and lower the counter.
+        Tap a notification to open and mark it read. Swipe left on a row to delete.
       </Text>
       <View style={{ marginBottom: 12 }}>
         <FilterChipGroup

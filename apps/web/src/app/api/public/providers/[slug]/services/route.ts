@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
@@ -38,15 +38,24 @@ export async function GET(
     const { tenantId } = tenantRes;
 
     const { slug: providerSlug } = await params;
-    const supabase = await getSupabaseServer();
+    // Use admin client to bypass RLS — public provider data should be readable
+    // regardless of provider.status, matching the behaviour of getPublicProviderDetail.
+    const supabase = getSupabaseAdmin();
 
-    // Get provider by slug
-    const { data: provider, error: providerError } = await supabase
+    const decodedSlug = (() => { try { return decodeURIComponent(providerSlug); } catch { return providerSlug; } })();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decodedSlug);
+
+    // Look up by slug (or by id when a UUID is passed directly from the mobile app)
+    const providerQuery = supabase
       .from("providers")
       .select("id, business_name, slug")
-      .eq("slug", providerSlug)
-      .eq("tenant_id", tenantId)
-      .single();
+      .eq("tenant_id", tenantId);
+
+    const { data: provider, error: providerError } = await (
+      isUuid
+        ? providerQuery.eq("id", decodedSlug).maybeSingle()
+        : providerQuery.or(`slug.eq.${decodedSlug},slug.eq.${providerSlug}`).limit(1).maybeSingle()
+    );
 
     if (providerError || !provider) {
       return notFoundResponse("Provider not found");

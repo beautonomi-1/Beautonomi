@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
+import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -36,7 +37,10 @@ import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { api } from "@/lib/api-client";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
+import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
+import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
 
 // The list endpoint (GET /api/provider/group-bookings) maps participants to
@@ -356,6 +360,8 @@ export default function GroupBookingsScreen() {
   const [showPackagePicker, setShowPackagePicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [validatingCreateAddress, setValidatingCreateAddress] = useState(false);
+  const [createMapPinOpen, setCreateMapPinOpen] = useState(false);
+  const [createLocatingHome, setCreateLocatingHome] = useState(false);
 
   const createDateOptions = useMemo(
     () => Array.from({ length: 21 }, (_, i) => addDays(startOfDay(new Date()), i)),
@@ -1180,6 +1186,67 @@ export default function GroupBookingsScreen() {
     }
   }
 
+  async function handleCreateDropPin(lat: number, lng: number) {
+    const fb = createForm.addressCountry.trim() || "South Africa";
+    const mapped = await reverseGeocodeCoordinates(lat, lng, fb);
+    if (mapped) {
+      await applyCreateAddress({
+        full_address: `${mapped.address_line1}, ${mapped.city}`,
+        address_line1: mapped.address_line1,
+        city: mapped.city,
+        state: mapped.state,
+        postal_code: mapped.postal_code,
+        country: mapped.country,
+        latitude: mapped.latitude,
+        longitude: mapped.longitude,
+      });
+    } else {
+      setCreateForm((p) => ({
+        ...p,
+        addressLatitude: lat,
+        addressLongitude: lng,
+      }));
+    }
+    setCreateMapPinOpen(false);
+  }
+
+  async function handleCreateUseCurrentLocation() {
+    if (createLocatingHome) return;
+    setCreateLocatingHome(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Location permission", "Allow location to fill the address.");
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const fb = createForm.addressCountry.trim() || "South Africa";
+      const mapped = await reverseGeocodeCoordinates(loc.coords.latitude, loc.coords.longitude, fb);
+      if (mapped) {
+        await applyCreateAddress({
+          full_address: `${mapped.address_line1}, ${mapped.city}`,
+          address_line1: mapped.address_line1,
+          city: mapped.city,
+          state: mapped.state,
+          postal_code: mapped.postal_code,
+          country: mapped.country,
+          latitude: mapped.latitude,
+          longitude: mapped.longitude,
+        });
+      } else {
+        setCreateForm((p) => ({
+          ...p,
+          addressLatitude: loc.coords.latitude,
+          addressLongitude: loc.coords.longitude,
+        }));
+      }
+    } catch (e) {
+      Alert.alert("Location error", e instanceof Error ? e.message : "Could not read location.");
+    } finally {
+      setCreateLocatingHome(false);
+    }
+  }
+
   function openAddParticipant() {
     setParticipantForm({ name: "", phone: "", email: "" });
     setShowAddParticipant(true);
@@ -1651,15 +1718,12 @@ export default function GroupBookingsScreen() {
                   setSelectedGroup(null);
                   Alert.alert(
                     "Refund participant",
-                    "Refunds are issued against each participant's individual booking. You'll be taken to the bookings list — open the booking you want to refund and use the refund action inside.",
+                    "Refunds are issued against each participant's individual booking. Open the group booking detail, select the participant's booking, then use the refund action inside.",
                     [
                       { text: "Cancel", style: "cancel" },
                       {
                         text: "Open group booking",
                         onPress: () => {
-                          // Navigate to group booking detail (which lists all participants
-                          // and their individual booking IDs) rather than the plain
-                          // bookings list that never filtered by group_booking_id.
                           router.push({
                             pathname: "/(app)/(tabs)/more/group-bookings",
                             params: { open_group_id: groupId },
@@ -2129,19 +2193,55 @@ export default function GroupBookingsScreen() {
             {createForm.locationType === "at_home" ? (
               <View style={twStyle("rounded-2xl border border-blue-100 bg-blue-50 p-3")}>
                 <Text style={twStyle("mb-2 text-xs text-blue-800")}>
-                  Select a Mapbox suggestion so coordinates are saved for travel buffer and fee accuracy.
+                  Search, drop a pin, or use current location — coordinates are used for travel buffer and fee accuracy.
                 </Text>
                 <AddressAutocomplete
                   label="Search address"
                   value={createForm.addressSearchValue}
-                  countryCode="ZA"
-                  geocodeTypes={["address"]}
+                  countryCode={countryFilterIso2FromStorage(createForm.addressCountry) ?? "ZA"}
+                  defaultCountryName={createForm.addressCountry.trim() || undefined}
                   placeholder="Start typing street address..."
                   onSelect={(parsed) => {
                     void applyCreateAddress(parsed);
                   }}
                   onBlur={(q) => setCreateForm((p) => ({ ...p, addressSearchValue: q, addressLine1: p.addressLine1 || q }))}
+                  proximity={
+                    createForm.addressLatitude != null && createForm.addressLongitude != null
+                      ? { latitude: createForm.addressLatitude, longitude: createForm.addressLongitude }
+                      : undefined
+                  }
                 />
+                <View style={twStyle("mt-2 flex-row flex-wrap gap-2")}>
+                  <TouchableOpacity
+                    onPress={() => void handleCreateUseCurrentLocation()}
+                    disabled={createLocatingHome}
+                    style={twStyle(
+                      `rounded-full border px-3 py-1.5 flex-row items-center ${
+                        createLocatingHome ? "border-gray-200 bg-gray-100" : "border-blue-200 bg-blue-50"
+                      }`,
+                    )}
+                    accessibilityRole="button"
+                    accessibilityLabel="Use current location"
+                  >
+                    {createLocatingHome ? (
+                      <ActivityIndicator size="small" color="#2563eb" />
+                    ) : (
+                      <Ionicons name="locate-outline" size={16} color="#2563eb" />
+                    )}
+                    <Text style={twStyle("ml-1.5 text-xs font-semibold text-blue-700")}>
+                      {createLocatingHome ? "Locating…" : "Current location"}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setCreateMapPinOpen(true)}
+                    style={twStyle("rounded-full border border-gray-200 bg-white px-3 py-1.5 flex-row items-center")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Drop pin on map"
+                  >
+                    <Ionicons name="map-outline" size={16} color="#374151" />
+                    <Text style={twStyle("ml-1.5 text-xs font-semibold text-gray-700")}>Drop pin on map</Text>
+                  </TouchableOpacity>
+                </View>
                 {validatingCreateAddress ? (
                   <View style={twStyle("mt-2 flex-row items-center")}>
                     <ActivityIndicator size="small" color="#2563eb" />
@@ -2538,6 +2638,19 @@ export default function GroupBookingsScreen() {
           />
         </ScrollView>
       </BottomSheet>
+
+      <AddressMapPinModal
+        visible={createMapPinOpen}
+        onClose={() => setCreateMapPinOpen(false)}
+        onPickCoordinates={(lat, lng) => {
+          void handleCreateDropPin(lat, lng);
+        }}
+        initialCoordinate={
+          createForm.addressLatitude != null && createForm.addressLongitude != null
+            ? { latitude: createForm.addressLatitude, longitude: createForm.addressLongitude }
+            : null
+        }
+      />
 
       <BottomSheet
         visible={showProductPicker}

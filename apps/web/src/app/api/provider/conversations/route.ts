@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createConversation } from "./_helpers/create-conversation";
 
 /**
@@ -22,12 +21,13 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    // Check permission to view messages
-    const permissionCheck = await requirePermission("view_messages", request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    // All provider roles can view conversations — messaging is a core feature
+    // for all staff, not just owners. requirePermission("view_messages") was
+    // blocking provider_staff who hadn't been granted that specific permission.
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request,
+    );
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     
@@ -108,17 +108,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (error) {
-      throw error;
-    }
-
     // Fetch customer data separately using admin client to bypass RLS
     const customerIds = [...new Set(conversationsWithMessages.map((c: any) => c.customer_id).filter(Boolean))];
     let customerMap: Record<string, any> = {};
     
     if (customerIds.length > 0) {
       // Use admin client to bypass RLS policies on users table
-      const supabaseAdmin = await getSupabaseAdmin();
+      const supabaseAdmin = getSupabaseAdmin();
       const { data: customers, error: customerError } = await supabaseAdmin
         .from("users")
         .select("id, full_name, email, phone, avatar_url")

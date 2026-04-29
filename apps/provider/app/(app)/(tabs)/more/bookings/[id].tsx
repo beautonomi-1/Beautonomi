@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  ActionSheetIOS,
   TextInput,
   Linking,
   Modal,
@@ -17,6 +16,7 @@ import {
   RefreshControl,
   Share,
 } from "react-native";
+import { cacheDirectory, downloadAsync } from "expo-file-system/legacy";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { format, addDays, isSameDay, parseISO, startOfDay } from "date-fns";
 import * as Location from "expo-location";
@@ -32,11 +32,11 @@ import { Avatar } from "@/components/ui/Avatar";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import * as ImagePicker from "expo-image-picker";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
-import { api } from "@/lib/api-client";
+import { api, getApiBaseUrl } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { twStyle } from "@/lib/twStyle";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
@@ -58,6 +58,11 @@ import {
   PROVIDER_SALON_VISIT_FLOW_EXPLAINER,
 } from "@beautonomi/utils";
 import { buildSaleItemsFromBookingDetail } from "@/lib/build-sale-items-from-booking";
+import {
+  dbTargetToPatchStatusField,
+  getAllowedTransitionTargets,
+  labelForDbStatus,
+} from "@/lib/provider-booking-status-transitions";
 
 function extractIsoDatePart(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -212,6 +217,8 @@ type BookingDetail = {
   /** Applied gift card toward this booking (GET detail). */
   gift_card_amount?: number | null;
   payment_status?: string;
+  /** Server-computed balance due (includes unpaid additional charges); prefer over local math. */
+  outstanding_balance?: number | null;
   /** IANA TZ for customer-facing wall times when API sends it. */
   display_time_zone?: string | null;
   subtotal?: number;
@@ -411,12 +418,35 @@ export default function BookingDetailScreen() {
   const bookingIdStr = typeof id === "string" ? id : Array.isArray(id) ? id[0] ?? "" : "";
   const appointmentProductOrdersUrl =
     bookingIdStr && (data?.products?.length ?? 0) > 0
-      ? `/api/provider/product-orders?booking_id=${encodeURIComponent(bookingIdStr)}&limit=1`
+      ? `/api/provider/product-orders?booking_id=${encodeURIComponent(bookingIdStr)}&limit=50`
       : "";
   const { data: appointmentProductOrdersData } = useApi<AppointmentProductOrderResponse>(appointmentProductOrdersUrl);
-  const appointmentProductOrder = appointmentProductOrdersData?.orders?.[0] ?? null;
+  const appointmentProductOrders = appointmentProductOrdersData?.orders ?? [];
   const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
+  const [showStatusPicker, setShowStatusPicker] = useState(false);
+
+  const currentDbStatus = useMemo(() => {
+    const row = data as BookingDetail | undefined;
+    if (!row) return "confirmed";
+    if (row.db_status && typeof row.db_status === "string") return row.db_status;
+    const s = row.status;
+    if (s === "pending") return "pending";
+    if (s === "pending_payment") return "pending_payment";
+    if (s === "booked") return "confirmed";
+    if (s === "started") return "in_progress";
+    if (s === "completed") return "completed";
+    if (s === "cancelled") return "cancelled";
+    if (s === "no_show") return "no_show";
+    if (s === "waiting") return "waiting";
+    if (s === "checked_in") return "checked_in";
+    return "confirmed";
+  }, [data]);
+
+  const allowedStatusTargets = useMemo(
+    () => getAllowedTransitionTargets(currentDbStatus),
+    [currentDbStatus],
+  );
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationPermissionDeniedRef = useRef(false);
   const mainScrollRef = useRef<ScrollView>(null);
@@ -946,9 +976,14 @@ export default function BookingDetailScreen() {
   const walletAmountApplied = Number(b.wallet_amount ?? 0);
   const giftCardAmountApplied = Number(b.gift_card_amount ?? 0);
   const effectivePaid = Math.max(0, totalPaid - totalRefunded);
-  const outstandingRaw = totalAmount - effectivePaid - walletAmountApplied - giftCardAmountApplied;
   const ps = (b.payment_status || "").toLowerCase();
-  const outstanding = ps === "refunded" ? 0 : Math.max(0, outstandingRaw);
+  const outstandingRawLocal = totalAmount - effectivePaid - walletAmountApplied - giftCardAmountApplied;
+  const outstanding =
+    typeof b.outstanding_balance === "number"
+      ? Math.max(0, b.outstanding_balance)
+      : ps === "refunded"
+        ? 0
+        : Math.max(0, outstandingRawLocal);
   /**
    * Amount for Yoco / POS sale / "Mark paid" without a custom line: deposit bookings collect the
    * remaining deposit first (pending or partially_paid until deposit is satisfied), then full AR.
@@ -995,6 +1030,44 @@ export default function BookingDetailScreen() {
     if (!id) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
+      const base = getApiBaseUrl().replace(/\/$/, "");
+      const safeName = `booking_${(b.booking_number ?? String(id).slice(0, 8)).replace(/[^\w.-]+/g, "_")}.pdf`;
+      const pdfPath = `/api/provider/bookings/${encodeURIComponent(String(id))}/receipt/pdf`;
+
+      const tryBearerDownload = async (): Promise<boolean> => {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token || !base) return false;
+        const pdfUrl = `${base}${pdfPath}`;
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${token}`,
+          ...webApiTenantHeaders(),
+        };
+        if (Platform.OS === "web") {
+          const response = await fetch(pdfUrl, { headers, credentials: "omit" });
+          if (!response.ok) return false;
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          if (typeof window !== "undefined") {
+            window.open(objectUrl, "_blank", "noopener,noreferrer");
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 120_000);
+          }
+          return true;
+        }
+        if (!cacheDirectory) return false;
+        const fileUri = `${cacheDirectory}${safeName}`;
+        const dl = await downloadAsync(pdfUrl, fileUri, { headers });
+        if (dl.status !== 200) return false;
+        await Share.share({
+          url: fileUri,
+          title: "Booking receipt",
+          message: `Booking ${b.booking_number ?? id}`,
+        });
+        return true;
+      };
+
+      if (await tryBearerDownload()) return;
+
       const res = await api.post<{ url: string; expires_at: string }>(
         `/api/provider/bookings/${id}/receipt/signed-url`,
         {},
@@ -1210,11 +1283,17 @@ export default function BookingDetailScreen() {
   const isConflictError = (msg: string | null) =>
     msg != null && msg.includes("modified by another user");
 
-  const handleStatusChange = async (newStatus: string) => {
+  /**
+   * Uses the same DB transition rules as PATCH /api/provider/bookings/[id] on web
+   * (`PROVIDER_BOOKING_STATUS_TRANSITIONS`). Targets are DB statuses; PATCH payload
+   * uses provider-facing status strings via `dbTargetToPatchStatusField`.
+   */
+  const applyDbStatusTransition = async (dbTarget: string) => {
     if (!id) return;
+    setShowStatusPicker(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    if (newStatus === "started") {
+    if (dbTarget === "in_progress") {
       const { error: err } = await postMutation(`/api/provider/bookings/${id}/start-service`, {});
       if (err) {
         Alert.alert("Error", err);
@@ -1224,7 +1303,7 @@ export default function BookingDetailScreen() {
       return;
     }
 
-    if (newStatus === "completed") {
+    if (dbTarget === "completed") {
       const { error: err } = await postMutation(`/api/provider/bookings/${id}/complete-service`, {});
       if (err) {
         Alert.alert("Error", err);
@@ -1235,15 +1314,16 @@ export default function BookingDetailScreen() {
       return;
     }
 
-    if (newStatus === "cancelled") {
+    if (dbTarget === "cancelled") {
       setCancelReason("");
       setShowCancelModal(true);
       return;
     }
 
     const version = (b as BookingDetail & { version?: number }).version;
+    const patchStatus = dbTargetToPatchStatusField(dbTarget);
     const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
-      status: newStatus,
+      status: patchStatus,
       ...(version !== undefined && { version }),
     });
     if (err) {
@@ -1251,7 +1331,7 @@ export default function BookingDetailScreen() {
         Alert.alert(
           "Conflict",
           "This booking was modified by another user. Please refresh and try again.",
-          [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
+          [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }],
         );
       } else {
         Alert.alert("Error", err);
@@ -1259,61 +1339,6 @@ export default function BookingDetailScreen() {
       return;
     }
     await refresh();
-  };
-
-  const showStatusActions = () => {
-    const actions: { label: string; status: string; destructive?: boolean }[] = [];
-    if (b.status !== "confirmed" && b.status !== "booked" && isActive) {
-      actions.push({ label: "Confirm", status: "booked" });
-    }
-    if (isAtHome) {
-      if ((isArrived || arrivalVerified) && !isStarted) {
-        actions.push({ label: "Start service", status: "started" });
-      }
-    } else {
-      const salonReady =
-        b.status === "confirmed" || b.status === "booked" || clientArrivedAtSalon;
-      if (salonReady && !isStarted) {
-        actions.push({ label: "Start service", status: "started" });
-      }
-    }
-    if (isStarted) {
-      actions.push({ label: "Complete", status: "completed" });
-    }
-    if (isActive || isStarted) {
-      actions.push({ label: "No show", status: "no_show" });
-      actions.push({ label: "Cancel booking", status: "cancelled", destructive: true });
-    }
-    if (actions.length === 0) return;
-
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ["Cancel", ...actions.map((a) => a.label)],
-          cancelButtonIndex: 0,
-          destructiveButtonIndex: actions.findIndex((a) => a.destructive) + 1,
-          title: "Change status",
-        },
-        (idx) => {
-          if (idx === 0) return;
-          const a = actions[idx - 1];
-          if (a) handleStatusChange(a.status);
-        }
-      );
-    } else {
-      Alert.alert(
-        "Change status",
-        undefined,
-        [
-          { text: "Cancel", style: "cancel" },
-          ...actions.map((a) => ({
-            text: a.label,
-            style: (a.destructive ? "destructive" : "default") as "destructive" | "default",
-            onPress: () => handleStatusChange(a.status),
-          })),
-        ]
-      );
-    }
   };
 
   const handleReschedule = async () => {
@@ -2386,23 +2411,25 @@ export default function BookingDetailScreen() {
           </View>
         )}
 
-        {/* Status & reschedule actions */}
-        {(isActive || isStarted) && (
+        {/* Status & reschedule: same legal transitions as provider web (see provider-booking-status-transitions) */}
+        {(allowedStatusTargets.length > 0 || ((isActive || isStarted) && b.scheduled_at)) && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-3")}>Actions</Text>
             <View style={twStyle("flex-row flex-wrap gap-2")}>
-              <TouchableOpacity
-                onPress={showStatusActions}
-                disabled={patchLoading}
-                style={twStyle("rounded-xl border border-gray-300 bg-white py-3 px-4")}
-              >
-                {patchLoading ? (
-                  <ActivityIndicator size="small" color="#111" />
-                ) : (
-                  <Text style={twStyle("font-medium text-gray-800")}>Change status</Text>
-                )}
-              </TouchableOpacity>
-              {b.scheduled_at && (
+              {allowedStatusTargets.length > 0 ? (
+                <TouchableOpacity
+                  onPress={() => setShowStatusPicker(true)}
+                  disabled={patchLoading || mutating}
+                  style={twStyle("rounded-xl border border-gray-300 bg-white py-3 px-4")}
+                >
+                  {patchLoading || mutating ? (
+                    <ActivityIndicator size="small" color="#111" />
+                  ) : (
+                    <Text style={twStyle("font-medium text-gray-800")}>Change status</Text>
+                  )}
+                </TouchableOpacity>
+              ) : null}
+              {(isActive || isStarted) && b.scheduled_at ? (
                 <TouchableOpacity
                   onPress={() => {
                     try {
@@ -2421,7 +2448,7 @@ export default function BookingDetailScreen() {
                 >
                   <Text style={twStyle("font-medium text-primary")}>Reschedule</Text>
                 </TouchableOpacity>
-              )}
+              ) : null}
             </View>
           </View>
         )}
@@ -2789,23 +2816,33 @@ export default function BookingDetailScreen() {
                 </View>
               );
             })}
-            {appointmentProductOrder ? (
-              <TouchableOpacity
-                onPress={() =>
-                  router.push(
-                    `/(app)/(tabs)/more/product-orders?order=${encodeURIComponent(appointmentProductOrder.id)}` as never,
-                  )
-                }
-                style={twStyle("mt-1 rounded-xl border border-amber-200 bg-amber-50 p-3 flex-row items-center justify-between")}
-              >
-                <View style={twStyle("flex-1 pr-3")}>
-                  <Text style={twStyle("text-sm font-semibold text-amber-950")}>Product pickup linked</Text>
-                  <Text style={twStyle("text-xs text-amber-800 mt-0.5")}>
-                    {appointmentProductOrder.order_number ?? "Product order"} · {(appointmentProductOrder.status ?? "confirmed").replace(/_/g, " ")}
+            {appointmentProductOrders.length > 0 ? (
+              <>
+                {appointmentProductOrders.length > 1 ? (
+                  <Text style={twStyle("text-xs font-medium text-amber-900 mt-1 mb-1")}>
+                    {appointmentProductOrders.length} product orders linked to this visit
                   </Text>
-                </View>
-                <Text style={twStyle("text-sm font-semibold text-amber-800")}>Fulfill</Text>
-              </TouchableOpacity>
+                ) : null}
+                {appointmentProductOrders.map((ord) => (
+                  <TouchableOpacity
+                    key={ord.id}
+                    onPress={() =>
+                      router.push(
+                        `/(app)/(tabs)/more/product-orders?order=${encodeURIComponent(ord.id)}` as never,
+                      )
+                    }
+                    style={twStyle("mt-1 rounded-xl border border-amber-200 bg-amber-50 p-3 flex-row items-center justify-between")}
+                  >
+                    <View style={twStyle("flex-1 pr-3")}>
+                      <Text style={twStyle("text-sm font-semibold text-amber-950")}>Product pickup linked</Text>
+                      <Text style={twStyle("text-xs text-amber-800 mt-0.5")}>
+                        {ord.order_number ?? "Product order"} · {(ord.status ?? "confirmed").replace(/_/g, " ")}
+                      </Text>
+                    </View>
+                    <Text style={twStyle("text-sm font-semibold text-amber-800")}>Fulfill</Text>
+                  </TouchableOpacity>
+                ))}
+              </>
             ) : null}
           </View>
         )}
@@ -3228,6 +3265,64 @@ export default function BookingDetailScreen() {
         </Pressable>
       </Modal>
 
+      {/* Change status: lists allowed DB transitions (matches provider web PATCH rules) */}
+      <Modal
+        visible={showStatusPicker}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowStatusPicker(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}
+          onPress={() => setShowStatusPicker(false)}
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderRadius: 20, padding: 20, width: "100%", maxWidth: 360, maxHeight: "70%" }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>Change status</Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 16 }}>
+              Current: {labelForDbStatus(currentDbStatus)}
+            </Text>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {allowedStatusTargets.map((target) => {
+                const destructive = target === "cancelled";
+                return (
+                  <TouchableOpacity
+                    key={target}
+                    onPress={() => void applyDbStatusTransition(target)}
+                    style={{
+                      paddingVertical: 14,
+                      paddingHorizontal: 4,
+                      borderBottomWidth: 1,
+                      borderBottomColor: Colors.gray[100],
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 16,
+                        fontWeight: "600",
+                        color: destructive ? "#dc2626" : Colors.gray[900],
+                      }}
+                    >
+                      {labelForDbStatus(target)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity
+              onPress={() => setShowStatusPicker(false)}
+              style={{ paddingVertical: 14, alignItems: "center", marginTop: 8 }}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: Colors.gray[600], fontWeight: "500", fontSize: 15 }}>Close</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Cancel booking modal (cross-platform replacement for Alert.prompt) */}
       <Modal
         visible={showCancelModal}
@@ -3262,16 +3357,18 @@ export default function BookingDetailScreen() {
                 <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                disabled={patchLoading}
                 onPress={async () => {
-                  setShowCancelModal(false);
                   const version = (b as BookingDetail & { version?: number }).version;
                   const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
                     status: "cancelled",
                     cancellation_reason: cancelReason.trim() || "No reason provided",
                     ...(version !== undefined && { version }),
                   });
+                  // Close modal only after the PATCH completes so the user can retry on failure
                   if (err) {
                     if (isConflictError(err)) {
+                      setShowCancelModal(false);
                       Alert.alert(
                         "Conflict",
                         "This booking was modified by another user. Please refresh and try again.",
@@ -3282,11 +3379,16 @@ export default function BookingDetailScreen() {
                     }
                     return;
                   }
+                  setShowCancelModal(false);
                   await refresh();
                 }}
-                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: "#dc2626", alignItems: "center" }}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: patchLoading ? "#f87171" : "#dc2626", alignItems: "center" }}
               >
-                <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel Booking</Text>
+                {patchLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel Booking</Text>
+                )}
               </TouchableOpacity>
             </View>
           </Pressable>

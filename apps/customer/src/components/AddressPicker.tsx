@@ -1,6 +1,6 @@
 /**
- * Bottom-sheet address picker: shows saved addresses + Mapbox search.
- * Selected address sets coords for distance-based home feed.
+ * Bottom-sheet address picker: saved addresses + Mapbox search + optional map pin.
+ * Search suggestions render directly under the search field so they stay visible.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
@@ -16,6 +16,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  FlatList,
+  StyleSheet,
 } from "react-native";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
@@ -33,6 +35,7 @@ import { haptic } from "@/lib/haptics";
 import { useResponsive } from "@/hooks/useResponsive";
 import { RADIUS_INPUT, RADIUS_CARD } from "@/constants/layout";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { AddressMapPinModal } from "./AddressMapPinModal";
 
 export interface AddressPickerSelection {
   label: string;
@@ -61,6 +64,8 @@ interface AddressPickerProps {
   initialQuery?: string;
 }
 
+const SUGGESTIONS_MAX_HEIGHT = 240;
+
 export function AddressPicker({
   visible,
   onClose,
@@ -70,8 +75,7 @@ export function AddressPicker({
 }: AddressPickerProps) {
   const { contentPadding } = useResponsive();
   const { bundle } = useConfigBundle();
-  const defaultCountryLabel =
-    bundle?.meta?.tenant_region?.name?.trim() || "—";
+  const defaultCountryLabel = bundle?.meta?.tenant_region?.name?.trim() || "—";
   const { user } = useAuth();
   const {
     addresses,
@@ -83,6 +87,7 @@ export function AddressPicker({
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
   const [gettingLocation, setGettingLocation] = useState(false);
+  const [mapPinVisible, setMapPinVisible] = useState(false);
   const lastKnownCoordsRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -90,6 +95,7 @@ export function AddressPicker({
     if (!visible) {
       setQuery("");
       setSuggestions([]);
+      setMapPinVisible(false);
     } else if (initialQuery?.trim()) {
       setQuery(initialQuery.trim());
       if (initialQuery.trim().length >= 3) {
@@ -123,6 +129,38 @@ export function AddressPicker({
     }, 400);
   }, []);
 
+  const parseStructuredFromSuggestion = useCallback(
+    (s: GeocodeSuggestion): AddressPickerSelection["structured"] => {
+      const mapped = mapGeocodeFeatureToAddressParts(s, {
+        defaultCountryName: defaultCountryLabel,
+      });
+      const parts = (s.place_name || "").split(",").map((p) => p.trim()).filter(Boolean);
+      return {
+        address_line1: mapped.address_line1 || parts[0] || s.text || "",
+        city: mapped.city || parts[1] || "—",
+        state: mapped.state || undefined,
+        postal_code: mapped.postal_code || undefined,
+        country: mapped.country || defaultCountryLabel,
+      };
+    },
+    [defaultCountryLabel],
+  );
+
+  const applyGeocodeFeature = useCallback(
+    (s: GeocodeSuggestion) => {
+      const structured = parseStructuredFromSuggestion(s);
+      onSelect({
+        label: s.text,
+        latitude: s.center[1],
+        longitude: s.center[0],
+        displayName: s.place_name,
+        structured,
+      });
+      onClose();
+    },
+    [onSelect, onClose, parseStructuredFromSuggestion],
+  );
+
   const handleSavedSelect = useCallback(
     (addr: SavedAddress) => {
       haptic.light();
@@ -147,46 +185,43 @@ export function AddressPicker({
       } else {
         Alert.alert(
           "No location data",
-          "This address doesn’t have coordinates. Edit it in Settings → Saved addresses and choose a location on the map, or delete and add it again.",
-          [{ text: "OK" }]
+          "This address doesn’t have coordinates. Drop a pin on the map, or delete and add this address again.",
+          [{ text: "OK" }],
         );
       }
     },
     [onSelect, onClose],
   );
 
-  const parseStructuredFromSuggestion = useCallback(
-    (s: GeocodeSuggestion): AddressPickerSelection["structured"] => {
-      const mapped = mapGeocodeFeatureToAddressParts(s, {
-        defaultCountryName: defaultCountryLabel,
-      });
-      const parts = (s.place_name || "").split(",").map((p) => p.trim()).filter(Boolean);
-      return {
-        address_line1: mapped.address_line1 || parts[0] || s.text || "",
-        city: mapped.city || parts[1] || "—",
-        state: mapped.state || undefined,
-        postal_code: mapped.postal_code || undefined,
-        country: mapped.country || defaultCountryLabel,
-      };
-    },
-    [defaultCountryLabel],
-  );
-
   const handleSuggestionSelect = useCallback(
     (s: GeocodeSuggestion) => {
       haptic.light();
       Keyboard.dismiss();
-      const structured = parseStructuredFromSuggestion(s);
-      onSelect({
-        label: s.text,
-        latitude: s.center[1],
-        longitude: s.center[0],
-        displayName: s.place_name,
-        structured,
-      });
-      onClose();
+      applyGeocodeFeature(s);
     },
-    [onSelect, onClose, parseStructuredFromSuggestion],
+    [applyGeocodeFeature],
+  );
+
+  const handleMapPinCoordinates = useCallback(
+    async (lat: number, lng: number) => {
+      lastKnownCoordsRef.current = { latitude: lat, longitude: lng };
+      try {
+        const feature = await reverseGeocode(lat, lng);
+        if (!feature?.place_name) {
+          Alert.alert(
+            "Could not resolve address",
+            "Try moving the pin closer to a street or building, or use search.",
+          );
+          return;
+        }
+        haptic.light();
+        Keyboard.dismiss();
+        applyGeocodeFeature(feature);
+      } catch {
+        Alert.alert("Could not resolve address", "Check your connection and try again.");
+      }
+    },
+    [applyGeocodeFeature],
   );
 
   const resolveTypedAddress = useCallback(async () => {
@@ -202,7 +237,7 @@ export function AddressPicker({
         handleSuggestionSelect(results[0]);
         return;
       }
-      Alert.alert("No address found", "Try a more specific street/suburb/city query.");
+      Alert.alert("No address found", "Try a more specific street, suburb, or city.");
     } finally {
       setSearching(false);
     }
@@ -266,6 +301,31 @@ export function AddressPicker({
     }
   }, [onSelect, onUseCurrentLocation, onClose, gettingLocation, defaultCountryLabel]);
 
+  const searchActive = query.trim().length >= 2;
+  const showSuggestionPanel = searchActive && (searching || suggestions.length > 0);
+  const showNoMatches = searchActive && !searching && suggestions.length === 0;
+
+  const renderSuggestionItem = useCallback(
+    ({ item }: { item: GeocodeSuggestion }) => (
+      <TouchableOpacity
+        onPress={() => handleSuggestionSelect(item)}
+        style={styles.suggestionRow}
+        accessibilityRole="button"
+      >
+        <Ionicons name="location-outline" size={18} color={Colors.gray[500]} style={{ marginRight: 10 }} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={2}>
+            {item.text}
+          </Text>
+          <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }} numberOfLines={2}>
+            {item.place_name}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    ),
+    [handleSuggestionSelect],
+  );
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable
@@ -273,17 +333,18 @@ export function AddressPicker({
         onPress={onClose}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "padding"}
-          style={{ width: "100%" }}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 20}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ width: "100%", maxHeight: Platform.OS === "android" ? "92%" : "90%" }}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 48 : 0}
         >
           <Pressable
             style={{
               backgroundColor: Colors.white,
               borderTopLeftRadius: RADIUS_CARD,
               borderTopRightRadius: RADIUS_CARD,
-              maxHeight: "80%",
-              paddingBottom: 34,
+              flexGrow: 1,
+              maxHeight: "100%",
+              paddingBottom: 24,
             }}
             onPress={(e) => e.stopPropagation()}
           >
@@ -291,189 +352,291 @@ export function AddressPicker({
               <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.gray[300] }} />
             </View>
 
-            <View style={{ paddingHorizontal: contentPadding }}>
-            <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>
-              Select address
-            </Text>
+            <View style={{ paddingHorizontal: contentPadding, flexShrink: 0 }}>
+              <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], marginBottom: 12 }}>
+                Select address
+              </Text>
 
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: Colors.gray[100],
-                borderRadius: RADIUS_INPUT,
-                paddingHorizontal: 14,
-                marginBottom: 16,
-              }}
-            >
-              <Ionicons name="search-outline" size={18} color={Colors.gray[400]} />
-              <TextInput
-                style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 10, fontSize: 15, color: Colors.gray[900] }}
-                placeholder="Search for an address..."
-                placeholderTextColor={Colors.gray[400]}
-                value={query}
-                onChangeText={handleSearch}
-                onSubmitEditing={() => {
-                  void resolveTypedAddress();
-                }}
-                autoFocus={false}
-                returnKeyType="search"
-              />
-              {searching && <ActivityIndicator size="small" color={Colors.primary} />}
-            </View>
-
-            <TouchableOpacity
-              onPress={handleUseCurrentLocation}
-              disabled={gettingLocation}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                paddingVertical: 14,
-                borderBottomWidth: 1,
-                borderColor: Colors.gray[100],
-              }}
-            >
               <View
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: Colors.primaryLight,
+                  flexDirection: "row",
                   alignItems: "center",
-                  justifyContent: "center",
+                  backgroundColor: Colors.gray[100],
+                  borderRadius: RADIUS_INPUT,
+                  paddingHorizontal: 14,
+                  borderWidth: searchActive ? 1.5 : 0,
+                  borderColor: searchActive ? Colors.primary + "55" : "transparent",
                 }}
               >
-                {gettingLocation ? (
-                  <ActivityIndicator size="small" color={Colors.primary} />
-                ) : (
-                  <Ionicons name="locate-outline" size={18} color={Colors.primary} />
-                )}
+                <Ionicons name="search-outline" size={18} color={Colors.gray[400]} />
+                <TextInput
+                  style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 10, fontSize: 15, color: Colors.gray[900] }}
+                  placeholder="Search street, suburb, city…"
+                  placeholderTextColor={Colors.gray[400]}
+                  value={query}
+                  onChangeText={handleSearch}
+                  onSubmitEditing={() => {
+                    void resolveTypedAddress();
+                  }}
+                  returnKeyType="search"
+                  autoCorrect={false}
+                />
+                {searching && <ActivityIndicator size="small" color={Colors.primary} />}
               </View>
-              <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.primary, marginLeft: 10 }}>
-                {gettingLocation ? "Getting location…" : "Use current location"}
-              </Text>
-            </TouchableOpacity>
-          </View>
 
-          <ScrollView
-            style={{ maxHeight: 320 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={true}
-          >
-            {user && addressesError && !addressesLoading && (
-              <View style={{ paddingHorizontal: contentPadding, paddingTop: 8, paddingBottom: 8 }}>
-                <Text style={{ fontSize: 13, color: "#991B1B", marginBottom: 10 }}>{addressesError}</Text>
-                <TouchableOpacity onPress={() => void reloadAddresses()} accessibilityRole="button">
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Try again</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {user && addresses.length > 0 && (
-              <View style={{ paddingHorizontal: contentPadding, paddingTop: 8, marginBottom: 8 }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>
-                  Saved addresses
+              {searchActive ? (
+                <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 8 }}>
+                  Matches appear below as you type
                 </Text>
-                {addresses.map((item) => (
-                  <TouchableOpacity
-                    key={item.id}
-                    onPress={() => handleSavedSelect(item)}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      paddingVertical: 14,
-                      borderBottomWidth: 1,
-                      borderColor: "#F3F4F6",
-                    }}
-                  >
-                    <View
+              ) : null}
+
+              {/* Suggestions anchored directly under the search field */}
+              {showSuggestionPanel ? (
+                <View style={styles.suggestionPanel}>
+                  <Text style={styles.suggestionPanelTitle}>Search results</Text>
+                  {searching && suggestions.length === 0 ? (
+                    <View style={{ paddingVertical: 28, alignItems: "center", justifyContent: "center" }}>
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={suggestions}
+                      keyExtractor={(item, index) => `${item.place_name}-${index}`}
+                      renderItem={renderSuggestionItem}
+                      keyboardShouldPersistTaps="handled"
+                      style={{ maxHeight: SUGGESTIONS_MAX_HEIGHT }}
+                      nestedScrollEnabled
+                    />
+                  )}
+                </View>
+              ) : null}
+
+              {showNoMatches ? (
+                <View style={styles.noMatchesBox}>
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={18}
+                    color={Colors.gray[400]}
+                    style={{ marginRight: 8, marginTop: 1 }}
+                  />
+                  <Text style={styles.noMatchesText}>
+                    No matches yet. Keep typing, press search on the keyboard, or use the map pin.
+                  </Text>
+                </View>
+              ) : null}
+
+              <TouchableOpacity
+                onPress={handleUseCurrentLocation}
+                disabled={gettingLocation}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingVertical: 14,
+                  marginTop: showSuggestionPanel || showNoMatches ? 8 : 12,
+                  borderBottomWidth: 1,
+                  borderColor: Colors.gray[100],
+                }}
+              >
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: Colors.primaryLight,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {gettingLocation ? (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  ) : (
+                    <Ionicons name="locate-outline" size={18} color={Colors.primary} />
+                  )}
+                </View>
+                <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.primary, marginLeft: 10 }}>
+                  {gettingLocation ? "Getting location…" : "Use current location"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setMapPinVisible(true);
+                }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingVertical: 14,
+                  borderBottomWidth: 1,
+                  borderColor: Colors.gray[100],
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Drop pin on map"
+              >
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: Colors.gray[100],
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="map-outline" size={18} color={Colors.gray[700]} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>Drop pin on map</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
+                    Tap or drag the pin, then confirm
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={{ flexGrow: 1 }}
+              contentContainerStyle={{ paddingBottom: 16, flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator
+            >
+              {user && addressesError && !addressesLoading && (
+                <View style={{ paddingHorizontal: contentPadding, paddingTop: 8, paddingBottom: 8 }}>
+                  <Text style={{ fontSize: 13, color: "#991B1B", marginBottom: 10 }}>{addressesError}</Text>
+                  <TouchableOpacity onPress={() => void reloadAddresses()} accessibilityRole="button">
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Try again</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {user && addresses.length > 0 && (
+                <View style={{ paddingHorizontal: contentPadding, paddingTop: 12 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>
+                    Saved addresses
+                  </Text>
+                  {addresses.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => handleSavedSelect(item)}
                       style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 18,
-                        backgroundColor: Colors.gray[100],
+                        flexDirection: "row",
                         alignItems: "center",
-                        justifyContent: "center",
-                        marginRight: 10,
+                        paddingVertical: 14,
+                        borderBottomWidth: 1,
+                        borderColor: "#F3F4F6",
                       }}
                     >
-                      <Ionicons
-                        name={item.is_default ? "star" : "home-outline"}
-                        size={16}
-                        color={item.is_default ? "#F59E0B" : Colors.gray[500]}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{item.label}</Text>
-                      <Text style={{ fontSize: 12, color: Colors.gray[400] }} numberOfLines={1}>
-                        {item.address_line1}, {item.city}
-                      </Text>
-                    </View>
-                    {item.is_default && (
                       <View
                         style={{
-                          backgroundColor: "#FEF3C7",
-                          borderRadius: 999,
-                          paddingHorizontal: 8,
-                          paddingVertical: 2,
+                          width: 36,
+                          height: 36,
+                          borderRadius: 18,
+                          backgroundColor: Colors.gray[100],
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginRight: 10,
                         }}
                       >
-                        <Text style={{ fontSize: 10, fontWeight: "600", color: "#92400E" }}>Default</Text>
+                        <Ionicons
+                          name={item.is_default ? "star" : "home-outline"}
+                          size={16}
+                          color={item.is_default ? "#F59E0B" : Colors.gray[500]}
+                        />
                       </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{item.label}</Text>
+                        <Text style={{ fontSize: 12, color: Colors.gray[400] }} numberOfLines={1}>
+                          {item.address_line1}, {item.city}
+                        </Text>
+                      </View>
+                      {item.is_default && (
+                        <View
+                          style={{
+                            backgroundColor: "#FEF3C7",
+                            borderRadius: 999,
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                          }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: "600", color: "#92400E" }}>Default</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
-            {suggestions.length > 0 && (
-              <View style={{ paddingHorizontal: contentPadding, marginBottom: 16 }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[500], marginBottom: 8 }}>
-                  Search results
-                </Text>
-                {suggestions.map((item, index) => (
-                  <TouchableOpacity
-                    key={`${index}-${item.place_name}`}
-                    onPress={() => handleSuggestionSelect(item)}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      paddingVertical: 14,
-                      borderBottomWidth: 1,
-                      borderColor: Colors.gray[100],
-                    }}
-                  >
-                    <Ionicons name="location-outline" size={18} color={Colors.gray[500]} style={{ marginRight: 10 }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
-                        {item.text}
-                      </Text>
-                      <Text style={{ fontSize: 12, color: Colors.gray[400] }} numberOfLines={1}>
-                        {item.place_name}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+              {addressesLoading && addresses.length === 0 && (
+                <View style={{ padding: 24, alignItems: "center" }}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                </View>
+              )}
 
-            {addressesLoading && addresses.length === 0 && (
-              <View style={{ padding: 24, alignItems: "center" }}>
-                <ActivityIndicator size="small" color={Colors.primary} />
-              </View>
-            )}
-
-            {!addressesLoading && !addressesError && addresses.length === 0 && suggestions.length === 0 && (
-              <View style={{ padding: 24, alignItems: "center" }}>
-                <Text style={{ fontSize: 13, color: Colors.gray[400], textAlign: "center" }}>
-                  Search for an address above or use your current location
-                </Text>
-              </View>
-            )}
-          </ScrollView>
+              {!addressesLoading && !addressesError && addresses.length === 0 && !searchActive && (
+                <View style={{ paddingHorizontal: contentPadding, paddingVertical: 24, alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: Colors.gray[400], textAlign: "center", lineHeight: 18 }}>
+                    Search above, use your location, or drop a pin. Saved addresses appear here for quick reuse.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
           </Pressable>
         </KeyboardAvoidingView>
       </Pressable>
+
+      <AddressMapPinModal
+        visible={mapPinVisible}
+        onClose={() => setMapPinVisible(false)}
+        onPickCoordinates={(lat, lng) => void handleMapPinCoordinates(lat, lng)}
+        initialCoordinate={lastKnownCoordsRef.current}
+      />
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  suggestionPanel: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: 12,
+    backgroundColor: Colors.gray[50],
+    overflow: "hidden",
+  },
+  suggestionPanelTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.gray[500],
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  suggestionRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+  },
+  noMatchesBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.gray[50],
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+  },
+  noMatchesText: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.gray[600],
+    lineHeight: 18,
+  },
+});

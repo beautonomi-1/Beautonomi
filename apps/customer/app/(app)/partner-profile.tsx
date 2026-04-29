@@ -1042,9 +1042,13 @@ export default function PartnerProfileScreen() {
   const { selectedAddress } = useSelectedAddress();
   const { coords } = useLocation();
 
+  // Accept provider_id as fallback when no slug is passed (e.g. on-demand deep links).
+  // The public API now resolves UUIDs in the [slug] route segment.
+  const effectiveSlug = (slug || paramProviderId) ?? "";
+
   /* ── Data Loading ── */
   const load = useCallback(async () => {
-    if (!slug) {
+    if (!effectiveSlug) {
       setLoading(false);
       setError("Provider not found — missing profile link.");
       return;
@@ -1062,9 +1066,9 @@ export default function PartnerProfileScreen() {
     const qs = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : "";
     try {
       const [provRes, svcRes, pkRes] = await Promise.all([
-        api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(slug)}${qs}`),
-        api.get<ProviderServicesResponse>(`/api/public/providers/${encodeURIComponent(slug)}/services`),
-        api.get<{ data?: unknown } | unknown[]>(`/api/public/providers/${encodeURIComponent(slug)}/packages`),
+        api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}${qs}`),
+        api.get<ProviderServicesResponse>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/services`),
+        api.get<{ data?: unknown } | unknown[]>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/packages`),
       ]);
       if (provRes.error) {
         setError(provRes.error.message || "Provider not found");
@@ -1102,7 +1106,7 @@ export default function PartnerProfileScreen() {
       setLoading(false);
     }
   }, [
-    slug,
+    effectiveSlug,
     paramLat,
     paramLng,
     selectedAddress?.latitude,
@@ -1122,9 +1126,9 @@ export default function PartnerProfileScreen() {
 
   /* ── Load reviews when tab is active ── */
   useEffect(() => {
-    if (activeTab !== "reviews" || !slug || reviews.length > 0) return;
+    if (activeTab !== "reviews" || !effectiveSlug || reviews.length > 0) return;
     setReviewsLoading(true);
-    api.get<{ data?: { reviews?: Review[] } | Review[]; reviews?: Review[] }>(`/api/public/providers/${encodeURIComponent(slug)}/reviews`)
+    api.get<{ data?: { reviews?: Review[] } | Review[]; reviews?: Review[] }>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/reviews`)
       .then((res) => {
         if (res.error) { setReviews([]); return; }
         const raw = res.data as Record<string, unknown> | null;
@@ -1160,14 +1164,14 @@ export default function PartnerProfileScreen() {
         setReviews([]);
       })
       .finally(() => setReviewsLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/slug; avoid refetch when reviews populated
-  }, [activeTab, slug]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/effectiveSlug; avoid refetch when reviews populated
+  }, [activeTab, effectiveSlug]);
 
   /* ── Load staff when tab is active ── */
   useEffect(() => {
-    if (activeTab !== "team" || !slug || staff.length > 0) return;
+    if (activeTab !== "team" || !effectiveSlug || staff.length > 0) return;
     setStaffLoading(true);
-    api.get<StaffMember[] | { data: StaffMember[] }>(`/api/public/providers/${encodeURIComponent(slug)}/staff`)
+    api.get<StaffMember[] | { data: StaffMember[] }>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/staff`)
       .then((res) => {
         if (res.error) return;
         const raw = res.data;
@@ -1175,14 +1179,14 @@ export default function PartnerProfileScreen() {
       })
       .catch(() => {})
       .finally(() => setStaffLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/slug; avoid refetch when staff populated
-  }, [activeTab, slug]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/effectiveSlug; avoid refetch when staff populated
+  }, [activeTab, effectiveSlug]);
 
   /* ── Load memberships when tab is active ── */
   useEffect(() => {
-    if (activeTab !== "memberships" || !slug || memberships.length > 0) return;
+    if (activeTab !== "memberships" || !effectiveSlug || memberships.length > 0) return;
     setMembershipsLoading(true);
-    api.get<{ data?: MembershipPlan[]; plans?: MembershipPlan[] }>(`/api/public/providers/${encodeURIComponent(slug)}/membership-plans`)
+    api.get<{ data?: MembershipPlan[]; plans?: MembershipPlan[] }>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/membership-plans`)
       .then((res) => {
         if (res.error) return;
         const raw = res.data as Record<string, unknown> | null;
@@ -1191,15 +1195,15 @@ export default function PartnerProfileScreen() {
       })
       .catch(() => {})
       .finally(() => setMembershipsLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/slug; avoid refetch when memberships populated
-  }, [activeTab, slug]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/effectiveSlug; avoid refetch when memberships populated
+  }, [activeTab, effectiveSlug]);
 
   /* ── Load products when Products tab is active (provider slug API returns variants) ── */
   useEffect(() => {
-    if (activeTab !== "products" || !slug) return;
+    if (activeTab !== "products" || !effectiveSlug) return;
     setProviderProductsLoading(true);
     setProviderProducts([]);
-    api.get<PublicProviderProduct[]>(`/api/public/providers/${encodeURIComponent(slug)}/products`)
+    api.get<PublicProviderProduct[]>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/products`)
       .then((res) => {
         if (res.error) return;
         const raw = res.data;
@@ -1207,7 +1211,7 @@ export default function PartnerProfileScreen() {
       })
       .catch(() => {})
       .finally(() => setProviderProductsLoading(false));
-  }, [activeTab, slug]);
+  }, [activeTab, effectiveSlug]);
 
   /* ── Wishlist ── */
   useEffect(() => {
@@ -1244,10 +1248,10 @@ export default function PartnerProfileScreen() {
 
   /* ── Share ── */
   const handleShare = useCallback(() => {
-    if (!provider || !slug) return;
+    if (!provider || !effectiveSlug) return;
     void shareProvider({
       businessName: provider.business_name,
-      slug,
+      slug: provider.slug || effectiveSlug,
       webBaseUrl: APP_URL,
       description: provider.description,
       topCategory: provider.categories?.[0] ?? null,
@@ -1359,14 +1363,15 @@ export default function PartnerProfileScreen() {
   /* ── Book (pass ad attribution when user came from sponsored result) ── */
   const bookParams = useCallback(
     (overrides?: { service_id?: string; duration_minutes?: string }) => {
-      const p: Record<string, string> = { slug: slug as string };
+      const resolvedSlug = provider?.slug || slug || "";
+      const p: Record<string, string> = { slug: resolvedSlug };
       if (paramCampaignId) p.campaign_id = paramCampaignId;
       if (paramProviderId) p.provider_id = paramProviderId;
       if (overrides?.service_id) p.service_id = overrides.service_id;
       if (overrides?.duration_minutes) p.duration_minutes = overrides.duration_minutes;
       return p;
     },
-    [slug, paramCampaignId, paramProviderId]
+    [provider?.slug, slug, paramCampaignId, paramProviderId]
   );
 
   const handleBookService = useCallback(
@@ -1382,9 +1387,13 @@ export default function PartnerProfileScreen() {
 
   const handleBook = useCallback(() => {
     haptic.medium();
+    // Guard: don't navigate to book if we don't have a resolved slug — the book
+    // screen will get stuck in an infinite loading skeleton with an empty slug.
+    const resolvedSlug = provider?.slug || slug || "";
+    if (!resolvedSlug) return;
     if (services?.categories?.[0]?.services?.[0]) handleBookService(services.categories[0].services[0]);
     else router.push({ pathname: "/(app)/book", params: bookParams() });
-  }, [services, handleBookService, bookParams]);
+  }, [services, handleBookService, bookParams, provider?.slug, slug]);
 
   /* ── Gallery ── */
   const images = (() => {

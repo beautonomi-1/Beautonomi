@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
+
+// All conversation data reads use the admin client so provider_staff are not
+// blocked by RLS policies that scope reads to the authenticated JWT's user_id.
 
 /**
  * GET /api/provider/conversations/[id]
@@ -16,22 +18,19 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const permissionCheck = await requirePermission("view_messages", request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const { id: conversationId } = await params;
     if (!conversationId) {
       return notFoundResponse("Conversation ID is required");
     }
     const supabase = await getSupabaseServer(request);
+    const supabaseAdmin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    const { data: conversation, error: convError } = await supabase
+    const { data: conversation, error: convError } = await supabaseAdmin
       .from("conversations")
       .select("id, customer_id, provider_id, booking_id, last_message_at, last_message_preview, unread_count_provider, created_at")
       .eq("id", conversationId)
@@ -42,8 +41,6 @@ export async function GET(
       return notFoundResponse("Conversation not found");
     }
 
-    // Fetch customer info
-    const supabaseAdmin = await getSupabaseAdmin();
     const { data: customer } = await supabaseAdmin
       .from("users")
       .select("id, full_name, email, phone, avatar_url")
@@ -57,8 +54,7 @@ export async function GET(
       customerName = customer.email;
     }
 
-    // Fetch messages
-    const { data: messages, error: msgError } = await supabase
+    const { data: messages, error: msgError } = await supabaseAdmin
       .from("messages")
       .select("id, conversation_id, sender_id, sender_role, content, attachments, is_read, read_at, created_at")
       .eq("conversation_id", conversationId)
@@ -66,9 +62,6 @@ export async function GET(
 
     if (msgError) throw msgError;
 
-    // Mark unread customer messages as read with service role. Provider staff
-    // cannot update customer-owned message rows through RLS, but read receipts
-    // must persist for the customer's double-check UI.
     await supabaseAdmin
       .from("messages")
       .update({ is_read: true, read_at: new Date().toISOString() })
@@ -131,24 +124,20 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const permissionCheck = await requirePermission("view_messages", request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const { id: conversationId } = await params;
     if (!conversationId) {
       return notFoundResponse("Conversation ID is required");
     }
     const supabase = await getSupabaseServer(request);
+    const supabaseAdmin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    // Verify the conversation belongs to this provider
-    const { data: conversation, error: fetchError } = await supabase
+    const { data: conversation, error: fetchError } = await supabaseAdmin
       .from("conversations")
       .select("id, customer_id, provider_id")
       .eq("id", conversationId)
@@ -159,9 +148,7 @@ export async function DELETE(
       return notFoundResponse("Conversation not found or you don't have permission to delete it");
     }
 
-    // Soft delete: Delete the conversation (hard delete for now, can be changed to soft delete later)
-    // For soft delete, we could add a `provider_deleted_at` field and filter it out in queries
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await supabaseAdmin
       .from("conversations")
       .delete()
       .eq("id", conversationId);

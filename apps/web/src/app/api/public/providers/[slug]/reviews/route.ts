@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 /**
@@ -16,33 +16,29 @@ export async function GET(
     if (tenantRes instanceof Response) return tenantRes;
     const { tenantId } = tenantRes;
 
-    const supabase = await getSupabaseServer();
-    const { slug } = await params;
+    const supabase = getSupabaseAdmin();
+    const rawSlug = (await params).slug;
+    let slug: string;
+    try { slug = decodeURIComponent(rawSlug); } catch { slug = rawSlug; }
     const { searchParams } = new URL(request.url);
     const rawPage = parseInt(searchParams.get("page") || "1", 10);
     const rawLimit = parseInt(searchParams.get("limit") || "20", 10);
     const page = Number.isFinite(rawPage) ? Math.max(1, rawPage) : 1;
     const limit = Number.isFinite(rawLimit) ? Math.min(50, Math.max(1, rawLimit)) : 20;
     const offset = (page - 1) * limit;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
 
-    // First get the provider ID from slug
+    // Use admin client to bypass RLS — consistent with the SSR profile loader
     const { data: provider, error: providerError } = await supabase
       .from("providers")
       .select("id")
-      .eq("slug", slug)
-      .eq("status", "active")
       .eq("tenant_id", tenantId)
-      .single();
+      .eq(isUuid ? "id" : "slug", slug)
+      .maybeSingle();
 
     if (providerError || !provider) {
       return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Provider not found",
-            code: "NOT_FOUND",
-          },
-        },
+        { data: null, error: { message: "Provider not found", code: "NOT_FOUND" } },
         { status: 404 }
       );
     }

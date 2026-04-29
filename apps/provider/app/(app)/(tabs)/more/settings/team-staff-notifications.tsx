@@ -2,11 +2,12 @@
  * Team notifications — list staff and open per-member notification settings (web parity:
  * GET/PATCH /api/provider/staff/[id]/notifications).
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { View, Text, TouchableOpacity, FlatList } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -32,10 +33,25 @@ const ROLE_LABEL: Record<string, string> = {
 
 export default function TeamStaffNotificationsListScreen() {
   const router = useRouter();
+  const { provider, selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
-  const { data: staffRaw, loading, error: staffError, refresh } = useApi<StaffMember[] | { data?: StaffMember[] }>(
-    "/api/provider/staff"
-  );
+
+  const staffUrl = useMemo(() => {
+    return selectedLocationId
+      ? `/api/provider/staff?location_id=${encodeURIComponent(selectedLocationId)}`
+      : "/api/provider/staff";
+  }, [selectedLocationId]);
+
+  const { data: staffRaw, loading, error: staffError, refresh } = useApi<
+    StaffMember[] | { data?: StaffMember[] }
+  >(staffUrl);
+
+  const headerSubtitle = useMemo(() => {
+    const base = "Email, SMS & scheduling alerts per person";
+    if (!selectedLocationId || !provider?.locations?.length) return base;
+    const loc = provider.locations.find((locRow) => locRow.id === selectedLocationId);
+    return loc?.name ? `${base} · ${loc.name}` : base;
+  }, [selectedLocationId, provider?.locations]);
 
   const staffList: StaffMember[] = Array.isArray(staffRaw)
     ? staffRaw
@@ -61,7 +77,7 @@ export default function TeamStaffNotificationsListScreen() {
   if (staffError && !staffRaw) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Team notifications" showBack subtitle="Per-member preferences" />
+        <ScreenHeader title="Team notifications" showBack subtitle={headerSubtitle} />
         <ErrorState message={staffError} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -69,7 +85,7 @@ export default function TeamStaffNotificationsListScreen() {
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
-      <ScreenHeader title="Team notifications" showBack subtitle="Email, SMS & scheduling alerts per person" />
+      <ScreenHeader title="Team notifications" showBack subtitle={headerSubtitle} />
       {staffList.length === 0 ? (
         <EmptyState
           icon="people-outline"

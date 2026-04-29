@@ -16,10 +16,22 @@ export type ProviderNotificationNavPayload = {
     conversation_id?: string;
     product_order_id?: string;
     order_id?: string;
+    on_demand_request_id?: string;
     ticket_id?: string;
     [key: string]: unknown;
   };
 };
+
+function getLinkParam(link: string, key: string): string {
+  if (!link) return "";
+  try {
+    const parsed = new URL(link, "https://beautonomi.local");
+    return parsed.searchParams.get(key)?.trim() ?? "";
+  } catch {
+    const match = link.match(new RegExp(`[?&]${key}=([^&#]+)`, "i"));
+    return match?.[1] ? decodeURIComponent(match[1]).trim() : "";
+  }
+}
 
 /**
  * Map notification link/data to provider app route and navigate.
@@ -34,7 +46,9 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
       ? data.product_order_id.trim()
       : typeof data.order_id === "string" && data.order_id.trim()
         ? data.order_id.trim()
-      : "";
+        : getLinkParam(link, "product_order_id") ||
+          getLinkParam(link, "order_id") ||
+          getLinkParam(link, "order");
 
   const ticketIdFromData = typeof data.ticket_id === "string" && data.ticket_id.trim() ? data.ticket_id.trim() : "";
   if (ticketIdFromData) {
@@ -65,6 +79,19 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     );
     return;
   }
+  const nType = (n.type ?? "").toLowerCase();
+  if (nType.includes("on_demand") || nType.includes("on-demand") || link.includes("on-demand")) {
+    const reqId =
+      (typeof data.on_demand_request_id === "string" ? data.on_demand_request_id.trim() : "") ||
+      getLinkParam(link, "on_demand_request_id") ||
+      getLinkParam(link, "request_id");
+    if (reqId) {
+      router.push(`/(app)/on-demand/incoming/${reqId}` as never);
+    } else {
+      router.push("/(app)/(tabs)/bookings" as never);
+    }
+    return;
+  }
   if (link) {
     const idMatch = link.match(/\/bookings\/([a-f0-9-]+)/i) || link.match(/\/booking\/([a-f0-9-]+)/i);
     if (idMatch) {
@@ -85,10 +112,7 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
       return;
     }
     if (link.includes("ecommerce/orders") || link.includes("/product-orders")) {
-      const q = link.match(/order=([a-f0-9-]+)/i);
-      const oid =
-        q?.[1] ??
-        (typeof data.order_id === "string" && data.order_id.trim() ? data.order_id.trim() : "");
+      const oid = productOrderIdFromData;
       if (oid) {
         router.push(`/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(oid)}` as never);
       } else {
@@ -113,7 +137,10 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     return;
   }
 
-  const nType = (n.type ?? "").toLowerCase();
+  if (nType.includes("waiting_room") || nType.includes("front_desk") || nType.includes("check_in") || nType.includes("checkin")) {
+    router.push("/(app)/(tabs)/more/waiting-room" as never);
+    return;
+  }
   if (nType.includes("booking") || nType.includes("appointment")) {
     // Prefer the bookings hub over calendar so pending/new-booking alerts are not
     // confused with a calendar-only "front desk" view.
@@ -128,8 +155,14 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     router.push("/(app)/(tabs)/more/reviews" as never);
     return;
   }
-  if (nType.includes("payment") || nType.includes("payout")) {
-    router.push("/(app)/(tabs)/more/settings/payments" as never);
+  if (nType.includes("payout") || nType.includes("earning")) {
+    // Payouts and earnings → Finance screen (consistent with push notification routing)
+    router.push("/(app)/(tabs)/more/finance" as never);
+    return;
+  }
+  if (nType.includes("payment")) {
+    // Payment notifications → Finance screen so provider sees the transaction
+    router.push("/(app)/(tabs)/more/finance" as never);
     return;
   }
 

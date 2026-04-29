@@ -172,10 +172,11 @@ export default function ChatScreen() {
   // height on iOS; adding `insets.top` reproduces `useHeaderHeight`
   // closely without pulling in `@react-navigation/elements`.
   const headerHeight = insets.top + 44;
-  const params = useLocalSearchParams<{ id?: string; provider_id?: string; provider_name?: string }>();
+  const params = useLocalSearchParams<{ id?: string; provider_id?: string; provider_name?: string; booking_id?: string }>();
   const id = params.id;
   const providerId = params.provider_id;
   const providerName = params.provider_name;
+  const bookingIdParam = params.booking_id;
   const { user, loading: authLoading, refreshSession } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const didRefreshSession = useRef(false);
@@ -253,6 +254,7 @@ export default function ChatScreen() {
       try {
         const res = await api.post<{ id: string; created?: boolean }>("/api/me/conversations/create", {
           provider_id: providerId,
+          ...(bookingIdParam ? { booking_id: bookingIdParam } : {}),
         });
         if (cancelled) return;
         if (res.error || !res.data?.id) {
@@ -269,7 +271,7 @@ export default function ChatScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [user, id, providerId]);
+  }, [user, id, providerId, bookingIdParam]);
 
   // §UI-audit 2026-04: when `id` changes (e.g. opening a second thread
   // via a push-notification deep link without unmounting this screen),

@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
             id: providerClientId || c.id,
             title: (c as any).full_name || (c as any).email || "Unknown",
             subtitle: (c as any).email || (c as any).phone,
-            url: `/provider/clients?customerId=${(c as any).id}`,
+            url: `/provider/clients/${providerClientId || (c as any).id}`,
           });
         }
       }
@@ -144,9 +144,7 @@ export async function GET(request: NextRequest) {
         id: b.id as string,
         title: (b.booking_number as string) || "Booking",
         subtitle: customerName ? `${customerName} · ${scheduledDate}` : scheduledDate,
-        url: `/provider/calendar?date=${
-          (b.scheduled_start_at as string | undefined)?.split("T")[0] || ""
-        }&appointment=${b.id as string}`,
+        url: `/provider/bookings/${b.id as string}`,
         ...(isGroup ? { is_group_booking: true, group_booking_id: groupId } : {}),
       });
     };

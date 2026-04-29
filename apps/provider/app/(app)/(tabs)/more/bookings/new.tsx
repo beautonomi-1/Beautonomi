@@ -15,6 +15,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Location from "expo-location";
 import { format, addDays, isSameDay, parseISO, startOfDay } from "date-fns";
 import { useApiPost, useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -35,7 +36,9 @@ import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
+import { AddressMapPinModal } from "@/components/AddressMapPinModal";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
+import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -410,6 +413,8 @@ export default function NewBookingScreen() {
   const [addressCountry, setAddressCountry] = useState("");
   const [addressLatitude, setAddressLatitude] = useState<number | null>(null);
   const [addressLongitude, setAddressLongitude] = useState<number | null>(null);
+  const [addressMapPinOpen, setAddressMapPinOpen] = useState(false);
+  const [locatingClientAddress, setLocatingClientAddress] = useState(false);
   const [travelFee, setTravelFee] = useState("");
   const [tipAmount, setTipAmount] = useState("");
   const [notes, setNotes] = useState("");
@@ -454,6 +459,70 @@ export default function NewBookingScreen() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [, setCheckingAvailability] = useState(false);
+
+  const homeAddressCountryFallback = useMemo(
+    () => addressCountry.trim() || bundle?.meta?.tenant_region?.name?.trim() || "South Africa",
+    [addressCountry, bundle?.meta?.tenant_region?.name],
+  );
+
+  const handleAtHomeDropPin = useCallback(
+    async (lat: number, lng: number) => {
+      const mapped = await reverseGeocodeCoordinates(lat, lng, homeAddressCountryFallback);
+      if (mapped) {
+        setAddressSearchValue(`${mapped.address_line1}, ${mapped.city}`);
+        setAddressLine1(mapped.address_line1);
+        setAddressCity(mapped.city);
+        setAddressStateProv(mapped.state);
+        setAddressPostalCode(mapped.postal_code);
+        setAddressCountry(mapped.country);
+        setAddressLatitude(mapped.latitude);
+        setAddressLongitude(mapped.longitude);
+      } else {
+        setAddressLatitude(lat);
+        setAddressLongitude(lng);
+      }
+      setAddressMapPinOpen(false);
+    },
+    [homeAddressCountryFallback],
+  );
+
+  const handleAtHomeCurrentLocation = useCallback(async () => {
+    if (locatingClientAddress) return;
+    setLocatingClientAddress(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Location permission",
+          "Allow location to fill the client address from your current position.",
+        );
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const mapped = await reverseGeocodeCoordinates(
+        loc.coords.latitude,
+        loc.coords.longitude,
+        homeAddressCountryFallback,
+      );
+      if (mapped) {
+        setAddressSearchValue(`${mapped.address_line1}, ${mapped.city}`);
+        setAddressLine1(mapped.address_line1);
+        setAddressCity(mapped.city);
+        setAddressStateProv(mapped.state);
+        setAddressPostalCode(mapped.postal_code);
+        setAddressCountry(mapped.country);
+        setAddressLatitude(mapped.latitude);
+        setAddressLongitude(mapped.longitude);
+      } else {
+        setAddressLatitude(loc.coords.latitude);
+        setAddressLongitude(loc.coords.longitude);
+      }
+    } catch (e) {
+      Alert.alert("Location error", e instanceof Error ? e.message : "Could not read location.");
+    } finally {
+      setLocatingClientAddress(false);
+    }
+  }, [locatingClientAddress, homeAddressCountryFallback]);
 
   // §Provider-audit 2026-04 (round 2): draft persistence reworked to
   // surface an explicit "Resume draft" banner instead of silently
@@ -1753,13 +1822,13 @@ export default function NewBookingScreen() {
                 <View style={twStyle("mb-4")}>
                   <SectionLabel label="Client address" required />
                   <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-                    Search with Mapbox, then pick a result so the pin and travel distance are correct.
+                    Search, drop a pin on the map, or use current location — pick a result so the pin and travel distance are correct.
                   </Text>
                   <AddressAutocomplete
                     label="Search address"
                     value={addressSearchValue}
                     countryCode={mapboxCountryIso}
-                    geocodeTypes={["address"]}
+                    defaultCountryName={homeAddressCountryFallback}
                     placeholder="Start typing street or place…"
                     onSelect={(parsed) => {
                       setAddressSearchValue(parsed.full_address);
@@ -1774,7 +1843,43 @@ export default function NewBookingScreen() {
                     onBlur={(q) => {
                       if (!addressLine1.trim() && q) setAddressLine1(q);
                     }}
+                    proximity={
+                      addressLatitude != null && addressLongitude != null
+                        ? { latitude: addressLatitude, longitude: addressLongitude }
+                        : undefined
+                    }
                   />
+                  <View style={twStyle("mb-2 mt-2 flex-row flex-wrap gap-2")}>
+                    <TouchableOpacity
+                      onPress={() => void handleAtHomeCurrentLocation()}
+                      disabled={locatingClientAddress}
+                      style={twStyle(
+                        `rounded-full border px-3 py-1.5 flex-row items-center ${
+                          locatingClientAddress ? "border-gray-200 bg-gray-100" : "border-blue-200 bg-blue-50"
+                        }`,
+                      )}
+                      accessibilityLabel="Use current location for client address"
+                      accessibilityRole="button"
+                    >
+                      {locatingClientAddress ? (
+                        <ActivityIndicator size="small" color="#2563eb" />
+                      ) : (
+                        <Ionicons name="locate-outline" size={16} color="#2563eb" />
+                      )}
+                      <Text style={twStyle("ml-1.5 text-xs font-semibold text-blue-700")}>
+                        {locatingClientAddress ? "Locating…" : "Current location"}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setAddressMapPinOpen(true)}
+                      style={twStyle("rounded-full border border-gray-200 bg-white px-3 py-1.5 flex-row items-center")}
+                      accessibilityLabel="Drop pin on map"
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="map-outline" size={16} color="#374151" />
+                      <Text style={twStyle("ml-1.5 text-xs font-semibold text-gray-700")}>Drop pin on map</Text>
+                    </TouchableOpacity>
+                  </View>
                   {addressLatitude != null && addressLongitude != null && (
                     <View style={{ marginTop: 12, alignItems: "center" }}>
                       <StaticMapImage
@@ -2849,6 +2954,19 @@ export default function NewBookingScreen() {
             })()}
           </View>
         </BottomSheet>
+
+        <AddressMapPinModal
+          visible={addressMapPinOpen}
+          onClose={() => setAddressMapPinOpen(false)}
+          onPickCoordinates={(lat, lng) => {
+            void handleAtHomeDropPin(lat, lng);
+          }}
+          initialCoordinate={
+            addressLatitude != null && addressLongitude != null
+              ? { latitude: addressLatitude, longitude: addressLongitude }
+              : null
+          }
+        />
       </ScreenContainer>
     </KeyboardAvoidingView>
   );
