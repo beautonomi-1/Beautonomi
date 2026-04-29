@@ -1,29 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-
-const NOTIFICATIONS_LIST_CACHE_TTL_MS = 5000;
-const MAX_NOTIFICATIONS_CACHE_ENTRIES = 400;
-const notificationsListCache = new Map<
-  string,
-  { expiresAt: number; payload: { notifications: unknown[]; total_unread: number } }
->();
-
-function pruneNotificationsCache(now: number): void {
-  for (const [key, entry] of notificationsListCache.entries()) {
-    if (entry.expiresAt <= now) {
-      notificationsListCache.delete(key);
-    }
-  }
-  if (notificationsListCache.size <= MAX_NOTIFICATIONS_CACHE_ENTRIES) return;
-  const overflow = notificationsListCache.size - MAX_NOTIFICATIONS_CACHE_ENTRIES;
-  let removed = 0;
-  for (const key of notificationsListCache.keys()) {
-    notificationsListCache.delete(key);
-    removed += 1;
-    if (removed >= overflow) break;
-  }
-}
+import {
+  notificationsListCache,
+  pruneNotificationsListCache,
+  NOTIFICATIONS_LIST_CACHE_TTL_MS,
+} from "@/lib/notifications/provider-notifications-list-cache";
 
 /**
  * GET /api/provider/notifications
@@ -96,7 +78,7 @@ export async function GET(request: NextRequest) {
       expiresAt: now + NOTIFICATIONS_LIST_CACHE_TTL_MS,
       payload,
     });
-    pruneNotificationsCache(now);
+    pruneNotificationsListCache(now);
 
     return successResponse(payload);
   } catch (error) {

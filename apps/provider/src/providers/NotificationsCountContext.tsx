@@ -27,6 +27,8 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
   const { session, user } = useAuth();
   const { data, refresh } = useApi<NotificationsCountResponse>("/api/provider/notifications?limit=1", {
     enabled: !!session,
+    /** Bell badge must track server unread immediately after read/delete (no stale GET cache). */
+    staleTimeMs: 0,
   });
   /** Shifts badge immediately; resets when `data.total_unread` changes from the server. */
   const [countBias, setCountBias] = useState(0);
@@ -74,17 +76,22 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
 
   useEffect(() => {
     if (!user?.id) return;
+    let debounce: ReturnType<typeof setTimeout> | undefined;
     const channel = supabase
       .channel(`notifications-count:user:${user.id}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
         () => {
-          refreshRef.current();
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            void refreshRef.current();
+          }, 120);
         }
       )
       .subscribe();
     return () => {
+      if (debounce) clearTimeout(debounce);
       try {
         supabase.removeChannel(channel);
       } catch {

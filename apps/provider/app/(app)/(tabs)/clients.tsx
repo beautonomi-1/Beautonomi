@@ -48,6 +48,18 @@ interface ApiClient {
   total_bookings?: number;
   total_spent?: number;
   created_at: string;
+  salon_membership?: {
+    subscription_id: string;
+    plan_id: string;
+    plan_name: string | null;
+    plan_is_active?: boolean;
+    status: string;
+    expires_at: string | null;
+    started_at: string | null;
+    cancelled_at: string | null;
+    /** Matches booking discount rules when true. */
+    is_entitled?: boolean;
+  } | null;
   customer?: {
     id: string;
     full_name?: string;
@@ -82,9 +94,10 @@ interface Client {
    */
   is_registered?: boolean;
   is_limited_platform_link?: boolean;
+  salon_membership?: ApiClient["salon_membership"];
 }
 
-type ClientFilter = "all" | "vip" | "regular" | "new";
+type ClientFilter = "all" | "vip" | "regular" | "new" | "members";
 
 /* ------------------------------------------------------------------ */
 /*  Validation helpers                                                 */
@@ -93,6 +106,13 @@ type ClientFilter = "all" | "vip" | "regular" | "new";
 function validateEmail(email: string): boolean {
   if (!email) return true;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function clientHasBookableSalonMembership(c: Client): boolean {
+  const m = c.salon_membership;
+  if (!m) return false;
+  if (m.is_entitled != null) return m.is_entitled;
+  return m.status === "active";
 }
 
 /* ------------------------------------------------------------------ */
@@ -111,6 +131,7 @@ const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onM
     client.tags?.some((t) => t.toLowerCase() === "vip") ||
     (client.total_bookings != null && client.total_bookings >= 10) ||
     (client.total_spent != null && client.total_spent >= 5000);
+  const isActiveMember = clientHasBookableSalonMembership(client);
 
   return (
     <View style={{ marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, elevation: 1 }}>
@@ -135,6 +156,11 @@ const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onM
               {client.is_limited_platform_link && (
                 <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#eff6ff", paddingHorizontal: 8, paddingVertical: 2 }}>
                   <Text style={{ fontSize: 10, fontWeight: "700", color: "#1d4ed8" }}>Platform</Text>
+                </View>
+              )}
+              {isActiveMember && (
+                <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#f3e8ff", paddingHorizontal: 8, paddingVertical: 2 }}>
+                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#7c3aed" }}>Member</Text>
                 </View>
               )}
             </View>
@@ -358,6 +384,7 @@ export default function ClientsScreen() {
         tags: c.tags ?? [],
         is_registered: isRegistered,
         is_limited_platform_link: Boolean(c.customer?.is_limited_platform_link || c.privacy_level === "limited"),
+        salon_membership: c.salon_membership ?? null,
       });
     };
 
@@ -390,6 +417,7 @@ export default function ClientsScreen() {
       { label: "VIP", value: "vip" },
       { label: "Regular", value: "regular" },
       { label: "New", value: "new" },
+      { label: "Members", value: "members" },
     ],
     []
   );
@@ -418,6 +446,8 @@ export default function ClientsScreen() {
       result = result.filter(
         (c) => c.total_bookings == null || c.total_bookings <= 1
       );
+    } else if (clientFilter === "members") {
+      result = result.filter((c) => clientHasBookableSalonMembership(c));
     }
 
     // §Provider-audit 2026-04 (round 2): normalise phone search — providers
@@ -444,7 +474,7 @@ export default function ClientsScreen() {
 
   // Filter counts
   const filterCounts = useMemo(() => {
-    if (!clients) return { all: 0, vip: 0, regular: 0, new: 0 };
+    if (!clients) return { all: 0, vip: 0, regular: 0, new: 0, members: 0 };
     return {
       all: clients.length,
       vip: clients.filter(
@@ -460,6 +490,7 @@ export default function ClientsScreen() {
           c.total_bookings >= 2
       ).length,
       new: clients.filter((c) => c.total_bookings == null || c.total_bookings <= 1).length,
+      members: clients.filter((c) => clientHasBookableSalonMembership(c)).length,
     };
   }, [clients]);
 

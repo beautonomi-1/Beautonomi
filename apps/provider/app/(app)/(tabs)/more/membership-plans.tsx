@@ -8,6 +8,7 @@ import {
   Alert,
   Switch,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
@@ -61,6 +62,7 @@ const INITIAL_FORM = {
 };
 
 export default function MembershipPlansScreen() {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -236,9 +238,17 @@ export default function MembershipPlansScreen() {
         <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
           <StatCard title="Plans" value={String(stats.total)} icon="card-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+        <TouchableOpacity
+          style={[twStyle("flex-1"), { marginRight: 8 }]}
+          activeOpacity={0.75}
+          onPress={() =>
+            router.push("/(app)/(tabs)/more/membership-subscribers" as never)
+          }
+          accessibilityRole="button"
+          accessibilityLabel="View all membership subscribers"
+        >
           <StatCard title="Members" value={String(stats.subscribers)} icon="people-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-        </View>
+        </TouchableOpacity>
         <View style={twStyle("flex-1")}>
           <StatCard title="MRR" value={formatCurrency(stats.revenue)} icon="trending-up-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
         </View>
@@ -360,6 +370,21 @@ export default function MembershipPlansScreen() {
                 </View>
               )}
             </View>
+
+            <TouchableOpacity
+              style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 py-3")}
+              onPress={() => {
+                setShowDetail(null);
+                router.push({
+                  pathname: "/(app)/(tabs)/more/membership-subscribers",
+                  params: { planId: showDetail.id, planName: showDetail.name },
+                } as never);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="View subscribers for this plan"
+            >
+              <Text style={twStyle("text-sm font-semibold text-indigo-800")}>View members</Text>
+            </TouchableOpacity>
 
             {showDetail.benefits && showDetail.benefits.length > 0 && (
               <View style={twStyle("mb-3")}>

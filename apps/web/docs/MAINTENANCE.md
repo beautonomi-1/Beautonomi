@@ -34,6 +34,8 @@ Per-scope maintenance or coming-soon pages with CMS control, optional countdown,
 
 - **MaintenanceGate** in `ClientAppShell` checks pathname and `?maintenance_preview=1`; if maintenance is enabled (or preview), it renders the full-page maintenance view instead of children.
 - Routes under `/admin`, `/account-settings`, `/portal`, `/auth`, `/api`, `/maintenance-preview` are never gated.
+- When **`public_site`** maintenance is on, partner acquisition and auth stay available (path list: `@beautonomi/maintenance-paths` → `resolveWebMaintenanceFetch` in `maintenance-web-path-scope.ts`). Subpaths of those prefixes are not gated.
+- When **`provider_web`** maintenance is on, behavior depends on **Keep onboarding & checkout available** (stored as `allow_partner_funnel`, default true): when **on**, funnel paths in `provider-web-maintenance-exempt.ts` stay reachable; when **off**, the entire `/provider` tree is gated (full provider-web outage).
 
 ## Mobile apps
 

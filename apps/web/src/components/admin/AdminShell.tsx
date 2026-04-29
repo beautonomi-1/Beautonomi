@@ -369,7 +369,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     if (adminRole === "superadmin") return true;
     return canAccessSection(
       adminRole,
-      ADMIN_SECTION_USERS_TRUST,
+      ADMIN_SECTION_OVERVIEW,
       effectiveSectionRoles ?? undefined
     );
   }, [adminRole, effectiveSectionRoles]);

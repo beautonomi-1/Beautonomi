@@ -11,6 +11,8 @@ interface MasonryListProps<T> {
   data: T[];
   numColumns?: number;
   gap?: number;
+  /** Pass when renderItem / headers depend on state outside `data` (FlashList recycles cells). */
+  extraData?: unknown;
   renderItem: (item: T, index: number) => React.ReactNode;
   keyExtractor: (item: T, index: number) => string;
   getItemHeight?: (item: T, columnWidth: number) => number;
@@ -29,6 +31,7 @@ export function MasonryList<T>({
   data,
   numColumns = 2,
   gap = 8,
+  extraData,
   renderItem,
   keyExtractor,
   getItemHeight,
@@ -75,6 +78,7 @@ export function MasonryList<T>({
     <FlashList
       masonry
       data={data}
+      extraData={extraData}
       numColumns={numColumns}
       renderItem={flashRenderItem}
       keyExtractor={flashKeyExtractor}

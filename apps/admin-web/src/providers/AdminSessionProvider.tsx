@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UserRole } from "@beautonomi/types";
 import type { AdminSection } from "@beautonomi/admin-access";
-import { ADMIN_SECTION_USERS_TRUST, canAccessSection } from "@beautonomi/admin-access";
+import { ADMIN_SECTION_OVERVIEW, canAccessSection } from "@beautonomi/admin-access";
 import { AdminApiError, isForbiddenStatus, isUnauthorizedStatus } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -88,7 +88,8 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
     const role = (bootstrap?.role as UserRole) ?? ("customer" as UserRole);
     const canAccess = (section: AdminSection) =>
       canAccessSection(role, section, sectionRoles ?? undefined);
-    const canUseGlobalSearch = canAccess(ADMIN_SECTION_USERS_TRUST);
+    /** Anyone with Overview (all admin-shell roles) can use header search; API is scoped the same. */
+    const canUseGlobalSearch = canAccess(ADMIN_SECTION_OVERVIEW);
     const isSectionPermissionsPending = Boolean(
       bootstrap &&
         !bootstrap.is_superadmin &&

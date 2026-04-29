@@ -103,9 +103,9 @@ async function expireStaleOverlappingHoldsForScope(args: HoldOverlapScopeArgs): 
   // resolution from blocking the current request.
   const { error } = await args.supabase
     .from("booking_holds")
-    .update({ hold_status: "expired" })
+    .update({ hold_status: "expired", consuming_at: null })
     .eq("provider_id", args.providerId)
-    .eq("hold_status", "active")
+    .in("hold_status", ["active", "consuming"])
     .lte("expires_at", args.nowIso)
     .lt("start_at", args.endAtIso)
     .gt("end_at", args.startAtIso);
@@ -123,7 +123,7 @@ async function findActiveHoldOverlapsForScope(args: HoldOverlapScopeArgs): Promi
         .select("id, guest_fingerprint_hash")
         .eq("provider_id", args.providerId)
         .eq("staff_id", args.staffId)
-        .eq("hold_status", "active")
+        .in("hold_status", ["active", "consuming"])
         .gt("expires_at", args.nowIso)
         .lt("start_at", args.endAtIso)
         .gt("end_at", args.startAtIso)
@@ -133,7 +133,7 @@ async function findActiveHoldOverlapsForScope(args: HoldOverlapScopeArgs): Promi
         .select("id, guest_fingerprint_hash")
         .eq("provider_id", args.providerId)
         .is("staff_id", null)
-        .eq("hold_status", "active")
+        .in("hold_status", ["active", "consuming"])
         .gt("expires_at", args.nowIso)
         .lt("start_at", args.endAtIso)
         .gt("end_at", args.startAtIso)
@@ -632,9 +632,9 @@ export async function POST(request: NextRequest) {
         if (distinctSnapshotStaffIds.length > 0) {
           await supabase
             .from("booking_holds")
-            .update({ hold_status: "expired" })
+            .update({ hold_status: "expired", consuming_at: null })
             .eq("provider_id", provider_id)
-            .eq("hold_status", "active")
+            .in("hold_status", ["active", "consuming"])
             .lte("expires_at", nowIso)
             .lt("start_at", endDate.toISOString())
             .gt("end_at", startDate.toISOString())
@@ -647,7 +647,7 @@ export async function POST(request: NextRequest) {
             .from("booking_holds")
             .select("id, guest_fingerprint_hash")
             .eq("provider_id", provider_id)
-            .eq("hold_status", "active")
+            .in("hold_status", ["active", "consuming"])
             .gt("expires_at", nowIso)
             .lt("start_at", endDate.toISOString())
             .gt("end_at", startDate.toISOString())
@@ -658,7 +658,7 @@ export async function POST(request: NextRequest) {
           const { data: anyoneOverlaps } = await supabase
             .from("booking_holds")
             .select("id, guest_fingerprint_hash")
-            .eq("hold_status", "active")
+            .in("hold_status", ["active", "consuming"])
             .gt("expires_at", nowIso)
             .lt("start_at", endDate.toISOString())
             .gt("end_at", startDate.toISOString())

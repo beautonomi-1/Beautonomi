@@ -1,15 +1,37 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser, notFoundResponse, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  successResponse,
+  handleApiError,
+  getProviderIdForUser,
+  notFoundResponse,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import {
   isProviderSubscriptionFeatureEnabled,
   SUBSCRIPTION_FEATURE_KEYS,
 } from "@/lib/subscriptions/feature-access";
 
+const formUpdateSchema = z
+  .object({
+    title: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+    form_type: z.enum(["intake", "consent", "waiver"]).optional(),
+    is_required: z.boolean().optional(),
+    is_active: z.boolean().optional(),
+  })
+  .strict();
+
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -26,11 +48,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    const body = await request.json();
+    const raw = await request.json();
+    const parsed = formUpdateSchema.safeParse(raw);
+    if (!parsed.success) {
+      return errorResponse("Validation failed", "VALIDATION_ERROR", 400, parsed.error.issues);
+    }
+    const body = parsed.data;
+    if (Object.keys(body).length === 0) {
+      return errorResponse("No valid fields to update", "VALIDATION_ERROR", 400);
+    }
+
+    const updatePayload = {
+      ...body,
+      updated_at: new Date().toISOString(),
+    };
 
     const { data, error } = await supabase
       .from("provider_forms")
-      .update(body)
+      .update(updatePayload)
       .eq("id", id)
       .eq("provider_id", providerId)
       .select()
@@ -45,8 +80,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");

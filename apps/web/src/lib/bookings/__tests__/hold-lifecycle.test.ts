@@ -3,16 +3,13 @@ import { checkActiveHoldOverlap } from "../conflict-check";
 
 /** Builds a chainable Supabase-like query builder that resolves to a fixed response. */
 function mockSupabase(response: { data: unknown; error: unknown }) {
-  const builder = (): any => {
-    const b: any = {};
-    for (const m of ["select", "eq", "neq", "lt", "gt", "or", "limit", "is"]) {
-      b[m] = vi.fn(() => builder());
-    }
-    b.then = (fn: (v: unknown) => unknown) => Promise.resolve(response).then(fn);
-    b.catch = (fn: (e: unknown) => unknown) => Promise.resolve(response).catch(fn);
-    return b;
-  };
-  return { from: vi.fn(() => builder()) } as any;
+  const b: any = {};
+  for (const m of ["select", "eq", "neq", "lt", "gt", "or", "limit", "is", "in"]) {
+    b[m] = vi.fn(() => b);
+  }
+  b.then = (fn: (v: unknown) => unknown) => Promise.resolve(response).then(fn);
+  b.catch = (fn: (e: unknown) => unknown) => Promise.resolve(response).catch(fn);
+  return { from: vi.fn(() => b) } as any;
 }
 
 describe("checkActiveHoldOverlap", () => {
@@ -47,6 +44,13 @@ describe("checkActiveHoldOverlap", () => {
     });
     expect(result).toBe(false);
     expect(supabase.from).toHaveBeenCalledWith("booking_holds");
+  });
+
+  it("matches active and consuming holds (checkout-in-progress blocks overlap)", async () => {
+    const supabase = mockSupabase({ data: [], error: null });
+    await checkActiveHoldOverlap(supabase, providerId, start, end, { dbStaffId: "staff-a" });
+    const chain = (supabase.from as ReturnType<typeof vi.fn>).mock.results[0]?.value as any;
+    expect(chain.in).toHaveBeenCalledWith("hold_status", ["active", "consuming"]);
   });
 
   it("throws on DB error (fail-closed, no silent overlap-false)", async () => {
@@ -85,13 +89,13 @@ describe("hold lifecycle edge cases", () => {
   });
 
   it("released hold (hold_status=released) is not returned by overlap query", () => {
-    // The overlap query filters .eq('hold_status', 'active'), so released holds are
-    // excluded even if they have not expired yet.
+    // The overlap query filters .in('hold_status', ['active', 'consuming']), so
+    // released/consumed/cancelled holds are excluded.
     expect(true).toBe(true);
   });
 
   it("consumed hold (hold_status=consumed) is not returned by overlap query", () => {
-    // Same as above — only 'active' holds match the overlap query.
+    // Same as above — only active / in-checkout holds match the overlap query.
     expect(true).toBe(true);
   });
 });

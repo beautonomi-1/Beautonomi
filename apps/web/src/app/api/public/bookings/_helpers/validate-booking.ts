@@ -17,6 +17,7 @@ import {
   sumMoney,
 } from "@beautonomi/utils";
 import { sumChainedBlockedMinutes } from "@/lib/booking-slot-math/blocked-window-minutes";
+import { isSalonMembershipEntitledForDiscount } from "@/lib/provider/salon-membership-entitlement";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -1210,15 +1211,17 @@ export async function validateBooking(
       .eq("provider_id", draft.provider_id)
       .maybeSingle();
 
-    const isExpired = membership?.expires_at ? new Date(membership.expires_at) < new Date() : false;
     const planProviderId = membership?.plan?.provider_id ?? null;
-    const active =
-      membership?.status === "active" &&
-      !isExpired &&
-      membership?.plan?.is_active !== false &&
-      planProviderId === draft.provider_id;
+    const planMatchesProvider = planProviderId === draft.provider_id;
+    const entitled =
+      planMatchesProvider &&
+      isSalonMembershipEntitledForDiscount({
+        status: membership?.status ?? "",
+        expires_at: membership?.expires_at ?? null,
+        planIsActive: membership?.plan?.is_active,
+      });
 
-    if (active) {
+    if (entitled) {
       membershipPlanId = membership.plan?.id || null;
       const pct = Number(membership.plan?.discount_percent || 0);
       if (pct > 0) {
@@ -1496,7 +1499,12 @@ export async function validateBooking(
       holdRow &&
       holdRow.expires_at &&
       new Date(holdRow.expires_at as string).getTime() < Date.now();
-    if (!holdRow || holdRow.hold_status !== "active" || holdExpired) {
+    /** `consuming` is set by `claim_booking_hold_for_consume` before inner POST /api/public/bookings. */
+    const holdUsable =
+      holdRow &&
+      (holdRow.hold_status === "active" || holdRow.hold_status === "consuming") &&
+      !holdExpired;
+    if (!holdUsable) {
       console.warn("[validate-booking] hold rejected", {
         holdId: validatedDraft.hold_id,
         found: !!holdRow,

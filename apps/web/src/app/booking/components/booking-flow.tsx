@@ -771,10 +771,7 @@ export default function BookingFlow() {
       bookingState.selectedServices.length === 0
     ) return null;
 
-    // Release any stale hold before creating a new one
-    if (bookingState.holdId) {
-      await releaseHold(bookingState.holdId);
-    }
+    // Previous hold is cancelled server-side via `previous_hold_id` — do not release early.
 
     try {
       // §Release-audit 2026-04: prefer the engine-emitted ISO start instant

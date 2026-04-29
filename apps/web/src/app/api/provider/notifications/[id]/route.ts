@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { invalidateProviderNotificationsListCache } from "@/lib/notifications/provider-notifications-list-cache";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -17,6 +18,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .eq("user_id", user.id);
 
     if (error) throw error;
+    invalidateProviderNotificationsListCache(user.id);
     return successResponse({ success: true });
   } catch (error) {
     return handleApiError(error, "Failed to update notification");
@@ -36,6 +38,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       .eq("user_id", user.id);
 
     if (error) throw error;
+    invalidateProviderNotificationsListCache(user.id);
     return successResponse({ success: true });
   } catch (error) {
     return handleApiError(error, "Failed to delete notification");

@@ -18,3 +18,13 @@ Bookings created in the **customer app** (via public booking-holds or on-demand)
 
 - **location_type** and **address** (at-home) are stored by consume and returned by `GET /api/provider/bookings` and `GET /api/provider/bookings/[id]`. Provider list shows "At home" for at-home bookings; detail shows address and at-home actions.
 - Status, amounts, services, customer info, and audit log are shared; customer and provider see the same booking record.
+
+## Calendar ghost holds (stays in sync with customer checkout)
+
+- The provider **mobile calendar** and **web provider calendar** load holds via `GET /api/provider/calendar/booking-holds`. That route returns rows with **`hold_status` in `active` or `consuming`** (not expired). **`consuming`** means the customer has started checkout after the atomic claim — the slot still blocks double-booking until payment completes or the hold expires.
+- Each segment exposes **`reason`**: **Booking hold** vs **Booking in progress (checkout)**. The native calendar maps `reason` to the overlay title so providers can tell tentative reserve vs payment-in-progress.
+- **`GET /api/provider/bookings/available-slots`** (used for **custom offers** and slot picking) uses the same underlying availability pipeline as public booking, including blocking time covered by **active** and **consuming** holds, so provider-created offers cannot steal a slot a customer is holding or checking out.
+
+## Ecommerce (products / POS / orders)
+
+- Product catalog, orders, inventory, and POS/Yoco flows use provider commerce APIs (`/api/provider/products`, orders, etc.). They do **not** read `booking_holds`. Alignment with bookings is through **`bookings`** rows and realtime updates once a customer completes checkout — same as in the table above.

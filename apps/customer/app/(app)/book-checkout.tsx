@@ -1827,10 +1827,6 @@ export default function BookCheckoutScreen() {
           setError(msg403);
           return;
         }
-        if (errStatus === 410 || errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED" || errCode === "HOLD_INACTIVE") {
-          setError(t("checkout.holdExpiredFallback", "Your hold has expired. Please go back and select a new time."));
-          return;
-        }
         if (errStatus === 409 && errCode === "HOLD_IN_FLIGHT") {
           setError(
             (res.error as { message?: string }).message?.trim() ||
@@ -1839,6 +1835,17 @@ export default function BookCheckoutScreen() {
                 "This booking is already being processed. Please wait a moment, then try again.",
               ),
           );
+          return;
+        }
+        if (errCode === "HOLD_INACTIVE") {
+          setError(
+            (res.error as { message?: string }).message?.trim() ||
+              t("checkout.slotTakenFallback", "That time slot was just taken. Please go back and choose another time."),
+          );
+          return;
+        }
+        if (errStatus === 410 || errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED") {
+          setError(t("checkout.holdExpiredFallback", "Your hold has expired. Please go back and select a new time."));
           return;
         }
         if (errStatus === 409 || errCode === "CONFLICT") {

@@ -79,6 +79,7 @@ const PinCard = React.memo(function PinCard({
   const providerInitial = (post.provider?.business_name || "B").charAt(0).toUpperCase();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const heartAnim = useRef(new Animated.Value(0)).current;
+  const lastTap = useRef(0);
 
   const useNativeDriver = Platform.OS !== "web";
   const handlePressIn = () => {
@@ -109,7 +110,6 @@ const PinCard = React.memo(function PinCard({
     }
   }, [post, onLike, heartAnim, useNativeDriver]);
 
-  const lastTap = useRef(0);
   const handlePress = useCallback(() => {
     const now = Date.now();
     if (now - lastTap.current < 300) {
@@ -669,142 +669,149 @@ export default function ExploreScreen() {
 
   const keyExtractor = useCallback((item: ExplorePost) => item.id, []);
 
-  if (loading && posts.length === 0) {
-    return (
-      <View style={{ flex: 1, backgroundColor: "#fff" }}>
-        <SafeAreaView edges={["top"]} style={[contentContainerStyle, { backgroundColor: "#fff" }]} accessibilityLabel="Explore feed" accessibilityRole="none">
-          <View style={{ paddingHorizontal: contentPadding, paddingTop: 8 }}>
-            <Text style={{ fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 16 }}>
-              Explore
-            </Text>
-            <View
-              style={{
-                backgroundColor: "#F3F4F6",
-                borderRadius: 14,
-                height: 48,
-                marginBottom: 12,
-              }}
-            />
-            <View style={{ flexDirection: "row" }}>
-              {[1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} width={80} height={36} borderRadius={999} style={i < 4 ? { marginRight: 8 } : undefined} />
-              ))}
-            </View>
-          </View>
-        </SafeAreaView>
-        <MasonrySkeleton cardWidth={cardWidth} contentPadding={contentPadding} />
-      </View>
-    );
-  }
+  const showInitialSkeleton = loading && posts.length === 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
-      <SafeAreaView edges={["top"]} style={{ backgroundColor: "#fff" }} />
-
-      <View style={[{ flex: 1 }, contentContainerStyle]}>
-        <MasonryList
-          data={posts}
-          numColumns={columns}
-          gap={GAP}
-          columnWidth={cardWidth}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          getItemHeight={getItemHeight}
-          onEndReached={onEndReached}
-          onEndReachedThreshold={0.4}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={Colors.primary} />
-          }
-          contentContainerStyle={{
-            paddingHorizontal: contentPadding,
-            paddingBottom: tabScrollPaddingBottom,
-          }}
-        ListHeaderComponent={
-          <View style={{ paddingTop: 4, paddingBottom: 4 }}>
-            {/* Title row */}
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <Text style={{ fontSize: 28, fontWeight: "800", color: "#111827" }}>Explore</Text>
+      {showInitialSkeleton ? (
+        <>
+          <SafeAreaView edges={["top"]} style={[contentContainerStyle, { backgroundColor: "#fff" }]} accessibilityLabel="Explore feed" accessibilityRole="none">
+            <View style={{ paddingHorizontal: contentPadding, paddingTop: 8 }}>
+              <Text style={{ fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 16 }}>
+                Explore
+              </Text>
+              <View
+                style={{
+                  backgroundColor: "#F3F4F6",
+                  borderRadius: 14,
+                  height: 48,
+                  marginBottom: 12,
+                }}
+              />
               <View style={{ flexDirection: "row" }}>
-                {user ? (
-                  <TouchableOpacity
-                    onPress={() => router.push({ pathname: "/(app)/account-settings/wishlists" as any, params: { tab: "posts" } })}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityLabel="Saved posts"
-                  >
-                    <Ionicons name="bookmark-outline" size={24} color="#374151" />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            </View>
-
-            {/* Search */}
-            <ExploreSearchBar
-              query={searchQuery}
-              onChangeQuery={handleSearchChange}
-              onSubmit={handleSearchSubmit}
-              onClear={handleSearchClear}
-            />
-
-            {/* Category chips */}
-            <View style={{ marginBottom: 14 }}>
-              <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                {BEAUTY_CATEGORIES.map((cat) => (
-                  <CategoryChip
-                    key={cat.key}
-                    label={cat.key === "nearby" && nearbyLoading ? "…" : cat.label}
-                    icon={cat.icon}
-                    active={activeCategory === cat.key}
-                    onPress={() => handleCategoryPress(cat.key)}
-                    disabled={cat.key === "nearby" && nearbyLoading}
-                    loading={cat.key === "nearby" && nearbyLoading}
-                  />
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} width={80} height={36} borderRadius={999} style={i < 4 ? { marginRight: 8 } : undefined} />
                 ))}
               </View>
             </View>
+          </SafeAreaView>
+          <MasonrySkeleton cardWidth={cardWidth} contentPadding={contentPadding} />
+        </>
+      ) : (
+        <>
+          <SafeAreaView edges={["top"]} style={{ backgroundColor: "#fff" }} />
 
-            {/* Error */}
-            {error ? (
-              <View
-                style={{
-                  backgroundColor: "#FEF2F2",
-                  borderWidth: 1,
-                  borderColor: "#FECACA",
-                  borderRadius: 12,
-                  padding: 14,
-                  marginBottom: 12,
-                }}
-              >
-                <Text style={{ color: "#B91C1C", fontSize: 14, marginBottom: 8 }}>{error}</Text>
-                <TouchableOpacity
-                  onPress={refetch}
-                  style={{
-                    backgroundColor: Colors.primary,
-                    borderRadius: 10,
-                    paddingVertical: 10,
-                    alignItems: "center",
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
+          <View style={[{ flex: 1 }, contentContainerStyle]}>
+            <MasonryList
+              data={posts}
+              extraData={{
+                category: activeCategory,
+                userId: user?.id ?? null,
+                search: searchQuery,
+              }}
+              numColumns={columns}
+              gap={GAP}
+              columnWidth={cardWidth}
+              renderItem={renderItem}
+              keyExtractor={keyExtractor}
+              getItemHeight={getItemHeight}
+              onEndReached={onEndReached}
+              onEndReachedThreshold={0.4}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={Colors.primary} />
+              }
+              contentContainerStyle={{
+                paddingHorizontal: contentPadding,
+                paddingBottom: tabScrollPaddingBottom,
+              }}
+              ListHeaderComponent={
+                <View style={{ paddingTop: 4, paddingBottom: 4 }}>
+                  {/* Title row */}
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                    <Text style={{ fontSize: 28, fontWeight: "800", color: "#111827" }}>Explore</Text>
+                    <View style={{ flexDirection: "row" }}>
+                      {user ? (
+                        <TouchableOpacity
+                          onPress={() => router.push({ pathname: "/(app)/account-settings/wishlists" as any, params: { tab: "posts" } })}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityLabel="Saved posts"
+                        >
+                          <Ionicons name="bookmark-outline" size={24} color="#374151" />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  {/* Search */}
+                  <ExploreSearchBar
+                    query={searchQuery}
+                    onChangeQuery={handleSearchChange}
+                    onSubmit={handleSearchSubmit}
+                    onClear={handleSearchClear}
+                  />
+
+                  {/* Category chips */}
+                  <View style={{ marginBottom: 14 }}>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                      {BEAUTY_CATEGORIES.map((cat) => (
+                        <CategoryChip
+                          key={cat.key}
+                          label={cat.key === "nearby" && nearbyLoading ? "…" : cat.label}
+                          icon={cat.icon}
+                          active={activeCategory === cat.key}
+                          onPress={() => handleCategoryPress(cat.key)}
+                          disabled={cat.key === "nearby" && nearbyLoading}
+                          loading={cat.key === "nearby" && nearbyLoading}
+                        />
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* Error */}
+                  {error ? (
+                    <View
+                      style={{
+                        backgroundColor: "#FEF2F2",
+                        borderWidth: 1,
+                        borderColor: "#FECACA",
+                        borderRadius: 12,
+                        padding: 14,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <Text style={{ color: "#B91C1C", fontSize: 14, marginBottom: 8 }}>{error}</Text>
+                      <TouchableOpacity
+                        onPress={refetch}
+                        style={{
+                          backgroundColor: Colors.primary,
+                          borderRadius: 10,
+                          paddingVertical: 10,
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                </View>
+              }
+              ListFooterComponent={
+                loadingMore ? (
+                  <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                    <Text style={{ fontSize: 12, color: "#9CA3AF", marginTop: 6 }}>Loading more inspiration...</Text>
+                  </View>
+                ) : !hasMore && posts.length > 0 ? (
+                  <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                    <Text style={{ fontSize: 13, color: "#9CA3AF" }}>You&apos;ve seen it all! Pull down to refresh.</Text>
+                  </View>
+                ) : null
+              }
+              ListEmptyComponent={<EmptyState category={activeCategory} />}
+            />
           </View>
-        }
-        ListFooterComponent={
-          loadingMore ? (
-            <View style={{ paddingVertical: 24, alignItems: "center" }}>
-              <ActivityIndicator size="small" color={Colors.primary} />
-              <Text style={{ fontSize: 12, color: "#9CA3AF", marginTop: 6 }}>Loading more inspiration...</Text>
-            </View>
-          ) : !hasMore && posts.length > 0 ? (
-            <View style={{ paddingVertical: 24, alignItems: "center" }}>
-              <Text style={{ fontSize: 13, color: "#9CA3AF" }}>You&apos;ve seen it all! Pull down to refresh.</Text>
-            </View>
-          ) : null
-        }
-        ListEmptyComponent={<EmptyState category={activeCategory} />}
-        />
-      </View>
+        </>
+      )}
     </View>
   );
 }

@@ -58,7 +58,7 @@ export async function GET(
       );
     }
 
-    if (hold.hold_status !== "active") {
+    if (hold.hold_status !== "active" && hold.hold_status !== "consuming") {
       return handleApiError(
         new Error("Hold is no longer active"),
         hold.hold_status === "expired"
@@ -73,9 +73,9 @@ export async function GET(
     if (expiresAt < new Date()) {
       await supabase
         .from("booking_holds")
-        .update({ hold_status: "expired" })
+        .update({ hold_status: "expired", consuming_at: null })
         .eq("id", hold.id)
-        .eq("hold_status", "active");
+        .in("hold_status", ["active", "consuming"]);
       return handleApiError(
         new Error("Hold has expired"),
         "Your hold has expired. Please select a new time.",

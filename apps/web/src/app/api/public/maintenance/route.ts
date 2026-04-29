@@ -81,6 +81,10 @@ export async function GET(request: NextRequest) {
       countdown_end_at: config?.countdown_end_at ?? null,
       countdown_label: config?.countdown_label ?? null,
     };
+    if (scope === "provider_web") {
+      const cfg = config as { allow_partner_funnel?: boolean } | undefined;
+      out.allow_partner_funnel = cfg?.allow_partner_funnel !== false;
+    }
 
     return NextResponse.json(out, {
       headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },

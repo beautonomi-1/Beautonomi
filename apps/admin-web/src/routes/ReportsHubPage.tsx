@@ -1,6 +1,15 @@
 import { Link } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
-import { BarChart3, CreditCard, FileBarChart, Gift, Store, Users } from "lucide-react";
+import {
+  BarChart3,
+  CreditCard,
+  FileBarChart,
+  Gift,
+  Headphones,
+  LifeBuoy,
+  Store,
+  Users,
+} from "lucide-react";
 import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
@@ -43,6 +52,18 @@ const REPORTS: { title: string; description: string; spaTo: string; icon: Lucide
     description: "Payments sync debugging",
     spaTo: "/reports/yoco-reconciliation",
     icon: CreditCard,
+  },
+  {
+    title: "Support performance",
+    description: "Volume, SLA, FRT/MTTR, CSAT, opened-vs-resolved trend",
+    spaTo: "/reports/support-performance",
+    icon: LifeBuoy,
+  },
+  {
+    title: "Support workload & drivers",
+    description: "Per-agent productivity, category drivers, aging unassigned, top requesters",
+    spaTo: "/reports/support-workload",
+    icon: Headphones,
   },
 ];
 

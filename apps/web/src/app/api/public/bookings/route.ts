@@ -432,9 +432,9 @@ export async function POST(request: NextRequest) {
         if (validatedDraft.hold_id) {
           await supabaseAdmin
             .from("booking_holds")
-            .update({ hold_status: "consumed" })
+            .update({ hold_status: "consumed", consuming_at: null })
             .eq("id", validatedDraft.hold_id)
-            .eq("hold_status", "active");
+            .in("hold_status", ["active", "consuming"]);
         }
 
         stage = "process_payment";

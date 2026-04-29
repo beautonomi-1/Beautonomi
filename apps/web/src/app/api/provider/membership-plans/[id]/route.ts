@@ -11,6 +11,7 @@ const updateSchema = z.object({
   currency: z.string().min(3).max(6).optional(),
   discount_percent: z.number().min(0).max(100).optional(),
   is_active: z.boolean().optional(),
+  benefits: z.array(z.string()).optional(),
 });
 
 /**

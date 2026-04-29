@@ -16,6 +16,11 @@ export interface MaintenanceScopeConfig {
   countdown_end_at?: string | null;
   /** Optional label above the countdown (e.g. "Launching in") */
   countdown_label?: string | null;
+  /**
+   * `provider_web` only. When `true` (default), onboarding/embed/checkout paths stay reachable
+   * while maintenance is on. When `false`, the entire `/provider` surface is gated (full outage).
+   */
+  allow_partner_funnel?: boolean;
 }
 
 /** Response shape for GET /api/public/maintenance?scope=... */
@@ -26,6 +31,8 @@ export interface PublicMaintenanceResponse {
   cta_label?: string | null;
   countdown_end_at?: string | null;
   countdown_label?: string | null;
+  /** Present for `scope=provider_web`: whether funnel paths bypass maintenance when enabled. */
+  allow_partner_funnel?: boolean;
 }
 
 export function defaultMaintenanceConfig(): MaintenanceScopeConfig {
@@ -42,7 +49,7 @@ export function defaultMaintenanceConfig(): MaintenanceScopeConfig {
 export function getDefaultMaintenance(): Record<MaintenanceScope, MaintenanceScopeConfig> {
   return {
     public_site: { ...defaultMaintenanceConfig() },
-    provider_web: { ...defaultMaintenanceConfig() },
+    provider_web: { ...defaultMaintenanceConfig(), allow_partner_funnel: true },
     customer_app: { ...defaultMaintenanceConfig() },
     provider_app: { ...defaultMaintenanceConfig() },
   };

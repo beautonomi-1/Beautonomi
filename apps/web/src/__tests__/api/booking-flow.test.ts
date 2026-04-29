@@ -213,6 +213,46 @@ describe("bookingDraftSchema – validation", () => {
   });
 });
 
+describe("bookingDraftSchema – hold_id combined with group / package / recurring", () => {
+  const HOLD_ID = "00000000-0000-4000-8000-000000000099";
+  const RESCHED_ID = "00000000-0000-4000-8000-000000000098";
+
+  it("accepts hold_id with subscribe_recurring", () => {
+    const result = bookingDraftSchema.safeParse(
+      validBookingDraft({
+        hold_id: HOLD_ID,
+        subscribe_recurring: { enabled: true, frequency: "weekly" },
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts hold_id with group booking and reschedule_booking_id", () => {
+    const result = bookingDraftSchema.safeParse(
+      validBookingDraft({
+        hold_id: HOLD_ID,
+        is_group_booking: true,
+        group_participants: [{ name: "Guest Two", service_ids: [TEST_OFFERING_ID] }],
+        reschedule_booking_id: RESCHED_ID,
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts hold_id with package_id and membership_plan_id", () => {
+    const PKG = "00000000-0000-4000-8000-000000000097";
+    const MEM = "00000000-0000-4000-8000-000000000096";
+    const result = bookingDraftSchema.safeParse(
+      validBookingDraft({
+        hold_id: HOLD_ID,
+        package_id: PKG,
+        membership_plan_id: MEM,
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. Paystack webhook signature verification
 // ═══════════════════════════════════════════════════════════════════════════

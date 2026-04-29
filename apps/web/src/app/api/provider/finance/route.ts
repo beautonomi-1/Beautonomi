@@ -7,6 +7,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import { PROVIDER_LEDGER_VISIBLE_TYPES } from "@/lib/provider/provider-ledger-transaction-view";
 
 /**
  * GET /api/provider/finance
@@ -345,28 +346,8 @@ export async function GET(request: NextRequest) {
     });
     const pendingPayouts = pendingPayoutsSum;
 
-    // Filter out internal transaction types that providers shouldn't see
-    // "payment" type represents platform commission (internal accounting)
-    // Only show transactions relevant to providers: provider_earnings, refunds, tips, travel_fees, etc.
-    const visibleTransactionTypes = [
-      "provider_earnings",
-      "refund",
-      "payout",
-      "tip",
-      "travel_fee",
-      "platform_fee",
-      "service_fee",
-      "tax",
-      "membership_sale",
-      "gift_card_sale",
-      "walk_in_additional_charge",
-      "additional_charge",
-      "additional_charge_payment",
-      "cancellation_fee",
-    ];
-    
     const transactions = rows
-      .filter((r: any) => visibleTransactionTypes.includes(r.transaction_type))
+      .filter((r: any) => PROVIDER_LEDGER_VISIBLE_TYPES.has(r.transaction_type))
       .slice(0, 50)
       .map((r: any) => ({
         id: r.id,
