@@ -1325,6 +1325,8 @@ export default function PartnerProfileScreen() {
               const res = await api.post<{ payment?: { authorization_url: string } }>("/api/me/membership/subscribe", {
                 membership_id: plan.id,
                 provider_id: provider.id,
+                source: "customer_app_partner_profile",
+                campaign_id: paramCampaignId,
               });
 
               if (res.error) {

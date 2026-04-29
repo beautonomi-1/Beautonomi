@@ -46,6 +46,15 @@ export default function LanguageSelector({
     }
   }, [languages]);
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const next = (event as CustomEvent<{ language?: string }>).detail?.language;
+      if (next) setLanguage(next);
+    };
+    window.addEventListener("beautonomi:preferred-language-changed", handler);
+    return () => window.removeEventListener("beautonomi:preferred-language-changed", handler);
+  }, []);
+
   const options = languages.length ? languages : SUPPORTED_LANGUAGES.map((l) => ({ code: l.code, name: l.name, nativeName: l.nativeName }));
 
   const handleLanguageChange = async (newLang: string) => {
@@ -55,6 +64,7 @@ export default function LanguageSelector({
     try {
       // Save to localStorage
       localStorage.setItem("preferred_language", newLang);
+      window.dispatchEvent(new CustomEvent("beautonomi:preferred-language-changed", { detail: { language: newLang } }));
 
       // Optionally save to user preferences in database
       try {

@@ -173,6 +173,23 @@ export async function createBookingRecord(
   if (hci) {
     atHomePatch.house_call_instructions = hci;
   }
+  if (validatedDraft.campaign_id) {
+    const { data: campaign } = await adminSupabase
+      .from("ads_campaigns")
+      .select("id, provider_id, status")
+      .eq("id", validatedDraft.campaign_id)
+      .eq("provider_id", draft.provider_id)
+      .eq("status", "active")
+      .maybeSingle();
+    if (campaign?.id) {
+      atHomePatch.ads_campaign_id = campaign.id;
+      atHomePatch.ads_attribution = {
+        campaign_id: campaign.id,
+        source: "sponsored_listing",
+        captured_at: new Date().toISOString(),
+      };
+    }
+  }
   if (Object.keys(atHomePatch).length > 0) {
     await adminSupabase.from("bookings").update(atHomePatch).eq("id", bookingId);
   }

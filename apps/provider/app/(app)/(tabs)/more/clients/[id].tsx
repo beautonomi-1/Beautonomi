@@ -58,6 +58,7 @@ interface ClientCustomer {
    * the customer's own /api/me/profile surface the source of truth.
    */
   is_registered?: boolean | null;
+  is_limited_platform_link?: boolean | null;
 }
 
 interface HistoryItem {
@@ -434,6 +435,7 @@ export default function ClientDetailScreen() {
   // §Release-audit 2026-04: server rejects identity edits for registered
   // customers — hide the Edit button so the provider never sees a 403.
   const identityEditable = customer.is_registered === false;
+  const limitedPlatformLink = Boolean(customer.is_limited_platform_link);
 
   return (
     <ScreenContainer scrollable={false}>
@@ -506,6 +508,18 @@ export default function ClientDetailScreen() {
                 )}
               </View>
             </View>
+
+            {limitedPlatformLink ? (
+              <View style={twStyle("mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3")}>
+                <View style={twStyle("flex-row items-start")}>
+                  <Ionicons name="shield-checkmark-outline" size={16} color="#1d4ed8" />
+                  <Text style={twStyle("ml-2 flex-1 text-xs leading-5 text-blue-800")}>
+                    Existing Beautonomi customer. Their platform profile stays customer-managed, but you can
+                    still message them, book appointments, sell products, and manage provider notes and tags.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
 
             {/* Quick-glance meta (birthday + opt-ins) so providers can see the
                 full client record without opening the edit sheet. */}

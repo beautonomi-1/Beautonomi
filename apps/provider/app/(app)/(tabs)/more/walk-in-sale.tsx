@@ -48,8 +48,6 @@ interface Product {
   variants?: ProductVariant[];
   track_stock_quantity?: boolean;
   image_urls?: string[] | null;
-  /** Product-level tax % applied to line subtotals (same as POST /api/provider/product-sales). */
-  tax_rate?: number | string | null;
 }
 
 interface ProductsResponse {
@@ -143,15 +141,18 @@ type CartLine = {
   tax_rate_percent: number;
 };
 
+type WalkInPaymentMethod = "cash" | "yoco" | "card" | "eft" | "other";
+
+const WALK_IN_PAYMENT_METHODS: { id: WalkInPaymentMethod; label: string }[] = [
+  { id: "cash", label: "Cash" },
+  { id: "yoco", label: "Yoco" },
+  { id: "card", label: "Card manual" },
+  { id: "eft", label: "EFT" },
+  { id: "other", label: "Other" },
+];
+
 function newLineId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function parseProductTaxPercent(product: Product): number {
-  const raw = product.tax_rate;
-  if (raw == null) return 0;
-  const n = typeof raw === "number" ? raw : parseFloat(String(raw));
-  return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
 function formatProductVariantLabel(v: ProductVariant): string {
@@ -194,7 +195,7 @@ export default function WalkInSaleScreen() {
   const [createOpen, setCreateOpen] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "yoco">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<WalkInPaymentMethod>("cash");
   const [customerName, setCustomerName] = useState("");
   const [customerPhoneE164, setCustomerPhoneE164] = useState("");
   const [showYocoPayment, setShowYocoPayment] = useState(false);
@@ -452,7 +453,7 @@ export default function WalkInSaleScreen() {
       <ScreenHeader
         title="Walk-in Sale"
         showBack
-        subtitle="Products & ecommerce (cash / Yoco)"
+        subtitle="Products & ecommerce payments"
         rightAction={
           <TouchableOpacity
             onPress={openNewSaleSheet}
@@ -863,23 +864,28 @@ export default function WalkInSaleScreen() {
                 </View>
 
                 <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Payment</Text>
-                <View style={{ marginBottom: 16, flexDirection: "row" }}>
-                  <TouchableOpacity
-                    onPress={() => setPaymentMethod("cash")}
-                    style={{ flex: 1, marginRight: 8, borderRadius: 12, paddingVertical: 10, backgroundColor: paymentMethod === "cash" ? "#f59e0b" : Colors.gray[100] }}
-                  >
-                    <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: paymentMethod === "cash" ? Colors.white : Colors.gray[700] }}>
-                      Cash
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setPaymentMethod("yoco")}
-                    style={{ flex: 1, borderRadius: 12, paddingVertical: 10, backgroundColor: paymentMethod === "yoco" ? "#f59e0b" : Colors.gray[100] }}
-                  >
-                    <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: paymentMethod === "yoco" ? Colors.white : Colors.gray[700] }}>
-                      Yoco
-                    </Text>
-                  </TouchableOpacity>
+                <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }}>
+                  {WALK_IN_PAYMENT_METHODS.map((method) => {
+                    const active = paymentMethod === method.id;
+                    return (
+                      <TouchableOpacity
+                        key={method.id}
+                        onPress={() => setPaymentMethod(method.id)}
+                        style={{
+                          width: "48%",
+                          marginHorizontal: "1%",
+                          marginBottom: 8,
+                          borderRadius: 12,
+                          paddingVertical: 10,
+                          backgroundColor: active ? "#f59e0b" : Colors.gray[100],
+                        }}
+                      >
+                        <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: active ? Colors.white : Colors.gray[700] }}>
+                          {method.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
                 <TouchableOpacity

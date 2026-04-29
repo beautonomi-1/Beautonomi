@@ -85,10 +85,11 @@ export async function GET(request: NextRequest) {
     const COST_RATIO_DEFAULT = 0.05;
     let cpcCostRatio = COST_RATIO_DEFAULT;
     try {
+      const env = process.env.NODE_ENV === "production" ? "production" : "development";
       const { data: cfg } = await supabase
         .from("ads_module_config")
         .select("cost_per_impression_ratio")
-        .eq("environment", "production")
+        .eq("environment", env)
         .maybeSingle();
       const r = Number((cfg as { cost_per_impression_ratio?: number } | null)?.cost_per_impression_ratio);
       if (Number.isFinite(r) && r > 0) cpcCostRatio = r;
@@ -119,7 +120,8 @@ export async function GET(request: NextRequest) {
     const reachByCampaign = new Map<string, Set<string>>();
     let periodSpent = 0;
     for (const e of events ?? []) {
-      const cid = e.campaign_id ?? "uncategorized";
+      if (!e.campaign_id) continue;
+      const cid = e.campaign_id;
       if (!byCampaign[cid]) byCampaign[cid] = { impressions: 0, reach: 0, clicks: 0, books: 0, spent: 0 };
       if (e.event_type === "impression") {
         byCampaign[cid].impressions += 1;

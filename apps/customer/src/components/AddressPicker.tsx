@@ -64,7 +64,7 @@ interface AddressPickerProps {
   initialQuery?: string;
 }
 
-const SUGGESTIONS_MAX_HEIGHT = 240;
+const SUGGESTIONS_MAX_HEIGHT = 280;
 
 export function AddressPicker({
   visible,
@@ -309,6 +309,7 @@ export function AddressPicker({
     ({ item }: { item: GeocodeSuggestion }) => (
       <TouchableOpacity
         onPress={() => handleSuggestionSelect(item)}
+        delayPressIn={80}
         style={styles.suggestionRow}
         accessibilityRole="button"
       >
@@ -392,7 +393,11 @@ export function AddressPicker({
 
               {/* Suggestions anchored directly under the search field */}
               {showSuggestionPanel ? (
-                <View style={styles.suggestionPanel}>
+                <View
+                  style={styles.suggestionPanel}
+                  onStartShouldSetResponder={() => true}
+                  onMoveShouldSetResponder={() => true}
+                >
                   <Text style={styles.suggestionPanelTitle}>Search results</Text>
                   {searching && suggestions.length === 0 ? (
                     <View style={{ paddingVertical: 28, alignItems: "center", justifyContent: "center" }}>
@@ -403,9 +408,11 @@ export function AddressPicker({
                       data={suggestions}
                       keyExtractor={(item, index) => `${item.place_name}-${index}`}
                       renderItem={renderSuggestionItem}
-                      keyboardShouldPersistTaps="handled"
+                      keyboardShouldPersistTaps="always"
                       style={{ maxHeight: SUGGESTIONS_MAX_HEIGHT }}
+                      contentContainerStyle={{ paddingBottom: 6 }}
                       nestedScrollEnabled
+                      showsVerticalScrollIndicator
                     />
                   )}
                 </View>

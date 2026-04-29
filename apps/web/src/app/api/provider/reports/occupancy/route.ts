@@ -83,13 +83,41 @@ export async function GET(request: NextRequest) {
     if (staffError) throw staffError;
 
     type StaffRow = { id: string; users?: { full_name?: string } | Array<{ full_name?: string }> };
-    const staffRows = (staffList ?? []) as StaffRow[];
-    const staffIds = staffRows.map((s) => s.id);
+    let staffRows = (staffList ?? []) as StaffRow[];
+    let staffIds = staffRows.map((s) => s.id);
+    if (locationId && staffIds.length > 0) {
+      const { data: assignments, error: assignmentError } = await supabaseAdmin
+        .from("provider_staff_locations")
+        .select("staff_id")
+        .eq("location_id", locationId)
+        .in("staff_id", staffIds);
+      if (assignmentError) throw assignmentError;
+      const assignedStaffIds = new Set((assignments ?? []).map((a: { staff_id: string }) => a.staff_id));
+      // Legacy tenants may not have assignment rows; in that case preserve provider-wide staff.
+      if (assignedStaffIds.size > 0) {
+        staffRows = staffRows.filter((s) => assignedStaffIds.has(s.id));
+        staffIds = staffRows.map((s) => s.id);
+      }
+    }
     const staffNames = new Map<string, string>();
     staffRows.forEach((s) => {
       const name = (Array.isArray(s.users) ? s.users[0]?.full_name : (s.users as { full_name?: string })?.full_name) ?? "Unassigned";
       staffNames.set(s.id, name);
     });
+
+    const dates: string[] = [];
+    for (let d = new Date(fromDate); d <= toDate; d.setUTCDate(d.getUTCDate() + 1)) {
+      dates.push(d.toISOString().slice(0, 10));
+    }
+
+    if (staffIds.length === 0) {
+      return successResponse({
+        byStaff: [],
+        byDate: dates.map((date) => ({ date, totalAvailable: 0, totalBooked: 0, occupancyPercent: 0 })),
+        reportBasis:
+          "Occupancy compares assigned active staff schedule minutes against booked service minutes for non-cancelled appointments.",
+      });
+    }
 
     const { data: schedules, error: schedError } = await supabaseAdmin
       .from("staff_schedules")
@@ -104,11 +132,6 @@ export async function GET(request: NextRequest) {
       .in("staff_id", staffIds);
 
     if (toError) throw toError;
-
-    const dates: string[] = [];
-    for (let d = new Date(fromDate); d <= toDate; d.setUTCDate(d.getUTCDate() + 1)) {
-      dates.push(d.toISOString().slice(0, 10));
-    }
 
     const dayOfWeek = (dateStr: string) => new Date(dateStr + "T12:00:00Z").getUTCDay();
 
@@ -193,7 +216,12 @@ export async function GET(request: NextRequest) {
       return { date: dateStr, totalAvailable, totalBooked, occupancyPercent };
     });
 
-    return successResponse({ byStaff, byDate });
+    return successResponse({
+      byStaff,
+      byDate,
+      reportBasis:
+        "Occupancy compares assigned active staff schedule minutes against booked service minutes for confirmed, checked-in, in-progress, and completed appointments.",
+    });
   } catch (error) {
     return handleApiError(error, "Failed to generate occupancy report");
   }

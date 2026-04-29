@@ -1426,11 +1426,14 @@ export async function validateBooking(
       );
     }
 
-    const { data: balanceData } = await supabase.rpc(
-      "get_customer_available_points" as any,
-      { customer_uuid: customerId },
+    const [ledgerBalanceResult, legacyBalanceResult] = await Promise.all([
+      supabase.rpc("get_customer_available_points" as any, { customer_uuid: customerId }),
+      supabase.rpc("get_user_loyalty_balance" as any, { p_user_id: customerId }),
+    ]);
+    const availableBalance = Math.max(
+      Number(ledgerBalanceResult.data) || 0,
+      Number(legacyBalanceResult.data) || 0,
     );
-    const availableBalance = Number(balanceData) || 0;
 
     if (pointsToRedeem > availableBalance) {
       return handleApiError(

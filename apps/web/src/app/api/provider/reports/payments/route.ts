@@ -93,8 +93,11 @@ export async function GET(request: NextRequest) {
       cancellation_fees: cancellationFeesTotal,
       tips_collected: tipsCollected,
       net_revenue: totalCollected + cancellationFeesTotal - totalRefunded,
+      basis_note:
+        "Provider earnings are positive provider_earnings ledger rows by payment/ledger date. Tips are reported separately; refunds reduce net service earnings.",
       by_method: Array.from(methodMap.entries())
         .map(([method, data]) => ({ method, ...data }))
+        .filter((row) => row.amount > 0 || row.count > 0)
         .sort((a, b) => b.amount - a.amount),
       recent_payouts: recentPayouts,
       recent_refunds: recentRefundList

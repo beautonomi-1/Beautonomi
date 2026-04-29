@@ -90,6 +90,7 @@ export async function GET(request: NextRequest) {
       .from("bookings")
       .select("id, status, scheduled_at")
       .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)")
       .gte("scheduled_at", startOfToday.toISOString())
       .lte("scheduled_at", endOfToday.toISOString());
     if (locationId) todayBq = todayBq.eq("location_id", locationId);
@@ -99,6 +100,7 @@ export async function GET(request: NextRequest) {
       .from("bookings")
       .select("id, status, scheduled_at")
       .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)")
       .gte("scheduled_at", weekStart.toISOString())
       .lte("scheduled_at", weekEnd.toISOString());
     if (locationId) weekBq = weekBq.eq("location_id", locationId);
@@ -108,6 +110,7 @@ export async function GET(request: NextRequest) {
       .from("bookings")
       .select("id, status, scheduled_at, customer_id")
       .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)")
       .gte("scheduled_at", monthStart.toISOString())
       .lte("scheduled_at", monthEnd.toISOString());
     if (locationId) monthBq = monthBq.eq("location_id", locationId);
@@ -129,6 +132,7 @@ export async function GET(request: NextRequest) {
       .from("bookings")
       .select("id, scheduled_at, status")
       .eq("provider_id", providerId)
+      .in("status", ["pending", "confirmed", "checked_in", "in_progress"])
       .gte("scheduled_at", now.toISOString())
       .order("scheduled_at", { ascending: true })
       .limit(10);
@@ -140,6 +144,7 @@ export async function GET(request: NextRequest) {
       .from("bookings")
       .select("id, scheduled_at, status")
       .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)")
       .lte("scheduled_at", now.toISOString())
       .order("scheduled_at", { ascending: false })
       .limit(10);
@@ -163,6 +168,8 @@ export async function GET(request: NextRequest) {
       },
       upcomingBookings: upcomingBookings || [],
       recentBookings: recentBookings || [],
+      reportBasis:
+        "Dashboard revenue uses provider_earnings ledger rows. Booking/client counts exclude cancelled and no-show bookings.",
     });
   } catch (error) {
     return handleApiError(error, "BUSINESS_DASHBOARD_ERROR", 500);

@@ -153,6 +153,7 @@ async function recordProductOrderPaymentInner(
   const financeRows = [
     {
       booking_id: null,
+      product_order_id: productOrderId,
       provider_id: (order as any).provider_id ?? null,
       tenant_id: financeTenantId,
       transaction_type: "payment",
@@ -168,6 +169,7 @@ async function recordProductOrderPaymentInner(
   if (isPlatformHeld) {
     financeRows.push({
       booking_id: null,
+      product_order_id: productOrderId,
       provider_id: (order as any).provider_id ?? null,
       tenant_id: financeTenantId,
       transaction_type: "provider_earnings",
@@ -181,6 +183,7 @@ async function recordProductOrderPaymentInner(
 
     financeRows.push({
       booking_id: null,
+      product_order_id: productOrderId,
       provider_id: (order as any).provider_id ?? null,
       tenant_id: financeTenantId,
       transaction_type: "platform_fee",

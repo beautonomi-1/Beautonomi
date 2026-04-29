@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Search, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ export type SearchSuggestion = {
   url: string;
   category?: string;
   slug?: string;
+  image_url?: string | null;
 };
 
 type SearchQueryBarProps = {
@@ -154,16 +156,31 @@ export function SearchQueryBarWithSuggestions({
                 <button
                   type="button"
                   className={cn(
-                    "flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-gray-50",
+                    "flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-gray-50",
                     i === highlight && "bg-gray-50"
                   )}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => applySuggestion(s)}
                 >
-                  <span className="font-medium text-gray-900">{s.name}</span>
-                  <span className="text-xs text-gray-500 capitalize">
-                    {s.type === "service" && s.category ? `${s.category} · ` : ""}
-                    {s.type === "service" ? "Service" : s.type === "provider" ? "Provider" : "Category"}
+                  {s.type === "provider" ? (
+                    <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-pink-50 text-xs font-semibold text-primary ring-1 ring-pink-100">
+                      {s.image_url ? (
+                        <Image src={s.image_url} alt="" fill sizes="36px" className="object-cover" />
+                      ) : (
+                        s.name.slice(0, 1).toUpperCase()
+                      )}
+                    </span>
+                  ) : (
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100">
+                      <Search className="h-4 w-4 text-gray-400" />
+                    </span>
+                  )}
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-gray-900">{s.name}</span>
+                    <span className="block text-xs text-gray-500 capitalize">
+                      {s.type === "service" && s.category ? `${s.category} · ` : ""}
+                      {s.type === "service" ? "Service" : s.type === "provider" ? "Provider" : "Category"}
+                    </span>
                   </span>
                 </button>
               </li>

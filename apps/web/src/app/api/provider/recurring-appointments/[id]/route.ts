@@ -150,27 +150,22 @@ export async function DELETE(
       return notFoundResponse("Recurring appointment not found");
     }
 
-    if (deleteSeries) {
-      const { error } = await supabase
-        .from("recurring_appointments")
-        .delete()
-        .eq("id", id)
-        .eq("provider_id", providerId);
-      
-      if (error) {
-        throw error;
-      }
-    } else {
-      // Delete single instance
-      const { error } = await supabase
-        .from("recurring_appointments")
-        .delete()
-        .eq("id", id)
-        .eq("provider_id", providerId);
-      
-      if (error) {
-        throw error;
-      }
+    if (!deleteSeries) {
+      return errorResponse(
+        "Recurring appointments are managed as series. Delete the series, or cancel a generated booking from the calendar.",
+        "UNSUPPORTED_INSTANCE_ACTION",
+        400
+      );
+    }
+
+    const { error } = await supabase
+      .from("recurring_appointments")
+      .delete()
+      .eq("id", id)
+      .eq("provider_id", providerId);
+
+    if (error) {
+      throw error;
     }
 
     return successResponse({ deleted: true, deleted_series: deleteSeries });

@@ -66,6 +66,32 @@ function canEditBudgetFields(campaign: Campaign | null): boolean {
   return Boolean(campaign && !isTimeBasedCampaign(campaign) && !isImpressionPackCampaign(campaign));
 }
 
+function normalizeCategories(raw: unknown): GlobalCategory[] {
+  if (Array.isArray(raw)) return raw as GlobalCategory[];
+  if (!raw || typeof raw !== "object") return [];
+  const root = raw as { data?: unknown; categories?: unknown; global_categories?: unknown };
+  if (Array.isArray(root.data)) return root.data as GlobalCategory[];
+  if (Array.isArray(root.categories)) return root.categories as GlobalCategory[];
+  if (Array.isArray(root.global_categories)) return root.global_categories as GlobalCategory[];
+  if (root.data && typeof root.data === "object" && Array.isArray((root.data as { categories?: unknown }).categories)) {
+    return (root.data as { categories: GlobalCategory[] }).categories;
+  }
+  return [];
+}
+
+function campaignProgress(campaign: Campaign, nowMs: number): number {
+  if (campaign.billing_model === "time_based" && campaign.start_at && campaign.end_at) {
+    const start = new Date(campaign.start_at).getTime();
+    const end = new Date(campaign.end_at).getTime();
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      return Math.max(0, Math.min(1, (nowMs - start) / (end - start)));
+    }
+  }
+  const budget = Number(campaign.budget || 0);
+  if (budget <= 0) return 0;
+  return Math.max(0, Math.min(1, Number(campaign.spent || 0) / budget));
+}
+
 function campaignModelLabel(campaign: Campaign): string {
   if (isTimeBasedCampaign(campaign)) return "time boost";
   if (isImpressionPackCampaign(campaign)) return "impression pack";
@@ -78,6 +104,14 @@ type PerformanceSummary = {
   clicks: number;
   spend: number;
   sales: number;
+};
+
+type CampaignPerformance = {
+  impressions: number;
+  reach: number;
+  clicks: number;
+  books: number;
+  spent: number;
 };
 
 const formatCompactNumber = (value: number | null | undefined) =>
@@ -93,10 +127,13 @@ export default function ProviderAdsPage() {
   const adsEnabled = useFeatureFlag("ads.enabled");
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [performance, setPerformance] = useState<PerformanceSummary | null>(null);
+  const [campaignPerformance, setCampaignPerformance] = useState<Record<string, CampaignPerformance>>({});
   const [packs, setPacks] = useState<ImpressionPack[]>([]);
   const [timePacks, setTimePacks] = useState<TimePack[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [defaultModel, setDefaultModel] = useState("time_based");
   const [globalCategories, setGlobalCategories] = useState<GlobalCategory[]>([]);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [creatingPackId, setCreatingPackId] = useState<string | null>(null);
@@ -122,7 +159,8 @@ export default function ProviderAdsPage() {
     try {
       const res = await fetcher.get<{ data: Campaign[] }>("/api/provider/ads/campaigns");
       setCampaigns(res.data ?? []);
-    } catch (err) {
+      setNowMs(Date.now());
+    } catch {
       setCampaigns([]);
       toast.error("Failed to load campaigns. Please try again.");
     }
@@ -131,11 +169,13 @@ export default function ProviderAdsPage() {
   const loadPerformance = async () => {
     try {
       const res = await fetcher.get<{
-        data: { summary: PerformanceSummary };
+        data: { summary: PerformanceSummary; by_campaign?: Record<string, CampaignPerformance> };
       }>("/api/provider/ads/performance");
       setPerformance(res.data?.summary ?? null);
+      setCampaignPerformance(res.data?.by_campaign ?? {});
     } catch {
       setPerformance(null);
+      setCampaignPerformance({});
     }
   };
 
@@ -150,14 +190,15 @@ export default function ProviderAdsPage() {
       try {
         const [catRes, packsRes] = await Promise.all([
           fetcher.get<{ data: GlobalCategory[] }>("/api/public/categories/global?all=true"),
-          fetcher.get<{ data: { impression_packs: ImpressionPack[]; time_packs: TimePack[]; available_models: string[] } }>("/api/provider/ads/packs"),
+          fetcher.get<{ data: { impression_packs: ImpressionPack[]; time_packs: TimePack[]; available_models: string[]; default_model?: string } }>("/api/provider/ads/packs"),
         ]);
-        setGlobalCategories(Array.isArray(catRes.data) ? catRes.data : []);
+        setGlobalCategories(normalizeCategories(catRes.data));
         const packsData = packsRes.data;
         if (packsData && typeof packsData === "object" && !Array.isArray(packsData)) {
           setPacks(Array.isArray(packsData.impression_packs) ? packsData.impression_packs : []);
           setTimePacks(Array.isArray(packsData.time_packs) ? packsData.time_packs : []);
           setAvailableModels(Array.isArray(packsData.available_models) ? packsData.available_models : []);
+          setDefaultModel(typeof packsData.default_model === "string" ? packsData.default_model : "time_based");
         } else {
           setPacks(Array.isArray(packsData) ? (packsData as any) : []);
         }
@@ -363,6 +404,45 @@ export default function ProviderAdsPage() {
               </div>
             </div>
           </div>
+          {campaigns.length > 0 && (
+            <div className="mt-6 overflow-hidden rounded-lg border">
+              <div className="grid grid-cols-6 gap-3 bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground">
+                <span className="col-span-2">Campaign</span>
+                <span>Impr.</span>
+                <span>Clicks</span>
+                <span>Bookings</span>
+                <span>Spend</span>
+              </div>
+              {campaigns.map((campaign) => {
+                const metrics = campaignPerformance[campaign.id] ?? {
+                  impressions: 0,
+                  reach: 0,
+                  clicks: 0,
+                  books: 0,
+                  spent: Number(campaign.spent ?? 0),
+                };
+                return (
+                  <div
+                    key={campaign.id}
+                    className="grid grid-cols-6 gap-3 border-t px-4 py-3 text-sm"
+                  >
+                    <div className="col-span-2 min-w-0">
+                      <p className="truncate font-medium capitalize">
+                        {campaignModelLabel(campaign)}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {campaign.id}
+                      </p>
+                    </div>
+                    <span>{formatCompactNumber(metrics.impressions)}</span>
+                    <span>{formatCompactNumber(metrics.clicks)}</span>
+                    <span>{formatCompactNumber(metrics.books)}</span>
+                    <span>{fmt(Number(metrics.spent ?? 0))}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </SectionCard>
       )}
 
@@ -370,9 +450,22 @@ export default function ProviderAdsPage() {
         <div className="space-y-4">
           {enabled && (
             <>
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4">
+                <p className="font-medium text-indigo-950">Choose the ad product that matches your goal</p>
+                <p className="mt-1 text-sm text-indigo-900/75">
+                  {defaultModel === "time_based"
+                    ? "Recommended: boost for a fixed number of days for predictable visibility."
+                    : defaultModel === "impression_pack"
+                      ? "Recommended: buy a fixed impression pack and track delivery until it is used."
+                      : "Recommended: use a custom CPC budget when you want control over spend, caps, and bids."}
+                </p>
+              </div>
               {timePacks.length > 0 && availableModels.includes("time_based") && (
                 <div className="mb-6">
-                  <Label className="text-base font-medium">Boost for a set number of days</Label>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-base font-medium">Boost for a set number of days</Label>
+                    {defaultModel === "time_based" ? <Badge variant="secondary">Recommended</Badge> : null}
+                  </div>
                   <p className="text-sm text-muted-foreground mb-3">Pay a flat rate and your listing appears in sponsored slots for the full duration. Predictable and simple.</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
                     {timePacks.map((tp) => (
@@ -429,8 +522,11 @@ export default function ProviderAdsPage() {
 
               {packs.length > 0 && availableModels.includes("impression_pack") && (
                 <div>
-                  <Label className="text-base font-medium">Buy impressions</Label>
-                <p className="text-sm text-muted-foreground mb-3">Choose a pack — you pay once and get a fixed number of impressions. Easy to estimate.</p>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-base font-medium">Buy impressions</Label>
+                    {defaultModel === "impression_pack" ? <Badge variant="secondary">Recommended</Badge> : null}
+                  </div>
+                <p className="text-sm text-muted-foreground mb-3">Choose a pack, pay once, and the campaign activates after payment until those impressions are delivered.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                   {packs.map((pack) => (
                     <button
@@ -474,7 +570,10 @@ export default function ProviderAdsPage() {
               )}
               {cpcBudgetAvailable && packs.length > 0 && (
                 <div className="border-t pt-4">
-                  <Label className="text-base font-medium">Or set a custom budget</Label>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-base font-medium">Or set a custom budget</Label>
+                    {defaultModel === "cpc_budget" ? <Badge variant="secondary">Recommended</Badge> : null}
+                  </div>
                   <p className="text-sm text-muted-foreground mb-3">Open-ended budget and bid per click (for advanced use).</p>
                 </div>
               )}
@@ -556,10 +655,27 @@ export default function ProviderAdsPage() {
             <p className="text-muted-foreground">No campaigns yet. Create a draft to get started.</p>
           ) : (
             <ul className="space-y-3">
-              {campaigns.map((c) => (
+              {campaigns.map((c) => {
+                const metrics = campaignPerformance[c.id] ?? {
+                  impressions: 0,
+                  reach: 0,
+                  clicks: 0,
+                  books: 0,
+                  spent: Number(c.spent ?? 0),
+                };
+                const progress = campaignProgress(c, nowMs);
+                const remaining =
+                  c.billing_model === "time_based"
+                    ? c.end_at
+                      ? `${Math.max(0, Math.ceil((new Date(c.end_at).getTime() - nowMs) / 86400000))} days remaining`
+                      : "Starts after payment"
+                    : c.pack_impressions != null
+                      ? `${formatCompactNumber(Math.max(0, Number(c.pack_impressions) - Number(metrics.impressions || 0)))} impressions remaining`
+                      : `${fmt(Math.max(0, Number(c.budget || 0) - Number(c.spent || 0)))} budget remaining`;
+                return (
                 <li
                   key={c.id}
-                  className="flex flex-wrap items-center justify-between gap-2 p-4 border rounded-lg"
+                  className="flex flex-wrap items-center justify-between gap-3 p-4 border rounded-lg"
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -582,6 +698,12 @@ export default function ProviderAdsPage() {
                         {c.targeting.global_category_ids.length === 1 ? "y" : "ies"}
                       </p>
                     ) : null}
+                    <div className="max-w-sm pt-2">
+                      <div className="h-2 overflow-hidden rounded-full bg-muted">
+                        <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.round(progress * 100)}%` }} />
+                      </div>
+                      <p className="mt-1 text-xs font-medium text-muted-foreground">{remaining}</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -626,7 +748,8 @@ export default function ProviderAdsPage() {
                     )}
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </div>

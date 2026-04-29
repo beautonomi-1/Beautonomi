@@ -25,29 +25,6 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
 
-    // Get provider ID for user
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError) {
-      console.error('Error fetching provider:', providerError);
-      return handleApiError(
-        new Error(`Failed to fetch provider: ${providerError.message}`),
-        'PROVIDER_FETCH_ERROR',
-        500
-      );
-    }
-
-    if (!providerData || !providerId) {
-      return handleApiError(
-        new Error('Provider profile not found. Please complete onboarding first.'),
-        'NOT_FOUND',
-        404
-      );
-    }
     // Get date range from query params
     const searchParams = request.nextUrl.searchParams;
     const locationId = searchParams.get("location_id");
@@ -166,12 +143,18 @@ export async function GET(request: NextRequest) {
     const prevFromDate = subDays(fromDate, periodDays);
     const prevToDate = fromDate;
 
-    const { data: prevBookings } = await supabaseAdmin
+    let prevBookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id")
       .eq("provider_id", providerId)
       .gte("scheduled_at", prevFromDate.toISOString())
       .lte("scheduled_at", prevToDate.toISOString());
+
+    if (locationId) {
+      prevBookingsQuery = prevBookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: prevBookings } = await prevBookingsQuery;
 
     const prevBookingsCount = prevBookings?.length || 0;
 

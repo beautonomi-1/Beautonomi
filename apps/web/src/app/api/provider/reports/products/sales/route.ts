@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { endOfDay, startOfDay, subDays } from "date-fns";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,11 +23,11 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
     const locationId = searchParams.get("location_id") || undefined;
 
     // Get bookings with product add-ons and paid product orders in date range.
@@ -271,6 +271,8 @@ export async function GET(request: NextRequest) {
       averageProductValue,
       topProducts,
       productsByCategory,
+      report_basis:
+        "Product sales include appointment booking_products and standalone paid product_orders by scheduled/order date. Appointment product_orders are excluded as fulfillment mirrors.",
     });
   } catch (error) {
     console.error("Error in product sales report:", error);

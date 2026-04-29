@@ -40,9 +40,8 @@ export function buildAdReachKey(request: Request): string {
 }
 
 /**
- * Cost per impression = bid_cpc * COST_PER_IMPRESSION_RATIO (ZAR).
- * Used for auction eligibility (daily cap estimate). Actual charge is applied by DB trigger
- * when an impression row is inserted into ads_events (see migration 261).
+ * Fallback cost per impression ratio when Control Plane config is unavailable.
+ * Actual charge is applied by DB trigger when an impression row is inserted into ads_events.
  */
 export const COST_PER_IMPRESSION_RATIO = 0.05;
 
@@ -59,12 +58,15 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
   const env = process.env.NODE_ENV === "production" ? "production" : "development";
   const { data: config } = await supabase
     .from("ads_module_config")
-    .select("enabled, max_sponsored_slots")
+    .select("enabled, max_sponsored_slots, cost_per_impression_ratio")
     .eq("environment", env)
     .maybeSingle();
 
   if (!config?.enabled) return [];
   const limit = Math.min(maxSlots, Number(config.max_sponsored_slots) || 5, 100);
+  const configuredRatio = Number((config as { cost_per_impression_ratio?: number | null }).cost_per_impression_ratio);
+  const costPerImpressionRatio =
+    Number.isFinite(configuredRatio) && configuredRatio > 0 ? configuredRatio : COST_PER_IMPRESSION_RATIO;
 
   // Resolve category id from slug if needed
   let globalCategoryId: string | null = categoryId ?? null;
@@ -167,7 +169,9 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
     const dailyBudget = c.daily_budget != null ? Number(c.daily_budget) : null;
     if (dailyBudget != null) {
       const todayImpressions = todayCountByCampaign[c.id] ?? 0;
-      const costPerImp = c.pack_impressions != null ? Number(c.budget) / Number(c.pack_impressions) : Number(c.bid_cpc ?? 0) * COST_PER_IMPRESSION_RATIO;
+      const costPerImp = c.pack_impressions != null
+        ? Number(c.budget) / Number(c.pack_impressions)
+        : Number(c.bid_cpc ?? 0) * costPerImpressionRatio;
       if (todayImpressions * costPerImp >= dailyBudget) continue;
     }
     const targeting = (c.targeting && typeof c.targeting === "object") ? c.targeting : {};

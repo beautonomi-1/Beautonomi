@@ -156,9 +156,9 @@ export default function TeamListScreen() {
     if (teamAccessLoading) return;
     addIntentDone.current = true;
     if (isFreelancer || !canManageTeam) return;
-    setForm({ ...EMPTY_FORM });
+    setForm({ ...EMPTY_FORM, location_ids: selectedLocationId ? [selectedLocationId] : [] });
     setAddSheetOpen(true);
-  }, [params.add, teamAccessLoading, isFreelancer, canManageTeam]);
+  }, [params.add, teamAccessLoading, isFreelancer, canManageTeam, selectedLocationId]);
 
   // --- Filtering ---
   const filtered = useMemo(() => {
@@ -213,7 +213,7 @@ export default function TeamListScreen() {
       Alert.alert("Permission", "Only owners or managers with “Manage team” can add staff.");
       return;
     }
-    setForm({ ...EMPTY_FORM });
+    setForm({ ...EMPTY_FORM, location_ids: selectedLocationId ? [selectedLocationId] : [] });
     setAddSheetOpen(true);
   }
 
@@ -408,12 +408,28 @@ export default function TeamListScreen() {
       location_ids: form.location_ids,
       service_ids: form.service_ids,
     };
-    const { error } = await createMember(payload);
+    const { data: createdMember, error } = await createMember(payload);
     if (error) {
       Alert.alert("Error", error);
     } else {
       setAddSheetOpen(false);
       refresh();
+      Alert.alert(
+        "Team member added",
+        form.invite_email
+          ? "They have been added and an invite was requested. Open their profile to review shifts, days off, permissions, and password reset actions."
+          : "They have been added. Open their profile to send an invite or password reset, then set their shifts and permissions.",
+        [
+          { text: "Later", style: "cancel" },
+          createdMember?.id
+            ? {
+                text: "Open profile",
+                onPress: () =>
+                  router.push(`/(app)/(tabs)/more/team-member/${createdMember.id}` as never),
+              }
+            : { text: "OK" },
+        ],
+      );
     }
   }
 
@@ -682,6 +698,7 @@ export default function TeamListScreen() {
         visible={addSheetOpen}
         onClose={() => setAddSheetOpen(false)}
         title="Add Team Member"
+        subtitle="Create the staff profile, assign services/locations, then set shifts and access."
         snapHeight="full"
       >
         {/* Name */}
@@ -727,6 +744,10 @@ export default function TeamListScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        <Text style={twStyle("mb-3 text-xs leading-5 text-gray-500")}>
+          Staff can work assigned services. Managers can help manage bookings and team workflows depending on
+          permissions. Owner should only be used for trusted business owners.
+        </Text>
 
         {/* Commission Rate */}
         <FormField
@@ -741,7 +762,7 @@ export default function TeamListScreen() {
         {locations && locations.length > 0 && (
           <>
             <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>
-              Assign Locations
+              Assign locations
             </Text>
             <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
               {locations.map((loc, i) => {
@@ -770,7 +791,7 @@ export default function TeamListScreen() {
         {services && services.length > 0 && (
           <>
             <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>
-              Assign Services
+              Assign services they can perform
             </Text>
             <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
               {services.map((svc, i) => {
@@ -799,10 +820,10 @@ export default function TeamListScreen() {
         <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
           <View>
             <Text style={twStyle("text-sm font-medium text-gray-900")}>
-              Invite via Email
+              Send invite/setup email
             </Text>
             <Text style={twStyle("text-xs text-gray-500")}>
-              Send an invitation email to join
+              Recommended. They can set their password and open the provider app.
             </Text>
           </View>
           <Switch

@@ -27,6 +27,13 @@ export async function DELETE(
       return notFoundResponse("Staff member not found");
     }
 
+    const { data: existingDayOff } = await supabase
+      .from("staff_days_off")
+      .select("date")
+      .eq("id", dayOffId)
+      .eq("staff_id", id)
+      .maybeSingle();
+
     const { error: deleteError } = await supabase
       .from("staff_days_off")
       .delete()
@@ -38,6 +45,17 @@ export async function DELETE(
         return successResponse({ success: true });
       }
       throw deleteError;
+    }
+
+    if ((existingDayOff as { date?: string } | null)?.date) {
+      await supabase
+        .from("staff_time_off")
+        .delete()
+        .eq("staff_id", id)
+        .eq("provider_id", providerId)
+        .eq("start_date", (existingDayOff as { date: string }).date)
+        .eq("end_date", (existingDayOff as { date: string }).date)
+        .eq("status", "approved");
     }
 
     return successResponse({ success: true });

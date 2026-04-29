@@ -35,8 +35,9 @@ function lineRevenue(qty: number, unitPrice: number, totalPrice: number): number
 /**
  * GET /api/provider/reports/products
  *
- * E-commerce order sales (product_order_items → products) + catalogue stock from `products` (+ variants).
- * Query: from, to (ISO date), optional location_id (product_orders.collection_location_id).
+ * Product sales from appointment `booking_products` plus standalone paid `product_orders`,
+ * with catalogue stock from `products` (+ variants).
+ * Query: from, to (ISO date), optional location_id.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -70,10 +71,38 @@ export async function GET(request: NextRequest) {
     const catalog = (catalogRows || []) as CatalogRow[];
     const catalogById = new Map(catalog.map((p) => [p.id, p]));
 
+    let bookingsQuery = supabaseAdmin
+      .from("bookings")
+      .select(
+        `
+        id,
+        booking_products(
+          product_id,
+          quantity,
+          unit_price,
+          total_price,
+          products(id, name)
+        )
+      `,
+      )
+      .eq("provider_id", providerId)
+      .in("status", ["completed", "confirmed", "in_progress", "checked_in"]);
+
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+    if (from) {
+      bookingsQuery = bookingsQuery.gte("scheduled_at", `${from}T00:00:00.000Z`);
+    }
+    if (to) {
+      bookingsQuery = bookingsQuery.lte("scheduled_at", `${to}T23:59:59.999Z`);
+    }
+
     let ordersQuery = supabaseAdmin
       .from("product_orders")
       .select("id")
       .eq("provider_id", providerId)
+      .eq("payment_status", "paid")
       // Appointment orders are fulfillment mirrors for booking_products, which
       // are counted by booking/product reports elsewhere.
       .or("order_source.is.null,order_source.neq.appointment")
@@ -89,7 +118,13 @@ export async function GET(request: NextRequest) {
       ordersQuery = ordersQuery.lte("created_at", `${to}T23:59:59.999Z`);
     }
 
-    const { data: orders, error: ordersError } = await ordersQuery;
+    const [{ data: bookings, error: bookingsError }, { data: orders, error: ordersError }] = await Promise.all([
+      bookingsQuery,
+      ordersQuery,
+    ]);
+    if (bookingsError) {
+      throw bookingsError;
+    }
     if (ordersError) {
       throw ordersError;
     }
@@ -98,6 +133,28 @@ export async function GET(request: NextRequest) {
 
     type SalesAgg = { units: number; revenue: number; fallbackName: string | null };
     const salesByProduct = new Map<string, SalesAgg>();
+
+    for (const booking of bookings || []) {
+      const products = (booking as { booking_products?: Array<{
+        product_id?: string | null;
+        quantity?: number | null;
+        unit_price?: number | null;
+        total_price?: number | null;
+        products?: { name?: string | null } | null;
+      }> }).booking_products || [];
+      for (const row of products) {
+        const pid = row.product_id;
+        if (!pid) continue;
+        const qty = Number(row.quantity) || 0;
+        const rev = lineRevenue(qty, Number(row.unit_price) || 0, Number(row.total_price) || 0);
+        const name = typeof row.products?.name === "string" ? row.products.name : null;
+        const prev = salesByProduct.get(pid) ?? { units: 0, revenue: 0, fallbackName: null };
+        prev.units += qty;
+        prev.revenue += rev;
+        if (!prev.fallbackName && name) prev.fallbackName = name;
+        salesByProduct.set(pid, prev);
+      }
+    }
 
     if (orderIds.length > 0) {
       for (const ids of chunk(orderIds, 80)) {
@@ -174,6 +231,8 @@ export async function GET(request: NextRequest) {
       low_stock,
       package_usage: [],
       package_revenue: 0,
+      report_basis:
+        "Product revenue includes appointment booking_products and standalone paid product_orders. Appointment product_orders are excluded as fulfillment mirrors.",
     });
   } catch (error) {
     console.error("Error in GET /api/provider/reports/products:", error);

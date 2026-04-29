@@ -1344,7 +1344,7 @@ async function handleCustomOfferSuccess(
     discount_amount: promotionDiscountAmount,
     tax_rate: taxRate,
     tax_amount: taxAmount,
-    service_fee_percentage: 0,
+    service_fee_percentage: _serviceFeePercentage,
     service_fee_amount: serviceFeeAmount,
     total_amount: isDepositPayment ? coTotalAmount : amountInCurrency,
     currency: offer.currency || offerCurrencyFallback,
@@ -1848,6 +1848,7 @@ async function handleGiftCardOrderSuccess(
     recipient_email?: string;
     provider_id?: string | null;
     tenant_id?: string | null;
+    metadata?: { attribution?: Record<string, unknown> } | null;
   };
   const orderData = order as GiftOrderRow;
   if (orderData.status === "paid" && orderData.gift_card_id) return;
@@ -1872,6 +1873,12 @@ async function handleGiftCardOrderSuccess(
   const value = Number(orderData.amount || 0);
   const quantity = Number(orderData.quantity || metadata.quantity || 1);
   const totalAmount = Number(orderData.total_amount || value * quantity);
+  const attribution =
+    metadata?.attribution && typeof metadata.attribution === "object"
+      ? metadata.attribution
+      : orderData.metadata?.attribution && typeof orderData.metadata.attribution === "object"
+        ? orderData.metadata.attribution
+        : undefined;
 
   const giftCardIds: string[] = [];
   const giftCardCodes: string[] = [];
@@ -1903,6 +1910,7 @@ async function handleGiftCardOrderSuccess(
           paystack_reference: reference,
           bulk_order_index: quantity > 1 ? i + 1 : null,
           bulk_order_total: quantity > 1 ? quantity : null,
+          attribution,
         },
       })
       .select("*")
@@ -1945,6 +1953,7 @@ async function handleGiftCardOrderSuccess(
       gift_card_order_id: orderId,
       gift_card_ids: giftCardIds,
       quantity: quantity,
+      attribution,
     },
     created_at: new Date().toISOString(),
   });
@@ -2018,9 +2027,22 @@ async function handleMembershipOrderSuccess(
     .eq("id", orderId)
     .single();
   if (!order) return;
-  type MembershipOrderRow = { status?: string; provider_id?: string; user_id?: string; plan_id?: string; amount?: number };
+  type MembershipOrderRow = {
+    status?: string;
+    provider_id?: string;
+    user_id?: string;
+    plan_id?: string;
+    amount?: number;
+    metadata?: { attribution?: Record<string, unknown> } | null;
+  };
   const orderData = order as MembershipOrderRow;
   if (orderData.status === "paid") return;
+  const attribution =
+    metadata?.attribution && typeof metadata.attribution === "object"
+      ? metadata.attribution
+      : orderData.metadata?.attribution && typeof orderData.metadata.attribution === "object"
+        ? orderData.metadata.attribution
+        : undefined;
 
   const { data: planRow } = await (supabase.from("membership_plans") as any)
     .select("id, provider_id")
@@ -2085,7 +2107,7 @@ async function handleMembershipOrderSuccess(
       status: "active",
       started_at: startedAt,
       expires_at: expiresAt.toISOString(),
-      metadata: { source: "purchase", membership_order_id: orderId },
+      metadata: { source: "purchase", membership_order_id: orderId, attribution },
       updated_at: new Date().toISOString(),
     },
     { onConflict: "user_id,provider_id" },
@@ -2110,6 +2132,7 @@ async function handleMembershipOrderSuccess(
       membership_order_id: orderId,
       plan_id: orderData.plan_id,
       provider_id: orderData.provider_id,
+      attribution,
     },
     created_at: new Date().toISOString(),
   });
@@ -2326,7 +2349,7 @@ async function handleAdsBudgetOrderSuccess(
     })
     .eq("id", orderId);
 
-  // Check if time-based campaign — auto-activate with correct dates
+  // Check billing model — prepaid fixed products should start after payment.
   const { data: campaignRow } = await supabase
     .from("ads_campaigns")
     .select("billing_model, duration_days")
@@ -2344,6 +2367,9 @@ async function handleAdsBudgetOrderSuccess(
     campaignUpdate.status = "active";
     campaignUpdate.start_at = now.toISOString();
     campaignUpdate.end_at = new Date(now.getTime() + days * 86400000).toISOString();
+  } else if ((campaignRow as any)?.billing_model === "impression_pack") {
+    campaignUpdate.status = "active";
+    campaignUpdate.start_at = new Date().toISOString();
   }
 
   await supabase.from("ads_campaigns")

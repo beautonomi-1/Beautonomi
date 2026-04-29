@@ -19,6 +19,18 @@ type BookingRow = {
   address_postal_code?: string | null;
   address_latitude?: number | string | null;
   address_longitude?: number | string | null;
+  payment_status?: string | null;
+  subtotal?: number | string | null;
+  discount_amount?: number | string | null;
+  promotion_discount_amount?: number | string | null;
+  membership_discount_amount?: number | string | null;
+  tax_amount?: number | string | null;
+  tax_rate?: number | string | null;
+  service_fee_percentage?: number | string | null;
+  service_fee_amount?: number | string | null;
+  tip_amount?: number | string | null;
+  travel_fee?: number | string | null;
+  total_amount?: number | string | null;
 };
 
 /**
@@ -48,7 +60,7 @@ export async function insertCustomerRecurringSeriesFromPaidBooking(params: {
   const { data: booking, error: bErr } = await admin
     .from("bookings")
     .select(
-      "id, customer_id, provider_id, scheduled_at, location_type, location_id, address_line1, address_city, address_country, address_postal_code, address_latitude, address_longitude",
+      "id, customer_id, provider_id, scheduled_at, location_type, location_id, address_line1, address_city, address_country, address_postal_code, address_latitude, address_longitude, payment_status, subtotal, discount_amount, promotion_discount_amount, membership_discount_amount, tax_amount, tax_rate, service_fee_percentage, service_fee_amount, tip_amount, travel_fee, total_amount",
     )
     .eq("id", bookingId)
     .single();
@@ -60,6 +72,9 @@ export async function insertCustomerRecurringSeriesFromPaidBooking(params: {
   const b = booking as BookingRow;
   if (b.customer_id !== customerId) {
     return { ok: false as const, message: "Customer mismatch" };
+  }
+  if (paymentMethod !== "cash" && b.payment_status === "pending") {
+    return { ok: false as const, message: "Booking payment has not settled" };
   }
 
   const { data: svcRows, error: sErr } = await admin
@@ -152,7 +167,21 @@ export async function insertCustomerRecurringSeriesFromPaidBooking(params: {
       metadata: {
         services,
         address: addrPayload,
+        pricing: {
+          subtotal: Number(b.subtotal ?? 0) || 0,
+          discount_amount: Number(b.discount_amount ?? 0) || 0,
+          promotion_discount_amount: Number(b.promotion_discount_amount ?? 0) || 0,
+          membership_discount_amount: Number(b.membership_discount_amount ?? 0) || 0,
+          tax_amount: Number(b.tax_amount ?? 0) || 0,
+          tax_rate: Number(b.tax_rate ?? 0) || 0,
+          service_fee_percentage: Number(b.service_fee_percentage ?? 0) || 0,
+          service_fee_amount: Number(b.service_fee_amount ?? 0) || 0,
+          tip_amount: Number(b.tip_amount ?? 0) || 0,
+          travel_fee: Number(b.travel_fee ?? 0) || 0,
+          total_amount: Number(b.total_amount ?? 0) || 0,
+        },
         source_booking_id: bookingId,
+        recurring_payment_rule: paymentMethod === "cash" ? "provider_collect_each_visit" : "customer_pay_each_visit",
       },
     })
     .select("id")

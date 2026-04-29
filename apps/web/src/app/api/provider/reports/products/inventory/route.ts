@@ -25,20 +25,6 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const { data: products, error: productsError } = await supabaseAdmin
       .from('products')
       .select('id, name, category, retail_price, quantity, low_stock_level, track_stock_quantity, is_active, has_variants, product_variants(quantity, retail_price)')

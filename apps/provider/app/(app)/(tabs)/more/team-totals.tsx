@@ -14,12 +14,14 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format, startOfWeek, endOfWeek, addDays, subDays } from "date-fns";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
+import { appendReportLocation } from "@/lib/reportLocationQuery";
 
 interface StaffTotalsItem {
   team_member_id: string;
@@ -40,6 +42,7 @@ interface StaffMember {
 
 export default function TeamTotalsScreen() {
   const router = useRouter();
+  const { selectedLocationId } = useProvider();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<"daily" | "weekly">("daily");
@@ -57,8 +60,8 @@ export default function TeamTotalsScreen() {
       : `start_date=${weekStartStr}&end_date=${weekEndStr}&period=weekly`;
   const totalsPath =
     selectedMemberId && selectedMemberId !== "all"
-      ? `/api/provider/staff/${selectedMemberId}/totals?${totalsParams}`
-      : `/api/provider/staff/totals?${totalsParams}`;
+      ? appendReportLocation(`/api/provider/staff/${selectedMemberId}/totals?${totalsParams}`, selectedLocationId)
+      : appendReportLocation(`/api/provider/staff/totals?${totalsParams}`, selectedLocationId);
 
   const { data: staffData } = useApi<StaffMember[] | { staff?: StaffMember[] }>("/api/provider/staff");
   const { data: totalsData, loading, error, refresh } = useApi<StaffTotalsItem[]>(totalsPath);

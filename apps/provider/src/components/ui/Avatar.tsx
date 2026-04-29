@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { View, Text } from "react-native";
 import { Image } from "expo-image";
 import { getInitials } from "@/lib/format";
@@ -35,10 +36,15 @@ function getColorForName(name: string): { bg: string; text: string } {
 }
 
 export function Avatar({ name, imageUrl, size = "md", color }: AvatarProps) {
+  const [imageFailed, setImageFailed] = useState(false);
   const s = sizeMap[size];
   const colorPair = color ? { bg: color, text: "#111" } : getColorForName(name);
 
-  if (imageUrl) {
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUrl]);
+
+  if (imageUrl && !imageFailed) {
     return (
       <View style={{ width: s.px, height: s.px, borderRadius: s.px / 2, overflow: "hidden" }}>
         <Image
@@ -47,6 +53,7 @@ export function Avatar({ name, imageUrl, size = "md", color }: AvatarProps) {
           contentFit="cover"
           cachePolicy="memory-disk"
           transition={200}
+          onError={() => setImageFailed(true)}
         />
       </View>
     );

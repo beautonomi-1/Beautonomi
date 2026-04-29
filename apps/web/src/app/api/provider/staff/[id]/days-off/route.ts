@@ -160,6 +160,31 @@ export async function POST(
       throw insertError;
     }
 
+    // Keep the broader availability/conflict table in sync with the simple
+    // mobile "day off" table. Reschedule conflict checks read staff_time_off.
+    try {
+      await supabase
+        .from("staff_time_off")
+        .delete()
+        .eq("staff_id", id)
+        .eq("provider_id", providerId)
+        .eq("start_date", validationResult.data.date)
+        .eq("end_date", validationResult.data.date);
+      await supabase.from("staff_time_off").insert({
+        staff_id: id,
+        provider_id: providerId,
+        start_date: validationResult.data.date,
+        end_date: validationResult.data.date,
+        reason: validationResult.data.reason || null,
+        type: validationResult.data.type || "day_off",
+        status: "approved",
+        approved_by: user.id,
+        approved_at: new Date().toISOString(),
+      });
+    } catch (syncError) {
+      console.warn("Failed to sync staff_time_off for day off:", syncError);
+    }
+
     return successResponse(dayOff);
   } catch (error) {
     return handleApiError(error, "Failed to create day off");

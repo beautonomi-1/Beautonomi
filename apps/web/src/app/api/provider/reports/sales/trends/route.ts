@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
+import { endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 
@@ -22,20 +22,6 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get("period") || "month"; // day, week, month, year
     const locationId = searchParams.get("location_id") || undefined;
@@ -46,6 +32,7 @@ export async function GET(request: NextRequest) {
     switch (period) {
       case "day":
         fromDate = subDays(toDate, 30);
+        toDate = endOfDay(toDate);
         break;
       case "week":
         fromDate = startOfWeek(subDays(toDate, 12 * 7));
@@ -61,6 +48,7 @@ export async function GET(request: NextRequest) {
         break;
       default:
         fromDate = subDays(toDate, 30);
+        toDate = endOfDay(toDate);
     }
 
     const { revenueByDate } = await getProviderRevenue(
@@ -77,6 +65,7 @@ export async function GET(request: NextRequest) {
       .from("bookings")
       .select("id, scheduled_at")
       .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)")
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString())
       .order("scheduled_at", { ascending: true });
@@ -185,6 +174,8 @@ export async function GET(request: NextRequest) {
       averageRevenue,
       revenueGrowth,
       bookingsGrowth,
+      reportBasis:
+        "Revenue trends use provider_earnings ledger rows by ledger date. Booking counts use non-cancelled scheduled bookings in the same calendar buckets.",
     });
   } catch (error) {
     return handleApiError(error, "REVENUE_TRENDS_ERROR", 500);

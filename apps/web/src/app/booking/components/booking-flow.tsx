@@ -255,7 +255,7 @@ function freshBookingStateForUrl(
   searchParams: { get: (k: string) => string | null }
 ): BookingState {
   const fresh = defaultBookingState(user);
-  const providerSlug = searchParams.get("slug") || searchParams.get("partnerId");
+  const providerSlug = searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id");
   const serviceId = searchParams.get("serviceId") || searchParams.get("service");
   const modeParam = searchParams.get("mode");
   if (providerSlug && serviceId) {
@@ -477,7 +477,7 @@ export default function BookingFlow() {
   }, [bookingState.providerId]);
 
   useEffect(() => {
-    const slug = searchParams.get("slug") || searchParams.get("partnerId");
+    const slug = searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id");
     if (!slug) {
       setProviderHasPackages(null);
       return;
@@ -606,7 +606,7 @@ export default function BookingFlow() {
 
   // Load provider ID from slug
   useEffect(() => {
-    const providerSlug = searchParams.get("slug") || searchParams.get("partnerId");
+    const providerSlug = searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id");
     if (providerSlug && !bookingState.providerId) {
       const loadProviderId = async () => {
         try {
@@ -654,7 +654,7 @@ export default function BookingFlow() {
   // Load pre-selected service from URL (mode only — step is driven by persistence + flowKey effect above)
   useEffect(() => {
     const rawService = searchParams.get("serviceId") || searchParams.get("service");
-    const providerSlug = searchParams.get("slug") || searchParams.get("partnerId");
+    const providerSlug = searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id");
     const modeParam = searchParams.get("mode"); // Optional mode from URL
 
     if (rawService && providerSlug) {
@@ -940,7 +940,7 @@ export default function BookingFlow() {
   /** `?package=` / `?package_id=` deep link: prefill cart from `service_package_items` (staff defaults to `any`). */
   useEffect(() => {
     const pkgId = searchParams.get("package")?.trim() || searchParams.get("package_id")?.trim();
-    const slug = searchParams.get("slug") || searchParams.get("partnerId");
+    const slug = searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id");
     // Direct service/product links take precedence — do not replace cart with full package bundle.
     if (serviceDirect || productDirect) return;
     if (!pkgId || !slug || bookingState.selectedServices.length > 0) return;
@@ -1042,7 +1042,7 @@ export default function BookingFlow() {
   /** Apply `?package=` bundle metadata when selected services match the package definition (legacy `/booking` flow). */
   useEffect(() => {
     const pkgId = searchParams.get("package")?.trim();
-    const slug = searchParams.get("slug") || searchParams.get("partnerId");
+    const slug = searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id");
     if (!pkgId || !slug || bookingState.selectedServices.length === 0) return;
     if (bookingState.selectedPackage?.id === pkgId) return;
 
@@ -1291,14 +1291,14 @@ export default function BookingFlow() {
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
                   onNext={handleNext}
-                  providerSlug={searchParams.get("slug") || searchParams.get("partnerId") || ""}
+                  providerSlug={searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id") || ""}
                 />
               ) : currentStep === "groupParticipants" ? (
                 <StepGroupParticipants
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
                   onNext={handleNext}
-                  providerSlug={searchParams.get("slug") || searchParams.get("partnerId") || ""}
+                  providerSlug={searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id") || ""}
                   maxGroupSize={10} // Will be fetched from API in the component
                   availableServices={bookingState.selectedServices.map(s => ({
                     id: s.id,
@@ -1312,21 +1312,21 @@ export default function BookingFlow() {
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
                   onNext={handleNext}
-                  providerSlug={searchParams.get("slug") || searchParams.get("partnerId") || ""}
+                  providerSlug={searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id") || ""}
                 />
               ) : currentStep === "packages" ? (
                 <StepPackages
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
                   onNext={handleNext}
-                  providerSlug={searchParams.get("slug") || searchParams.get("partnerId") || ""}
+                  providerSlug={searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id") || ""}
                 />
               ) : currentStep === "calendar" ? (
                 <StepCalendar
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
                   onNext={handleNext}
-                  providerSlug={searchParams.get("slug") || searchParams.get("partnerId") || ""}
+                  providerSlug={searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id") || ""}
                 />
               ) : currentStep === "promotions" ? (
                 <StepPromotions

@@ -8,6 +8,12 @@ import { twStyle } from "@/lib/twStyle";
 
 function isMoneyKey(k: string): boolean {
   const l = k.toLowerCase();
+  if (
+    /\b(count|counts|quantity|qty|units|hours|minutes|duration|rate|percent|percentage)\b/.test(l.replace(/_/g, " ")) ||
+    /(_count|_counts|count_|counts_|_rate|_percent|_percentage)$/.test(l)
+  ) {
+    return false;
+  }
   return (
     l.includes("revenue") ||
     l.includes("amount") ||

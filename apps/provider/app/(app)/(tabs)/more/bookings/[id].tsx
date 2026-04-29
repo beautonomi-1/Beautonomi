@@ -353,6 +353,104 @@ function statusColor(status: string): string {
   }
 }
 
+function statusTextColor(status: string): string {
+  switch (status) {
+    case "confirmed":
+    case "booked":
+      return "text-blue-800";
+    case "in_progress":
+    case "started":
+      return "text-amber-800";
+    case "completed":
+      return "text-green-800";
+    case "cancelled":
+      return "text-gray-700";
+    case "no_show":
+      return "text-red-800";
+    default:
+      return "text-gray-700";
+  }
+}
+
+function getBookingNextStep(
+  booking: BookingDetail,
+  options: { outstanding: number; isAtHome: boolean; isAtSalon: boolean },
+): { title: string; description: string; icon: keyof typeof Ionicons.glyphMap; color: string } {
+  const status = (booking.status || "").toLowerCase();
+  if (status === "pending" || status === "pending_payment") {
+    return {
+      title: "Review and confirm",
+      description: "Confirm the appointment, collect any required payment, or reschedule before the visit.",
+      icon: "alert-circle-outline",
+      color: "#d97706",
+    };
+  }
+  if (options.isAtHome && booking.current_stage === "en_route") {
+    return {
+      title: "Mark arrival next",
+      description: "You are en route. Mark arrived when you reach the client, then verify their PIN or QR.",
+      icon: "navigate-outline",
+      color: "#7c3aed",
+    };
+  }
+  if (options.isAtHome && booking.current_stage === "arrived" && !booking.arrival_otp_verified && !booking.qr_code_verified) {
+    return {
+      title: "Verify arrival",
+      description: "Ask the client for their arrival PIN or QR before starting the service.",
+      icon: "qr-code-outline",
+      color: "#7c3aed",
+    };
+  }
+  if (status === "confirmed" || status === "booked") {
+    return {
+      title: options.isAtHome ? "Ready for journey" : options.isAtSalon ? "Ready for check-in" : "Ready for service",
+      description: options.isAtHome
+        ? "Start journey when you leave for the client."
+        : "Use client arrived or start service when the customer is ready.",
+      icon: options.isAtHome ? "car-outline" : "play-circle-outline",
+      color: "#2563eb",
+    };
+  }
+  if (status === "started" || status === "in_progress") {
+    return {
+      title: "Service in progress",
+      description: "Complete the service when finished, then settle any outstanding balance.",
+      icon: "timer-outline",
+      color: "#d97706",
+    };
+  }
+  if (status === "completed" && options.outstanding > 0) {
+    return {
+      title: "Payment still due",
+      description: "Send a payment link, take Yoco, or mark the remaining amount as paid.",
+      icon: "card-outline",
+      color: "#d97706",
+    };
+  }
+  if (status === "completed") {
+    return {
+      title: "Completed",
+      description: "Receipt, payment, products, forms, and history remain available below.",
+      icon: "checkmark-circle-outline",
+      color: "#16a34a",
+    };
+  }
+  if (status === "cancelled" || status === "no_show") {
+    return {
+      title: status === "no_show" ? "Marked no-show" : "Cancelled",
+      description: "You can still review history, notify the customer, or handle refunds if payment exists.",
+      icon: "close-circle-outline",
+      color: "#dc2626",
+    };
+  }
+  return {
+    title: "Manage booking",
+    description: "Review appointment details and use the available actions for this booking.",
+    icon: "calendar-outline",
+    color: "#4b5563",
+  };
+}
+
 const ETA_OPTIONS = [15, 30, 45] as const;
 
 const PAYMENT_METHODS = [
@@ -1803,6 +1901,26 @@ export default function BookingDetailScreen() {
 
   const canRequestPayment = isStarted || b.status === "completed";
   const canSendPaymentLink = outstanding > 0 && b.status !== "cancelled";
+  const canReschedule = (isActive || isStarted) && Boolean(b.scheduled_at);
+  const nextStep = getBookingNextStep(b, { outstanding, isAtHome, isAtSalon });
+  const primaryServiceName = services[0]?.offering_name ?? "Appointment";
+  const serviceCountLabel =
+    services.length > 1 ? `${primaryServiceName} +${services.length - 1} more` : primaryServiceName;
+
+  const openRescheduleEditor = () => {
+    if (!b.scheduled_at) return;
+    try {
+      const datePart = extractIsoDatePart(b.scheduled_at);
+      if (datePart) {
+        setRescheduleDate(parseISO(datePart));
+      }
+      setRescheduleTime(extractIsoTimePart(b.scheduled_at));
+    } catch {
+      setRescheduleDate(new Date());
+      setRescheduleTime("");
+    }
+    setShowReschedule(true);
+  };
 
   const getAuditEventLabel = (eventType: string): string => {
     const labels: Record<string, string> = {
@@ -2014,7 +2132,9 @@ export default function BookingDetailScreen() {
                 </View>
               )}
               <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(b.status)}`)}>
-                <Text style={twStyle("text-xs font-medium text-gray-800")}>{b.status}</Text>
+                <Text style={twStyle(`text-xs font-semibold ${statusTextColor(b.status)}`)}>
+                  {labelForDbStatus(currentDbStatus)}
+                </Text>
               </View>
             </View>
           </View>
@@ -2034,6 +2154,95 @@ export default function BookingDetailScreen() {
               Group booking · {b.group_booking_ref}
             </Text>
           ) : null}
+        </View>
+
+        <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-4 mb-3")}>
+          <View style={twStyle("flex-row items-start")}>
+            <View style={[twStyle("mr-3 h-11 w-11 items-center justify-center rounded-2xl"), { backgroundColor: `${nextStep.color}18` }]}>
+              <Ionicons name={nextStep.icon} size={22} color={nextStep.color} />
+            </View>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("text-base font-bold text-gray-900")}>{nextStep.title}</Text>
+              <Text style={twStyle("mt-1 text-sm leading-5 text-gray-600")}>{nextStep.description}</Text>
+            </View>
+          </View>
+
+          <View style={twStyle("mt-4 flex-row flex-wrap gap-2")}>
+            <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
+              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Appointment</Text>
+              <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")} numberOfLines={1}>
+                {serviceCountLabel}
+              </Text>
+            </View>
+            <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
+              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Type</Text>
+              <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")}>
+                {b.is_group_booking ? "Group" : recurringDetails ? "Recurring" : b.booking_source === "walk_in" ? "Walk-in" : isAtHome ? "House call" : "Salon"}
+              </Text>
+            </View>
+            <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
+              <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Balance</Text>
+              <Text style={twStyle(`mt-0.5 text-sm font-semibold ${outstanding > 0 ? "text-amber-700" : "text-emerald-700"}`)}>
+                {outstanding > 0
+                  ? `${b.currency ?? getTenantDefaultCurrency()} ${outstanding.toLocaleString()} due`
+                  : "Settled"}
+              </Text>
+            </View>
+          </View>
+
+          <View style={twStyle("mt-4 flex-row flex-wrap gap-2")}>
+            {allowedStatusTargets.length > 0 ? (
+              <TouchableOpacity
+                onPress={() => setShowStatusPicker(true)}
+                disabled={patchLoading || mutating}
+                style={twStyle("rounded-xl bg-gray-900 px-4 py-2.5")}
+                accessibilityRole="button"
+                accessibilityLabel="Change booking status"
+              >
+                <Text style={twStyle("text-sm font-semibold text-white")}>Change status</Text>
+              </TouchableOpacity>
+            ) : null}
+            {canReschedule ? (
+              <TouchableOpacity
+                onPress={openRescheduleEditor}
+                style={twStyle("rounded-xl border border-primary px-4 py-2.5")}
+                accessibilityRole="button"
+                accessibilityLabel="Reschedule booking"
+              >
+                <Text style={twStyle("text-sm font-semibold text-primary")}>Reschedule</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              onPress={() => {
+                setNotesText(b.special_requests ?? "");
+                setEditingNotes(true);
+              }}
+              style={twStyle("rounded-xl border border-gray-300 px-4 py-2.5")}
+              accessibilityRole="button"
+              accessibilityLabel="Edit booking notes"
+            >
+              <Text style={twStyle("text-sm font-semibold text-gray-800")}>Edit notes</Text>
+            </TouchableOpacity>
+            {canMarkPaid ? (
+              <TouchableOpacity
+                onPress={() => setShowMarkPaid(true)}
+                style={twStyle("rounded-xl bg-emerald-600 px-4 py-2.5")}
+                accessibilityRole="button"
+                accessibilityLabel="Mark booking paid"
+              >
+                <Text style={twStyle("text-sm font-semibold text-white")}>Mark paid</Text>
+              </TouchableOpacity>
+            ) : canSendPaymentLink ? (
+              <TouchableOpacity
+                onPress={() => setShowSendPaymentLink(true)}
+                style={twStyle("rounded-xl border border-emerald-600 px-4 py-2.5")}
+                accessibilityRole="button"
+                accessibilityLabel="Send payment link"
+              >
+                <Text style={twStyle("text-sm font-semibold text-emerald-700")}>Payment link</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
 
         {recurringDetails ? (
@@ -2429,21 +2638,9 @@ export default function BookingDetailScreen() {
                   )}
                 </TouchableOpacity>
               ) : null}
-              {(isActive || isStarted) && b.scheduled_at ? (
+              {canReschedule ? (
                 <TouchableOpacity
-                  onPress={() => {
-                    try {
-                      const datePart = extractIsoDatePart(b.scheduled_at);
-                      if (datePart) {
-                        setRescheduleDate(parseISO(datePart));
-                      }
-                      setRescheduleTime(extractIsoTimePart(b.scheduled_at));
-                    } catch {
-                      setRescheduleDate(new Date());
-                      setRescheduleTime("");
-                    }
-                    setShowReschedule(true);
-                  }}
+                  onPress={openRescheduleEditor}
                   style={twStyle("rounded-xl border border-primary py-3 px-4")}
                 >
                   <Text style={twStyle("font-medium text-primary")}>Reschedule</Text>

@@ -50,9 +50,30 @@ interface Shift {
   notes?: string | null;
 }
 
+interface ScheduledShift {
+  id: string;
+  team_member_id: string;
+  team_member_name?: string | null;
+  date: string;
+  start_time: string;
+  end_time: string;
+  notes?: string | null;
+  is_recurring?: boolean;
+  source?: "shift" | "schedule" | "location";
+  is_synthetic?: boolean;
+}
+
 interface ShiftFormData {
   staff_id: string;
   day_of_week: string;
+  start_time: string;
+  end_time: string;
+  notes: string;
+}
+
+interface DateShiftFormData {
+  staff_id: string;
+  date: string;
   start_time: string;
   end_time: string;
   notes: string;
@@ -104,6 +125,28 @@ function timeToMinutes(t: string | null | undefined): number {
 const EMPTY_SHIFT_FORM: ShiftFormData = {
   staff_id: "",
   day_of_week: "Monday",
+  start_time: "09:00",
+  end_time: "17:00",
+  notes: "",
+};
+
+function formatDateLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function startOfWeekLocal(d: Date): Date {
+  const out = new Date(d);
+  out.setHours(0, 0, 0, 0);
+  out.setDate(out.getDate() - out.getDay());
+  return out;
+}
+
+const EMPTY_DATE_SHIFT_FORM: DateShiftFormData = {
+  staff_id: "",
+  date: formatDateLocal(new Date()),
   start_time: "09:00",
   end_time: "17:00",
   notes: "",
@@ -264,10 +307,13 @@ export default function StaffScheduleScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [shiftFormOpen, setShiftFormOpen] = useState(false);
+  const [dateShiftFormOpen, setDateShiftFormOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [form, setForm] = useState<ShiftFormData>(EMPTY_SHIFT_FORM);
+  const [dateForm, setDateForm] = useState<DateShiftFormData>(EMPTY_DATE_SHIFT_FORM);
+  const [weekStart, setWeekStart] = useState(() => startOfWeekLocal(new Date()));
   const [pickerField, setPickerField] = useState<
-    "start_time" | "end_time" | null
+    "start_time" | "end_time" | "date_start_time" | "date_end_time" | null
   >(null);
 
   /* ── Data ── */
@@ -287,20 +333,30 @@ export default function StaffScheduleScreen() {
     error: shiftsError,
     refresh: refreshShifts,
   } = useApi<Shift[]>(shiftsUrl, { enabled: !!selectedStaffId });
+  const dateShiftUrl = selectedStaffId
+    ? `/api/provider/shifts?week_start=${formatDateLocal(weekStart)}&staff_id=${selectedStaffId}`
+    : "";
+  const {
+    data: scheduledShifts,
+    loading: loadingScheduledShifts,
+    refresh: refreshScheduledShifts,
+  } = useApi<ScheduledShift[]>(dateShiftUrl, { enabled: !!selectedStaffId });
 
   const { execute: saveShift, loading: creating } = useApiMutation("post");
   const { execute: deleteShift, loading: deleting } = useApiMutation("delete");
+  const { execute: saveDateShift, loading: savingDateShift } = useApiMutation("post");
+  const { execute: deleteDateShift } = useApiMutation("delete");
 
-  const isSaving = creating || deleting;
+  const isSaving = creating || deleting || savingDateShift;
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refreshStaff(), refreshShifts()]);
+      await Promise.all([refreshStaff(), refreshShifts(), refreshScheduledShifts()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshStaff, refreshShifts]);
+  }, [refreshStaff, refreshShifts, refreshScheduledShifts]);
 
   /* ── Select staff from route param or first member ── */
   useEffect(() => {
@@ -347,6 +403,15 @@ export default function StaffScheduleScreen() {
     setShiftFormOpen(true);
   }
 
+  function openAddDateShift(date?: string) {
+    setDateForm({
+      ...EMPTY_DATE_SHIFT_FORM,
+      staff_id: selectedStaffId ?? "",
+      date: date ?? formatDateLocal(new Date()),
+    });
+    setDateShiftFormOpen(true);
+  }
+
   function openEditShift(shift: Shift) {
     setEditingShift(shift);
     setForm({
@@ -363,6 +428,15 @@ export default function StaffScheduleScreen() {
     if (!form.staff_id) return "Please select a staff member";
     const startMin = timeToMinutes(form.start_time);
     const endMin = timeToMinutes(form.end_time);
+    if (endMin <= startMin) return "End time must be after start time";
+    return null;
+  }
+
+  function validateDateShift(): string | null {
+    if (!dateForm.staff_id) return "Please select a staff member";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateForm.date)) return "Enter a valid date";
+    const startMin = timeToMinutes(dateForm.start_time);
+    const endMin = timeToMinutes(dateForm.end_time);
     if (endMin <= startMin) return "End time must be after start time";
     return null;
   }
@@ -412,6 +486,56 @@ export default function StaffScheduleScreen() {
     refreshShifts();
   }
 
+  async function handleSaveDateShift() {
+    const validationError = validateDateShift();
+    if (validationError) {
+      Alert.alert("Validation Error", validationError);
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const { error } = await saveDateShift("/api/provider/shifts", {
+      staff_id: dateForm.staff_id,
+      date: dateForm.date,
+      start_time: dateForm.start_time,
+      end_time: dateForm.end_time,
+      notes: dateForm.notes.trim() || undefined,
+      is_recurring: false,
+      recurring_pattern: null,
+    });
+    if (error) {
+      Alert.alert("Error", error);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setDateShiftFormOpen(false);
+    refreshScheduledShifts();
+  }
+
+  function handleDeleteDateShift(shift: ScheduledShift) {
+    if (!shift.id || shift.is_synthetic || shift.source !== "shift") {
+      Alert.alert(
+        "Weekly template",
+        "This row comes from weekly hours or location hours. Edit the weekly schedule below, or add a date-specific shift to override it.",
+      );
+      return;
+    }
+    Alert.alert("Delete date-specific shift", `Delete this shift on ${shift.date}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          const { error } = await deleteDateShift(`/api/provider/shifts/${shift.id}`, {});
+          if (error) Alert.alert("Error", error);
+          else {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            refreshScheduledShifts();
+          }
+        },
+      },
+    ]);
+  }
+
   function handleDeleteShift(shift: Shift) {
     if (!shift.id) return; // No saved schedule row to delete
     Alert.alert(
@@ -455,6 +579,11 @@ export default function StaffScheduleScreen() {
     return (totalMinutes / 60).toFixed(1);
   }, [shiftsByDay]);
 
+  const dateSpecificShifts = useMemo(
+    () => (scheduledShifts ?? []).filter((shift) => shift.source === "shift" && !shift.is_synthetic),
+    [scheduledShifts],
+  );
+
   /* ── Render ── */
   return (
     <ScreenContainer scrollable={false}>
@@ -479,7 +608,7 @@ export default function StaffScheduleScreen() {
 
       <View style={{ backgroundColor: "#EEF2FF", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}>
         <Text style={{ fontSize: 13, color: "#3730A3", lineHeight: 18 }}>
-          Weekly schedules repeat every week and define when this staff member is normally available for bookings. Use the web Scheduled Shifts page for split shifts, date-specific overrides, or alternating-week patterns.
+          Weekly schedules define normal availability. Date-specific shifts below support split shifts and one-off overrides for busy days, events, or alternate rosters.
         </Text>
       </View>
 
@@ -705,6 +834,90 @@ export default function StaffScheduleScreen() {
               <Ionicons name="copy-outline" size={16} color="#0ea5e9" />
               <Text style={twStyle("ml-1.5 text-xs font-medium text-sky-600")}>Copy</Text>
             </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {selectedStaffId && (
+        <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+          <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+            <View style={twStyle("flex-row items-center")}>
+              <View style={twStyle("h-9 w-9 items-center justify-center rounded-xl bg-pink-50")}>
+                <Ionicons name="calendar-number-outline" size={18} color="#db2777" />
+              </View>
+              <View style={twStyle("ml-3")}>
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>Date-specific shifts</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>Split shifts and one-off overrides this week</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              onPress={() => openAddDateShift()}
+              style={twStyle("rounded-xl bg-pink-50 px-3 py-2")}
+              accessibilityRole="button"
+            >
+              <Text style={twStyle("text-xs font-semibold text-pink-700")}>Add</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+            <TouchableOpacity
+              onPress={() => {
+                const next = new Date(weekStart);
+                next.setDate(next.getDate() - 7);
+                setWeekStart(next);
+              }}
+              style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}
+            >
+              <Ionicons name="chevron-back" size={18} color="#6b7280" />
+            </TouchableOpacity>
+            <Text style={twStyle("text-xs font-medium text-gray-600")}>
+              Week of {weekStart.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                const next = new Date(weekStart);
+                next.setDate(next.getDate() + 7);
+                setWeekStart(next);
+              }}
+              style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}
+            >
+              <Ionicons name="chevron-forward" size={18} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
+
+          {loadingScheduledShifts ? (
+            <Text style={twStyle("text-sm text-gray-500")}>Loading date-specific shifts…</Text>
+          ) : dateSpecificShifts.length === 0 ? (
+            <View style={twStyle("rounded-xl bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm text-gray-500")}>
+                No date-specific shifts this week. Weekly hours below still apply.
+              </Text>
+            </View>
+          ) : (
+            dateSpecificShifts.map((shift) => (
+              <View key={`${shift.id}-${shift.date}`} style={twStyle("mb-2 flex-row items-center rounded-xl bg-pink-50/60 px-3 py-3")}>
+                <View style={twStyle("mr-3 h-9 w-9 items-center justify-center rounded-lg bg-white")}>
+                  <Text style={twStyle("text-[10px] font-bold text-pink-700")}>
+                    {new Date(`${shift.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}
+                  </Text>
+                </View>
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                    {new Date(`${shift.date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  </Text>
+                  <Text style={twStyle("text-xs text-gray-600")}>
+                    {formatTimeLabel(shift.start_time)} - {formatTimeLabel(shift.end_time)}
+                    {shift.notes ? ` · ${shift.notes}` : ""}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => handleDeleteDateShift(shift)}
+                  style={twStyle("h-8 w-8 items-center justify-center rounded-lg bg-white")}
+                >
+                  <Ionicons name="trash-outline" size={15} color="#dc2626" />
+                </TouchableOpacity>
+              </View>
+            ))
           )}
         </View>
       )}
@@ -1016,6 +1229,99 @@ export default function StaffScheduleScreen() {
         />
       </BottomSheet>
 
+      <BottomSheet
+        visible={dateShiftFormOpen}
+        onClose={() => setDateShiftFormOpen(false)}
+        title="Add date-specific shift"
+        subtitle="Use this for split shifts, special event rosters, or one-off overrides."
+      >
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Staff Member *</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={twStyle("mb-4")}
+        >
+          {(staff ?? [])
+            .filter((s) => s.is_active)
+            .map((member) => {
+              const isSelected = dateForm.staff_id === member.id;
+              return (
+                <TouchableOpacity
+                  key={member.id}
+                  style={[
+                    twStyle(
+                      `flex-row items-center rounded-xl px-3 py-2 ${
+                        isSelected ? "bg-pink-600" : "border border-gray-200 bg-gray-50"
+                      }`,
+                    ),
+                    { marginRight: 8 },
+                  ]}
+                  onPress={() => setDateForm((prev) => ({ ...prev, staff_id: member.id }))}
+                  accessibilityRole="button"
+                >
+                  <Avatar name={member.name} imageUrl={member.avatar_url} size="sm" />
+                  <Text style={twStyle(`ml-2 text-sm font-medium ${isSelected ? "text-white" : "text-gray-700"}`)}>
+                    {member.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+        </ScrollView>
+
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date *</Text>
+        <TextInput
+          style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+          placeholder="YYYY-MM-DD"
+          value={dateForm.date}
+          onChangeText={(text) => setDateForm((prev) => ({ ...prev, date: text }))}
+          accessibilityLabel="Shift date"
+        />
+
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Shift Times *</Text>
+        <View style={twStyle("mb-4 flex-row items-center")}>
+          <TouchableOpacity
+            style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3"), { marginRight: 12 }]}
+            onPress={() => setPickerField("date_start_time")}
+          >
+            <Ionicons name="time-outline" size={16} color="#db2777" />
+            <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>
+              {formatTimeLabel(dateForm.start_time)}
+            </Text>
+          </TouchableOpacity>
+          <Text style={twStyle("text-sm text-gray-400")}>to</Text>
+          <TouchableOpacity
+            style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3")}
+            onPress={() => setPickerField("date_end_time")}
+          >
+            <Ionicons name="time-outline" size={16} color="#db2777" />
+            <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>
+              {formatTimeLabel(dateForm.end_time)}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
+        <TextInput
+          style={[
+            twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"),
+            { minHeight: 72, textAlignVertical: "top" },
+          ]}
+          placeholder="e.g. Morning split shift, event coverage..."
+          placeholderTextColor="#9ca3af"
+          value={dateForm.notes}
+          onChangeText={(text) => setDateForm((prev) => ({ ...prev, notes: text }))}
+          multiline
+          maxLength={200}
+        />
+
+        <ActionButton
+          label={savingDateShift ? "Saving…" : "Add date-specific shift"}
+          onPress={handleSaveDateShift}
+          loading={savingDateShift}
+          fullWidth
+        />
+      </BottomSheet>
+
       {/* Time Picker */}
       <TimePicker
         visible={pickerField !== null}
@@ -1024,12 +1330,20 @@ export default function StaffScheduleScreen() {
             ? form.start_time
             : pickerField === "end_time"
               ? form.end_time
+              : pickerField === "date_start_time"
+                ? dateForm.start_time
+                : pickerField === "date_end_time"
+                  ? dateForm.end_time
               : "09:00"
         }
-        title={pickerField === "start_time" ? "Start Time" : "End Time"}
+        title={pickerField === "start_time" || pickerField === "date_start_time" ? "Start Time" : "End Time"}
         onSelect={(time) => {
-          if (pickerField) {
+          if (pickerField === "start_time" || pickerField === "end_time") {
             setForm((prev) => ({ ...prev, [pickerField]: time }));
+          } else if (pickerField === "date_start_time") {
+            setDateForm((prev) => ({ ...prev, start_time: time }));
+          } else if (pickerField === "date_end_time") {
+            setDateForm((prev) => ({ ...prev, end_time: time }));
           }
         }}
         onClose={() => setPickerField(null)}

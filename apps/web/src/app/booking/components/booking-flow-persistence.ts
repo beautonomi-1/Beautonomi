@@ -4,11 +4,11 @@ import { coerceSelectedDate } from "@beautonomi/utils";
 
 export const BOOKING_STATE_STORAGE_KEY = "booking_state";
 
-/** Stable fingerprint for “same booking entry” from the URL (slug, service, product, package, mode). */
+/** Stable fingerprint for “same booking entry” from the URL (slug/provider id, service, product, package, mode). */
 export function computeBookingFlowKey(
   searchParams: ReadonlyURLSearchParams | URLSearchParams
 ): string {
-  const slug = (searchParams.get("slug") || searchParams.get("partnerId") || "").trim();
+  const slug = (searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id") || "").trim();
   const serviceId = (searchParams.get("serviceId") || searchParams.get("service") || "").trim();
   const productId = (searchParams.get("product_id") || searchParams.get("product") || "").trim();
   const packageId = (searchParams.get("package") || searchParams.get("package_id") || "").trim();
@@ -76,10 +76,16 @@ export function restoreBookingFlowFromStorage(
     }
   }
 
-  const stepIndex =
-    typeof env.stepIndex === "number" && env.stepIndex >= 0 && env.stepIndex <= 7
+  let stepIndex =
+    typeof env.stepIndex === "number" && env.stepIndex >= 0 && env.stepIndex <= 8
       ? env.stepIndex
       : 0;
+  // Step index 1 is the group-participants step in the canonical order. For a
+  // normal booking it is hidden, so restoring it can briefly render an empty
+  // transition until the flow corrects itself. Land directly on venue instead.
+  if (stepIndex === 1 && !env.state.isGroupBooking) {
+    stepIndex = 2;
+  }
 
   return { state: env.state, stepIndex };
 }

@@ -86,6 +86,8 @@ type OverviewResponse = {
   cancellationRate?: number;
   noShowRate?: number;
   revenueGrowth?: number;
+  periodStart?: string;
+  periodEnd?: string;
 };
 
 function mapOverviewToBusinessReport(overview: OverviewResponse | null): BusinessReport | null {
@@ -146,7 +148,7 @@ export default function BusinessReportScreen() {
     const lines = [
       `Business Report — ${period}`,
       "",
-      `Revenue: ${formatCurrency(report.revenue.total)}`,
+      `Service Earnings: ${formatCurrency(report.revenue.total)}`,
       `Growth: ${report.revenue.growth_percentage >= 0 ? "+" : ""}${report.revenue.growth_percentage.toFixed(1)}%`,
       `Bookings: ${report.bookings.total} (${report.bookings.completion_rate.toFixed(0)}% completion)`,
       `Unique Clients: ${report.clients.total}`,
@@ -198,7 +200,7 @@ export default function BusinessReportScreen() {
       <ScreenHeader
         title="Business Overview"
         showBack
-        subtitle="Performance dashboard"
+        subtitle="Calendar-period performance"
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
@@ -214,11 +216,11 @@ export default function BusinessReportScreen() {
       </View>
 
       {/* Revenue */}
-      <SectionHeader title="Revenue" />
+      <SectionHeader title="Earnings" />
       <View style={twStyle("mb-4")}>
         <ReportResponsiveStatRow>
           <StatCard
-            title="Total Revenue"
+            title="Service Earnings"
             value={formatCurrency(r?.revenue.total ?? 0)}
             icon="cash-outline"
             iconColor="#22c55e"
@@ -251,7 +253,7 @@ export default function BusinessReportScreen() {
             </View>
           )}
           <View style={twStyle("flex-row justify-between pt-2 border-t border-gray-50")}>
-            <Text style={twStyle("text-sm font-semibold text-gray-700")}>Net Revenue</Text>
+            <Text style={twStyle("text-sm font-semibold text-gray-700")}>Net service earnings</Text>
             <Text style={twStyle("text-sm font-bold text-indigo-600")}>{formatCurrency(overview?.netRevenue ?? r?.revenue.total ?? 0)}</Text>
           </View>
         </View>

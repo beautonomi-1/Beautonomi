@@ -15,6 +15,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
+import { Avatar } from "@/components/ui/Avatar";
 import { Colors } from "@/constants/colors";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { pushInAppBrowser } from "@/lib/in-app-web";
@@ -24,6 +25,7 @@ type StaffMember = {
   name: string;
   email: string;
   phone?: string;
+  avatar_url?: string | null;
   role: string;
   is_active: boolean;
 };
@@ -54,9 +56,13 @@ export default function TeamScreen() {
     StaffMember[] | { data?: StaffMember[] }
   >(staffUrl);
 
-  const staff: StaffMember[] = Array.isArray(data)
-    ? data
-    : (data as { data?: StaffMember[] })?.data ?? [];
+  const staff: StaffMember[] = useMemo(
+    () =>
+      Array.isArray(data)
+        ? data
+        : (data as { data?: StaffMember[] } | null | undefined)?.data ?? [],
+    [data],
+  );
 
   const totalCount = staff.length;
   const activeCount = staff.filter((s) => s.is_active).length;
@@ -104,6 +110,73 @@ export default function TeamScreen() {
   const openManageAll = useCallback(() => {
     router.push("/(app)/(tabs)/more/team-list" as never);
   }, [router]);
+
+  const quickActions = [
+    {
+      label: "Staff schedules",
+      subtitle: "Weekly shifts by team member",
+      icon: "calendar-outline" as const,
+      color: "#4f46e5",
+      bg: "#e0e7ff",
+      route: "/(app)/(tabs)/more/staff-schedule",
+    },
+    {
+      label: "Days off",
+      subtitle: "Leave, sick days, holidays",
+      icon: "sunny-outline" as const,
+      color: "#d97706",
+      bg: "#fef3c7",
+      route: "/(app)/(tabs)/more/days-off",
+    },
+    {
+      label: "Schedule locks",
+      subtitle: "Lunch, meetings, blocked time",
+      icon: "ban-outline" as const,
+      color: "#dc2626",
+      bg: "#fee2e2",
+      route: "/(app)/(tabs)/more/time-blocks",
+    },
+    {
+      label: "Time clock",
+      subtitle: "Clock in/out and time cards",
+      icon: "time-outline" as const,
+      color: "#0d9488",
+      bg: "#ccfbf1",
+      route: "/(app)/(tabs)/more/time-clock",
+    },
+    {
+      label: "Permissions",
+      subtitle: "Roles and access controls",
+      icon: "lock-open-outline" as const,
+      color: "#4f46e5",
+      bg: "#eef2ff",
+      route: "/(app)/(tabs)/more/settings/staff-permissions",
+    },
+    {
+      label: "Commissions",
+      subtitle: "Pay rules and staff earnings",
+      icon: "cash-outline" as const,
+      color: "#16a34a",
+      bg: "#dcfce7",
+      route: "/(app)/(tabs)/more/settings/team-commissions",
+    },
+    {
+      label: "Staff notifications",
+      subtitle: "Email, push, booking alerts",
+      icon: "notifications-outline" as const,
+      color: "#d97706",
+      bg: "#fef3c7",
+      route: "/(app)/(tabs)/more/settings/team-staff-notifications",
+    },
+    {
+      label: "Time off types",
+      subtitle: "Leave categories and reasons",
+      icon: "pricetags-outline" as const,
+      color: "#9333ea",
+      bg: "#f3e8ff",
+      route: "/(app)/(tabs)/more/settings/time-off-types",
+    },
+  ];
 
   if (loading && !data) {
     return (
@@ -337,183 +410,56 @@ export default function TeamScreen() {
           />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(tabs)/more/time-clock" as never)}
+        <Text
           style={{
-            marginBottom: 16,
-            flexDirection: "row",
-            alignItems: "center",
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: Colors.gray[200],
-            backgroundColor: Colors.white,
-            padding: 16,
+            marginBottom: 8,
+            fontSize: 12,
+            fontWeight: "600",
+            letterSpacing: 0.5,
+            color: Colors.gray[400],
+            textTransform: "uppercase",
           }}
-          activeOpacity={0.7}
         >
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 20,
-              backgroundColor: "#ccfbf1",
-            }}
-          >
-            <Ionicons name="time-outline" size={22} color="#0d9488" />
-          </View>
-          <View style={{ marginLeft: 12, flex: 1 }}>
-            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Time clock</Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-              Clock in/out and view time cards
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(tabs)/more/staff-schedule" as never)}
-          style={{
-            marginBottom: 16,
-            flexDirection: "row",
-            alignItems: "center",
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: Colors.gray[200],
-            backgroundColor: Colors.white,
-            padding: 16,
-          }}
-          activeOpacity={0.7}
-          accessibilityLabel="Staff schedules"
-          accessibilityRole="button"
-        >
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 20,
-              backgroundColor: "#e0e7ff",
-            }}
-          >
-            <Ionicons name="calendar-outline" size={22} color="#4f46e5" />
-          </View>
-          <View style={{ marginLeft: 12, flex: 1 }}>
-            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Staff schedules</Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-              Weekly hours & availability per team member
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-        </TouchableOpacity>
-
-        <View style={{ marginBottom: 16, flexDirection: "row", gap: 12 }}>
-          <TouchableOpacity
-            onPress={() =>
-              router.push("/(app)/(tabs)/more/settings/staff-permissions" as never)
-            }
-            style={{
-              flex: 1,
-              alignItems: "center",
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: Colors.gray[200],
-              backgroundColor: Colors.white,
-              paddingVertical: 14,
-              paddingHorizontal: 10,
-            }}
-            activeOpacity={0.7}
-            accessibilityLabel="Team permissions"
-            accessibilityRole="button"
-          >
-            <View
+          Scheduling & controls
+        </Text>
+        <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+          {quickActions.map((item) => (
+            <TouchableOpacity
+              key={item.label}
+              onPress={() => router.push(item.route as never)}
               style={{
-                width: 40,
-                height: 40,
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 20,
-                backgroundColor: "#eef2ff",
+                width: "48%",
+                minHeight: 132,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                backgroundColor: Colors.white,
+                padding: 14,
               }}
+              activeOpacity={0.75}
+              accessibilityLabel={item.label}
+              accessibilityRole="button"
             >
-              <Ionicons name="lock-open-outline" size={22} color="#4f46e5" />
-            </View>
-            <Text
-              style={{
-                marginTop: 8,
-                fontWeight: "600",
-                fontSize: 13,
-                color: Colors.gray[900],
-                textAlign: "center",
-              }}
-            >
-              Permissions
-            </Text>
-            <Text
-              style={{
-                marginTop: 2,
-                fontSize: 11,
-                color: Colors.gray[500],
-                textAlign: "center",
-              }}
-            >
-              Roles & access
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() =>
-              router.push("/(app)/(tabs)/more/settings/team-staff-notifications" as never)
-            }
-            style={{
-              flex: 1,
-              alignItems: "center",
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: Colors.gray[200],
-              backgroundColor: Colors.white,
-              paddingVertical: 14,
-              paddingHorizontal: 10,
-            }}
-            activeOpacity={0.7}
-            accessibilityLabel="Team notifications"
-            accessibilityRole="button"
-          >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 20,
-                backgroundColor: "#fef3c7",
-              }}
-            >
-              <Ionicons name="notifications-outline" size={22} color="#d97706" />
-            </View>
-            <Text
-              style={{
-                marginTop: 8,
-                fontWeight: "600",
-                fontSize: 13,
-                color: Colors.gray[900],
-                textAlign: "center",
-              }}
-            >
-              Notifications
-            </Text>
-            <Text
-              style={{
-                marginTop: 2,
-                fontSize: 11,
-                color: Colors.gray[500],
-                textAlign: "center",
-              }}
-            >
-              Email & alerts
-            </Text>
-          </TouchableOpacity>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 20,
+                  backgroundColor: item.bg,
+                }}
+              >
+                <Ionicons name={item.icon} size={22} color={item.color} />
+              </View>
+              <Text style={{ marginTop: 10, fontWeight: "700", color: Colors.gray[900] }}>
+                {item.label}
+              </Text>
+              <Text style={{ marginTop: 4, fontSize: 12, lineHeight: 16, color: Colors.gray[500] }}>
+                {item.subtitle}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         <Text
@@ -582,20 +528,7 @@ export default function TeamScreen() {
                 }}
                 activeOpacity={0.7}
               >
-                <View
-                  style={{
-                    width: 40,
-                    height: 40,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: 20,
-                    backgroundColor: Colors.gray[200],
-                  }}
-                >
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>
-                    {(member.name || "?").charAt(0).toUpperCase()}
-                  </Text>
-                </View>
+                <Avatar name={member.name} imageUrl={member.avatar_url ?? undefined} size="md" />
                 <View style={{ marginLeft: 12, flex: 1 }}>
                   <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{member.name}</Text>
                   <Text style={{ fontSize: 14, color: Colors.gray[500] }} numberOfLines={1}>

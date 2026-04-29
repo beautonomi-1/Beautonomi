@@ -14,6 +14,7 @@ import {
   upsertCustomerDefaultAddress,
   CustomerHomeAddressLockedError,
 } from "@/lib/provider-portal/user-default-address";
+import { hasProviderCustomerRelationship } from "@/lib/provider/client-access";
 
 /**
  * GET /api/provider/clients
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest) {
     let clientsQuery = supabase
       .from("provider_clients")
       .select(
-        "id, notes, tags, is_favorite, last_service_date, total_bookings, total_spent, created_at, customer_id",
+        "id, notes, tags, is_favorite, last_service_date, total_bookings, total_spent, created_at, customer_id, relationship_source, privacy_level, source_metadata, linked_existing_platform_user",
         { count: "exact" },
       )
       .eq("provider_id", providerId);
@@ -164,7 +165,46 @@ export async function GET(request: NextRequest) {
       if (email.includes("beautonomi.local")) return false;
       return true;
     };
-    let clientsWithCustomers = clients.map((client) => {
+    const redactLimitedLinkedCustomer = (client: {
+      relationship_source?: string | null;
+      privacy_level?: string | null;
+      source_metadata?: unknown;
+      total_bookings?: number | null;
+    }, customer: Record<string, unknown>) => {
+      const hasServiceHistory = Number(client.total_bookings ?? 0) > 0;
+      if (
+        client.relationship_source !== "manual_existing_platform" ||
+        client.privacy_level !== "limited" ||
+        hasServiceHistory
+      ) {
+        return customer;
+      }
+
+      const metadata =
+        client.source_metadata && typeof client.source_metadata === "object"
+          ? (client.source_metadata as Record<string, unknown>)
+          : {};
+
+      return {
+        id: customer.id,
+        full_name: metadata.provider_supplied_name || customer.full_name || "Existing Beautonomi customer",
+        email: metadata.matched_on === "email" ? customer.email : metadata.provider_supplied_email ?? null,
+        phone: metadata.matched_on === "phone" ? customer.phone : metadata.provider_supplied_phone ?? null,
+        avatar_url: null,
+        rating_average: null,
+        review_count: 0,
+        customer_review_rating_avg: null,
+        customer_review_rating_count: null,
+        customer_booking_rating_avg: null,
+        customer_booking_rating_count: null,
+        date_of_birth: null,
+        email_notifications_enabled: null,
+        sms_notifications_enabled: null,
+        is_registered: true,
+        is_limited_platform_link: true,
+      };
+    };
+    let clientsWithCustomers: any[] = clients.map((client) => {
       const customer = customers?.find((c) => c.id === client.customer_id);
 
       // If customer not found, create minimal customer object.
@@ -191,8 +231,10 @@ export async function GET(request: NextRequest) {
       return {
         ...client,
         customer: {
-          ...customer,
-          is_registered: computeIsRegistered(customer.email),
+          ...redactLimitedLinkedCustomer(client, {
+            ...customer,
+            is_registered: computeIsRegistered(customer.email),
+          }),
         },
       };
     });
@@ -296,6 +338,10 @@ export async function POST(request: NextRequest) {
           notes: notes || null,
           tags: tags && tags.length > 0 ? tags : null,
           is_favorite: is_favorite || false,
+          relationship_source: "manual",
+          privacy_level: "standard",
+          source_metadata: { linked_via: "provider_clients_post" },
+          created_by_user_id: user.id,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existing.id)
@@ -323,6 +369,19 @@ export async function POST(request: NextRequest) {
       return successResponse(data);
     }
 
+    const isKnownClient = await hasProviderCustomerRelationship(
+      supabaseAdmin,
+      providerId,
+      customer_id,
+    );
+    if (!isKnownClient) {
+      return errorResponse(
+        "This customer is not yet connected to your business. Create a new client from their details, or ask the customer to book or message your business first.",
+        "CLIENT_NOT_CONNECTED_TO_PROVIDER",
+        403,
+      );
+    }
+
     // Create new
     const { data, error } = await supabase
       .from("provider_clients")
@@ -332,6 +391,11 @@ export async function POST(request: NextRequest) {
         notes: notes || null,
         tags: tags && tags.length > 0 ? tags : null,
         is_favorite: is_favorite || false,
+        relationship_source: "manual",
+        privacy_level: "standard",
+        source_metadata: { linked_via: "provider_clients_post" },
+        linked_existing_platform_user: false,
+        created_by_user_id: user.id,
       })
       .select()
       .single();

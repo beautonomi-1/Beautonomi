@@ -42,7 +42,5 @@ export type WishlistsPageInitial = {
   savedProducts: SavedProduct[];
   savedPosts: ExplorePost[];
   collections: ExploreCollectionSummary[];
-  /** Up to four image URLs for the wishlists hub “Recently viewed” preview tile */
-  recentlyViewedThumbnails: string[];
   wishlistError: string | null;
 };

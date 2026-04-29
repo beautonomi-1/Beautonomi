@@ -203,11 +203,11 @@ export async function GET(
 
     const totalRows = [
       { label: "Subtotal", value: moneyPdf(receipt.subtotal, currency) },
+      ...(Number(receipt.travel_fee || 0) > 0 ? [{ label: "Travel fee", value: moneyPdf(receipt.travel_fee, currency) }] : []),
       ...(Number(receipt.tax || 0) > 0
         ? [{ label: receipt.tax_rate ? `Tax (${receipt.tax_rate}%)` : "Tax", value: moneyPdf(receipt.tax, currency) }]
         : []),
       ...(Number(receipt.fees || 0) > 0 ? [{ label: "Service / platform fee", value: moneyPdf(receipt.fees, currency) }] : []),
-      ...(Number(receipt.travel_fee || 0) > 0 ? [{ label: "Travel fee", value: moneyPdf(receipt.travel_fee, currency) }] : []),
       ...(Number(receipt.tip_amount || 0) > 0 ? [{ label: "Tip", value: moneyPdf(receipt.tip_amount, currency) }] : []),
       ...(Number(receipt.cancellation_fee || 0) > 0
         ? [{ label: "Cancellation fee", value: moneyPdf(receipt.cancellation_fee, currency), tone: "warning" as const }]

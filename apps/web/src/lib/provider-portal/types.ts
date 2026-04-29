@@ -265,6 +265,12 @@ export interface Appointment {
   location_landmarks?: string | null;
   house_call_instructions?: string | null;
   travel_fee?: number; // Travel fee for at_home services
+  wallet_amount?: number;
+  gift_card_amount?: number;
+  loyalty_points_used?: number;
+  loyalty_discount_amount?: number;
+  promotion_discount_amount?: number;
+  membership_discount_amount?: number;
   // At-home tracking
   current_stage?: "confirmed" | "client_arrived" | "provider_on_way" | "provider_arrived" | "service_started" | "service_completed";
   arrival_otp?: string | null;

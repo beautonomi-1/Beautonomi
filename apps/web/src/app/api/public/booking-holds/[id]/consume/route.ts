@@ -69,6 +69,7 @@ const consumeBodySchema = z.object({
   customer_package_entitlement_id: z.string().uuid().optional().nullable(),
   loyalty_points_used: z.number().min(0).optional(),
   membership_plan_id: z.string().uuid().optional().nullable(),
+  campaign_id: z.string().uuid().optional().nullable(),
   /** Create customer recurring series: immediate when no Paystack redirect; otherwise after charge.success (Paystack metadata). */
   subscribe_recurring: z
     .object({
@@ -170,6 +171,7 @@ export async function POST(
     const customerPackageEntitlementId = parsed.data.customer_package_entitlement_id;
     const loyaltyPointsUsed = parsed.data.loyalty_points_used;
     const membershipPlanId = parsed.data.membership_plan_id;
+    const campaignId = parsed.data.campaign_id;
     const subscribeRecurringReq = parsed.data.subscribe_recurring;
     const paystackCallbackUrl = parsed.data.paystack_callback_url;
 
@@ -478,6 +480,7 @@ export async function POST(
       customer_package_entitlement_id: customerPackageEntitlementId ?? undefined,
       loyalty_points_used: loyaltyPointsUsed ?? undefined,
       membership_plan_id: membershipPlanId ?? undefined,
+      campaign_id: campaignId ?? undefined,
     };
     if (isGroupBooking === true && Array.isArray(groupParticipants) && groupParticipants.length > 0) {
       draft.is_group_booking = true;

@@ -34,6 +34,9 @@ export interface MergedProviderClient {
   sms_consent: boolean;
   is_saved?: boolean;
   customer_id?: string;
+  relationship_source?: string;
+  privacy_level?: string;
+  is_limited_platform_link?: boolean;
 }
 
 export function mergeProviderClientsListFromSources(
@@ -84,6 +87,9 @@ export function mergeProviderClientsListFromSources(
       sms_consent: client.customer?.sms_notifications_enabled ?? true,
       is_saved: true,
       customer_id: client.customer_id,
+      relationship_source: client.relationship_source,
+      privacy_level: client.privacy_level,
+      is_limited_platform_link: Boolean(client.customer?.is_limited_platform_link),
     };
   });
 
@@ -115,6 +121,7 @@ export function mergeProviderClientsListFromSources(
         sms_consent: client.customer?.sms_notifications_enabled ?? true,
         is_saved: false,
         customer_id: client.customer_id,
+        is_limited_platform_link: false,
       };
     });
 
@@ -150,6 +157,7 @@ export function mergeProviderClientsListFromSources(
         sms_consent: client.customer?.sms_notifications_enabled ?? true,
         is_saved: false,
         customer_id: client.customer_id,
+        is_limited_platform_link: false,
       };
     });
 

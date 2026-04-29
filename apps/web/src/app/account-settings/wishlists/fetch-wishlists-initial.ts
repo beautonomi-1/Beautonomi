@@ -6,7 +6,6 @@ import { GET as getWishlistProviders } from "@/app/api/me/wishlists/providers/ro
 import { GET as getWishlistProducts } from "@/app/api/me/wishlists/products/route";
 import { GET as getExploreSaved } from "@/app/api/explore/saved/route";
 import { GET as getExploreCollections } from "@/app/api/explore/collections/route";
-import { GET as getRecentlyViewed } from "@/app/api/me/recently-viewed/route";
 import type { ExplorePost } from "@/types/explore";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import type {
@@ -33,31 +32,21 @@ function unwrapArray<T>(raw: unknown): T[] {
   return [];
 }
 
-function recentlyViewedThumbnailsFromJson(raw: unknown): string[] {
-  const rows = unwrapArray<{ thumbnail_url?: string | null; avatar_url?: string | null }>(raw);
-  return rows
-    .slice(0, 4)
-    .map((p) => (p.thumbnail_url || p.avatar_url || "").trim())
-    .filter((u) => u.length > 0);
-}
-
 export async function fetchWishlistsPageInitial(): Promise<WishlistsPageInitial | null> {
-  const [reqWl, reqProv, reqProd, reqSaved, reqColl, reqRecent] = await Promise.all([
+  const [reqWl, reqProv, reqProd, reqSaved, reqColl] = await Promise.all([
     createNextRequestFromHeaders("/api/me/wishlists"),
     createNextRequestFromHeaders("/api/me/wishlists/providers"),
     createNextRequestFromHeaders("/api/me/wishlists/products"),
     createNextRequestFromHeaders("/api/explore/saved?limit=50"),
     createNextRequestFromHeaders("/api/explore/collections"),
-    createNextRequestFromHeaders("/api/me/recently-viewed?limit=4"),
   ]);
 
-  const [resWl, resProv, resProd, resSaved, resColl, resRecent] = await Promise.all([
+  const [resWl, resProv, resProd, resSaved, resColl] = await Promise.all([
     getWishlists(reqWl),
     getWishlistProviders(reqProv),
     getWishlistProducts(reqProd),
     getExploreSaved(reqSaved),
     getExploreCollections(reqColl),
-    getRecentlyViewed(reqRecent),
   ]);
 
   if (!resWl.ok && resWl.status === 401) return null;
@@ -101,19 +90,12 @@ export async function fetchWishlistsPageInitial(): Promise<WishlistsPageInitial 
     collections = unwrapArray<ExploreCollectionSummary>(j?.data);
   }
 
-  let recentlyViewedThumbnails: string[] = [];
-  if (resRecent.ok) {
-    const j = (await readJson(resRecent)) as { data?: unknown };
-    recentlyViewedThumbnails = recentlyViewedThumbnailsFromJson(j);
-  }
-
   return {
     wishlists,
     savedProviders,
     savedProducts,
     savedPosts,
     collections,
-    recentlyViewedThumbnails,
     wishlistError,
   };
 }

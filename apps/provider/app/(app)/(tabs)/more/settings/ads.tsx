@@ -81,12 +81,33 @@ function canEditBudgetFields(campaign: Campaign | null): boolean {
   return Boolean(campaign && !isTimeBasedCampaign(campaign) && !isImpressionPackCampaign(campaign));
 }
 
+function normalizeCategories(raw: unknown): GlobalCategory[] {
+  if (Array.isArray(raw)) return raw as GlobalCategory[];
+  if (!raw || typeof raw !== "object") return [];
+  const root = raw as { data?: unknown; categories?: unknown; global_categories?: unknown };
+  if (Array.isArray(root.data)) return root.data as GlobalCategory[];
+  if (Array.isArray(root.categories)) return root.categories as GlobalCategory[];
+  if (Array.isArray(root.global_categories)) return root.global_categories as GlobalCategory[];
+  if (root.data && typeof root.data === "object" && Array.isArray((root.data as { categories?: unknown }).categories)) {
+    return (root.data as { categories: GlobalCategory[] }).categories;
+  }
+  return [];
+}
+
 type PerformanceSummary = {
   impressions: number;
   reach: number;
   clicks: number;
   spend: number;
   sales: number;
+};
+
+type CampaignPerformance = {
+  impressions: number;
+  reach: number;
+  clicks: number;
+  books: number;
+  spent: number;
 };
 
 const formatCompactNumber = (value: number | null | undefined) =>
@@ -151,6 +172,32 @@ function campaignSummaryLine(c: Campaign, currency: string): string {
   return `Total budget ${formatMoney(Number(c.budget), currency)} · Spent ${formatMoney(Number(c.spent), currency)}${daily}${bid}`;
 }
 
+function campaignProgress(c: Campaign): number {
+  if (c.billing_model === "time_based" && c.start_at && c.end_at) {
+    const start = new Date(c.start_at).getTime();
+    const end = new Date(c.end_at).getTime();
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      return Math.max(0, Math.min(1, (Date.now() - start) / (end - start)));
+    }
+  }
+  const budget = Number(c.budget || 0);
+  if (budget <= 0) return 0;
+  return Math.max(0, Math.min(1, Number(c.spent || 0) / budget));
+}
+
+function remainingLine(c: Campaign, metrics: CampaignPerformance, currency: string): string {
+  if (c.billing_model === "time_based") {
+    if (!c.end_at) return "Starts after payment";
+    const days = Math.max(0, Math.ceil((new Date(c.end_at).getTime() - Date.now()) / 86400000));
+    return days === 1 ? "1 day remaining" : `${days} days remaining`;
+  }
+  if (c.pack_impressions != null) {
+    const remaining = Math.max(0, Number(c.pack_impressions) - Number(metrics.impressions || 0));
+    return `${formatCompactNumber(remaining)} impressions remaining`;
+  }
+  return `${formatMoney(Math.max(0, Number(c.budget || 0) - Number(c.spent || 0)), currency)} budget remaining`;
+}
+
 export default function AdsSettingsScreen() {
   const router = useRouter();
   const tenantCurrency = getTenantDefaultCurrency();
@@ -161,9 +208,11 @@ export default function AdsSettingsScreen() {
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [performance, setPerformance] = useState<PerformanceSummary | null>(null);
+  const [campaignPerformance, setCampaignPerformance] = useState<Record<string, CampaignPerformance>>({});
   const [packs, setPacks] = useState<ImpressionPack[]>([]);
   const [timePacks, setTimePacks] = useState<TimePack[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [defaultModel, setDefaultModel] = useState("time_based");
   const [globalCategories, setGlobalCategories] = useState<GlobalCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -196,8 +245,8 @@ export default function AdsSettingsScreen() {
     try {
       const [campRes, perfRes, packsRes, catRes] = await Promise.all([
         api.get<Campaign[]>("/api/provider/ads/campaigns"),
-        api.get<{ summary: PerformanceSummary }>("/api/provider/ads/performance"),
-        api.get<{ impression_packs: ImpressionPack[]; time_packs: TimePack[]; available_models: string[] }>("/api/provider/ads/packs"),
+        api.get<{ summary: PerformanceSummary; by_campaign?: Record<string, CampaignPerformance> }>("/api/provider/ads/performance"),
+        api.get<{ impression_packs: ImpressionPack[]; time_packs: TimePack[]; available_models: string[]; default_model?: string }>("/api/provider/ads/packs"),
         api.get<GlobalCategory[]>("/api/public/categories/global?all=true"),
       ]);
       const anyError = campRes.error || perfRes.error || packsRes.error;
@@ -206,24 +255,21 @@ export default function AdsSettingsScreen() {
       }
       setCampaigns(Array.isArray(campRes.data) ? campRes.data : []);
       setPerformance(perfRes.data?.summary ?? null);
+      setCampaignPerformance(perfRes.data?.by_campaign ?? {});
       const pd = packsRes.data;
       if (pd && typeof pd === "object" && !Array.isArray(pd)) {
         setPacks(Array.isArray(pd.impression_packs) ? pd.impression_packs : []);
         setTimePacks(Array.isArray(pd.time_packs) ? pd.time_packs : []);
         setAvailableModels(Array.isArray(pd.available_models) ? pd.available_models : []);
+        setDefaultModel(typeof pd.default_model === "string" ? pd.default_model : "time_based");
       } else {
         setPacks(Array.isArray(pd) ? (pd as ImpressionPack[]) : []);
       }
-      const rawCat = catRes.data as GlobalCategory[] | { data?: GlobalCategory[] } | null | undefined;
-      const catList = Array.isArray(rawCat)
-        ? rawCat
-        : rawCat && typeof rawCat === "object" && Array.isArray((rawCat as { data?: GlobalCategory[] }).data)
-          ? (rawCat as { data: GlobalCategory[] }).data
-          : [];
-      setGlobalCategories(catList);
+      setGlobalCategories(normalizeCategories(catRes.data));
     } catch {
       setCampaigns([]);
       setPerformance(null);
+      setCampaignPerformance({});
       setPacks([]);
       setGlobalCategories([]);
       Alert.alert("Error", "Failed to load ads data. Please try again.");
@@ -502,6 +548,24 @@ export default function AdsSettingsScreen() {
             </View>
           )}
 
+          <View style={twStyle("mb-5 rounded-3xl border border-indigo-100 bg-indigo-50 p-4")}>
+            <View style={twStyle("flex-row items-start gap-3")}>
+              <View style={twStyle("rounded-2xl bg-white p-2")}>
+                <Ionicons name="sparkles-outline" size={22} color="#4f46e5" />
+              </View>
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("text-base font-semibold text-gray-950")}>Choose how you want to grow</Text>
+                <Text style={twStyle("mt-1 text-sm leading-5 text-gray-600")}>
+                  {defaultModel === "time_based"
+                    ? "Recommended: buy a time boost for predictable visibility over a fixed number of days."
+                    : defaultModel === "impression_pack"
+                      ? "Recommended: buy a fixed impression pack and track delivery until it is used."
+                      : "Recommended: set a custom CPC budget if you want manual control over spend and bids."}
+                </Text>
+              </View>
+            </View>
+          </View>
+
           {globalCategories.length > 0 && (timePacks.length > 0 || packs.length > 0) && (
             <View style={twStyle("mb-5")}>
               <Text style={twStyle("text-sm font-semibold text-gray-700 mb-1")}>Target categories (optional)</Text>
@@ -539,7 +603,14 @@ export default function AdsSettingsScreen() {
           {/* Time-based boost packs */}
           {timePacks.length > 0 && availableModels.includes("time_based") && (
             <View style={twStyle("mb-6")}>
-              <Text style={twStyle("text-sm font-semibold text-gray-700 mb-1")}>Boost for a set number of days</Text>
+              <View style={twStyle("flex-row items-center gap-2 mb-1")}>
+                <Text style={twStyle("text-sm font-semibold text-gray-700")}>Boost for a set number of days</Text>
+                {defaultModel === "time_based" ? (
+                  <Text style={twStyle("rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700")}>
+                    Recommended
+                  </Text>
+                ) : null}
+              </View>
               <Text style={twStyle("text-xs text-gray-500 mb-3")}>Flat rate, guaranteed sponsored placement for the full duration.</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("-mx-4")} contentContainerStyle={twStyle("px-4 gap-3 flex-row")}>
                 {timePacks.map((tp) => (
@@ -584,7 +655,7 @@ export default function AdsSettingsScreen() {
                     activeOpacity={0.7}
                   >
                     <Text style={twStyle("text-lg font-bold text-gray-900")}>{tp.duration_days}</Text>
-                    <Text style={twStyle("text-xs text-gray-500")}>{tp.duration_days === 1 ? "day" : "days"}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{tp.label || (tp.duration_days === 1 ? "day" : "days")}</Text>
                     <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>
                       {formatMoney(Number(tp.price_zar), tenantCurrency)}
                     </Text>
@@ -602,7 +673,17 @@ export default function AdsSettingsScreen() {
           {/* Impression packs */}
           {packs.length > 0 && availableModels.includes("impression_pack") && (
             <View style={twStyle("mb-6")}>
-              <Text style={twStyle("text-sm font-semibold text-gray-700 mb-3")}>Buy impressions</Text>
+              <View style={twStyle("flex-row items-center gap-2 mb-1")}>
+                <Text style={twStyle("text-sm font-semibold text-gray-700")}>Buy impressions</Text>
+                {defaultModel === "impression_pack" ? (
+                  <Text style={twStyle("rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700")}>
+                    Recommended
+                  </Text>
+                ) : null}
+              </View>
+              <Text style={twStyle("text-xs text-gray-500 mb-3")}>
+                Pay once for a fixed number of sponsored impressions. The pack activates after payment.
+              </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("-mx-4")} contentContainerStyle={twStyle("px-4 gap-3 flex-row")}>
                 {packs.map((pack) => (
                   <TouchableOpacity
@@ -631,11 +712,22 @@ export default function AdsSettingsScreen() {
           {/* Campaigns */}
           <View style={twStyle("mb-4")}>
             <View style={twStyle("flex-row items-center justify-between mb-3")}>
-              <Text style={twStyle("text-sm font-semibold text-gray-700")}>Campaigns</Text>
+              <View>
+                <Text style={twStyle("text-sm font-semibold text-gray-700")}>Campaigns</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>Edit targeting, pause/activate, and track delivery per campaign.</Text>
+              </View>
               {cpcBudgetAvailable && (
                 <ActionButton label="New campaign" onPress={() => setCreateOpen(true)} variant="primary" size="sm" icon="add" />
               )}
             </View>
+            {cpcBudgetAvailable && defaultModel === "cpc_budget" ? (
+              <View style={twStyle("mb-3 rounded-2xl border border-gray-200 bg-white p-4")}>
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>Custom CPC budget is recommended by the marketplace</Text>
+                <Text style={twStyle("mt-1 text-xs leading-5 text-gray-500")}>
+                  Use this when you want to control total spend, daily cap, and bid. Fixed boosts and packs stay locked to admin pricing.
+                </Text>
+              </View>
+            ) : null}
             {campaigns.length === 0 ? (
               <View style={twStyle("rounded-2xl border border-gray-200 bg-gray-50 p-8 items-center")}>
                 <Ionicons name="megaphone-outline" size={32} color="#9ca3af" />
@@ -652,6 +744,14 @@ export default function AdsSettingsScreen() {
                   const canActivate = (c.status === "draft" || c.status === "paused") && hasBudgetLeft;
                   const showAwaitingPayment =
                     (c.status === "draft" || c.status === "paused") && !hasBudgetLeft;
+                  const metrics = campaignPerformance[c.id] ?? {
+                    impressions: 0,
+                    reach: 0,
+                    clicks: 0,
+                    books: 0,
+                    spent: Number(c.spent ?? 0),
+                  };
+                  const progress = campaignProgress(c);
                   return (
                     <View key={c.id} style={twStyle("rounded-2xl border border-gray-200 bg-white p-4")}>
                       <View style={twStyle("flex-row items-start justify-between gap-2 flex-wrap")}>
@@ -673,6 +773,33 @@ export default function AdsSettingsScreen() {
                             ) : null}
                           </View>
                           <Text style={twStyle("text-sm text-gray-600 leading-5")}>{campaignSummaryLine(c, tenantCurrency)}</Text>
+                          <View style={twStyle("mt-3")}>
+                            <View style={twStyle("h-2 overflow-hidden rounded-full bg-gray-100")}>
+                              <View
+                                style={[
+                                  twStyle("h-2 rounded-full bg-indigo-500"),
+                                  { width: `${Math.round(progress * 100)}%` },
+                                ]}
+                              />
+                            </View>
+                            <Text style={twStyle("mt-1 text-xs font-medium text-gray-500")}>
+                              {remainingLine(c, metrics, tenantCurrency)}
+                            </Text>
+                          </View>
+                          <View style={twStyle("mt-3 flex-row flex-wrap gap-2")}>
+                            {[
+                              ["Impr.", formatCompactNumber(metrics.impressions)],
+                              ["Reach", formatCompactNumber(metrics.reach)],
+                              ["Clicks", formatCompactNumber(metrics.clicks)],
+                              ["Bookings", formatCompactNumber(metrics.books)],
+                              ["Spend", formatMoney(Number(metrics.spent ?? 0), tenantCurrency)],
+                            ].map(([label, value]) => (
+                              <View key={label} style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
+                                <Text style={twStyle("text-[10px] uppercase tracking-wide text-gray-400")}>{label}</Text>
+                                <Text style={twStyle("text-xs font-semibold text-gray-900")}>{value}</Text>
+                              </View>
+                            ))}
+                          </View>
                           {(c.targeting?.global_category_ids?.length ?? 0) > 0 ? (
                             <Text style={twStyle("text-xs text-gray-500 mt-1")}>
                               Targeting: {c.targeting!.global_category_ids!.length} categor

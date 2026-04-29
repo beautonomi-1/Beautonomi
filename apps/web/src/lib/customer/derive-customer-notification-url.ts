@@ -16,10 +16,32 @@ export function deriveCustomerNotificationHref(notification: {
   metadata?: Record<string, unknown> | null;
 }): string | undefined {
   const data = { ...(notification.data ?? {}), ...(notification.metadata ?? {}) };
+  const bookingId =
+    typeof data.booking_id === "string" && data.booking_id.trim()
+      ? data.booking_id.trim()
+      : typeof data.bookingId === "string" && data.bookingId.trim()
+        ? data.bookingId.trim()
+        : null;
+  const conversationId =
+    typeof data.conversation_id === "string" && data.conversation_id.trim()
+      ? data.conversation_id.trim()
+      : typeof data.conversationId === "string" && data.conversationId.trim()
+        ? data.conversationId.trim()
+        : null;
   const ticketId =
     typeof data.ticket_id === "string" && data.ticket_id.trim()
       ? data.ticket_id.trim()
       : null;
+  // Prefer explicit structured IDs over template/action URLs. Older templates
+  // sometimes stored provider/admin web paths or `/bookings/:id`, which can
+  // send customers to the error boundary even though the notification has the
+  // correct customer booking id in metadata.
+  if (bookingId && isUuid(bookingId)) {
+    return `/account-settings/bookings/${bookingId}`;
+  }
+  if (conversationId && isUuid(conversationId)) {
+    return `/account-settings/messages?conversation=${encodeURIComponent(conversationId)}`;
+  }
   if (ticketId && isUuid(ticketId)) {
     return `/help/my-tickets/${ticketId}`;
   }
@@ -49,6 +71,16 @@ export function deriveCustomerNotificationHref(notification: {
       return `/account-settings/messages?conversation=${encodeURIComponent(seg)}`;
     }
     return "/account-settings/messages";
+  }
+
+  if (raw.startsWith("/bookings/") || raw.startsWith("/account-settings/bookings/")) {
+    const seg = raw
+      .replace(/^\/account-settings\/bookings\/?/, "")
+      .replace(/^\/bookings\/?/, "")
+      .split("/")
+      .filter(Boolean)[0];
+    if (seg && isUuid(seg)) return `/account-settings/bookings/${seg}`;
+    return "/account-settings/bookings";
   }
 
   return raw;

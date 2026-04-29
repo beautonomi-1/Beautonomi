@@ -10,13 +10,11 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  Platform,
   ActivityIndicator,
   Linking,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -27,6 +25,7 @@ import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatCurrency } from "@/lib/format";
 import { useProvider } from "@/providers/ProviderContext";
+import { buildZonedIsoForWallClock } from "@/lib/tz";
 
 type CustomRequest = {
   id: string;
@@ -59,6 +58,32 @@ type CustomRequest = {
   }[];
 };
 
+interface AvailableSlotRow {
+  time: string;
+  available?: boolean;
+}
+
+interface AvailableSlotsResponse {
+  slots?: string[];
+  slot_grid?: AvailableSlotRow[];
+  provider_timezone?: string | null;
+}
+
+function dateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function timeKey(date: Date): string {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function labelDate(date: Date): string {
+  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
 function formatDateTimeSafe(value: unknown): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
@@ -68,7 +93,8 @@ function formatDateTimeSafe(value: unknown): string {
 
 export default function CustomRequestDetailScreen() {
   const router = useRouter();
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId, provider } = useProvider();
+  const providerTz = provider?.timezone ?? null;
   const tenantCurrency = getTenantDefaultCurrency();
   const { id } = useLocalSearchParams<{ id: string }>();
   const requestId = id ?? "";
@@ -110,7 +136,17 @@ export default function CustomRequestDetailScreen() {
   });
   const [travelFee, setTravelFee] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const selectedDateKey = dateKey(scheduledAt);
+  const selectedTimeKey = timeKey(scheduledAt);
+  const dateOptions = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      return d;
+    });
+  }, []);
 
   const isAtHome = request?.location_type === "at_home";
   const defaultDuration = request?.duration_minutes ?? 60;
@@ -130,6 +166,23 @@ export default function CustomRequestDetailScreen() {
     durationNum <= 480 &&
     Number.isFinite(expDaysNum) &&
     expDaysNum >= 1;
+  const slotsUrl = useMemo(() => {
+    if (!request || !selectedDateKey) return "";
+    if (!Number.isFinite(durationNum) || durationNum < 15) return "";
+    let q = `/api/provider/bookings/available-slots?date=${encodeURIComponent(selectedDateKey)}&duration_minutes=${encodeURIComponent(String(durationNum))}`;
+    if (staffId) q += `&staff_ids=${encodeURIComponent(staffId)}`;
+    if (!isAtHome && locationId) q += `&location_id=${encodeURIComponent(locationId)}`;
+    q += isAtHome ? "&mode=mobile&travel_buffer=30" : "&mode=salon&travel_buffer=0";
+    return q;
+  }, [durationNum, isAtHome, locationId, request, selectedDateKey, staffId]);
+  const { data: slotsData, loading: slotsLoading } = useApi<AvailableSlotsResponse>(slotsUrl, {
+    enabled: slotsUrl.length > 0,
+  });
+  const slotRows = useMemo(() => {
+    if (Array.isArray(slotsData?.slot_grid) && slotsData.slot_grid.length > 0) return slotsData.slot_grid;
+    if (Array.isArray(slotsData?.slots)) return slotsData.slots.map((time) => ({ time, available: true }));
+    return [] as AvailableSlotRow[];
+  }, [slotsData]);
 
   useEffect(() => {
     if (request?.duration_minutes != null && request.duration_minutes > 0) {
@@ -148,6 +201,14 @@ export default function CustomRequestDetailScreen() {
     }
   }, [request?.id, request?.duration_minutes, request?.preferred_start_at]);
 
+  useEffect(() => {
+    const available = slotRows.filter((slot) => slot.available !== false).map((slot) => slot.time.slice(0, 5));
+    if (available.length === 0 || available.includes(selectedTimeKey)) return;
+    const iso = buildZonedIsoForWallClock(selectedDateKey, available[0], slotsData?.provider_timezone ?? providerTz);
+    const next = new Date(iso);
+    if (Number.isFinite(next.getTime())) setScheduledAt(next);
+  }, [providerTz, selectedDateKey, selectedTimeKey, slotRows, slotsData?.provider_timezone]);
+
   const sendOffer = useCallback(async () => {
     if (!requestId || !request || !isValid) return;
     setSubmitting(true);
@@ -162,7 +223,11 @@ export default function CustomRequestDetailScreen() {
         notes: notes.trim() || null,
         staff_id: staffId || null,
         location_id: locationId || null,
-        scheduled_at: scheduledAt.toISOString(),
+        scheduled_at: buildZonedIsoForWallClock(
+          selectedDateKey,
+          selectedTimeKey,
+          slotsData?.provider_timezone ?? providerTz,
+        ),
       };
       if (isAtHome) {
         const fee = Number(travelFee);
@@ -193,7 +258,10 @@ export default function CustomRequestDetailScreen() {
     notes,
     staffId,
     locationId,
-    scheduledAt,
+    selectedDateKey,
+    selectedTimeKey,
+    slotsData?.provider_timezone,
+    providerTz,
     isAtHome,
     travelFee,
     tenantCurrency,
@@ -430,27 +498,58 @@ export default function CustomRequestDetailScreen() {
 
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Proposed date and time</Text>
             <Text style={twStyle("mb-1 text-xs text-gray-500")}>
-              Suggested slot stored on the offer; the customer sees it when reviewing your quote. Adjust to match
-              what you can honour.
+              Choose a real availability-engine slot so the customer can pay for a time you can honour.
             </Text>
-            <TouchableOpacity
-              onPress={() => setShowDatePicker(true)}
-              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3")}
-            >
-              <Text style={twStyle("text-base text-gray-900")}>{scheduledAt.toLocaleString()}</Text>
-            </TouchableOpacity>
-            {showDatePicker && (
-              <DateTimePicker
-                value={scheduledAt}
-                mode="datetime"
-                minimumDate={new Date()}
-                onChange={(_: any, d?: Date) => {
-                  if (d) setScheduledAt(d);
-                  setShowDatePicker(Platform.OS === "ios");
-                }}
-                display={Platform.OS === "ios" ? "spinner" : "default"}
-              />
-            )}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-2")}>
+              <View style={twStyle("flex-row")}>
+                {dateOptions.map((d) => {
+                  const key = dateKey(d);
+                  const active = key === selectedDateKey;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      onPress={() => {
+                        const iso = buildZonedIsoForWallClock(key, selectedTimeKey, slotsData?.provider_timezone ?? providerTz);
+                        const next = new Date(iso);
+                        if (Number.isFinite(next.getTime())) setScheduledAt(next);
+                      }}
+                      style={[twStyle(`rounded-2xl border px-3 py-2 ${active ? "border-emerald-600 bg-emerald-50" : "border-gray-200 bg-white"}`), { marginRight: 8 }]}
+                    >
+                      <Text style={twStyle(`text-xs font-semibold ${active ? "text-emerald-700" : "text-gray-700"}`)}>
+                        {labelDate(d)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+            <View style={twStyle("mb-3 flex-row flex-wrap")}>
+              {slotsLoading ? (
+                <Text style={twStyle("text-xs text-gray-500")}>Loading available times...</Text>
+              ) : slotRows.length === 0 ? (
+                <Text style={twStyle("text-xs text-amber-700")}>No available slots for this date. Try another day, staff member, or duration.</Text>
+              ) : (
+                slotRows.slice(0, 30).map((slot) => {
+                  const time = slot.time.slice(0, 5);
+                  const available = slot.available !== false;
+                  const active = selectedTimeKey === time;
+                  return (
+                    <TouchableOpacity
+                      key={slot.time}
+                      disabled={!available}
+                      onPress={() => {
+                        const iso = buildZonedIsoForWallClock(selectedDateKey, time, slotsData?.provider_timezone ?? providerTz);
+                        const next = new Date(iso);
+                        if (Number.isFinite(next.getTime())) setScheduledAt(next);
+                      }}
+                      style={[twStyle(`rounded-full border px-3 py-2 ${active ? "border-emerald-700 bg-emerald-600" : available ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-gray-100"}`), { marginRight: 8, marginBottom: 8, opacity: available ? 1 : 0.45 }]}
+                    >
+                      <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : available ? "text-emerald-700" : "text-gray-400"}`)}>{time}</Text>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </View>
 
             {isAtHome && (
               <>

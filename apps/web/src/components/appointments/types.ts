@@ -67,6 +67,11 @@ export interface CreateFormData {
   serviceFeePercentage: number;
   serviceFeeAmount: number;
   tipAmount: number;
+  walletAmount: number;
+  giftCardAmount: number;
+  loyaltyDiscountAmount: number;
+  promotionDiscountAmount: number;
+  membershipDiscountAmount: number;
   totalAmount: number;
   addressLine1: string;
   addressLine2: string;

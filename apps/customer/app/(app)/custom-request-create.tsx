@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -23,6 +23,44 @@ import { Colors } from "@/constants/colors";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { getApiErrorMessage } from "@/lib/api-error";
 
+type GlobalCategory = { id: string; name: string };
+type AvailabilitySlot = { start: string; end?: string; is_available?: boolean; staff_id?: string | null };
+
+function dateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function labelDate(date: Date): string {
+  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+function labelTime(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return iso.slice(11, 16);
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function normalizeCategories(raw: unknown): GlobalCategory[] {
+  if (!raw || typeof raw !== "object") return [];
+  if (Array.isArray(raw)) return raw as GlobalCategory[];
+  const root = raw as { data?: unknown; global_categories?: unknown };
+  if (Array.isArray(root.global_categories)) return root.global_categories as GlobalCategory[];
+  if (Array.isArray(root.data)) return root.data as GlobalCategory[];
+  if (root.data && typeof root.data === "object" && Array.isArray((root.data as { categories?: unknown }).categories)) {
+    return (root.data as { categories: GlobalCategory[] }).categories;
+  }
+  return [];
+}
+
+function normalizeSlots(raw: unknown): AvailabilitySlot[] {
+  const root = raw as { slots?: unknown; data?: { slots?: unknown } } | null | undefined;
+  const slots = Array.isArray(root?.slots) ? root?.slots : Array.isArray(root?.data?.slots) ? root?.data?.slots : [];
+  return (slots as AvailabilitySlot[]).filter((slot) => typeof slot.start === "string");
+}
+
 export default function CustomRequestCreateScreen() {
   useScreenTracking("Custom Request Create");
   const { provider_id } = useLocalSearchParams<{ provider_id: string }>();
@@ -35,9 +73,69 @@ export default function CustomRequestCreateScreen() {
   const [budgetMax, setBudgetMax] = useState("");
   const [duration, setDuration] = useState("60");
   const [locationType, setLocationType] = useState<"at_salon" | "at_home">("at_salon");
+  const [serviceCategoryId, setServiceCategoryId] = useState<string | null>(null);
+  const [categories, setCategories] = useState<GlobalCategory[]>([]);
+  const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
+  const [preferredStartAt, setPreferredStartAt] = useState<string | null>(null);
+  const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const dateOptions = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      return d;
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get<unknown>("/api/public/categories/global").then((res) => {
+      if (cancelled || res.error) return;
+      setCategories(normalizeCategories(res.data));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!provider_id) return;
+    const durationMinutes = parseInt(duration, 10) || 60;
+    if (durationMinutes < 15) return;
+    let cancelled = false;
+    setLoadingSlots(true);
+    const params = new URLSearchParams({
+      date: selectedDate,
+      duration_minutes: String(durationMinutes),
+      staff_id: "any",
+      travel_buffer_minutes: locationType === "at_home" ? "30" : "0",
+    });
+    api
+      .get<unknown>(`/api/public/providers/${encodeURIComponent(provider_id)}/availability?${params.toString()}`)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.error) {
+          setSlots([]);
+          return;
+        }
+        const nextSlots = normalizeSlots(res.data).filter((slot) => slot.is_available !== false);
+        setSlots(nextSlots);
+        if (nextSlots.length > 0 && !nextSlots.some((slot) => slot.start === preferredStartAt)) {
+          setPreferredStartAt(nextSlots[0].start);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSlots(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [duration, locationType, preferredStartAt, provider_id, selectedDate]);
 
   const addImage = async () => {
     if (imageUrls.length >= 6) return;
@@ -97,6 +195,8 @@ export default function CustomRequestCreateScreen() {
         description: desc,
         budget_min: budgetMin ? parseFloat(budgetMin) : null,
         budget_max: budgetMax ? parseFloat(budgetMax) : null,
+        service_category_id: serviceCategoryId,
+        preferred_start_at: preferredStartAt,
         duration_minutes: parseInt(duration, 10) || 60,
         location_type: locationType,
         image_urls: imageUrls,
@@ -157,6 +257,49 @@ export default function CustomRequestCreateScreen() {
           multiline
           maxLength={4000}
         />
+        {categories.length > 0 && (
+          <>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Service category (optional)</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+              <View style={{ flexDirection: "row" }}>
+                <TouchableOpacity
+                  onPress={() => setServiceCategoryId(null)}
+                  style={{
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: serviceCategoryId == null ? Colors.primary : Colors.gray[200],
+                    backgroundColor: serviceCategoryId == null ? Colors.primaryLight : Colors.white,
+                    paddingHorizontal: 14,
+                    paddingVertical: 9,
+                    marginRight: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: serviceCategoryId == null ? Colors.primary : Colors.gray[600] }}>Any category</Text>
+                </TouchableOpacity>
+                {categories.map((category) => {
+                  const active = serviceCategoryId === category.id;
+                  return (
+                    <TouchableOpacity
+                      key={category.id}
+                      onPress={() => setServiceCategoryId(active ? null : category.id)}
+                      style={{
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: active ? Colors.primary : Colors.gray[200],
+                        backgroundColor: active ? Colors.primaryLight : Colors.white,
+                        paddingHorizontal: 14,
+                        paddingVertical: 9,
+                        marginRight: 8,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: active ? Colors.primary : Colors.gray[600] }}>{category.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </>
+        )}
         <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Budget (optional)</Text>
         <View style={{ flexDirection: "row" }}>
           <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginRight: 12 }} placeholder="Min" placeholderTextColor={Colors.gray[400]} value={budgetMin} onChangeText={setBudgetMin} keyboardType="numeric" />
@@ -172,6 +315,64 @@ export default function CustomRequestCreateScreen() {
           <TouchableOpacity onPress={() => setLocationType("at_home")} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: locationType === "at_home" ? Colors.primary : Colors.gray[200], backgroundColor: locationType === "at_home" ? Colors.primaryLight : "transparent" }}>
             <Text style={{ textAlign: "center", fontWeight: "500", color: locationType === "at_home" ? Colors.primary : Colors.gray[700] }}>At home</Text>
           </TouchableOpacity>
+        </View>
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Preferred date and time</Text>
+        <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 8 }}>
+          Pick from this provider&apos;s available slots. They may still propose a different time in their offer.
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+          <View style={{ flexDirection: "row" }}>
+            {dateOptions.map((d) => {
+              const key = dateKey(d);
+              const active = selectedDate === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => setSelectedDate(key)}
+                  style={{
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: active ? "#059669" : Colors.gray[200],
+                    backgroundColor: active ? "#ECFDF5" : Colors.white,
+                    paddingHorizontal: 12,
+                    paddingVertical: 9,
+                    marginRight: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: active ? "#047857" : Colors.gray[700] }}>{labelDate(d)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 4 }}>
+          {loadingSlots ? (
+            <Text style={{ fontSize: 13, color: Colors.gray[500] }}>Loading available times...</Text>
+          ) : slots.length === 0 ? (
+            <Text style={{ fontSize: 13, color: "#B45309" }}>No available slots for this date. Try another day or duration.</Text>
+          ) : (
+            slots.slice(0, 30).map((slot) => {
+              const active = preferredStartAt === slot.start;
+              return (
+                <TouchableOpacity
+                  key={slot.start}
+                  onPress={() => setPreferredStartAt(slot.start)}
+                  style={{
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: active ? "#047857" : "#A7F3D0",
+                    backgroundColor: active ? "#059669" : "#ECFDF5",
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    marginRight: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: active ? Colors.white : "#047857" }}>{labelTime(slot.start)}</Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
         </View>
         <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Inspiration photos (optional, max 6)</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>

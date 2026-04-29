@@ -54,7 +54,11 @@ interface ApiClient {
     email?: string;
     phone?: string;
     avatar_url?: string | null;
+    is_limited_platform_link?: boolean;
   };
+  relationship_source?: string | null;
+  privacy_level?: string | null;
+  linked_existing_platform_user?: boolean;
 }
 
 interface Client {
@@ -77,6 +81,7 @@ interface Client {
    * clients can't be messaged via the in-app chat.
    */
   is_registered?: boolean;
+  is_limited_platform_link?: boolean;
 }
 
 type ClientFilter = "all" | "vip" | "regular" | "new";
@@ -125,6 +130,11 @@ const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onM
               {isVip && (
                 <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 2 }}>
                   <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>VIP</Text>
+                </View>
+              )}
+              {client.is_limited_platform_link && (
+                <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#eff6ff", paddingHorizontal: 8, paddingVertical: 2 }}>
+                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#1d4ed8" }}>Platform</Text>
                 </View>
               )}
             </View>
@@ -347,6 +357,7 @@ export default function ClientsScreen() {
         notes: c.notes ?? null,
         tags: c.tags ?? [],
         is_registered: isRegistered,
+        is_limited_platform_link: Boolean(c.customer?.is_limited_platform_link || c.privacy_level === "limited"),
       });
     };
 

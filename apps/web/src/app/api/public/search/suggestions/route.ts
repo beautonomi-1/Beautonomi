@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
     // Use separate queries for better compatibility and to search description field
     const { data: providersByName, error: providersByNameError } = await supabase
       .from('providers')
-      .select('id, business_name, slug, description')
+      .select('id, business_name, slug, description, thumbnail_url, avatar_url')
       .ilike('business_name', `%${searchTerm}%`)
       .eq('status', 'active')
       .eq('tenant_id', tenantId)
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
     // Only search description if it's not null/empty
     const { data: providersByDesc, error: providersByDescError } = await supabase
       .from('providers')
-      .select('id, business_name, slug, description')
+      .select('id, business_name, slug, description, thumbnail_url, avatar_url')
       .not('description', 'is', null)
       .ilike('description', `%${searchTerm}%`)
       .eq('status', 'active')
@@ -109,13 +109,13 @@ export async function GET(request: NextRequest) {
       const [fallbackByName, fallbackByDesc] = await Promise.all([
         admin
           .from('providers')
-          .select('id, business_name, slug, description')
+          .select('id, business_name, slug, description, thumbnail_url, avatar_url')
           .ilike('business_name', `%${searchTerm}%`)
           .eq('status', 'active')
           .limit(fallbackLimit),
         admin
           .from('providers')
-          .select('id, business_name, slug, description')
+          .select('id, business_name, slug, description, thumbnail_url, avatar_url')
           .not('description', 'is', null)
           .ilike('description', `%${searchTerm}%`)
           .eq('status', 'active')
@@ -171,6 +171,7 @@ export async function GET(request: NextRequest) {
       url: string;
       category?: string;
       slug?: string;
+      image_url?: string | null;
     }> = [];
 
     // Add service suggestions
@@ -194,6 +195,7 @@ export async function GET(request: NextRequest) {
           ? `/partner-profile?slug=${encodeURIComponent(provider.slug)}`
           : `/search?q=${encodeURIComponent(provider.business_name)}&type=provider`,
         slug: provider.slug || undefined,
+        image_url: provider.avatar_url || provider.thumbnail_url || null,
       });
     });
 

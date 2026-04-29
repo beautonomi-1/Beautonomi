@@ -60,15 +60,37 @@ export async function GET(request: NextRequest) {
 
     const bookingIds = (bookings ?? []).map((b) => b.id);
 
-    // ── 2. Finance transactions for the period (authoritative ledger) ──
-    let financeRows: Array<{ transaction_type: string; amount: number; net: number; booking_id: string | null; created_at: string }> = [];
-    if (bookingIds.length > 0) {
-      const { data: ft } = await supabaseAdmin
-        .from("finance_transactions")
-        .select("transaction_type, amount, net, booking_id, created_at")
-        .eq("provider_id", providerId)
-        .in("booking_id", bookingIds);
-      financeRows = (ft ?? []) as typeof financeRows;
+    // ── 2. Finance transactions settled in the period (authoritative ledger) ──
+    type FinanceRow = {
+      transaction_type: string;
+      amount: number;
+      net: number;
+      booking_id: string | null;
+      created_at: string;
+    };
+    const { data: ft } = await supabaseAdmin
+      .from("finance_transactions")
+      .select("transaction_type, amount, net, booking_id, created_at")
+      .eq("provider_id", providerId)
+      .gte("created_at", fromDate.toISOString())
+      .lte("created_at", toDate.toISOString());
+    let financeRows = (ft ?? []) as FinanceRow[];
+
+    if (locationId && financeRows.length > 0) {
+      const financeBookingIds = [...new Set(financeRows.map((r) => r.booking_id).filter(Boolean))] as string[];
+      const allowedBookingIds = new Set<string>();
+      if (financeBookingIds.length > 0) {
+        const { data: locationBookings } = await supabaseAdmin
+          .from("bookings")
+          .select("id")
+          .eq("provider_id", providerId)
+          .eq("location_id", locationId)
+          .in("id", financeBookingIds);
+        for (const b of locationBookings ?? []) {
+          allowedBookingIds.add((b as { id: string }).id);
+        }
+      }
+      financeRows = financeRows.filter((r) => r.booking_id != null && allowedBookingIds.has(r.booking_id));
     }
 
     // ── 3. Payment transactions (gateway + no-gateway settlements) ──
@@ -89,9 +111,13 @@ export async function GET(request: NextRequest) {
     // GMV = total booking value (all non-cancelled bookings regardless of payment status)
     const gmv = rows.reduce((s, b) => s + Number(b.total_amount ?? 0), 0);
 
-    // Actual collected = gateway payments + wallet credits (the real cash/credit received)
-    const totalPaidFromGateway = rows.reduce((s, b) => s + Number(b.total_paid ?? 0), 0);
-    const totalWalletApplied = rows.reduce((s, b) => s + Number(b.wallet_amount ?? 0), 0);
+    // Actual collected = settled ledger rows by payment date, not appointment date.
+    const totalPaidFromGateway = financeRows
+      .filter((r) => r.transaction_type === "payment")
+      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+    const totalWalletApplied = financeRows
+      .filter((r) => r.transaction_type === "wallet_payment")
+      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
     const totalGiftCardApplied = financeRows
       .filter((r) => r.transaction_type === "gift_card_payment")
       .reduce((s, r) => s + Number(r.amount ?? 0), 0);
@@ -204,6 +230,17 @@ export async function GET(request: NextRequest) {
         gateway: totalPaidFromGateway,
         wallet: totalWalletApplied,
         gift_card: totalGiftCardApplied,
+      },
+      basis: {
+        gmv: "Non-cancelled bookings scheduled in the selected period.",
+        collected:
+          "Settled payment, wallet, and gift-card finance ledger rows created in the selected period.",
+        providerEarnings:
+          "Provider_earnings ledger net created in the selected period; may differ from gross collected cash.",
+        location:
+          locationId
+            ? "Location filter includes only ledger rows linked to bookings at the selected location; non-booking platform charges are excluded."
+            : "All provider locations and provider-level ledger rows.",
       },
       // Booking counts
       totalPayments,

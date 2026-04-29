@@ -72,6 +72,24 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get('date_from');
     const dateTo = searchParams.get('date_to');
     const locationId = searchParams.get('location_id');
+    const searchTerm = (search?.trim() || "").replace(/[(),]/g, "");
+    const customerIdsMatchingSearch: string[] = [];
+
+    if (searchTerm) {
+      const { data: matchingCustomers, error: matchingCustomersError } = await supabaseAdmin
+        .from("users")
+        .select("id")
+        .or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
+        .limit(100);
+
+      if (matchingCustomersError) {
+        console.warn("Error fetching sales search customers:", matchingCustomersError);
+      } else {
+        matchingCustomers?.forEach((customer: { id?: string | null }) => {
+          if (customer.id) customerIdsMatchingSearch.push(customer.id);
+        });
+      }
+    }
 
     // Build query (simplified to avoid nested join issues)
     let salesQuery = supabaseAdmin
@@ -109,9 +127,16 @@ export async function GET(request: NextRequest) {
       salesQuery = salesQuery.lte('sale_date', `${dateTo}T23:59:59`);
     }
 
-    // Apply ref_number search at DB level so pagination counts are accurate
-    if (search) {
-      salesQuery = salesQuery.ilike('ref_number', `%${search}%`);
+    // Apply search at DB level so pagination/count/totals match the visible list.
+    if (searchTerm) {
+      const clauses = [
+        `ref_number.ilike.%${searchTerm}%`,
+        `sale_number.ilike.%${searchTerm}%`,
+      ];
+      if (customerIdsMatchingSearch.length > 0) {
+        clauses.push(`customer_id.in.(${customerIdsMatchingSearch.join(",")})`);
+      }
+      salesQuery = salesQuery.or(clauses.join(","));
     }
 
     // Apply pagination after all filters
@@ -136,7 +161,16 @@ export async function GET(request: NextRequest) {
       if (locationId) totalsQuery = totalsQuery.eq("location_id", locationId);
       if (dateFrom) totalsQuery = totalsQuery.gte("sale_date", `${dateFrom}T00:00:00`);
       if (dateTo) totalsQuery = totalsQuery.lte("sale_date", `${dateTo}T23:59:59`);
-      if (search) totalsQuery = totalsQuery.ilike("ref_number", `%${search}%`);
+      if (searchTerm) {
+        const clauses = [
+          `ref_number.ilike.%${searchTerm}%`,
+          `sale_number.ilike.%${searchTerm}%`,
+        ];
+        if (customerIdsMatchingSearch.length > 0) {
+          clauses.push(`customer_id.in.(${customerIdsMatchingSearch.join(",")})`);
+        }
+        totalsQuery = totalsQuery.or(clauses.join(","));
+      }
       const { data: totalsRows } = await totalsQuery;
       periodTotalAmount = (totalsRows ?? []).reduce(
         (s: number, r: { total_amount?: number | null }) => s + Number(r.total_amount ?? 0),
@@ -260,21 +294,11 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Apply secondary client_name filter post-fetch (ref_number is already filtered in DB)
-    let filteredSales = transformedSales;
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filteredSales = transformedSales.filter(s =>
-        (s.ref_number ?? "").toLowerCase().includes(searchLower) ||
-        s.client_name?.toLowerCase().includes(searchLower)
-      );
-    }
-
     const totalPages = count ? Math.ceil(count / limit) : 1;
 
     return successResponse({
-      data: filteredSales,
-      total: count || filteredSales.length,
+      data: transformedSales,
+      total: count || transformedSales.length,
       /** Sum of `total_amount` across ALL rows matching the filters (not just this page). */
       total_amount_sum: periodTotalAmount,
       page,

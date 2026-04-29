@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     try {
       let query = admin
         .from('group_bookings')
-        .select('*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, checked_in_at, checked_out_at)', { count: 'exact' })
+        .select('*, booking_participants(id, booking_id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, checked_in_at, checked_out_at)', { count: 'exact' })
         .eq('provider_id', providerId)
         .order('scheduled_at', { ascending: false });
 
@@ -98,6 +98,7 @@ export async function GET(request: NextRequest) {
         const at = row.scheduled_at ? new Date(row.scheduled_at) : null;
         const participants = (row.booking_participants || []).map((p: any) => ({
           id: p.id,
+          booking_id: p.booking_id,
           group_booking_id: row.id,
           client_name: p.participant_name || '—',
           client_email: p.participant_email,

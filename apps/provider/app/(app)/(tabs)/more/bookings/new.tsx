@@ -57,6 +57,13 @@ interface Service {
   service_type?: string;
   variant_name?: string | null;
   parent_service_id?: string | null;
+  category_id?: string | null;
+  category_name?: string | null;
+  global_category_id?: string | null;
+  global_category_name?: string | null;
+  category?: { id?: string | null; name?: string | null; title?: string | null } | null;
+  global_category?: { id?: string | null; name?: string | null; title?: string | null } | null;
+  provider_categories?: { id?: string | null; name?: string | null; title?: string | null } | null;
   add_ons?: AddOn[];
 }
 
@@ -186,6 +193,7 @@ function sanitizeProviderFormResponsesForApi(
 
 type DiscountType = "percentage" | "fixed";
 type PaymentMethod = "pay_later" | "cash" | "card" | "yoco_pos" | "payment_link";
+type RecurrencePattern = "daily" | "weekly" | "biweekly" | "monthly";
 
 /**
  * §Release-audit 2026-04: accept the provider's IANA timezone and delegate to
@@ -210,6 +218,21 @@ function readCreateBookingWarnings(data: unknown): string[] | undefined {
   return strings.length ? strings : undefined;
 }
 
+function formatRecurrencePattern(pattern: RecurrencePattern): string {
+  switch (pattern) {
+    case "daily":
+      return "Daily";
+    case "weekly":
+      return "Weekly";
+    case "biweekly":
+      return "Every 2 weeks";
+    case "monthly":
+      return "Monthly";
+    default:
+      return "Repeating";
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
@@ -222,6 +245,29 @@ const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof
   { label: "Yoco Terminal", value: "yoco_pos", icon: "phone-portrait-outline" },
   { label: "Payment Link", value: "payment_link", icon: "send-outline" },
 ];
+const TIP_PERCENTAGES = [0, 10, 15, 20] as const;
+const UNCATEGORIZED_SERVICE_CATEGORY = "__uncategorized__";
+
+function getServiceCategoryInfo(service: Service): { id: string; label: string } {
+  const id =
+    service.category_id ||
+    service.global_category_id ||
+    service.category?.id ||
+    service.global_category?.id ||
+    service.provider_categories?.id ||
+    UNCATEGORIZED_SERVICE_CATEGORY;
+  const label =
+    service.category_name ||
+    service.global_category_name ||
+    service.category?.name ||
+    service.category?.title ||
+    service.global_category?.name ||
+    service.global_category?.title ||
+    service.provider_categories?.name ||
+    service.provider_categories?.title ||
+    "Other";
+  return { id, label };
+}
 
 /* ------------------------------------------------------------------ */
 /*  Section header                                                     */
@@ -349,6 +395,7 @@ export default function NewBookingScreen() {
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
   const [staffPickerService, setStaffPickerService] = useState<string | null>(null);
   const [addOnPickerService, setAddOnPickerService] = useState<string | null>(null);
+  const [selectedServiceCategory, setSelectedServiceCategory] = useState("all");
 
   // --- Products ---
   // §Provider-audit 2026-04 (round 4): /api/provider/products returns
@@ -454,8 +501,9 @@ export default function NewBookingScreen() {
   const [depositPercentage, setDepositPercentage] = useState<number>(30);
   const [referralSourceId, setReferralSourceId] = useState<string>("");
   const [isRecurring, setIsRecurring] = useState(false);
-  const [recurrencePattern, setRecurrencePattern] = useState<"daily" | "weekly" | "biweekly" | "monthly">("weekly");
+  const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>("weekly");
   const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
+  const [recurrenceOccurrences, setRecurrenceOccurrences] = useState("");
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [, setCheckingAvailability] = useState(false);
@@ -542,6 +590,10 @@ export default function NewBookingScreen() {
     selectedPackageId?: string | null;
     promoCode?: string;
     providerFormResponses?: ProviderFormResponsesState;
+    isRecurring?: boolean;
+    recurrencePattern?: RecurrencePattern;
+    recurrenceEndDate?: string;
+    recurrenceOccurrences?: string;
     savedAt?: number;
   };
 
@@ -555,6 +607,7 @@ export default function NewBookingScreen() {
       selectedProducts.length > 0 ||
       notes.trim().length > 0 ||
       !!selectedPackageId ||
+      isRecurring ||
       promoCode.trim().length > 0 ||
       Object.keys(providerFormResponses || {}).length > 0;
     if (!hasAnything) return;
@@ -569,12 +622,16 @@ export default function NewBookingScreen() {
         selectedPackageId,
         promoCode,
         providerFormResponses,
+        isRecurring,
+        recurrencePattern,
+        recurrenceEndDate,
+        recurrenceOccurrences,
         savedAt: Date.now(),
       };
       AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft)).catch(() => {});
     }, 1500);
     return () => clearTimeout(timer);
-  }, [notes, selectedServices, selectedProducts, discountValue, discountType, tipAmount, selectedPackageId, promoCode, providerFormResponses]);
+  }, [notes, selectedServices, selectedProducts, discountValue, discountType, tipAmount, selectedPackageId, promoCode, providerFormResponses, isRecurring, recurrencePattern, recurrenceEndDate, recurrenceOccurrences]);
 
   // Peek for a saved draft on mount. Do NOT auto-apply — surface a
   // banner instead (see `renderDraftBanner()` in the JSX below).
@@ -594,6 +651,7 @@ export default function NewBookingScreen() {
           const hasContent =
             (Array.isArray(draft.selectedServices) && draft.selectedServices.length > 0) ||
             (Array.isArray(draft.selectedProducts) && draft.selectedProducts.length > 0) ||
+            draft.isRecurring === true ||
             (typeof draft.notes === "string" && draft.notes.trim().length > 0);
           if (!hasContent) {
             AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
@@ -629,6 +687,10 @@ export default function NewBookingScreen() {
     if (draft.promoCode) setPromoCode(draft.promoCode);
     if (draft.tipAmount) setTipAmount(draft.tipAmount);
     if (draft.selectedPackageId) setSelectedPackageId(draft.selectedPackageId);
+    if (draft.isRecurring === true) setIsRecurring(true);
+    if (draft.recurrencePattern) setRecurrencePattern(draft.recurrencePattern);
+    if (draft.recurrenceEndDate) setRecurrenceEndDate(draft.recurrenceEndDate);
+    if (draft.recurrenceOccurrences) setRecurrenceOccurrences(draft.recurrenceOccurrences);
     if (
       draft.providerFormResponses &&
       typeof draft.providerFormResponses === "object"
@@ -811,6 +873,36 @@ export default function NewBookingScreen() {
     return availableSlotsData?.slots ?? [];
   }, [availableSlotsData]);
 
+  const serviceCategoryOptions = useMemo(() => {
+    if (!services?.length) return [];
+    const categories = new Map<string, { id: string; label: string; count: number }>();
+    services
+      .filter((s) => !s.parent_service_id && s.service_type !== "variant")
+      .forEach((service) => {
+        const info = getServiceCategoryInfo(service);
+        const existing = categories.get(info.id);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          categories.set(info.id, { ...info, count: 1 });
+        }
+      });
+    return Array.from(categories.values()).sort((a, b) => {
+      if (a.id === UNCATEGORIZED_SERVICE_CATEGORY) return 1;
+      if (b.id === UNCATEGORIZED_SERVICE_CATEGORY) return -1;
+      return a.label.localeCompare(b.label);
+    });
+  }, [services]);
+
+  useEffect(() => {
+    if (
+      selectedServiceCategory !== "all" &&
+      !serviceCategoryOptions.some((category) => category.id === selectedServiceCategory)
+    ) {
+      setSelectedServiceCategory("all");
+    }
+  }, [selectedServiceCategory, serviceCategoryOptions]);
+
   // §Provider-launch (audit 2026-04): when the user entered this screen
   // from a specific staff column or a filtered location on the calendar,
   // we receive `staff_id` / `location_id` query params. Pre-seed each
@@ -886,6 +978,15 @@ export default function NewBookingScreen() {
         };
       })
     );
+  }
+
+  function applyTipPercentage(percent: number) {
+    if (percent <= 0) {
+      setTipAmount("");
+      return;
+    }
+    const amount = Math.max(0, (summary.afterDiscount || summary.subtotal) * (percent / 100));
+    setTipAmount(amount > 0 ? amount.toFixed(2) : "");
   }
 
   function handleAddPackage(pkg: Package) {
@@ -1021,6 +1122,8 @@ export default function NewBookingScreen() {
     if (isRecurring) {
       if (!selectedClient?.customer_id) return "Repeating visits must use a saved client. Select the client from search results first.";
       if (selectedServices.length === 0) return "Repeating visits need at least one service.";
+      const occ = recurrenceOccurrences.trim();
+      if (occ && (!/^\d+$/.test(occ) || Number(occ) < 2)) return "Repeat count must be at least 2 visits.";
     }
     if ((staffList?.length ?? 0) > 0 && selectedServices.length > 0) {
       const missingStaff = selectedServices.some((s) => !s.staffId);
@@ -1259,14 +1362,20 @@ export default function NewBookingScreen() {
             product_variant_id: p.productVariantId,
           })),
         ];
+        const occurrenceCount = recurrenceOccurrences.trim() ? Number(recurrenceOccurrences.trim()) : null;
+        const recurrenceParts = [`FREQ=${recurrenceFreq}`, `INTERVAL=${recurrenceInterval}`];
+        if (occurrenceCount && Number.isFinite(occurrenceCount) && occurrenceCount > 1) {
+          recurrenceParts.push(`COUNT=${Math.floor(occurrenceCount)}`);
+        }
         const recurringBody: Record<string, unknown> = {
           customer_id: selectedClient.customer_id,
           service_id: selectedServicePayloads[0]?.service_id,
           staff_id: selectedServicePayloads[0]?.staff_id,
           location_id: locationType === "at_salon" ? selectedLocationId : null,
-          recurrence_rule: `FREQ=${recurrenceFreq};INTERVAL=${recurrenceInterval}`,
+          recurrence_rule: recurrenceParts.join(";"),
           start_date: format(selectedDate, "yyyy-MM-dd"),
-          end_date: recurrenceEndDate.trim() || undefined,
+          end_date: occurrenceCount ? undefined : recurrenceEndDate.trim() || undefined,
+          occurrences: occurrenceCount || undefined,
           start_time: selectedTime.length >= 5 ? `${selectedTime.slice(0, 5)}:00` : "10:00:00",
           notes: notes.trim() || undefined,
           is_active: true,
@@ -1424,7 +1533,7 @@ export default function NewBookingScreen() {
     <KeyboardAvoidingView
       style={twStyle("flex-1 bg-white")}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
       <ScreenContainer>
         <ScreenHeader title={isWalkIn ? "Walk-in Booking" : "New Booking"} showBack />
@@ -1466,6 +1575,9 @@ export default function NewBookingScreen() {
                     if (pCount > 0) parts.push(`${pCount} product${pCount === 1 ? "" : "s"}`);
                     if (pendingDraft.notes && pendingDraft.notes.trim().length > 0) {
                       parts.push("notes");
+                    }
+                    if (pendingDraft.isRecurring) {
+                      parts.push(`repeats ${formatRecurrencePattern(pendingDraft.recurrencePattern ?? "weekly").toLowerCase()}`);
                     }
                     return parts.length > 0
                       ? `Contains ${parts.join(" · ")}.`
@@ -1525,6 +1637,10 @@ export default function NewBookingScreen() {
             paymentMethod={paymentMethod}
             paymentOption={paymentOption}
             depositPercentage={depositPercentage}
+            isRecurring={isRecurring}
+            recurrencePattern={recurrencePattern}
+            recurrenceEndDate={recurrenceEndDate.trim() || undefined}
+            recurrenceOccurrences={recurrenceOccurrences.trim() || undefined}
             packageName={selectedPackageId ? (packagesList.find((p) => p.id === selectedPackageId)?.name ?? null) : null}
             creating={creating || creatingRecurring}
             onConfirm={handleCreate}
@@ -1710,16 +1826,16 @@ export default function NewBookingScreen() {
                   return (
                     <TouchableOpacity
                       key={d.toISOString()}
-                      style={[twStyle(`items-center rounded-xl px-3 py-2.5 ${
-                        isActive ? "bg-gray-900" : "border border-gray-200 bg-white"
-                      }`), { minWidth: 54, marginRight: 8 }]}
+                      style={[twStyle(`items-center rounded-2xl px-3 py-2.5 ${
+                        isActive ? "bg-gray-900" : isToday ? "border border-emerald-200 bg-emerald-50" : "border border-gray-200 bg-white"
+                      }`), { minWidth: 64, marginRight: 8 }]}
                       onPress={() => setSelectedDate(d)}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: isActive }}
                       accessibilityLabel={format(d, "EEEE, MMMM d")}
                     >
                       <Text
-                        style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`)}
+                        style={twStyle(`text-[10px] font-semibold ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}
                       >
                         {isToday ? "Today" : format(d, "EEE")}
                       </Text>
@@ -1730,9 +1846,7 @@ export default function NewBookingScreen() {
                       >
                         {format(d, "d")}
                       </Text>
-                      <Text
-                        style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`)}
-                      >
+                      <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}>
                         {format(d, "MMM")}
                       </Text>
                     </TouchableOpacity>
@@ -1743,19 +1857,115 @@ export default function NewBookingScreen() {
               {/* -------- TIME -------- */}
               <SectionLabel label="Time" required />
               <TouchableOpacity
-                style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+                style={twStyle(`mb-4 flex-row items-center justify-between rounded-xl border px-4 py-3 ${
+                  selectedTime ? "border-emerald-300 bg-emerald-50" : "border-gray-200 bg-gray-50"
+                }`)}
                 onPress={() => setShowTimePicker(true)}
                 accessibilityRole="button"
                 accessibilityLabel={selectedTime ? `Selected time ${selectedTime}` : "Select time"}
               >
                 <View style={twStyle("flex-row items-center")}>
-                  <Ionicons name="time-outline" size={18} color="#6b7280" />
-                  <Text style={twStyle(`ml-2 text-base ${selectedTime ? "font-medium text-gray-900" : "text-gray-400"}`)}>
+                  <Ionicons name="time-outline" size={18} color={selectedTime ? "#059669" : "#6b7280"} />
+                  <Text style={twStyle(`ml-2 text-base ${selectedTime ? "font-semibold text-emerald-800" : "text-gray-400"}`)}>
                     {selectedTime || "Select time slot"}
                   </Text>
                 </View>
                 <Ionicons name="chevron-down" size={18} color="#9ca3af" />
               </TouchableOpacity>
+
+              {/* -------- RECURRING -------- */}
+              <SectionLabel label="Repeat booking" />
+              <View style={twStyle(`mb-4 rounded-2xl border px-4 py-3 ${
+                isRecurring ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-white"
+              }`)}>
+                <View style={twStyle("flex-row items-center justify-between")}>
+                  <View style={twStyle("flex-1 pr-3")}>
+                    <View style={twStyle("flex-row items-center")}>
+                      <Ionicons name="repeat-outline" size={18} color={isRecurring ? "#059669" : "#6b7280"} />
+                      <Text style={twStyle(`ml-2 text-sm font-bold ${isRecurring ? "text-emerald-900" : "text-gray-900"}`)}>
+                        Make this recurring
+                      </Text>
+                    </View>
+                    <Text style={twStyle(`mt-1 text-xs ${isRecurring ? "text-emerald-700" : "text-gray-500"}`)}>
+                      Creates a series and puts the first appointment on the calendar now.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={isRecurring}
+                    onValueChange={(next) => {
+                      setIsRecurring(next);
+                      if (next && !selectedClient?.customer_id) {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                      }
+                    }}
+                    trackColor={{ false: "#d1d5db", true: "#34d399" }}
+                    thumbColor={isRecurring ? "#059669" : "#f4f4f5"}
+                    accessibilityLabel="Repeat booking"
+                  />
+                </View>
+                {isRecurring ? (
+                  <View style={twStyle("mt-3")}>
+                    {!selectedClient ? (
+                      <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
+                        <Text style={twStyle("text-xs font-semibold text-amber-800")}>
+                          Select an existing saved client first.
+                        </Text>
+                        <Text style={twStyle("mt-0.5 text-xs text-amber-700")}>
+                          Recurring bookings need a saved client profile so future visits can be managed safely.
+                        </Text>
+                      </View>
+                    ) : null}
+                    <View style={twStyle("flex-row flex-wrap")}>
+                      {(["daily", "weekly", "biweekly", "monthly"] as const).map((pattern) => (
+                        <TouchableOpacity
+                          key={pattern}
+                          style={[twStyle(`rounded-full border px-3 py-2 ${
+                            recurrencePattern === pattern
+                              ? "border-emerald-700 bg-emerald-600"
+                              : "border-emerald-200 bg-white"
+                          }`), { marginRight: 8, marginBottom: 8 }]}
+                          onPress={() => setRecurrencePattern(pattern)}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: recurrencePattern === pattern }}
+                          accessibilityLabel={`Repeat ${pattern}`}
+                        >
+                          <Text style={twStyle(`text-xs font-semibold ${
+                            recurrencePattern === pattern ? "text-white" : "text-emerald-700"
+                          }`)}>
+                            {pattern === "biweekly" ? "Every 2 weeks" : pattern.charAt(0).toUpperCase() + pattern.slice(1)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <Text style={twStyle("mb-1 mt-1 text-xs font-medium text-emerald-800")}>Optional end date</Text>
+                    <TextInput
+                      style={twStyle("rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-base text-gray-900")}
+                      placeholder="YYYY-MM-DD, leave blank to continue"
+                      placeholderTextColor="#9ca3af"
+                      value={recurrenceEndDate}
+                      onChangeText={(value) => {
+                        setRecurrenceEndDate(value);
+                        if (value.trim()) setRecurrenceOccurrences("");
+                      }}
+                      keyboardType="numbers-and-punctuation"
+                      accessibilityLabel="Recurring end date"
+                    />
+                    <Text style={twStyle("my-2 text-center text-xs font-semibold text-emerald-700")}>or</Text>
+                    <TextInput
+                      style={twStyle("rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-base text-gray-900")}
+                      placeholder="End after number of visits"
+                      placeholderTextColor="#9ca3af"
+                      value={recurrenceOccurrences}
+                      onChangeText={(value) => {
+                        setRecurrenceOccurrences(value.replace(/\D/g, ""));
+                        if (value.trim()) setRecurrenceEndDate("");
+                      }}
+                      keyboardType="number-pad"
+                      accessibilityLabel="Recurring occurrence count"
+                    />
+                  </View>
+                ) : null}
+              </View>
 
               {/* -------- LOCATION --------
                   §Provider-audit 2026-04: hide the "At Home" chip when the
@@ -1963,15 +2173,41 @@ export default function NewBookingScreen() {
 
               {/* -------- TIP -------- */}
               <SectionLabel label={`Tip (optional, ${tenantCurrency})`} />
-              <TextInput
-                style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                placeholder="0"
-                placeholderTextColor="#9ca3af"
-                value={tipAmount}
-                onChangeText={setTipAmount}
-                keyboardType="decimal-pad"
-                accessibilityLabel="Tip amount"
-              />
+              <View style={twStyle("mb-4")}>
+                <View style={twStyle("mb-2 flex-row flex-wrap")}>
+                  {TIP_PERCENTAGES.map((pct) => {
+                    const target = pct > 0 ? ((summary.afterDiscount || summary.subtotal) * pct) / 100 : 0;
+                    const isActive = pct === 0 ? safeNum(tipAmount) === 0 : Math.abs(safeNum(tipAmount) - target) < 0.01;
+                    return (
+                      <TouchableOpacity
+                        key={pct}
+                        style={[
+                          twStyle(`rounded-full border px-3 py-2 ${
+                            isActive ? "border-emerald-600 bg-emerald-600" : "border-emerald-200 bg-emerald-50"
+                          }`),
+                          { marginRight: 8, marginBottom: 8 },
+                        ]}
+                        onPress={() => applyTipPercentage(pct)}
+                        accessibilityRole="button"
+                        accessibilityLabel={pct === 0 ? "No tip" : `Tip ${pct} percent`}
+                      >
+                        <Text style={twStyle(`text-xs font-semibold ${isActive ? "text-white" : "text-emerald-700"}`)}>
+                          {pct === 0 ? "No tip" : `${pct}%`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <TextInput
+                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                  placeholder="Custom amount"
+                  placeholderTextColor="#9ca3af"
+                  value={tipAmount}
+                  onChangeText={setTipAmount}
+                  keyboardType="decimal-pad"
+                  accessibilityLabel="Tip amount"
+                />
+              </View>
             </View>
 
             <View style={twStyle(isTablet ? "flex-1" : "")}>
@@ -1985,9 +2221,55 @@ export default function NewBookingScreen() {
                 </View>
               ) : (
                 <View style={twStyle("mb-4")}>
+                  {serviceCategoryOptions.length > 1 && (
+                    <View style={twStyle("mb-3 rounded-2xl border border-gray-100 bg-gray-50 p-2")}>
+                      <Text style={twStyle("mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+                        Filter by category
+                      </Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                        <TouchableOpacity
+                          style={[
+                            twStyle(`mr-2 rounded-full border px-3 py-2 ${
+                              selectedServiceCategory === "all" ? "border-gray-900 bg-gray-900" : "border-gray-200 bg-white"
+                            }`),
+                          ]}
+                          onPress={() => setSelectedServiceCategory("all")}
+                          accessibilityRole="button"
+                          accessibilityLabel="Show all services"
+                        >
+                          <Text style={twStyle(`text-xs font-semibold ${selectedServiceCategory === "all" ? "text-white" : "text-gray-700"}`)}>
+                            All
+                          </Text>
+                        </TouchableOpacity>
+                        {serviceCategoryOptions.map((category) => {
+                          const active = selectedServiceCategory === category.id;
+                          return (
+                            <TouchableOpacity
+                              key={category.id}
+                              style={[
+                                twStyle(`mr-2 rounded-full border px-3 py-2 ${
+                                  active ? "border-emerald-600 bg-emerald-600" : "border-emerald-200 bg-white"
+                                }`),
+                              ]}
+                              onPress={() => setSelectedServiceCategory(category.id)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Show ${category.label} services`}
+                            >
+                              <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-emerald-700"}`)}>
+                                {category.label} · {category.count}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  )}
                   {(() => {
                     if (!services) return null;
-                    const parentSvcs = services.filter((s) => !s.parent_service_id && s.service_type !== "variant");
+                    const allParentSvcs = services.filter((s) => !s.parent_service_id && s.service_type !== "variant");
+                    const parentSvcs = selectedServiceCategory === "all"
+                      ? allParentSvcs
+                      : allParentSvcs.filter((s) => getServiceCategoryInfo(s).id === selectedServiceCategory);
                     const variantSvcs = services.filter((s) => s.service_type === "variant" || !!s.parent_service_id);
                     const variantsByParent = new Map<string, Service[]>();
                     variantSvcs.forEach((v) => {
@@ -2073,6 +2355,15 @@ export default function NewBookingScreen() {
                         </View>
                       );
                     };
+
+                    if (parentSvcs.length === 0) {
+                      return (
+                        <View style={twStyle("rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6")}>
+                          <Text style={twStyle("text-center text-sm font-medium text-gray-600")}>No services in this category</Text>
+                          <Text style={twStyle("mt-1 text-center text-xs text-gray-400")}>Choose another category or add services in Catalogue.</Text>
+                        </View>
+                      );
+                    }
 
                     return parentSvcs.map((service, svcIdx) => {
                       const variants = variantsByParent.get(service.id) ?? [];
@@ -2309,62 +2600,6 @@ export default function NewBookingScreen() {
                     </Text>
                   </TouchableOpacity>
                 ))}
-              </View>
-
-              {/* -------- RECURRING -------- */}
-              <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-                <View style={twStyle("flex-row items-center justify-between")}>
-                  <View style={twStyle("flex-1 pr-3")}>
-                    <Text style={twStyle("text-sm font-medium text-gray-900")}>Repeating visit</Text>
-                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                      Creates a recurring series and puts the first appointment on the calendar now.
-                    </Text>
-                  </View>
-                  <Switch
-                    value={isRecurring}
-                    onValueChange={setIsRecurring}
-                    trackColor={{ false: "#d1d5db", true: "#818cf8" }}
-                    thumbColor={isRecurring ? "#6366f1" : "#f4f4f5"}
-                    accessibilityLabel="Repeating visit"
-                  />
-                </View>
-                {isRecurring ? (
-                  <View style={twStyle("mt-3")}>
-                    {!selectedClient ? (
-                      <Text style={twStyle("mb-2 text-xs text-amber-700")}>
-                        Select an existing saved client to create a repeating visit.
-                      </Text>
-                    ) : null}
-                    <View style={twStyle("flex-row flex-wrap")}>
-                      {(["daily", "weekly", "biweekly", "monthly"] as const).map((pattern) => (
-                        <TouchableOpacity
-                          key={pattern}
-                          style={[twStyle(`rounded-lg border px-3 py-2 ${
-                            recurrencePattern === pattern
-                              ? "border-gray-900 bg-gray-900"
-                              : "border-gray-200 bg-white"
-                          }`), { marginRight: 8, marginBottom: 8 }]}
-                          onPress={() => setRecurrencePattern(pattern)}
-                        >
-                          <Text style={twStyle(`text-xs font-semibold ${
-                            recurrencePattern === pattern ? "text-white" : "text-gray-700"
-                          }`)}>
-                            {pattern === "biweekly" ? "Bi-weekly" : pattern.charAt(0).toUpperCase() + pattern.slice(1)}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    <TextInput
-                      style={twStyle("rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-base text-gray-900")}
-                      placeholder="Optional end date (YYYY-MM-DD)"
-                      placeholderTextColor="#9ca3af"
-                      value={recurrenceEndDate}
-                      onChangeText={setRecurrenceEndDate}
-                      keyboardType="numbers-and-punctuation"
-                      accessibilityLabel="Recurring end date"
-                    />
-                  </View>
-                ) : null}
               </View>
 
               {/* -------- DEPOSIT OPTION -------- */}
@@ -2639,14 +2874,14 @@ export default function NewBookingScreen() {
 
         {!showConfirmation && (
           <ActionButton
-            label="Review Booking"
+            label={isRecurring ? "Review Repeating Booking" : "Review Booking"}
             onPress={handleReview}
             disabled={selectedServices.length === 0 && selectedProducts.length === 0}
             fullWidth
           />
         )}
 
-        <View style={twStyle("h-8")} />
+        <View style={twStyle("h-32")} />
 
         {/* -------- TIME PICKER SHEET -------- */}
         <BottomSheet
@@ -2686,8 +2921,8 @@ export default function NewBookingScreen() {
                     const baseChip = unavailable
                       ? "border border-red-200 bg-red-50"
                       : isActive
-                        ? "bg-gray-900"
-                        : "border border-gray-200 bg-white";
+                        ? "border border-emerald-700 bg-emerald-600"
+                        : "border border-emerald-200 bg-emerald-50";
                     return (
                       <TouchableOpacity
                         key={row.time}
@@ -2713,7 +2948,7 @@ export default function NewBookingScreen() {
                                 ? "text-red-300 line-through"
                                 : isActive
                                   ? "text-white"
-                                  : "text-gray-700"
+                                  : "text-emerald-800"
                             }`,
                           )}
                         >
@@ -3008,6 +3243,10 @@ function ConfirmationView({
   paymentMethod,
   paymentOption,
   depositPercentage,
+  isRecurring,
+  recurrencePattern,
+  recurrenceEndDate,
+  recurrenceOccurrences,
   packageName,
   creating,
   onConfirm,
@@ -3036,6 +3275,10 @@ function ConfirmationView({
   paymentMethod: string;
   paymentOption?: "full" | "deposit";
   depositPercentage?: number;
+  isRecurring?: boolean;
+  recurrencePattern?: RecurrencePattern;
+  recurrenceEndDate?: string;
+  recurrenceOccurrences?: string;
   packageName?: string | null;
   creating: boolean;
   onConfirm: () => void;
@@ -3044,17 +3287,27 @@ function ConfirmationView({
   return (
     <View accessibilityLabel="Booking confirmation">
       <View style={twStyle("mb-4 items-center")}>
-        <View style={twStyle("mb-2 h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100")}>
-          <Ionicons name="checkmark-circle-outline" size={30} color="#6366f1" />
+        <View style={twStyle(`mb-2 h-14 w-14 items-center justify-center rounded-2xl ${isRecurring ? "bg-emerald-100" : "bg-indigo-100"}`)}>
+          <Ionicons name={isRecurring ? "repeat-outline" : "checkmark-circle-outline"} size={30} color={isRecurring ? "#059669" : "#6366f1"} />
         </View>
-        <Text style={twStyle("text-lg font-bold text-gray-900")}>Confirm Booking</Text>
-        <Text style={twStyle("text-sm text-gray-500")}>Review the details below</Text>
+        <Text style={twStyle("text-lg font-bold text-gray-900")}>
+          {isRecurring ? "Confirm Repeating Booking" : "Confirm Booking"}
+        </Text>
+        <Text style={twStyle("text-sm text-gray-500")}>
+          {isRecurring ? "Review the series details below" : "Review the details below"}
+        </Text>
       </View>
 
       <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
         <ConfirmRow label="Client" value={clientName} />
         <ConfirmRow label="Date" value={format(selectedDate, "EEE, MMM d, yyyy")} />
         <ConfirmRow label="Time" value={selectedTime} />
+        {isRecurring ? (
+          <ConfirmRow
+            label="Repeats"
+            value={`${formatRecurrencePattern(recurrencePattern ?? "weekly")}${recurrenceOccurrences ? ` for ${recurrenceOccurrences} visits` : recurrenceEndDate ? ` until ${recurrenceEndDate}` : ""}`}
+          />
+        ) : null}
         <ConfirmRow label="Type" value={isWalkIn ? "Walk-in" : locationType === "at_home" ? "At Home" : "In Salon"} />
         {serviceAddressSummary ? (
           <View style={twStyle("border-b border-gray-50 py-2")}>
@@ -3139,7 +3392,7 @@ function ConfirmationView({
         </View>
       </View>
 
-      <ActionButton label="Confirm & Create Booking" onPress={onConfirm} loading={creating} fullWidth />
+      <ActionButton label={isRecurring ? "Confirm & Create Series" : "Confirm & Create Booking"} onPress={onConfirm} loading={creating} fullWidth />
       <TouchableOpacity style={twStyle("mt-3 items-center py-2")} onPress={onBack} accessibilityLabel="Back to edit" accessibilityRole="button">
         <Text style={twStyle("text-sm font-medium text-gray-600")}>Back to Edit</Text>
       </TouchableOpacity>

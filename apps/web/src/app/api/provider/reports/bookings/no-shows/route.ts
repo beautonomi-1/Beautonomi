@@ -126,23 +126,35 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get total bookings for no-show rate (capped for performance)
-    let allBookingsQuery = supabaseAdmin
+    // Get exact counts for no-show rate. The recent no-show list above is capped
+    // for payload size, but headline rates must not be capped.
+    let allBookingsCountQuery = supabaseAdmin
       .from("bookings")
-      .select("id")
+      .select("id", { count: "exact", head: true })
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString())
-      .limit(MAX_BOOKINGS_FOR_REPORT);
+      .lte("scheduled_at", toDate.toISOString());
+
+    let noShowCountQuery = supabaseAdmin
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("status", "no_show")
+      .gte("scheduled_at", fromDate.toISOString())
+      .lte("scheduled_at", toDate.toISOString());
 
     if (locationId) {
-      allBookingsQuery = allBookingsQuery.eq("location_id", locationId);
+      allBookingsCountQuery = allBookingsCountQuery.eq("location_id", locationId);
+      noShowCountQuery = noShowCountQuery.eq("location_id", locationId);
     }
 
-    const { data: allBookings } = await allBookingsQuery;
+    const [{ count: allBookingsCount }, { count: noShowCount }] = await Promise.all([
+      allBookingsCountQuery,
+      noShowCountQuery,
+    ]);
 
-    const totalBookings = allBookings?.length || 0;
-    const totalNoShows = noShowBookings?.length || 0;
+    const totalBookings = allBookingsCount || 0;
+    const totalNoShows = noShowCount || 0;
     const noShowRate = totalBookings > 0 ? (totalNoShows / totalBookings) * 100 : 0;
     
     // Calculate lost revenue from finance_transactions (what provider would have earned)
@@ -213,6 +225,8 @@ export async function GET(request: NextRequest) {
       repeatOffenders,
       staffBreakdown,
       recentNoShows: noShowBookings?.slice(0, 20) || [],
+      reportBasis:
+        "No-show rate uses exact booking counts for the selected scheduled-date range. Recent no-shows and staff/client breakdowns are capped for display.",
     });
   } catch (error) {
     return handleApiError(error, "NO_SHOWS_ERROR", 500);

@@ -70,6 +70,7 @@ export default function ReportsIndex() {
 
   const revenueThisMonth = analytics?.revenue?.thisMonth ?? 0;
   const bookingsThisMonth = analytics?.bookings?.thisMonth ?? 0;
+  const customersTotal = analytics?.customers?.total ?? 0;
   const revenueGrowth = analytics?.revenue?.growth ?? "0";
   const bookingsGrowth = analytics?.bookings?.growth ?? "0";
 
@@ -125,6 +126,7 @@ export default function ReportsIndex() {
               <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
                 {formatCurrency(revenueThisMonth)}
               </Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>service earnings</Text>
               {revenueGrowth !== "0" && revenueGrowth !== "New" && (
                 <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>({revenueGrowth}%)</Text>
               )}
@@ -137,6 +139,10 @@ export default function ReportsIndex() {
               {bookingsGrowth !== "0" && bookingsGrowth !== "New" && (
                 <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>({bookingsGrowth}%)</Text>
               )}
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[800] }}>{customersTotal}</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>customers</Text>
             </View>
           </View>
         </View>

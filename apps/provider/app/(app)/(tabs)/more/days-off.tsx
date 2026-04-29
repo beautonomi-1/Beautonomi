@@ -11,6 +11,7 @@ import {
   Pressable,
   TextInput,
 } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format, parse, startOfDay, isBefore } from "date-fns";
@@ -48,6 +49,7 @@ function parseDayOffDate(dateStr: string): Date {
 
 /** Content-only for use in Schedule hub (Days off tab). */
 export function DaysOffContent() {
+  const params = useLocalSearchParams<{ staffId?: string }>();
   const [daysOff, setDaysOff] = useState<DayOff[]>([]);
   const [loadingDaysOff, setLoadingDaysOff] = useState(false);
   const [daysOffError, setDaysOffError] = useState<string | null>(null);
@@ -71,6 +73,14 @@ export function DaysOffContent() {
     () => (staff ?? []).filter((s) => s.is_active !== false),
     [staff],
   );
+
+  const openAddDayOff = useCallback(() => {
+    setSelectedStaffIds(params.staffId ? [params.staffId] : []);
+    setSelectedDate(new Date());
+    setSelectedEndDate(null);
+    setReason("");
+    setAddModalOpen(true);
+  }, [params.staffId]);
 
   const loadDaysOff = useCallback(async () => {
     if (!activeStaff.length) {
@@ -274,13 +284,7 @@ export function DaysOffContent() {
               No days off scheduled. Tap &quot;Set Day Off&quot; to add one.
             </Text>
             <TouchableOpacity
-              onPress={() => {
-                setSelectedStaffIds([]);
-                setSelectedDate(new Date());
-                setSelectedEndDate(null);
-                setReason("");
-                setAddModalOpen(true);
-              }}
+              onPress={openAddDayOff}
               style={twStyle("mt-6 flex-row items-center justify-center rounded-xl bg-amber-500 px-6 py-3")}
             >
               <Ionicons name="add" size={20} color="#fff" />
@@ -290,13 +294,7 @@ export function DaysOffContent() {
         ) : (
           <View style={twStyle("px-4")}>
             <TouchableOpacity
-              onPress={() => {
-                setSelectedStaffIds([]);
-                setSelectedDate(new Date());
-                setSelectedEndDate(null);
-                setReason("");
-                setAddModalOpen(true);
-              }}
+              onPress={openAddDayOff}
               style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-amber-200 bg-amber-50 py-3")}
             >
               <Ionicons name="add" size={18} color="#f59e0b" />

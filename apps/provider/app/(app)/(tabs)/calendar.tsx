@@ -72,6 +72,11 @@ import {
   expandTimeBlocksForCalendarRange,
   resolveTimeBlockRecordId,
 } from "@/lib/expand-time-blocks";
+import {
+  expandBookingsForCalendar,
+  parseCalendarTimeStrict,
+  validateCalendarTimeRange,
+} from "@/lib/provider-calendar-parity";
 import { newBookingScreenHrefFromCalendarDay } from "@/lib/new-booking-nav-defaults";
 import {
   dayMinuteRanges,
@@ -95,7 +100,9 @@ interface BookingService {
   offering_name?: string;
   /** Present when the calendar API returns offering ids (resource / check-availability parity). */
   offering_id?: string | null;
+  scheduled_start_at?: string | null;
   duration_minutes: number;
+  price?: number | null;
   staff_name: string | null;
   staff_id: string | null;
   guest_name?: string | null;
@@ -108,7 +115,12 @@ interface Booking {
   /** Raw DB status from API — pending vs confirmed for calendar colors when `status` is `booked`. */
   db_status?: string;
   scheduled_at: string;
+  subtotal?: number;
+  tax_amount?: number;
   total_amount: number;
+  total_paid?: number;
+  total_refunded?: number;
+  payment_status?: string | null;
   currency: string;
   location_type: string;
   created_at?: string;
@@ -120,6 +132,16 @@ interface Booking {
   group_booking_id?: string | null;
   group_booking_ref?: string | null;
 }
+
+type CalendarBooking = Booking & {
+  calendar_item_id: string;
+  calendar_parent_booking_id: string;
+  calendar_service_index: number;
+  calendar_service_name: string;
+  calendar_staff_id: string | null;
+  calendar_staff_name: string | null;
+  calendar_price: number;
+};
 
 interface StaffMember {
   id: string;
@@ -210,7 +232,6 @@ function normalizeAvailabilityBlocksToSegments(
 
       // Compute start-of-next-day boundary in UTC by advancing the cursor to
       // midnight+1ms of the provider's next wall-clock day.
-      const nextDayWc = new Date(cursor);
       // Advance by up to 25 hours (covers all DST transitions) and check date
       const tryNext = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
       const tryWc = wallClockInTimeZone(tryNext, tz);
@@ -401,6 +422,7 @@ type ColorTriple = { bg: string; border: string; text: string };
 const STATUS_COLORS: Record<string, ColorTriple> = {
   confirmed: { bg: "#dbeafe", border: "#3b82f6", text: "#1e3a8a" },
   pending: { bg: "#fffbeb", border: "#f59e0b", text: "#78350f" },
+  unconfirmed: { bg: "#fffbeb", border: "#f59e0b", text: "#78350f" },
   booked: { bg: "#fffbeb", border: "#f59e0b", text: "#78350f" },
   // §Provider-launch (audit 2026-04): distinct palettes for front-desk
   // lifecycle statuses so "waiting in the lobby" vs "checked in and seated"
@@ -508,7 +530,7 @@ function getStatusColors(status: string) {
 }
 
 /** Map DB + provider-facing status to calendar color keys (pending ≠ confirmed “booked”). */
-function resolveCalendarColorKey(booking: Booking): string {
+function resolveCalendarColorKey(booking: Booking | CalendarBooking): string {
   const db = booking.db_status;
   if (db === "pending") return "pending";
   if (db === "confirmed") return "confirmed";
@@ -524,7 +546,7 @@ function resolveCalendarColorKey(booking: Booking): string {
   return booking.status;
 }
 
-function getServiceColors(booking: Booking) {
+function getServiceColors(booking: Booking | CalendarBooking) {
   const serviceName = booking.services?.[0]?.name?.toLowerCase() ?? "";
   for (const [keywords, colors] of SERVICE_COLOR_MAP) {
     if (keywords.some((kw) => serviceName.includes(kw))) return colors;
@@ -532,15 +554,15 @@ function getServiceColors(booking: Booking) {
   return { bg: "#f8fafc", border: "#94a3b8", text: "#1e293b" };
 }
 
-function getTeamColors(booking: Booking, staffList: StaffMember[]) {
-  const staffId = booking.services?.[0]?.staff_id;
+function getTeamColors(booking: Booking | CalendarBooking, staffList: StaffMember[]) {
+  const staffId = "calendar_staff_id" in booking ? booking.calendar_staff_id : booking.services?.[0]?.staff_id;
   if (!staffId) return TEAM_COLORS[0]!;
   const idx = staffList.findIndex((s) => s.id === staffId);
   return TEAM_COLORS[idx >= 0 ? idx % TEAM_COLORS.length : 0]!;
 }
 
 function getBlockColors(
-  booking: Booking,
+  booking: Booking | CalendarBooking,
   colorBy: ColorByMode,
   staffList: StaffMember[],
 ) {
@@ -652,7 +674,7 @@ function getTopOffset(
   return Math.max(0, Number.isFinite(out) ? out : 0);
 }
 
-function getBlockHeight(booking: Booking, slotHeight: number, compact: boolean): number {
+function getBlockHeight(booking: Booking | CalendarBooking, slotHeight: number, compact: boolean): number {
   // §Provider-launch (audit 2026-04): defensive NaN guard. A service row
   // with a null/undefined `duration_minutes` (possible when the backend
   // shape drifts ahead of the client types) used to produce NaN here,
@@ -678,6 +700,16 @@ function isNewBooking(booking: Booking): boolean {
   const createdAt = parseApiDateTime(booking.created_at);
   if (!createdAt) return false;
   return differenceInHours(new Date(), createdAt) < 24;
+}
+
+function getCalendarPaymentLabel(booking: Pick<Booking, "payment_status" | "total_amount" | "total_paid">): string | null {
+  const status = String(booking.payment_status ?? "").toLowerCase();
+  const total = Number(booking.total_amount ?? 0);
+  const paid = Number(booking.total_paid ?? 0);
+  if (status === "paid" || status === "completed" || (total > 0 && paid >= total)) return "Paid";
+  if (paid > 0 && total > paid) return "Part paid";
+  if (status === "pending" || status === "unpaid" || total > 0) return "Payment due";
+  return null;
 }
 
 function buildScheduleShareBody(
@@ -1209,7 +1241,7 @@ function CalendarScreenBody() {
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [monthOverviewVisible, setMonthOverviewVisible] = useState(false);
   /** Android: long-press booking menu (avoids Alert button limits when many status actions exist). */
-  const [androidBookingMenu, setAndroidBookingMenu] = useState<Booking | null>(null);
+  const [androidBookingMenu, setAndroidBookingMenu] = useState<CalendarBooking | null>(null);
   const [prefsVisible, setPrefsVisible] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
@@ -1241,7 +1273,7 @@ function CalendarScreenBody() {
   const gridContainerRef = useRef<View>(null);
   const draggingRef = useRef(false);
   const draggingBookingIdRef = useRef<string | null>(null);
-  const [draggingBooking, setDraggingBooking] = useState<Booking | null>(null);
+  const [draggingBooking, setDraggingBooking] = useState<CalendarBooking | null>(null);
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
 
   const SLOT_HEIGHT = preferences.compactMode ? 40 : 60;
@@ -1377,7 +1409,7 @@ function CalendarScreenBody() {
       return {
         id: raw.id,
         staff_id: raw.staff_id ?? raw.team_member_id ?? null,
-        block_type: raw.block_type || raw.blocked_time_type_name || "blocked",
+        block_type: raw.block_type || raw.blocked_time_type_name || raw.title || raw.name || "blocked",
         title: raw.title || raw.name || "Time block",
         start_time: st,
         end_time: et,
@@ -1397,6 +1429,7 @@ function CalendarScreenBody() {
 
   const calendarRefreshRef = useRef(refresh);
   useEffect(() => { calendarRefreshRef.current = refresh; }, [refresh]);
+  const calendarRealtimeGenRef = useRef(0);
 
   useEffect(() => {
     if (!isFocused || !provider?.id) return;
@@ -1409,11 +1442,24 @@ function CalendarScreenBody() {
       }, 400);
     };
 
+    const topic = `calendar-bookings:${provider.id}:${++calendarRealtimeGenRef.current}`;
     const channel = supabase
-      .channel(`calendar-bookings:${provider.id}`)
+      .channel(topic)
       .on(
         "postgres_changes" as never,
         { event: "*", schema: "public", table: "bookings", filter: `provider_id=eq.${provider.id}` },
+        () => {
+          scheduleRefresh();
+        },
+      )
+      .on(
+        "postgres_changes" as never,
+        {
+          event: "*",
+          schema: "public",
+          table: "booking_services",
+          filter: `bookings!inner(provider_id=eq.${provider.id})`,
+        },
         () => {
           scheduleRefresh();
         },
@@ -1423,7 +1469,6 @@ function CalendarScreenBody() {
       if (refreshTimer) clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused, provider?.id]);
 
   /* ─── Swipe navigation via PanResponder ─── */
@@ -1517,6 +1562,10 @@ function CalendarScreenBody() {
     effectiveStaffList.forEach((s) => map.set(s.name, s.id));
     return map;
   }, [effectiveStaffList]);
+  const calendarBookings = useMemo(
+    () => expandBookingsForCalendar(bookings) as CalendarBooking[],
+    [bookings],
+  );
   const staffOptions = useMemo(() => {
     const opts: { label: string; value: string }[] = [{ label: "All", value: "all" }];
     effectiveStaffList.forEach((s) => opts.push({ label: s.name, value: s.id }));
@@ -1562,11 +1611,21 @@ function CalendarScreenBody() {
   const scrollToCurrentTime = useCallback(() => {
     if (!preferences.scrollToNow || hasScrolledToNow.current) return;
     const now = new Date();
-    const { h } = getHourMinuteForInstantInZone(now, provider?.timezone ?? null);
-    const offset = Math.max(0, (h - startHour - 1) * SLOT_HEIGHT);
+    const { h, m } = getHourMinuteForInstantInZone(now, provider?.timezone ?? null);
+    const offset = Math.max(0, (h - startHour - 1) * SLOT_HEIGHT + (m / 60) * SLOT_HEIGHT);
     scrollRef.current?.scrollTo({ y: offset, animated: false });
     hasScrolledToNow.current = true;
   }, [preferences.scrollToNow, startHour, SLOT_HEIGHT, provider?.timezone]);
+
+  useEffect(() => {
+    hasScrolledToNow.current = false;
+  }, [startHour, endHour, SLOT_HEIGHT, selectedDate, viewMode, layoutMode, staffFilter]);
+
+  useEffect(() => {
+    if (!loading) {
+      requestAnimationFrame(scrollToCurrentTime);
+    }
+  }, [loading, scrollToCurrentTime]);
 
   const gridRows = useMemo(() => {
     const rows: { hour: number; minute: number; label: string }[] = [];
@@ -1592,8 +1651,7 @@ function CalendarScreenBody() {
   }, [locations]);
 
   const filteredBookings = useMemo(() => {
-    if (!bookings || !Array.isArray(bookings)) return [];
-    let result = bookings;
+    let result = calendarBookings;
     const tz = provider?.timezone ?? null;
     const selectedKey = calendarDateKey(selectedDate, tz);
     if (!preferences.showCanceled) {
@@ -1616,15 +1674,12 @@ function CalendarScreenBody() {
     }
     if (staffFilter !== "all") {
       result = result.filter((b) =>
-        b.services?.some((s) => {
-          if (s.staff_id === staffFilter) return true;
-          if (!s.staff_name) return false;
-          return staffNameToId.get(s.staff_name) === staffFilter;
-        }),
+        b.calendar_staff_id === staffFilter ||
+        (!!b.calendar_staff_name && staffNameToId.get(b.calendar_staff_name) === staffFilter),
       );
     }
     return result;
-  }, [bookings, selectedDate, viewMode, staffFilter, staffNameToId, preferences.showCanceled, provider?.timezone]);
+  }, [calendarBookings, selectedDate, viewMode, staffFilter, staffNameToId, preferences.showCanceled, provider?.timezone]);
 
   const buildShareText = useCallback(() => {
     return buildScheduleShareBody(
@@ -1667,7 +1722,60 @@ function CalendarScreenBody() {
     pushInAppBrowser(router, `${base}/provider/calendar?date=${encodeURIComponent(d)}`, "Calendar");
   }, [router, selectedDate, t]);
 
+  const openNewBookingFromCalendar = useCallback(() => {
+    const selectedStaffId = staffList[selectedStaffIndex]?.id;
+    const href = newBookingScreenHrefFromCalendarDay(selectedDate, {
+      status: preferences.defaultNewAppointmentStatus,
+      ...(locationFilter !== "all" ? { locationId: locationFilter } : {}),
+      ...(staffFilter !== "all" ? { staffId: staffFilter } : selectedStaffId ? { staffId: selectedStaffId } : {}),
+    });
+    router.push(href as never);
+  }, [locationFilter, preferences.defaultNewAppointmentStatus, router, selectedDate, selectedStaffIndex, staffFilter, staffList]);
+
+  const openWalkInBookingFromCalendar = useCallback(() => {
+    const selectedStaffId = staffList[selectedStaffIndex]?.id;
+    router.push(
+      newBookingScreenHrefFromCalendarDay(selectedDate, {
+        walkIn: true,
+        ...(locationFilter !== "all" ? { locationId: locationFilter } : {}),
+        ...(staffFilter !== "all" ? { staffId: staffFilter } : selectedStaffId ? { staffId: selectedStaffId } : {}),
+      }) as never,
+    );
+  }, [locationFilter, router, selectedDate, selectedStaffIndex, staffFilter, staffList]);
+
+  const openGroupBookingFromCalendar = useCallback(() => {
+    const selectedStaffId = staffList[selectedStaffIndex]?.id;
+    const params = new URLSearchParams();
+    params.set("default_date", format(selectedDate, "yyyy-MM-dd"));
+    params.set("default_time", format(new Date(), "HH:mm"));
+    if (staffFilter !== "all") {
+      params.set("default_staff_id", staffFilter);
+    } else if (selectedStaffId) {
+      params.set("default_staff_id", selectedStaffId);
+    }
+    if (locationFilter !== "all") {
+      params.set("default_location_id", locationFilter);
+    }
+    router.push(`/(app)/(tabs)/more/group-bookings?${params.toString()}` as never);
+  }, [locationFilter, router, selectedDate, selectedStaffIndex, staffFilter, staffList]);
+
+  const openTimeBlockFormFromCalendar = useCallback(() => {
+    const selectedStaffId = staffFilter !== "all" ? staffFilter : staffList[selectedStaffIndex]?.id;
+    setTimeBlockForm((prev) => ({
+      ...prev,
+      staffId: selectedStaffId ?? "",
+    }));
+    setShowTimeBlockForm(true);
+  }, [selectedStaffIndex, staffFilter, staffList]);
+
   const openCalendarActionsMenu = useCallback(() => {
+    const runNewBooking = () => openNewBookingFromCalendar();
+    const runWalkIn = () => openWalkInBookingFromCalendar();
+    const runGroup = () => openGroupBookingFromCalendar();
+    const runTimeBlock = () => openTimeBlockFormFromCalendar();
+    const runProductSale = () => router.push("/(app)/(tabs)/more/walk-in-sale" as never);
+    const runRecurring = () => router.push("/(app)/(tabs)/more/recurring-appointments" as never);
+    const runWaiting = () => router.push("/(app)/(tabs)/more/waiting-room" as never);
     const runShare = () => {
       void handleShareSchedule();
     };
@@ -1681,6 +1789,13 @@ function CalendarScreenBody() {
         {
           options: [
             t("provider.calendarScreen.cancel"),
+            "New appointment",
+            "Walk-in appointment",
+            "Group booking",
+            "Add time block",
+            "Product sale",
+            "Recurring bookings",
+            "Waiting room",
             t("provider.calendarScreen.shareSchedule"),
             t("provider.calendarScreen.copySchedule"),
             t("provider.calendarScreen.monthOverview"),
@@ -1690,14 +1805,28 @@ function CalendarScreenBody() {
           title: t("provider.calendarScreen.calendarActions"),
         },
         (idx) => {
-          if (idx === 1) runShare();
-          else if (idx === 2) runCopy();
-          else if (idx === 3) runMonth();
-          else if (idx === 4) runWeb();
+          if (idx === 1) runNewBooking();
+          else if (idx === 2) runWalkIn();
+          else if (idx === 3) runGroup();
+          else if (idx === 4) runTimeBlock();
+          else if (idx === 5) runProductSale();
+          else if (idx === 6) runRecurring();
+          else if (idx === 7) runWaiting();
+          else if (idx === 8) runShare();
+          else if (idx === 9) runCopy();
+          else if (idx === 10) runMonth();
+          else if (idx === 11) runWeb();
         },
       );
     } else {
       Alert.alert(t("provider.calendarScreen.calendarActions"), undefined, [
+        { text: "New appointment", onPress: runNewBooking },
+        { text: "Walk-in appointment", onPress: runWalkIn },
+        { text: "Group booking", onPress: runGroup },
+        { text: "Add time block", onPress: runTimeBlock },
+        { text: "Product sale", onPress: runProductSale },
+        { text: "Recurring bookings", onPress: runRecurring },
+        { text: "Waiting room", onPress: runWaiting },
         { text: t("provider.calendarScreen.shareSchedule"), onPress: runShare },
         { text: t("provider.calendarScreen.copySchedule"), onPress: runCopy },
         { text: t("provider.calendarScreen.monthOverview"), onPress: runMonth },
@@ -1705,7 +1834,17 @@ function CalendarScreenBody() {
         { text: t("provider.calendarScreen.close"), style: "cancel" },
       ]);
     }
-  }, [handleCopySchedule, handleOpenWebCalendar, handleShareSchedule, t]);
+  }, [
+    handleCopySchedule,
+    handleOpenWebCalendar,
+    handleShareSchedule,
+    openGroupBookingFromCalendar,
+    openNewBookingFromCalendar,
+    openTimeBlockFormFromCalendar,
+    openWalkInBookingFromCalendar,
+    router,
+    t,
+  ]);
 
   const availabilitySegments = useMemo(() => {
     if (!availabilityRaw?.length) return [];
@@ -1714,7 +1853,7 @@ function CalendarScreenBody() {
       return normalized.filter((s) => s.location_id == null || s.location_id === locationFilter);
     }
     return normalized;
-  }, [availabilityRaw, locationFilter]);
+  }, [availabilityRaw, locationFilter, provider?.timezone]);
 
   function getCalendarBlocksForDay(
     day: Date,
@@ -1802,7 +1941,7 @@ function CalendarScreenBody() {
   }
 
   const filteredBookingsByDate = useMemo(() => {
-    const map = new Map<string, Booking[]>();
+    const map = new Map<string, CalendarBooking[]>();
     const tz = provider?.timezone ?? null;
     filteredBookings.forEach((b) => {
       const bDate = parseApiDateTime(b.scheduled_at);
@@ -1819,22 +1958,18 @@ function CalendarScreenBody() {
   }, [filteredBookings, provider?.timezone]);
 
   const bookingsByStaffId = useMemo(() => {
-    const byStaffId = new Map<string, Booking[]>();
+    const byStaffId = new Map<string, CalendarBooking[]>();
     staffList.forEach((s) => byStaffId.set(s.id, []));
-    const unassigned: Booking[] = [];
+    const unassigned: CalendarBooking[] = [];
 
     filteredBookings.forEach((b) => {
       const matchedIds = new Set<string>();
-      b.services?.forEach((svc) => {
-        if (svc.staff_id && byStaffId.has(svc.staff_id)) {
-          matchedIds.add(svc.staff_id);
-          return;
-        }
-        if (svc.staff_name) {
-          const mappedStaffId = staffNameToId.get(svc.staff_name);
-          if (mappedStaffId) matchedIds.add(mappedStaffId);
-        }
-      });
+      if (b.calendar_staff_id && byStaffId.has(b.calendar_staff_id)) {
+        matchedIds.add(b.calendar_staff_id);
+      } else if (b.calendar_staff_name) {
+        const mappedStaffId = staffNameToId.get(b.calendar_staff_name);
+        if (mappedStaffId) matchedIds.add(mappedStaffId);
+      }
 
       if (matchedIds.size === 0) {
         unassigned.push(b);
@@ -1867,7 +2002,7 @@ function CalendarScreenBody() {
     if (staffFilter !== "all") return null;
     if (staffList.length <= 1) return null;
 
-    const cols: { staffId: string; staffName: string; staffAvatarUrl?: string | null; bookings: Booking[] }[] = staffList.map((s) => ({
+    const cols: { staffId: string; staffName: string; staffAvatarUrl?: string | null; bookings: CalendarBooking[] }[] = staffList.map((s) => ({
       staffId: s.id,
       staffName: s.name,
       staffAvatarUrl: s.avatar_url ?? null,
@@ -1883,7 +2018,7 @@ function CalendarScreenBody() {
       });
     }
 
-    return cols.filter((c) => c.bookings.length > 0 || cols.length <= 4);
+    return cols;
   }, [viewMode, staffList, staffFilter, bookingsByStaffId, t]);
 
   const todayBookingCount = useMemo(
@@ -1959,7 +2094,7 @@ function CalendarScreenBody() {
     );
   }
 
-  function handleTapBooking(booking: Booking) {
+  function handleTapBooking(booking: CalendarBooking) {
     const groupId = typeof booking.group_booking_id === "string" ? booking.group_booking_id : null;
     if (booking.is_group_booking && groupId) {
       router.push(
@@ -1973,8 +2108,9 @@ function CalendarScreenBody() {
     router.push(`/(app)/(tabs)/bookings/${booking.id}` as never);
   }
 
-  function handleLongPressBooking(booking: Booking) {
-    const availableActions = STATUS_ACTION_KEYS.filter((key) => key !== booking.status);
+  function handleLongPressBooking(booking: CalendarBooking) {
+    const currentActionStatus = booking.db_status === "pending" ? "pending" : booking.status;
+    const availableActions = STATUS_ACTION_KEYS.filter((key) => key !== currentActionStatus);
     const actionLabels = availableActions.map((key) => getStatusActionLabel(t, key));
     if (Platform.OS === "ios") {
       const sheetOptions = [
@@ -2084,10 +2220,10 @@ function CalendarScreenBody() {
 
   /** Drag-and-drop: compute new time and optionally staff from drop position, check availability, then PATCH */
   async function handleBookingDrop(
-    booking: Booking,
+    booking: CalendarBooking,
     absoluteX: number,
     absoluteY: number,
-    targetStaffColumns: { staffId: string; staffName: string; bookings: Booking[] }[] | null,
+    targetStaffColumns: { staffId: string; staffName: string; bookings: CalendarBooking[] }[] | null,
     targetDayColumnWidth: number,
     targetDay: Date,
   ) {
@@ -2213,14 +2349,20 @@ function CalendarScreenBody() {
 
   /* ─── Time block creation ─── */
   async function handleCreateTimeBlock() {
-    if (!timeBlockForm.startTime || !timeBlockForm.endTime) {
-      Alert.alert("Start and end time required", "Please set both a start and end time for this block.");
+    const range = validateCalendarTimeRange(timeBlockForm.startTime, timeBlockForm.endTime);
+    if (!range.ok) {
+      Alert.alert(
+        range.reason === "format" ? "Invalid time" : "Invalid range",
+        range.reason === "format"
+          ? "Use HH:MM format for start and end time, for example 12:00 and 13:00."
+          : "End time must be after start time.",
+      );
       return;
     }
     const { error } = await createTimeBlock("/api/provider/time-blocks", {
       name: timeBlockForm.title.trim() || capitalizeFirst(timeBlockForm.type),
-      start_time: timeBlockForm.startTime,
-      end_time: timeBlockForm.endTime,
+      start_time: range.startTime,
+      end_time: range.endTime,
       date: dateStr,
       staff_id: timeBlockForm.staffId ? timeBlockForm.staffId : null,
     });
@@ -2304,6 +2446,15 @@ function CalendarScreenBody() {
     }
     if (block.calendar_overlay_kind === "time_block") {
       Alert.alert("Time block", block.title, [
+        {
+          text: "Manage",
+          onPress: () => {
+            const params = new URLSearchParams();
+            params.set("date", block.date);
+            if (block.staff_id) params.set("staff_id", block.staff_id);
+            router.push(`/(app)/(tabs)/more/time-blocks?${params.toString()}` as never);
+          },
+        },
         {
           text: "Delete",
           style: "destructive",
@@ -2393,7 +2544,7 @@ function CalendarScreenBody() {
   /* ═══════════════ Render a booking block (optional drag when dropContext provided) ═══════════════ */
 
   function renderBookingBlock(
-    booking: Booking,
+    booking: CalendarBooking,
     colWidth: number,
     day: Date,
     dropContext?: DropContext | null,
@@ -2406,6 +2557,8 @@ function CalendarScreenBody() {
     const isNew = isNewBooking(booking);
     const isCancelled = booking.status === "cancelled";
     const hasNotes = !!booking.notes;
+    const paymentLabel = getCalendarPaymentLabel(booking);
+    const paymentNeedsAction = paymentLabel === "Payment due" || paymentLabel === "Part paid";
     const blockBg = preferences.highContrast ? Colors.gray[800] : colors.bg;
     const blockTextColor = preferences.highContrast ? Colors.white : colors.text;
     const canDrag =
@@ -2500,7 +2653,10 @@ function CalendarScreenBody() {
                 numberOfLines={1}
                 allowFontScaling={false}
               >
-                {booking.services.map((s) => (s.guest_name ? `${s.name ?? s.offering_name ?? "Service"} (${s.guest_name})` : (s.name ?? s.offering_name ?? "Service"))).join(", ")}
+                {booking.services.map((s) => {
+                  const name = booking.calendar_service_name || s.name || s.offering_name || "Service";
+                  return s.guest_name ? `${name} (${s.guest_name})` : name;
+                }).join(", ")}
               </Text>
             )}
             {booking.is_group_booking && booking.group_booking_ref && (
@@ -2530,6 +2686,23 @@ function CalendarScreenBody() {
                 {preferences.showPrices && <> &middot; {formatCurrency(booking.total_amount, booking.currency)}</>}
               </Text>
             )}
+            {!preferences.compactMode && height >= 70 && paymentLabel && (
+              <View style={{ marginTop: 2, flexDirection: "row", alignItems: "center" }}>
+                <Ionicons
+                  name={paymentNeedsAction ? "card-outline" : "checkmark-circle-outline"}
+                  size={10}
+                  color={paymentNeedsAction ? "#b45309" : "#047857"}
+                  style={{ marginRight: 3 }}
+                />
+                <Text
+                  style={{ fontSize: 9, fontWeight: "700", color: paymentNeedsAction ? "#b45309" : "#047857" }}
+                  numberOfLines={1}
+                  allowFontScaling={false}
+                >
+                  {paymentLabel}
+                </Text>
+              </View>
+            )}
             {preferences.showClientPhone && !preferences.compactMode && height >= 70 && booking.customers?.phone && (
               <Text style={{ fontSize: 8, color: subTextColor }} numberOfLines={1}>
                 {booking.customers.phone}
@@ -2547,7 +2720,7 @@ function CalendarScreenBody() {
       top,
       height: Math.max(height, 20),
       zIndex: 10,
-      opacity: draggingBooking?.id === booking.id ? 0.4 : isCancelled ? 0.5 : 1,
+      opacity: draggingBooking?.calendar_item_id === booking.calendar_item_id ? 0.4 : isCancelled ? 0.5 : 1,
       overflow: "hidden" as const,
       borderRadius: 8,
       borderLeftWidth: 3,
@@ -2563,7 +2736,7 @@ function CalendarScreenBody() {
         .minDuration(400)
         .onStart(() => {
           draggingRef.current = true;
-          draggingBookingIdRef.current = booking.id;
+          draggingBookingIdRef.current = booking.calendar_item_id;
           setDraggingBooking(booking);
           setDragPosition({ x: 0, y: 0 });
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -2577,7 +2750,7 @@ function CalendarScreenBody() {
           }
         })
         .onEnd((e) => {
-          if (draggingRef.current && draggingBookingIdRef.current === booking.id) {
+          if (draggingRef.current && draggingBookingIdRef.current === booking.calendar_item_id) {
             handleBookingDrop(
               booking,
               e.absoluteX,
@@ -2596,7 +2769,7 @@ function CalendarScreenBody() {
       const composed = Gesture.Simultaneous(longPress, pan);
 
       return (
-        <GestureDetector key={booking.id} gesture={composed}>
+        <GestureDetector key={booking.calendar_item_id} gesture={composed}>
           <TouchableOpacity
             style={blockStyle}
             activeOpacity={0.7}
@@ -2612,6 +2785,11 @@ function CalendarScreenBody() {
             })}
           >
             {blockContent}
+            {paymentNeedsAction && !isSmall && (
+              <View style={{ position: "absolute", right: 4, bottom: 4, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.82)", padding: 2 }}>
+                <Ionicons name="card-outline" size={12} color="#6b7280" />
+              </View>
+            )}
           </TouchableOpacity>
         </GestureDetector>
       );
@@ -2619,7 +2797,7 @@ function CalendarScreenBody() {
 
     return (
       <TouchableOpacity
-        key={booking.id}
+        key={booking.calendar_item_id}
         style={blockStyle}
         activeOpacity={0.7}
         onPress={() => handleTapBooking(booking)}
@@ -2633,6 +2811,11 @@ function CalendarScreenBody() {
         })}
       >
         {blockContent}
+        {paymentNeedsAction && !isSmall && (
+          <View style={{ position: "absolute", right: 4, bottom: 4, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.82)", padding: 2 }}>
+            <Ionicons name="card-outline" size={12} color="#6b7280" />
+          </View>
+        )}
       </TouchableOpacity>
     );
   }
@@ -2641,8 +2824,9 @@ function CalendarScreenBody() {
 
   function renderTimeBlock(block: TimeBlock) {
     const bColors = getCalendarOverlayColors(block);
-    const startMin = timeStringToMinutes(block.start_time);
-    const endMin = timeStringToMinutes(block.end_time);
+    const startMin = parseCalendarTimeStrict(block.start_time);
+    const endMin = parseCalendarTimeStrict(block.end_time);
+    if (startMin == null || endMin == null || endMin <= startMin) return null;
     const top = GRID_TOP_PADDING + Math.max(0, (startMin / 60 - startHour) * SLOT_HEIGHT);
     const height = Math.max(((endMin - startMin) / 60) * SLOT_HEIGHT, QUARTER_HEIGHT);
     const interactive = !!block.calendar_overlay_kind;
@@ -2795,14 +2979,14 @@ function CalendarScreenBody() {
   /* ═══════════════ Render a day grid column ═══════════════ */
 
   type DropContext = {
-    staffColumns: { staffId: string; staffName: string; bookings: Booking[] }[];
+    staffColumns: { staffId: string; staffName: string; bookings: CalendarBooking[] }[];
     dayColumnWidth: number;
     day: Date;
   } | null;
 
   function renderDayGrid(
     day: Date,
-    bookingsForDay: Booking[],
+    bookingsForDay: CalendarBooking[],
     colWidth: number,
     showTimeIndicator = true,
     dropContext?: DropContext | null,
@@ -3108,6 +3292,113 @@ function CalendarScreenBody() {
         </TouchableOpacity>
       )}
 
+      <View style={{ backgroundColor: Colors.white, borderBottomWidth: 1, borderBottomColor: Colors.gray[100], paddingVertical: 10 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingHorizontal: isTablet ? screenPadding : 12,
+            gap: 8,
+          }}
+        >
+          {[
+            {
+              label: "New",
+              sub: "Appointment",
+              icon: "calendar-outline" as keyof typeof Ionicons.glyphMap,
+              color: "#4f46e5",
+              bg: "#eef2ff",
+              onPress: openNewBookingFromCalendar,
+            },
+            {
+              label: "Walk-in",
+              sub: "Book now",
+              icon: "walk-outline" as keyof typeof Ionicons.glyphMap,
+              color: "#16a34a",
+              bg: "#f0fdf4",
+              onPress: openWalkInBookingFromCalendar,
+            },
+            {
+              label: "Group",
+              sub: "Participants",
+              icon: "people-outline" as keyof typeof Ionicons.glyphMap,
+              color: "#db2777",
+              bg: "#fdf2f8",
+              onPress: openGroupBookingFromCalendar,
+            },
+            {
+              label: "Sale",
+              sub: "Products",
+              icon: "bag-handle-outline" as keyof typeof Ionicons.glyphMap,
+              color: "#0891b2",
+              bg: "#ecfeff",
+              onPress: () => router.push("/(app)/(tabs)/more/walk-in-sale" as never),
+            },
+            {
+              label: "Recurring",
+              sub: "Series",
+              icon: "repeat-outline" as keyof typeof Ionicons.glyphMap,
+              color: "#7c3aed",
+              bg: "#f5f3ff",
+              onPress: () => router.push("/(app)/(tabs)/more/recurring-appointments" as never),
+            },
+            {
+              label: "Block",
+              sub: "Time off",
+              icon: "ban-outline" as keyof typeof Ionicons.glyphMap,
+              color: "#d97706",
+              bg: "#fffbeb",
+              onPress: openTimeBlockFormFromCalendar,
+            },
+            {
+              label: "Waiting",
+              sub: waitingCount > 0 ? `${waitingCount} waiting` : "Room",
+              icon: "hourglass-outline" as keyof typeof Ionicons.glyphMap,
+              color: "#dc2626",
+              bg: "#fef2f2",
+              onPress: () => router.push("/(app)/(tabs)/more/waiting-room" as never),
+            },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.label}
+              onPress={item.onPress}
+              activeOpacity={0.78}
+              style={{
+                minWidth: 104,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: Colors.gray[100],
+                backgroundColor: item.bg,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.label} ${item.sub}`}
+            >
+              <View
+                style={{
+                  height: 30,
+                  width: 30,
+                  borderRadius: 15,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: Colors.white,
+                  marginRight: 8,
+                }}
+              >
+                <Ionicons name={item.icon} size={16} color={item.color} />
+              </View>
+              <View>
+                <Text style={{ fontSize: 12, fontWeight: "800", color: Colors.gray[900] }}>{item.label}</Text>
+                <Text style={{ marginTop: 1, fontSize: 10, color: Colors.gray[500] }}>{item.sub}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       {/* ─── Layout Toggle + Staff Filter (matches web "Staff View" bar) ─── */}
       {viewMode === "day" && staffList.length > 1 && staffFilter === "all" && (
         <View style={{ borderBottomWidth: 1, borderBottomColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 8, ...(isTablet ? { paddingHorizontal: screenPadding } : { paddingHorizontal: 12 }) }}>
@@ -3146,12 +3437,8 @@ function CalendarScreenBody() {
                     style={[ { flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8 }, isActive ? { backgroundColor: DARK_HEADER } : { backgroundColor: Colors.gray[100] } ]}
                     onPress={() => setSelectedStaffIndex(idx)}
                   >
-                    <View
-                      style={[ { height: 24, width: 24, alignItems: "center", justifyContent: "center", borderRadius: 12, marginRight: 8 }, isActive ? { backgroundColor: TEAL_ACCENT } : { backgroundColor: Colors.gray[300] } ]}
-                    >
-                      <Text style={[ { fontSize: 9, fontWeight: "700" }, isActive ? { color: DARK_HEADER } : { color: Colors.gray[600] } ]}>
-                        {member.name.charAt(0)}
-                      </Text>
+                    <View style={{ marginRight: 8, transform: [{ scale: 0.75 }] }}>
+                      <Avatar name={member.name} imageUrl={member.avatar_url ?? null} size="sm" />
                     </View>
                     <Text style={{ fontSize: 14, fontWeight: "500", color: isActive ? Colors.white : Colors.gray[700], marginRight: count > 0 ? 8 : 0 }}>
                       {member.name.split(" ")[0]}
@@ -3561,7 +3848,7 @@ function CalendarScreenBody() {
                   {t("provider.calendarScreen.collectPayment")}
                 </Text>
               </TouchableOpacity>
-              {STATUS_ACTION_KEYS.filter((key) => key !== androidBookingMenu.status).map((key, idx, arr) => (
+              {STATUS_ACTION_KEYS.filter((key) => key !== (androidBookingMenu.db_status === "pending" ? "pending" : androidBookingMenu.status)).map((key, idx, arr) => (
                 <TouchableOpacity
                   key={key}
                   style={{
@@ -3627,11 +3914,7 @@ function CalendarScreenBody() {
                 color: "#4f46e5",
                 onPress: () => {
                   setFabOpen(false);
-                  const href = newBookingScreenHrefFromCalendarDay(selectedDate, {
-                    status: preferences.defaultNewAppointmentStatus,
-                    ...(locationFilter !== "all" ? { locationId: locationFilter } : {}),
-                  });
-                  router.push(href as never);
+                  openNewBookingFromCalendar();
                 },
               },
               {
@@ -3641,12 +3924,17 @@ function CalendarScreenBody() {
                 color: "#22c55e",
                 onPress: () => {
                   setFabOpen(false);
-                  router.push(
-                    newBookingScreenHrefFromCalendarDay(selectedDate, {
-                      walkIn: true,
-                      ...(locationFilter !== "all" ? { locationId: locationFilter } : {}),
-                    }) as never,
-                  );
+                  openWalkInBookingFromCalendar();
+                },
+              },
+              {
+                labelKey: "productSale",
+                label: "Product sale",
+                icon: "bag-handle-outline" as keyof typeof Ionicons.glyphMap,
+                color: "#0891b2",
+                onPress: () => {
+                  setFabOpen(false);
+                  router.push("/(app)/(tabs)/more/walk-in-sale" as never);
                 },
               },
               {
@@ -3666,7 +3954,7 @@ function CalendarScreenBody() {
                 color: "#6366f1",
                 onPress: () => {
                   setFabOpen(false);
-                  setShowTimeBlockForm(true);
+                  openTimeBlockFormFromCalendar();
                 },
               },
               {
@@ -3676,18 +3964,7 @@ function CalendarScreenBody() {
                 color: "#ec4899",
                 onPress: () => {
                   setFabOpen(false);
-                  const params = new URLSearchParams();
-                  params.set("default_date", format(selectedDate, "yyyy-MM-dd"));
-                  params.set("default_time", format(new Date(), "HH:mm"));
-                  if (staffFilter !== "all") {
-                    params.set("default_staff_id", staffFilter);
-                  } else if (selectedStaff?.id) {
-                    params.set("default_staff_id", selectedStaff.id);
-                  }
-                  if (locationFilter !== "all") {
-                    params.set("default_location_id", locationFilter);
-                  }
-                  router.push(`/(app)/(tabs)/more/group-bookings?${params.toString()}` as never);
+                  openGroupBookingFromCalendar();
                 },
               },
             ].map((action, index) => (
@@ -3756,7 +4033,7 @@ function CalendarScreenBody() {
       {/* ─── Legend Modal ─── */}
       <Modal visible={showLegend} transparent animationType="fade" onRequestClose={() => setShowLegend(false)}>
         <Pressable style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.4)" }} onPress={() => setShowLegend(false)}>
-          <Pressable style={{ marginHorizontal: 24, width: 320, borderRadius: 16, backgroundColor: Colors.white, padding: 20 }} onPress={() => {}}>
+          <Pressable style={{ marginHorizontal: 24, width: 320, maxHeight: "82%", borderRadius: 16, backgroundColor: Colors.white, padding: 20 }} onPress={() => {}}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Color Legend</Text>
               <TouchableOpacity onPress={() => setShowLegend(false)}>
@@ -3764,6 +4041,7 @@ function CalendarScreenBody() {
               </TouchableOpacity>
             </View>
 
+            <ScrollView showsVerticalScrollIndicator={false}>
             {preferences.colorBy === "status" && (
               <View>
                 <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Status Colors</Text>
@@ -3826,6 +4104,7 @@ function CalendarScreenBody() {
                 </View>
               ))}
             </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>

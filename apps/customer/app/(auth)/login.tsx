@@ -14,7 +14,6 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
@@ -24,7 +23,8 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
-import { RADIUS_INPUT, RADIUS_CARD, RADIUS_BUTTON } from "@/constants/layout";
+import { RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
+import { BeautonomiWordmark } from "@/components/BeautonomiWordmark";
 import { webCookiePolicyUrl, webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
@@ -45,6 +45,7 @@ import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
 
 const PRIMARY = Colors.primary;
+const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
 
@@ -238,7 +239,7 @@ export default function LoginScreen() {
   const fullPhone = `${countryCode}${stripLeadingZero(phoneNumber.replace(/\D/g, ""))}`.trim();
   const hasSocialAuth = socialAuth.google || socialAuth.apple;
   const showAltAfterPhone =
-    hasSocialAuth || auth.email_provider_enabled || !auth.phone_provider_enabled;
+    hasSocialAuth || (!auth.phone_provider_enabled && auth.email_provider_enabled);
   const selectedCountry = COUNTRY_CODES.find((c) => c.code === countryCode);
 
   useEffect(() => {
@@ -259,6 +260,12 @@ export default function LoginScreen() {
     setToken("");
     setPendingPhone("");
   }, [auth.phone_provider_enabled, otpSent, showEmailForm]);
+
+  useEffect(() => {
+    if (auth.phone_provider_enabled || !auth.email_provider_enabled) return;
+    setShowEmailForm(true);
+  }, [auth.email_provider_enabled, auth.phone_provider_enabled]);
+
   const filteredCountries = countrySearch
     ? COUNTRY_CODES.filter((c) => c.label.toLowerCase().includes(countrySearch.toLowerCase()))
     : COUNTRY_CODES;
@@ -565,52 +572,46 @@ export default function LoginScreen() {
   };
 
   return (
-    // §UI-audit 2026-04: the auth layout hides the native header, so
-    // without `SafeAreaView edges={["top","left","right"]}` the hero
-    // title crowded the status bar / notch on iOS. Wrap the existing
-    // KeyboardAvoidingView so keyboard logic is unchanged.
     <SafeAreaView
       edges={["top", "left", "right"]}
-      style={{ flex: 1, backgroundColor: Colors.gray[50] }}
+      style={{ flex: 1, backgroundColor: Colors.white }}
     >
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: Colors.gray[50] }}
+      style={{ flex: 1, backgroundColor: Colors.white }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
       <ScrollView
-        style={{ flex: 1 }}
-        contentContainerClassName="grow justify-center"
+        style={{ flex: 1, backgroundColor: Colors.white }}
         contentContainerStyle={scrollContentStyle}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={[formStyle, { backgroundColor: Colors.white, borderRadius: RADIUS_CARD + 4, padding: 24, ...(formNarrow ? { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3 } : {}) }]}>
+        <View style={formStyle}>
         {/* Logo accent */}
-        <View style={{ alignItems: "center", marginBottom: 12 }}>
-          <Image
-            source={require("../../assets/favicon.png")}
+        <View style={{ alignItems: "center", marginBottom: 8 }}>
+          <View
             style={{
-              width: 64,
-              height: 64,
-              borderRadius: 32,
+              width: 56,
+              height: 56,
+              borderRadius: 28,
+              backgroundColor: PRIMARY_LIGHT,
+              alignItems: "center",
+              justifyContent: "center",
             }}
-          />
+          >
+            <BeautonomiWordmark size={28} color={PRIMARY} showText={false} />
+          </View>
         </View>
 
         <Text
-          style={{ textAlign: "center", fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 6 }}
+          style={{ textAlign: "center", fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 6, letterSpacing: -0.3 }}
           accessibilityRole="header"
         >
-          Welcome to Beautonomi
+          Welcome back
         </Text>
-        <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 6 }}>
-          {t("auth.login")} or {t("auth.signup").toLowerCase()} to continue
-        </Text>
-        <Text
-          style={{ textAlign: "center", fontSize: 14, color: "#9CA3AF", lineHeight: 20, marginBottom: 28, fontWeight: "500" }}
-        >
-          Book beauty and wellness — tailored to you.
+        <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 28 }}>
+          {t("auth.login")} to book beauty and wellness, manage appointments, and shop with Beautonomi.
         </Text>
 
         {statusMessage ? (
@@ -642,6 +643,72 @@ export default function LoginScreen() {
             >
               {statusMessage}
             </Text>
+          </View>
+        ) : null}
+
+        {auth.email_provider_enabled && auth.phone_provider_enabled && !otpSent && !isSignup ? (
+          <View
+            style={{
+              flexDirection: "row",
+              borderRadius: 14,
+              backgroundColor: "#F3F4F6",
+              padding: 4,
+              marginBottom: 24,
+            }}
+            accessibilityRole="tablist"
+            accessibilityLabel="Login method selection"
+          >
+            {([
+              { key: "phone", label: "Phone" },
+              { key: "email", label: "Email" },
+            ] as const).map((item) => {
+              const selected = item.key === "email" ? showEmailForm : !showEmailForm;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  onPress={() => {
+                    setShowEmailForm(item.key === "email");
+                    setEmailOtpMode(false);
+                    setEmailOtpSent(false);
+                    setEmailOtpCode("");
+                    setPendingEmailOtp("");
+                    setPhoneError(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 11,
+                    backgroundColor: selected ? Colors.white : "transparent",
+                    ...(selected
+                      ? Platform.select({
+                          web: { boxShadow: "0 1px 3px rgba(0,0,0,0.08)" },
+                          default: {
+                            shadowColor: "#000",
+                            shadowOpacity: 0.08,
+                            shadowRadius: 3,
+                            shadowOffset: { width: 0, height: 1 },
+                            elevation: 1,
+                          },
+                        })
+                      : {}),
+                  }}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={item.label}
+                >
+                  <Text
+                    style={{
+                      textAlign: "center",
+                      fontSize: 14,
+                      fontWeight: selected ? "700" : "500",
+                      color: selected ? PRIMARY : "#6B7280",
+                    }}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         ) : null}
 
@@ -748,9 +815,11 @@ export default function LoginScreen() {
           </>
         ) : showEmailForm ? (
           <>
-            <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 20 }}>
-              {isSignup ? "Create account" : "Log in with email"}
-            </Text>
+            {isSignup ? (
+              <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 20 }}>
+                Create account
+              </Text>
+            ) : null}
 
             {isSignup && (
               <>
@@ -1258,7 +1327,7 @@ export default function LoginScreen() {
                   </>
                 )}
 
-                {auth.email_provider_enabled && (
+                {auth.email_provider_enabled && !auth.phone_provider_enabled && (
                   <TouchableOpacity
                     onPress={() => setShowEmailForm(true)}
                     disabled={loading}

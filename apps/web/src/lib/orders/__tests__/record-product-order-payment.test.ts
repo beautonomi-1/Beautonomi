@@ -134,5 +134,6 @@ describe("recordProductOrderPayment", () => {
       "provider_earnings",
       "platform_fee",
     ]);
+    expect(state.inserts.finance_transactions?.[0].every((row) => row.product_order_id === "order-1")).toBe(true);
   });
 });

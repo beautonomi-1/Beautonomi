@@ -97,6 +97,10 @@ Copy used in the app: *“We'll save your card securely when you pay. To verify 
 - **Current behaviour:** The cron only creates the **booking**. It does **not**:
   - Create a row in `payments`, or  
   - Charge the customer’s saved card (or any payment method).
+- Generated recurring occurrences stay **payment_status = pending** and do **not**
+  create `booking_payments` rows. This is intentional: `booking_payments` is
+  the source of truth for finance ledger, provider earnings, payout reporting,
+  and end-of-day totals.
 - So **payment for each recurring occurrence** is not automatic today. Options would be:
   - Customer pays when the appointment is due (e.g. in app or at checkout for that booking), or  
   - A separate job that, when a recurring booking is created, creates a payment intent and charges a saved card (using the same Paystack authorization flow as above) and then links that payment to the booking.

@@ -44,6 +44,7 @@ interface PaymentsData {
   by_method: { method: string; amount: number; count: number }[];
   recent_payouts: { date: string; amount: number; status: string }[];
   recent_refunds: { date: string; amount: number; reason?: string; booking_ref?: string }[];
+  basis_note?: string;
 }
 
 const METHOD_COLORS: Record<string, string> = {
@@ -66,19 +67,20 @@ export default function PaymentsReport() {
     if (!data) return;
     const text = [
       `Payment Report (${from} to ${to})`,
-      `Total Collected: ${formatCurrency(data.total_collected)}`,
+      `Provider Earnings Collected: ${formatCurrency(data.total_collected)}`,
       `Total Refunded: ${formatCurrency(data.total_refunded)}`,
-      `Net Revenue: ${formatCurrency(data.net_revenue)}`,
+      `Net Service Earnings: ${formatCurrency(data.net_revenue)}`,
+      data.basis_note ? `Basis: ${data.basis_note}` : "",
       "",
       "By Method:",
       ...data.by_method.map((m) => `  ${m.method}: ${formatCurrency(m.amount)} (${m.count} transactions)`),
-    ].join("\n");
+    ].filter(Boolean).join("\n");
     await Share.share({ message: text, title: "Payment Report" });
   }, [data, from, to]);
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Payments" showBack subtitle="Methods, payouts & refunds" />
+      <ScreenHeader title="Payments" showBack subtitle="Ledger earnings, payouts & refunds" />
 
       <View style={twStyle("mb-3")}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
@@ -102,7 +104,7 @@ export default function PaymentsReport() {
       {data && (
         <View>
           <ReportResponsiveStatRow>
-            <StatCard title="Collected" value={formatCurrency(data.total_collected)} icon="arrow-down-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+            <StatCard title="Provider earnings" value={formatCurrency(data.total_collected)} icon="arrow-down-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
             <StatCard title="Refunded" value={formatCurrency(data.total_refunded)} icon="arrow-up-circle-outline" iconColor="#ef4444" iconBg="bg-red-50" compact />
           </ReportResponsiveStatRow>
 
@@ -120,8 +122,11 @@ export default function PaymentsReport() {
           )}
 
           <View style={[twStyle("rounded-2xl bg-sky-50 p-5 items-center"), { marginTop: 16, marginBottom: 16 }]}>
-            <Text style={twStyle("text-sm text-sky-700")}>Net Revenue</Text>
+            <Text style={twStyle("text-sm text-sky-700")}>Net service earnings</Text>
             <Text style={twStyle("text-3xl font-bold text-sky-900 mt-1")}>{formatCurrency(data.net_revenue)}</Text>
+            <Text style={twStyle("mt-2 text-center text-xs leading-4 text-sky-700")}>
+              {data.basis_note ?? "Based on provider earnings ledger rows in this payment period; tips are shown separately when present."}
+            </Text>
           </View>
 
           {data.by_method.length > 0 && (

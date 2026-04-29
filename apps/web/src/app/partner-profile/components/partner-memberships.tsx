@@ -1,16 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import EmptyState from "@/components/ui/empty-state";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import LoginModal from "@/components/global/login-modal";
+import { useAuth } from "@/providers/AuthProvider";
 
 export default function PartnerMemberships({ providerSlug }: { providerSlug: string }) {
   const [plans, setPlans] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isBuying, setIsBuying] = useState<string | null>(null);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const { user, isLoading: authLoading } = useAuth();
 
   useEffect(() => {
     const load = async () => {
@@ -30,17 +36,29 @@ export default function PartnerMemberships({ providerSlug }: { providerSlug: str
   }, [providerSlug]);
 
   const buy = async (planId: string) => {
+    if (authLoading) return;
+    if (!user) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+
     try {
       setIsBuying(planId);
       const res = await fetcher.post<{ data: { payment_url: string }; error: null }>(`/api/me/memberships/purchase`, {
         plan_id: planId,
+        source: "partner_profile_memberships",
+        campaign_id: searchParams.get("campaign_id") || undefined,
+        utm_source: searchParams.get("utm_source") || undefined,
+        utm_medium: searchParams.get("utm_medium") || undefined,
+        utm_campaign: searchParams.get("utm_campaign") || undefined,
+        referrer_path: typeof window !== "undefined" ? window.location.pathname + window.location.search : undefined,
       });
       const url = res?.data?.payment_url;
       if (url) {
         window.location.href = url;
         return;
       }
-      toast.success("Membership purchase started.");
+      toast.success("Membership activated.");
     } catch (e) {
       toast.error(e instanceof FetchError ? e.message : "Failed to start membership purchase");
     } finally {
@@ -74,14 +92,21 @@ export default function PartnerMemberships({ providerSlug }: { providerSlug: str
               <Button
                 className="mt-4 w-full bg-gray-900 text-white"
                 onClick={() => buy(p.id)}
-                disabled={isBuying === p.id}
+                disabled={authLoading || isBuying === p.id}
               >
-                {isBuying === p.id ? "Redirecting..." : "Buy membership"}
+                {authLoading ? "Checking account..." : isBuying === p.id ? "Redirecting..." : "Buy membership"}
               </Button>
             </div>
           ))}
         </div>
       )}
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+        redirectContext="customer"
+        onAuthSuccess={() => setIsLoginModalOpen(false)}
+      />
     </div>
   );
 }

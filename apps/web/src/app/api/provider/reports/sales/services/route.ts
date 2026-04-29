@@ -22,20 +22,6 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
       ? startOfDay(new Date(searchParams.get("from")!))
@@ -70,7 +56,7 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString())
-      .in("status", ["confirmed", "completed"]);
+      .eq("status", "completed");
 
     if (locationId) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
@@ -223,6 +209,8 @@ export async function GET(request: NextRequest) {
       topServices: servicePerformance.slice(0, 10),
       categoryPerformance,
       allServices: servicePerformance,
+      reportBasis:
+        "Service performance uses completed bookings by scheduled date and allocates provider_earnings ledger revenue proportionally across service lines.",
     });
   } catch (error) {
     return handleApiError(error, "SERVICE_PERFORMANCE_ERROR", 500);

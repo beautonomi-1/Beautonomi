@@ -25,7 +25,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
@@ -101,19 +100,21 @@ export default function RecurringAppointmentsPage() {
     setIsEditDialogOpen(true);
   };
 
-  const handleDelete = async (appointment: RecurringAppointment, deleteSeries: boolean) => {
-    const message = deleteSeries
-      ? "Are you sure you want to delete this entire recurring series?"
-      : "Are you sure you want to delete this appointment instance?";
-    
-    if (!confirm(message)) return;
+  const handleDelete = async (appointment: RecurringAppointment) => {
+    if (
+      !confirm(
+        "Delete this recurring series? Future auto-created visits will stop; existing bookings already on the calendar stay as they are."
+      )
+    ) {
+      return;
+    }
 
     try {
-      await providerApi.deleteRecurringAppointment(appointment.id, deleteSeries);
+      await providerApi.deleteRecurringAppointment(appointment.id, true);
       setAppointments((current) =>
         current.filter((item) => item.id !== appointment.id)
       );
-      toast.success(deleteSeries ? "Series deleted" : "Appointment deleted");
+      toast.success("Series deleted");
       void loadAppointments();
     } catch (error) {
       console.error("Failed to delete appointment:", error);
@@ -296,28 +297,16 @@ export default function RecurringAppointmentsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEdit(apt, "single")}>
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit This Instance
-                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleEdit(apt, "series")}>
                               <Edit className="w-4 h-4 mr-2" />
-                              Edit Entire Series
+                              Edit Series
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => handleDelete(apt, false)}
+                              onClick={() => handleDelete(apt)}
                               className="text-red-600"
                             >
                               <Trash2 className="w-4 h-4 mr-2" />
-                              Delete This Instance
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(apt, true)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete Entire Series
+                              Delete Series
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -504,15 +493,13 @@ function RecurringAppointmentEditDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {editMode === "series" ? "Edit Recurring Series" : "Edit Appointment Instance"}
+            Edit Recurring Series
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
-            {editMode === "series"
-              ? "Changes will apply to all future appointments in this series."
-              : "This will create an exception for this specific appointment."}
+            Changes update the recurring series. To change one generated visit, open that booking from the calendar.
           </div>
 
           {editSubscriptionRequired && (

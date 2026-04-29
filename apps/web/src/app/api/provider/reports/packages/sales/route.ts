@@ -20,20 +20,6 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
       ? startOfDay(new Date(searchParams.get("from")!))
@@ -95,7 +81,8 @@ export async function GET(request: NextRequest) {
       booking.booking_services?.some((bs: any) => bs.offerings?.service_type === 'package')
     ) || [];
 
-    // Aggregate package sales
+    // Aggregate booked package value. Use package/service line prices instead of booking.total_amount
+    // so travel fees, tips, and other booking-level amounts do not inflate package reporting.
     const packageMap = new Map<string, {
       packageId: string;
       packageName: string;
@@ -117,7 +104,7 @@ export async function GET(request: NextRequest) {
           averageValue: 0,
         };
         existing.bookings += 1;
-        existing.revenue += Number(booking.total_amount || 0);
+        existing.revenue += Number(pkg.price || 0);
         packageMap.set(packageId, existing);
         return;
       }
@@ -149,13 +136,15 @@ export async function GET(request: NextRequest) {
 
     const totalPackagesSold = packageSales.reduce((sum, p) => sum + p.bookings, 0);
     const totalRevenue = packageSales.reduce((sum, p) => sum + p.revenue, 0);
-    const averagePackageValue = packageSales.length > 0 ? totalRevenue / totalPackagesSold : 0;
+    const averagePackageValue = totalPackagesSold > 0 ? totalRevenue / totalPackagesSold : 0;
 
     return successResponse({
       totalPackagesSold,
       totalRevenue,
       averagePackageValue,
       packageSales,
+      reportBasis:
+        "Package value is based on package/service line prices for confirmed or completed bookings by scheduled date. Booking-level travel fees, tips, and service fees are excluded.",
     });
   } catch (error) {
     return handleApiError(error, "PACKAGE_SALES_ERROR", 500);
