@@ -4,7 +4,7 @@
  * Subscribes to notifications table changes so the badge updates in real time.
  */
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -53,6 +53,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     refetchUnreadCount();
+  }, [refetchUnreadCount]);
+
+  // Refresh unread when app returns to foreground so badge matches server after marks elsewhere.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") void refetchUnreadCount();
+    });
+    return () => sub.remove();
   }, [refetchUnreadCount]);
 
   // Home-screen icon badge (iOS / supported Android launchers) — stays in sync with in-app unread count.

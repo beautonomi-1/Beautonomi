@@ -240,6 +240,14 @@ export default function BookingDetailScreen() {
     }, [id, load])
   );
 
+  // Clear bell-badge rows for this booking when opened directly (not via notifications list)
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      void api.post("/api/me/notifications/mark-related-read", { booking_id: id }).catch(() => {});
+    }, [id]),
+  );
+
   // While provider is en route, poll for ETA + live location (realtime may omit JSONB-heavy columns in some setups)
   useEffect(() => {
     if (!id || !booking) return;

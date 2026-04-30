@@ -148,6 +148,11 @@ export default function ProductOrderDetailScreen() {
     void loadOrder();
   }, [loadOrder]);
 
+  useEffect(() => {
+    if (!id || typeof id !== "string") return;
+    void api.post("/api/me/notifications/mark-related-read", { order_id: id }).catch(() => {});
+  }, [id]);
+
   if (loading) {
     return (
       <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" }}>

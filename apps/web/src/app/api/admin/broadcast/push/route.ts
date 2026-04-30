@@ -11,6 +11,10 @@ import {
   validateOneSignalCredentialPair,
   type OneSignalAppType,
 } from "@/lib/platform/secrets";
+import {
+  resolveBroadcastCustomerUserIds,
+  resolveBroadcastProviderUserIds,
+} from "@/lib/admin/broadcast-recipient-resolution";
 
 const broadcastPushBodySchema = z
   .object({
@@ -18,6 +22,7 @@ const broadcastPushBodySchema = z
     message: z.string().min(1),
     recipient_type: z.enum(["all_users", "all_providers", "custom"]),
     user_ids: z.array(z.string().uuid()).optional(),
+    app_type: z.enum(["customer", "provider"]).optional(),
     url: z.string().max(2000).optional(),
     /** OneSignal internal / campaign name (dashboard only) */
     name: z.string().max(128).optional(),
@@ -39,15 +44,14 @@ const broadcastPushBodySchema = z
         path: ["user_ids"],
       });
     }
+    if (val.recipient_type === "custom" && !val.app_type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "app_type is required when recipient_type is custom",
+        path: ["app_type"],
+      });
+    }
   });
-
-function isMissingColumnError(error: unknown, column: string): boolean {
-  if (!error || typeof error !== "object") return false;
-  const record = error as Record<string, unknown>;
-  const code = typeof record.code === "string" ? record.code : "";
-  const message = typeof record.message === "string" ? record.message : "";
-  return code === "42703" && message.includes(column);
-}
 
 /**
  * POST /api/admin/broadcast/push
@@ -89,40 +93,19 @@ export async function POST(request: NextRequest) {
 
     // Get user IDs based on recipient type
     if (recipient_type === "all_users") {
-      const { data: users, error: usersError } = await supabase
-        .from("users")
-        .select("id")
-        .eq("role", "customer")
-        .eq("preferred_home_tenant_id", tenantId);
-      if (usersError) {
-        if (isMissingColumnError(usersError, "preferred_home_tenant_id")) {
-          console.warn(
-            "[broadcast/push] users.preferred_home_tenant_id missing, falling back to role-only customer targeting"
-          );
-          const { data: fallbackUsers, error: fallbackUsersError } = await supabase
-            .from("users")
-            .select("id")
-            .eq("role", "customer");
-          if (fallbackUsersError) {
-            return handleApiError(fallbackUsersError, "Failed to resolve recipients");
-          }
-          userIds = fallbackUsers?.map((u: { id: string }) => u.id) ?? [];
-        } else {
-          return handleApiError(usersError, "Failed to resolve recipients");
-        }
-      } else {
-        userIds = users?.map((u: { id: string }) => u.id) ?? [];
+      try {
+        const resolved = await resolveBroadcastCustomerUserIds(supabase, tenantId);
+        userIds = resolved.userIds;
+      } catch (e) {
+        return handleApiError(e, "Failed to resolve recipients");
       }
     } else if (recipient_type === "all_providers") {
-      const { data: providers, error: providerError } = await supabase
-        .from("providers")
-        .select("user_id")
-        .eq("tenant_id", tenantId)
-        .not("user_id", "is", null);
-      if (providerError) {
-        return handleApiError(providerError, "Failed to resolve provider recipients");
+      try {
+        const resolved = await resolveBroadcastProviderUserIds(supabase, tenantId);
+        userIds = resolved.userIds;
+      } catch (e) {
+        return handleApiError(e, "Failed to resolve provider recipients");
       }
-      userIds = providers?.map((p: { user_id?: string }) => p.user_id).filter(Boolean) ?? [];
     } else if (recipient_type === "custom" && b.user_ids) {
       userIds = b.user_ids;
     } else {
@@ -138,7 +121,7 @@ export async function POST(request: NextRequest) {
         ? "customer"
         : recipient_type === "all_providers"
           ? "provider"
-          : undefined;
+          : b.app_type;
 
     const osCreds = await resolveOneSignalCredentials(oneSignalAppType, { tenantId });
     const validation = validateOneSignalCredentialPair({

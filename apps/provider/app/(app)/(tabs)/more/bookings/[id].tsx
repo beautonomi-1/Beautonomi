@@ -62,6 +62,7 @@ import {
   dbTargetToPatchStatusField,
   getAllowedTransitionTargets,
   labelForDbStatus,
+  optimisticBookingFieldsForDbTarget,
 } from "@/lib/provider-booking-status-transitions";
 
 function extractIsoDatePart(value: unknown): string | null {
@@ -534,6 +535,16 @@ export default function BookingDetailScreen() {
   const canRateClients = permissions?.rate_clients === true;
   const canViewClientRatings = permissions?.view_client_ratings === true || canRateClients;
   const bookingIdStr = typeof id === "string" ? id : Array.isArray(id) ? id[0] ?? "" : "";
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!bookingIdStr) return;
+      void api
+        .post("/api/provider/notifications/mark-related-read", { booking_id: bookingIdStr })
+        .catch(() => {});
+    }, [bookingIdStr]),
+  );
+
   const appointmentProductOrdersUrl =
     bookingIdStr && (data?.products?.length ?? 0) > 0
       ? `/api/provider/product-orders?booking_id=${encodeURIComponent(bookingIdStr)}&limit=50`
@@ -543,9 +554,23 @@ export default function BookingDetailScreen() {
   const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
   const [showStatusPicker, setShowStatusPicker] = useState(false);
+  /** Shown immediately on status actions so the chip updates before refetch finishes */
+  const [optimisticBookingStatus, setOptimisticBookingStatus] = useState<{ db_status: string; status: string } | null>(
+    null,
+  );
+
+  const resolvedBooking = useMemo((): BookingDetail | null => {
+    if (!data) return null;
+    if (!optimisticBookingStatus) return data as BookingDetail;
+    return { ...(data as BookingDetail), ...optimisticBookingStatus };
+  }, [data, optimisticBookingStatus]);
+
+  useEffect(() => {
+    setOptimisticBookingStatus(null);
+  }, [bookingIdStr]);
 
   const currentDbStatus = useMemo(() => {
-    const row = data as BookingDetail | undefined;
+    const row = resolvedBooking ?? (data as BookingDetail | undefined);
     if (!row) return "confirmed";
     if (row.db_status && typeof row.db_status === "string") return row.db_status;
     const s = row.status;
@@ -559,7 +584,7 @@ export default function BookingDetailScreen() {
     if (s === "waiting") return "waiting";
     if (s === "checked_in") return "checked_in";
     return "confirmed";
-  }, [data]);
+  }, [data, resolvedBooking]);
 
   const rawAllowedStatusTargets = useMemo(
     () => getAllowedTransitionTargets(currentDbStatus),
@@ -1040,7 +1065,7 @@ export default function BookingDetailScreen() {
     );
   }
 
-  const b = data as BookingDetail;
+  const b = (resolvedBooking ?? (data as BookingDetail)) as BookingDetail;
   const services = b.services ?? [];
   const recurringDetails = getRecurringDetails(b);
   const customerName = b.customers?.full_name ?? "Guest";
@@ -1440,21 +1465,27 @@ export default function BookingDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     if (dbTarget === "in_progress") {
+      setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
       const { error: err } = await postMutation(`/api/provider/bookings/${id}/start-service`, {});
       if (err) {
+        setOptimisticBookingStatus(null);
         Alert.alert("Error", err);
         return;
       }
+      setOptimisticBookingStatus(null);
       await refresh();
       return;
     }
 
     if (dbTarget === "completed") {
+      setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
       const { error: err } = await postMutation(`/api/provider/bookings/${id}/complete-service`, {});
       if (err) {
+        setOptimisticBookingStatus(null);
         Alert.alert("Error", err);
         return;
       }
+      setOptimisticBookingStatus(null);
       await refresh();
       setShowRateClientSheet(true);
       return;
@@ -1466,6 +1497,7 @@ export default function BookingDetailScreen() {
       return;
     }
 
+    setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
     const version = (b as BookingDetail & { version?: number }).version;
     const patchStatus = dbTargetToPatchStatusField(dbTarget);
     const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
@@ -1473,6 +1505,7 @@ export default function BookingDetailScreen() {
       ...(version !== undefined && { version }),
     });
     if (err) {
+      setOptimisticBookingStatus(null);
       if (isConflictError(err)) {
         Alert.alert(
           "Conflict",
@@ -1484,6 +1517,7 @@ export default function BookingDetailScreen() {
       }
       return;
     }
+    setOptimisticBookingStatus(null);
     await refresh();
   };
 
@@ -2821,9 +2855,18 @@ export default function BookingDetailScreen() {
             ) : null}
             {totalAmount > 0 && (
               <Text style={twStyle("text-sm text-gray-600")}>
-                Total: {b.currency ?? getTenantDefaultCurrency()} {totalAmount.toLocaleString()}
+                Customer total: {b.currency ?? getTenantDefaultCurrency()} {totalAmount.toLocaleString()}
               </Text>
             )}
+            {typeof b.service_fee_amount === "number" &&
+            b.service_fee_amount > 0 &&
+            netPaidAfterRefunds > 0 &&
+            (b.payment_status ?? "").toLowerCase() === "paid" ? (
+              <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>
+                Estimated due to you (paid in, after platform fee): {b.currency ?? getTenantDefaultCurrency()}{" "}
+                {Math.max(0, netPaidAfterRefunds - b.service_fee_amount).toLocaleString()}
+              </Text>
+            ) : null}
             {b.deposit_required && b.payment_option === "deposit" && typeof b.deposit_amount === "number" && b.deposit_amount > 0 && (
               <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
                 Deposit{b.deposit_percentage ? ` (${b.deposit_percentage}%)` : ""}:{" "}
@@ -3649,6 +3692,7 @@ export default function BookingDetailScreen() {
               <TouchableOpacity
                 disabled={patchLoading}
                 onPress={async () => {
+                  setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget("cancelled"));
                   const version = (b as BookingDetail & { version?: number }).version;
                   const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
                     status: "cancelled",
@@ -3657,6 +3701,7 @@ export default function BookingDetailScreen() {
                   });
                   // Close modal only after the PATCH completes so the user can retry on failure
                   if (err) {
+                    setOptimisticBookingStatus(null);
                     if (isConflictError(err)) {
                       setShowCancelModal(false);
                       Alert.alert(
@@ -3669,6 +3714,7 @@ export default function BookingDetailScreen() {
                     }
                     return;
                   }
+                  setOptimisticBookingStatus(null);
                   setShowCancelModal(false);
                   await refresh();
                 }}

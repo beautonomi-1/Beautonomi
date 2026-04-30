@@ -58,9 +58,37 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching global category associations:", assocError);
     }
 
-    const globalCategories = (associations || [])
+    let globalCategories = (associations || [])
       .map((assoc: any) => assoc.global_service_categories)
       .filter(Boolean);
+
+    const { searchParams } = new URL(request.url);
+    const forOffers = searchParams.get("for_offers") === "1" || searchParams.get("include") === "all_global";
+    if (forOffers) {
+      const { data: allGlobal, error: allGlobalError } = await supabase
+        .from("global_service_categories")
+        .select("*")
+        .eq("is_active", true)
+        .order("display_order", { ascending: true })
+        .order("name", { ascending: true });
+      if (allGlobalError) {
+        console.warn("[provider/categories] for_offers global load failed:", allGlobalError.message);
+      } else {
+        const byId = new Map<string, Record<string, unknown>>();
+        for (const g of globalCategories as Record<string, unknown>[]) {
+          if (g?.id) byId.set(String(g.id), g);
+        }
+        for (const g of allGlobal ?? []) {
+          const row = g as Record<string, unknown>;
+          const id = row.id ? String(row.id) : "";
+          if (id && !byId.has(id)) byId.set(id, row);
+        }
+        globalCategories = Array.from(byId.values()) as typeof globalCategories;
+        globalCategories.sort((a: any, b: any) =>
+          String(a?.name ?? "").localeCompare(String(b?.name ?? ""), undefined, { sensitivity: "base" }),
+        );
+      }
+    }
 
     return successResponse({
       own_categories: ownCategories || [],

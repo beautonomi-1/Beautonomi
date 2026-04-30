@@ -4,7 +4,7 @@
 
 - **Day / 3-day / week views** request bookings for the **ISO week range** containing the visible window so date-strip dots, share text, and counts stay consistent without extra queries.
 - **Paged fetch**: server caps responses at 1000 rows; the client walks `offset` pages until a short page. *(Optional future improvement: coalesce duplicate in-flight fetches for the same path to avoid stacked walks when realtime + refresh overlap.)*
-- **Realtime**: booking rows refresh on a **400ms debounce**. Overlays do **not** auto-refresh with realtime (see `useCalendarBookingsRealtime`) to avoid multiplying secondary reads; providers should **pull to refresh** after editing blocks/holds if something looks stale.
+- **Realtime**: booking rows refresh on a **400ms debounce**. Calendar overlays (time blocks, availability blocks, staff unavailability, and active booking holds) refresh on a separate **700ms debounce** via `useCalendarBookingsRealtime`; providers can still pull to refresh if they suspect a stale secondary read.
 
 ## Trust / counts
 

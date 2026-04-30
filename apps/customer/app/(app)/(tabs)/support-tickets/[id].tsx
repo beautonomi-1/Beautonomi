@@ -131,6 +131,12 @@ export default function SupportTicketDetailScreen() {
     loadTicket();
   }, [loadTicket]);
 
+  useEffect(() => {
+    const tid = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
+    if (!tid) return;
+    void api.post("/api/me/notifications/mark-related-read", { ticket_id: tid }).catch(() => {});
+  }, [id]);
+
   useLayoutEffect(() => {
     if (ticket?.ticket_number) {
       navigation.setOptions({ title: ticket.ticket_number });

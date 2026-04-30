@@ -86,6 +86,36 @@ interface MembershipPlan {
   currency: string;
   interval: string;
   benefits?: string[];
+  discount_percent?: number;
+  price_monthly?: number;
+}
+
+/** Map GET /api/public/providers/.../membership-plans rows to UI fields (API uses price_monthly). */
+function normalizePublicMembershipPlan(raw: Record<string, unknown>): MembershipPlan {
+  const fb = getTenantDefaultCurrency();
+  const monthly = Number(raw.price_monthly ?? raw.price ?? 0);
+  const price = Number.isFinite(monthly) ? monthly : 0;
+  const discount = Number(raw.discount_percent ?? 0);
+  let benefits: string[] | undefined;
+  const ben = raw.benefits;
+  if (Array.isArray(ben)) {
+    benefits = ben.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+  }
+  if ((!benefits || benefits.length === 0) && Number.isFinite(discount) && discount > 0) {
+    benefits = [`${discount}% off services`];
+  }
+  const currency = typeof raw.currency === "string" && raw.currency.trim() ? raw.currency.trim() : fb;
+  return {
+    id: String(raw.id ?? ""),
+    name: String(raw.name ?? "Membership"),
+    description: raw.description != null ? String(raw.description) : null,
+    price,
+    price_monthly: price,
+    currency,
+    interval: typeof raw.interval === "string" && raw.interval.trim() ? raw.interval.trim() : "month",
+    benefits,
+    discount_percent: Number.isFinite(discount) ? discount : 0,
+  };
 }
 
 const OPENING_DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
@@ -926,9 +956,20 @@ function StaffCard({ member, contentPadding }: { member: StaffMember; contentPad
 }
 
 /* ─── Membership Plan Card ─── */
-function MembershipCard({ plan, onJoin, contentPadding }: { plan: MembershipPlan; onJoin: () => void; contentPadding: number }) {
+function MembershipCard({
+  plan,
+  onJoin,
+  contentPadding,
+  isActiveMember,
+}: {
+  plan: MembershipPlan;
+  onJoin: () => void;
+  contentPadding: number;
+  isActiveMember: boolean;
+}) {
   const fb = getTenantDefaultCurrency();
-  const priceLabel = formatMoney(plan.price, plan.currency ?? fb);
+  const unitPrice = Number.isFinite(plan.price) ? plan.price : 0;
+  const priceLabel = formatMoney(unitPrice, plan.currency ?? fb);
   return (
     <View style={{
       backgroundColor: "#fff", borderRadius: 16, padding: contentPadding, marginBottom: 12,
@@ -959,12 +1000,29 @@ function MembershipCard({ plan, onJoin, contentPadding }: { plan: MembershipPlan
           ))}
         </View>
       )}
-      <TouchableOpacity
-        onPress={onJoin}
-        style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingVertical: 12, alignItems: "center", marginTop: 14 }}
-      >
-        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Join Plan</Text>
-      </TouchableOpacity>
+      {isActiveMember ? (
+        <View
+          style={{
+            backgroundColor: Colors.gray[100],
+            borderRadius: 10,
+            paddingVertical: 12,
+            alignItems: "center",
+            marginTop: 14,
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+          }}
+        >
+          <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>You're subscribed</Text>
+          <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 4 }}>Manage in Account → Membership</Text>
+        </View>
+      ) : (
+        <TouchableOpacity
+          onPress={onJoin}
+          style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingVertical: 12, alignItems: "center", marginTop: 14 }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Join Plan</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -1027,6 +1085,13 @@ export default function PartnerProfileScreen() {
   const [staffLoading, setStaffLoading] = useState(false);
   const [memberships, setMemberships] = useState<MembershipPlan[]>([]);
   const [membershipsLoading, setMembershipsLoading] = useState(false);
+  /** Active salon membership for this provider (from GET /api/me/membership). */
+  const [salonMembership, setSalonMembership] = useState<{
+    id: string;
+    plan_id: string;
+    plan_name: string;
+    expires_at: string | null;
+  } | null>(null);
   const [providerProducts, setProviderProducts] = useState<PublicProviderProduct[]>([]);
   const [providerProductsLoading, setProviderProductsLoading] = useState(false);
   const [providerPackages, setProviderPackages] = useState<
@@ -1045,6 +1110,11 @@ export default function PartnerProfileScreen() {
   // Accept provider_id as fallback when no slug is passed (e.g. on-demand deep links).
   // The public API now resolves UUIDs in the [slug] route segment.
   const effectiveSlug = (slug || paramProviderId) ?? "";
+
+  useEffect(() => {
+    setMemberships([]);
+    setSalonMembership(null);
+  }, [effectiveSlug]);
 
   /* ── Data Loading ── */
   const load = useCallback(async () => {
@@ -1184,19 +1254,58 @@ export default function PartnerProfileScreen() {
 
   /* ── Load memberships when tab is active ── */
   useEffect(() => {
-    if (activeTab !== "memberships" || !effectiveSlug || memberships.length > 0) return;
+    if (activeTab !== "memberships" || !effectiveSlug) return;
     setMembershipsLoading(true);
-    api.get<{ data?: MembershipPlan[]; plans?: MembershipPlan[] }>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/membership-plans`)
+    api.get<{ plans?: unknown[] }>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/membership-plans`)
       .then((res) => {
         if (res.error) return;
-        const raw = res.data as Record<string, unknown> | null;
-        const list = (raw?.data ?? raw?.plans ?? (Array.isArray(raw) ? raw : [])) as MembershipPlan[];
-        setMemberships(list);
+        const payload = res.data as { plans?: unknown[] } | null;
+        const rawList = payload?.plans;
+        if (!Array.isArray(rawList)) return;
+        setMemberships(rawList.map((row) => normalizePublicMembershipPlan(row as Record<string, unknown>)));
       })
       .catch(() => {})
       .finally(() => setMembershipsLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/effectiveSlug; avoid refetch when memberships populated
   }, [activeTab, effectiveSlug]);
+
+  /* ── Detect active salon membership for this provider (signed-in customers) ── */
+  useEffect(() => {
+    if (!user?.id || !provider?.id) {
+      setSalonMembership(null);
+      return;
+    }
+    let cancelled = false;
+    api.get<{
+      provider_memberships?: {
+        id: string;
+        provider_id: string;
+        plan_id: string;
+        plan_name: string;
+        expires_at: string | null;
+      }[];
+    }>("/api/me/membership")
+      .then((res) => {
+        if (res.error || cancelled) return;
+        const rows = res.data?.provider_memberships ?? [];
+        const mine = rows.find((r) => r.provider_id === provider.id);
+        setSalonMembership(
+          mine
+            ? {
+                id: mine.id,
+                plan_id: mine.plan_id,
+                plan_name: mine.plan_name,
+                expires_at: mine.expires_at ?? null,
+              }
+            : null,
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setSalonMembership(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, provider?.id]);
 
   /* ── Load products when Products tab is active (provider slug API returns variants) ── */
   useEffect(() => {
@@ -1313,9 +1422,11 @@ export default function PartnerProfileScreen() {
     if (!user) { Alert.alert("Sign in required", "Please sign in to join a membership."); return; }
     if (!provider) return;
 
+    const unit = Number.isFinite(plan.price) ? plan.price : 0;
+
     Alert.alert(
       `Join ${plan.name}`,
-      `Subscribe for ${plan.currency} ${plan.price.toFixed(0)}/${plan.interval}?\n\nYou'll be redirected to complete payment.`,
+      `Subscribe for ${plan.currency} ${unit.toFixed(0)}/${plan.interval}?\n\nYou'll be redirected to complete payment.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -1360,7 +1471,7 @@ export default function PartnerProfileScreen() {
         },
       ]
     );
-  }, [user, provider]);
+  }, [user, provider, paramCampaignId]);
 
   /* ── Book (pass ad attribution when user came from sponsored result) ── */
   const bookParams = useCallback(
@@ -2409,6 +2520,7 @@ export default function PartnerProfileScreen() {
                         plan={plan}
                         onJoin={() => handleJoinMembership(plan)}
                         contentPadding={contentPadding}
+                        isActiveMember={salonMembership?.plan_id === plan.id}
                       />
                     ))
                   ) : (

@@ -102,12 +102,20 @@ export function usePaystackPayment() {
           }
         }
 
+        let paymentConfirmed = false;
         if (reference) {
-          await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+          const vr = await api.get<{ status?: string }>(
+            `/api/paystack/verify?reference=${encodeURIComponent(reference)}`,
+          );
+          if (!vr.error && vr.data) {
+            const raw = vr.data as Record<string, unknown>;
+            const inner = raw?.data && typeof raw.data === "object" ? (raw.data as Record<string, unknown>) : raw;
+            const st = typeof inner?.status === "string" ? inner.status : typeof raw?.status === "string" ? raw.status : "";
+            if (st === "success") paymentConfirmed = true;
+          }
         }
 
-        let paymentConfirmed = false;
-        if (params.booking_id) {
+        if (!paymentConfirmed && params.booking_id) {
           const MAX_POLL = 8;
           for (let i = 0; i < MAX_POLL; i++) {
             await new Promise((r) => setTimeout(r, 2000));
@@ -116,14 +124,22 @@ export function usePaystackPayment() {
                 `/api/me/bookings/${encodeURIComponent(params.booking_id)}`,
               );
               const ps = (check.data as { payment_status?: string } | null)?.payment_status;
-              if (ps && ps !== "pending") { paymentConfirmed = true; break; }
-            } catch { /* ignore poll error */ }
+              if (ps && ps !== "pending") {
+                paymentConfirmed = true;
+                break;
+              }
+            } catch {
+              /* ignore poll error */
+            }
           }
         }
 
+        const dismissed =
+          browserResult.type !== "success" || (browserResult.type === "success" && !browserResult.url);
+
         return {
           success: paymentConfirmed,
-          dismissed: true,
+          dismissed,
           reference,
         };
       } catch (e) {

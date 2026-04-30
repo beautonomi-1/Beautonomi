@@ -145,7 +145,10 @@ export async function GET(request: NextRequest) {
           staleUserMembershipIds.push(row.id);
           continue;
         }
-        if (plan && provider && provider.tenant_id === tenantId) {
+        // Include all of the customer's active salon memberships. Do not gate on
+        // request tenant_id — tenant resolution (headers/subdomain) can differ from
+        // the provider row's tenant and would incorrectly hide valid subscriptions.
+        if (plan && provider) {
           provider_memberships.push({
             id: row.id,
             provider_id: row.provider_id,

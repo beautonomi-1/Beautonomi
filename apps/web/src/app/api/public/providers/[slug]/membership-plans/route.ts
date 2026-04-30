@@ -39,7 +39,7 @@ export async function GET(
 
     // Get membership plans for this provider
     const { data: plans, error: plansError } = await (supabase.from("membership_plans") as any)
-      .select("id, provider_id, name, description, price_monthly, currency, discount_percent, is_active")
+      .select("id, provider_id, name, description, price_monthly, currency, discount_percent, benefits, is_active")
       .eq("provider_id", providerData.id)
       .eq("is_active", true)
       .order("created_at", { ascending: false });
@@ -58,7 +58,32 @@ export async function GET(
       );
     }
 
-    const res = NextResponse.json({ data: { plans: plans || [] }, error: null });
+    const rawPlans = Array.isArray(plans) ? plans : [];
+    const normalized = rawPlans.map((row: Record<string, unknown>) => {
+      const priceMonthlyRaw = Number(row.price_monthly);
+      const priceMonthly = Number.isFinite(priceMonthlyRaw) ? priceMonthlyRaw : 0;
+      const discount = Number(row.discount_percent ?? 0);
+      let benefitLines: string[] = [];
+      const b = row.benefits;
+      if (Array.isArray(b)) {
+        benefitLines = b.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+      }
+      if (benefitLines.length === 0 && Number.isFinite(discount) && discount > 0) {
+        benefitLines = [`${discount}% off services`];
+      }
+      const currency = typeof row.currency === "string" ? row.currency : null;
+      return {
+        ...row,
+        price_monthly: priceMonthly,
+        /** Duplicate for older clients that still read `price`. */
+        price: priceMonthly,
+        interval: "month",
+        currency,
+        benefits: benefitLines,
+      };
+    });
+
+    const res = NextResponse.json({ data: { plans: normalized }, error: null });
     res.headers.set("Cache-Control", "public, s-maxage=120, stale-while-revalidate=300");
     return res;
   } catch (error) {

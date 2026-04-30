@@ -316,6 +316,9 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!id || !user) return;
     api.post(`/api/me/conversations/${id}/read`).catch(() => {});
+    api
+      .post("/api/me/notifications/mark-related-read", { conversation_id: id })
+      .catch(() => {});
   }, [id, user]);
 
   // Resolve conversation metadata (provider id/slug/name) when opening by conversation id.

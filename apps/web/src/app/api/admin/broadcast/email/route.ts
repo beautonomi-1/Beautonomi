@@ -4,6 +4,10 @@ import { requireAdminSection, successResponse, handleApiError, errorResponse  } 
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { sendToUsers } from "@/lib/notifications/onesignal";
+import {
+  resolveBroadcastCustomerUserIds,
+  resolveBroadcastProviderUserIds,
+} from "@/lib/admin/broadcast-recipient-resolution";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
@@ -19,7 +23,7 @@ export async function POST(request: NextRequest) {
     const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
-    const { subject, message, recipient_type, user_ids } = body;
+    const { subject, message, recipient_type, user_ids, app_type } = body;
 
     if (!subject || !message) {
       return errorResponse("Subject and message are required", "VALIDATION_ERROR", 400);
@@ -29,23 +33,19 @@ export async function POST(request: NextRequest) {
       return errorResponse("Invalid recipient_type", "VALIDATION_ERROR", 400);
     }
 
+    if (recipient_type === "custom" && !["customer", "provider"].includes(app_type)) {
+      return errorResponse("app_type is required for custom recipients", "VALIDATION_ERROR", 400);
+    }
+
     let userIds: string[] = [];
 
-    // Get user IDs based on recipient type
+    // Get user IDs based on recipient type (same fallbacks as push broadcast)
     if (recipient_type === "all_users") {
-      const { data: users } = await supabase
-        .from("users")
-        .select("id")
-        .eq("role", "customer")
-        .eq("preferred_home_tenant_id", tenantId);
-      userIds = users?.map((u: { id: string }) => u.id) ?? [];
+      const resolved = await resolveBroadcastCustomerUserIds(supabase, tenantId);
+      userIds = resolved.userIds;
     } else if (recipient_type === "all_providers") {
-      const { data: providers } = await supabase
-        .from("providers")
-        .select("user_id")
-        .eq("tenant_id", tenantId)
-        .not("user_id", "is", null);
-      userIds = providers?.map((p: { user_id?: string }) => p.user_id).filter(Boolean) ?? [];
+      const resolved = await resolveBroadcastProviderUserIds(supabase, tenantId);
+      userIds = resolved.userIds;
     } else if (recipient_type === "custom" && user_ids && Array.isArray(user_ids)) {
       userIds = user_ids;
     } else {
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       return errorResponse("No recipients found", "VALIDATION_ERROR", 400);
     }
 
-    const appType = recipient_type === "all_users" ? "customer" : recipient_type === "all_providers" ? "provider" : undefined;
+    const appType = recipient_type === "all_users" ? "customer" : recipient_type === "all_providers" ? "provider" : app_type;
     const result = await sendToUsers(
       userIds,
       {
