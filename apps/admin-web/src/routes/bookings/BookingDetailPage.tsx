@@ -206,7 +206,7 @@ function sumAdditionalChargesForDisplay(charges: AdditionalChargeRow[] | undefin
 }
 
 /**
- * DB trigger expects: total = subtotal - discount + tax + service_fee + travel_fee + tip - cancellation_fee.
+ * DB trigger expects: total = subtotal - discount + tax + platform_fee + travel_fee + tip - cancellation_fee.
  * Some legacy rows store subtotal as (services + travel) while travel_fee is also set — avoid showing travel twice in UI.
  */
 function travelFeeDoubleListed(
@@ -880,7 +880,7 @@ export function BookingDetailPage() {
               {(booking.service_fee_amount ?? 0) > 0 || booking.service_fee_percentage != null ? (
                 <div className="flex justify-between gap-2">
                   <dt className="text-gray-600">
-                    Service fee
+                    Platform fee
                     {booking.service_fee_percentage != null ? ` (${Number(booking.service_fee_percentage).toFixed(2)}%)` : ""}
                     {booking.service_fee_paid_by ? ` · ${booking.service_fee_paid_by}` : ""}
                   </dt>
@@ -964,7 +964,7 @@ export function BookingDetailPage() {
             {totalMismatch ? (
               <p className="mt-3 rounded-md border border-red-200 bg-red-50/80 px-3 py-2 text-xs text-red-950">
                 <strong className="font-medium">Total reconciliation:</strong> Using{" "}
-                <code className="font-mono">subtotal − discount + tax + service_fee + travel_fee + tip − cancellation</code>{" "}
+                <code className="font-mono">subtotal − discount + tax + platform_fee + travel_fee + tip − cancellation</code>{" "}
                 gives {money(booking.currency, expectedTotalFromColumns)}, but <code className="font-mono">total_amount</code>{" "}
                 is {money(booking.currency, booking.total_amount)}. If travel is double-counted (included in both{" "}
                 <code className="font-mono">subtotal</code> and <code className="font-mono">travel_fee</code>), the stored

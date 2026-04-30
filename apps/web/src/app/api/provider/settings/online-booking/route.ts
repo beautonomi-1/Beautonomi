@@ -159,6 +159,8 @@ export async function PATCH(request: NextRequest) {
       providerUpdates.booking_advance_notice_hours = data.advanceNoticeHours;
     if (data.cancellationHours !== undefined)
       providerUpdates.booking_cancellation_hours = data.cancellationHours;
+    if (data.requireDeposit !== undefined) providerUpdates.requires_deposit = data.requireDeposit;
+    if (data.depositPercentage !== undefined) providerUpdates.deposit_percentage = data.depositPercentage;
 
     if (Object.keys(providerUpdates).length > 0) {
       const { error: providerUpdateError } = await supabase

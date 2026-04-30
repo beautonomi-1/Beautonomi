@@ -5,7 +5,7 @@ import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
+import { fetchFinanceLedgerRowsForTenant, normalizeAdminLedgerRange } from "@/lib/admin/finance-ledger-tenant";
 import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
 import {
   FINANCE_METRIC_CONTRACT_VERSION,
@@ -34,6 +34,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
+    const normalizedRange = normalizeAdminLedgerRange({ start: startDate, end: endDate });
     const providerIdFilter = searchParams.get("provider_id");
 
     const supabaseAdmin = getSupabaseAdmin();
@@ -60,8 +61,8 @@ export async function GET(request: Request) {
         .select("amount")
         .eq("status", "paid")
         .eq("tenant_id", tenantId);
-      if (startDate) topupQuery = topupQuery.gte("paid_at", startDate);
-      if (endDate) topupQuery = topupQuery.lte("paid_at", endDate);
+      if (normalizedRange.start) topupQuery = topupQuery.gte("paid_at", normalizedRange.start);
+      if (normalizedRange.end) topupQuery = topupQuery.lte("paid_at", normalizedRange.end);
       const { data: topups, error: topErr } = await topupQuery;
       if (topErr) {
         console.warn("Wallet topups tenant-scoped query failed:", topErr.message);
@@ -75,8 +76,8 @@ export async function GET(request: Request) {
         .eq("type", "credit")
         .eq("reference_type", "referral")
         .eq("tenant_id", tenantId);
-      if (startDate) refQuery = refQuery.gte("created_at", startDate);
-      if (endDate) refQuery = refQuery.lte("created_at", endDate);
+      if (normalizedRange.start) refQuery = refQuery.gte("created_at", normalizedRange.start);
+      if (normalizedRange.end) refQuery = refQuery.lte("created_at", normalizedRange.end);
       const { data: refTxs, error: refErr } = await refQuery;
       if (refErr) {
         console.warn("Referral wallet credits tenant-scoped query failed:", refErr.message);
@@ -104,8 +105,8 @@ export async function GET(request: Request) {
         .select("total_amount")
         .eq("tenant_id", tenantId)
         .in("status", ["confirmed", "completed"]);
-      if (startDate) bookingsQuery = bookingsQuery.gte("scheduled_at", startDate);
-      if (endDate) bookingsQuery = bookingsQuery.lte("scheduled_at", `${endDate}T23:59:59.999Z`);
+      if (normalizedRange.start) bookingsQuery = bookingsQuery.gte("scheduled_at", normalizedRange.start);
+      if (normalizedRange.end) bookingsQuery = bookingsQuery.lte("scheduled_at", normalizedRange.end);
       const { data: bookingRows, error: bookingErr } = await bookingsQuery;
       if (bookingErr) {
         console.warn("Bookings GMV reconciliation query failed:", bookingErr.message);
@@ -174,6 +175,10 @@ export async function GET(request: Request) {
     return NextResponse.json({
       data: {
         service_collected_gross: agg.service_collected_gross,
+        settled_service_gmv: agg.service_collected_gross,
+        settledLedgerAmount: agg.service_collected_gross,
+        gross_booked_value: bookingsGmv,
+        grossBookedValue: bookingsGmv,
         service_collected_net: agg.service_collected_net,
         gateway_fees: agg.gateway_fees_services,
 
@@ -195,6 +200,9 @@ export async function GET(request: Request) {
         total_platform_take_net_including_customer_fees: totalPlatformRecognizedRevenue,
 
         provider_earnings: agg.provider_earnings_net,
+        providerEarnings: agg.provider_earnings_net,
+        provider_net_activity: providerNetAfterRefunds,
+        providerNetActivity: providerNetAfterRefunds,
         cancellation_fees_retained: cancellationFeesRetained,
         refunds_gross: agg.refunds_gross,
         refunds_abs_gross: agg.refunds_abs_gross,

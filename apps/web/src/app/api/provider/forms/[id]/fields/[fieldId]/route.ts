@@ -1,6 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser, notFoundResponse, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  successResponse,
+  handleApiError,
+  getProviderIdForUser,
+  notFoundResponse,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import {
   isProviderSubscriptionFeatureEnabled,
   SUBSCRIPTION_FEATURE_KEYS,
@@ -11,8 +18,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; fieldId: string }> },
 ) {
   try {
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const { id, fieldId } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");

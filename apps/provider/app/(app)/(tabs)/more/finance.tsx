@@ -253,11 +253,11 @@ export function FinanceOverviewContent() {
             <View style={twStyle("mb-4 flex-row flex-wrap")}>
               {(earnings.product_sales_earnings_total ?? 0) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-indigo-700")}>Product Sales</Text>
+                  <Text style={twStyle("text-xs font-medium text-indigo-700")}>Product order earnings</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-indigo-900")}>
                     {formatCurrency(earnings.product_sales_earnings_this_period ?? earnings.product_sales_earnings_total ?? 0, currency)}
                   </Text>
-                  <Text style={twStyle("mt-0.5 text-[10px] text-indigo-500")}>Incl. tax & shipping</Text>
+                  <Text style={twStyle("mt-0.5 text-[10px] text-indigo-500")}>Platform-held ecommerce net</Text>
                 </View>
               )}
               {(earnings.tips_this_period ?? earnings.tips_total ?? 0) > 0 && (
@@ -286,7 +286,7 @@ export function FinanceOverviewContent() {
               )}
               {(earnings.gift_card_sales_this_period ?? 0) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-pink-100 bg-pink-50/60 p-3 mb-2"), { width: "48%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-pink-700")}>Gift Card Sales</Text>
+                  <Text style={twStyle("text-xs font-medium text-pink-700")}>Gift-card liability</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-pink-900")}>
                     {formatCurrency(earnings.gift_card_sales_this_period, currency)}
                   </Text>
@@ -294,7 +294,7 @@ export function FinanceOverviewContent() {
               )}
               {(earnings.membership_sales_this_period ?? 0) > 0 && (
                 <View style={[twStyle("rounded-2xl border border-purple-100 bg-purple-50/60 p-3 mb-2"), { width: "48%", marginRight: "4%" }]}>
-                  <Text style={twStyle("text-xs font-medium text-purple-700")}>Membership Sales</Text>
+                  <Text style={twStyle("text-xs font-medium text-purple-700")}>Membership liability</Text>
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-purple-900")}>
                     {formatCurrency(earnings.membership_sales_this_period, currency)}
                   </Text>

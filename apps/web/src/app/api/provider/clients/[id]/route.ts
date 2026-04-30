@@ -2,19 +2,23 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireRoleInApi,
   successResponse,
   handleApiError,
   getProviderIdForUser,
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import {
   fetchDefaultAddressesForUsers,
   parseAddressFromBody,
   upsertCustomerDefaultAddress,
   CustomerHomeAddressLockedError,
 } from "@/lib/provider-portal/user-default-address";
+import {
+  hasProviderCustomerActivityRelationship,
+  hasProviderCustomerRelationship,
+} from "@/lib/provider/client-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -45,20 +49,8 @@ async function resolveProviderClientRowForPatch(
     .maybeSingle();
   if (byCustomerId) return byCustomerId;
 
-  const [{ count: bookingCount }, { count: convCount }] = await Promise.all([
-    admin
-      .from("bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("provider_id", providerId)
-      .eq("customer_id", idOrCustomerId),
-    admin
-      .from("conversations")
-      .select("id", { count: "exact", head: true })
-      .eq("provider_id", providerId)
-      .eq("customer_id", idOrCustomerId),
-  ]);
-
-  if (!(bookingCount || convCount)) {
+  const isKnownClient = await hasProviderCustomerRelationship(admin, providerId, idOrCustomerId);
+  if (!isKnownClient) {
     return null;
   }
 
@@ -98,7 +90,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("view_clients", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -115,7 +111,7 @@ export async function GET(
 
     const { data: savedClient } = await supabase
       .from("provider_clients")
-      .select("id, customer_id, notes, tags, is_favorite, last_service_date, total_bookings, total_spent, created_at")
+      .select("id, customer_id, notes, tags, is_favorite, last_service_date, total_bookings, total_spent, created_at, relationship_source, privacy_level, source_metadata, linked_existing_platform_user")
       .eq("id", clientId)
       .eq("provider_id", providerId)
       .maybeSingle();
@@ -140,8 +136,19 @@ export async function GET(
       isSavedClient: !!client,
     });
 
-    // Get customer details using admin client to bypass RLS
     const supabaseAdmin = await getSupabaseAdmin();
+    const canViewClient = await hasProviderCustomerRelationship(supabaseAdmin, providerId, customerId);
+    if (!canViewClient) {
+      return notFoundResponse("Client not found");
+    }
+    const hasActivityRelationship = await hasProviderCustomerActivityRelationship(
+      supabaseAdmin,
+      providerId,
+      customerId,
+    );
+
+    // Get customer details using admin client to bypass RLS only after the
+    // provider-client relationship is proven.
     const { data: customer, error: customerError } = await supabaseAdmin
       .from("users")
       .select(
@@ -460,11 +467,37 @@ export async function GET(
       is_registered: isRegistered,
       default_address: defaultAddrMap.get(customerId) ?? null,
     };
+    const limitedPlatformLink =
+      client?.relationship_source === "manual_existing_platform" &&
+      client?.privacy_level === "limited" &&
+      !hasActivityRelationship;
+    const metadata =
+      client?.source_metadata && typeof client.source_metadata === "object"
+        ? (client.source_metadata as Record<string, unknown>)
+        : {};
 
     return successResponse({
       id: client?.id || customerId,
       customer_id: customerId,
-      customer: customerWithAddress,
+      customer: limitedPlatformLink
+        ? {
+            id: customerWithAddress.id,
+            full_name: metadata.provider_supplied_name || customerWithAddress.full_name || "Existing Beautonomi customer",
+            email: metadata.matched_on === "email" ? customerWithAddress.email : metadata.provider_supplied_email ?? null,
+            phone: metadata.matched_on === "phone" ? customerWithAddress.phone : metadata.provider_supplied_phone ?? null,
+            avatar_url: null,
+            created_at: customerWithAddress.created_at,
+            rating_average: null,
+            review_count: 0,
+            customer_review_rating_avg: null,
+            customer_review_rating_count: null,
+            customer_booking_rating_avg: null,
+            customer_booking_rating_count: null,
+            is_registered: true,
+            is_limited_platform_link: true,
+            default_address: null,
+          }
+        : customerWithAddress,
       notes: client?.notes || null,
       tags: client?.tags || [],
       is_favorite: client?.is_favorite || false,
@@ -488,7 +521,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("edit_clients", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -634,7 +671,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("edit_clients", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 

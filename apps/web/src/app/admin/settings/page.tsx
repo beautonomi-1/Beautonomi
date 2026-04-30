@@ -803,9 +803,9 @@ function PayoutSettings({
   void _platformCommission;
   return (
     <div className="bg-white border rounded-lg p-4 sm:p-6 space-y-4 sm:space-y-6">
-      {/* Platform Service Fee Section */}
+      {/* Customer-Paid Platform Fee Section */}
       <div className="border-b pb-4 sm:pb-6">
-        <h3 className="text-base sm:text-lg font-semibold mb-4">Platform Service Fee (Customer-Facing)</h3>
+        <h3 className="text-base sm:text-lg font-semibold mb-4">Platform Fee (Customer-Paid)</h3>
         <p className="text-xs sm:text-sm text-gray-600 mb-4">
           This fee is shown to customers during checkout. It can be a percentage or fixed amount.
         </p>
@@ -813,7 +813,7 @@ function PayoutSettings({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <Label htmlFor="show_service_fee_to_customer" className="text-sm sm:text-base">
-              Show Service Fee to Customers
+              Show Platform Fee to Customers
             </Label>
             <input
               type="checkbox"
@@ -828,7 +828,7 @@ function PayoutSettings({
 
           <div>
             <Label htmlFor="platform_service_fee_type" className="text-sm sm:text-base">
-              Service Fee Type *
+              Platform Fee Type *
             </Label>
             <select
               id="platform_service_fee_type"
@@ -846,7 +846,7 @@ function PayoutSettings({
           {safeSettings.platform_service_fee_type === "percentage" ? (
             <div>
               <Label htmlFor="platform_service_fee_percentage" className="text-sm sm:text-base">
-                Service Fee Percentage *
+                Platform Fee Percentage *
               </Label>
               <div className="flex items-center gap-2 mt-1">
                 <Input
@@ -870,7 +870,7 @@ function PayoutSettings({
           ) : (
             <div>
               <Label htmlFor="platform_service_fee_fixed" className="text-sm sm:text-base">
-                Service Fee Fixed Amount *
+                Platform Fee Fixed Amount *
               </Label>
               <div className="flex items-center gap-2 mt-1">
                 <Input
@@ -2265,7 +2265,7 @@ function PaymentTypesSettings({
           Configure which payment methods are accepted for on-platform customer checkout and booking
         </p>
         <p className="text-xs text-amber-700 mt-1">
-          Tip: Keeping cash disabled helps ensure platform service fee capture on online transactions.
+          Tip: Keeping cash disabled helps ensure Platform Fee capture on online transactions.
         </p>
       </div>
       {Object.entries(safeSettings).map(([typeId, enabled]) => (

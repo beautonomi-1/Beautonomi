@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, getDay } from "date-fns";
+import { differenceInCalendarDays } from "date-fns";
+import { getDayInTz } from "@/lib/dates/provider-tz";
+import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -17,16 +19,16 @@ export async function GET(request: NextRequest) {
     const locationId = sp.get("location_id") || null;
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
 
-    const fromDate = sp.get("from") ? new Date(sp.get("from")!) : subDays(new Date(), 30);
-    const toDate = sp.get("to") ? new Date(sp.get("to")!) : new Date();
+    const { fromDate, toDate } = reportDateRangeFromParams(sp, reportContext.timezone, { defaultDays: 30 });
 
     let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, status, scheduled_at, cancellation_reason")
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", new Date(toDate.getTime() + 86400000).toISOString());
+      .lte("scheduled_at", toDate.toISOString());
     if (locationId) bookingsQuery = bookingsQuery.eq("location_id", locationId);
     const { data: bookings } = await bookingsQuery;
 
@@ -44,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     all.forEach((b: any) => {
       statusCounts.set(b.status, (statusCounts.get(b.status) ?? 0) + 1);
-      const dayName = DAY_NAMES[getDay(new Date(b.scheduled_at))] ?? "Mon";
+      const dayName = DAY_NAMES[getDayInTz(new Date(b.scheduled_at), reportContext.timezone)] ?? "Mon";
       dayOfWeekCounts.set(dayName, (dayOfWeekCounts.get(dayName) ?? 0) + 1);
 
       if (b.status === "completed") completedCount++;
@@ -56,7 +58,7 @@ export async function GET(request: NextRequest) {
       } else if (b.status === "no_show") noShowCount++;
     });
 
-    const daysDiff = Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / 86400000));
+    const daysDiff = Math.max(1, differenceInCalendarDays(toDate, fromDate) + 1);
 
     return successResponse({
       total_bookings: total,

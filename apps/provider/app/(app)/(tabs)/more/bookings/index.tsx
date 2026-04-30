@@ -6,8 +6,8 @@ import {
   TouchableOpacity,
   FlatList,
   RefreshControl,
+  AppState,
 } from "react-native";
-import { FlashList } from "@shopify/flash-list";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -61,10 +61,17 @@ interface Booking {
   booking_number: string | null;
   status: string;
   scheduled_at: string | null;
+  created_at?: string | null;
   total_amount: number | null;
+  total_paid?: number | null;
+  total_refunded?: number | null;
+  payment_status?: string | null;
   location_type?: "at_salon" | "at_home" | null;
   is_group_booking?: boolean;
   group_booking_id?: string | null;
+  is_recurring?: boolean;
+  recurring_series_id?: string | null;
+  booking_source?: string | null;
   customers?: BookingCustomer | null;
   services?: BookingService[];
 }
@@ -178,6 +185,44 @@ function formatScheduledAt(value: string | null | undefined): string {
   });
 }
 
+function formatBookingTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatBookingDay(value: string | null | undefined): string {
+  if (!value) return "Unscheduled";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "Unscheduled";
+  return parsed.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function getPaymentLabel(b: Booking): { label: string; tone: "paid" | "partial" | "due" | "neutral" } | null {
+  const status = (b.payment_status || "").toLowerCase();
+  const total = Number(b.total_amount ?? 0);
+  const paid = Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0);
+  if (status === "paid" || (total > 0 && paid >= total)) return { label: "Paid", tone: "paid" };
+  if (paid > 0) return { label: "Part paid", tone: "partial" };
+  if (total > 0) return { label: "Payment due", tone: "due" };
+  return null;
+}
+
+function serviceSummary(services: BookingService[] | undefined): string {
+  if (!services || services.length === 0) return "Booking";
+  const first = services[0]?.name ?? services[0]?.offering_name ?? "Service";
+  const extra = Math.max(0, services.length - 1);
+  return extra > 0 ? `${first} +${extra} more` : first;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Screen                                                             */
 /* ------------------------------------------------------------------ */
@@ -279,6 +324,15 @@ export default function BookingsListScreen() {
   // on every data fetch, causing "cannot add postgres_changes after subscribe").
   const refreshRef = useRef(refresh);
   useEffect(() => { refreshRef.current = refresh; }, [refresh]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active" && bookingsListFocused) {
+        refreshRef.current();
+      }
+    });
+    return () => sub.remove();
+  }, [bookingsListFocused]);
 
   /**
    * Unique suffix per subscription so `supabase.channel(name)` never reuses a channel
@@ -399,10 +453,18 @@ export default function BookingsListScreen() {
   const renderBookingItem = useCallback(
     ({ item: b }: { item: Booking }) => {
       const customerName = b.customers?.full_name || "Customer";
-      const serviceName =
-        b.services?.[0]?.name ?? b.services?.[0]?.offering_name ?? "Booking";
+      const serviceName = serviceSummary(b.services);
       const scheduled = formatScheduledAt(b.scheduled_at);
+      const scheduledDay = formatBookingDay(b.scheduled_at);
+      const scheduledTime = formatBookingTime(b.scheduled_at);
       const st = STATUS_STYLE[b.status] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
+      const payment = getPaymentLabel(b);
+      const paymentColors =
+        payment?.tone === "paid"
+          ? { bg: "#dcfce7", text: "#166534" }
+          : payment?.tone === "partial"
+            ? { bg: "#ffedd5", text: "#9a3412" }
+            : { bg: "#fef3c7", text: "#92400e" };
 
       return (
         <TouchableOpacity
@@ -426,6 +488,15 @@ export default function BookingsListScreen() {
           accessibilityRole="button"
         >
           <View style={twStyle("flex-row items-start justify-between")}>
+            <View style={twStyle("mr-3 w-16 items-center rounded-2xl bg-gray-900 px-2 py-2.5")}>
+              <Text style={twStyle("text-[11px] font-semibold uppercase text-white/70")} numberOfLines={1}>
+                {scheduledDay.split(" ")[0] ?? ""}
+              </Text>
+              <Text style={twStyle("mt-0.5 text-sm font-bold text-white")} numberOfLines={1}>
+                {scheduledTime}
+              </Text>
+            </View>
+
             <View style={twStyle("flex-1 pr-3")}>
               <Text
                 style={twStyle("text-base font-semibold text-gray-900")}
@@ -443,12 +514,12 @@ export default function BookingsListScreen() {
                   : ""}
               </Text>
               <View style={twStyle("mt-1.5 flex-row items-center gap-2")}>
-                <Ionicons name="time-outline" size={13} color="#6b7280" />
+                <Ionicons name="calendar-outline" size={13} color="#6b7280" />
                 <Text style={twStyle("text-xs text-gray-500")}>{scheduled}</Text>
               </View>
-              <View style={twStyle("mt-1 flex-row items-center gap-3")}>
+              <View style={twStyle("mt-2 flex-row flex-wrap items-center gap-2")}>
                 {b.location_type && (
-                  <View style={twStyle("flex-row items-center gap-1")}>
+                  <View style={twStyle("flex-row items-center gap-1 rounded-full bg-gray-100 px-2 py-1")}>
                     <Ionicons
                       name={b.location_type === "at_home" ? "home-outline" : "business-outline"}
                       size={12}
@@ -459,6 +530,24 @@ export default function BookingsListScreen() {
                     </Text>
                   </View>
                 )}
+                {(b.is_recurring || b.recurring_series_id) && (
+                  <View style={twStyle("flex-row items-center gap-1 rounded-full bg-blue-50 px-2 py-1")}>
+                    <Ionicons name="repeat-outline" size={12} color="#2563eb" />
+                    <Text style={twStyle("text-xs font-medium text-blue-700")}>Repeats</Text>
+                  </View>
+                )}
+                {b.booking_source === "walk_in" && (
+                  <View style={twStyle("rounded-full bg-emerald-50 px-2 py-1")}>
+                    <Text style={twStyle("text-xs font-medium text-emerald-700")}>Walk-in</Text>
+                  </View>
+                )}
+                {payment ? (
+                  <View style={[twStyle("rounded-full px-2 py-1"), { backgroundColor: paymentColors.bg }]}>
+                    <Text style={[twStyle("text-xs font-medium"), { color: paymentColors.text }]}>
+                      {payment.label}
+                    </Text>
+                  </View>
+                ) : null}
                 {b.total_amount != null && b.total_amount > 0 && (
                   <Text style={twStyle("text-xs font-semibold text-gray-700")}>
                     {formatCurrency(b.total_amount, currency)}
@@ -766,10 +855,14 @@ export default function BookingsListScreen() {
       </View>
 
       {/* ── List ── */}
-      <FlashList
+      <FlatList<Booking>
         data={filtered}
         keyExtractor={bookingKeyExtractor}
         renderItem={renderBookingItem}
+        extraData={`${url}:${filtered.length}:${refreshing}`}
+        removeClippedSubviews={false}
+        initialNumToRender={12}
+        windowSize={7}
         contentContainerStyle={{
           paddingHorizontal: screenPadding,
           paddingBottom: listBottomPadding,

@@ -21,7 +21,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  * Clients must send `duration_minutes` equal to the total wall-clock span of all `booking_services`
  * segments (same as POST/PATCH sequential windows).
  *
- * Query params: `scheduled_at`, `duration_minutes`, `staff_ids`, `location_id`, `exclude_booking_id`,
+ * Query params: `scheduled_at`, `duration_minutes`, `staff_ids`, `location_id`, `exclude_booking_id`, `exclude_group_booking_id`,
  * `offering_ids`, `mode`, `travel_buffer`, `min_notice_minutes`, `max_advance_days`.
  */
 
@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
     const staffIdsParam = sp.get("staff_ids");
     const locationId = sp.get("location_id")?.trim() || null;
     const excludeBookingId = sp.get("exclude_booking_id")?.trim() || undefined;
+    const excludeGroupBookingId = sp.get("exclude_group_booking_id")?.trim() || undefined;
     const offeringIdsParam = sp.get("offering_ids");
     const offeringIds = offeringIdsParam ? offeringIdsParam.split(",").map((s) => s.trim()).filter(Boolean) : [];
 
@@ -76,6 +77,7 @@ export async function GET(request: NextRequest) {
       staffIdsCsv: staffIdsParam,
       locationId,
       excludeBookingId,
+      excludeGroupBookingId,
       mode,
       travelBufferRaw,
       minNoticeMinutes,

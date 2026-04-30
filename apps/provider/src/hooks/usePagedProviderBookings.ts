@@ -27,6 +27,8 @@ export function usePagedProviderBookings<T extends { id?: string }>(
   const [loading, setLoading] = useState(Boolean(enabled && path));
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
+  /** Path that last completed successfully; used to keep schedule visible when a refresh fails for the same range. */
+  const lastSuccessfulPathRef = useRef<string | null>(null);
 
   const run = useCallback(async () => {
     if (!enabled || !path) {
@@ -43,10 +45,15 @@ export function usePagedProviderBookings<T extends { id?: string }>(
       });
       if (id !== requestId.current) return;
       setData(rows);
+      lastSuccessfulPathRef.current = path;
     } catch (e) {
       if (id !== requestId.current) return;
-      setError(e instanceof Error ? e.message : String(e));
-      setData(null);
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      setData((prev) => {
+        if (lastSuccessfulPathRef.current === path) return prev;
+        return null;
+      });
     } finally {
       if (id === requestId.current) setLoading(false);
     }

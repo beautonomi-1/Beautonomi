@@ -282,10 +282,11 @@
       "shareSchedule": "Arolelana le lenaneo",
       "copySchedule": "Kopa lenaneo",
       "monthOverview": "Tekanyo ya kgwedi",
-      "fullCalendarBrowser": "Khalendara e felletseng (sebatlii)",
+      "fullCalendarBrowser": "Khalendara e felletseng (sebatli)",
       "cancel": "Hlakola",
       "close": "Koala",
       "scheduleShareTitle": "Lenaneo",
+      "browserTitle": "Khalendara",
       "appUrlNotConfiguredTitle": "Ha e fumanehe",
       "appUrlNotConfiguredMessage": "URL ya app ha e hlophisitswe (EXPO_PUBLIC_APP_URL).",
       "bookingHoldTitle": "Ho buka ho tšerolletsoe",
@@ -297,19 +298,24 @@
         "servicesFallback": "—",
         "footer": "\n— Arolotsoe ho tswa ho app ya mofani ya Beautonomi"
       },
-      "monthOverviewLoadingCounts": "Ho laisha pale…",
+      "monthOverviewLoadingCounts": "Ho laelwa dipalo…",
+      "monthOverviewCountsError": "Ha ho a kgoneha ho kenya dipalo tsa dibuka. Tlanya ho leka hape.",
+      "monthOverviewCountsErrorA11y": "Ha ho a kgoneha ho kenya dipalo tsa dibuka tsa kgwedi. Tlanya ho leka hape.",
       "monthOverviewDayA11y": "{{date}}, dikopano tse {{count}}",
       "prevMonthA11y": "Kgwedi e fetileng",
       "nextMonthA11y": "Kgwedi e tlang",
       "bookingActionsMessage": "Liketso tsa ho buka",
+      "preferencesA11y": "Dikgetho tsa khalendara",
+      "pendingBadge": "{{count}} e emetse",
+      "overlayPartialWarningA11y": "Diboloko tse ding tsa khalendara kapa dinako tse tshwerweng ha di a kgona ho laela. Tlanya ho ntjhafatsa.",
       "viewDetails": "Sheba lintlha",
       "collectPayment": "Bokella tefo",
-      "currentStatusLabel": "Boemo bjohle: {{status}}",
+      "currentStatusLabel": "Boemo ba jwale: {{status}}",
       "bookingLabelFallback": "Ho buka",
       "statusActionLabels": {
         "booked": "Netefatsa",
         "started": "Qala tshebeletso",
-        "completed": "Fetola",
+        "completed": "Qetella",
         "no_show": "Ha a ka a ba teng",
         "cancelled": "Hlakola"
       },
@@ -330,7 +336,7 @@
         "walkIn": "Kena ka monwana",
         "expressBook": "Ho buka ka potlako",
         "timeBlock": "Sekhahla sa nako",
-        "groupBooking": "Ho buka ha sehlopha"
+        "groupBooking": "Buka ya sehlopha"
       },
       "staffColumn": {
         "viewWeekSchedule": "Sheba lenaneo la beke",
@@ -338,7 +344,235 @@
         "unassigned": "Ha e abelwe"
       },
       "bookingA11yLongPress": "Ho buka le {{name}} ka {{time}}. Tobetsa nako e telele ho hula.",
-      "bookingA11yShort": "Ho buka le {{name}} ka {{time}}, boemo {{status}}"
+      "bookingA11yShort": "Ho buka le {{name}} ka {{time}}, boemo {{status}}",
+      "paymentChip": {
+        "paid": "E lefilwe",
+        "partPaid": "E lefilwe hanyane",
+        "paymentDue": "Tefo e sa le teng"
+      },
+      "card": {
+        "newBadge": "E ntjha",
+        "serviceFallback": "Tshebeletso",
+        "groupPrefix": "Sehlopha",
+        "atHome": "Lapeng"
+      },
+      "currentTimeA11yPrefix": "Nako ya jwale",
+      "overlayBlockA11y": "{{type}} ho tloha {{start}} ho ya {{end}}. Tlanya ho hlophisa kapa ho hlakola.",
+      "grid": {
+        "slotBookA11y": "Buka ka {{time}} ka {{day}}",
+        "emptyDayHint": "Ha ho dikopano — tlanya nako ho kenya e nngwe"
+      },
+      "pendingBanner": {
+        "accessibility": "Tafole ya kamohelo: dibuka tse {{count}} di hloka netefatso",
+        "urgentTitle": "{{count}} e emetse nakong ya dihora tse 2 — netefatsa kapa hana",
+        "pendingTitleSingular": "Buka e 1 e hloka netefatso",
+        "pendingTitlePlural": "Dibuka tse {{count}} di hloka netefatso",
+        "subtitle": "Tafole ya kamohelo e bontsha lenaneo la kajeno le ho kena"
+      },
+      "staffViewStrip": {
+        "title": "Pono ya basebetsi",
+        "all": "Bohle",
+        "single": "A le mong"
+      },
+      "allLocations": "Dibaka tsohle",
+      "allStaff": "Basebetsi bohle",
+      "dateNav": {
+        "prevWeek": "Beke e fetileng",
+        "prevDay": "Letsatsi le fetileng",
+        "nextWeek": "Beke e tlang",
+        "nextDay": "Letsatsi le latelang",
+        "today": "Kajeno",
+        "jumpToDate": "Eya letsatsing",
+        "loadingCalendar": "Khalendara e a laela"
+      },
+      "viewModes": {
+        "day": "LETSATSI",
+        "threeDay": "MATSATSI 3",
+        "week": "BEKE"
+      },
+      "colorByChip": {
+        "service": "Ka tshebeletso",
+        "staff": "Ka basebetsi"
+      },
+      "colorLegend": {
+        "a11y": "Tlhaloso ya mebala",
+        "title": "Tlhaloso ya mebala",
+        "statusColors": "Mebala ya boemo",
+        "serviceColors": "Mebala ya tshebeletso",
+        "teamColors": "Mebala ya sehlopha",
+        "closedTimeOff": "E kwetswe le nako ya phomolo",
+        "closedTimeOffDescription": "Nako ya phomolo ya basebetsi le matsatsi a phomolo di tshwana le seo bareki ba se bonang ha ba buka. Dinako tse kwetsweng di tswa disetting tsa khalendara. Tlanya ho fumaneha kapa boloko ba nako grideng ho bo hlophisa kapa ho bo tlosa.",
+        "staffTimeOff": "Nako ya phomolo ya mosebetsi / letsatsi la phomolo",
+        "unavailableClosed": "Ha e fumanehe (nako e kwetsweng)",
+        "timeBlocks": "Diboloko tsa nako"
+      },
+      "staleDataBanner": {
+        "a11y": "Khalendara e ka nna ya se be ya morao-rao. Tlanya ho ntjhafatsa.",
+        "body": "Ho bontshwa lenaneo la ho qetela le tsejwang — tlanya ho ntjhafatsa"
+      },
+      "datePicker": {
+        "today": "Kajeno",
+        "weekdaysShort": {
+          "sunday": "So",
+          "monday": "Mo",
+          "tuesday": "Bob",
+          "wednesday": "Rar",
+          "thursday": "Bon",
+          "friday": "Hla",
+          "saturday": "Moq"
+        }
+      },
+      "fetchError": {
+        "title": "Ha ho kgonehe ho laela khalendara ya hao",
+        "retry": "Laela khalendara hape"
+      },
+      "crashFallback": {
+        "title": "Ho bile le bothata ha re bula khalendara ya hao",
+        "body": "Tlanya ho laela hape ho leka hape — dikopano le dibuka tsa hao di bolokehile."
+      },
+      "overlayPartialWarning": "Diboloko tse ding kapa dinako tse tshwerweng ha di a kgona ho laela — tlanya ho ntjhafatsa pele o hlophisa ho fumaneha.",
+      "apptSingle": "kopano e 1",
+      "apptPlural": "dikopano tse {{count}}",
+      "timeBlockTypes": {
+        "break": "Kgefutso",
+        "lunch": "Dijo tsa motshehare",
+        "meeting": "Kopano",
+        "personal": "Tsa botho",
+        "other": "Tse ding"
+      },
+      "availabilityEditTypes": {
+        "unavailable": "Ha e fumanehe",
+        "break": "Kgefutso",
+        "maintenance": "Tlhokomelo"
+      },
+      "preferencesModal": {
+        "title": "Dikgetho tsa khalendara",
+        "subtitle": "Fetola kamoo khalendara ya hao e shebahalang le ho sebetsa kateng",
+        "closeA11y": "Koala dikgetho",
+        "displaySection": "Pontsho",
+        "colorsSection": "Mebala",
+        "timeGridSection": "Gridi ya nako",
+        "advancedToggleShow": "Bontsha disetting tse tswetseng pele",
+        "advancedToggleHide": "Pata disetting tse tswetseng pele",
+        "advancedHeading": "Disetting tse tswetseng pele",
+        "highContrast": "Phapang e phahameng",
+        "highContrastDesc": "Eketsa phapang hore ho bonahale hantle",
+        "showCanceled": "Bontsha tse hlakotsweng",
+        "showCanceledDesc": "Bontsha dikopano tse hlakotsweng grideng",
+        "compactMode": "Mokgwa o petetsaneng",
+        "compactModeDesc": "Fokotsa bophahamo ba boloko hore ho bonahale tse ngata",
+        "appointmentIcons": "Matshwao a dikopano",
+        "appointmentIconsDesc": "Bontsha matshwao bakeng sa moreki e motjha, dinoutu, jj.",
+        "showPrices": "Bontsha ditheko",
+        "showPricesDesc": "Bontsha ditheko tsa ditshebeletso dibolokong tsa dikopano",
+        "showClientPhone": "Bontsha mohala wa moreki",
+        "showClientPhoneDesc": "Bontsha nomoro ya mohala wa moreki dintlheng",
+        "colorBy": "Mmala ka",
+        "colorByDesc": "Kamoo diboloko tsa dikopano di fuwang mmala",
+        "colorByStatus": "Boemo",
+        "colorByService": "Tshebeletso",
+        "colorByTeam": "Setho sa sehlopha",
+        "timeIncrement": "Karohano ya nako",
+        "timeIncrementDesc": "Boholo ba sebaka sa gridi ka metsotso",
+        "min5": "5 min",
+        "min10": "10 min",
+        "min15": "15 min",
+        "scrollToNow": "Skrolela hona jwale",
+        "scrollToNowDesc": "Skrolela ka boiketsetso nakong ya jwale ha khalendara e bulwa",
+        "workdayStart": "Qalo ya letsatsi la mosebetsi",
+        "workdayStartDesc": "Hora eo gridi ya khalendara e qalang ka yona",
+        "workdayEnd": "Qetello ya letsatsi la mosebetsi",
+        "workdayEndDesc": "Hora eo gridi ya khalendara e qetellang ka yona",
+        "processingBuffer": "Tshebetso le nako ya tshireletso",
+        "processingBufferDesc": "Bontsha dikarolo tsa tshebetso le buffer dibolokong",
+        "defaultNewStatus": "Boemo ba kamehla ba dikopano tse ntjha",
+        "defaultNewStatusDesc": "Boemo bo abelwang dikopano tse ntjha",
+        "statusConfirmed": "E netefaditswe",
+        "statusUnconfirmed": "Ha e eso netefatswe",
+        "processingFreesProvider": "Tshebetso e lokolla mofani",
+        "processingFreesProviderDesc": "Mofani a ka amohela dibuka tse ding nakong ya tshebetso",
+        "resetA11y": "Kgutlisetsa dikgetho tsohle ho tsa kamehla",
+        "reset": "Kgutlisetsa ho tsa kamehla",
+        "decreaseA11y": "Fokotsa {{label}}",
+        "increaseA11y": "Eketsa {{label}}"
+      },
+      "timeBlockSheet": {
+        "title": "Kenya boloko ba nako",
+        "submit": "Kenya boloko ba nako",
+        "blockType": "Mofuta wa boloko",
+        "titleField": "Sehlooho",
+        "startTime": "Nako ya qalo",
+        "endTime": "Nako ya qetello",
+        "staffOptional": "Setho sa basebetsi (boikgethelo)"
+      },
+      "availabilityEditModal": {
+        "title": "Hlophisa nako e kwetsweng",
+        "type": "Mofuta",
+        "start": "Qala",
+        "end": "Qetella",
+        "staff": "Basebetsi (boikgethelo)",
+        "everyone": "Bohle",
+        "cancel": "Hlakola",
+        "save": "Boloka"
+      },
+      "overlayMenu": {
+        "invalidTimeTitle": "Nako ha e nepahe",
+        "invalidRangeTitle": "Sebaka ha se nepahe",
+        "invalidTimeMessage": "Sebedisa fomate ya HH:MM bakeng sa nako ya qalo le qetello, mohlala 12:00 le 13:00.",
+        "invalidRangeMessage": "Nako ya qetello e lokela ho ba kamora nako ya qalo.",
+        "saveTimeBlockErrorTitle": "Ha ho a kgoneha ho boloka boloko ba nako",
+        "saveBlockErrorTitle": "Ha ho a kgoneha ho boloka boloko",
+        "bookingHoldTitle": "Buka e tshwerweng",
+        "bookingHoldExpires": " E fela ka {{time}}.",
+        "bookingHoldMessage": "Moreki o ntse a phethela tefo ya sebaka sena.{{expires}} E tla itloswa ka boyona ha a sa phethe tefo.",
+        "staffOffTitle": "Nako ya phomolo ya sehlopha",
+        "staffOffMessage": "Sena se tswa nakong ya phomolo ya mosebetsi kapa letsatsi la phomolo. Se ntjhafatse lenaneong la sehlopha, eseng grideng ya khalendara.",
+        "availabilityBlockTitle": "{{type}} · {{start}}–{{end}}",
+        "edit": "Hlophisa",
+        "delete": "Hlakola",
+        "manage": "Laola",
+        "removeBlockTitle": "Tlosa boloko bona?",
+        "removeBlockMessage": "Bareki ba ka kgona ho buka nako ena hape.",
+        "removeBlockErrorTitle": "Ha ho a kgoneha ho tlosa boloko",
+        "timeBlockTitle": "Boloko ba nako",
+        "removeTimeBlockTitle": "Tlosa boloko ba nako?",
+        "removeTimeBlockErrorTitle": "Ha ho a kgoneha ho tlosa boloko ba nako"
+      },
+      "cancelBookingModal": {
+        "title": "Hlakola buka",
+        "confirm": "Hlakola buka",
+        "reasonPlaceholder": "Lebaka (boikgethelo)"
+      },
+      "utilityMenu": {
+        "title": "Dithulusi tsa khalendara",
+        "expressBooking": "Buka ka potlako"
+      },
+      "actionRail": {
+        "newLabel": "E ntjha",
+        "newSub": "Kopano",
+        "walkInLabel": "Kena feela",
+        "walkInSub": "Buka jwale",
+        "groupLabel": "Sehlopha",
+        "groupSub": "Ba nkang karolo",
+        "saleLabel": "Thekiso",
+        "saleSub": "Dihlahiswa",
+        "recurringLabel": "E iphetang",
+        "recurringSub": "Letoto",
+        "blockLabel": "Thibela",
+        "blockSub": "Nako ya phomolo",
+        "waitingLabel": "E emetse",
+        "waitingRoomSub": "Kamore",
+        "waitingCountSub": "{{count}} e emetse"
+      },
+      "mutations": {
+        "completeServiceErrorTitle": "Ha ho a kgoneha ho qetella tshebeletso",
+        "startServiceErrorTitle": "Ha ho a kgoneha ho qala tshebeletso",
+        "updateBookingErrorTitle": "Ha ho a kgoneha ho ntjhafatsa buka",
+        "moveAppointmentErrorTitle": "Ha ho a kgoneha ho tsamaisa kopano",
+        "moveAppointmentGeneric": "Ha rea kgona ho tsamaisa kopano ena. Ka kopo leka hape.",
+        "slotUnavailableTitle": "Nako ha e fumanehe",
+        "slotOverlapBody": "Buka e nngwe kapa boloko bo kopana le nako ena."
+      }
     }
   },
   "customer": {

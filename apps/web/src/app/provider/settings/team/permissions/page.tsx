@@ -15,7 +15,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import type { TeamMember } from "@/lib/provider-portal/types";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
-import { User, Settings, Calendar, DollarSign, Package, Users, FileText } from "lucide-react";
+import { MessageSquare, Star, User, Settings, Calendar, DollarSign, Package, Users, FileText, Sparkles } from "lucide-react";
 
 interface Permission {
   id: string;
@@ -56,6 +56,15 @@ const permissionCategories: Permission[] = [
   // Clients
   { id: "view_clients", name: "View Clients", description: "View client list", category: "clients", icon: <User className="w-4 h-4" /> },
   { id: "edit_clients", name: "Edit Clients", description: "Edit client information", category: "clients", icon: <User className="w-4 h-4" /> },
+
+  // Reviews, Messages & Explore
+  { id: "view_reviews", name: "View Reviews", description: "View customer reviews", category: "engagement", icon: <Star className="w-4 h-4" /> },
+  { id: "edit_reviews", name: "Edit Reviews", description: "Respond to or manage reviews", category: "engagement", icon: <Star className="w-4 h-4" /> },
+  { id: "view_client_ratings", name: "View Client Ratings", description: "View internal client ratings", category: "engagement", icon: <Star className="w-4 h-4" /> },
+  { id: "rate_clients", name: "Rate Clients", description: "Submit internal client ratings", category: "engagement", icon: <Star className="w-4 h-4" /> },
+  { id: "view_messages", name: "View Messages", description: "View client conversations", category: "engagement", icon: <MessageSquare className="w-4 h-4" /> },
+  { id: "send_messages", name: "Send Messages", description: "Reply to client conversations", category: "engagement", icon: <MessageSquare className="w-4 h-4" /> },
+  { id: "create_explore_posts", name: "Create Explore Posts", description: "Create and manage provider Explore posts", category: "engagement", icon: <Sparkles className="w-4 h-4" /> },
 ];
 
 export default function PermissionsSettings() {
@@ -177,6 +186,7 @@ export default function PermissionsSettings() {
     team: "Team Management",
     settings: "Business Settings",
     clients: "Client Management",
+    engagement: "Engagement",
   };
 
   return (

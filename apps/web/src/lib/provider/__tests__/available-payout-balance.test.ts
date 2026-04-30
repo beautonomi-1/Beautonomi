@@ -67,7 +67,7 @@ function mockSupabase(rowsByTable: Record<string, Row[]>) {
 const providerId = "provider-1";
 
 describe("getAvailablePayoutBalance", () => {
-  it("includes platform-held Paystack earnings and pass-through amounts, then subtracts payout reservations", async () => {
+  it("includes platform-held Paystack earnings and provider pass-throughs, excluding platform fees, then subtracts payout reservations", async () => {
     const result = await getAvailablePayoutBalance(
       mockSupabase({
         finance_transactions: [
@@ -89,9 +89,9 @@ describe("getAvailablePayoutBalance", () => {
     );
 
     expect(result).toEqual({
-      availableBalance: 90,
+      availableBalance: 85,
       pendingPayoutsSum: 15,
-      rawBalance: 90,
+      rawBalance: 85,
       hasNegativeBalance: false,
     });
   });

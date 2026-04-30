@@ -1,7 +1,7 @@
 import { Tabs, useRouter, type Router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo } from "react";
-import { View, Platform, type ViewStyle } from "react-native";
+import { View, Platform, AppState, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { StackActions } from "@react-navigation/native";
@@ -82,7 +82,7 @@ export default function TabsLayout() {
   const { t } = useTranslation();
   const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>(
     "/api/provider/nav-counts",
-    { staleTimeMs: 30_000 },
+    { staleTimeMs: 15_000 },
   );
 
   const bookingsBadge = formatTabBadge(
@@ -99,8 +99,15 @@ export default function TabsLayout() {
   useEffect(() => {
     const interval = setInterval(() => {
       void refreshNavCounts();
-    }, 30_000);
+    }, 25_000);
     return () => clearInterval(interval);
+  }, [refreshNavCounts]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshNavCounts();
+    });
+    return () => sub.remove();
   }, [refreshNavCounts]);
 
   const safeBottom = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
@@ -167,6 +174,7 @@ export default function TabsLayout() {
       screenListeners={{
         tabPress: () => {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          void refreshNavCounts();
         },
       }}
     >

@@ -68,7 +68,7 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
   {
     title: "Team",
     items: [
-      { icon: "people-outline", label: "Team Settings", subtitle: "Roles, permissions, commission", route: "/(app)/(tabs)/more/settings/team-settings", color: "#14b8a6" },
+      { icon: "people-outline", label: "Staff Permissions", subtitle: "Review and revoke staff access", route: "/(app)/(tabs)/more/settings/staff-permissions", color: "#14b8a6" },
       { icon: "shield-outline", label: "Team Roles", subtitle: "Create & manage roles", route: "/(app)/(tabs)/more/settings/team-roles", color: "#6366f1" },
       { icon: "trending-up-outline", label: "Commissions", subtitle: "Commission rates & tiers", route: "/(app)/(tabs)/more/settings/team-commissions", color: "#f59e0b" },
     ],

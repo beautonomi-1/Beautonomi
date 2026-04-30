@@ -83,13 +83,37 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
   });
 
   if (txn?.booking_id) {
-    // Booking-linked refund: mark booking refunded + insert booking_refunds row.
+    // Booking-linked refund: keep full vs partial refund state honest.
     // The create_finance_ledger_from_booking_refund trigger (migration 490) is the
     // SOLE writer of the finance_transactions refund entry; app-side inserts have
     // been removed to prevent duplicate ledger rows.
+    const [{ data: completedPayments }, { data: existingRefunds }] = await Promise.all([
+      supabase
+        .from("booking_payments")
+        .select("amount")
+        .eq("booking_id", txn.booking_id)
+        .eq("status", "completed"),
+      supabase
+        .from("booking_refunds")
+        .select("amount")
+        .eq("booking_id", txn.booking_id)
+        .eq("status", "completed"),
+    ]);
+    const paidAmount = (completedPayments ?? []).reduce(
+      (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount ?? 0),
+      0,
+    );
+    const refundedBefore = (existingRefunds ?? []).reduce(
+      (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount ?? 0),
+      0,
+    );
+    const refundStatus = refundedBefore + refundAmount >= Math.max(0, paidAmount) - 0.01
+      ? "refunded"
+      : "partially_refunded";
+
     await supabase.from("bookings")
       .update({
-        payment_status: "refunded",
+        payment_status: refundStatus,
         updated_at: new Date().toISOString(),
       })
       .eq("id", txn.booking_id);
@@ -132,7 +156,7 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
     if (productOrderId) {
       const { data: orderRow } = await supabase
         .from("product_orders")
-        .select("id, provider_id, tenant_id, order_number, payment_status")
+        .select("id, provider_id, tenant_id, order_number, payment_status, total_amount, platform_fee")
         .eq("id", productOrderId)
         .maybeSingle();
 
@@ -142,6 +166,12 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
           tenant_id: (orderRow as any).tenant_id ?? null,
           provider_id: providerId,
         });
+        const orderTotal = Number((orderRow as any).total_amount || 0);
+        const orderPlatformFee = Number((orderRow as any).platform_fee || 0);
+        const platformRefundContra =
+          orderTotal > 0 && orderPlatformFee > 0
+            ? -Math.min(orderPlatformFee, (refundAmount / orderTotal) * orderPlatformFee)
+            : 0;
 
         await (supabase.from("product_orders") as any)
           .update({
@@ -152,12 +182,13 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
 
         await supabase.from("finance_transactions").insert({
           booking_id: null,
+          product_order_id: productOrderId,
           provider_id: providerId,
           tenant_id: refundLedgerTenantId,
           transaction_type: "refund",
           amount: refundAmount,
           fees: 0,
-          commission: 0,
+          commission: platformRefundContra,
           net: -refundAmount,
           description: `Product order refund (${(orderRow as any).order_number ?? productOrderId})`,
           created_at: new Date().toISOString(),

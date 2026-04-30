@@ -18,6 +18,9 @@ import {
   upsertCustomerDefaultAddress,
   CustomerHomeAddressLockedError,
 } from "@/lib/provider-portal/user-default-address";
+import {
+  hasProviderCustomerActivityRelationship,
+} from "@/lib/provider/client-access";
 
 /**
  * Helper function to create a walk-in email
@@ -108,7 +111,11 @@ export async function POST(request: NextRequest) {
     const full_name = body.full_name || `${body.first_name} ${body.last_name}`.trim();
 
     // Create email if not provided
-    const email = body.email || createWalkInEmail();
+    const providerSuppliedEmail =
+      typeof body.email === "string" && body.email.trim().length > 0
+        ? body.email.trim().toLowerCase()
+        : "";
+    const email = providerSuppliedEmail || createWalkInEmail();
 
     // Validate and format phone number to E.164 if provided
     // Use helper function to normalize phone number (removes + prefix, handles leading 0)
@@ -121,28 +128,38 @@ export async function POST(request: NextRequest) {
 
     // Check if user already exists by email
     let customerId: string | null = null;
-    if (body.email) {
+    let matchedExistingCustomer = false;
+    let matchedOn: "email" | "phone" | null = null;
+    if (providerSuppliedEmail) {
       const { data: existingUser } = await supabaseAdmin
         .from("users")
         .select("id")
-        .eq("email", email)
+        .eq("email", providerSuppliedEmail)
         .maybeSingle();
 
       if (existingUser) {
         customerId = existingUser.id;
+        matchedExistingCustomer = true;
+        matchedOn = "email";
       }
     }
 
     // Also check by phone if email didn't work
     if (!customerId && body.phone) {
-      const { data: existingUser } = await supabaseAdmin
+      const phoneCandidates = [
+        typeof body.phone === "string" ? body.phone.trim() : "",
+        phone || "",
+      ].filter((value, index, arr) => value.length > 0 && arr.indexOf(value) === index);
+      const { data: existingUsers } = await supabaseAdmin
         .from("users")
         .select("id")
-        .eq("phone", body.phone)
-        .maybeSingle();
+        .in("phone", phoneCandidates)
+        .limit(1);
 
-      if (existingUser) {
-        customerId = existingUser.id;
+      if (existingUsers && existingUsers.length > 0 && existingUsers[0]) {
+        customerId = existingUsers[0].id;
+        matchedExistingCustomer = true;
+        matchedOn = "phone";
       }
     }
 
@@ -157,7 +174,7 @@ export async function POST(request: NextRequest) {
           email_confirm: true,
           user_metadata: {
             full_name: full_name,
-            phone: body.phone || null,
+            phone: phone || body.phone || null,
             role: "customer",
           },
         });
@@ -184,6 +201,8 @@ export async function POST(request: NextRequest) {
           
           if (existingUsers && existingUsers.length > 0) {
             authUserId = existingUsers[0].id;
+            matchedExistingCustomer = true;
+            matchedOn = "email";
             console.log(`✓ Found existing user in public.users: ${authUserId}`);
           } else if (queryError) {
             console.error("Error querying existing users:", queryError);
@@ -203,7 +222,7 @@ export async function POST(request: NextRequest) {
             .rpc('create_user_bypass_trigger', {
               p_email: email,
               p_full_name: full_name,
-              p_phone: body.phone || null,
+              p_phone: phone || body.phone || null,
               p_role: 'customer'
             });
           
@@ -220,6 +239,17 @@ export async function POST(request: NextRequest) {
                 provider_id: providerId,
                 customer_id: customerId,
                 notes: body.notes || "",
+                relationship_source: "manual_new_customer",
+                privacy_level: "standard",
+                source_metadata: {
+                  matched_on: null,
+                  provider_supplied_name: full_name,
+                  provider_supplied_email: providerSuppliedEmail || null,
+                  provider_supplied_phone: phone || body.phone || null,
+                  linked_via: "provider_client_create_bypass",
+                },
+                linked_existing_platform_user: false,
+                created_by_user_id: user.id,
               });
 
             if (clientError) {
@@ -256,7 +286,7 @@ export async function POST(request: NextRequest) {
       }
 
       customerId = authUserId;
-      
+
       // If we reach here, customerId should be set (either from successful creation or from error recovery)
       if (!customerId) {
         return handleApiError(
@@ -267,6 +297,7 @@ export async function POST(request: NextRequest) {
       }
       
       // Manually create user profile (bypass trigger completely)
+      if (!matchedExistingCustomer) {
       console.log(`Creating user profile for ${customerId} (bypassing trigger)`);
       
       const { data: _manualUser, error: manualError } = await supabaseAdmin
@@ -275,7 +306,7 @@ export async function POST(request: NextRequest) {
           id: customerId,
           email: email,
           full_name: full_name,
-          phone: body.phone || null,
+          phone: phone || body.phone || null,
           role: "customer",
         })
         .select()
@@ -290,7 +321,7 @@ export async function POST(request: NextRequest) {
           .update({
             email: email,
             full_name: full_name,
-            phone: body.phone || null,
+            phone: phone || body.phone || null,
           })
           .eq("id", customerId);
         
@@ -321,7 +352,7 @@ export async function POST(request: NextRequest) {
       };
 
       if (body.preferred_name) userUpdates.preferred_name = body.preferred_name;
-      if (body.phone) userUpdates.phone = body.phone;
+      if (body.phone) userUpdates.phone = phone || body.phone;
       if (body.date_of_birth) userUpdates.date_of_birth = body.date_of_birth;
       if (body.emergency_contact_name) userUpdates.emergency_contact_name = body.emergency_contact_name;
       if (body.emergency_contact_phone) userUpdates.emergency_contact_phone = body.emergency_contact_phone;
@@ -350,40 +381,29 @@ export async function POST(request: NextRequest) {
         }
         // For constraint violations, just log and continue
       }
-
-    } else {
-      // User exists, update their profile if needed
-      const userUpdates: Record<string, any> = {};
-      
-      if (body.preferred_name) userUpdates.preferred_name = body.preferred_name;
-      if (body.phone) userUpdates.phone = body.phone;
-      if (body.date_of_birth) userUpdates.date_of_birth = body.date_of_birth;
-      if (body.emergency_contact_name) userUpdates.emergency_contact_name = body.emergency_contact_name;
-      if (body.emergency_contact_phone) userUpdates.emergency_contact_phone = body.emergency_contact_phone;
-      if (body.emergency_contact_relationship) userUpdates.emergency_contact_relationship = body.emergency_contact_relationship;
-      if (body.preferred_language) userUpdates.preferred_language = body.preferred_language;
-      if (body.preferred_currency) userUpdates.preferred_currency = body.preferred_currency;
-      if (body.timezone) userUpdates.timezone = body.timezone;
-      if (body.email_notifications_enabled !== undefined) userUpdates.email_notifications_enabled = body.email_notifications_enabled;
-      if (body.sms_notifications_enabled !== undefined) userUpdates.sms_notifications_enabled = body.sms_notifications_enabled;
-      if (body.push_notifications_enabled !== undefined) userUpdates.push_notifications_enabled = body.push_notifications_enabled;
-
-      if (Object.keys(userUpdates).length > 0) {
-        const { error: updateError } = await supabaseAdmin
-          .from("users")
-          .update(userUpdates)
-          .eq("id", customerId);
-
-        if (updateError) {
-          console.error("Error updating existing user:", updateError);
-        }
       }
 
     }
 
+    const hasActivityRelationship = matchedExistingCustomer && customerId
+      ? await hasProviderCustomerActivityRelationship(supabaseAdmin, providerId, customerId)
+      : false;
+    const isLimitedExistingPlatformLink = matchedExistingCustomer && !hasActivityRelationship;
+    const relationshipSource = matchedExistingCustomer
+      ? "manual_existing_platform"
+      : "manual_new_customer";
+    const privacyLevel = isLimitedExistingPlatformLink ? "limited" : "standard";
+    const sourceMetadata = {
+      matched_on: matchedOn,
+      provider_supplied_name: full_name,
+      provider_supplied_email: providerSuppliedEmail || null,
+      provider_supplied_phone: phone || body.phone || null,
+      linked_via: "provider_client_create",
+    };
+
     try {
       const ap = parseAddressFromBody(body);
-      if (ap) {
+      if (ap && !isLimitedExistingPlatformLink) {
         await upsertCustomerDefaultAddress(supabaseAdmin, customerId, ap);
       }
     } catch (addrErr) {
@@ -408,6 +428,12 @@ export async function POST(request: NextRequest) {
         .from("provider_clients")
         .update({
           notes: body.notes || null,
+          relationship_source: relationshipSource,
+          privacy_level: privacyLevel,
+          source_metadata: sourceMetadata,
+          linked_existing_platform_user: matchedExistingCustomer,
+          linked_at: new Date().toISOString(),
+          created_by_user_id: user.id,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingClient.id)
@@ -424,6 +450,11 @@ export async function POST(request: NextRequest) {
           provider_id: providerId,
           customer_id: customerId,
           notes: body.notes || null,
+          relationship_source: relationshipSource,
+          privacy_level: privacyLevel,
+          source_metadata: sourceMetadata,
+          linked_existing_platform_user: matchedExistingCustomer,
+          created_by_user_id: user.id,
         })
         .select()
         .single();
@@ -432,10 +463,11 @@ export async function POST(request: NextRequest) {
       providerClient = data;
     }
 
-    // Fetch full user data
+    // Fetch safe user data only; never echo the entire users row back to
+    // provider CRM creation callers.
     const { data: userData } = await supabaseAdmin
       .from("users")
-      .select("*")
+      .select("id, email, full_name, phone, avatar_url, created_at")
       .eq("id", customerId)
       .single();
 

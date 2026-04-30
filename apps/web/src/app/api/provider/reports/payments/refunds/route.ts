@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { endOfDay, startOfDay, subDays } from "date-fns";
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,98 +20,77 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
     const locationId = searchParams.get("location_id") || undefined;
 
-    // Get bookings for this provider
-    let bookingsQuery = supabaseAdmin
-      .from('bookings')
-      .select('id')
-      .eq('provider_id', providerId)
-      .gte('scheduled_at', fromDate.toISOString())
-      .lte('scheduled_at', toDate.toISOString());
+    type LedgerRefundRow = {
+      id: string;
+      transaction_type: string;
+      amount: number | null;
+      net: number | null;
+      booking_id: string | null;
+      created_at: string;
+      description?: string | null;
+      metadata?: Record<string, unknown> | null;
+    };
 
-    if (locationId) {
-      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    const { data: ledgerRows, error: ledgerError } = await supabaseAdmin
+      .from("finance_transactions")
+      .select("id, transaction_type, amount, net, booking_id, created_at, description, metadata")
+      .eq("provider_id", providerId)
+      .in("transaction_type", ["refund", "provider_earnings", "payment"])
+      .gte("created_at", fromDate.toISOString())
+      .lte("created_at", toDate.toISOString());
+
+    if (ledgerError) {
+      return handleApiError(new Error("Failed to fetch refund ledger"), "REFUND_LEDGER_FETCH_ERROR", 500);
     }
 
-    const { data: bookings } = await bookingsQuery;
-
-    const bookingIds = bookings?.map((b) => b.id) || [];
-
-    // Get payments with refunds
-    let paymentsQuery = supabaseAdmin
-      .from('payments')
-      .select('id, amount, refunded_amount, status, payment_provider, created_at, refunded_at, booking_id')
-      .gte('created_at', fromDate.toISOString())
-      .lte('created_at', toDate.toISOString())
-      .gt('refunded_amount', 0);
-
-    if (bookingIds.length > 0) {
-      paymentsQuery = paymentsQuery.in('booking_id', bookingIds);
-    } else {
-      paymentsQuery = paymentsQuery.eq('booking_id', '00000000-0000-0000-0000-000000000000');
+    let rows = (ledgerRows ?? []) as LedgerRefundRow[];
+    if (locationId && rows.length > 0) {
+      const bookingIds = [...new Set(rows.map((r) => r.booking_id).filter(Boolean))] as string[];
+      const allowedBookingIds = new Set<string>();
+      if (bookingIds.length > 0) {
+        const { data: locationBookings } = await supabaseAdmin
+          .from("bookings")
+          .select("id")
+          .eq("provider_id", providerId)
+          .eq("location_id", locationId)
+          .in("id", bookingIds);
+        for (const b of locationBookings ?? []) {
+          allowedBookingIds.add((b as { id: string }).id);
+        }
+      }
+      rows = rows.filter((r) => r.booking_id != null && allowedBookingIds.has(r.booking_id));
     }
 
-    const { data: refundedPayments, error: paymentsError } = await paymentsQuery;
+    const refundRows = rows.filter((r) => r.transaction_type === "refund");
+    const negativeEarningsRows = rows.filter(
+      (r) => r.transaction_type === "provider_earnings" && Number(r.net ?? 0) < 0
+    );
+    const paymentRows = rows.filter((r) => r.transaction_type === "payment");
 
-    if (paymentsError) {
-      return handleApiError(
-        new Error('Failed to fetch refunds'),
-        'PAYMENTS_FETCH_ERROR',
-        500
-      );
-    }
-
-    // Get all payments for refund rate calculation
-    let allPaymentsQuery = supabaseAdmin
-      .from('payments')
-      .select('id, amount')
-      .gte('created_at', fromDate.toISOString())
-      .lte('created_at', toDate.toISOString());
-
-    if (bookingIds.length > 0) {
-      allPaymentsQuery = allPaymentsQuery.in('booking_id', bookingIds);
-    } else {
-      allPaymentsQuery = allPaymentsQuery.eq('booking_id', '00000000-0000-0000-0000-000000000000');
-    }
-
-    const { data: allPayments } = await allPaymentsQuery;
-
-    const totalRefunds = refundedPayments?.length || 0;
-    const totalRefundAmount = refundedPayments?.reduce((sum, p) => sum + Number(p.refunded_amount || 0), 0) || 0;
-    const totalPaymentAmount = allPayments?.reduce((sum, p) => sum + Number(p.amount || 0), 0) || 0;
+    const totalRefunds = refundRows.length;
+    const totalRefundAmount = refundRows.reduce((sum, r) => sum + Math.abs(Number(r.amount ?? 0)), 0);
+    const providerEarningsReversed = negativeEarningsRows.reduce((sum, r) => sum + Math.abs(Number(r.net ?? r.amount ?? 0)), 0);
+    const totalPaymentAmount = paymentRows.reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
     const refundRate = totalPaymentAmount > 0 ? (totalRefundAmount / totalPaymentAmount) * 100 : 0;
     const averageRefundAmount = totalRefunds > 0 ? totalRefundAmount / totalRefunds : 0;
 
     // Group by payment method
     const refundsByMethod = new Map<string, { count: number; amount: number }>();
-    refundedPayments?.forEach((payment) => {
-      const method = payment.payment_provider || 'unknown';
+    refundRows.forEach((refund) => {
+      const method = String(refund.metadata?.payment_method || refund.metadata?.provider || "ledger");
       const existing = refundsByMethod.get(method) || { count: 0, amount: 0 };
       refundsByMethod.set(method, {
         count: existing.count + 1,
-        amount: existing.amount + Number(payment.refunded_amount || 0),
+        amount: existing.amount + Math.abs(Number(refund.amount || 0)),
       });
     });
 
@@ -126,12 +105,12 @@ export async function GET(request: NextRequest) {
 
     // Group by day
     const dailyRefunds = new Map<string, { count: number; amount: number }>();
-    refundedPayments?.forEach((payment) => {
-      const date = new Date(payment.refunded_at || payment.created_at).toISOString().split("T")[0];
+    refundRows.forEach((refund) => {
+      const date = new Date(refund.created_at).toISOString().split("T")[0];
       const existing = dailyRefunds.get(date) || { count: 0, amount: 0 };
       dailyRefunds.set(date, {
         count: existing.count + 1,
-        amount: existing.amount + Number(payment.refunded_amount || 0),
+        amount: existing.amount + Math.abs(Number(refund.amount || 0)),
       });
     });
 
@@ -142,12 +121,25 @@ export async function GET(request: NextRequest) {
     return successResponse({
       totalRefunds,
       totalRefundAmount,
+      providerEarningsReversed,
+      netProviderImpact: providerEarningsReversed || totalRefundAmount,
       totalPaymentAmount,
       refundRate,
       averageRefundAmount,
       methodBreakdown,
       dailyBreakdown,
-      recentRefunds: refundedPayments?.slice(0, 20) || [],
+      reportBasis:
+        "Refund report is based on finance_transactions refund rows by ledger created_at. Provider reversal impact is shown separately from customer refund gross.",
+      recentRefunds: refundRows
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 20)
+        .map((r) => ({
+          id: r.id,
+          amount: Math.abs(Number(r.amount ?? 0)),
+          created_at: r.created_at,
+          booking_id: r.booking_id,
+          reason: r.metadata?.reason || r.description || undefined,
+        })),
     });
   } catch (error) {
     return handleApiError(error, "REFUNDS_ERROR", 500);

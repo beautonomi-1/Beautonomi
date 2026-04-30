@@ -43,7 +43,7 @@ export async function requirePermission(
     }
 
     if (allowedRoles.includes('superadmin') || allowedRoles.includes('provider_owner')) {
-      const isOwner = await isProviderOwner(user.id);
+      const isOwner = await isProviderOwner(user.id, request);
       if (isOwner) {
         return { authorized: true, user };
       }
@@ -53,7 +53,7 @@ export async function requirePermission(
       return { authorized: true, user };
     }
 
-    const hasAccess = await hasPermission(user.id, permission as any);
+    const hasAccess = await hasPermission(user.id, permission as any, undefined, request);
 
     if (!hasAccess) {
       return {
@@ -108,7 +108,7 @@ export async function requireAnyPermission(
     }
 
     if (allowedRoles.includes('provider_owner')) {
-      const isOwner = await isProviderOwner(user.id);
+      const isOwner = await isProviderOwner(user.id, request);
       if (isOwner) {
         return { authorized: true, user };
       }
@@ -119,7 +119,7 @@ export async function requireAnyPermission(
     }
 
     for (const permission of permissions) {
-      const hasAccess = await hasPermission(user.id, permission as any);
+      const hasAccess = await hasPermission(user.id, permission as any, undefined, request);
       if (hasAccess) {
         return { authorized: true, user };
       }
@@ -174,7 +174,7 @@ export async function requireAllPermissions(
     }
 
     if (allowedRoles.includes('provider_owner')) {
-      const isOwner = await isProviderOwner(user.id);
+      const isOwner = await isProviderOwner(user.id, request);
       if (isOwner) {
         return { authorized: true, user };
       }
@@ -185,7 +185,7 @@ export async function requireAllPermissions(
     }
 
     for (const permission of permissions) {
-      const hasAccess = await hasPermission(user.id, permission as any);
+      const hasAccess = await hasPermission(user.id, permission as any, undefined, request);
       if (!hasAccess) {
         return {
           authorized: false,

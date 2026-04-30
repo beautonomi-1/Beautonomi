@@ -8,17 +8,22 @@ export async function getTipsByStaff(
   supabaseAdmin: SupabaseClient,
   providerId: string,
   periodStart: Date,
-  periodEnd: Date
+  periodEnd: Date,
+  locationId?: string | null
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
 
   type BookingRow = { id: string };
-  const { data: bookingsInRange } = await supabaseAdmin
+  let bookingsQuery = supabaseAdmin
     .from("bookings")
     .select("id")
     .eq("provider_id", providerId)
     .gte("scheduled_at", periodStart.toISOString())
     .lte("scheduled_at", periodEnd.toISOString());
+  if (locationId) {
+    bookingsQuery = bookingsQuery.eq("location_id", locationId);
+  }
+  const { data: bookingsInRange } = await bookingsQuery;
 
   const bookingIds = ((bookingsInRange ?? []) as BookingRow[]).map((b) => b.id).filter(Boolean);
   if (bookingIds.length === 0) return result;

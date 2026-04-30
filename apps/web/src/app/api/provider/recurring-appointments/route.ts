@@ -4,7 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 // Creating up to 12 initial bookings serially can exceed the default 10-second
 // Vercel function budget. Allow up to 60 seconds.
 export const maxDuration = 60;
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { createBookingFromRecurringSeries } from "@/lib/recurring/create-booking-from-series";
 import {
@@ -77,7 +78,11 @@ function buildInitialOccurrenceDates(params: {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("view_calendar", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     
@@ -96,6 +101,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const offset = (page - 1) * limit;
     const locationId = searchParams.get("location_id");
+    const search = (searchParams.get("search") || "").trim().toLowerCase();
 
     let listQuery = supabase
       .from("recurring_appointments")
@@ -109,11 +115,15 @@ export async function GET(request: NextRequest) {
         { count: "exact" }
       )
       .eq("provider_id", providerId)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order("created_at", { ascending: false });
 
     if (locationId) {
       listQuery = listQuery.or(`location_id.eq.${locationId},location_id.is.null`);
+    }
+    if (!search) {
+      listQuery = listQuery.range(offset, offset + limit - 1);
+    } else {
+      listQuery = listQuery.limit(500);
     }
 
     const { data: appointments, error, count } = await listQuery;
@@ -123,18 +133,35 @@ export async function GET(request: NextRequest) {
     }
 
     const rows = appointments || [];
-    const enriched = rows.map((row: any) => ({
+    const enrichedAll = rows.map((row: any) => ({
       ...row,
+      service: row.offering || null,
       client_snapshot_name: row.customer?.full_name || "Client",
       service_snapshot_title: row.offering?.title || "",
       staff_snapshot_name: row.staff?.name || "",
     }));
+    const filtered = search
+      ? enrichedAll.filter((row: any) => {
+          const haystack = [
+            row.client_snapshot_name,
+            row.service_snapshot_title,
+            row.staff_snapshot_name,
+            row.notes,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(search);
+        })
+      : enrichedAll;
+    const paged = search ? filtered.slice(offset, offset + limit) : filtered;
+    const total = search ? filtered.length : count || 0;
 
     return successResponse({
-      data: enriched,
-      total: count || 0,
+      data: paged,
+      total,
       page,
-      total_pages: Math.ceil((count || 0) / limit),
+      total_pages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch recurring appointments");
@@ -148,7 +175,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("create_appointments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     
@@ -164,6 +195,16 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validated = createRecurringSchema.parse(body);
+    const metadata = {
+      ...(validated.metadata ?? {}),
+      booking_source: "provider",
+      services:
+        Array.isArray((validated.metadata as { services?: unknown[] } | undefined)?.services)
+          ? (validated.metadata as { services?: unknown[] }).services
+          : validated.service_id
+            ? [{ offering_id: validated.service_id, staff_id: validated.staff_id ?? null }]
+            : undefined,
+    };
     const requestedOccurrences =
       validated.occurrences ?? occurrenceCountFromRule(validated.recurrence_rule);
 
@@ -182,6 +223,7 @@ export async function POST(request: NextRequest) {
       .insert({
         provider_id: providerId,
         ...validated,
+        metadata,
         occurrences: requestedOccurrences,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

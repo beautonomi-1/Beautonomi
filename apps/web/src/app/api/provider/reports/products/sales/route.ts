@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { endOfDay, startOfDay, subDays } from "date-fns";
+import { filterProductOrdersForLocation } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,11 +24,11 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
     const locationId = searchParams.get("location_id") || undefined;
 
     // Get bookings with product add-ons and paid product orders in date range.
@@ -68,6 +69,8 @@ export async function GET(request: NextRequest) {
       .from('product_orders')
       .select(`
           id,
+          fulfillment_type,
+          collection_location_id,
           product_order_items (
             id,
             product_id,
@@ -91,17 +94,19 @@ export async function GET(request: NextRequest) {
       .gte('created_at', fromDate.toISOString())
       .lte('created_at', toDate.toISOString());
 
-    if (locationId) {
-      salesQuery = salesQuery.eq("collection_location_id", locationId);
-    }
-
     const [bookingsResult, salesResult] = await Promise.all([
       bookingsQuery,
       salesQuery,
     ]);
 
     const { data: bookings, error: bookingsError } = bookingsResult;
-    const { data: sales, error: salesError } = salesResult;
+    const { data: salesRaw, error: salesError } = salesResult;
+    const sales = await filterProductOrdersForLocation(
+      supabaseAdmin,
+      providerId,
+      (salesRaw || []) as Array<{ id: string; fulfillment_type?: string | null; collection_location_id?: string | null }>,
+      locationId,
+    );
 
     // Handle errors gracefully
     if (bookingsError && !bookingsError.message.includes('booking_products')) {
@@ -271,6 +276,8 @@ export async function GET(request: NextRequest) {
       averageProductValue,
       topProducts,
       productsByCategory,
+      report_basis:
+        "Product sales include appointment booking_products and standalone paid product_orders by scheduled/order date. Appointment product_orders are excluded as fulfillment mirrors.",
     });
   } catch (error) {
     console.error("Error in product sales report:", error);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { 
   sendToUser, 
   sendToUsers, 
@@ -81,6 +82,9 @@ export async function POST(request: NextRequest) {
       image,
     } = validationResult.data;
 
+    const tenantId = await resolveAdminApiTenantId(request);
+    const sendOptsBase = { tenantId, ...(appType ? { appType } : {}) };
+
     let result;
 
     switch (type) {
@@ -107,7 +111,7 @@ export async function POST(request: NextRequest) {
             image,
           },
           channels as NotificationChannel[],
-          appType ? { appType } : undefined
+          sendOptsBase
         );
         break;
 
@@ -134,7 +138,7 @@ export async function POST(request: NextRequest) {
             image,
           },
           channels as NotificationChannel[],
-          appType ? { appType } : undefined
+          sendOptsBase
         );
         break;
 
@@ -161,7 +165,7 @@ export async function POST(request: NextRequest) {
             image,
           },
           channels as NotificationChannel[],
-          appType ? { appType } : undefined
+          sendOptsBase
         );
         break;
 
@@ -183,7 +187,7 @@ export async function POST(request: NextRequest) {
           user_ids,
           template_variables || {},
           channels as NotificationChannel[],
-          appType ? { appType } : undefined
+          sendOptsBase
         );
         break;
 

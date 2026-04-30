@@ -1,6 +1,7 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError, requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { NextRequest } from "next/server";
+import { hasProviderCustomerRelationship } from "@/lib/provider/client-access";
 
 /**
  * GET /api/provider/customers/[id]/profile
@@ -27,32 +28,13 @@ export async function GET(
       return handleApiError(new Error("Provider not found"), "Provider not found", 404);
     }
 
-    // Check if provider has a booking or conversation with this customer
-    const { data: hasRelationship } = await supabase
-      .from("bookings")
-      .select("id")
-      .eq("customer_id", customerId)
-      .eq("provider_id", providerId)
-      .limit(1)
-      .maybeSingle();
-
+    const hasRelationship = await hasProviderCustomerRelationship(supabase, providerId, customerId);
     if (!hasRelationship) {
-      // Check conversations
-      const { data: hasConversation } = await supabase
-        .from("conversations")
-        .select("id")
-        .eq("customer_id", customerId)
-        .eq("provider_id", providerId)
-        .limit(1)
-        .maybeSingle();
-
-      if (!hasConversation) {
-        return handleApiError(
-          new Error("No relationship found"),
-          "You can only view profiles of customers you have bookings or conversations with",
-          403
-        );
-      }
+      return handleApiError(
+        new Error("No relationship found"),
+        "You can only view profiles of customers connected to your business",
+        403
+      );
     }
 
     // Get customer basic info

@@ -30,17 +30,17 @@ export async function GET(request: NextRequest) {
     }
 
     const staffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
-    const rosterDetailLevel = await getTeamRosterDetailLevel(user.id);
-    const isOwner = user.role === "superadmin" ? false : await isProviderOwner(user.id);
+    const rosterDetailLevel = await getTeamRosterDetailLevel(user.id, request);
+    const isOwner = user.role === "superadmin" ? false : await isProviderOwner(user.id, request);
     const canManageTeam =
-      user.role === "superadmin" || isOwner || (await hasPermission(user.id, "manage_team"));
+      user.role === "superadmin" || isOwner || (await hasPermission(user.id, "manage_team", undefined, request));
     const canViewTeamFullRoster =
       rosterDetailLevel === "full" || canManageTeam;
     /** Aligns with POST /api/provider/payouts (`requirePermission("process_payments")`). */
     const can_process_payments =
       user.role === "superadmin" ||
       isOwner ||
-      (await hasPermission(user.id, "process_payments"));
+      (await hasPermission(user.id, "process_payments", undefined, request));
 
     return successResponse({
       staff_id: staffId,

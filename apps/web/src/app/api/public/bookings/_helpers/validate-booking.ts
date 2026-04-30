@@ -17,6 +17,7 @@ import {
   sumMoney,
 } from "@beautonomi/utils";
 import { sumChainedBlockedMinutes } from "@/lib/booking-slot-math/blocked-window-minutes";
+import { isSalonMembershipEntitledForDiscount } from "@/lib/provider/salon-membership-entitlement";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ export interface ValidatedBookingData {
   subtotal: number;
 
   membershipPlanId: string | null;
+  membershipId: string | null;
   membershipDiscountAmount: number;
   subtotalAfterMembership: number;
   commissionBase: number;
@@ -56,7 +58,7 @@ export interface ValidatedBookingData {
   serviceFeeAmount: number;
   serviceFeePercentage: number;
   serviceFeeConfigId: string | null;
-  /** Whether the service fee should be displayed to the customer on the booking confirmation screen */
+  /** Whether the Platform Fee should be displayed to the customer on the booking confirmation screen */
   showServiceFeeToCustomer: boolean;
 
   totalAmount: number;
@@ -1202,6 +1204,7 @@ export async function validateBooking(
 
   // ── Membership discount ──────────────────────────────────────────────────
   let membershipPlanId: string | null = null;
+  let membershipId: string | null = null;
   let membershipDiscountAmount = 0;
   try {
     const { data: membership } = await (supabase.from("user_memberships") as any)
@@ -1210,20 +1213,49 @@ export async function validateBooking(
       .eq("provider_id", draft.provider_id)
       .maybeSingle();
 
-    const isExpired = membership?.expires_at ? new Date(membership.expires_at) < new Date() : false;
     const planProviderId = membership?.plan?.provider_id ?? null;
-    const active =
-      membership?.status === "active" &&
-      !isExpired &&
-      membership?.plan?.is_active !== false &&
-      planProviderId === draft.provider_id;
+    const planMatchesProvider = planProviderId === draft.provider_id;
+    const entitled =
+      planMatchesProvider &&
+      isSalonMembershipEntitledForDiscount({
+        status: membership?.status ?? "",
+        expires_at: membership?.expires_at ?? null,
+        planIsActive: membership?.plan?.is_active,
+      });
 
-    if (active) {
+    if (entitled) {
       membershipPlanId = membership.plan?.id || null;
       const pct = Number(membership.plan?.discount_percent || 0);
       if (pct > 0) {
         membershipDiscountAmount = Math.max(0, percentOf(subtotal, pct));
         membershipDiscountAmount = Math.min(membershipDiscountAmount, subtotal);
+      }
+    }
+
+    const { data: platformMemberships } = await (supabase.from("customer_memberships") as any)
+      .select("id, status, expires_at, provider_id, membership:memberships(id, discount_percentage, discount_cap_per_booking, discount_applies_to)")
+      .eq("customer_id", customerId)
+      .eq("status", "active");
+
+    for (const row of platformMemberships ?? []) {
+      const providerScope = row.provider_id ?? null;
+      if (providerScope && providerScope !== draft.provider_id) continue;
+      const expiresAt = row.expires_at ? new Date(row.expires_at).getTime() : null;
+      if (expiresAt != null && Number.isFinite(expiresAt) && expiresAt < Date.now()) continue;
+      const membership = row.membership;
+      if (!membership || (membership.discount_applies_to && membership.discount_applies_to !== "all_services")) {
+        continue;
+      }
+      const pct = Number(membership.discount_percentage || 0);
+      if (pct <= 0) continue;
+      const cap = Number(membership.discount_cap_per_booking || 0) || 0;
+      let discount = Math.max(0, percentOf(subtotal, pct));
+      if (cap > 0) discount = Math.min(discount, cap);
+      discount = Math.min(discount, subtotal);
+      if (discount > membershipDiscountAmount) {
+        membershipDiscountAmount = discount;
+        membershipPlanId = null;
+        membershipId = membership.id || null;
       }
     }
   } catch {
@@ -1281,7 +1313,7 @@ export async function validateBooking(
     }
   }
 
-  // ── Service fee ──────────────────────────────────────────────────────────
+  // ── Platform Fee ─────────────────────────────────────────────────────────
   let serviceFeeAmount = 0;
   let serviceFeePercentage = 0;
   let serviceFeeConfigId: string | null = null;
@@ -1426,11 +1458,14 @@ export async function validateBooking(
       );
     }
 
-    const { data: balanceData } = await supabase.rpc(
-      "get_customer_available_points" as any,
-      { customer_uuid: customerId },
+    const [ledgerBalanceResult, legacyBalanceResult] = await Promise.all([
+      supabase.rpc("get_customer_available_points" as any, { customer_uuid: customerId }),
+      supabase.rpc("get_user_loyalty_balance" as any, { p_user_id: customerId }),
+    ]);
+    const availableBalance = Math.max(
+      Number(ledgerBalanceResult.data) || 0,
+      Number(legacyBalanceResult.data) || 0,
     );
-    const availableBalance = Number(balanceData) || 0;
 
     if (pointsToRedeem > availableBalance) {
       return handleApiError(
@@ -1493,7 +1528,12 @@ export async function validateBooking(
       holdRow &&
       holdRow.expires_at &&
       new Date(holdRow.expires_at as string).getTime() < Date.now();
-    if (!holdRow || holdRow.hold_status !== "active" || holdExpired) {
+    /** `consuming` is set by `claim_booking_hold_for_consume` before inner POST /api/public/bookings. */
+    const holdUsable =
+      holdRow &&
+      (holdRow.hold_status === "active" || holdRow.hold_status === "consuming") &&
+      !holdExpired;
+    if (!holdUsable) {
       console.warn("[validate-booking] hold rejected", {
         holdId: validatedDraft.hold_id,
         found: !!holdRow,
@@ -1988,6 +2028,7 @@ export async function validateBooking(
     subtotal,
 
     membershipPlanId,
+    membershipId,
     membershipDiscountAmount,
     subtotalAfterMembership,
     commissionBase,

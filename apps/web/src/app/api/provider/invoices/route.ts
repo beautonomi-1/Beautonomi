@@ -30,6 +30,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
     const invoiceType = searchParams.get("type");
+    const dateFrom = searchParams.get("date_from");
+    const dateTo = searchParams.get("date_to");
 
     let query = supabase
       .from("provider_invoices")
@@ -42,17 +44,22 @@ export async function GET(request: NextRequest) {
       `,
         { count: "exact" }
       )
-      .eq("provider_id", providerId)
-      .order("issue_date", { ascending: false })
-      .range(offset, offset + limit - 1);
-
+      .eq("provider_id", providerId);
     if (status) {
       query = query.eq("status", status);
     }
-
     if (invoiceType) {
       query = query.eq("invoice_type", invoiceType);
     }
+    if (dateFrom) {
+      query = query.gte("issue_date", dateFrom);
+    }
+    if (dateTo) {
+      query = query.lte("issue_date", dateTo);
+    }
+    query = query
+      .order("issue_date", { ascending: false })
+      .range(offset, offset + limit - 1);
 
     const { data: invoices, error, count } = await query;
 
@@ -60,12 +67,49 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
+    let summaryQuery = supabase
+      .from("provider_invoices")
+      .select("status, total_amount")
+      .eq("provider_id", providerId);
+    if (status) {
+      summaryQuery = summaryQuery.eq("status", status);
+    }
+    if (invoiceType) {
+      summaryQuery = summaryQuery.eq("invoice_type", invoiceType);
+    }
+    if (dateFrom) {
+      summaryQuery = summaryQuery.gte("issue_date", dateFrom);
+    }
+    if (dateTo) {
+      summaryQuery = summaryQuery.lte("issue_date", dateTo);
+    }
+    const { data: summaryRows } = await summaryQuery;
+
+    const summary = (summaryRows || []).reduce(
+      (acc, invoice) => {
+        const row = invoice as { status?: string | null; total_amount?: number | null };
+        const amount = Number(row.total_amount ?? 0);
+        if (row.status === "paid") {
+          acc.paid_amount += amount;
+        }
+        if (row.status === "pending" || row.status === "overdue") {
+          acc.outstanding_amount += amount;
+        }
+        if (row.status === "overdue") {
+          acc.overdue_count += 1;
+        }
+        return acc;
+      },
+      { paid_amount: 0, outstanding_amount: 0, overdue_count: 0 }
+    );
+
     return successResponse({
       invoices: invoices || [],
       total: count || 0,
       page,
       limit,
       total_pages: Math.ceil((count || 0) / limit),
+      summary,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch invoices");

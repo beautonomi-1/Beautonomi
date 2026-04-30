@@ -67,6 +67,7 @@ export default function MessagingListScreen() {
   // (changing refresh identity causes subscribe/re-subscribe races).
   const refreshRef = useRef(refresh);
   useEffect(() => { refreshRef.current = refresh; }, [refresh]);
+  const conversationsRealtimeGenRef = useRef(0);
 
   useEffect(() => {
     if (!provider?.id) return;
@@ -79,8 +80,12 @@ export default function MessagingListScreen() {
       }, 400);
     };
 
+    // Supabase may return an existing channel when the same topic is reused
+    // during fast remounts. Give every subscription a unique topic so all
+    // postgres_changes handlers are attached before subscribe().
+    const topic = `provider-conversations:${provider.id}:${++conversationsRealtimeGenRef.current}`;
     const channel = supabase
-      .channel(`provider-conversations:${provider.id}`)
+      .channel(topic)
       .on(
         "postgres_changes" as never,
         {
@@ -101,8 +106,6 @@ export default function MessagingListScreen() {
         // Ignore
       }
     };
-  // Only re-subscribe when provider id changes, not when refresh changes identity.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider?.id]);
 
   /** One row per client (API may still return multiple rows for legacy data; DB unique enforces one going forward). */

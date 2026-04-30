@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   notFoundResponse,
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 import {
@@ -22,7 +22,11 @@ import { recordProductOrderPayment } from "@/lib/orders/record-product-order-pay
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("view_sales", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -64,7 +68,7 @@ const walkInLineSchema = z.object({
 
 const walkInSaleSchema = z.object({
   items: z.array(walkInLineSchema).min(1),
-  payment_method: z.enum(["cash", "yoco"]),
+  payment_method: z.enum(["cash", "yoco", "card", "eft", "other"]),
   payment_reference: z.string().max(200).optional(),
   customer_name: z.string().max(100).optional(),
   customer_phone: z.string().max(20).optional(),
@@ -103,7 +107,11 @@ function variantLabel(optionValues: Record<string, unknown> | null | undefined, 
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("create_sales", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const body = await request.json();
     const parsed = walkInSaleSchema.parse(body);
     const mergedItems = mergeWalkInLines(parsed.items);
@@ -268,6 +276,14 @@ export async function POST(request: NextRequest) {
       return errorResponse(stockErrors.join("; "), "STOCK_ERROR", 400);
     }
 
+    const paymentMethodForOrder = parsed.payment_method === "eft" ? "other" : parsed.payment_method;
+    const paymentProviderForLedger =
+      parsed.payment_method === "yoco"
+        ? "yoco"
+        : parsed.payment_method === "cash"
+          ? "cash"
+          : "card_on_delivery";
+
     if (parsed.payment_method === "yoco" && !parsed.payment_reference?.trim()) {
       return errorResponse(
         "Yoco walk-in product sales require the terminal payment reference.",
@@ -296,7 +312,7 @@ export async function POST(request: NextRequest) {
         delivery_fee: "0.00",
         platform_fee: "0.00",
         total_amount: totalAmount.toFixed(2),
-        payment_method: parsed.payment_method,
+        payment_method: paymentMethodForOrder,
         payment_reference: parsed.payment_reference ?? null,
         payment_status: "paid",
         status: "delivered",
@@ -334,7 +350,7 @@ export async function POST(request: NextRequest) {
       amountMajor: totalAmount,
       feesMajor: 0,
       source: "walk_in_pos",
-      provider: parsed.payment_method,
+      provider: paymentProviderForLedger,
       platformHeld: false,
     });
 

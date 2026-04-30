@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **332** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **334** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -114,6 +114,8 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 32 | `/admin/reports/providers` | W2 | finance | N | `GET /api/admin/reports/providers`, export | |
 | 33 | `/admin/reports/customers` | W2 | finance | N | `GET /api/admin/reports/customers`, export | |
 | 34 | `/admin/reports/gift-cards` | W2 | finance | N | `GET /api/admin/reports/gift-cards` | |
+| 35a | `/admin/reports/support-performance` | W2 | finance | N | `GET /api/admin/reports/support-performance`, export | **SPA:** [`ReportDetailPage`](../../apps/admin-web/src/routes/reports/ReportDetailPage.tsx) (`reportKey` `support-performance`). API: `requireAdminSection(ADMIN_SECTION_OVERVIEW)`, tenant via `resolveAdminApiTenantId`. |
+| 35b | `/admin/reports/support-workload` | W2 | finance | N | `GET /api/admin/reports/support-workload`, export | Same SPA/component pattern as 35a (`support-workload`). |
 | 35 | `/admin/reports/yoco-reconciliation` | W2 | finance | N | `GET /api/admin/reports/yoco-reconciliation` | |
 | 36 | `/admin/users` | W3 | users_trust | Y | `GET /api/admin/users`, `POST .../bulk`, `PUT .../role`, `PATCH ...`, `DELETE ...`, export | |
 | 37 | `/admin/users/[id]` | W3 | users_trust | N | `GET .../users/:id`, bookings, password, impersonate, export, `GET .../wallet-transactions` | Modal + page variants |
@@ -258,6 +260,7 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-08 | **Taxonomy / CI:** Added `docs/admin-api-route-taxonomy.csv` rows for `GET /api/admin/dashboard/marketing-insights` (superadmin + tenant scope; RPCs **447–448**) and `GET /api/admin/users/[id]/wallet-transactions` (`ADMIN_SECTION_USERS_TRUST`). SPA: [`DashboardPage`](../../apps/admin-web/src/routes/DashboardPage.tsx), [`UserDetailPage`](../../apps/admin-web/src/routes/users/UserDetailPage.tsx). §4 rows 3 + 37 updated. |
 | 2026-04-07 | **Users / staff / providers SPA parity:** [`UsersListPage`](../../apps/admin-web/src/routes/users/UsersListPage.tsx) — signup-source filter, full role filter, page size 50, row selection + bulk activate/deactivate/delete (`POST /api/admin/users/bulk`), suspend/reactivate, superadmin quick role + compliance purge modal + create user (`POST /api/admin/users`); fixed list links via `adminSpaTo`. [`StaffListPage`](../../apps/admin-web/src/routes/staff/StaffListPage.tsx) — API filters, stats cards, search, edit modal (`PATCH /api/admin/staff/:id`), activate/deactivate, password reset, provider deep links. [`ProvidersListPage`](../../apps/admin-web/src/routes/providers/ProvidersListPage.tsx) — correct provider detail `Link` under `/admin` basename. E-commerce nav adds **Add-ons** → `/admin/addons`. |
 | 2026-04-05 | **Waves 2–5 SPA batch:** `getRawJson` on `@beautonomi/admin-api-client` for top-level `{ data, meta }` envelopes. `apps/admin-web` adds read/list routes for finance, reports (`/reports/:reportKey`, API AuthZ **overview**), users trust, ecommerce (orders/returns; products via **public** API), marketing subset, integrations subset, operations JSON snapshots, platform settings subset, control-plane hub + redirects. **Known gaps:** report CSV export contract, platform-fees section vs nav, reports vs finance roles — see [`ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md`](./ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md). |
+| 2026-04-30 | **Taxonomy / CI:** Added `docs/admin-api-route-taxonomy.csv` rows for `GET /api/admin/reports/support-performance` and `GET /api/admin/reports/support-workload` (`ADMIN_SECTION_OVERVIEW`, `resolveAdminApiTenantId`). SPA: [`ReportDetailPage`](../../apps/admin-web/src/routes/reports/ReportDetailPage.tsx), [`ReportsHubPage`](../../apps/admin-web/src/routes/ReportsHubPage.tsx). §1.1 inventory **334**; §4 rows 35a–35b. |
 
 ---
 
@@ -285,3 +288,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-13 | Taxonomy: `+15` routes for WhatsApp WASender integration (`/api/admin/integrations/wasender`, `/api/admin/whatsapp/bulk`, `bulk/[batchId]`, `bulk/[batchId]/cancel|pause|resume`, `send`, `sessions`, `sessions/[id]`, `sessions/[id]/connect|disconnect|qr`, `templates`, `templates/[id]`, `verify-number`). §1.1 inventory **329**. |
 | 2026-04-15 | Taxonomy: `+1` route (`GET /api/admin/provider-client-ratings`); §4 row 15 reviews API note. §1.1 inventory **330**. |
 | 2026-04-16 | Taxonomy: `+2` routes (`GET /api/admin/analytics/fx-rate`, `POST /api/admin/compliance/reset-tenant`); §4 row 96.1 tenant-reset page. §1.1 inventory **332**. |
+| 2026-04-30 | Taxonomy: `+2` routes (`GET /api/admin/reports/support-performance`, `GET /api/admin/reports/support-workload`); §4 rows 35a–35b; SPA [`ReportDetailPage`](../../apps/admin-web/src/routes/reports/ReportDetailPage.tsx) + [`ReportsHubPage`](../../apps/admin-web/src/routes/ReportsHubPage.tsx). §1.1 inventory **334**. |

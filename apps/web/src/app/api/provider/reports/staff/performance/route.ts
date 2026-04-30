@@ -29,20 +29,6 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
       ? startOfDay(new Date(searchParams.get("from")!))

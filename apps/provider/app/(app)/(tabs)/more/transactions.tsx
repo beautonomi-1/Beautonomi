@@ -16,7 +16,10 @@ import { twStyle } from "@/lib/twStyle";
 
 interface Transaction {
   id: string;
+  /** Ledger-derived UI bucket from GET /api/provider/transactions */
   type: string;
+  /** +1 credit / -1 debit (used for ledger adjustments). */
+  sign?: 1 | -1;
   amount: number;
   description: string;
   status: string;
@@ -26,6 +29,7 @@ interface Transaction {
   reference: string | null;
   booking_id: string | null;
   notes: string | null;
+  transaction_type?: string;
 }
 
 const PERIOD_FILTERS = [
@@ -38,11 +42,12 @@ const PERIOD_FILTERS = [
 
 const TYPE_FILTERS = [
   { label: "All", value: "all" },
-  { label: "Payments", value: "payment" },
-  { label: "Payouts", value: "payout" },
+  { label: "Earnings", value: "earning" },
   { label: "Fees", value: "fee" },
+  { label: "Payouts", value: "payout" },
   { label: "Refunds", value: "refund" },
   { label: "Tips", value: "tip" },
+  { label: "Ledger", value: "adjustment" },
 ];
 
 function txnIcon(type: string): {
@@ -51,7 +56,7 @@ function txnIcon(type: string): {
   bg: string;
 } {
   switch (type) {
-    case "payment":
+    case "earning":
       return { name: "arrow-down-outline", color: "#22c55e", bg: "bg-green-50" };
     case "payout":
       return { name: "arrow-up-outline", color: "#3b82f6", bg: "bg-blue-50" };
@@ -61,9 +66,23 @@ function txnIcon(type: string): {
       return { name: "return-down-back-outline", color: "#ef4444", bg: "bg-red-50" };
     case "tip":
       return { name: "heart-outline", color: "#ec4899", bg: "bg-pink-50" };
+    case "adjustment":
+      return { name: "git-network-outline", color: "#64748b", bg: "bg-slate-50" };
     default:
       return { name: "swap-horizontal-outline", color: "#6b7280", bg: "bg-gray-50" };
   }
+}
+
+function isDebitType(t: Transaction): boolean {
+  if (t.type === "adjustment") return t.sign === -1;
+  return t.type === "payout" || t.type === "fee" || t.type === "refund";
+}
+
+function signedContributionForSummary(t: Transaction): number {
+  if (t.type === "earning" || t.type === "tip") return t.amount;
+  if (t.type === "payout" || t.type === "refund") return -t.amount;
+  if (t.type === "adjustment") return (t.sign ?? 1) * t.amount;
+  return 0;
 }
 
 function statusStyle(s: string) {
@@ -96,7 +115,7 @@ export default function TransactionsScreen() {
   );
   const { execute: exportTransactions, loading: exporting } = useApiPost<
     { period: string; format: string },
-    { url: string }
+    { url?: string; csv?: string; filename?: string; row_count?: number; truncated?: boolean }
   >("/api/provider/transactions/export");
 
   const handleRefresh = useCallback(async () => {
@@ -128,7 +147,7 @@ export default function TransactionsScreen() {
   const totalIn = useMemo(
     () =>
       (transactions ?? [])
-        .filter((t) => t.type === "payment" || t.type === "tip")
+        .filter((t) => t.type === "earning" || t.type === "tip")
         .reduce((s, t) => s + t.amount, 0),
     [transactions]
   );
@@ -136,12 +155,16 @@ export default function TransactionsScreen() {
   const totalOut = useMemo(
     () =>
       (transactions ?? [])
-        .filter((t) => t.type === "payout" || t.type === "fee" || t.type === "refund")
+        .filter((t) => t.type === "payout" || t.type === "refund")
         .reduce((s, t) => s + t.amount, 0),
     [transactions]
   );
 
-  const netAmount = totalIn - totalOut;
+  /** Operating-style net: earnings & tips minus fees, payouts & refunds; ledger adjustments added by signed amount. */
+  const netAmount = useMemo(
+    () => (transactions ?? []).reduce((s, t) => s + signedContributionForSummary(t), 0),
+    [transactions]
+  );
 
   async function handleExport() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -150,7 +173,14 @@ export default function TransactionsScreen() {
       Alert.alert("Export Failed", error);
       return;
     }
-    if (data?.url) {
+    if (data?.csv) {
+      await Share.share({
+        title: data.filename ?? "Transaction report",
+        message: data.truncated
+          ? `${data.filename ?? "Transaction report"}\n\n${data.csv}\n\nNote: export is capped at 5,000 ledger rows.`
+          : `${data.filename ?? "Transaction report"}\n\n${data.csv}`,
+      });
+    } else if (data?.url) {
       await Share.share({
         message: `Transaction report for ${period}`,
         url: data.url,
@@ -163,8 +193,7 @@ export default function TransactionsScreen() {
 
   const renderTransactionItem = (item: Transaction) => {
     const ic = txnIcon(item.type);
-    const isDebit =
-      item.type === "payout" || item.type === "fee" || item.type === "refund";
+    const isDebit = isDebitType(item);
     const ss = statusStyle(item.status);
 
     return (
@@ -195,10 +224,18 @@ export default function TransactionsScreen() {
         <View style={twStyle("items-end ml-2")}>
           <Text
             style={twStyle(`text-sm font-bold ${
-              isDebit ? "text-red-600" : "text-green-600"
+              item.type === "adjustment"
+                ? "text-slate-600"
+                : isDebit
+                  ? "text-red-600"
+                  : "text-green-600"
             }`)}
           >
-            {isDebit ? "-" : "+"}
+            {item.type === "adjustment"
+              ? (item.sign === -1 ? "-" : "+")
+              : isDebit
+                ? "-"
+                : "+"}
             {formatCurrency(item.amount)}
           </Text>
           <View style={twStyle(`mt-0.5 rounded-full px-1.5 py-0.5 ${ss.bg}`)}>
@@ -235,13 +272,13 @@ export default function TransactionsScreen() {
       {/* Summary cards */}
       <View style={twStyle("mb-3 flex-row")}>
         <View style={[twStyle("flex-1 rounded-xl border border-green-100 bg-green-50 p-3"), { marginRight: 8 }]}>
-          <Text style={twStyle("text-[10px] font-medium text-green-600")}>Income</Text>
+          <Text style={twStyle("text-[10px] font-medium text-green-600")}>Earnings & tips</Text>
           <Text style={twStyle("text-base font-bold text-green-700")}>
             {formatCurrency(totalIn)}
           </Text>
         </View>
         <View style={[twStyle("flex-1 rounded-xl border border-red-100 bg-red-50 p-3"), { marginRight: 8 }]}>
-          <Text style={twStyle("text-[10px] font-medium text-red-600")}>Outgoing</Text>
+          <Text style={twStyle("text-[10px] font-medium text-red-600")}>Payouts & refunds</Text>
           <Text style={twStyle("text-base font-bold text-red-700")}>
             {formatCurrency(totalOut)}
           </Text>
@@ -325,14 +362,20 @@ export default function TransactionsScreen() {
               </View>
               <Text
                 style={twStyle(`mt-2 text-2xl font-bold ${
-                  selectedTxn.type === "payout" || selectedTxn.type === "fee" || selectedTxn.type === "refund"
-                    ? "text-red-600"
-                    : "text-green-600"
+                  selectedTxn.type === "adjustment"
+                    ? "text-slate-700"
+                    : isDebitType(selectedTxn)
+                      ? "text-red-600"
+                      : "text-green-600"
                 }`)}
               >
-                {selectedTxn.type === "payout" || selectedTxn.type === "fee" || selectedTxn.type === "refund"
-                  ? "-"
-                  : "+"}
+                {selectedTxn.type === "adjustment"
+                  ? selectedTxn.sign === -1
+                    ? "-"
+                    : "+"
+                  : isDebitType(selectedTxn)
+                    ? "-"
+                    : "+"}
                 {formatCurrency(selectedTxn.amount)}
               </Text>
               <Text style={twStyle("mt-1 text-sm text-gray-500")}>{selectedTxn.description}</Text>
@@ -345,6 +388,14 @@ export default function TransactionsScreen() {
                   {selectedTxn.type}
                 </Text>
               </View>
+              {selectedTxn.transaction_type ? (
+                <View style={twStyle("mb-3 flex-row justify-between")}>
+                  <Text style={twStyle("text-xs text-gray-500")}>Ledger</Text>
+                  <Text style={twStyle("text-xs font-mono text-gray-600")} selectable>
+                    {selectedTxn.transaction_type}
+                  </Text>
+                </View>
+              ) : null}
               <View style={twStyle("mb-3 flex-row justify-between")}>
                 <Text style={twStyle("text-xs text-gray-500")}>Status</Text>
                 <View style={twStyle(`rounded-full px-2 py-0.5 ${statusStyle(selectedTxn.status).bg}`)}>

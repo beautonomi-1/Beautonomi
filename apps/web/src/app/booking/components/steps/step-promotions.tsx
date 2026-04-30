@@ -40,7 +40,7 @@ export default function StepPromotions({
   // serviceFeeAmount, and serviceFeePercentage and stores them in bookingState.
   // This step must only update promotion amounts; the parent recalculates fees.
 
-  /** Services + add-ons + products + travel — must match payment step `getSubtotalAfterDiscounts` inputs (excludes tax & service fee). */
+  /** Services + add-ons + products + travel — must match payment step `getSubtotalAfterDiscounts` inputs (excludes tax & Platform Fee). */
   const cartTotal =
     bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0) +
     bookingState.selectedAddons.reduce((sum, a) => sum + a.price, 0) +

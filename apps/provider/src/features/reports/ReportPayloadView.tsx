@@ -3,11 +3,17 @@
  */
 import { View, Text, ScrollView, useWindowDimensions } from "react-native";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatPercentage } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 
 function isMoneyKey(k: string): boolean {
   const l = k.toLowerCase();
+  if (
+    /\b(count|counts|quantity|qty|units|hours|minutes|duration|rate|percent|percentage)\b/.test(l.replace(/_/g, " ")) ||
+    /(_count|_counts|count_|counts_|_rate|_percent|_percentage)$/.test(l)
+  ) {
+    return false;
+  }
   return (
     l.includes("revenue") ||
     l.includes("amount") ||
@@ -21,10 +27,18 @@ function isMoneyKey(k: string): boolean {
   );
 }
 
+function isPercentKey(k: string): boolean {
+  const l = k.toLowerCase();
+  return /(^|_)(rate|percent|percentage)($|_)/.test(l) || l.endsWith("_pct");
+}
+
 function formatPrimitive(key: string, val: unknown): string {
   if (val == null) return "—";
   if (typeof val === "boolean") return val ? "Yes" : "No";
   if (typeof val === "number") {
+    if (Number.isFinite(val) && isPercentKey(key)) {
+      return formatPercentage(val);
+    }
     if (Number.isFinite(val) && isMoneyKey(key) && Math.abs(val) > 0.5) {
       return formatCurrency(val);
     }

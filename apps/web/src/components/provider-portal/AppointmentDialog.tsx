@@ -75,6 +75,7 @@ interface CartItem {
   total: number;
   service_id?: string;
   product_id?: string;
+  product_variant_id?: string;
   duration_minutes?: number;
 }
 
@@ -457,6 +458,7 @@ export function AppointmentDialog({
           unit_price: Number(price),
           total: Number(price),
           product_id: product.id,
+          product_variant_id: variant?.id,
         },
       ]);
     }
@@ -549,6 +551,7 @@ export function AppointmentDialog({
       quantity: i.quantity,
       unitPrice: i.unit_price,
       totalPrice: i.total,
+      productVariantId: i.product_variant_id ?? null,
     }));
 
     return {
@@ -579,6 +582,7 @@ export function AppointmentDialog({
         total: i.total,
         service_id: i.service_id,
         product_id: i.product_id,
+        product_variant_id: i.product_variant_id,
         duration_minutes: i.duration_minutes,
       })),
     } as any;

@@ -8,13 +8,9 @@ import { errorResponse, successResponse } from "@/lib/supabase/api-helpers";
  * Lightweight balance for booking checkout (promotions step). Full history:
  * GET /api/me/loyalty.
  *
- * §Release-audit 2026-04: prefer the LEDGER source so the balance shown to
- * the customer matches what the redemption validator (validate-booking +
- * /api/me/loyalty-points/calculate-redemption) actually accepts. Both of
- * those use `get_customer_available_points` (sums `loyalty_points_ledger`).
- * Fall back to the legacy `get_user_loyalty_balance` (sums
- * `loyalty_point_transactions`) only if the ledger RPC is unavailable —
- * that keeps older deployments working.
+ * §Release-audit 2026-04: read both the ledger source and the legacy points
+ * store while the migration is in progress, so the booking checkout matches
+ * the loyalty points page and the redemption validator.
  *
  * §Customer-audit 2026-04 (round 2): previously this handler ignored the
  * incoming request, so mobile clients sending Bearer tokens were treated as
@@ -55,9 +51,9 @@ export async function GET(request: NextRequest) {
     ? toFiniteNumber(legacyResult.data)
     : 0;
 
-  // Use ledger when the RPC succeeded; otherwise legacy. We do NOT take the
-  // max — that would let users redeem points that the validator will reject.
-  const balance = Number.isFinite(ledgerBalance) ? ledgerBalance : legacyBalance;
+  // Keep checkout aligned with the loyalty page during the ledger migration:
+  // some customers still have valid points only in the legacy transaction store.
+  const balance = Math.max(Number.isFinite(ledgerBalance) ? ledgerBalance : 0, legacyBalance);
 
   const cfg = configResult.data;
   const redemptionRate = Number(cfg?.redemption_rate) || 10;

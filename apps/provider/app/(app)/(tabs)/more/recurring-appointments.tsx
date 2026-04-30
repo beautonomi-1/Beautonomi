@@ -68,6 +68,7 @@ interface RecurringAppointment {
   metadata?: { services?: unknown[]; address?: unknown } | null;
   customer?: { full_name?: string | null };
   service?: { title?: string | null };
+  offering?: { title?: string | null };
   staff?: { name?: string | null };
 }
 
@@ -142,6 +143,10 @@ function formatShortDate(dateStr: string): string {
   } catch {
     return dateStr;
   }
+}
+
+function serviceTitle(item: RecurringAppointment): string | null {
+  return item.service?.title ?? item.offering?.title ?? null;
 }
 
 type SimpleSeriesFreq = "weekly" | "biweekly" | "monthly";
@@ -386,13 +391,7 @@ export default function RecurringAppointmentsScreen() {
               if (err) {
                 alertApiError("Could not delete", err, delCode, router);
               } else {
-                mutateRecurringItems((items) =>
-                  items.filter(
-                    (current) =>
-                      current.customer_id !== item.customer_id ||
-                      current.service_id !== item.service_id
-                  )
-                );
+                mutateRecurringItems((items) => items.filter((current) => current.id !== item.id));
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 setViewItem(null);
                 void refresh();
@@ -615,7 +614,7 @@ export default function RecurringAppointmentsScreen() {
                   numberOfLines={1}
                 >
                   {displaySchedule(item)}
-                  {item.service?.title ? ` · ${item.service.title}` : ""}
+                  {serviceTitle(item) ? ` · ${serviceTitle(item)}` : ""}
                 </Text>
                 <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                   From {formatShortDate(item.start_date)} · {formatTimeSlot(item)}
@@ -738,7 +737,7 @@ export default function RecurringAppointmentsScreen() {
             </View>
           ) : null}
 
-          {viewItem.service?.title ? (
+          {serviceTitle(viewItem) ? (
             <View
               style={{
                 marginBottom: 10,
@@ -750,7 +749,7 @@ export default function RecurringAppointmentsScreen() {
               <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400], marginBottom: 2 }}>
                 SERVICE
               </Text>
-              <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{viewItem.service.title}</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{serviceTitle(viewItem)}</Text>
             </View>
           ) : null}
 

@@ -9,6 +9,8 @@ const ACTIVE_PRODUCT_ORDER_STATUSES = ["pending", "confirmed", "processing", "re
  *
  * Keep this endpoint narrow and count-only so web and native nav badges can
  * refresh frequently without loading full booking/order/message lists.
+ *
+ * `pending_bookings`: statuses `pending` (confirm) and `pending_payment` (matches bookings list chips).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -27,7 +29,7 @@ export async function GET(request: NextRequest) {
         .from("bookings")
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
-        .eq("status", "pending"),
+        .in("status", ["pending", "pending_payment"]),
       (supabase.from("product_orders") as any)
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)

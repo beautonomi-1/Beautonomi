@@ -282,11 +282,19 @@ export default function StepPayment({
       .catch((error: { status?: number; code?: string; message?: string }) => {
         if (cancelled) return;
         const expired =
-          error?.status === 410 ||
           error?.code === "HOLD_INVALID" ||
-          error?.code === "HOLD_EXPIRED";
+          error?.code === "HOLD_EXPIRED" ||
+          (error?.status === 410 &&
+            (error?.code === "HOLD_INVALID" || error?.code === "HOLD_EXPIRED"));
+        const inactive = error?.code === "HOLD_INACTIVE";
         setIsHoldExpired(expired);
-        setHoldLoadError(expired ? "Hold expired" : error?.message || "Could not verify your slot hold");
+        setHoldLoadError(
+          expired
+            ? "Hold expired"
+            : inactive
+              ? "This slot is no longer available"
+              : error?.message || "Could not verify your slot hold",
+        );
       })
       .finally(() => {
         if (!cancelled) setIsHoldLoading(false);
@@ -325,7 +333,7 @@ export default function StepPayment({
   }, [paystackEnabled, giftCardsEnabled, paymentMethod, cashEnabledOnPlatform]);
 
   // Fetch platform fees only to determine cash availability.
-  // Tax and service fee amounts are computed by booking-flow.tsx from the same API and stored in
+  // Tax and Platform Fee amounts are computed by booking-flow.tsx from the same API and stored in
   // bookingState — we trust those values here to keep fees perfectly consistent across all steps.
   useEffect(() => {
     let cancelled = false;
@@ -822,10 +830,28 @@ export default function StepPayment({
       try {
         bookingResult = await createBookingDraft();
       } catch (error: any) {
+        const errCode = error?.code as string | undefined;
+        const errStatus = error?.status as number | undefined;
+
+        if (errCode === "HOLD_IN_FLIGHT" || (errStatus === 409 && errCode === "HOLD_IN_FLIGHT")) {
+          toast.error(
+            "This booking is already being processed. Please wait a moment, then try again.",
+            { duration: 6000 },
+          );
+          return;
+        }
+
+        if (errCode === "HOLD_INACTIVE" || (errStatus === 410 && errCode === "HOLD_INACTIVE")) {
+          updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
+          toast.error("This slot is no longer available. Please choose another time.", { duration: 6000 });
+          onNavigateToStep("calendar");
+          return;
+        }
+
         const isHoldExpired =
-          error.status === 410 ||
-          error.code === "HOLD_INVALID" ||
-          error.code === "HOLD_EXPIRED";
+          errCode === "HOLD_INVALID" ||
+          errCode === "HOLD_EXPIRED" ||
+          (errStatus === 410 && (errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED"));
         if (isHoldExpired) {
           updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
           toast.error(

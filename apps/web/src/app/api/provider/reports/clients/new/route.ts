@@ -1,7 +1,14 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subMonths } from "date-fns";
+import { endOfDay, startOfDay, subMonths } from "date-fns";
+
+type ClientSummary = {
+  id: string;
+  full_name?: string | null;
+  email?: string | null;
+  created_at?: string | null;
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,27 +27,13 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subMonths(new Date(), 6);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subMonths(new Date(), 6));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
     const locationId = searchParams.get("location_id") || undefined;
 
     // Get bookings to find first visit per client. With location_id, this means
@@ -49,6 +42,7 @@ export async function GET(request: NextRequest) {
       .from("bookings")
       .select("id, customer_id, scheduled_at, total_amount, status")
       .eq("provider_id", providerId)
+      .in("status", ["confirmed", "completed"])
       .order("scheduled_at", { ascending: true });
 
     if (locationId) {
@@ -87,12 +81,15 @@ export async function GET(request: NextRequest) {
 
     // Get client details
     const clientIds = newClients.map((c) => c.customerId);
-    const { data: clients } = await supabaseAdmin
-      .from("users")
-      .select("id, full_name, email, created_at")
-      .in("id", clientIds);
+    const { data: clients } = clientIds.length > 0
+      ? await supabaseAdmin
+          .from("users")
+          .select("id, full_name, email, created_at")
+          .in("id", clientIds)
+      : { data: [] };
 
-    const clientMap = new Map(clients?.map((c) => [c.id, c]) || []);
+    const clientRows = (clients || []) as ClientSummary[];
+    const clientMap = new Map<string, ClientSummary>(clientRows.map((c) => [c.id, c]));
 
     // Enrich new clients with details and calculate if they returned
     const enrichedNewClients = newClients.map((client) => {
@@ -109,6 +106,10 @@ export async function GET(request: NextRequest) {
         firstBookingValue: client.firstBookingValue,
         hasReturned,
         totalBookings: allClientBookings.length,
+        completedBookings: allClientBookings.filter((b) => b.status === "completed").length,
+        completedSpend: allClientBookings
+          .filter((b) => b.status === "completed")
+          .reduce((sum, b) => sum + Number(b.total_amount || 0), 0),
         totalSpent,
       };
     }).sort((a, b) => new Date(b.firstVisit).getTime() - new Date(a.firstVisit).getTime());
@@ -140,6 +141,8 @@ export async function GET(request: NextRequest) {
       averageFirstBookingValue,
       monthlyBreakdown,
       newClients: enrichedNewClients.slice(0, 50), // Limit to 50 most recent
+      reportBasis:
+        "New clients are customers whose first confirmed or completed booking at this provider/location falls in the selected date range. Completed spend is separated from booked value.",
     });
   } catch (error) {
     return handleApiError(error, "NEW_CLIENTS_ERROR", 500);

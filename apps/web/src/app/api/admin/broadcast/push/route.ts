@@ -180,10 +180,10 @@ export async function POST(request: NextRequest) {
     if (b.priority != null) notif.priority = b.priority;
     if (b.ios_interruption_level) notif.ios_interruption_level = b.ios_interruption_level;
 
-    // Send push broadcast (pass request-scoped supabase so device lookup matches this session / RLS)
+    // Device rows use owner-only RLS; admin JWT cannot read recipients' user_devices.
+    // Omit supabaseClient so sendToUsers uses service-role admin for subscription IDs (broadcast still sends external_id).
     const result = await sendToUsers(userIds, notif, ["push"], {
       appType: oneSignalAppType,
-      supabaseClient: supabase,
       tenantId,
     });
 

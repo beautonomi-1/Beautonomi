@@ -41,6 +41,10 @@ interface BookingsRow {
   package_id: UUID | null;
   subtotal: number | null;
   travel_fee: number | null;
+  platform_fee_config_id: UUID | null;
+  platform_fee_percentage: number | null;
+  platform_fee_amount: number | null;
+  platform_fee_paid_by: string | null;
   service_fee_config_id: UUID | null;
   service_fee_percentage: number | null;
   service_fee_amount: number | null;

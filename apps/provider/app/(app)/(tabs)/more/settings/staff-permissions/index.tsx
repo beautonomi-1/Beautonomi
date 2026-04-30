@@ -24,6 +24,7 @@ interface StaffMember {
 }
 interface TeamAccessPayload {
   staff_id: string | null;
+  is_business_owner?: boolean;
   can_manage_team: boolean;
 }
 
@@ -37,7 +38,8 @@ export default function StaffPermissionsListScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
-  const canManageTeam = access?.can_manage_team === true;
+  const canManageTeam =
+    access?.is_business_owner === true || access?.can_manage_team === true;
   const ownStaffId = access?.staff_id ?? null;
   const { data: staffList, loading, error: staffError, refresh } = useApi<StaffMember[]>(
     "/api/provider/staff"

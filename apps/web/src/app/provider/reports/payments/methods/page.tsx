@@ -132,7 +132,7 @@ export default function PaymentMethodsReport() {
       <div className="space-y-6">
         <PageHeader
           title="Payment Methods"
-          subtitle="Analyze payment methods and their performance"
+          subtitle="Analyze customer payment method totals for bookings in the selected period"
           actions={
             <Button variant="outline" onClick={handleExport}>
               <Download className="w-4 h-4 mr-2" />
@@ -163,7 +163,7 @@ export default function PaymentMethodsReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Amount</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">Customer payments by method total</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">

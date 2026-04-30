@@ -1,11 +1,11 @@
 /**
  * Booking financial display invariants (customer + provider + receipt).
  *
- * **Subtotal** — Sum of priced line items before tax, platform service fee, tip, and travel:
+ * **Subtotal** — Sum of priced line items before tax, Platform Fee, tip, and travel:
  * services, add-ons, products, minus line-level discounts (coupon/promo/membership/loyalty as stored on the row).
  * Travel fee (`travel_fee`) is **not** part of subtotal; it is an additional line for at-home (and similar).
  *
- * **Total amount** — `total_amount` on `bookings`: subtotal + tax + service_fee + travel + tip − headline discounts,
+ * **Total amount** — `total_amount` on `bookings`: subtotal + tax + platform_fee + travel + tip − headline discounts,
  * per DB trigger / create-booking-record. Always use the stored row for authoritative totals.
  *
  * **Outstanding** — For display: max(0, total_amount − amount recognized as paid − wallet − gift card),

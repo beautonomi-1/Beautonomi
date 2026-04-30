@@ -73,7 +73,10 @@ interface Participant {
   checked_out_time?: string | null;
   checked_out_at?: string | null;
   service_name?: string | null;
+  duration_minutes?: number | null;
   price?: number;
+  addons?: { id?: string; addonId?: string; name?: string; price?: number; duration?: number; duration_minutes?: number }[] | null;
+  notes?: string | null;
 }
 
 interface GroupBooking {
@@ -175,12 +178,30 @@ type ServiceRow = {
   title: string;
   duration_minutes?: number;
   price?: number;
+  currency?: string;
   service_type?: string;
   variant_name?: string | null;
   parent_service_id?: string | null;
+  category_id?: string | null;
+  category_name?: string | null;
+  global_category_id?: string | null;
+  global_category_name?: string | null;
+  category?: { id?: string | null; name?: string | null; title?: string | null } | null;
+  global_category?: { id?: string | null; name?: string | null; title?: string | null } | null;
+  provider_categories?: { id?: string | null; name?: string | null; title?: string | null } | null;
+  add_ons?: AddOnRow[];
 };
 type TeamRow = { id: string; name?: string };
-type ParticipantFormRow = { id: string; name: string; phone: string; email: string };
+type AddOnRow = { id: string; name: string; price?: number; duration_minutes?: number };
+type ParticipantFormRow = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  serviceId: string;
+  addOnIds: string[];
+  notes: string;
+};
 type ProductRow = {
   id: string;
   name: string;
@@ -251,6 +272,56 @@ function serviceLabel(service: ServiceRow): string {
   return service.title;
 }
 
+const UNCATEGORIZED_GROUP_SERVICE_CATEGORY = "__uncategorized__";
+
+function getServiceCategoryInfo(service: ServiceRow): { id: string; label: string } {
+  const id =
+    service.category_id ||
+    service.global_category_id ||
+    service.category?.id ||
+    service.global_category?.id ||
+    service.provider_categories?.id ||
+    UNCATEGORIZED_GROUP_SERVICE_CATEGORY;
+  const label =
+    service.category_name ||
+    service.global_category_name ||
+    service.category?.name ||
+    service.category?.title ||
+    service.global_category?.name ||
+    service.global_category?.title ||
+    service.provider_categories?.name ||
+    service.provider_categories?.title ||
+    "Other";
+  return { id, label };
+}
+
+function createBlankParticipant(id: string, serviceId = ""): ParticipantFormRow {
+  return { id, name: "", phone: "", email: "", serviceId, addOnIds: [], notes: "" };
+}
+
+function getParticipantLine(
+  participant: Pick<ParticipantFormRow, "serviceId" | "addOnIds">,
+  fallbackServiceId: string,
+  services: ServiceRow[],
+) {
+  const serviceId = participant.serviceId || fallbackServiceId;
+  const service = services.find((s) => s.id === serviceId);
+  const addOns = (participant.addOnIds ?? [])
+    .map((id) => service?.add_ons?.find((ao) => ao.id === id))
+    .filter((ao): ao is AddOnRow => Boolean(ao));
+  const basePrice = Number(service?.price ?? 0) || 0;
+  const baseDuration = Number(service?.duration_minutes ?? 60) || 60;
+  const addOnPrice = addOns.reduce((sum, ao) => sum + (Number(ao.price ?? 0) || 0), 0);
+  const addOnDuration = addOns.reduce((sum, ao) => sum + (Number(ao.duration_minutes ?? 0) || 0), 0);
+  return {
+    serviceId,
+    service,
+    addOns,
+    price: basePrice + addOnPrice,
+    durationMinutes: baseDuration + addOnDuration,
+  };
+}
+
 export default function GroupBookingsScreen() {
   useResponsive();
   const router = useRouter();
@@ -286,6 +357,7 @@ export default function GroupBookingsScreen() {
   const services = useMemo(() => (Array.isArray(servicesRaw) ? servicesRaw : []), [servicesRaw]);
   const productsList = useMemo(() => normalizeProductsList(productsRaw) as ProductRow[], [productsRaw]);
   const teamMembers = useMemo(() => (Array.isArray(teamRaw) ? teamRaw : []), [teamRaw]);
+  const [selectedServiceCategory, setSelectedServiceCategory] = useState("all");
   const packagesList = useMemo<PackageRow[]>(
     () =>
       (packagesRaw?.packages ?? []).filter(
@@ -293,12 +365,43 @@ export default function GroupBookingsScreen() {
       ),
     [packagesRaw],
   );
+  const parentServices = useMemo(
+    () => services.filter((s) => !s.parent_service_id && s.service_type !== "variant"),
+    [services],
+  );
+  const variantServices = useMemo(
+    () => services.filter((s) => s.parent_service_id || s.service_type === "variant"),
+    [services],
+  );
+  const servicesForPicking = useMemo(
+    () => [...parentServices, ...variantServices],
+    [parentServices, variantServices],
+  );
+  const serviceCategoryOptions = useMemo(() => {
+    const categories = new Map<string, { id: string; label: string; count: number }>();
+    parentServices.forEach((service) => {
+      const info = getServiceCategoryInfo(service);
+      const existing = categories.get(info.id);
+      if (existing) existing.count += 1;
+      else categories.set(info.id, { ...info, count: 1 });
+    });
+    return Array.from(categories.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [parentServices]);
+  const visibleParentServices = useMemo(
+    () =>
+      selectedServiceCategory === "all"
+        ? parentServices
+        : parentServices.filter((s) => getServiceCategoryInfo(s).id === selectedServiceCategory),
+    [parentServices, selectedServiceCategory],
+  );
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<GroupBooking | null>(null);
   const [showAddParticipant, setShowAddParticipant] = useState(false);
-  const [participantForm, setParticipantForm] = useState({ name: "", phone: "", email: "" });
+  const [participantForm, setParticipantForm] = useState<ParticipantFormRow>(
+    createBlankParticipant("participant-form"),
+  );
   const [showEdit, setShowEdit] = useState(false);
   // B9: persist the id the edit sheet is operating on so a PATCH never goes
   // out to `/api/provider/group-bookings/` with an empty id after we clear
@@ -400,15 +503,24 @@ export default function GroupBookingsScreen() {
   const groups = useMemo(() => groupData?.data ?? [], [groupData?.data]);
 
   const createSlotParams = useMemo(() => {
-    const serviceIds = createForm.serviceId ? [createForm.serviceId] : [];
+    const serviceIds = Array.from(
+      new Set([
+        createForm.serviceId,
+        ...createParticipants.map((p) => p.serviceId),
+      ].filter(Boolean)),
+    );
+    const participantDurations = createParticipants.map(
+      (p) => getParticipantLine(p, createForm.serviceId, services).durationMinutes,
+    );
+    const duration = Math.max(Number(createForm.duration) || 60, ...participantDurations, 60);
     return {
       date: createForm.date,
-      duration: Number(createForm.duration) || 60,
+      duration,
       staffId: createForm.staffId || "",
       locationId: createForm.locationId || selectedLocationId || "",
       serviceIds,
     };
-  }, [createForm.date, createForm.duration, createForm.staffId, createForm.locationId, createForm.serviceId, selectedLocationId]);
+  }, [createForm.date, createForm.duration, createForm.staffId, createForm.locationId, createForm.serviceId, createParticipants, services, selectedLocationId]);
 
   const createSlotsUrl = useMemo(() => {
     if (!createSlotParams.date || !YMD_RE.test(createSlotParams.date)) return "";
@@ -456,13 +568,15 @@ export default function GroupBookingsScreen() {
       `/api/provider/bookings/available-slots?date=${encodeURIComponent(editSlotParams.date)}` +
       `&duration_minutes=${encodeURIComponent(String(editSlotParams.duration))}`;
     if (editSlotParams.staffId) q += `&staff_ids=${encodeURIComponent(editSlotParams.staffId)}`;
-    if (editSlotParams.locationId) q += `&location_id=${encodeURIComponent(editSlotParams.locationId)}`;
+    if (editingGroupContext?.locationType !== "at_home" && editSlotParams.locationId) q += `&location_id=${encodeURIComponent(editSlotParams.locationId)}`;
     if (editSlotParams.serviceIds.length > 0) {
       q += `&service_ids=${encodeURIComponent(editSlotParams.serviceIds.join(","))}`;
     }
-    q += `&mode=salon&travel_buffer=0`;
+    q += editingGroupContext?.locationType === "at_home"
+      ? "&mode=mobile&travel_buffer=30"
+      : "&mode=salon&travel_buffer=0";
     return q;
-  }, [showEdit, editSlotParams]);
+  }, [showEdit, editSlotParams, editingGroupContext?.locationType]);
 
   const { data: editSlotsData, loading: editSlotsLoading } = useApi<AvailableSlotsApiResponse>(
     editSlotsUrl,
@@ -520,6 +634,15 @@ export default function GroupBookingsScreen() {
   }, [createForm.date, createSlotRows]);
 
   useEffect(() => {
+    if (
+      selectedServiceCategory !== "all" &&
+      !serviceCategoryOptions.some((category) => category.id === selectedServiceCategory)
+    ) {
+      setSelectedServiceCategory("all");
+    }
+  }, [selectedServiceCategory, serviceCategoryOptions]);
+
+  useEffect(() => {
     if (!showEdit) return;
     if (!editForm.date || !YMD_RE.test(editForm.date)) return;
     const available = editSlotRows.filter((s) => s.available).map((s) => s.time);
@@ -552,6 +675,7 @@ export default function GroupBookingsScreen() {
     if (args.staffId) params.set("staff_ids", args.staffId);
     if (args.locationType !== "at_home" && args.locationId) params.set("location_id", args.locationId);
     if (args.serviceId) params.set("offering_ids", args.serviceId);
+    if (editingGroupId) params.set("exclude_group_booking_id", editingGroupId);
     const res = await api.get<{ available?: boolean; conflicts?: string[] }>(
       `/api/provider/bookings/check-availability?${params.toString()}`,
     );
@@ -761,7 +885,7 @@ export default function GroupBookingsScreen() {
       travelFee: "",
       packageId: "",
     });
-    setCreateParticipants([{ id: `participant-${Date.now()}`, name: "", phone: "", email: "" }]);
+    setCreateParticipants([createBlankParticipant(`participant-${Date.now()}`)]);
     setCreateProducts([]);
     setShowCreate(true);
   }
@@ -769,7 +893,7 @@ export default function GroupBookingsScreen() {
   function addCreateParticipantRow() {
     setCreateParticipants((prev) => [
       ...prev,
-      { id: `participant-${Date.now()}-${prev.length}`, name: "", phone: "", email: "" },
+      createBlankParticipant(`participant-${Date.now()}-${prev.length}`, createForm.serviceId),
     ]);
   }
 
@@ -779,7 +903,7 @@ export default function GroupBookingsScreen() {
 
   function removeCreateParticipantRow(id: string) {
     setCreateParticipants((prev) =>
-      prev.length <= 1 ? [{ id: `participant-${Date.now()}`, name: "", phone: "", email: "" }] : prev.filter((p) => p.id !== id),
+      prev.length <= 1 ? [createBlankParticipant(`participant-${Date.now()}`, createForm.serviceId)] : prev.filter((p) => p.id !== id),
     );
   }
 
@@ -789,6 +913,9 @@ export default function GroupBookingsScreen() {
     scheduledDate: string;
     scheduledTime: string;
     serviceId: string;
+    serviceName?: string;
+    addOns?: AddOnRow[];
+    packageId?: string | null;
     staffId?: string | null;
     locationId?: string | null;
     locationType: "at_salon" | "at_home";
@@ -805,7 +932,7 @@ export default function GroupBookingsScreen() {
     products?: SelectedGroupProduct[];
     durationMinutes: number;
     unitPrice: number;
-    participant: { name: string; phone?: string; email?: string };
+    participant: { name: string; phone?: string; email?: string; notes?: string };
     isPrimary: boolean;
   }) {
     const scheduledAt = buildZonedIsoForWallClock(
@@ -840,15 +967,18 @@ export default function GroupBookingsScreen() {
       team_member_id: args.staffId || undefined,
       service_id: args.serviceId,
       offering_id: args.serviceId,
+      package_id: args.packageId || undefined,
       services: [
         {
           service_id: args.serviceId,
           offering_id: args.serviceId,
           serviceId: args.serviceId,
           staff_id: args.staffId || undefined,
+          add_on_ids: args.addOns && args.addOns.length > 0 ? args.addOns.map((ao) => ao.id) : undefined,
           price: args.unitPrice,
           duration_minutes: args.durationMinutes,
           duration: args.durationMinutes,
+          name: args.serviceName || "Service",
         },
       ],
       products: (args.products ?? []).map((p) => ({
@@ -867,8 +997,8 @@ export default function GroupBookingsScreen() {
       booking_source: "provider",
       status: "confirmed",
       special_requests: args.groupRef
-        ? `Group booking ${args.groupRef}`
-        : `Group booking ${args.groupId}`,
+        ? [`Group booking ${args.groupRef}`, args.participant.notes?.trim()].filter(Boolean).join("\n")
+        : [`Group booking ${args.groupId}`, args.participant.notes?.trim()].filter(Boolean).join("\n"),
     };
 
     const bookingRes = await createBooking("/api/provider/bookings", bookingPayload);
@@ -883,6 +1013,17 @@ export default function GroupBookingsScreen() {
     const linkRes = await addParticipant(`/api/provider/group-bookings/${args.groupId}/participants`, {
       booking_id: createdBookingId,
       participant_name: args.participant.name.trim(),
+      service_id: args.serviceId,
+      service_name: args.serviceName || undefined,
+      price: args.unitPrice,
+      duration_minutes: args.durationMinutes,
+      addons: (args.addOns ?? []).map((ao) => ({
+        id: ao.id,
+        name: ao.name,
+        price: Number(ao.price ?? 0) || 0,
+        duration: Number(ao.duration_minutes ?? 0) || 0,
+      })),
+      notes: args.participant.notes?.trim() || undefined,
       is_primary_contact: args.isPrimary,
     });
     if (linkRes.error) {
@@ -942,6 +1083,15 @@ export default function GroupBookingsScreen() {
       }
       return next;
     });
+    if (firstServiceId) {
+      setCreateParticipants((prev) =>
+        prev.map((participant) => ({
+          ...participant,
+          serviceId: participant.serviceId || firstServiceId,
+          addOnIds: participant.serviceId && participant.serviceId !== firstServiceId ? participant.addOnIds : [],
+        })),
+      );
+    }
     Haptics.selectionAsync().catch(() => {});
   }
 
@@ -997,9 +1147,13 @@ export default function GroupBookingsScreen() {
     }
     const participantsToCreate = createParticipants
       .map((p) => ({
+        id: p.id,
         name: p.name.trim(),
         phone: p.phone.trim(),
         email: p.email.trim(),
+        serviceId: p.serviceId || createForm.serviceId,
+        addOnIds: p.addOnIds,
+        notes: p.notes.trim(),
       }))
       .filter((p) => p.name.length > 0 || p.phone.length > 0 || p.email.length > 0);
     if (participantsToCreate.length === 0) {
@@ -1014,6 +1168,10 @@ export default function GroupBookingsScreen() {
       const phoneErr = validateE164Phone(p.phone);
       if (phoneErr) {
         Alert.alert("Invalid phone", `Participant ${idx + 1}: ${phoneErr}`);
+        return;
+      }
+      if (!p.serviceId) {
+        Alert.alert("Participant service required", `Select what participant ${idx + 1} wants.`);
         return;
       }
     }
@@ -1031,11 +1189,15 @@ export default function GroupBookingsScreen() {
     const svc = createForm.serviceId ? services.find((s) => s.id === createForm.serviceId) : undefined;
     const travelFee = Math.max(0, Number(createForm.travelFee || 0) || 0);
     const productsTotal = createProducts.reduce((sum, p) => sum + (Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1), 0);
-    const participantTotal = participantsToCreate.length * (Number(svc?.price ?? 0) || 0);
+    const participantLines = participantsToCreate.map((p) =>
+      getParticipantLine({ serviceId: p.serviceId, addOnIds: p.addOnIds }, createForm.serviceId, services),
+    );
+    const participantTotal = participantLines.reduce((sum, line) => sum + line.price, 0);
+    const totalDuration = Math.max(duration, ...participantLines.map((line) => line.durationMinutes));
     const payload: Record<string, unknown> = {
       title: createForm.title.trim() || (svc ? serviceLabel(svc) : undefined) || "Group Session",
       scheduled_at: scheduledAt,
-      duration_minutes: duration,
+      duration_minutes: totalDuration,
       max_participants: maxParticipants,
       notes: createForm.notes.trim() || undefined,
       location_type: createForm.locationType,
@@ -1083,14 +1245,17 @@ export default function GroupBookingsScreen() {
     }
 
     const groupRef = createdGroup?.ref_number || createdGroup?.data?.ref_number || null;
-    const unitPrice = Number(svc?.price ?? 0) || 0;
     for (const [idx, participant] of participantsToCreate.entries()) {
+      const line = participantLines[idx];
       const res = await createParticipantBookingAndLink({
         groupId: createdGroupId,
         groupRef,
         scheduledDate: createForm.date,
         scheduledTime: createForm.time,
-        serviceId: createForm.serviceId,
+        serviceId: line.serviceId,
+        serviceName: line.service ? serviceLabel(line.service) : undefined,
+        addOns: line.addOns,
+        packageId: createForm.packageId || null,
         staffId: createForm.staffId,
         locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
         locationType: createForm.locationType,
@@ -1107,8 +1272,8 @@ export default function GroupBookingsScreen() {
             }
           : undefined,
         products: idx === 0 ? createProducts : [],
-        durationMinutes: duration,
-        unitPrice,
+        durationMinutes: line.durationMinutes,
+        unitPrice: line.price,
         participant,
         isPrimary: idx === 0,
       });
@@ -1248,7 +1413,7 @@ export default function GroupBookingsScreen() {
   }
 
   function openAddParticipant() {
-    setParticipantForm({ name: "", phone: "", email: "" });
+    setParticipantForm(createBlankParticipant("participant-form", selectedGroup?.service_id ?? ""));
     setShowAddParticipant(true);
   }
 
@@ -1262,20 +1427,17 @@ export default function GroupBookingsScreen() {
       Alert.alert("Invalid phone", phoneErr);
       return;
     }
-    const serviceId = selectedGroup.service_id ?? null;
+    const serviceId = participantForm.serviceId || selectedGroup.service_id || "";
     if (!serviceId) {
       Alert.alert(
         "Service missing",
-        "This group booking has no service. Edit the group booking first to set a service, then add participants.",
+        "Select what this participant wants before adding them.",
       );
       return;
     }
 
     const matchedService = services.find((s) => s.id === serviceId);
-    const unitPrice = Number(selectedGroup.price_per_person ?? matchedService?.price ?? 0) || 0;
-    const durationMinutes = Number(
-      selectedGroup.duration_minutes || matchedService?.duration_minutes || 60,
-    );
+    const line = getParticipantLine(participantForm, selectedGroup.service_id ?? "", services);
 
     const res = await createParticipantBookingAndLink({
       groupId: selectedGroup.id,
@@ -1299,8 +1461,11 @@ export default function GroupBookingsScreen() {
           }
         : undefined,
       products: [],
-      durationMinutes,
-      unitPrice,
+      durationMinutes: line.durationMinutes || Number(selectedGroup.duration_minutes || matchedService?.duration_minutes || 60),
+      unitPrice: line.price,
+      serviceName: matchedService ? serviceLabel(matchedService) : undefined,
+      addOns: line.addOns,
+      packageId: selectedGroup.package_id ?? null,
       participant: participantForm,
       isPrimary: (selectedGroup.current_participants ?? 0) === 0,
     });
@@ -1637,6 +1802,16 @@ export default function GroupBookingsScreen() {
                           <Text style={twStyle("text-sm font-medium text-gray-900")}>{displayName}</Text>
                           {p.service_name ? (
                             <Text style={twStyle("text-xs text-gray-500")}>{p.service_name}</Text>
+                          ) : null}
+                          {Array.isArray(p.addons) && p.addons.length > 0 ? (
+                            <Text style={twStyle("text-xs text-indigo-600")} numberOfLines={2}>
+                              Add-ons: {p.addons.map((ao) => ao.name || ao.id || ao.addonId).filter(Boolean).join(", ")}
+                            </Text>
+                          ) : null}
+                          {p.notes ? (
+                            <Text style={twStyle("text-xs text-gray-500")} numberOfLines={2}>
+                              Note: {p.notes}
+                            </Text>
                           ) : null}
                           {displayPhone && (
                             <Text style={twStyle("text-xs text-gray-400")}>{displayPhone}</Text>
@@ -2124,6 +2299,71 @@ export default function GroupBookingsScreen() {
             placeholderTextColor="#9ca3af"
             keyboardType="email-address"
           />
+          {servicesForPicking.length > 0 ? (
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Participant service *</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {servicesForPicking.map((svc) => (
+                  <SelectChip
+                    key={`add-participant-service-${svc.id}`}
+                    label={`${serviceLabel(svc)}${svc.price != null ? ` · ${formatCurrency(Number(svc.price) || 0)}` : ""}`}
+                    selected={participantForm.serviceId === svc.id}
+                    onPress={() => setParticipantForm((p) => ({ ...p, serviceId: svc.id, addOnIds: [] }))}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+          {(() => {
+            const line = getParticipantLine(participantForm, selectedGroup?.service_id ?? "", services);
+            const addOns = line.service?.add_ons ?? [];
+            if (addOns.length === 0) return null;
+            return (
+              <View style={twStyle("mb-3")}>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Add-ons</Text>
+                <View style={twStyle("flex-row flex-wrap")}>
+                  {addOns.map((ao) => {
+                    const checked = participantForm.addOnIds.includes(ao.id);
+                    return (
+                      <TouchableOpacity
+                        key={`add-participant-addon-${ao.id}`}
+                        onPress={() =>
+                          setParticipantForm((p) => ({
+                            ...p,
+                            addOnIds: checked
+                              ? p.addOnIds.filter((id) => id !== ao.id)
+                              : [...p.addOnIds, ao.id],
+                          }))
+                        }
+                        style={[
+                          twStyle(`mb-2 rounded-full border px-3 py-1.5 ${checked ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`),
+                          { marginRight: 8 },
+                        ]}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked }}
+                      >
+                        <Text style={twStyle(`text-xs font-medium ${checked ? "text-indigo-700" : "text-gray-600"}`)}>
+                          {ao.name}{ao.price ? ` · ${formatCurrency(Number(ao.price) || 0)}` : ""}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={twStyle("text-[11px] font-medium text-indigo-700")}>
+                  Total for participant: {line.durationMinutes} min · {formatCurrency(line.price)}
+                </Text>
+              </View>
+            );
+          })()}
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Participant notes</Text>
+          <TextInput
+            style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            value={participantForm.notes}
+            onChangeText={(t) => setParticipantForm((p) => ({ ...p, notes: t }))}
+            placeholder="Preferences, allergies, add-on notes..."
+            placeholderTextColor="#9ca3af"
+            multiline
+          />
           <ActionButton
             label="Add Participant"
             onPress={handleAddParticipant}
@@ -2359,29 +2599,60 @@ export default function GroupBookingsScreen() {
 
           {services.length > 0 ? (
             <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Service</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Default service</Text>
+              <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+                This pre-fills participants. Each participant can still choose a different service below.
+              </Text>
+              {serviceCategoryOptions.length > 1 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-2")}>
+                  <SelectChip
+                    label="All"
+                    selected={selectedServiceCategory === "all"}
+                    onPress={() => setSelectedServiceCategory("all")}
+                  />
+                  {serviceCategoryOptions.map((category) => (
+                    <SelectChip
+                      key={category.id}
+                      label={`${category.label} (${category.count})`}
+                      selected={selectedServiceCategory === category.id}
+                      onPress={() => setSelectedServiceCategory(category.id)}
+                    />
+                  ))}
+                </ScrollView>
+              ) : null}
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <SelectChip
                   label="None"
                   selected={!createForm.serviceId}
                   onPress={() => setCreateForm((p) => ({ ...p, serviceId: "" }))}
                 />
-                {services.map((svc) => (
-                  <SelectChip
-                    key={svc.id}
-                    label={serviceLabel(svc)}
-                    selected={createForm.serviceId === svc.id}
-                    onPress={() => {
-                      setCreateForm((p) => {
-                        const next = { ...p, serviceId: svc.id };
-                        if (svc.duration_minutes && svc.duration_minutes > 0) {
-                          next.duration = String(svc.duration_minutes);
-                        }
-                        return next;
-                      });
-                    }}
-                  />
-                ))}
+                {visibleParentServices.map((svc) => {
+                  const variants = variantServices.filter((v) => v.parent_service_id === svc.id);
+                  const serviceChoices = variants.length > 0 ? [svc, ...variants] : [svc];
+                  return serviceChoices.map((choice) => (
+                    <SelectChip
+                      key={choice.id}
+                      label={serviceLabel(choice)}
+                      selected={createForm.serviceId === choice.id}
+                      onPress={() => {
+                        setCreateForm((p) => {
+                          const next = { ...p, serviceId: choice.id };
+                          if (choice.duration_minutes && choice.duration_minutes > 0) {
+                            next.duration = String(choice.duration_minutes);
+                          }
+                          return next;
+                        });
+                        setCreateParticipants((prev) =>
+                          prev.map((participant) =>
+                            participant.serviceId
+                              ? participant
+                              : { ...participant, serviceId: choice.id, addOnIds: [] },
+                          ),
+                        );
+                      }}
+                    />
+                  ));
+                })}
               </ScrollView>
             </View>
           ) : null}
@@ -2625,6 +2896,84 @@ export default function GroupBookingsScreen() {
                   placeholderTextColor="#9ca3af"
                   keyboardType="email-address"
                   autoCapitalize="none"
+                />
+                <View style={twStyle("mt-3")}>
+                  <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>What does this participant want? *</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {servicesForPicking.map((svc) => (
+                      <SelectChip
+                        key={`${participant.id}-${svc.id}`}
+                        label={`${serviceLabel(svc)}${svc.price != null ? ` · ${formatCurrency(Number(svc.price) || 0)}` : ""}`}
+                        selected={(participant.serviceId || createForm.serviceId) === svc.id}
+                        onPress={() =>
+                          updateCreateParticipantRow(participant.id, {
+                            serviceId: svc.id,
+                            addOnIds: [],
+                          })
+                        }
+                      />
+                    ))}
+                  </ScrollView>
+                  {(() => {
+                    const line = getParticipantLine(participant, createForm.serviceId, services);
+                    const addOns = line.service?.add_ons ?? [];
+                    if (!line.service) {
+                      return (
+                        <Text style={twStyle("mt-1 text-[11px] text-red-600")}>
+                          Select a service for this participant.
+                        </Text>
+                      );
+                    }
+                    return (
+                      <View>
+                        {addOns.length > 0 ? (
+                          <View style={twStyle("mt-2")}>
+                            <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>Add-ons</Text>
+                            <View style={twStyle("flex-row flex-wrap")}>
+                              {addOns.map((ao) => {
+                                const checked = participant.addOnIds.includes(ao.id);
+                                return (
+                                  <TouchableOpacity
+                                    key={`${participant.id}-ao-${ao.id}`}
+                                    onPress={() => {
+                                      updateCreateParticipantRow(participant.id, {
+                                        addOnIds: checked
+                                          ? participant.addOnIds.filter((id) => id !== ao.id)
+                                          : [...participant.addOnIds, ao.id],
+                                      });
+                                    }}
+                                    style={[
+                                      twStyle(`mb-2 rounded-full border px-3 py-1.5 ${checked ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`),
+                                      { marginRight: 8 },
+                                    ]}
+                                    accessibilityRole="checkbox"
+                                    accessibilityState={{ checked }}
+                                  >
+                                    <Text style={twStyle(`text-xs font-medium ${checked ? "text-indigo-700" : "text-gray-600"}`)}>
+                                      {ao.name}
+                                      {ao.price ? ` · ${formatCurrency(Number(ao.price) || 0)}` : ""}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        ) : null}
+                        <Text style={twStyle("mt-1 text-[11px] font-medium text-purple-800")}>
+                          {serviceLabel(line.service)} · {line.durationMinutes} min · {formatCurrency(line.price)}
+                        </Text>
+                      </View>
+                    );
+                  })()}
+                </View>
+                <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Participant notes</Text>
+                <TextInput
+                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
+                  value={participant.notes}
+                  onChangeText={(notes) => updateCreateParticipantRow(participant.id, { notes })}
+                  placeholder="e.g. wants gel removal, allergy, prefers quiet service"
+                  placeholderTextColor="#9ca3af"
+                  multiline
                 />
               </View>
             ))}

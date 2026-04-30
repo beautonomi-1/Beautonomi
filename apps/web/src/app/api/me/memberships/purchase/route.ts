@@ -2,15 +2,17 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { handleApiError, successResponse, errorResponse } from "@/lib/supabase/api-helpers";
-import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
-import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
-import { getTenantRegionConfig } from "@/lib/regions/config";
-import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import { createMembershipPurchase } from "@/app/api/me/membership/_helpers/purchase-membership";
 
 const schema = z.object({
   plan_id: z.string().uuid(),
+  campaign_id: z.string().optional(),
+  source: z.string().optional(),
+  utm_source: z.string().optional(),
+  utm_medium: z.string().optional(),
+  utm_campaign: z.string().optional(),
+  referrer_path: z.string().optional(),
 });
 
 /**
@@ -21,8 +23,6 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
-    const tenantRegion = await getTenantRegionConfig(tenantId);
-    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const {
       data: { user },
       error: userError,
@@ -33,75 +33,22 @@ export async function POST(request: NextRequest) {
     const parsed = schema.safeParse(body);
     if (!parsed.success) return errorResponse("Validation failed", "VALIDATION_ERROR", 400, parsed.error.issues);
 
-    const { data: plan, error: planError } = await (supabase.from("membership_plans") as any)
-      .select("*")
-      .eq("id", parsed.data.plan_id)
-      .eq("is_active", true)
-      .single();
-
-    if (planError || !plan) return errorResponse("Membership plan not found", "NOT_FOUND", 404);
-
-    const planData = plan as any;
-    const amount = Number(planData.price_monthly || 0);
-    const currency = planData.currency || lastResortCurrency;
-
-    const { data: providerRow } = await supabase
-      .from("providers")
-      .select("tenant_id")
-      .eq("id", planData.provider_id as string)
-      .maybeSingle();
-    if (
-      !resourceTenantMatchesHostTenant(
-        tenantId,
-        (providerRow as { tenant_id?: string | null } | null)?.tenant_id,
-      )
-    ) {
-      return errorResponse(
-        "This membership is not available in your current market.",
-        "TENANT_MISMATCH",
-        403,
-      );
-    }
-
-    const { data: order, error: orderError } = await (supabase.from("membership_orders") as any)
-      .insert({
-        tenant_id: tenantId,
-        user_id: user.id,
-        provider_id: planData.provider_id,
-        plan_id: planData.id,
-        amount,
-        currency,
-        status: "pending",
-      })
-      .select("*")
-      .single();
-
-    if (orderError || !order) throw orderError || new Error("Failed to create membership order");
-
-    const reference = generateTransactionReference("membership", order.id);
-    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success`;
-
-    const paystackData = await initializePaystackTransaction({
-      email: user.email!,
-      amountInSmallestUnit: convertToSmallestUnit(amount),
-      currency,
-      reference,
-      callback_url: callbackUrl,
-      metadata: {
-        membership_order_id: order.id,
-        user_id: user.id,
-        provider_id: planData.provider_id,
-        plan_id: planData.id,
-      },
+    const result = await createMembershipPurchase({
+      userId: user.id,
+      userEmail: user.email,
+      planId: parsed.data.plan_id,
       tenantId,
+      attribution: {
+        campaign_id: parsed.data.campaign_id,
+        source: parsed.data.source ?? "partner_profile_memberships",
+        utm_source: parsed.data.utm_source,
+        utm_medium: parsed.data.utm_medium,
+        utm_campaign: parsed.data.utm_campaign,
+        referrer_path: parsed.data.referrer_path,
+      },
     });
 
-    const paymentUrl = paystackData?.data?.authorization_url || null;
-    await (supabase.from("membership_orders") as any)
-      .update({ paystack_reference: reference })
-      .eq("id", order.id);
-
-    return successResponse({ order_id: order.id, reference, payment_url: paymentUrl });
+    return successResponse(result);
   } catch (error) {
     return handleApiError(error, "Failed to initialize membership purchase");
   }

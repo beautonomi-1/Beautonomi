@@ -20,6 +20,7 @@ const createCustomOfferSchema = z.object({
   expiration_at: z.string(), // ISO
   notes: z.string().max(4000).optional().nullable(),
   preferred_start_at: z.string().nullable().optional(),
+  scheduled_at: z.string().nullable().optional(),
   image_urls: z.array(z.string().url()).max(6).optional().default([]),
   staff_id: z.string().uuid().optional().nullable(),
   location_id: z.string().uuid().optional().nullable(), // For at_salon: venue for the booking
@@ -75,7 +76,8 @@ export async function POST(request: NextRequest) {
       return handleApiError(new Error("Customer not found"), "Customer not found", 404);
     }
 
-    const preferredIso = body.preferred_start_at ? new Date(body.preferred_start_at).toISOString() : null;
+    const requestedStart = body.preferred_start_at ?? body.scheduled_at ?? null;
+    const preferredIso = requestedStart ? new Date(requestedStart).toISOString() : null;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 

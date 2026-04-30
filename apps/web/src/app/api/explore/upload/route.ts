@@ -43,7 +43,9 @@ export async function POST(request: NextRequest) {
     if (!isOwner) {
       const hasCreatePermission = await hasPermission(
         user.id,
-        "create_explore_posts"
+        "create_explore_posts",
+        undefined,
+        request,
       );
       if (!hasCreatePermission) {
         return errorResponse(

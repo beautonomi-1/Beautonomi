@@ -45,6 +45,7 @@ interface RevenueData {
   daily_trend: { date: string; revenue: number }[];
   avg_per_booking?: number;
   transaction_count?: number;
+  time_basis_note?: string;
 }
 
 function BarChart({
@@ -130,9 +131,10 @@ export default function RevenueReport() {
     if (!data) return;
     const text = [
       `Revenue Report (${from} to ${to})`,
-      `Total Revenue: ${formatCurrency(data.total_revenue)}`,
+      `Service Earnings: ${formatCurrency(data.total_revenue)}`,
       data.transaction_count ? `Transactions: ${data.transaction_count}` : "",
       data.avg_per_booking ? `Avg per Booking: ${formatCurrency(data.avg_per_booking)}` : "",
+      data.time_basis_note ? `Basis: ${data.time_basis_note}` : "",
       "",
       "By Service:",
       ...data.revenue_by_service.map((s) => `  ${s.service}: ${formatCurrency(s.revenue)}`),
@@ -145,7 +147,7 @@ export default function RevenueReport() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Revenue" showBack subtitle="Income trends & breakdowns" />
+      <ScreenHeader title="Revenue" showBack subtitle="Ledger earnings trends & breakdowns" />
 
       <View style={twStyle("mb-3")}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
@@ -181,7 +183,7 @@ export default function RevenueReport() {
       {data && (
         <View>
           <View style={[twStyle("rounded-2xl bg-green-50 p-5 items-center"), { marginBottom: 16 }]}>
-            <Text style={twStyle("text-sm text-green-700")}>Total Revenue</Text>
+            <Text style={twStyle("text-sm text-green-700")}>Service earnings</Text>
             <Text style={twStyle("text-3xl font-bold text-green-900 mt-1")}>{formatCurrency(data.total_revenue)}</Text>
             {data.previous_revenue != null && data.previous_revenue > 0 && (
               <Text style={twStyle("text-xs text-green-600 mt-1")}>
@@ -189,6 +191,9 @@ export default function RevenueReport() {
                 {(((data.total_revenue - data.previous_revenue) / data.previous_revenue) * 100).toFixed(1)}% vs previous period
               </Text>
             )}
+            {data.time_basis_note ? (
+              <Text style={twStyle("mt-2 text-center text-xs leading-4 text-green-700")}>{data.time_basis_note}</Text>
+            ) : null}
           </View>
 
           <ReportResponsiveStatRow>

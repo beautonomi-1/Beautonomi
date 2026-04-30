@@ -38,6 +38,49 @@ interface StaffMember {
   commission_rate?: number | null;
   is_active: boolean;
   mobileReady?: boolean;
+  locations?: {
+    location_id: string;
+    location_name: string | null;
+    location_city?: string | null;
+    is_primary: boolean;
+  }[];
+  service_ids?: string[];
+}
+
+interface ServiceItem {
+  id: string;
+  title: string;
+}
+
+interface Shift {
+  id: string | null;
+  day_of_week: string;
+  start_time: string | null;
+  end_time: string | null;
+  is_working?: boolean;
+}
+
+interface DayOff {
+  id: string;
+  date: string;
+  reason?: string | null;
+  type?: string | null;
+}
+
+interface StaffBooking {
+  id: string;
+  booking_number?: string | null;
+  status: string;
+  scheduled_at: string;
+  customer_name?: string | null;
+  service_names?: string[];
+  total_amount?: number;
+  currency?: string;
+}
+
+interface WeeklyStat {
+  day: string;
+  count: number;
 }
 
 const ROLES = [
@@ -48,6 +91,7 @@ const ROLES = [
 
 interface TeamAccessPayload {
   staff_id: string | null;
+  is_business_owner?: boolean;
   can_manage_team: boolean;
 }
 
@@ -74,13 +118,13 @@ const LINK_ITEMS: {
     label: "Schedule",
     icon: "calendar-outline",
     route: "/(app)/(tabs)/more/staff-schedule",
-    passStaffId: "staff_id",
+    passStaffId: "staffId",
   },
   {
     label: "Days off",
     icon: "sunny-outline",
     route: "/(app)/(tabs)/more/days-off",
-    passStaffId: "staff_id",
+    passStaffId: "staffId",
   },
   {
     label: "Commission",
@@ -102,16 +146,35 @@ export default function TeamMemberDetailScreen() {
   const [editForm, setEditForm] = useState({
     name: "",
     phone: "",
+    avatar_url: "",
     role: "provider_staff",
     commission_rate: "",
   });
 
   const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
-  const canManageTeam = access?.can_manage_team === true;
+  const canManageTeam =
+    access?.is_business_owner === true || access?.can_manage_team === true;
   const isSelf = Boolean(id && access?.staff_id === id);
 
   const { data: member, loading, error, refresh } = useApi<StaffMember>(
     id ? `/api/provider/staff/${id}` : "",
+    { enabled: !!id }
+  );
+  const { data: services } = useApi<ServiceItem[]>("/api/provider/services");
+  const { data: shifts, refresh: refreshShifts } = useApi<Shift[]>(
+    id ? `/api/provider/staff/${id}/shifts` : "",
+    { enabled: !!id }
+  );
+  const { data: daysOff, refresh: refreshDaysOff } = useApi<DayOff[]>(
+    id ? `/api/provider/staff/${id}/days-off` : "",
+    { enabled: !!id }
+  );
+  const { data: bookings, refresh: refreshBookings } = useApi<StaffBooking[]>(
+    id ? `/api/provider/staff/${id}/bookings?limit=5` : "",
+    { enabled: !!id }
+  );
+  const { data: weeklyStats } = useApi<WeeklyStat[]>(
+    id ? `/api/provider/staff/${id}/stats/weekly` : "",
     { enabled: !!id }
   );
   const { execute: updateStaff, loading: saving } = useApiMutation("patch");
@@ -134,17 +197,29 @@ export default function TeamMemberDetailScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refresh();
+      await Promise.all([refresh(), refreshShifts(), refreshDaysOff(), refreshBookings()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refresh]);
+  }, [refresh, refreshShifts, refreshDaysOff, refreshBookings]);
+
+  const serviceNames = (services ?? [])
+    .filter((svc) => member?.service_ids?.includes(svc.id))
+    .map((svc) => svc.title);
+  const upcomingDaysOff = (daysOff ?? []).filter((d) => {
+    const day = new Date(`${d.date}T12:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return day >= today;
+  });
+  const weeklyBookings = (weeklyStats ?? []).reduce((sum, row) => sum + Number(row.count || 0), 0);
 
   const openEdit = useCallback(() => {
     if (!member) return;
     setEditForm({
       name: member.name,
       phone: member.phone ?? "",
+      avatar_url: member.avatar_url ?? "",
       role: member.role,
       commission_rate: member.commission_rate != null ? String(member.commission_rate) : "",
     });
@@ -161,10 +236,16 @@ export default function TeamMemberDetailScreen() {
       Alert.alert("Invalid phone", phoneErr);
       return;
     }
+    const avatarUrl = editForm.avatar_url.trim();
+    if (avatarUrl && !/^https?:\/\/.+/i.test(avatarUrl)) {
+      Alert.alert("Invalid avatar URL", "Use a full image URL that starts with https:// or http://.");
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const payload: Record<string, unknown> = {
       name: editForm.name.trim(),
       phone: editForm.phone.trim() || null,
+      avatar_url: avatarUrl || null,
     };
     if (canManageTeam) {
       payload.role = editForm.role;
@@ -340,6 +421,61 @@ export default function TeamMemberDetailScreen() {
           {member.commission_rate != null ? (
             <Row label="Commission" value={`${member.commission_rate}%`} />
           ) : null}
+          <Row label="Mobile" value={member.mobileReady ? "Ready" : "Not marked ready"} />
+        </View>
+
+        <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+          <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Profile readiness</Text>
+          <ChecklistRow
+            complete={Boolean(member.avatar_url)}
+            label={member.avatar_url ? "Avatar added" : "Add an avatar so clients and staff can identify them quickly"}
+          />
+          <ChecklistRow
+            complete={Boolean(member.phone)}
+            label={member.phone ? "Phone number added" : "Add a phone number for shift and booking communication"}
+          />
+          <ChecklistRow
+            complete={(member.locations ?? []).length > 0}
+            label={(member.locations ?? []).length > 0 ? "Locations assigned" : "Assign locations before routing bookings to this staff member"}
+          />
+          <ChecklistRow
+            complete={(member.service_ids ?? []).length > 0}
+            label={(member.service_ids ?? []).length > 0 ? "Services assigned" : "Assign services they are allowed to perform"}
+          />
+        </View>
+
+        <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+          <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Work setup</Text>
+          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>Locations</Text>
+          {(member.locations ?? []).length > 0 ? (
+            <View style={twStyle("mt-2 flex-row flex-wrap")}>
+              {(member.locations ?? []).map((loc) => (
+                <View key={loc.location_id} style={twStyle("mb-2 mr-2 rounded-full bg-gray-100 px-3 py-1.5")}>
+                  <Text style={twStyle("text-xs font-medium text-gray-700")}>
+                    {loc.location_name || "Location"}
+                    {loc.is_primary ? " · primary" : ""}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={twStyle("mt-1 text-sm text-gray-500")}>All provider locations or not assigned yet.</Text>
+          )}
+          <Text style={twStyle("mt-3 text-xs font-semibold uppercase tracking-wide text-gray-400")}>Services</Text>
+          {serviceNames.length > 0 ? (
+            <View style={twStyle("mt-2 flex-row flex-wrap")}>
+              {serviceNames.slice(0, 8).map((name) => (
+                <View key={name} style={twStyle("mb-2 mr-2 rounded-full bg-indigo-50 px-3 py-1.5")}>
+                  <Text style={twStyle("text-xs font-medium text-indigo-700")}>{name}</Text>
+                </View>
+              ))}
+              {serviceNames.length > 8 ? (
+                <Text style={twStyle("mt-1 text-xs text-gray-500")}>+{serviceNames.length - 8} more</Text>
+              ) : null}
+            </View>
+          ) : (
+            <Text style={twStyle("mt-1 text-sm text-gray-500")}>No specific services assigned.</Text>
+          )}
         </View>
 
         {canManageTeam ? (
@@ -404,6 +540,82 @@ export default function TeamMemberDetailScreen() {
               </TouchableOpacity>
             ))}
           </View>
+        </View>
+
+        <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+          <View style={twStyle("flex-row items-center justify-between")}>
+            <Text style={twStyle("text-sm font-semibold text-gray-900")}>Schedule snapshot</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{weeklyBookings} bookings this week</Text>
+          </View>
+          {(shifts ?? []).filter((s) => s.is_working !== false && s.start_time && s.end_time).slice(0, 7).map((shift) => (
+            <View key={`${shift.day_of_week}-${shift.id ?? "default"}`} style={twStyle("mt-3 flex-row items-center")}>
+              <Text style={twStyle("w-24 text-sm font-medium text-gray-700")}>{shift.day_of_week}</Text>
+              <Text style={twStyle("text-sm text-gray-600")}>{shift.start_time} - {shift.end_time}</Text>
+            </View>
+          ))}
+          {(shifts ?? []).filter((s) => s.is_working !== false && s.start_time && s.end_time).length === 0 ? (
+            <Text style={twStyle("mt-2 text-sm text-gray-500")}>No weekly shifts set yet.</Text>
+          ) : null}
+          <TouchableOpacity
+            onPress={() => router.push(`/(app)/(tabs)/more/staff-schedule?staffId=${id}` as never)}
+            style={twStyle("mt-4 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3")}
+          >
+            <Ionicons name="calendar-outline" size={16} color="#4f46e5" />
+            <Text style={twStyle("ml-2 text-sm font-semibold text-indigo-700")}>Edit shifts</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+          <View style={twStyle("flex-row items-center justify-between")}>
+            <Text style={twStyle("text-sm font-semibold text-gray-900")}>Time off & history</Text>
+            <TouchableOpacity onPress={() => router.push(`/(app)/(tabs)/more/days-off?staffId=${id}` as never)}>
+              <Text style={twStyle("text-xs font-semibold text-indigo-600")}>Manage</Text>
+            </TouchableOpacity>
+          </View>
+          {upcomingDaysOff.slice(0, 4).map((day) => (
+            <View key={day.id} style={twStyle("mt-3 flex-row items-start")}>
+              <Ionicons name="sunny-outline" size={16} color="#d97706" style={{ marginTop: 1 }} />
+              <View style={twStyle("ml-2 flex-1")}>
+                <Text style={twStyle("text-sm font-medium text-gray-800")}>
+                  {new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </Text>
+                {day.reason || day.type ? (
+                  <Text style={twStyle("text-xs text-gray-500")}>{day.reason || day.type}</Text>
+                ) : null}
+              </View>
+            </View>
+          ))}
+          {upcomingDaysOff.length === 0 ? (
+            <Text style={twStyle("mt-2 text-sm text-gray-500")}>No upcoming days off.</Text>
+          ) : null}
+        </View>
+
+        <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Recent bookings</Text>
+          {(bookings ?? []).slice(0, 5).map((booking) => (
+            <TouchableOpacity
+              key={booking.id}
+              onPress={() => router.push(`/(app)/(tabs)/more/bookings/${booking.id}` as never)}
+              style={twStyle("border-t border-gray-50 py-3")}
+            >
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                  {booking.customer_name || "Customer"}
+                </Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{booking.status}</Text>
+              </View>
+              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                {new Date(booking.scheduled_at).toLocaleString()} · {(booking.service_names ?? []).join(", ") || "Service"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          {(bookings ?? []).length === 0 ? (
+            <Text style={twStyle("text-sm text-gray-500")}>No booking history for this staff member yet.</Text>
+          ) : null}
         </View>
 
         {/* Active/inactive toggle */}
@@ -476,6 +688,14 @@ export default function TeamMemberDetailScreen() {
           accessibilityLabel="Team member phone"
         />
 
+        <FormField
+          label="Avatar image URL"
+          value={editForm.avatar_url}
+          onChangeText={(t) => setEditForm((p) => ({ ...p, avatar_url: t }))}
+          placeholder="https://..."
+          keyboardType="url"
+        />
+
         {canManageTeam ? (
           <>
             <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Role</Text>
@@ -545,6 +765,29 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ChecklistRow({ complete, label }: { complete: boolean; label: string }) {
+  return (
+    <View style={twStyle("mb-2 flex-row items-start")}>
+      <View
+        style={twStyle(
+          `mt-0.5 h-5 w-5 items-center justify-center rounded-full ${
+            complete ? "bg-green-100" : "bg-amber-100"
+          }`,
+        )}
+      >
+        <Ionicons
+          name={complete ? "checkmark" : "alert-outline"}
+          size={13}
+          color={complete ? "#16a34a" : "#d97706"}
+        />
+      </View>
+      <Text style={twStyle(`ml-2 flex-1 text-sm ${complete ? "text-gray-700" : "text-amber-700"}`)}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function FormField({
   label,
   value,
@@ -556,7 +799,7 @@ function FormField({
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
-  keyboardType?: "default" | "email-address" | "phone-pad" | "numeric";
+  keyboardType?: "default" | "email-address" | "phone-pad" | "numeric" | "url";
 }) {
   return (
     <View style={twStyle("mb-3")}>

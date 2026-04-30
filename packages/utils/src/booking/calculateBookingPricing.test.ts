@@ -13,7 +13,7 @@ const base: BookingPricingInput = {
   taxRate: 0.15,
   taxInclusive: true,
   travelFee: 0,
-  serviceFeePercentage: 0,
+  platformFeePercentage: 0,
   tipAmount: 0,
 };
 
@@ -75,31 +75,44 @@ describe("calculateBookingTotals — tax-inclusive", () => {
     expect(r(result.totalAmount)).toBe(575);
   });
 
-  it("includes service fee on top of tax-inclusive price", () => {
+  it("includes platform fee on top of tax-inclusive price", () => {
     const result = calculateBookingTotals({
       ...base,
       subtotal: 1000,
-      serviceFeePercentage: 0.1, // 10%
+      platformFeePercentage: 0.1, // 10%
     });
-    // serviceFee = 1000 * 0.1 = 100
+    // platformFee = 1000 * 0.1 = 100
+    expect(r(result.platformFeeAmount)).toBe(100);
     expect(r(result.serviceFeeAmount)).toBe(100);
     // Total = 1000 + 100
     expect(r(result.totalAmount)).toBe(1100);
   });
 
-  it("combines discount + travel + tip + service fee", () => {
+  it("keeps deprecated service fee inputs as platform fee compatibility aliases", () => {
+    const result = calculateBookingTotals({
+      ...base,
+      subtotal: 1000,
+      serviceFeePercentage: 0.1,
+    });
+
+    expect(r(result.platformFeeAmount)).toBe(100);
+    expect(r(result.serviceFeeAmount)).toBe(100);
+    expect(r(result.totalAmount)).toBe(1100);
+  });
+
+  it("combines discount + travel + tip + platform fee", () => {
     const result = calculateBookingTotals({
       ...base,
       subtotal: 1200,
       discountAmount: 200,
       travelFee: 50,
       tipAmount: 100,
-      serviceFeePercentage: 0.05,
+      platformFeePercentage: 0.05,
     });
     // afterDiscount = 1000
     expect(result.afterDiscount).toBe(1000);
-    // serviceFee = 1000 * 0.05 = 50
-    expect(r(result.serviceFeeAmount)).toBe(50);
+    // platformFee = 1000 * 0.05 = 50
+    expect(r(result.platformFeeAmount)).toBe(50);
     // tax = 1000 - 1000/1.15 ≈ 130.43
     expect(r(result.taxAmount)).toBe(130.43);
     // total = 1000 + 50 + 50 + 100 = 1200
@@ -200,6 +213,7 @@ describe("calculateBookingTotals — edge cases", () => {
       subtotal: 0,
       afterDiscount: 0,
       taxAmount: 0,
+      platformFeeAmount: 0,
       serviceFeeAmount: 0,
       totalAmount: 0,
     });

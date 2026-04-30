@@ -3,6 +3,12 @@ import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespo
 import { canAccessReportType } from "@/lib/subscriptions/report-gating";
 import { createClient } from "@supabase/supabase-js";
 
+type ClientSummary = {
+  id: string;
+  full_name?: string | null;
+  email?: string | null;
+};
+
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);    // Check subscription allows advanced reports (client reports are advanced)
@@ -26,27 +32,14 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const locationId = request.nextUrl.searchParams.get("location_id") || undefined;
-    // Get all bookings
+    // Get completed bookings only. CLV/spend should represent realized client value,
+    // not future confirmed bookings or cancelled/no-show appointments.
     let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, customer_id, total_amount, scheduled_at, status")
       .eq("provider_id", providerId)
-      .in("status", ["confirmed", "completed"]);
+      .eq("status", "completed");
     if (locationId) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
     }
@@ -106,12 +99,15 @@ export async function GET(request: NextRequest) {
 
     // Get client names
     const clientIds = clientLTV.map((c) => c.customerId);
-    const { data: clients } = await supabaseAdmin
-      .from("users")
-      .select("id, full_name, email")
-      .in("id", clientIds);
+    const { data: clients } = clientIds.length > 0
+      ? await supabaseAdmin
+          .from("users")
+          .select("id, full_name, email")
+          .in("id", clientIds)
+      : { data: [] };
 
-    const clientNameMap = new Map(clients?.map((c) => [c.id, c]) || []);
+    const clientRows = (clients || []) as ClientSummary[];
+    const clientNameMap = new Map<string, ClientSummary>(clientRows.map((c) => [c.id, c]));
 
     const enrichedLTV = clientLTV.map((client) => {
       const clientInfo = clientNameMap.get(client.customerId);
@@ -155,6 +151,8 @@ export async function GET(request: NextRequest) {
         { segment: "Medium Value", count: mediumValue.length, avgLTV: mediumValue.length > 0 ? mediumValue.reduce((sum, c) => sum + c.totalSpent, 0) / mediumValue.length : 0 },
         { segment: "Low Value", count: lowValue.length, avgLTV: lowValue.length > 0 ? lowValue.reduce((sum, c) => sum + c.totalSpent, 0) / lowValue.length : 0 },
       ],
+      reportBasis:
+        "Client lifetime value is based on completed booking total_amount only. Upcoming confirmed bookings, cancellations, and no-shows are excluded.",
     });
   } catch (error) {
     return handleApiError(error, "LIFETIME_VALUE_ERROR", 500);

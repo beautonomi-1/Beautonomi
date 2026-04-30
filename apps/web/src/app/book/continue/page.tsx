@@ -1077,7 +1077,7 @@ function BookContinueContent() {
               )}
               {serviceFeeAmount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="opacity-80">Service fee{platformServiceFee.type === "percentage" && platformServiceFee.percentage > 0 ? ` (${platformServiceFee.percentage}%)` : ""}</span>
+                  <span className="opacity-80">Platform fee{platformServiceFee.type === "percentage" && platformServiceFee.percentage > 0 ? ` (${platformServiceFee.percentage}%)` : ""}</span>
                   <span className="opacity-95">{formatCurrency(serviceFeeAmount, currency)}</span>
                 </div>
               )}

@@ -9,7 +9,7 @@
  * - Manual Discounts
  * - Taxes
  * - Travel Fees (Standard & Route-Chained)
- * - Platform Service Fees
+ * - Platform Fees
  * - Tips
  */
 

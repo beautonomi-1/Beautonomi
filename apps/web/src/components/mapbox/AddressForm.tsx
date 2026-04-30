@@ -5,6 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import AddressAutocomplete from "./AddressAutocomplete";
+import { LocationMapPickerDialog, type PickedMapLocation } from "./LocationMapPickerDialog";
+import { LocateFixed, Loader2, MapPinned } from "lucide-react";
+import { fetcher } from "@/lib/http/fetcher";
+import { mapGeocodeFeatureToAddressParts } from "@beautonomi/utils";
 
 interface AddressFormProps {
   initialAddress?: {
@@ -75,6 +79,8 @@ export default function AddressForm({
     location_landmarks: initialAddress?.location_landmarks || "",
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
 
   const handleAddressSelect = (address: {
     address_line1: string;
@@ -97,6 +103,72 @@ export default function AddressForm({
       latitude: address.latitude,
       longitude: address.longitude,
     });
+  };
+
+  const handleUseCurrentLocation = async () => {
+    if (!("geolocation" in navigator)) {
+      window.alert("Current location is not available in this browser.");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const latitude = position.coords.latitude;
+          const longitude = position.coords.longitude;
+          const response = await fetcher.post<{ data: any | null }>("/api/mapbox/reverse-geocode", {
+            latitude,
+            longitude,
+          });
+          const feature = response.data;
+          if (feature?.place_name) {
+            const mapped = mapGeocodeFeatureToAddressParts(feature, {
+              defaultCountryName: formData.country || country,
+            });
+            handleAddressSelect({
+              address_line1: mapped.address_line1 || "Current location",
+              city: mapped.city || "",
+              state: mapped.state || undefined,
+              postal_code: mapped.postal_code || undefined,
+              country: mapped.country || formData.country || country || "",
+              latitude,
+              longitude,
+              place_name: feature.place_name,
+            });
+          } else {
+            handleAddressSelect({
+              address_line1: "Current location",
+              city: "",
+              country: formData.country || country || "",
+              latitude,
+              longitude,
+              place_name: "Current location",
+            });
+          }
+        } catch {
+          handleAddressSelect({
+            address_line1: "Current location",
+            city: "",
+            country: formData.country || country || "",
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            place_name: "Current location",
+          });
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (error) => {
+        setIsLocating(false);
+        window.alert(error.message || "Could not get your current location.");
+      },
+      { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 },
+    );
+  };
+
+  const handleMapLocationPicked = (address: PickedMapLocation) => {
+    handleAddressSelect(address);
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -139,6 +211,33 @@ export default function AddressForm({
           geocodeTypes={["address"]}
           required
         />
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void handleUseCurrentLocation()}
+            disabled={isLocating}
+            className="justify-center"
+          >
+            {isLocating ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <LocateFixed className="mr-2 h-4 w-4" />
+            )}
+            Use current location
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setMapPickerOpen(true)}
+            className="justify-center"
+          >
+            <MapPinned className="mr-2 h-4 w-4" />
+            Drop pin on map
+          </Button>
+        </div>
       </div>
 
       <div>
@@ -311,6 +410,14 @@ export default function AddressForm({
           {isSaving ? "Saving..." : "Save Address"}
         </Button>
       </div>
+      <LocationMapPickerDialog
+        open={mapPickerOpen}
+        onOpenChange={setMapPickerOpen}
+        initialLatitude={formData.latitude}
+        initialLongitude={formData.longitude}
+        defaultCountryName={formData.country || country}
+        onLocationPicked={handleMapLocationPicked}
+      />
     </FormWrapper>
   );
 }

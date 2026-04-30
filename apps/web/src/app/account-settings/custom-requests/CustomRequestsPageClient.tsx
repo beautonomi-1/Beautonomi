@@ -32,15 +32,60 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus } from "lucide-react";
 import type {
-  CustomOfferSummary,
   CustomRequestListItem,
   CustomRequestsPageInitial,
   ProviderClientRow,
 } from "./custom-requests-page-types";
 
-type Offer = CustomOfferSummary;
 type CustomRequest = CustomRequestListItem;
 type Client = ProviderClientRow;
+
+type GlobalCategory = { id: string; name: string };
+type ProviderSlotRow = { time: string; available?: boolean };
+
+function toDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function toDateTimeLocal(date: string, time: string): string {
+  return `${date}T${time.slice(0, 5)}`;
+}
+
+function fromDateTimeLocal(value: string): { date: string; time: string } {
+  const [date, time] = value.split("T");
+  return { date: date || toDateKey(new Date()), time: (time || "10:00").slice(0, 5) };
+}
+
+function normalizeCategories(raw: unknown): GlobalCategory[] {
+  if (!raw || typeof raw !== "object") return [];
+  if (Array.isArray(raw)) return raw as GlobalCategory[];
+  const root = raw as { data?: unknown; global_categories?: unknown };
+  if (Array.isArray(root.global_categories)) return root.global_categories as GlobalCategory[];
+  if (Array.isArray(root.data)) return root.data as GlobalCategory[];
+  if (root.data && typeof root.data === "object" && Array.isArray((root.data as { categories?: unknown }).categories)) {
+    return (root.data as { categories: GlobalCategory[] }).categories;
+  }
+  return [];
+}
+
+function normalizeProviderSlots(raw: unknown): ProviderSlotRow[] {
+  const root = raw as { data?: { slots?: unknown; slot_grid?: unknown }; slots?: unknown; slot_grid?: unknown } | null | undefined;
+  const grid = Array.isArray(root?.slot_grid)
+    ? root?.slot_grid
+    : Array.isArray(root?.data?.slot_grid)
+      ? root.data.slot_grid
+      : null;
+  if (grid) return grid as ProviderSlotRow[];
+  const slots = Array.isArray(root?.slots)
+    ? root?.slots
+    : Array.isArray(root?.data?.slots)
+      ? root.data.slots
+      : [];
+  return (slots as string[]).map((time) => ({ time, available: true }));
+}
 
 export default function CustomRequestsPageClient({
   initial,
@@ -69,6 +114,11 @@ export default function CustomRequestsPageClient({
   const [locationsList, setLocationsList] = useState<Array<{ id: string; name: string }>>(
     () => initial?.locationsList ?? [],
   );
+  const [categories, setCategories] = useState<GlobalCategory[]>([]);
+  const [createSlots, setCreateSlots] = useState<ProviderSlotRow[]>([]);
+  const [offerSlots, setOfferSlots] = useState<ProviderSlotRow[]>([]);
+  const [loadingCreateSlots, setLoadingCreateSlots] = useState(false);
+  const [loadingOfferSlots, setLoadingOfferSlots] = useState(false);
   const skipHydrateLoadOnce = useRef(initial !== null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -83,6 +133,7 @@ export default function CustomRequestsPageClient({
     expiration_days: "7",
     notes: "",
     preferred_start_at: "",
+    service_category_id: "",
     staff_id: "",
     location_id: "",
   });
@@ -104,6 +155,17 @@ export default function CustomRequestsPageClient({
     () => mergeCurrencyChoiceCodes(tenantCurrency, formData.currency, offerFormData.currency),
     [tenantCurrency, formData.currency, offerFormData.currency]
   );
+  const dateOptions = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      return d;
+    });
+  }, []);
+  const createSlotParts = fromDateTimeLocal(formData.preferred_start_at || toDateTimeLocal(toDateKey(new Date()), "10:00"));
+  const offerSlotParts = fromDateTimeLocal(offerFormData.scheduled_at || toDateTimeLocal(toDateKey(new Date()), "10:00"));
 
   const load = async () => {
     try {
@@ -153,18 +215,108 @@ export default function CustomRequestsPageClient({
     }
   };
 
+  const loadCategories = async () => {
+    if (!isProvider) return;
+    try {
+      const res = await fetcher.get<unknown>("/api/public/categories/global", { staleTimeMs: 60_000 });
+      setCategories(normalizeCategories(res));
+    } catch (err) {
+      console.error("Failed to load custom offer categories:", err);
+    }
+  };
+
   useEffect(() => {
     if (skipHydrateLoadOnce.current) {
       skipHydrateLoadOnce.current = false;
-      setIsLoading(false);
+      void Promise.resolve().then(() => setIsLoading(false));
       return;
     }
-    void load();
+    void Promise.resolve().then(() => load());
     if (isProvider) {
-      void loadClients();
-      void loadStaffAndLocations();
+      void Promise.resolve().then(() => {
+        void loadClients();
+        void loadStaffAndLocations();
+        void loadCategories();
+      });
     }
   }, [isProvider]); // eslint-disable-line react-hooks/exhaustive-deps -- load when isProvider changes
+
+  useEffect(() => {
+    if (!showCreateModal) return;
+    const duration = Number(formData.duration_minutes || 60);
+    if (!Number.isFinite(duration) || duration < 15) return;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) setLoadingCreateSlots(true);
+    });
+    const params = new URLSearchParams({
+      date: createSlotParts.date,
+      duration_minutes: String(duration),
+      mode: formData.location_type === "at_home" ? "mobile" : "salon",
+      travel_buffer: formData.location_type === "at_home" ? "30" : "0",
+    });
+    if (formData.staff_id) params.set("staff_ids", formData.staff_id);
+    if (formData.location_type === "at_salon" && formData.location_id) params.set("location_id", formData.location_id);
+    fetcher
+      .get<unknown>(`/api/provider/bookings/available-slots?${params.toString()}`)
+      .then((res) => {
+        if (cancelled) return;
+        const rows = normalizeProviderSlots(res);
+        setCreateSlots(rows);
+        const available = rows.filter((slot) => slot.available !== false).map((slot) => slot.time.slice(0, 5));
+        if (available.length > 0 && !available.includes(createSlotParts.time)) {
+          setFormData((prev) => ({ ...prev, preferred_start_at: toDateTimeLocal(createSlotParts.date, available[0]) }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCreateSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCreateSlots(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [createSlotParts.date, createSlotParts.time, formData.duration_minutes, formData.location_id, formData.location_type, formData.staff_id, showCreateModal]);
+
+  useEffect(() => {
+    if (!showOfferModal || !selectedRequestId) return;
+    const selectedReq = items.find((r) => r.id === selectedRequestId);
+    const duration = Number(offerFormData.duration_minutes || selectedReq?.duration_minutes || 60);
+    if (!Number.isFinite(duration) || duration < 15) return;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) setLoadingOfferSlots(true);
+    });
+    const params = new URLSearchParams({
+      date: offerSlotParts.date,
+      duration_minutes: String(duration),
+      mode: selectedReq?.location_type === "at_home" ? "mobile" : "salon",
+      travel_buffer: selectedReq?.location_type === "at_home" ? "30" : "0",
+    });
+    if (offerFormData.staff_id) params.set("staff_ids", offerFormData.staff_id);
+    if (selectedReq?.location_type !== "at_home" && offerFormData.location_id) params.set("location_id", offerFormData.location_id);
+    fetcher
+      .get<unknown>(`/api/provider/bookings/available-slots?${params.toString()}`)
+      .then((res) => {
+        if (cancelled) return;
+        const rows = normalizeProviderSlots(res);
+        setOfferSlots(rows);
+        const available = rows.filter((slot) => slot.available !== false).map((slot) => slot.time.slice(0, 5));
+        if (available.length > 0 && !available.includes(offerSlotParts.time)) {
+          setOfferFormData((prev) => ({ ...prev, scheduled_at: toDateTimeLocal(offerSlotParts.date, available[0]) }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setOfferSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingOfferSlots(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [items, offerFormData.duration_minutes, offerFormData.location_id, offerFormData.staff_id, offerSlotParts.date, offerSlotParts.time, selectedRequestId, showOfferModal]);
 
   const [depositChoiceOfferId, setDepositChoiceOfferId] = useState<string | null>(null);
 
@@ -203,6 +355,7 @@ export default function CustomRequestsPageClient({
         expiration_at: expirationDate.toISOString(),
         notes: formData.notes || null,
         preferred_start_at: formData.preferred_start_at || null,
+        service_category_id: formData.service_category_id || null,
         staff_id: formData.staff_id || null,
         location_id: formData.location_id || null,
       };
@@ -220,6 +373,7 @@ export default function CustomRequestsPageClient({
         expiration_days: "7",
         notes: "",
         preferred_start_at: "",
+        service_category_id: "",
         staff_id: "",
         location_id: "",
       });
@@ -232,16 +386,17 @@ export default function CustomRequestsPageClient({
   };
 
   const openOfferModal = (requestId: string) => {
+    const selectedReq = items.find((r) => r.id === requestId);
     setSelectedRequestId(requestId);
     setOfferFormData({
       price: "",
       currency: tenantCurrency,
-      duration_minutes: "60",
+      duration_minutes: String(selectedReq?.duration_minutes || 60),
       expiration_days: "7",
       notes: "",
       staff_id: "",
       location_id: "",
-      scheduled_at: "",
+      scheduled_at: selectedReq?.preferred_start_at ? selectedReq.preferred_start_at.slice(0, 16) : "",
       travel_fee: "",
     });
     setShowOfferModal(true);
@@ -473,6 +628,34 @@ export default function CustomRequestsPageClient({
                 <p className="text-xs text-gray-500 mt-1">{formData.description.length}/4000 characters</p>
               </div>
 
+              {categories.length > 0 && (
+                <div>
+                  <Label>Service category</Label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, service_category_id: "" })}
+                      className={`rounded-full border px-3 py-1.5 text-sm font-medium ${!formData.service_category_id ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-white text-gray-700"}`}
+                    >
+                      Any category
+                    </button>
+                    {categories.map((category) => {
+                      const active = formData.service_category_id === category.id;
+                      return (
+                        <button
+                          key={category.id}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, service_category_id: active ? "" : category.id })}
+                          className={`rounded-full border px-3 py-1.5 text-sm font-medium ${active ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-white text-gray-700"}`}
+                        >
+                          {category.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="location_type">Location Type</Label>
@@ -592,13 +775,45 @@ export default function CustomRequestsPageClient({
                 </div>
 
                 <div>
-                  <Label htmlFor="preferred_start_at">Preferred Start Date (optional)</Label>
-                  <Input
-                    id="preferred_start_at"
-                    type="datetime-local"
-                    value={formData.preferred_start_at}
-                    onChange={(e) => setFormData({ ...formData, preferred_start_at: e.target.value })}
-                  />
+                  <Label>Appointment slot</Label>
+                  <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                    {dateOptions.map((d) => {
+                      const key = toDateKey(d);
+                      const active = createSlotParts.date === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, preferred_start_at: toDateTimeLocal(key, createSlotParts.time) })}
+                          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold ${active ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-white text-gray-600"}`}
+                        >
+                          {d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {loadingCreateSlots ? (
+                      <span className="text-xs text-gray-500">Loading slots...</span>
+                    ) : createSlots.length === 0 ? (
+                      <span className="text-xs text-amber-700">No available slots for this date.</span>
+                    ) : (
+                      createSlots.filter((slot) => slot.available !== false).slice(0, 24).map((slot) => {
+                        const time = slot.time.slice(0, 5);
+                        const active = createSlotParts.time === time;
+                        return (
+                          <button
+                            key={time}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, preferred_start_at: toDateTimeLocal(createSlotParts.date, time) })}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${active ? "border-emerald-700 bg-emerald-600 text-white" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}
+                          >
+                            {time}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -674,14 +889,46 @@ export default function CustomRequestsPageClient({
               </div>
 
               <div>
-                <Label htmlFor="offer_scheduled_at">Appointment date & time (optional)</Label>
-                <Input
-                  id="offer_scheduled_at"
-                  type="datetime-local"
-                  value={offerFormData.scheduled_at}
-                  onChange={(e) => setOfferFormData({ ...offerFormData, scheduled_at: e.target.value })}
-                />
+                <Label>Appointment slot</Label>
                 <p className="text-xs text-gray-500 mt-1">When the customer pays, the booking will show on the calendar at this time.</p>
+                <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                  {dateOptions.map((d) => {
+                    const key = toDateKey(d);
+                    const active = offerSlotParts.date === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setOfferFormData({ ...offerFormData, scheduled_at: toDateTimeLocal(key, offerSlotParts.time) })}
+                        className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold ${active ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-white text-gray-600"}`}
+                      >
+                        {d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {loadingOfferSlots ? (
+                    <span className="text-xs text-gray-500">Loading slots...</span>
+                  ) : offerSlots.length === 0 ? (
+                    <span className="text-xs text-amber-700">No available slots for this date.</span>
+                  ) : (
+                    offerSlots.filter((slot) => slot.available !== false).slice(0, 24).map((slot) => {
+                      const time = slot.time.slice(0, 5);
+                      const active = offerSlotParts.time === time;
+                      return (
+                        <button
+                          key={time}
+                          type="button"
+                          onClick={() => setOfferFormData({ ...offerFormData, scheduled_at: toDateTimeLocal(offerSlotParts.date, time) })}
+                          className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${active ? "border-emerald-700 bg-emerald-600 text-white" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}
+                        >
+                          {time}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
               {selectedRequestId && items.find((r) => r.id === selectedRequestId)?.location_type === "at_home" && (

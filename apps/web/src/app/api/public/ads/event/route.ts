@@ -30,12 +30,11 @@ export async function POST(request: NextRequest) {
 
     const { data: campaign } = await supabase
       .from("ads_campaigns")
-      .select("id")
+      .select("id, status")
       .eq("id", campaignId)
       .eq("provider_id", providerId)
-      .eq("status", "active")
       .maybeSingle();
-    if (!campaign) {
+    if (!campaign || (eventType !== "book" && campaign.status !== "active")) {
       return NextResponse.json(
         { data: null, error: { message: "Campaign not found or inactive", code: "NOT_FOUND" } },
         { status: 404 }
@@ -60,6 +59,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data: { recorded: true }, error: null });
   } catch (error: unknown) {
     console.warn("Ads event record failed:", error);
-    return NextResponse.json({ data: { recorded: false }, error: null }, { status: 202 });
+    return NextResponse.json(
+      { data: { recorded: false }, error: { message: "Failed to record ad event", code: "ADS_EVENT_FAILED" } },
+      { status: 500 }
+    );
   }
 }

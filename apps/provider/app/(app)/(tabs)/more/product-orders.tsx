@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -76,6 +76,8 @@ interface Order {
   tax_amount?: number | string | null;
   delivery_fee?: number | string | null;
   discount_amount?: number | string | null;
+  platform_fee?: number | string | null;
+  provider_earnings?: number | string | null;
   currency?: string | null;
   status: string;
   payment_status?: string;
@@ -211,6 +213,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
 
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
@@ -223,10 +226,18 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const [trackingNumber, setTrackingNumber] = useState("");
   const [carrier, setCarrier] = useState("");
   const [trackingUrl, setTrackingUrl] = useState("");
+  const [cancelReasonSheetOpen, setCancelReasonSheetOpen] = useState(false);
+  const [cancelReasonOrderId, setCancelReasonOrderId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [recordPaymentSheetOpen, setRecordPaymentSheetOpen] = useState(false);
+  const [recordPaymentMethod, setRecordPaymentMethod] = useState<"cash" | "card_on_delivery" | "yoco">("cash");
+  const [recordPaymentReference, setRecordPaymentReference] = useState("");
 
-  const url = `/api/provider/product-orders?limit=100${statusFilter ? `&status=${statusFilter}` : ""}`;
+  const pageSize = 50;
+  const url = `/api/provider/product-orders?limit=${pageSize}&page=${page}${statusFilter ? `&status=${statusFilter}` : ""}`;
   const { data, loading, error, refresh } = useApi<OrdersListResponse>(url);
   const { execute: patchOrder, loading: patching } = useApiMutation<{ order: Order }>("patch");
+  const { execute: postOrderMutation, loading: postingOrderMutation } = useApiMutation<{ order: Order }>("post");
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -237,7 +248,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     }
   }, [refresh]);
 
-  const allOrders = data?.orders ?? [];
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
+
+  const allOrders = useMemo(() => data?.orders ?? [], [data?.orders]);
+  const pagination = data?.pagination;
+  const totalPages = Math.max(1, Number(pagination?.totalPages ?? 1));
   const statusCounts = data?.status_counts ?? {};
   const totalOrderCount = Number(data?.pagination?.totalAll ?? data?.pagination?.total ?? allOrders.length);
   const actionRequiredCount = Array.from(ACTION_REQUIRED_STATUSES).reduce(
@@ -256,6 +273,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         );
       })
     : allOrders;
+  const activeOrder = orderDetail ?? viewOrder;
 
   const openOrder = useCallback(async (order: Order) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -320,7 +338,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     async (
       orderId: string,
       status: string,
-      extra?: { tracking_number?: string; carrier?: string; tracking_url?: string },
+      extra?: { tracking_number?: string; carrier?: string; tracking_url?: string; cancellation_reason?: string },
     ) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const { error: err } = await patchOrder(`/api/provider/product-orders/${orderId}`, {
@@ -338,6 +356,9 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         setTrackingNumber("");
         setCarrier("");
         setTrackingUrl("");
+        setCancelReasonSheetOpen(false);
+        setCancelReasonOrderId(null);
+        setCancelReason("");
         refresh();
       }
     },
@@ -353,6 +374,13 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         setTrackingUrl("");
         setTrackingSheetOpen(true);
       } else if (status === "cancelled") {
+        const order = (orderDetail?.id === orderId ? orderDetail : viewOrder?.id === orderId ? viewOrder : allOrders.find((o) => o.id === orderId)) ?? null;
+        if ((order?.payment_status ?? "").toLowerCase() === "paid") {
+          setCancelReasonOrderId(orderId);
+          setCancelReason("");
+          setCancelReasonSheetOpen(true);
+          return;
+        }
         Alert.alert(
           "Cancel order",
           "Are you sure you want to cancel this order? Stock will be restored.",
@@ -374,8 +402,46 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         doUpdateStatus(orderId, status);
       }
     },
-    [doUpdateStatus]
+    [allOrders, doUpdateStatus, orderDetail, viewOrder]
   );
+
+  const handleConfirmCancelWithReason = useCallback(() => {
+    if (!cancelReasonOrderId) return;
+    const reason = cancelReason.trim();
+    if (reason.length < 3) {
+      Alert.alert("Reason required", "Enter a short reason before cancelling a paid order.");
+      return;
+    }
+    doUpdateStatus(cancelReasonOrderId, "cancelled", { cancellation_reason: reason });
+  }, [cancelReason, cancelReasonOrderId, doUpdateStatus]);
+
+  const handleRecordCollectionPayment = useCallback(async () => {
+    if (!activeOrder) return;
+    const reference = recordPaymentReference.trim();
+    if (recordPaymentMethod === "yoco" && !reference) {
+      Alert.alert("Reference required", "Enter the Yoco reference before recording this payment.");
+      return;
+    }
+    const { error: err } = await postOrderMutation(
+      `/api/provider/product-orders/${activeOrder.id}/mark-collected`,
+      {
+        payment_method: recordPaymentMethod,
+        reference: reference || undefined,
+        idempotency_key: `provider-app-${activeOrder.id}-${Date.now()}`,
+      },
+    );
+    if (err) {
+      Alert.alert("Record payment", err);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setRecordPaymentSheetOpen(false);
+    setRecordPaymentReference("");
+    setRecordPaymentMethod("cash");
+    setViewOrder(null);
+    setOrderDetail(null);
+    refresh();
+  }, [activeOrder, postOrderMutation, recordPaymentMethod, recordPaymentReference, refresh]);
 
   const handleConfirmShipped = useCallback(() => {
     if (!pendingStatus) return;
@@ -406,8 +472,6 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
       </View>
     );
   }
-
-  const activeOrder = orderDetail ?? viewOrder;
 
   return (
     <>
@@ -562,6 +626,37 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
             );
           })
         )}
+        {allOrders.length > 0 && totalPages > 1 ? (
+          <View style={twStyle("mt-2 flex-row items-center justify-between rounded-2xl border border-gray-100 bg-white px-3 py-3")}>
+            <TouchableOpacity
+              onPress={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || loading}
+              style={[
+                twStyle("flex-row items-center rounded-xl border border-gray-200 px-3 py-2"),
+                page <= 1 || loading ? { opacity: 0.45 } : undefined,
+              ]}
+              accessibilityLabel="Previous order page"
+            >
+              <Ionicons name="chevron-back" size={16} color="#374151" />
+              <Text style={twStyle("ml-1 text-xs font-semibold text-gray-700")}>Prev</Text>
+            </TouchableOpacity>
+            <Text style={twStyle("text-xs font-semibold text-gray-600")}>
+              Page {page} of {totalPages}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || loading}
+              style={[
+                twStyle("flex-row items-center rounded-xl border border-gray-200 px-3 py-2"),
+                page >= totalPages || loading ? { opacity: 0.45 } : undefined,
+              ]}
+              accessibilityLabel="Next order page"
+            >
+              <Text style={twStyle("mr-1 text-xs font-semibold text-gray-700")}>Next</Text>
+              <Ionicons name="chevron-forward" size={16} color="#374151" />
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* ── Order detail bottom sheet ── */}
@@ -792,11 +887,16 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 const tax = numOrZero(activeOrder.tax_amount);
                 const del = numOrZero(activeOrder.delivery_fee);
                 const disc = numOrZero(activeOrder.discount_amount);
+                const platformFee = numOrZero(activeOrder.platform_fee);
+                const providerEarnings = activeOrder.provider_earnings != null
+                  ? numOrZero(activeOrder.provider_earnings)
+                  : Math.max(0, Number(activeOrder.total_amount) - platformFee);
                 const showLines =
                   activeOrder.subtotal != null ||
                   tax > 0 ||
                   del > 0 ||
-                  disc > 0;
+                  disc > 0 ||
+                  platformFee > 0;
                 if (!showLines) {
                   return (
                     <View style={twStyle("mb-4 flex-row justify-end")}>
@@ -820,6 +920,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                     {tax > 0 ? row("Tax", tax) : null}
                     {del > 0 ? row("Delivery", del) : null}
                     {disc > 0 ? row("Discount", -disc, true) : null}
+                    {platformFee > 0 ? row("Platform fee", -platformFee, true) : null}
+                    {platformFee > 0 ? row("Provider earnings", providerEarnings) : null}
                     <View style={twStyle("mt-2 flex-row justify-between border-t border-gray-200 pt-2")}>
                       <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
                       <Text style={twStyle("text-base font-bold text-gray-900")}>
@@ -829,6 +931,24 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   </View>
                 );
               })()}
+
+              {(activeOrder.payment_status ?? "").toLowerCase() === "pending" &&
+              activeOrder.status !== "cancelled" &&
+              activeOrder.status !== "refunded" ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setRecordPaymentMethod("cash");
+                    setRecordPaymentReference("");
+                    setRecordPaymentSheetOpen(true);
+                  }}
+                  style={twStyle("mb-3 flex-row items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Record collection payment"
+                >
+                  <Ionicons name="cash-outline" size={16} color="#fff" />
+                  <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Record payment / collection</Text>
+                </TouchableOpacity>
+              ) : null}
 
               {/* Download receipt */}
               <TouchableOpacity
@@ -981,6 +1101,96 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
       )}
 
       {/* ── Tracking number sheet (shown when marking shipped) ── */}
+      <BottomSheet
+        visible={cancelReasonSheetOpen}
+        onClose={() => {
+          setCancelReasonSheetOpen(false);
+          setCancelReasonOrderId(null);
+          setCancelReason("");
+        }}
+        title="Cancel paid order"
+        subtitle="A cancellation reason is required for paid orders"
+      >
+        <View style={twStyle("gap-3 pb-6")}>
+          <Text style={twStyle("text-sm text-gray-600")}>
+            This order has already been paid. Add the reason so the order history and customer support records are clear.
+          </Text>
+          <TextInput
+            value={cancelReason}
+            onChangeText={setCancelReason}
+            placeholder="Reason for cancellation"
+            placeholderTextColor="#9ca3af"
+            multiline
+            style={twStyle("min-h-[88px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            accessibilityLabel="Cancellation reason"
+          />
+          <ActionButton
+            label={patching ? "Cancelling…" : "Cancel paid order"}
+            onPress={handleConfirmCancelWithReason}
+            loading={patching}
+            disabled={patching}
+            fullWidth
+          />
+        </View>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={recordPaymentSheetOpen}
+        onClose={() => {
+          setRecordPaymentSheetOpen(false);
+          setRecordPaymentReference("");
+          setRecordPaymentMethod("cash");
+        }}
+        title="Record payment"
+        subtitle="For cash/card-on-delivery collection orders"
+      >
+        <View style={twStyle("gap-3 pb-6")}>
+          <Text style={twStyle("text-sm text-gray-600")}>
+            Record the payment collected at pickup or delivery. This updates the order and creates the matching accounting entry.
+          </Text>
+          <View style={twStyle("flex-row flex-wrap")}>
+            {[
+              { label: "Cash", value: "cash" as const },
+              { label: "Card on delivery", value: "card_on_delivery" as const },
+              { label: "Yoco", value: "yoco" as const },
+            ].map((option) => {
+              const active = recordPaymentMethod === option.value;
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  onPress={() => setRecordPaymentMethod(option.value)}
+                  style={[
+                    twStyle(`mb-2 rounded-full border px-3 py-2 ${active ? "border-emerald-600 bg-emerald-50" : "border-gray-200 bg-white"}`),
+                    { marginRight: 8 },
+                  ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: active }}
+                >
+                  <Text style={twStyle(`text-xs font-semibold ${active ? "text-emerald-700" : "text-gray-600"}`)}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TextInput
+            value={recordPaymentReference}
+            onChangeText={setRecordPaymentReference}
+            placeholder={recordPaymentMethod === "yoco" ? "Yoco reference required" : "Reference optional"}
+            placeholderTextColor="#9ca3af"
+            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            accessibilityLabel="Payment reference"
+          />
+          <ActionButton
+            label={postingOrderMutation ? "Recording…" : "Record payment"}
+            onPress={handleRecordCollectionPayment}
+            loading={postingOrderMutation}
+            disabled={postingOrderMutation}
+            fullWidth
+          />
+        </View>
+      </BottomSheet>
+
       <BottomSheet
         visible={trackingSheetOpen}
         onClose={() => { setTrackingSheetOpen(false); setPendingStatus(null); }}

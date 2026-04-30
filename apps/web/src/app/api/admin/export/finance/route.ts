@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
       "Currency",
       "Status",
       "Booking ID",
+      "Product Order ID",
       "Booking Number",
       "Provider ID",
       "Customer ID",
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
       "Metadata",
     ];
 
-    type TxRow = { id: string; transaction_type?: string; amount?: number; net?: number; fees?: number; currency?: string; status?: string; booking_id?: string; booking?: { booking_number?: string; provider_id?: string; customer_id?: string }; created_at?: string; metadata?: unknown };
+    type TxRow = { id: string; transaction_type?: string; amount?: number; net?: number; fees?: number; currency?: string; status?: string; booking_id?: string; product_order_id?: string; booking?: { booking_number?: string; provider_id?: string; customer_id?: string }; provider_id?: string; created_at?: string; metadata?: unknown };
     const rows = (transactions || []).map((transaction: TxRow) => [
       transaction.id,
       transaction.transaction_type,
@@ -76,8 +77,9 @@ export async function GET(request: NextRequest) {
       transaction.currency,
       transaction.status,
       transaction.booking_id || "",
+      transaction.product_order_id || "",
       transaction.booking?.booking_number || "",
-      transaction.booking?.provider_id || "",
+      transaction.booking?.provider_id || transaction.provider_id || "",
       transaction.booking?.customer_id || "",
       transaction.created_at,
       JSON.stringify(transaction.metadata || {}),

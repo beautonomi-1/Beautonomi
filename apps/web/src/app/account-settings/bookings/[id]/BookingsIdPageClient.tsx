@@ -561,14 +561,6 @@ export default function BookingDetailPage() {
               {booking.currency} {Math.max(0, booking.subtotal - (booking.travel_fee || 0)).toFixed(2)}
             </span>
           </div>
-          {booking.tip_amount > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Tip</span>
-              <span className="font-medium">
-                {booking.currency} {booking.tip_amount.toFixed(2)}
-              </span>
-            </div>
-          )}
           {booking.travel_fee > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-600">Travel fee</span>
@@ -638,10 +630,18 @@ export default function BookingDetailPage() {
           {booking.service_fee_amount > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-600">
-                Service fee{booking.service_fee_percentage > 0 ? ` (${booking.service_fee_percentage}%)` : ""}
+                Platform fee{booking.service_fee_percentage > 0 ? ` (${booking.service_fee_percentage}%)` : ""}
               </span>
               <span className="font-medium">
                 {booking.currency} {booking.service_fee_amount.toFixed(2)}
+              </span>
+            </div>
+          )}
+          {booking.tip_amount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Tip</span>
+              <span className="font-medium">
+                {booking.currency} {booking.tip_amount.toFixed(2)}
               </span>
             </div>
           )}

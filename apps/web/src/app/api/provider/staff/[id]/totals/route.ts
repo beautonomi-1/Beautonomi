@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { STAFF_COMMISSION_REVENUE_TYPES } from "@/lib/reports/constants";
 import { calculateStaffCommission } from "@/lib/payroll/commission-calculator";
 import { getTipsByStaff } from "@/lib/payroll/tips-helper";
 
@@ -68,6 +69,7 @@ export async function GET(
     const dateStr = searchParams.get("date");
     const startDateStr = searchParams.get("start_date");
     const endDateStr = searchParams.get("end_date");
+    const locationId = searchParams.get("location_id") || null;
 
     let fromDate: Date;
     let toDate: Date;
@@ -94,23 +96,30 @@ export async function GET(
       providerId,
       id,
       fromDate,
-      toDate
+      toDate,
+      locationId
     );
 
     const { revenueByBooking } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       fromDate,
-      toDate
+      toDate,
+      locationId,
+      { transactionTypes: STAFF_COMMISSION_REVENUE_TYPES }
     );
 
-    const { data: bookings } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, status, booking_services(id, staff_id, price)")
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString())
       .in("status", ["confirmed", "completed"]);
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+    const { data: bookings } = await bookingsQuery;
 
     let appointmentsCount = 0;
     let revenue = 0;
@@ -139,7 +148,7 @@ export async function GET(
       0
     );
 
-    const tipsByStaff = await getTipsByStaff(supabaseAdmin, providerId, fromDate, toDate);
+    const tipsByStaff = await getTipsByStaff(supabaseAdmin, providerId, fromDate, toDate, locationId);
     const tipsEligible = (staff as { tips_enabled?: boolean | null }).tips_enabled !== false;
     const tips = tipsEligible ? tipsByStaff.get(id) || 0 : 0;
     const commissionEligible = (staff as { commission_enabled?: boolean | null }).commission_enabled !== false;

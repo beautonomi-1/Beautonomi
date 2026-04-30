@@ -32,7 +32,7 @@ const Reservation = ({
   onCheckOutDateChange,
 }: ReservationProps) => {
   const ratePerNight = 68;
-  const serviceFee = 67; // Example service fee
+  const serviceFee = 67; // Example Platform Fee
 
   const calculateTotal = () => {
     if (checkInDate && checkOutDate) {
@@ -157,7 +157,7 @@ const Reservation = ({
             </div>
             <div className="flex justify-between items-center mb-3">
               <p className="text-base font-normal  text-secondary underline">
-              Beautonomi Service fee
+              Beautonomi Platform Fee
               </p>
               <p className="text-base font-normal  text-secondary">
                 ${serviceFee}

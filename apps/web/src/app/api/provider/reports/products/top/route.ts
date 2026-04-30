@@ -1,7 +1,14 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { endOfDay, startOfDay, subDays } from "date-fns";
+import { filterProductOrdersForLocation } from "@/lib/reports/provider-report-utils";
+
+function lineRevenue(qty: number, unitPrice: number, totalPrice: number): number {
+  const total = Number(totalPrice) || 0;
+  if (total > 0) return total;
+  return qty * (Number(unitPrice) || 0);
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,19 +37,20 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
     const limit = parseInt(searchParams.get("limit") || "20");
     const locationId = searchParams.get("location_id") || undefined;
 
-    // Get bookings and sales
+    // Get booking-attached products and standalone paid product orders.
     let bookingsQuery = supabaseAdmin
       .from('bookings')
       .select('id, scheduled_at')
       .eq('provider_id', providerId)
+      .in("status", ["completed", "confirmed", "in_progress", "checked_in"])
       .gte('scheduled_at', fromDate.toISOString())
       .lte('scheduled_at', toDate.toISOString());
 
@@ -50,28 +58,30 @@ export async function GET(request: NextRequest) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
     }
 
-    let salesQuery = supabaseAdmin
-      .from('sales')
-      .select('id, sale_date')
-      .eq('provider_id', providerId)
-      // sales table uses 'completed' for paid (canonical: see lib/utils/payment-status.ts)
-      .eq('payment_status', 'completed')
-      .gte('sale_date', fromDate.toISOString())
-      .lte('sale_date', toDate.toISOString());
+    let ordersQuery = supabaseAdmin
+      .from("product_orders")
+      .select("id, created_at, fulfillment_type, collection_location_id")
+      .eq("provider_id", providerId)
+      .eq("payment_status", "paid")
+      .or("order_source.is.null,order_source.neq.appointment")
+      .gte("created_at", fromDate.toISOString())
+      .lte("created_at", toDate.toISOString());
 
-    if (locationId) {
-      salesQuery = salesQuery.eq("location_id", locationId);
-    }
-
-    const [bookingsResult, salesResult] = await Promise.all([
+    const [bookingsResult, ordersResult] = await Promise.all([
       bookingsQuery,
-      salesQuery,
+      ordersQuery,
     ]);
 
     const { data: bookings } = bookingsResult;
-    const { data: sales } = salesResult;
+    const { data: ordersRaw } = ordersResult;
     const bookingIds = bookings?.map((b) => b.id) || [];
-    const saleIds = sales?.map((s) => s.id) || [];
+    const orders = await filterProductOrdersForLocation(
+      supabaseAdmin,
+      providerId,
+      (ordersRaw || []) as Array<{ id: string; fulfillment_type?: string | null; collection_location_id?: string | null }>,
+      locationId,
+    );
+    const orderIds = orders.map((s) => s.id) || [];
 
     // Get booking_products
     let bookingProductsQuery = supabaseAdmin
@@ -98,45 +108,43 @@ export async function GET(request: NextRequest) {
 
     const { data: bookingProducts, error: bookingProductsError } = await bookingProductsQuery;
 
-    // Get sale_items (POS products)
-    let saleItemsQuery = supabaseAdmin
-      .from('sale_items')
+    // Get standalone product_order_items (online/walk-in product orders).
+    let orderItemsQuery = supabaseAdmin
+      .from("product_order_items")
       .select(`
         id,
-        item_id,
-        item_name,
-        item_type,
+        product_id,
+        product_name,
         quantity,
         unit_price,
         total_price
-      `)
-      .eq('item_type', 'product');
+      `);
 
-    if (saleIds.length > 0) {
-      saleItemsQuery = saleItemsQuery.in('sale_id', saleIds);
+    if (orderIds.length > 0) {
+      orderItemsQuery = orderItemsQuery.in("order_id", orderIds);
     } else {
-      saleItemsQuery = saleItemsQuery.eq('sale_id', '00000000-0000-0000-0000-000000000000');
+      orderItemsQuery = orderItemsQuery.eq("order_id", "00000000-0000-0000-0000-000000000000");
     }
 
-    const { data: saleItems, error: saleItemsError } = await saleItemsQuery;
+    const { data: orderItems, error: orderItemsError } = await orderItemsQuery;
 
-    // Get product details for sale items
-    const saleItemProductIds = new Set<string>();
-    saleItems?.forEach((item: any) => {
-      if (item.item_id) {
-        saleItemProductIds.add(item.item_id);
+    // Get product details for standalone order items
+    const orderItemProductIds = new Set<string>();
+    orderItems?.forEach((item: any) => {
+      if (item.product_id) {
+        orderItemProductIds.add(item.product_id);
       }
     });
 
-    const saleItemProductMap = new Map<string, { name: string; category: string; retail_price: number }>();
-    if (saleItemProductIds.size > 0) {
+    const orderItemProductMap = new Map<string, { name: string; category: string; retail_price: number }>();
+    if (orderItemProductIds.size > 0) {
       const { data: productsData } = await supabaseAdmin
         .from('products')
         .select('id, name, category, retail_price')
-        .in('id', Array.from(saleItemProductIds));
+        .in('id', Array.from(orderItemProductIds));
       
       productsData?.forEach((p: any) => {
-        saleItemProductMap.set(p.id, {
+        orderItemProductMap.set(p.id, {
           name: p.name || 'Unknown',
           category: p.category || 'Uncategorized',
           retail_price: Number(p.retail_price || 0)
@@ -148,8 +156,8 @@ export async function GET(request: NextRequest) {
     if (bookingProductsError && !bookingProductsError.message.includes('booking_products')) {
       console.error("Error fetching booking products:", bookingProductsError);
     }
-    if (saleItemsError && !saleItemsError.message.includes('sale_items')) {
-      console.error("Error fetching sale items:", saleItemsError);
+    if (orderItemsError) {
+      console.error("Error fetching product order items:", orderItemsError);
     }
 
     // Aggregate by product
@@ -180,23 +188,23 @@ export async function GET(request: NextRequest) {
       };
 
       const quantity = Number(bp.quantity || 1);
-      const price = Number(bp.unit_price || bp.total_price || product.retail_price || 0);
+      const price = lineRevenue(quantity, Number(bp.unit_price || 0), Number(bp.total_price || 0));
 
       existing.totalQuantity += quantity;
-      existing.totalRevenue += price * quantity;
+      existing.totalRevenue += price;
       existing.timesSold += 1;
       productMap.set(productId, existing);
     });
 
-    // Process sale items (POS products)
-    saleItems?.forEach((item: any) => {
-      if (!item.item_id) return; // Skip if no product ID
+    // Process standalone order items
+    orderItems?.forEach((item: any) => {
+      if (!item.product_id) return;
 
-      const productInfo = saleItemProductMap.get(item.item_id);
-      const productId = item.item_id;
+      const productInfo = orderItemProductMap.get(item.product_id);
+      const productId = item.product_id;
       const existing = productMap.get(productId) || {
         productId,
-        productName: productInfo?.name || item.item_name || "Unknown",
+        productName: productInfo?.name || item.product_name || "Unknown",
         category: productInfo?.category || "Uncategorized",
         totalQuantity: 0,
         totalRevenue: 0,
@@ -205,10 +213,10 @@ export async function GET(request: NextRequest) {
       };
 
       const quantity = Number(item.quantity || 1);
-      const price = Number(item.unit_price || item.total_price || productInfo?.retail_price || 0);
+      const price = lineRevenue(quantity, Number(item.unit_price || 0), Number(item.total_price || 0));
 
       existing.totalQuantity += quantity;
-      existing.totalRevenue += price * quantity;
+      existing.totalRevenue += price;
       existing.timesSold += 1;
       productMap.set(productId, existing);
     });
@@ -221,13 +229,16 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, limit);
 
-    const totalProductsSold = topProducts.reduce((sum, p) => sum + p.totalQuantity, 0);
-    const totalRevenue = topProducts.reduce((sum, p) => sum + p.totalRevenue, 0);
+    const allProducts = Array.from(productMap.values());
+    const totalProductsSold = allProducts.reduce((sum, p) => sum + p.totalQuantity, 0);
+    const totalRevenue = allProducts.reduce((sum, p) => sum + p.totalRevenue, 0);
 
     return successResponse({
       topProducts,
       totalProductsSold,
       totalRevenue,
+      reportBasis:
+        "Top products include appointment booking_products and standalone paid product_orders. Appointment product_orders are excluded as fulfillment mirrors.",
     });
   } catch (error) {
     return handleApiError(error, "TOP_PRODUCTS_ERROR", 500);

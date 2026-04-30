@@ -168,7 +168,7 @@ function SummaryMetricCard({
             className={`inline-flex shrink-0 items-center gap-0.5 text-xs font-medium ${
               trend >= 0 ? "text-green-700" : "text-red-700"
             }`}
-            title="vs prior period (services collected gross)"
+            title="vs prior period (settled service GMV)"
           >
             {trend >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
             {formatAdminNumber(Math.abs(trend))}%
@@ -472,12 +472,13 @@ export function FinanceOverviewPage() {
             <summary className="cursor-pointer font-medium text-gray-900">How these numbers relate</summary>
             <ul className="mt-2 list-inside list-disc space-y-1 text-gray-700">
               <li>
-                <strong>Services collected (gross)</strong> is GMV from bookings (services, add-ons, travel, tips) before
-                deductions.
+                <strong>Settled service GMV</strong> is ledger-backed booking and order activity from payment, wallet,
+                gift-card, tax, tip, travel, platform-fee, and additional-charge rows. Provider reports show scheduled
+                gross booked value separately.
               </li>
               <li>
                 <strong>Platform take (net)</strong> is commission after gateway fees; <strong>Provider earnings</strong>{" "}
-                is what providers keep after commission.
+                is net <code className="rounded bg-gray-100 px-1">provider_earnings</code> ledger activity.
               </li>
               <li>
                 <strong>Wallet top-ups collected</strong> is deferred revenue — it is cash received but not yet earned.
@@ -486,10 +487,10 @@ export function FinanceOverviewPage() {
                 exclude them for recognised-revenue reporting.
               </li>
               <li>
-                <strong>Cancellation fees retained</strong> sums <code className="rounded bg-gray-100 px-1">bookings.cancellation_fee</code> for
-                cancellations in the date range. <strong>Refunds (gross)</strong> sums ledger <code className="rounded bg-gray-100 px-1">refund</code>{" "}
-                row amounts (wallet credits). <strong>Provider earnings</strong> still reflects original payment rows; use the reconciliation panel
-                below to compare booking fees vs refund lines.
+                <strong>Cancellation fees retained</strong> sums provider-retained ledger activity for cancellations in
+                the date range. <strong>Refunds (gross)</strong> sums ledger <code className="rounded bg-gray-100 px-1">refund</code>{" "}
+                row amounts. <strong>Provider net activity</strong> combines earnings, retained fees, tips, and
+                provider-side refund impact.
               </li>
             </ul>
           </details>
@@ -544,7 +545,7 @@ export function FinanceOverviewPage() {
                 </div>
                 <div className="mt-2 border-t border-gray-200 pt-3">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="font-semibold text-gray-900">Net provider earnings</span>
+                    <span className="font-semibold text-gray-900">Provider net activity</span>
                     <span className="tabular-nums text-lg font-semibold text-gray-900">
                       {formatAdminCurrency(summary.provider_revenue?.net_after_refunds ?? summary.provider_earnings)}
                     </span>
@@ -633,7 +634,7 @@ export function FinanceOverviewPage() {
               <SummaryMetricCard label="Subscription revenue (net)" value={summary.subscription_net} />
               <SummaryMetricCard label="Ads revenue (net)" value={summary.ads_net ?? 0} />
               <SummaryMetricCard label="Subscription fees (gross)" value={summary.subscription_collected_gross} />
-              <SummaryMetricCard label="Tips collected (pass-through)" value={summary.pass_through?.tips_collected ?? summary.tips_gross} />
+              <SummaryMetricCard label="Tips collected (provider pass-through)" value={summary.pass_through?.tips_collected ?? summary.tips_gross} />
               <SummaryMetricCard label="Taxes collected (pass-through)" value={summary.pass_through?.taxes_collected ?? summary.taxes_gross} />
             </div>
           </AdminPanel>

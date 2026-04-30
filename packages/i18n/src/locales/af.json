@@ -286,6 +286,7 @@
       "cancel": "Kanselleer",
       "close": "Maak toe",
       "scheduleShareTitle": "Skedule",
+      "browserTitle": "Kalender",
       "appUrlNotConfiguredTitle": "Nie beskikbaar nie",
       "appUrlNotConfiguredMessage": "App-URL is nie gekonfigureer nie (EXPO_PUBLIC_APP_URL).",
       "bookingHoldTitle": "Bespreking wat gehou word",
@@ -298,10 +299,15 @@
         "footer": "\n— Gedeel vanaf Beautonomi verskaffer-app"
       },
       "monthOverviewLoadingCounts": "Laai tellings…",
+      "monthOverviewCountsError": "Kon nie besprekingstellings laai nie. Tik om weer te probeer.",
+      "monthOverviewCountsErrorA11y": "Kon nie maand se besprekingstellings laai nie. Tik om weer te probeer.",
       "monthOverviewDayA11y": "{{date}}, {{count}} besprekings",
       "prevMonthA11y": "Vorige maand",
       "nextMonthA11y": "Volgende maand",
       "bookingActionsMessage": "Besprekings-aksies",
+      "preferencesA11y": "Kalendervoorkeure",
+      "pendingBadge": "{{count}} hangend",
+      "overlayPartialWarningA11y": "Sommige kalenderblokke of gehoude gleuwe kon nie laai nie. Tik om te verfris.",
       "viewDetails": "Bekyk besonderhede",
       "collectPayment": "Inkas betaling",
       "currentStatusLabel": "Huidige status: {{status}}",
@@ -338,7 +344,235 @@
         "unassigned": "Ongeassigneer"
       },
       "bookingA11yLongPress": "Bespreking met {{name}} om {{time}}. Lang druk om te sleep.",
-      "bookingA11yShort": "Bespreking met {{name}} om {{time}}, status {{status}}"
+      "bookingA11yShort": "Bespreking met {{name}} om {{time}}, status {{status}}",
+      "paymentChip": {
+        "paid": "Betaal",
+        "partPaid": "Gedeeltelik betaal",
+        "paymentDue": "Betaling verskuldig"
+      },
+      "card": {
+        "newBadge": "Nuut",
+        "serviceFallback": "Diens",
+        "groupPrefix": "Groep",
+        "atHome": "Tuis"
+      },
+      "currentTimeA11yPrefix": "Huidige tyd",
+      "overlayBlockA11y": "{{type}} van {{start}} tot {{end}}. Tik om te wysig of te verwyder.",
+      "grid": {
+        "slotBookA11y": "Bespreek om {{time}} op {{day}}",
+        "emptyDayHint": "Geen afsprake nie — tik ’n gleuf om een by te voeg"
+      },
+      "pendingBanner": {
+        "accessibility": "Ontvangs: {{count}} besprekings wag op bevestiging",
+        "urgentTitle": "{{count}} hangende binne 2 u — bevestig of wys af",
+        "pendingTitleSingular": "1 bespreking wag op bevestiging",
+        "pendingTitlePlural": "{{count}} besprekings wag op bevestiging",
+        "subtitle": "Ontvangs wys vandag se skedule en intekenings"
+      },
+      "staffViewStrip": {
+        "title": "Personeelaansig",
+        "all": "Almal",
+        "single": "Enkel"
+      },
+      "allLocations": "Alle liggings",
+      "allStaff": "Alle personeel",
+      "dateNav": {
+        "prevWeek": "Vorige week",
+        "prevDay": "Vorige dag",
+        "nextWeek": "Volgende week",
+        "nextDay": "Volgende dag",
+        "today": "Vandag",
+        "jumpToDate": "Spring na datum",
+        "loadingCalendar": "Laai kalender"
+      },
+      "viewModes": {
+        "day": "DAG",
+        "threeDay": "3 DAE",
+        "week": "WEEK"
+      },
+      "colorByChip": {
+        "service": "Volgens diens",
+        "staff": "Volgens personeel"
+      },
+      "colorLegend": {
+        "a11y": "Kleurlegende",
+        "title": "Kleurlegende",
+        "statusColors": "Statuskleure",
+        "serviceColors": "Dienskleure",
+        "teamColors": "Spankleure",
+        "closedTimeOff": "Gesluit en tyd af",
+        "closedTimeOffDescription": "Spanlid-tyd af en afdae stem ooreen met wat kliënte sien wanneer hulle bespreek. Geslote tydperke kom van kalenderinstellings. Tik ’n beskikbaarheids- of tydsblok op die rooster om dit te wysig of te verwyder.",
+        "staffTimeOff": "Spanlid-tyd af / afdag",
+        "unavailableClosed": "Nie beskikbaar nie (geslote tydperk)",
+        "timeBlocks": "Tydsblokke"
+      },
+      "staleDataBanner": {
+        "a11y": "Kalender is dalk verouderd. Tik om te verfris.",
+        "body": "Wys laaste bekende skedule — tik om te verfris"
+      },
+      "datePicker": {
+        "today": "Vandag",
+        "weekdaysShort": {
+          "sunday": "So",
+          "monday": "Ma",
+          "tuesday": "Di",
+          "wednesday": "Wo",
+          "thursday": "Do",
+          "friday": "Vr",
+          "saturday": "Sa"
+        }
+      },
+      "fetchError": {
+        "title": "Kon nie jou kalender laai nie",
+        "retry": "Herlaai kalender"
+      },
+      "crashFallback": {
+        "title": "Ons kon nie jou kalender oopmaak nie",
+        "body": "Tik herlaai om weer te probeer — jou afsprake en besprekings is veilig."
+      },
+      "overlayPartialWarning": "Sommige blokke of gehoude gleuwe kon nie laai nie — tik om te verfris voor beskikbaarheid gewysig word.",
+      "apptSingle": "1 bespreking",
+      "apptPlural": "{{count}} besprekings",
+      "timeBlockTypes": {
+        "break": "Pouse",
+        "lunch": "Middagete",
+        "meeting": "Vergadering",
+        "personal": "Persoonlik",
+        "other": "Ander"
+      },
+      "availabilityEditTypes": {
+        "unavailable": "Nie beskikbaar nie",
+        "break": "Pouse",
+        "maintenance": "Onderhoud"
+      },
+      "preferencesModal": {
+        "title": "Kalendervoorkeure",
+        "subtitle": "Pas hoe jou kalender lyk en werk aan",
+        "closeA11y": "Maak voorkeure toe",
+        "displaySection": "Vertoning",
+        "colorsSection": "Kleure",
+        "timeGridSection": "Tydraster",
+        "advancedToggleShow": "Wys gevorderde instellings",
+        "advancedToggleHide": "Versteek gevorderde instellings",
+        "advancedHeading": "Gevorderde instellings",
+        "highContrast": "Hoë kontras",
+        "highContrastDesc": "Verhoog kontras vir beter sigbaarheid",
+        "showCanceled": "Wys gekanselleerd",
+        "showCanceledDesc": "Vertoon gekanselleerde afsprake op die rooster",
+        "compactMode": "Kompakte modus",
+        "compactModeDesc": "Verlaag blokhoogte vir ’n digter aansig",
+        "appointmentIcons": "Afspraak-ikone",
+        "appointmentIconsDesc": "Wys ikone vir nuwe kliënt, notas, ens.",
+        "showPrices": "Wys pryse",
+        "showPricesDesc": "Wys dienspryse op afspraakblokke",
+        "showClientPhone": "Wys kliëntfoon",
+        "showClientPhoneDesc": "Wys kliënt se foonnommer op besonderhede",
+        "colorBy": "Kleur volgens",
+        "colorByDesc": "Hoe afspraakblokke gekleur word",
+        "colorByStatus": "Status",
+        "colorByService": "Diens",
+        "colorByTeam": "Spanlid",
+        "timeIncrement": "Tydsprong",
+        "timeIncrementDesc": "Rooster gleuf in minute",
+        "min5": "5 min",
+        "min10": "10 min",
+        "min15": "15 min",
+        "scrollToNow": "Rollees na nou",
+        "scrollToNowDesc": "Rollees outomaties na die huidige tyd wanneer kalender oopmaak",
+        "workdayStart": "Werksdag begin",
+        "workdayStartDesc": "Uur waar die kalenderraster begin",
+        "workdayEnd": "Werksdag einde",
+        "workdayEndDesc": "Uur waar die kalenderraster eindig",
+        "processingBuffer": "Verwerking en buffer",
+        "processingBufferDesc": "Wys verwerking- en buffertysegmente op blokke",
+        "defaultNewStatus": "Verstek nuwe status",
+        "defaultNewStatusDesc": "Status toegeken aan nuwe afsprake",
+        "statusConfirmed": "Bevestig",
+        "statusUnconfirmed": "Onbevestig",
+        "processingFreesProvider": "Verwerking maak verskaffer beskikbaar",
+        "processingFreesProviderDesc": "Verskaffer kan ander besprekings tydens verwerking aanvaar",
+        "resetA11y": "Stel alle voorkeure op verstek terug",
+        "reset": "Stel terug op verstek",
+        "decreaseA11y": "Verminder {{label}}",
+        "increaseA11y": "Vermeerder {{label}}"
+      },
+      "timeBlockSheet": {
+        "title": "Voeg tydsblok by",
+        "submit": "Voeg tydsblok by",
+        "blockType": "Bloktipe",
+        "titleField": "Titel",
+        "startTime": "Begintyd",
+        "endTime": "Eindtyd",
+        "staffOptional": "Spanlid (opsioneel)"
+      },
+      "availabilityEditModal": {
+        "title": "Wysig geslote tydperk",
+        "type": "Tipe",
+        "start": "Begin",
+        "end": "Einde",
+        "staff": "Span (opsioneel)",
+        "everyone": "Almal",
+        "cancel": "Kanselleer",
+        "save": "Stoor"
+      },
+      "overlayMenu": {
+        "invalidTimeTitle": "Ongeldige tyd",
+        "invalidRangeTitle": "Ongeldige reeks",
+        "invalidTimeMessage": "Gebruik HH:MM-formaat vir begin- en eindtyd, byvoorbeeld 12:00 en 13:00.",
+        "invalidRangeMessage": "Eindtyd moet na begintyd wees.",
+        "saveTimeBlockErrorTitle": "Kon nie tydsblok stoor nie",
+        "saveBlockErrorTitle": "Kon nie blok stoor nie",
+        "bookingHoldTitle": "Besprekingshou",
+        "bookingHoldExpires": " Verval {{time}}.",
+        "bookingHoldMessage": "’n Kliënt finaliseer tans betaling vir hierdie gleuf.{{expires}} Dit sal outomaties verdwyn as hulle nie betaling voltooi nie.",
+        "staffOffTitle": "Span tyd af",
+        "staffOffMessage": "Dit kom van spanlid-tyd af of ’n afdag. Werk dit in spanskedulering by, nie vanaf die kalenderraster nie.",
+        "availabilityBlockTitle": "{{type}} · {{start}}–{{end}}",
+        "edit": "Wysig",
+        "delete": "Skrap",
+        "manage": "Bestuur",
+        "removeBlockTitle": "Verwyder hierdie blok?",
+        "removeBlockMessage": "Kliënte kan moontlik weer hierdie tyd bespreek.",
+        "removeBlockErrorTitle": "Kon nie blok verwyder nie",
+        "timeBlockTitle": "Tydsblok",
+        "removeTimeBlockTitle": "Verwyder tydsblok?",
+        "removeTimeBlockErrorTitle": "Kon nie tydsblok verwyder nie"
+      },
+      "cancelBookingModal": {
+        "title": "Kanselleer bespreking",
+        "confirm": "Kanselleer bespreking",
+        "reasonPlaceholder": "Rede (opsioneel)"
+      },
+      "utilityMenu": {
+        "title": "Kalender-ghereedskap",
+        "expressBooking": "Kitbespreking"
+      },
+      "actionRail": {
+        "newLabel": "Nuut",
+        "newSub": "Afspraak",
+        "walkInLabel": "Inloop",
+        "walkInSub": "Bespreek nou",
+        "groupLabel": "Groep",
+        "groupSub": "Deelnemers",
+        "saleLabel": "Verkoop",
+        "saleSub": "Produkte",
+        "recurringLabel": "Herhalend",
+        "recurringSub": "Reeks",
+        "blockLabel": "Blok",
+        "blockSub": "Tydsafrui",
+        "waitingLabel": "Wagkamer",
+        "waitingRoomSub": "Kamer",
+        "waitingCountSub": "{{count}} wag"
+      },
+      "mutations": {
+        "completeServiceErrorTitle": "Kon nie diens voltooi nie",
+        "startServiceErrorTitle": "Kon nie diens begin nie",
+        "updateBookingErrorTitle": "Kon nie bespreking opdateer nie",
+        "moveAppointmentErrorTitle": "Kon nie bespreking skuif nie",
+        "moveAppointmentGeneric": "Ons kon nie hierdie bespreking skuif nie. Probeer weer.",
+        "slotUnavailableTitle": "Tydgleuf nie beskikbaar nie",
+        "slotOverlapBody": "Nog ’n bespreking of blok oorvleuel hierdie tyd."
+      }
     }
   },
   "customer": {

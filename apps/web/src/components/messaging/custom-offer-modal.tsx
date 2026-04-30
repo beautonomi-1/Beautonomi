@@ -14,6 +14,7 @@ import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { mergeCurrencyChoiceCodes, currencySelectLabel } from "@/lib/locale/currency";
+import { cn } from "@/lib/utils";
 
 interface CustomOfferModalProps {
   isOpen: boolean;
@@ -23,6 +24,24 @@ interface CustomOfferModalProps {
   conversationId?: string | null;
   editOfferId?: string | null;
   onSuccess?: () => void;
+}
+
+interface AvailableSlotRow {
+  time: string;
+  available?: boolean;
+}
+
+function toDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function fromDateTimeLocal(value: string): { date: string; time: string } {
+  const [date, rawTime] = value.split("T");
+  return { date: date || toDateKey(new Date()), time: (rawTime || "10:00").slice(0, 5) };
+}
+
+function toDateTimeLocal(date: string, time: string): string {
+  return `${date}T${time.slice(0, 5)}`;
 }
 
 export default function CustomOfferModal({
@@ -55,6 +74,10 @@ export default function CustomOfferModal({
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [staffId, setStaffId] = useState<string | null>(null);
   const [staffMembers, setStaffMembers] = useState<Array<{ id: string; name: string; is_active: boolean }>>([]);
+  const [locationId, setLocationId] = useState<string | null>(null);
+  const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
+  const [availableSlots, setAvailableSlots] = useState<AvailableSlotRow[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
   const [addressLine1, setAddressLine1] = useState("");
   const [addressCity, setAddressCity] = useState("");
   const [addressCountry, setAddressCountry] = useState("");
@@ -67,6 +90,7 @@ export default function CustomOfferModal({
     if (isOpen) {
       loadCategories();
       loadStaffMembers();
+      loadLocations();
       if (editOfferId) {
         loadOfferForEdit(editOfferId);
       } else {
@@ -86,6 +110,7 @@ export default function CustomOfferModal({
       setDurationMinutes(String(offer.duration_minutes ?? 60));
       setNotes(offer.notes ?? "");
       setStaffId(offer.staff_id ?? null);
+      setLocationId(offer.location_id ?? null);
       setTravelFee(offer.travel_fee != null ? String(offer.travel_fee) : "");
       if (req) {
         setServiceName(req.service_name ?? "");
@@ -127,6 +152,66 @@ export default function CustomOfferModal({
       // Continue without staff selection
     }
   };
+
+  const loadLocations = async () => {
+    try {
+      const response = await fetcher.get<{ data: Array<{ id: string; name: string }> }>("/api/provider/locations");
+      setLocations(response.data || []);
+    } catch (err) {
+      console.error("Failed to load locations:", err);
+    }
+  };
+
+  const dateOptions = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      return d;
+    });
+  }, []);
+
+  const selectedSlotParts = fromDateTimeLocal(preferredStartAt || toDateTimeLocal(toDateKey(new Date()), "10:00"));
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const duration = Number(durationMinutes);
+    if (!Number.isFinite(duration) || duration < 15) return;
+    let cancelled = false;
+    setLoadingSlots(true);
+    const params = new URLSearchParams({
+      date: selectedSlotParts.date,
+      duration_minutes: String(duration),
+      mode: locationType === "at_home" ? "mobile" : "salon",
+      travel_buffer: locationType === "at_home" ? "30" : "0",
+    });
+    if (staffId) params.set("staff_ids", staffId);
+    if (locationType === "at_salon" && locationId) params.set("location_id", locationId);
+    fetcher
+      .get<{ data?: { slots?: string[]; slot_grid?: AvailableSlotRow[] } }>(`/api/provider/bookings/available-slots?${params.toString()}`)
+      .then((res) => {
+        if (cancelled) return;
+        const grid = res.data?.slot_grid;
+        const rows = Array.isArray(grid) && grid.length > 0
+          ? grid
+          : (res.data?.slots ?? []).map((time) => ({ time, available: true }));
+        setAvailableSlots(rows);
+        const available = rows.filter((slot) => slot.available !== false).map((slot) => slot.time.slice(0, 5));
+        if (available.length > 0 && !available.includes(selectedSlotParts.time)) {
+          setPreferredStartAt(toDateTimeLocal(selectedSlotParts.date, available[0]));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSlots(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [durationMinutes, isOpen, locationId, locationType, selectedSlotParts.date, selectedSlotParts.time, staffId]);
 
   const handleQuickTemplate = (template: string) => {
     const templates: Record<string, string> = {
@@ -210,6 +295,7 @@ export default function CustomOfferModal({
         image_urls: imageUrls,
         staff_id: staffId || null,
       };
+      if (locationType === "at_salon" && locationId) payload.location_id = locationId;
       if (conversationId) payload.conversation_id = conversationId;
       if (serviceName.trim()) payload.service_name = serviceName.trim();
       if (locationType === "at_home") {
@@ -253,6 +339,7 @@ export default function CustomOfferModal({
     setImageUrls([]);
     setServiceCategoryId(null);
     setStaffId(null);
+    setLocationId(null);
     setAddressLine1("");
     setAddressCity("");
     setAddressCountry("");
@@ -436,15 +523,61 @@ export default function CustomOfferModal({
             </div>
             <div className="space-y-2">
               <Label htmlFor="preferredStart" className="text-sm font-semibold">
-                Preferred Start Date (optional)
+                Appointment slot
               </Label>
-              <Input
-                id="preferredStart"
-                type="datetime-local"
-                value={preferredStartAt}
-                onChange={(e) => setPreferredStartAt(e.target.value)}
-                min={new Date().toISOString().slice(0, 16)}
-              />
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                <p className="mb-2 text-xs text-gray-500">Slots are loaded from the same availability engine used for new appointments.</p>
+                <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                  {dateOptions.map((d) => {
+                    const key = toDateKey(d);
+                    const active = selectedSlotParts.date === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setPreferredStartAt(toDateTimeLocal(key, selectedSlotParts.time))}
+                        className={cn(
+                          "shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold",
+                          active ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-white text-gray-600",
+                        )}
+                      >
+                        {d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {loadingSlots ? (
+                    <p className="text-xs text-gray-500">Loading available times...</p>
+                  ) : availableSlots.length === 0 ? (
+                    <p className="text-xs text-amber-700">No available slots for this date. Try another day, staff member, or duration.</p>
+                  ) : (
+                    availableSlots.slice(0, 32).map((slot) => {
+                      const time = slot.time.slice(0, 5);
+                      const available = slot.available !== false;
+                      const active = selectedSlotParts.time === time;
+                      return (
+                        <button
+                          key={slot.time}
+                          type="button"
+                          disabled={!available}
+                          onClick={() => setPreferredStartAt(toDateTimeLocal(selectedSlotParts.date, time))}
+                          className={cn(
+                            "rounded-full border px-3 py-1.5 text-xs font-semibold disabled:opacity-40",
+                            active
+                              ? "border-emerald-700 bg-emerald-600 text-white"
+                              : available
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-gray-200 bg-gray-100 text-gray-400",
+                          )}
+                        >
+                          {time}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -495,27 +628,61 @@ export default function CustomOfferModal({
           {/* Service Category (optional) */}
           {categories.length > 0 && (
             <div className="space-y-2">
-              <Label htmlFor="category" className="text-sm font-semibold">
+              <Label className="text-sm font-semibold">
                 Service Category (optional)
               </Label>
-              <Select
-                value={serviceCategoryId || RADIX_SELECT_NONE}
-                onValueChange={(value) =>
-                  setServiceCategoryId(value === RADIX_SELECT_NONE ? null : value)
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a category (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={RADIX_SELECT_NONE}>None</SelectItem>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setServiceCategoryId(null)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-xs font-semibold",
+                    serviceCategoryId == null ? "border-primary bg-primary/10 text-primary" : "border-gray-200 bg-white text-gray-600",
+                  )}
+                >
+                  Any category
+                </button>
+                {categories.map((cat) => {
+                  const active = serviceCategoryId === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setServiceCategoryId(active ? null : cat.id)}
+                      className={cn(
+                        "rounded-full border px-3 py-1.5 text-xs font-semibold",
+                        active ? "border-primary bg-primary/10 text-primary" : "border-gray-200 bg-white text-gray-600",
+                      )}
+                    >
                       {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {locationType === "at_salon" && locations.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Venue (optional)</Label>
+              <div className="flex flex-wrap gap-2">
+                {locations.map((loc) => {
+                  const active = locationId === loc.id;
+                  return (
+                    <button
+                      key={loc.id}
+                      type="button"
+                      onClick={() => setLocationId(active ? null : loc.id)}
+                      className={cn(
+                        "rounded-full border px-3 py-1.5 text-xs font-semibold",
+                        active ? "border-primary bg-primary/10 text-primary" : "border-gray-200 bg-white text-gray-600",
+                      )}
+                    >
+                      {loc.name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 

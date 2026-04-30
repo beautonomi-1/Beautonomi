@@ -5,6 +5,41 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
+import { rescheduleBookingServicesSequential } from "@/lib/bookings/reschedule-booking-services";
+
+async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabaseAdmin>, groupId: string) {
+  const [{ data: group }, { data: participantRows }] = await Promise.all([
+    admin
+      .from("group_bookings")
+      .select("products, travel_fee, location_type")
+      .eq("id", groupId)
+      .maybeSingle(),
+    admin
+      .from("booking_participants")
+      .select("price")
+      .eq("group_booking_id", groupId),
+  ]);
+
+  const products = Array.isArray(group?.products) ? group.products : [];
+  const participantTotal = (participantRows ?? []).reduce(
+    (sum: number, p: any) => sum + Math.max(0, Number(p.price || 0)),
+    0,
+  );
+  const productTotal = products.reduce(
+    (sum: number, p: any) =>
+      sum + Math.max(0, Number(p.total_price ?? p.totalPrice ?? (Number(p.unit_price ?? p.unitPrice ?? 0) * Number(p.quantity ?? 1)))),
+    0,
+  );
+  const travelFee = group?.location_type === "at_home" ? Math.max(0, Number(group.travel_fee || 0)) : 0;
+  const total = participantTotal + productTotal + travelFee;
+
+  await admin
+    .from("group_bookings")
+    .update({ total_price: total, updated_at: new Date().toISOString() })
+    .eq("id", groupId);
+
+  return total;
+}
 
 /**
  * GET /api/provider/group-bookings/[id]
@@ -239,6 +274,20 @@ export async function PATCH(
       sanitized.total_price = participantTotal + productTotal + nextTravelFee;
     }
 
+    const shouldSyncChildBookings =
+      "scheduled_at" in sanitized ||
+      "staff_id" in sanitized ||
+      "location_id" in sanitized ||
+      "location_type" in sanitized ||
+      "address_line1" in sanitized ||
+      "address_city" in sanitized ||
+      "address_state" in sanitized ||
+      "address_country" in sanitized ||
+      "address_postal_code" in sanitized ||
+      "address_latitude" in sanitized ||
+      "address_longitude" in sanitized ||
+      "travel_fee" in sanitized;
+
     const { data, error } = await admin
       .from("group_bookings")
       .update(sanitized)
@@ -249,6 +298,50 @@ export async function PATCH(
 
     if (error || !data) {
       return notFoundResponse("Group booking not found");
+    }
+
+    if (shouldSyncChildBookings) {
+      const childUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if ("scheduled_at" in sanitized) childUpdate.scheduled_at = sanitized.scheduled_at;
+      if ("location_id" in sanitized) childUpdate.location_id = sanitized.location_id;
+      if ("location_type" in sanitized) childUpdate.location_type = sanitized.location_type;
+      for (const key of [
+        "address_line1",
+        "address_city",
+        "address_state",
+        "address_country",
+        "address_postal_code",
+        "address_latitude",
+        "address_longitude",
+        "travel_fee",
+      ]) {
+        if (key in sanitized) childUpdate[key] = sanitized[key];
+      }
+      const { data: childRows, error: childFetchError } = await admin
+        .from("bookings")
+        .select("id")
+        .eq("group_booking_id", id)
+        .eq("provider_id", providerId)
+        .not("status", "in", "(completed,no_show,cancelled)");
+      if (childFetchError) throw childFetchError;
+      if (childRows && childRows.length > 0) {
+        const childIds = childRows.map((row: { id: string }) => row.id);
+        const { error: childUpdateError } = await admin
+          .from("bookings")
+          .update(childUpdate)
+          .in("id", childIds)
+          .eq("provider_id", providerId);
+        if (childUpdateError) throw childUpdateError;
+        if ("scheduled_at" in sanitized && typeof sanitized.scheduled_at === "string") {
+          await Promise.all(
+            childIds.map((bookingId: string) =>
+              rescheduleBookingServicesSequential(admin, bookingId, sanitized.scheduled_at as string, {
+                ...(typeof sanitized.staff_id === "string" ? { staffId: sanitized.staff_id } : {}),
+              }),
+            ),
+          );
+        }
+      }
     }
 
     return successResponse(data);

@@ -23,7 +23,7 @@ interface DashboardStats {
   total_bookings: number;
   /**
    * Platform revenue rollup aligned with GET /api/admin/finance/summary `platform_revenue.total`
-   * (booking take + subs + ads + service fees + paid wallet topups).
+   * (booking take + subs + ads + Platform Fees + paid wallet topups).
    * Ledger-backed lines use a rolling window (see `metrics_notes.ledger_window_months` when present).
    */
   total_revenue: number;
@@ -36,7 +36,7 @@ interface DashboardStats {
   users_growth?: number;
   providers_growth?: number;
   bookings_growth?: number;
-  /** Service GMV (gross collected from ledger rows — matches finance summary). */
+  /** Settled service GMV from ledger rows — matches finance summary. */
   gmv_total?: number;
   /** Same numeric basis as `total_revenue` when API sends both (backward compatibility). */
   platform_net_total?: number;
@@ -592,9 +592,9 @@ export function DashboardPage() {
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <AdminMetricCard
                       variant="emerald"
-                      label="Service GMV (gross)"
+                      label="Settled service GMV"
                       value={formatAdminCurrency(s.gmv_total)}
-                      hint="Matches finance summary service_collected_gross"
+                      hint="Ledger-backed, matches finance summary"
                       footer={metricFooterLink("/admin/finance", "Reconcile in Finance")}
                     />
                     {typeof s.subscription_net_total === "number" ? (

@@ -1636,12 +1636,8 @@ export default function BookScreen() {
             : 30
           : undefined;
 
-      // Release any existing hold before creating a new one
-      if (excludeHoldIdForSlots) {
-        api.post(`/api/public/booking-holds/${excludeHoldIdForSlots}/release`, {}).catch((err) => {
-          console.warn("Failed to release booking hold:", err);
-        });
-      }
+      // Previous hold is cancelled server-side via `previous_hold_id` on POST /booking-holds
+      // so we do not release early (avoids a race where the slot becomes bookable by others).
 
       const fingerprint = await getGuestFingerprintHash();
 

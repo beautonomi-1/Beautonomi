@@ -44,6 +44,19 @@ const recurringBookingSchema = z.object({
   }).optional().nullable(),
   payment_method: z.enum(["card", "cash"]).default("card"),
   is_active: z.boolean().default(true),
+  pricing: z.object({
+    subtotal: z.number().min(0).optional(),
+    discount_amount: z.number().min(0).optional(),
+    promotion_discount_amount: z.number().min(0).optional(),
+    membership_discount_amount: z.number().min(0).optional(),
+    tax_amount: z.number().min(0).optional(),
+    tax_rate: z.number().min(0).optional(),
+    service_fee_percentage: z.number().min(0).optional(),
+    service_fee_amount: z.number().min(0).optional(),
+    tip_amount: z.number().min(0).optional(),
+    travel_fee: z.number().min(0).optional(),
+    total_amount: z.number().min(0).optional(),
+  }).optional(),
   /** When the customer already completed a booking for this occurrence (e.g. checkout), avoids duplicate cron booking. */
   last_booking_date: z.string().date().optional(),
 });
@@ -103,6 +116,7 @@ export async function POST(request: NextRequest) {
         metadata: {
           services: validated.services,
           address: validated.address,
+          ...(validated.pricing ? { pricing: validated.pricing } : {}),
         },
       })
       .select()

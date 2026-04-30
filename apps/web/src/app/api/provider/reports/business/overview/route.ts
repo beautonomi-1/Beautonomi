@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subMonths, subDays, startOfDay, endOfDay } from "date-fns";
+import { startOfDay, endOfDay, startOfWeek, startOfMonth, startOfQuarter, startOfYear } from "date-fns";
 import { getProviderRevenue, getPreviousPeriodRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 
@@ -22,42 +22,28 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const locationId = searchParams.get("location_id");
     const period = searchParams.get("period") || "month"; // month, quarter, year
 
     let fromDate: Date;
-    const toDate = new Date();
+    const toDate = endOfDay(new Date());
 
     switch (period) {
       case "week":
-        fromDate = subDays(toDate, 7);
+        fromDate = startOfWeek(toDate, { weekStartsOn: 1 });
         break;
       case "month":
-        fromDate = subMonths(toDate, 1);
+        fromDate = startOfMonth(toDate);
         break;
       case "quarter":
-        fromDate = subMonths(toDate, 3);
+        fromDate = startOfQuarter(toDate);
         break;
       case "year":
-        fromDate = subMonths(toDate, 12);
+        fromDate = startOfYear(toDate);
         break;
       default:
-        fromDate = subMonths(toDate, 1);
+        fromDate = startOfMonth(toDate);
     }
 
     // Get bookings
@@ -125,7 +111,7 @@ export async function GET(request: NextRequest) {
     const { data: payments } = await paymentsCountQuery;
 
     const periodStart = startOfDay(fromDate);
-    const periodEnd = endOfDay(toDate);
+    const periodEnd = toDate;
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
 
     const { totalRevenue, revenueByBooking } = await getProviderRevenue(
@@ -212,6 +198,8 @@ export async function GET(request: NextRequest) {
       cancellationRate,
       noShowRate,
       revenueGrowth,
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
     });
   } catch (error) {
     return handleApiError(error, "BUSINESS_OVERVIEW_ERROR", 500);

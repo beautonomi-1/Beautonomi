@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, startOfDay, endOfDay } from "date-fns";
+import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,10 +15,10 @@ export async function GET(request: NextRequest) {
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
     const sp = request.nextUrl.searchParams;
     const locationId = sp.get("location_id") || null;
-    const fromDate = sp.get("from") ? startOfDay(new Date(sp.get("from")!)) : startOfDay(subDays(new Date(), 30));
-    const toDate = sp.get("to") ? endOfDay(new Date(sp.get("to")!)) : endOfDay(new Date());
+    const { fromDate, toDate } = reportDateRangeFromParams(sp, reportContext.timezone, { defaultDays: 30 });
 
     // §Provider-audit 2026-04 (round 9): group by `offering_id` instead of
     // the service title. Otherwise any rename split the historical row into

@@ -42,6 +42,11 @@ export async function createBookingRecord(
     package_id: draft.package_id ?? null,
     subtotal: v.subtotal,
     travel_fee: v.travelFee,
+    platform_fee_config_id: v.serviceFeeConfigId,
+    platform_fee_percentage: v.serviceFeePercentage,
+    platform_fee_amount: v.serviceFeeAmount,
+    platform_fee_paid_by: "customer",
+    // Deprecated persistence aliases kept until every active client is migrated.
     service_fee_config_id: v.serviceFeeConfigId,
     service_fee_percentage: v.serviceFeePercentage,
     service_fee_amount: v.serviceFeeAmount,
@@ -173,6 +178,23 @@ export async function createBookingRecord(
   if (hci) {
     atHomePatch.house_call_instructions = hci;
   }
+  if (validatedDraft.campaign_id) {
+    const { data: campaign } = await adminSupabase
+      .from("ads_campaigns")
+      .select("id, provider_id, status")
+      .eq("id", validatedDraft.campaign_id)
+      .eq("provider_id", draft.provider_id)
+      .eq("status", "active")
+      .maybeSingle();
+    if (campaign?.id) {
+      atHomePatch.ads_campaign_id = campaign.id;
+      atHomePatch.ads_attribution = {
+        campaign_id: campaign.id,
+        source: "sponsored_listing",
+        captured_at: new Date().toISOString(),
+      };
+    }
+  }
   if (Object.keys(atHomePatch).length > 0) {
     await adminSupabase.from("bookings").update(atHomePatch).eq("id", bookingId);
   }
@@ -184,6 +206,13 @@ export async function createBookingRecord(
         loyalty_points_used: v.loyaltyPointsRedeemed,
         loyalty_discount_amount: v.loyaltyDiscountAmount,
       })
+      .eq("id", bookingId);
+  }
+
+  if (v.membershipId) {
+    await adminSupabase
+      .from("bookings")
+      .update({ membership_id: v.membershipId })
       .eq("id", bookingId);
   }
 

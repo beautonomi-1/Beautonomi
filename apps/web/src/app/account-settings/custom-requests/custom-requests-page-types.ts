@@ -23,7 +23,9 @@ export type CustomRequestListItem = {
   location_type: string;
   budget_min?: number | null;
   budget_max?: number | null;
+  duration_minutes?: number | null;
   created_at: string;
+  service_category_id?: string | null;
   service_name?: string | null;
   address_line1?: string | null;
   address_line2?: string | null;

@@ -60,6 +60,13 @@ type ReceiptPayload = {
     tip_amount?: number;
     cancellation_fee?: number;
     discount?: number;
+    promotion_discount_amount?: number;
+    membership_discount_amount?: number;
+    loyalty_discount_amount?: number;
+    package_discount_amount?: number;
+    wallet_amount?: number;
+    gift_card_amount?: number;
+    total_refunded?: number;
     discount_reason?: string | null;
     total?: number;
     currency?: string;
@@ -121,6 +128,8 @@ export async function GET(
       bookingId: id,
       totalAmount: Number(receipt.total || 0),
       totalPaid: Number(receipt.amount_paid || 0),
+      walletAmount: Number((receipt as { wallet_amount?: number }).wallet_amount || 0),
+      giftCardAmount: Number((receipt as { gift_card_amount?: number }).gift_card_amount || 0),
       totalRefunded: Number((receipt as { total_refunded?: number }).total_refunded || 0),
       paymentStatus: String(receipt.payment_status || ""),
       balanceDue: Number(receipt.balance_due || 0),
@@ -203,21 +212,40 @@ export async function GET(
 
     const totalRows = [
       { label: "Subtotal", value: moneyPdf(receipt.subtotal, currency) },
+      ...(Number(receipt.travel_fee || 0) > 0 ? [{ label: "Travel fee", value: moneyPdf(receipt.travel_fee, currency) }] : []),
       ...(Number(receipt.tax || 0) > 0
         ? [{ label: receipt.tax_rate ? `Tax (${receipt.tax_rate}%)` : "Tax", value: moneyPdf(receipt.tax, currency) }]
         : []),
       ...(Number(receipt.fees || 0) > 0 ? [{ label: "Service / platform fee", value: moneyPdf(receipt.fees, currency) }] : []),
-      ...(Number(receipt.travel_fee || 0) > 0 ? [{ label: "Travel fee", value: moneyPdf(receipt.travel_fee, currency) }] : []),
       ...(Number(receipt.tip_amount || 0) > 0 ? [{ label: "Tip", value: moneyPdf(receipt.tip_amount, currency) }] : []),
       ...(Number(receipt.cancellation_fee || 0) > 0
         ? [{ label: "Cancellation fee", value: moneyPdf(receipt.cancellation_fee, currency), tone: "warning" as const }]
         : []),
-      ...(Number(receipt.discount || 0) > 0
+      ...(Number(receipt.discount || 0) > 0 &&
+      Number(receipt.package_discount_amount || 0) +
+        Number(receipt.promotion_discount_amount || 0) +
+        Number(receipt.membership_discount_amount || 0) +
+        Number(receipt.loyalty_discount_amount || 0) === 0
         ? [{ label: receipt.discount_reason ? `Discount (${receipt.discount_reason})` : "Discount", value: `-${moneyPdf(receipt.discount, currency)}`, tone: "success" as const }]
+        : []),
+      ...(Number(receipt.package_discount_amount || 0) > 0
+        ? [{ label: "Package discount", value: `-${moneyPdf(receipt.package_discount_amount, currency)}`, tone: "success" as const }]
+        : []),
+      ...(Number(receipt.promotion_discount_amount || 0) > 0
+        ? [{ label: "Promotion discount", value: `-${moneyPdf(receipt.promotion_discount_amount, currency)}`, tone: "success" as const }]
+        : []),
+      ...(Number(receipt.membership_discount_amount || 0) > 0
+        ? [{ label: "Membership discount", value: `-${moneyPdf(receipt.membership_discount_amount, currency)}`, tone: "success" as const }]
+        : []),
+      ...(Number(receipt.loyalty_discount_amount || 0) > 0
+        ? [{ label: "Loyalty discount", value: `-${moneyPdf(receipt.loyalty_discount_amount, currency)}`, tone: "success" as const }]
         : []),
       ...(receipt.deposit_required && receipt.payment_option === "deposit"
         ? [{ label: `Deposit${receipt.deposit_percentage ? ` (${receipt.deposit_percentage}%)` : ""}`, value: moneyPdf(receipt.deposit_amount, currency) }]
         : []),
+      ...(Number(receipt.wallet_amount || 0) > 0 ? [{ label: "Wallet applied", value: `-${moneyPdf(receipt.wallet_amount, currency)}`, tone: "success" as const }] : []),
+      ...(Number(receipt.gift_card_amount || 0) > 0 ? [{ label: "Gift card applied", value: `-${moneyPdf(receipt.gift_card_amount, currency)}`, tone: "success" as const }] : []),
+      ...(Number(receipt.total_refunded || 0) > 0 ? [{ label: "Refunded", value: `-${moneyPdf(receipt.total_refunded, currency)}`, tone: "warning" as const }] : []),
       ...(Number(receipt.amount_paid || 0) > 0 ? [{ label: "Amount paid", value: moneyPdf(receipt.amount_paid, currency) }] : []),
       ...(Number(receipt.balance_due || 0) > 0
         ? [{ label: "Balance due", value: moneyPdf(receipt.balance_due, currency), tone: "danger" as const }]

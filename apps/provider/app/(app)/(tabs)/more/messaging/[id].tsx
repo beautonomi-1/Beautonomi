@@ -150,6 +150,7 @@ export default function ChatScreen() {
 
   const refreshRef = useRef(refresh);
   const markReadRef = useRef(markRead);
+  const messagesRealtimeGenRef = useRef(0);
   useEffect(() => {
     refreshRef.current = refresh;
   }, [refresh]);
@@ -189,8 +190,9 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!conversationId) return;
     setRealtimeMessages([]);
+    const topic = `provider-messages:${conversationId}:${++messagesRealtimeGenRef.current}`;
     const channel = supabase
-      .channel(`provider-messages:${conversationId}`)
+      .channel(topic)
       .on(
         "postgres_changes",
         {
@@ -258,7 +260,6 @@ export default function ChatScreen() {
         // Ignore
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   const handleSend = useCallback(async () => {
@@ -929,6 +930,7 @@ export default function ChatScreen() {
         onClose={() => setShowCustomOfferSheet(false)}
         customerId={customerId ?? ""}
         customerName={conversation?.customer_name}
+        conversationId={conversationId}
         onSuccess={() => refresh()}
       />
     </SafeAreaView>

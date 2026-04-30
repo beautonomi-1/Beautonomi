@@ -63,12 +63,12 @@ export async function calculateStaffCommission(
     providerId,
     fromDate,
     toDate,
-    null,
+    locationId ?? null,
     { transactionTypes: STAFF_COMMISSION_REVENUE_TYPES }
   );
 
   // 3. Get bookings with booking_services
-  const { data: bookings } = await supabaseAdmin
+  let bookingsQuery = supabaseAdmin
     .from("bookings")
     .select(
       `
@@ -87,6 +87,10 @@ export async function calculateStaffCommission(
     .gte("scheduled_at", fromDate.toISOString())
     .lte("scheduled_at", toDate.toISOString())
     .in("status", ["confirmed", "completed"]);
+  if (locationId) {
+    bookingsQuery = bookingsQuery.eq("location_id", locationId);
+  }
+  const { data: bookings } = await bookingsQuery;
 
   if (!bookings) return result;
 

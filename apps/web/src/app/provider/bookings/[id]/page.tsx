@@ -1678,7 +1678,7 @@ export default function ProviderBookingDetail() {
             )}
             {booking.service_fee_amount != null && booking.service_fee_amount > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-600">Service Fee</span>
+                <span className="text-gray-600">Platform Fee</span>
                 <span className="font-medium">
                   {booking.currency} {booking.service_fee_amount.toFixed(2)}
                 </span>

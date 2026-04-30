@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, handleApiError } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
 
@@ -12,7 +12,7 @@ import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = await getSupabaseServer(request);
 
     if (!supabase) {

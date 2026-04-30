@@ -192,7 +192,7 @@ type CheckoutStep =
   | "payment"
   | "receipt";
 
-type PaymentMethod = "cash" | "card" | "online";
+type PaymentMethod = "cash" | "yoco" | "card" | "eft";
 
 const DATE_RANGES = [
   { label: "Today", value: "today" },
@@ -203,8 +203,9 @@ const DATE_RANGES = [
 
 const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: "Cash", value: "cash", icon: "cash-outline" },
-  { label: "Card (Yoco)", value: "card", icon: "card-outline" },
-  { label: "Online", value: "online", icon: "globe-outline" },
+  { label: "Yoco terminal", value: "yoco", icon: "card-outline" },
+  { label: "Card manual", value: "card", icon: "reader-outline" },
+  { label: "EFT", value: "eft", icon: "swap-horizontal-outline" },
 ];
 
 export default function SalesScreen() {
@@ -563,7 +564,7 @@ export default function SalesScreen() {
 
   function buildSalePayload(overrides: Record<string, unknown> = {}) {
     const rawMethod = (overrides.payment_method as PaymentMethod | undefined) ?? paymentMethod;
-    const payment_method = rawMethod === "online" ? "other" : rawMethod;
+    const payment_method = rawMethod === "eft" ? "other" : rawMethod;
     return {
       customer_id: selectedClient?.customer_id ?? null,
       is_walk_in: isWalkIn,
@@ -614,7 +615,7 @@ export default function SalesScreen() {
   }
 
   async function handleCompleteSale() {
-    if (paymentMethod === "card") {
+    if (paymentMethod === "yoco") {
       let saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
       if (!saleId) {
         const { data, error } = await createSale(
@@ -666,7 +667,7 @@ export default function SalesScreen() {
       total: grandTotal,
       items: [...cart],
       client: selectedClient?.full_name ?? "Walk-in",
-      method: "card",
+      method: "yoco",
       date: new Date().toISOString(),
     });
     setCheckoutStep("receipt");
@@ -1015,6 +1016,7 @@ export default function SalesScreen() {
                         {prod.sku && !hasOpts && (
                           <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>SKU: {prod.sku}</Text>
                         )}
+                        <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{stockLabel}</Text>
                       </View>
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
                         <View style={{ marginRight: 12, alignItems: "flex-end" }}>
@@ -1147,13 +1149,12 @@ export default function SalesScreen() {
         <Text style={{ marginBottom: 8, marginTop: 16, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
           Payment Method
         </Text>
-        <View style={{ flexDirection: "row" }}>
-          {PAYMENT_METHODS.map((pm, idx) => (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }}>
+          {PAYMENT_METHODS.map((pm) => (
             <TouchableOpacity
               key={pm.value}
               style={[
-                { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, paddingVertical: 12 },
-                idx > 0 && { marginLeft: 8 },
+                { width: "48%", marginHorizontal: "1%", flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, paddingVertical: 12, paddingHorizontal: 8, marginBottom: 8 },
                 paymentMethod === pm.value ? { borderColor: "#818cf8", backgroundColor: "#eef2ff" } : { borderColor: Colors.gray[200], backgroundColor: Colors.white },
               ]}
               onPress={() => setPaymentMethod(pm.value)}

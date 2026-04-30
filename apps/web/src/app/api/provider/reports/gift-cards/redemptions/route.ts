@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { endOfDay, startOfDay, subDays } from "date-fns";
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,27 +20,13 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
     const locationId = searchParams.get("location_id") || undefined;
 
     // Get gift card redemptions via bookings (redemptions are linked to bookings)

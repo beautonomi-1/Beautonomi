@@ -19,8 +19,8 @@
  * paid / balance due is still moving.
  *
  * The object key is deterministic per
- * (bookingId, total_amount, total_paid, total_refunded, payment_status)
- * so if any of those five change, the next request writes a new cache
+ * (bookingId, total_amount, total_paid, wallet_amount, gift_card_amount,
+ * total_refunded, payment_status) so if any of those change, the next request writes a new cache
  * entry and stale PDFs are orphaned (not served).
  */
 import crypto from "node:crypto";
@@ -33,6 +33,8 @@ export interface ReceiptCacheKeyInput {
   bookingId: string;
   totalAmount: number;
   totalPaid: number;
+  walletAmount: number;
+  giftCardAmount: number;
   totalRefunded: number;
   paymentStatus: string;
   balanceDue: number;
@@ -58,6 +60,8 @@ export function buildReceiptCacheKey(input: ReceiptCacheKeyInput): string {
         input.bookingId,
         Math.round((input.totalAmount || 0) * 100),
         Math.round((input.totalPaid || 0) * 100),
+        Math.round((input.walletAmount || 0) * 100),
+        Math.round((input.giftCardAmount || 0) * 100),
         Math.round((input.totalRefunded || 0) * 100),
         (input.paymentStatus || "").toLowerCase(),
       ].join("|"),

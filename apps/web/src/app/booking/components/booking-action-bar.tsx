@@ -157,7 +157,7 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
           )}
           {totals.serviceFeeAmount > 0 && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Service Fee{totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ''}</span>
+              <span>Platform Fee{totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ''}</span>
               <span>{formatCurrency(totals.serviceFeeAmount, totals.currency)}</span>
             </div>
           )}

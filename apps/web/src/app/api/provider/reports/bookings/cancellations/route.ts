@@ -97,23 +97,35 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get total bookings for cancellation rate (capped for performance)
-    let allBookingsQuery = supabaseAdmin
+    // Get exact counts for cancellation rate. The recent cancellation list above is capped
+    // for payload size, but headline rates must not be capped.
+    let allBookingsCountQuery = supabaseAdmin
       .from("bookings")
-      .select("id")
+      .select("id", { count: "exact", head: true })
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString())
-      .limit(MAX_BOOKINGS_FOR_REPORT);
+      .lte("scheduled_at", toDate.toISOString());
+
+    let cancelledCountQuery = supabaseAdmin
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("status", "cancelled")
+      .gte("scheduled_at", fromDate.toISOString())
+      .lte("scheduled_at", toDate.toISOString());
 
     if (locationId) {
-      allBookingsQuery = allBookingsQuery.eq("location_id", locationId);
+      allBookingsCountQuery = allBookingsCountQuery.eq("location_id", locationId);
+      cancelledCountQuery = cancelledCountQuery.eq("location_id", locationId);
     }
 
-    const { data: allBookings } = await allBookingsQuery;
+    const [{ count: allBookingsCount }, { count: cancelledCount }] = await Promise.all([
+      allBookingsCountQuery,
+      cancelledCountQuery,
+    ]);
 
-    const totalBookings = allBookings?.length || 0;
-    const totalCancelled = cancelledBookings?.length || 0;
+    const totalBookings = allBookingsCount || 0;
+    const totalCancelled = cancelledCount || 0;
     const cancellationRate = totalBookings > 0 ? (totalCancelled / totalBookings) * 100 : 0;
     
     // Calculate lost revenue from finance_transactions (what provider would have earned)
@@ -180,6 +192,8 @@ export async function GET(request: NextRequest) {
       cancellationReasons,
       dailyBreakdown,
       recentCancellations,
+      reportBasis:
+        "Cancellation rate uses exact booking counts for the selected scheduled-date range. Recent cancellations are capped for display.",
     });
   } catch (error) {
     return handleApiError(error, "CANCELLATIONS_ERROR", 500);

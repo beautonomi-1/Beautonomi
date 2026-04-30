@@ -422,8 +422,13 @@ export interface Booking {
   wallet_amount: number;
   tax_amount: number;
   tax_rate: number;
+  platform_fee_amount: number;
+  platform_fee_percentage: number;
+  /** @deprecated Use platform_fee_amount. */
   platform_service_fee: number;
+  /** @deprecated Use platform_fee_amount. */
   service_fee_amount: number;
+  /** @deprecated Use platform_fee_percentage. */
   service_fee_percentage: number;
   total_amount: number;
   total_paid: number;

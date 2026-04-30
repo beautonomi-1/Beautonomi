@@ -8,7 +8,8 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
+import { isProviderOwner, hasPermission, normalizeStaffPermissions } from "@/lib/auth/permissions";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -31,7 +32,11 @@ const _updateSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requireAnyPermission(["view_team", "manage_team"], request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -54,8 +59,8 @@ export async function GET(request: NextRequest) {
       ...role,
       permissions:
         role.permissions && typeof role.permissions === "string"
-          ? JSON.parse(role.permissions)
-          : role.permissions || {},
+          ? normalizeStaffPermissions(JSON.parse(role.permissions))
+          : normalizeStaffPermissions(role.permissions),
     }));
 
     return successResponse(roles);
@@ -73,7 +78,8 @@ export async function POST(request: NextRequest) {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     if (user.role !== "superadmin") {
       const canManageRoles =
-        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+        (await isProviderOwner(user.id, request)) ||
+        (await hasPermission(user.id, "manage_team", undefined, request));
       if (!canManageRoles) {
         return errorResponse(
           "Only owners or users with Manage team can create roles.",
@@ -107,7 +113,7 @@ export async function POST(request: NextRequest) {
         provider_id: providerId,
         name: validationResult.data.name,
         description: validationResult.data.description || null,
-        permissions: validationResult.data.permissions || {},
+        permissions: normalizeStaffPermissions(validationResult.data.permissions),
         is_active: validationResult.data.is_active ?? true,
       })
       .select()
@@ -121,8 +127,8 @@ export async function POST(request: NextRequest) {
       ...data,
       permissions:
         data.permissions && typeof data.permissions === "string"
-          ? JSON.parse(data.permissions)
-          : data.permissions || {},
+          ? normalizeStaffPermissions(JSON.parse(data.permissions))
+          : normalizeStaffPermissions(data.permissions),
     });
   } catch (error) {
     return handleApiError(error, "Failed to create role");

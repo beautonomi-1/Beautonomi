@@ -273,7 +273,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
-  // Tip/Tax/Travel fees/Service fee are excluded from commission.
+  // Tip/tax/travel and customer-paid platform fees are excluded from commission.
   // These are the FULL booking-level amounts (used for booking-level ledger entries).
   const tipAmount = Number(metadata?.tip_amount ?? bookingData.tip_amount ?? 0);
   const taxAmount = Number(metadata?.tax_amount ?? bookingData.tax_amount ?? 0);
@@ -477,7 +477,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   //      Detected by: finance_transactions already has a 'payment' row for this
   //      booking but the Paystack reference is new.
   //      Action: write payment + provider_earnings ONLY (per-charge amounts).
-  //      Booking-level rows (service_fee, tax, tip, travel_fee) are recorded once
+  //      Booking-level rows (platform_fee, tax, tip, travel_fee) are recorded once
   //      from the first charge and must NOT be written again.
   const { data: existingPaymentTxForRef } = await supabase
     .from("payment_transactions")
@@ -566,18 +566,18 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     created_at: new Date().toISOString(),
   });
 
-  // Platform service fee entry
+  // Customer-paid Platform Fee entry
   if (serviceFeeAmount > 0) {
     await supabase.from("finance_transactions").insert({
       booking_id: metadata.booking_id,
       provider_id: bookingData.provider_id || null,
       tenant_id: financeTenantId,
-      transaction_type: "service_fee",
+      transaction_type: "platform_fee",
       amount: serviceFeeAmount,
       fees: 0,
       commission: 0,
       net: serviceFeeAmount,
-      description: `Service fee for booking ${bookingData.booking_number}`,
+      description: `Platform fee for booking ${bookingData.booking_number}`,
       created_at: new Date().toISOString(),
     });
   }
@@ -630,7 +630,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   ]);
   } else {
     // Scenario B: second Paystack charge for this booking. Booking-level rows
-    // (service_fee, tax, tip, travel) were already recorded for the first charge.
+    // (platform_fee, tax, tip, travel) were already recorded for the first charge.
     // Only append the per-charge payment + provider_earnings rows.
     console.log(`[charge-success] Second charge detected for booking ${metadata.booking_id} (ref: ${reference}) — writing payment+earnings only.`);
     await supabase.from("finance_transactions").insert([
@@ -1344,7 +1344,7 @@ async function handleCustomOfferSuccess(
     discount_amount: promotionDiscountAmount,
     tax_rate: taxRate,
     tax_amount: taxAmount,
-    service_fee_percentage: 0,
+    service_fee_percentage: _serviceFeePercentage,
     service_fee_amount: serviceFeeAmount,
     total_amount: isDepositPayment ? coTotalAmount : amountInCurrency,
     currency: offer.currency || offerCurrencyFallback,
@@ -1574,19 +1574,19 @@ async function handleCustomOfferSuccess(
   ]);
 
   // Booking-level ledger entries: only create when amount > 0 (aligned with standard booking flow).
-  // Use correct `net` values: tip and travel_fee flow to provider, tax and service_fee do not.
+  // Use correct `net` values: tip and travel_fee flow to provider; tax and platform_fee do not.
   const extraRows: any[] = [];
   if (serviceFeeAmount > 0) {
     extraRows.push({
       booking_id: booking.id,
       provider_id: req.provider_id,
       tenant_id: customOfferFinanceTenantId,
-      transaction_type: "service_fee",
+      transaction_type: "platform_fee",
       amount: serviceFeeAmount,
       fees: 0,
       commission: 0,
       net: serviceFeeAmount,
-      description: `Service fee (custom order)`,
+      description: `Platform fee (custom order)`,
       created_at: new Date().toISOString(),
     });
   }
@@ -1848,6 +1848,7 @@ async function handleGiftCardOrderSuccess(
     recipient_email?: string;
     provider_id?: string | null;
     tenant_id?: string | null;
+    metadata?: { attribution?: Record<string, unknown> } | null;
   };
   const orderData = order as GiftOrderRow;
   if (orderData.status === "paid" && orderData.gift_card_id) return;
@@ -1872,6 +1873,12 @@ async function handleGiftCardOrderSuccess(
   const value = Number(orderData.amount || 0);
   const quantity = Number(orderData.quantity || metadata.quantity || 1);
   const totalAmount = Number(orderData.total_amount || value * quantity);
+  const attribution =
+    metadata?.attribution && typeof metadata.attribution === "object"
+      ? metadata.attribution
+      : orderData.metadata?.attribution && typeof orderData.metadata.attribution === "object"
+        ? orderData.metadata.attribution
+        : undefined;
 
   const giftCardIds: string[] = [];
   const giftCardCodes: string[] = [];
@@ -1903,6 +1910,7 @@ async function handleGiftCardOrderSuccess(
           paystack_reference: reference,
           bulk_order_index: quantity > 1 ? i + 1 : null,
           bulk_order_total: quantity > 1 ? quantity : null,
+          attribution,
         },
       })
       .select("*")
@@ -1945,6 +1953,7 @@ async function handleGiftCardOrderSuccess(
       gift_card_order_id: orderId,
       gift_card_ids: giftCardIds,
       quantity: quantity,
+      attribution,
     },
     created_at: new Date().toISOString(),
   });
@@ -2018,9 +2027,22 @@ async function handleMembershipOrderSuccess(
     .eq("id", orderId)
     .single();
   if (!order) return;
-  type MembershipOrderRow = { status?: string; provider_id?: string; user_id?: string; plan_id?: string; amount?: number };
+  type MembershipOrderRow = {
+    status?: string;
+    provider_id?: string;
+    user_id?: string;
+    plan_id?: string;
+    amount?: number;
+    metadata?: { attribution?: Record<string, unknown> } | null;
+  };
   const orderData = order as MembershipOrderRow;
   if (orderData.status === "paid") return;
+  const attribution =
+    metadata?.attribution && typeof metadata.attribution === "object"
+      ? metadata.attribution
+      : orderData.metadata?.attribution && typeof orderData.metadata.attribution === "object"
+        ? orderData.metadata.attribution
+        : undefined;
 
   const { data: planRow } = await (supabase.from("membership_plans") as any)
     .select("id, provider_id")
@@ -2085,7 +2107,7 @@ async function handleMembershipOrderSuccess(
       status: "active",
       started_at: startedAt,
       expires_at: expiresAt.toISOString(),
-      metadata: { source: "purchase", membership_order_id: orderId },
+      metadata: { source: "purchase", membership_order_id: orderId, attribution },
       updated_at: new Date().toISOString(),
     },
     { onConflict: "user_id,provider_id" },
@@ -2110,6 +2132,7 @@ async function handleMembershipOrderSuccess(
       membership_order_id: orderId,
       plan_id: orderData.plan_id,
       provider_id: orderData.provider_id,
+      attribution,
     },
     created_at: new Date().toISOString(),
   });
@@ -2326,7 +2349,7 @@ async function handleAdsBudgetOrderSuccess(
     })
     .eq("id", orderId);
 
-  // Check if time-based campaign — auto-activate with correct dates
+  // Check billing model — prepaid fixed products should start after payment.
   const { data: campaignRow } = await supabase
     .from("ads_campaigns")
     .select("billing_model, duration_days")
@@ -2344,6 +2367,9 @@ async function handleAdsBudgetOrderSuccess(
     campaignUpdate.status = "active";
     campaignUpdate.start_at = now.toISOString();
     campaignUpdate.end_at = new Date(now.getTime() + days * 86400000).toISOString();
+  } else if ((campaignRow as any)?.billing_model === "impression_pack") {
+    campaignUpdate.status = "active";
+    campaignUpdate.start_at = new Date().toISOString();
   }
 
   await supabase.from("ads_campaigns")

@@ -49,6 +49,8 @@ type ReceiptPayload = {
     tax?: number;
     delivery_fee?: number;
     discount?: number;
+    platform_fee?: number;
+    wallet_amount?: number;
     total?: number;
     currency?: string;
     payment_status?: string;
@@ -165,6 +167,8 @@ export async function GET(
         ...(Number(receipt.discount || 0) > 0 ? [{ label: "Discount", value: `-${moneyPdf(receipt.discount, currency)}`, tone: "success" as const }] : []),
         ...(Number(receipt.delivery_fee || 0) > 0 ? [{ label: "Delivery", value: moneyPdf(receipt.delivery_fee, currency) }] : []),
         ...(Number(receipt.tax || 0) > 0 ? [{ label: "Tax", value: moneyPdf(receipt.tax, currency) }] : []),
+        ...(Number(receipt.platform_fee || 0) > 0 ? [{ label: "Platform fee", value: moneyPdf(receipt.platform_fee, currency) }] : []),
+        ...(Number(receipt.wallet_amount || 0) > 0 ? [{ label: "Wallet applied", value: `-${moneyPdf(receipt.wallet_amount, currency)}`, tone: "success" as const }] : []),
       ],
       { label: "Total", value: moneyPdf(receipt.total, currency) },
     );

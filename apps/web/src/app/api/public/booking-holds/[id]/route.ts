@@ -58,7 +58,7 @@ export async function GET(
       );
     }
 
-    if (hold.hold_status !== "active") {
+    if (hold.hold_status !== "active" && hold.hold_status !== "consuming") {
       return handleApiError(
         new Error("Hold is no longer active"),
         hold.hold_status === "expired"
@@ -73,9 +73,9 @@ export async function GET(
     if (expiresAt < new Date()) {
       await supabase
         .from("booking_holds")
-        .update({ hold_status: "expired" })
+        .update({ hold_status: "expired", consuming_at: null })
         .eq("id", hold.id)
-        .eq("hold_status", "active");
+        .in("hold_status", ["active", "consuming"]);
       return handleApiError(
         new Error("Hold has expired"),
         "Your hold has expired. Please select a new time.",
@@ -180,7 +180,7 @@ export async function GET(
       : 0;
     const taxInclusive = Boolean((providerRow as any)?.tax_inclusive ?? false);
 
-    // Resolve service fee config (same priority as validate-booking / platform-fees API)
+    // Resolve customer-paid Platform Fee config (same priority as validate-booking / platform-fees API)
     let serviceFeeConfig = {
       type: "fixed" as string,
       percentage: 0,

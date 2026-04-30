@@ -253,7 +253,7 @@ export async function checkBookingConflictForProvider(
  *   includes trailing turnover (hold end, validate-booking computed end, etc.) — same contract as {@link checkBookingConflict}.
  */
 /**
- * True if another guest’s active hold overlaps [startAt, endAt) for this provider/staff.
+ * True if another guest’s active or in-checkout (`consuming`) hold overlaps [startAt, endAt) for this provider/staff.
  * When `dbStaffId` is null (e.g. synthetic solo staff), any hold on the provider overlaps.
  */
 export async function checkActiveHoldOverlap(
@@ -269,7 +269,7 @@ export async function checkActiveHoldOverlap(
     .from('booking_holds')
     .select('id')
     .eq('provider_id', providerId)
-    .eq('hold_status', 'active')
+    .in('hold_status', ['active', 'consuming'])
     .gt('expires_at', nowIso)
     .lt('start_at', endAt.toISOString())
     .gt('end_at', startAt.toISOString());

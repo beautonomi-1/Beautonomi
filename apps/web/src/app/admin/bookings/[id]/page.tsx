@@ -837,7 +837,7 @@ export default function BookingDetailPage() {
                   {(svcFeeAmt > 0 || booking.service_fee_percentage != null) && (
                     <div className="flex justify-between">
                       <p className="text-gray-600">
-                        Service fee
+                        Platform fee
                         {booking.service_fee_percentage != null
                           ? ` (${Number(booking.service_fee_percentage).toFixed(2)}%)`
                           : ""}
@@ -880,7 +880,7 @@ export default function BookingDetailPage() {
                   ) : null}
                   {totalMismatch ? (
                     <p className="rounded-md border border-red-200 bg-red-50/80 px-2 py-1.5 text-xs text-red-950">
-                      <span className="font-medium">Check:</span> subtotal − discount + tax + service fee + travel + tip
+                      <span className="font-medium">Check:</span> subtotal − discount + tax + platform fee + travel + tip
                       − cancellation = {fmt(expectedTotalFromColumns)} vs total_amount {fmt(Number(booking.total_amount))}.
                     </p>
                   ) : null}

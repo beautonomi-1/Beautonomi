@@ -508,8 +508,12 @@ export function formatReportDataForExport(
     case "payment-summary":
       return [
         { Metric: "Total Payments", Value: data.totalPayments || 0 },
-        { Metric: "Total Amount", Value: fm(data.totalAmount, currencyCode) },
-        { Metric: "Net Amount", Value: fm(data.netAmount, currencyCode) },
+        { Metric: "Gross Booked Value", Value: fm(data.grossBookedValue ?? data.totalAmount, currencyCode) },
+        { Metric: "Settled Ledger Amount", Value: fm(data.settledLedgerAmount ?? data.totalCollected, currencyCode) },
+        { Metric: "Customer Payments by Method Total", Value: fm(data.customerPaymentsByMethodTotal, currencyCode) },
+        { Metric: "Provider Earnings", Value: fm(data.providerEarnings, currencyCode) },
+        { Metric: "Provider Net Activity", Value: fm(data.providerNetActivity ?? data.netAmount, currencyCode) },
+        { Metric: "Refunded Amount", Value: fm(data.refundedAmount, currencyCode) },
         { Metric: "Refund Rate", Value: `${Number(data.refundRate ?? 0).toFixed(1)}%` },
         ...((data.paymentsByMethod as ReportRow[]) || []).map((p) => ({
           Method: p.method,
@@ -577,6 +581,9 @@ export function formatReportDataForExport(
       return [
         { Metric: "Total Payouts", Value: data.totalPayouts || 0 },
         { Metric: "Total Payout Amount", Value: fm((data.totalPayoutAmount || 0), currencyCode) },
+        { Metric: "Gross Booked Value", Value: fm(data.totalBookedAmount ?? data.bookedAmount ?? data.totalGrossAmount, currencyCode) },
+        { Metric: "Booked Net of Refunds", Value: fm(data.totalBookedNetOfRefunds ?? data.bookedNetOfRefunds, currencyCode) },
+        { Metric: "Platform Fees", Value: fm(data.totalPlatformFees, currencyCode) },
         ...((data.monthlyBreakdown as ReportRow[]) || []).map((m) => ({
           Month: m.month,
           Count: m.count || 0,
@@ -584,6 +591,9 @@ export function formatReportDataForExport(
         })),
         ...((data.recentPayouts as ReportRow[]) || []).map((p) => ({
           Date: p.createdAt,
+          "Booked Amount": fm(((p.bookedAmount as number) ?? (p.grossAmount as number) ?? 0), currencyCode),
+          "Booked Net of Refunds": fm(((p.bookedNetOfRefunds as number) ?? (p.netAmount as number) ?? 0), currencyCode),
+          "Platform Fee": fm(((p.platformFee as number) ?? 0), currencyCode),
           Amount: fm(((p.payoutAmount as number) ?? (p.amount as number) ?? 0), currencyCode),
         })),
       ];

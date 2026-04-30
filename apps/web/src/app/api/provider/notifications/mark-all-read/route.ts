@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { invalidateProviderNotificationsListCache } from "@/lib/notifications/provider-notifications-list-cache";
 
 /**
  * POST /api/provider/notifications/mark-all-read
@@ -21,6 +22,8 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.warn("Error marking all provider notifications read:", error);
+    } else {
+      invalidateProviderNotificationsListCache(user.id);
     }
 
     return successResponse({ message: "All notifications marked as read" });

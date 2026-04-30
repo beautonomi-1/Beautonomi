@@ -366,7 +366,7 @@ export async function GET(request: NextRequest) {
         customer_growth_basis:
           "New customer accounts with preferred_home_tenant in this market (this month vs last month).",
         platform_net_includes:
-          "Booking platform take (includes ecommerce in commission) + subscription net + ads net + customer service fees. Wallet topups are tracked as cash/liability, not recognized revenue. Cancellation fees are provider revenue.",
+          "Booking platform take (includes ecommerce in commission) + subscription net + ads net + customer-paid Platform Fees. Wallet topups are tracked as cash/liability, not recognized revenue. Cancellation fees are provider revenue.",
         bookings_growth_basis: "Bookings created this calendar month vs last month (tenant scope).",
         providers_growth_basis: "Active providers created this calendar month vs last month (tenant scope).",
       },

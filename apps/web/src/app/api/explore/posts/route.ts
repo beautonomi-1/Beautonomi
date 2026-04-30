@@ -574,7 +574,9 @@ export async function POST(request: NextRequest) {
     if (!isOwner) {
       const hasCreatePermission = await hasPermission(
         user.id,
-        "create_explore_posts" as any
+        "create_explore_posts" as any,
+        undefined,
+        request,
       );
       if (!hasCreatePermission) {
         return errorResponse("Permission denied: create_explore_posts required", "FORBIDDEN", 403);

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getAllPermissions } from "@/lib/auth/permissions";
 import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
 import { checkStaffManagementFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { checkStaffLimit, formatLimitError } from "@/lib/subscriptions/limit-checker";
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
     
     const isFreelancer = providerData?.business_type === 'freelancer';
 
-    const rosterDetailLevel = await getTeamRosterDetailLevel(user.id);
+    const rosterDetailLevel = await getTeamRosterDetailLevel(user.id, request);
     
     // If location_id is provided, first get staff IDs assigned to that location
     let staffIds: string[] | null = null;
@@ -552,17 +553,22 @@ export async function POST(request: Request) {
     }
 
     // Add staff member
+    const staffPhone = phone || foundUser.phone || null;
+    const staffName = name || foundUser.full_name || foundUser.email?.split("@")[0] || "Staff Member";
     const { data: newStaff, error: insertError } = await supabase
       .from("provider_staff")
       .insert({
         provider_id: providerId,
         user_id: foundUser.id,
-        name: name || foundUser.full_name || foundUser.email?.split("@")[0] || "Staff Member",
+        name: staffName,
         email: foundUser.email,
-        phone: foundUser.phone,
+        phone: staffPhone,
         role: dbRole,
+        permissions: getAllPermissions(),
         is_active: true,
         mobile_ready: mobileReady || false,
+        commission_rate: commission_rate != null ? Number(commission_rate) : null,
+        commission_enabled: commission_rate != null && Number(commission_rate) >= 0,
       })
       .select(
         `
@@ -614,13 +620,6 @@ export async function POST(request: Request) {
       await supabase.from("provider_staff").update({ assigned_service_ids: service_ids }).eq("id", staffId);
     }
 
-    // Set commission rate if provided
-    if (commission_rate != null && Number(commission_rate) >= 0) {
-      await supabase.from("provider_staff")
-        .update({ commission_rate: Number(commission_rate), commission_enabled: true })
-        .eq("id", staffId);
-    }
-
     // Optionally send invite (push for existing user)
     if (invite_email) {
       try {
@@ -658,9 +657,18 @@ export async function POST(request: Request) {
       id: newStaff.id,
       name: (newStaff as { name?: string }).name || userObj?.full_name || "Staff Member",
       email: (newStaff as { email?: string }).email || userObj?.email || "",
-      phone: (newStaff as { phone?: string }).phone || userObj?.phone || null,
+      phone: (newStaff as { phone?: string }).phone || userObj?.phone || staffPhone,
       role: apiRole,
       is_active: newStaff.is_active ?? true,
+      mobileReady: (newStaff as { mobile_ready?: boolean }).mobile_ready ?? false,
+      commission_rate: commission_rate != null ? Number(commission_rate) : null,
+      locations: location_ids.map((locId, i) => ({
+        location_id: locId,
+        location_name: null,
+        location_city: null,
+        is_primary: i === 0,
+      })),
+      service_ids,
     };
 
     void import("@/lib/subscriptions/subscription-limit-notifications")

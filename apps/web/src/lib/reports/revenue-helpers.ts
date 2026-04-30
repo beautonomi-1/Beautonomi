@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { LEDGER_FULL_PROVIDER_NET_TYPES } from "./constants";
+import { filterLedgerRowsForLocation, reportDateKey } from "./provider-report-utils";
 
 export type ProviderRevenueOptions = {
   /**
@@ -9,6 +10,8 @@ export type ProviderRevenueOptions = {
    * Use DASHBOARD_REVENUE_TRANSACTION_TYPES for the main provider dashboard revenue cards.
    */
   transactionTypes?: readonly string[];
+  /** Provider/business timezone for daily grouping keys. */
+  timezone?: string;
 };
 
 /**
@@ -34,6 +37,7 @@ export async function getProviderRevenue(
 ): Promise<{
   totalRevenue: number;
   revenueByBooking: Map<string, number>;
+  revenueByProductOrder: Map<string, number>;
   revenueByDate: Map<string, number>;
 }> {
   const types =
@@ -44,44 +48,18 @@ export async function getProviderRevenue(
   // Date-bounded query: do not cap rows — a capped query would undercount high-volume providers.
   const { data: financeTransactions } = await supabaseAdmin
     .from("finance_transactions")
-    .select("id, transaction_type, amount, net, booking_id, created_at")
+    .select("id, transaction_type, amount, net, booking_id, product_order_id, created_at")
     .eq("provider_id", providerId)
     .in("transaction_type", types)
     .gte("created_at", fromDate.toISOString())
     .lte("created_at", toDate.toISOString());
 
-  // Get booking information for filtering by location if needed
-  const financeBookingIds = [
-    ...new Set(
-      (financeTransactions || [])
-        .filter((t: any) => t.booking_id)
-        .map((t: any) => t.booking_id)
-    ),
-  ];
-  let bookingMap: Record<string, { location_id: string | null }> = {};
-
-  if (locationId && financeBookingIds.length > 0) {
-    const { data: bookingsForFinance } = await supabaseAdmin
-      .from("bookings")
-      .select("id, location_id")
-      .in("id", financeBookingIds);
-
-    if (bookingsForFinance) {
-      bookingMap = bookingsForFinance.reduce((acc: any, b: any) => {
-        acc[b.id] = { location_id: b.location_id || null };
-        return acc;
-      }, {});
-    }
-  }
-
-  // Filter transactions by location if needed
-  const validTransactions = (financeTransactions || []).filter((t: any) => {
-    if (locationId) {
-      if (!t.booking_id) return false;
-      if (bookingMap[t.booking_id]?.location_id !== locationId) return false;
-    }
-    return true;
-  });
+  const validTransactions = await filterLedgerRowsForLocation(
+    supabaseAdmin,
+    providerId,
+    financeTransactions || [],
+    locationId,
+  );
 
   // Calculate total revenue
   const totalRevenue = validTransactions.reduce(
@@ -91,11 +69,18 @@ export async function getProviderRevenue(
 
   // Group by booking
   const revenueByBooking = new Map<string, number>();
+  const revenueByProductOrder = new Map<string, number>();
   validTransactions.forEach((t: any) => {
     if (t.booking_id) {
       const current = revenueByBooking.get(t.booking_id) || 0;
       revenueByBooking.set(
         t.booking_id,
+        current + Number(t.net || t.amount || 0)
+      );
+    } else if (t.product_order_id) {
+      const current = revenueByProductOrder.get(t.product_order_id) || 0;
+      revenueByProductOrder.set(
+        t.product_order_id,
         current + Number(t.net || t.amount || 0)
       );
     }
@@ -104,7 +89,7 @@ export async function getProviderRevenue(
   // Group by date
   const revenueByDate = new Map<string, number>();
   validTransactions.forEach((t: any) => {
-    const date = new Date(t.created_at).toISOString().split("T")[0];
+    const date = reportDateKey(new Date(t.created_at), options?.timezone ?? "Africa/Johannesburg");
     const current = revenueByDate.get(date) || 0;
     revenueByDate.set(date, current + Number(t.net || t.amount || 0));
   });
@@ -112,6 +97,7 @@ export async function getProviderRevenue(
   return {
     totalRevenue,
     revenueByBooking,
+    revenueByProductOrder,
     revenueByDate,
   };
 }

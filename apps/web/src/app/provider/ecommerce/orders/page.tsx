@@ -209,13 +209,25 @@ export default function ProviderProductOrdersPage() {
       setTrackingUrlInput("");
       return;
     }
+    if (newStatus === "cancelled") {
+      const order = orders.find((o) => o.id === orderId) ?? prefetchedFocusOrder;
+      if (order?.payment_status === "paid") {
+        const reason = window.prompt("Cancellation reason for this paid order");
+        if (!reason?.trim()) {
+          setError("Cancellation reason is required for paid orders.");
+          return;
+        }
+        await submitStatusUpdate(orderId, newStatus, { cancellation_reason: reason.trim() });
+        return;
+      }
+    }
     await submitStatusUpdate(orderId, newStatus);
   };
 
   const submitStatusUpdate = async (
     orderId: string,
     newStatus: string,
-    shipping?: { tracking_number?: string; carrier?: string; tracking_url?: string },
+    shipping?: { tracking_number?: string; carrier?: string; tracking_url?: string; cancellation_reason?: string },
   ) => {
     setUpdating(orderId);
     setError("");
@@ -224,6 +236,7 @@ export default function ProviderProductOrdersPage() {
       if (shipping?.tracking_number) payload.tracking_number = shipping.tracking_number;
       if (shipping?.carrier) payload.carrier = shipping.carrier;
       if (shipping?.tracking_url) payload.tracking_url = shipping.tracking_url;
+      if (shipping?.cancellation_reason) payload.cancellation_reason = shipping.cancellation_reason;
       const res = await fetcher.patch<{ data?: { order?: ProductOrder } }>(`/api/provider/product-orders/${orderId}`, payload);
       const updatedOrder = res?.data?.order;
       if (updatedOrder) {

@@ -11,10 +11,41 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 
+async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabaseAdmin>, groupId: string) {
+  const [{ data: group }, { data: participantRows }] = await Promise.all([
+    admin
+      .from("group_bookings")
+      .select("products, travel_fee, location_type")
+      .eq("id", groupId)
+      .maybeSingle(),
+    admin
+      .from("booking_participants")
+      .select("price")
+      .eq("group_booking_id", groupId),
+  ]);
+  const products = Array.isArray(group?.products) ? group.products : [];
+  const participantTotal = (participantRows ?? []).reduce((sum: number, p: any) => sum + Math.max(0, Number(p.price || 0)), 0);
+  const productTotal = products.reduce(
+    (sum: number, p: any) =>
+      sum + Math.max(0, Number(p.total_price ?? p.totalPrice ?? (Number(p.unit_price ?? p.unitPrice ?? 0) * Number(p.quantity ?? 1)))),
+    0,
+  );
+  const travelFee = group?.location_type === "at_home" ? Math.max(0, Number(group.travel_fee || 0)) : 0;
+  await admin
+    .from("group_bookings")
+    .update({ total_price: participantTotal + productTotal + travelFee, updated_at: new Date().toISOString() })
+    .eq("id", groupId);
+}
+
 /** Link an existing booking to the group (legacy path). */
 const bookingLinkSchema = z.object({
   booking_id: z.string().uuid(),
   participant_name: z.string().min(1).optional(),
+  service_id: z.string().uuid().optional().nullable(),
+  service_name: z.string().optional().nullable(),
+  price: z.coerce.number().min(0).optional(),
+  duration_minutes: z.coerce.number().int().min(0).optional(),
+  addons: z.array(z.unknown()).optional(),
   is_primary_contact: z.boolean().optional(),
 });
 
@@ -124,6 +155,11 @@ export async function POST(
           participant_name: name,
           participant_email: cust.email ?? null,
           participant_phone: cust.phone ?? null,
+          service_id: body.service_id ?? null,
+          service_name: body.service_name ?? null,
+          price: typeof body.price === "number" ? body.price : 0,
+          duration_minutes: body.duration_minutes ?? null,
+          addons: Array.isArray(body.addons) ? body.addons : [],
           is_primary_contact: body.is_primary_contact ?? false,
         })
         .select("*")
@@ -144,6 +180,8 @@ export async function POST(
       if (bookingUpdateError) {
         throw bookingUpdateError;
       }
+
+      await recalculateGroupBookingTotal(admin, groupId);
 
       return successResponse({ data: row });
     }
@@ -187,6 +225,8 @@ export async function POST(
     if (insErr) {
       throw insErr;
     }
+
+    await recalculateGroupBookingTotal(admin, groupId);
 
     return successResponse({ data: row });
   } catch (error) {

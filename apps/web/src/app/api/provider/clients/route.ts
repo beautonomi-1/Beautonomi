@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireRoleInApi,
   successResponse,
   handleApiError,
   getProviderIdForUser,
@@ -14,6 +13,9 @@ import {
   upsertCustomerDefaultAddress,
   CustomerHomeAddressLockedError,
 } from "@/lib/provider-portal/user-default-address";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasProviderCustomerRelationship } from "@/lib/provider/client-access";
+import { isSalonMembershipEntitledForDiscount } from "@/lib/provider/salon-membership-entitlement";
 
 /**
  * GET /api/provider/clients
@@ -21,7 +23,11 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("view_clients", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const locationId = searchParams.get("location_id");
@@ -89,7 +95,7 @@ export async function GET(request: NextRequest) {
     let clientsQuery = supabase
       .from("provider_clients")
       .select(
-        "id, notes, tags, is_favorite, last_service_date, total_bookings, total_spent, created_at, customer_id",
+        "id, notes, tags, is_favorite, last_service_date, total_bookings, total_spent, created_at, customer_id, relationship_source, privacy_level, source_metadata, linked_existing_platform_user",
         { count: "exact" },
       )
       .eq("provider_id", providerId);
@@ -140,7 +146,84 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching customer data from users table (admin client):", customersError);
       throw customersError;
     }
-    
+
+    /** Salon `user_memberships` (one row per customer per provider). */
+    const membershipByUserId = new Map<
+      string,
+      {
+        subscription_id: string;
+        plan_id: string;
+        plan_name: string | null;
+        plan_is_active: boolean;
+        status: string;
+        expires_at: string | null;
+        started_at: string | null;
+        cancelled_at: string | null;
+        /** Matches booking discount eligibility (`validate-booking.ts`). */
+        is_entitled: boolean;
+      }
+    >();
+    if (customerIds.length > 0) {
+      const { data: umRows, error: umErr } = await (supabaseAdmin as any)
+        .from("user_memberships")
+        .select("id, user_id, plan_id, status, expires_at, started_at, cancelled_at")
+        .eq("provider_id", providerId)
+        .in("user_id", customerIds);
+      if (umErr) {
+        console.error("[provider/clients] user_memberships fetch failed:", umErr);
+      } else {
+        const pids = [
+          ...new Set(
+            (umRows ?? []).map((r: { plan_id: string }) => r.plan_id).filter(Boolean),
+          ),
+        ];
+        let planById = new Map<
+          string,
+          { name: string | null; is_active: boolean | null }
+        >();
+        if (pids.length > 0) {
+          const { data: plans } = await (supabaseAdmin as any)
+            .from("membership_plans")
+            .select("id, name, is_active")
+            .in("id", pids);
+          planById = new Map(
+            (plans ?? []).map((p: { id: string; name: string; is_active: boolean }) => [
+              p.id,
+              { name: p.name, is_active: p.is_active },
+            ]),
+          );
+        }
+        for (const r of umRows ?? []) {
+          const row = r as {
+            id: string;
+            user_id: string;
+            plan_id: string;
+            status: string;
+            expires_at: string | null;
+            started_at: string | null;
+            cancelled_at: string | null;
+          };
+          const pm = planById.get(row.plan_id);
+          const planIsActive = pm?.is_active;
+          membershipByUserId.set(row.user_id, {
+            subscription_id: row.id,
+            plan_id: row.plan_id,
+            plan_name: pm?.name ?? null,
+            plan_is_active: planIsActive !== false,
+            status: row.status,
+            expires_at: row.expires_at,
+            started_at: row.started_at,
+            cancelled_at: row.cancelled_at,
+            is_entitled: isSalonMembershipEntitledForDiscount({
+              status: row.status,
+              expires_at: row.expires_at,
+              planIsActive,
+            }),
+          });
+        }
+      }
+    }
+
     // Log missing customers for debugging
     if (customers && customers.length < customerIds.length) {
       const foundIds = new Set(customers.map((c: { id: string }) => c.id));
@@ -164,13 +247,54 @@ export async function GET(request: NextRequest) {
       if (email.includes("beautonomi.local")) return false;
       return true;
     };
-    let clientsWithCustomers = clients.map((client) => {
+    const redactLimitedLinkedCustomer = (client: {
+      relationship_source?: string | null;
+      privacy_level?: string | null;
+      source_metadata?: unknown;
+      total_bookings?: number | null;
+    }, customer: Record<string, unknown>) => {
+      const hasServiceHistory = Number(client.total_bookings ?? 0) > 0;
+      if (
+        client.relationship_source !== "manual_existing_platform" ||
+        client.privacy_level !== "limited" ||
+        hasServiceHistory
+      ) {
+        return customer;
+      }
+
+      const metadata =
+        client.source_metadata && typeof client.source_metadata === "object"
+          ? (client.source_metadata as Record<string, unknown>)
+          : {};
+
+      return {
+        id: customer.id,
+        full_name: metadata.provider_supplied_name || customer.full_name || "Existing Beautonomi customer",
+        email: metadata.matched_on === "email" ? customer.email : metadata.provider_supplied_email ?? null,
+        phone: metadata.matched_on === "phone" ? customer.phone : metadata.provider_supplied_phone ?? null,
+        avatar_url: null,
+        rating_average: null,
+        review_count: 0,
+        customer_review_rating_avg: null,
+        customer_review_rating_count: null,
+        customer_booking_rating_avg: null,
+        customer_booking_rating_count: null,
+        date_of_birth: null,
+        email_notifications_enabled: null,
+        sms_notifications_enabled: null,
+        is_registered: true,
+        is_limited_platform_link: true,
+      };
+    };
+    let clientsWithCustomers: any[] = clients.map((client) => {
       const customer = customers?.find((c) => c.id === client.customer_id);
+      const salon_membership = membershipByUserId.get(client.customer_id) ?? null;
 
       // If customer not found, create minimal customer object.
       if (!customer) {
         return {
           ...client,
+          salon_membership,
           customer: {
             id: client.customer_id,
             full_name: null,
@@ -190,9 +314,12 @@ export async function GET(request: NextRequest) {
 
       return {
         ...client,
+        salon_membership,
         customer: {
-          ...customer,
-          is_registered: computeIsRegistered(customer.email),
+          ...redactLimitedLinkedCustomer(client, {
+            ...customer,
+            is_registered: computeIsRegistered(customer.email),
+          }),
         },
       };
     });
@@ -262,7 +389,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("edit_clients", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -296,6 +427,10 @@ export async function POST(request: NextRequest) {
           notes: notes || null,
           tags: tags && tags.length > 0 ? tags : null,
           is_favorite: is_favorite || false,
+          relationship_source: "manual",
+          privacy_level: "standard",
+          source_metadata: { linked_via: "provider_clients_post" },
+          created_by_user_id: user.id,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existing.id)
@@ -323,6 +458,19 @@ export async function POST(request: NextRequest) {
       return successResponse(data);
     }
 
+    const isKnownClient = await hasProviderCustomerRelationship(
+      supabaseAdmin,
+      providerId,
+      customer_id,
+    );
+    if (!isKnownClient) {
+      return errorResponse(
+        "This customer is not yet connected to your business. Create a new client from their details, or ask the customer to book or message your business first.",
+        "CLIENT_NOT_CONNECTED_TO_PROVIDER",
+        403,
+      );
+    }
+
     // Create new
     const { data, error } = await supabase
       .from("provider_clients")
@@ -332,6 +480,11 @@ export async function POST(request: NextRequest) {
         notes: notes || null,
         tags: tags && tags.length > 0 ? tags : null,
         is_favorite: is_favorite || false,
+        relationship_source: "manual",
+        privacy_level: "standard",
+        source_metadata: { linked_via: "provider_clients_post" },
+        linked_existing_platform_user: false,
+        created_by_user_id: user.id,
       })
       .select()
       .single();

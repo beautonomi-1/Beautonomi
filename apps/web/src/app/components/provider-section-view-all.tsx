@@ -43,6 +43,20 @@ const SECTION_COPY: Record<SectionKey, { title: string; subtitle: string; empty:
 
 const PAGE_SIZE = 24;
 
+function hasUsableCoords(latitude?: number | null, longitude?: number | null): boolean {
+  return (
+    latitude != null &&
+    longitude != null &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180 &&
+    !(latitude === 0 && longitude === 0)
+  );
+}
+
 function searchSortForSection(section: SectionKey): string {
   if (section === "top-rated") return "rating";
   if (section === "nearest") return "distance";
@@ -64,7 +78,7 @@ export default function ProviderSectionViewAll({ section }: { section: SectionKe
 
   const locationParams = useMemo(() => {
     const params = new URLSearchParams();
-    if (location?.latitude != null && location?.longitude != null) {
+    if (hasUsableCoords(location?.latitude, location?.longitude)) {
       params.set("lat", String(location.latitude));
       params.set("lng", String(location.longitude));
     }

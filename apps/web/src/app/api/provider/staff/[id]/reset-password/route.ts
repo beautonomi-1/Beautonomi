@@ -19,7 +19,8 @@ export async function POST(
 
     if (user.role !== "superadmin") {
       const canReset =
-        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+        (await isProviderOwner(user.id, request)) ||
+        (await hasPermission(user.id, "manage_team", undefined, request));
       if (!canReset) {
         return handleApiError(
           new Error("Only owners or users with Manage team can send reset emails."),

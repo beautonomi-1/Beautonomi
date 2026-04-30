@@ -21,6 +21,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { labelForSupportTicketCategory } from "@/lib/supportTicketCategories";
 
 const API_PATHS: Record<string, string> = {
   revenue: "/api/admin/reports/revenue",
@@ -29,6 +30,8 @@ const API_PATHS: Record<string, string> = {
   customers: "/api/admin/reports/customers",
   "gift-cards": "/api/admin/reports/gift-cards",
   "yoco-reconciliation": "/api/admin/reports/yoco-reconciliation",
+  "support-performance": "/api/admin/reports/support-performance",
+  "support-workload": "/api/admin/reports/support-workload",
 };
 
 const TITLES: Record<string, string> = {
@@ -38,6 +41,8 @@ const TITLES: Record<string, string> = {
   customers: "Customer report",
   "gift-cards": "Gift card report",
   "yoco-reconciliation": "Yoco reconciliation",
+  "support-performance": "Support performance",
+  "support-workload": "Support workload & drivers",
 };
 
 function fmt(n: unknown): string {
@@ -82,11 +87,11 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
     : [];
 
   const kpis = [
-    { label: "Total revenue (GMV)", value: fmtMoney(data.totalRevenue), sub: "Booking value in period" },
+    { label: "Scheduled gross booked value", value: fmtMoney(data.totalRevenue), sub: "Booking value by report period, not settled cash" },
     { label: "Net collected", value: fmtMoney(data.netCollected), sub: "Cash collected − refunds" },
     ...(pr
       ? [
-          { label: "Platform revenue (net)", value: fmtMoney(pr.total_platform_revenue_net), sub: "Take + subs + ads + service fees" },
+          { label: "Platform revenue (net)", value: fmtMoney(pr.total_platform_revenue_net), sub: "Take + subs + ads + Platform Fees" },
           { label: "Booking commission (net)", value: fmtMoney(pr.booking_commission_net), sub: "After refund contra & gateway fees" },
           { label: "Subscription net", value: fmtMoney(pr.subscription_net) },
           { label: "Ads net", value: fmtMoney(pr.ads_net) },
@@ -104,10 +109,10 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
     <div className="space-y-6">
       <AdminPanel>
         <p className="text-xs leading-5 text-gray-600">
-          <strong>Total revenue</strong> is booking <em>GMV</em> (what the customer was
-          charged at booking time). <strong>Platform revenue</strong> is what the platform
-          actually keeps after refunds, gateway fees and provider payouts are recognised on
-          the finance ledger.
+          <strong>Scheduled gross booked value</strong> is booking value in the report period,
+          distinct from Finance&apos;s settled service GMV and from provider payment-summary
+          settled ledger amount. <strong>Platform revenue</strong> is what the platform keeps
+          after refunds, gateway fees, and provider payouts are recognised on the finance ledger.
         </p>
         {showNegativeExplainer && (
           <p className="mt-2 text-xs leading-5 text-amber-700">
@@ -683,6 +688,484 @@ function YocoReport({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+// ── Support performance ───────────────────────────────────────────────────────
+function fmtNumOrDash(n: unknown, suffix = ""): string {
+  if (typeof n !== "number" || Number.isNaN(n)) return "—";
+  return `${n.toLocaleString()}${suffix}`;
+}
+
+function fmtPctOrDash(n: unknown): string {
+  if (typeof n !== "number" || Number.isNaN(n)) return "—";
+  return `${n.toFixed(1)}%`;
+}
+
+function statusPillClass(status: string): string {
+  switch (status) {
+    case "open":
+      return "bg-blue-100 text-blue-900";
+    case "in_progress":
+      return "bg-amber-100 text-amber-900";
+    case "waiting_customer":
+      return "bg-purple-100 text-purple-900";
+    case "resolved":
+      return "bg-green-100 text-green-900";
+    case "closed":
+      return "bg-gray-200 text-gray-800";
+    default:
+      return "bg-gray-100 text-gray-700";
+  }
+}
+
+function priorityRowAccent(priority: string): string {
+  switch (priority) {
+    case "urgent":
+      return "border-l-2 border-red-400";
+    case "high":
+      return "border-l-2 border-orange-400";
+    case "low":
+      return "border-l-2 border-slate-300";
+    default:
+      return "border-l-2 border-gray-200";
+  }
+}
+
+function SupportPerformanceReport({ data }: { data: Record<string, unknown> }) {
+  const statusMix = Array.isArray(data.statusMix)
+    ? (data.statusMix as { status: string; count: number }[])
+    : [];
+  const priorityMix = Array.isArray(data.priorityMix)
+    ? (data.priorityMix as { priority: string; count: number; breached: number; breachRate: number }[])
+    : [];
+  const dailyAll = Array.isArray(data.dailyOpenedVsResolved)
+    ? (data.dailyOpenedVsResolved as { date: string; opened: number; resolved: number }[])
+    : [];
+
+  const [showEmptyDays, setShowEmptyDays] = useState(false);
+  const daily = useMemo(() => {
+    if (showEmptyDays) return dailyAll;
+    return dailyAll.filter((r) => (r.opened ?? 0) + (r.resolved ?? 0) > 0);
+  }, [dailyAll, showEmptyDays]);
+  const hiddenEmptyDays = dailyAll.length - daily.length;
+
+  const kpis = [
+    { label: "Tickets created", value: fmtNumOrDash(data.ticketsCreated), sub: "In selected period" },
+    { label: "Tickets resolved", value: fmtNumOrDash(data.ticketsResolved), sub: "Resolved in period" },
+    { label: "Open backlog", value: fmtNumOrDash(data.openBacklog), sub: "Not resolved/closed now" },
+    {
+      label: "SLA breach rate",
+      value: fmtPctOrDash(data.slaBreachRate),
+      sub:
+        typeof data.slaBreachCount === "number" && typeof data.slaConsideredTickets === "number"
+          ? `${data.slaBreachCount} of ${data.slaConsideredTickets} tickets`
+          : undefined,
+    },
+    {
+      label: "Median first response",
+      value: typeof data.medianFirstResponseMinutes === "number"
+        ? `${data.medianFirstResponseMinutes.toFixed(1)} min`
+        : "—",
+      sub:
+        typeof data.firstResponseSampleSize === "number"
+          ? `n = ${data.firstResponseSampleSize} tickets with reply`
+          : undefined,
+    },
+    {
+      label: "Median time to resolution",
+      value: typeof data.medianResolutionHours === "number"
+        ? `${data.medianResolutionHours.toFixed(1)} h`
+        : "—",
+      sub:
+        typeof data.resolutionSampleSize === "number"
+          ? `n = ${data.resolutionSampleSize} tickets resolved`
+          : undefined,
+    },
+    {
+      label: "Avg CSAT",
+      value: typeof data.avgCsat === "number" ? `${data.avgCsat.toFixed(2)} / 5` : "—",
+      sub:
+        typeof data.csatResponses === "number" && data.csatResponses > 0
+          ? `${data.csatResponses} responses · ${fmtPctOrDash(data.csatPositiveRate)} positive`
+          : "No CSAT responses yet",
+    },
+  ];
+
+  const noFirstResponse =
+    typeof data.ticketsWithoutFirstResponse === "number"
+      ? data.ticketsWithoutFirstResponse
+      : 0;
+
+  return (
+    <div className="space-y-6">
+      <AdminPanel>
+        <p className="text-xs leading-5 text-gray-600">
+          <strong>Support performance</strong> tracks helpdesk health for this tenant scope.
+          <em> First response</em> uses <code>first_staff_reply_at</code> (set on the first
+          public staff reply). <em>SLA</em> compares resolution timing against the per-priority
+          target (urgent 4h, high 24h, medium 72h, low 168h). Tickets are scoped via the
+          customer's home tenant or the provider's tenant — superadmins switch scope from the
+          top-bar tenant selector.
+        </p>
+        {noFirstResponse > 0 && (
+          <p className="mt-2 text-xs leading-5 text-amber-700">
+            {noFirstResponse.toLocaleString()} open ticket(s) in this period have not received a
+            staff reply yet — they're excluded from median first response.
+          </p>
+        )}
+      </AdminPanel>
+
+      <KpiGrid items={kpis} />
+
+      {statusMix.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Status mix</SectionHeading>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {statusMix.map((row) => (
+              <div key={row.status} className="rounded-lg bg-gray-50 px-4 py-3">
+                <span
+                  className={`inline-block rounded-full px-2 py-0.5 text-xs capitalize ${statusPillClass(row.status)}`}
+                >
+                  {row.status.replace(/_/g, " ")}
+                </span>
+                <p className="mt-2 text-xl font-bold tabular-nums">{fmt(row.count)}</p>
+              </div>
+            ))}
+          </div>
+        </AdminPanel>
+      )}
+
+      {priorityMix.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Priority & SLA breach rate</SectionHeading>
+          <AdminDataTable className="mt-3">
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Priority</AdminTh>
+                <AdminTh>Tickets</AdminTh>
+                <AdminTh>Breached</AdminTh>
+                <AdminTh>Breach rate</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {priorityMix.map((r) => (
+                <tr key={r.priority} className={priorityRowAccent(r.priority)}>
+                  <AdminTd className="text-xs capitalize">{r.priority}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{fmt(r.count)}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{fmt(r.breached)}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">
+                    <span
+                      className={
+                        r.breachRate >= 25
+                          ? "font-medium text-red-700"
+                          : r.breachRate >= 10
+                            ? "font-medium text-amber-700"
+                            : "text-gray-700"
+                      }
+                    >
+                      {r.breachRate.toFixed(1)}%
+                    </span>
+                  </AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        </AdminPanel>
+      )}
+
+      {dailyAll.length > 0 && (
+        <AdminPanel>
+          <div className="flex items-center justify-between gap-3">
+            <SectionHeading>Daily opened vs resolved</SectionHeading>
+            <label className="flex items-center gap-2 text-xs text-gray-600">
+              <input
+                type="checkbox"
+                checked={showEmptyDays}
+                onChange={(e) => setShowEmptyDays(e.target.checked)}
+              />
+              Show empty days
+              {!showEmptyDays && hiddenEmptyDays > 0 && (
+                <span className="text-gray-400">({hiddenEmptyDays} hidden)</span>
+              )}
+            </label>
+          </div>
+          {daily.length > 0 ? (
+            <AdminDataTable className="mt-3">
+              <AdminTableHead>
+                <tr>
+                  <AdminTh>Date</AdminTh>
+                  <AdminTh>Opened</AdminTh>
+                  <AdminTh>Resolved</AdminTh>
+                  <AdminTh>Net</AdminTh>
+                </tr>
+              </AdminTableHead>
+              <AdminTableBody>
+                {daily.slice(0, 200).map((r) => {
+                  const net = (r.opened ?? 0) - (r.resolved ?? 0);
+                  return (
+                    <tr key={r.date}>
+                      <AdminTd className="text-xs">{r.date}</AdminTd>
+                      <AdminTd className="tabular-nums text-xs">{fmt(r.opened)}</AdminTd>
+                      <AdminTd className="tabular-nums text-xs">{fmt(r.resolved)}</AdminTd>
+                      <AdminTd className="tabular-nums text-xs">
+                        <span className={net > 0 ? "text-red-700" : net < 0 ? "text-green-700" : "text-gray-500"}>
+                          {net > 0 ? `+${net}` : net}
+                        </span>
+                      </AdminTd>
+                    </tr>
+                  );
+                })}
+              </AdminTableBody>
+            </AdminDataTable>
+          ) : (
+            <p className="mt-3 text-sm text-gray-500">No ticket activity in this period.</p>
+          )}
+        </AdminPanel>
+      )}
+    </div>
+  );
+}
+
+// ── Support workload & drivers ────────────────────────────────────────────────
+function SupportWorkloadReport({ data }: { data: Record<string, unknown> }) {
+  const agents = Array.isArray(data.agents)
+    ? (data.agents as Record<string, unknown>[])
+    : [];
+  const topCategories = Array.isArray(data.topCategories)
+    ? (data.topCategories as Record<string, unknown>[])
+    : [];
+  const topTags = Array.isArray(data.topTags)
+    ? (data.topTags as { tag: string; count: number }[])
+    : [];
+  const topRequesters = Array.isArray(data.topRequesters)
+    ? (data.topRequesters as Record<string, unknown>[])
+    : [];
+  const aging = (data.agingUnassigned as
+    | { total?: number; buckets?: { bucket: string; count: number }[] }
+    | undefined) ?? { total: 0, buckets: [] };
+  const agingBuckets = Array.isArray(aging.buckets) ? aging.buckets : [];
+
+  const kpis = [
+    { label: "Active agents", value: fmt(agents.length), sub: "Assigned at least one ticket" },
+    {
+      label: "Categories driving volume",
+      value: fmt(topCategories.length),
+      sub: topCategories.length > 0 ? `Top: ${labelForSupportTicketCategory(String((topCategories[0] as { category?: string }).category ?? "—"))}` : "—",
+    },
+    {
+      label: "Aging unassigned",
+      value: fmt(aging.total ?? 0),
+      sub: "Open tickets with no assignee",
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <AdminPanel>
+        <p className="text-xs leading-5 text-gray-600">
+          <strong>Workload & drivers</strong> shows where the support effort is going. Use the
+          per-agent table to balance the queue, the categories table to decide where
+          self-service / product fixes will pay off, and aging unassigned to triage work that
+          has fallen between the cracks.
+        </p>
+      </AdminPanel>
+
+      <KpiGrid items={kpis} />
+
+      {agents.length > 0 ? (
+        <AdminPanel>
+          <SectionHeading>Per-agent productivity</SectionHeading>
+          <AdminDataTable className="mt-3">
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Agent</AdminTh>
+                <AdminTh>Assigned</AdminTh>
+                <AdminTh>Resolved</AdminTh>
+                <AdminTh>Open</AdminTh>
+                <AdminTh>Median FRT</AdminTh>
+                <AdminTh>Median MTTR</AdminTh>
+                <AdminTh>SLA breaches</AdminTh>
+                <AdminTh>CSAT</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {agents.map((r, i) => (
+                <tr key={String(r.agent_id ?? i)}>
+                  <AdminTd className="text-xs">
+                    <div className="font-medium text-gray-900">{String(r.agent_name ?? "—")}</div>
+                    {r.agent_email ? (
+                      <div className="text-[11px] text-gray-500">{String(r.agent_email)}</div>
+                    ) : null}
+                  </AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{fmt(r.assigned_in_period)}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{fmt(r.resolved_in_period)}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{fmt(r.currently_open)}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">
+                    {typeof r.median_first_response_minutes === "number"
+                      ? `${(r.median_first_response_minutes as number).toFixed(1)} min`
+                      : "—"}
+                  </AdminTd>
+                  <AdminTd className="tabular-nums text-xs">
+                    {typeof r.median_resolution_hours === "number"
+                      ? `${(r.median_resolution_hours as number).toFixed(1)} h`
+                      : "—"}
+                  </AdminTd>
+                  <AdminTd className="tabular-nums text-xs">
+                    <span className={Number(r.sla_breaches) > 0 ? "font-medium text-red-700" : "text-gray-700"}>
+                      {fmt(r.sla_breaches)}
+                    </span>
+                  </AdminTd>
+                  <AdminTd className="tabular-nums text-xs">
+                    {typeof r.avg_csat === "number" ? (
+                      <span>
+                        {(r.avg_csat as number).toFixed(2)}
+                        <span className="ml-1 text-[11px] text-gray-400">
+                          (n={fmt(r.csat_responses)})
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        </AdminPanel>
+      ) : (
+        <AdminPanel>
+          <p className="text-sm text-gray-600">No tickets assigned in this period.</p>
+        </AdminPanel>
+      )}
+
+      {topCategories.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Top categories driving volume</SectionHeading>
+          <AdminDataTable className="mt-3">
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Category</AdminTh>
+                <AdminTh>Tickets</AdminTh>
+                <AdminTh>Share</AdminTh>
+                <AdminTh>Avg resolution</AdminTh>
+                <AdminTh>Breach rate</AdminTh>
+                <AdminTh>CSAT</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {topCategories.map((r, i) => {
+                const cat = String(r.category ?? "uncategorized");
+                const breachRate = typeof r.breach_rate === "number" ? (r.breach_rate as number) : 0;
+                return (
+                  <tr key={String(r.category ?? i)}>
+                    <AdminTd className="text-xs">
+                      <div>{labelForSupportTicketCategory(cat)}</div>
+                      <div className="text-[11px] text-gray-400">{cat}</div>
+                    </AdminTd>
+                    <AdminTd className="tabular-nums text-xs">{fmt(r.count)}</AdminTd>
+                    <AdminTd className="tabular-nums text-xs">
+                      {typeof r.share === "number" ? `${(r.share as number).toFixed(1)}%` : "—"}
+                    </AdminTd>
+                    <AdminTd className="tabular-nums text-xs">
+                      {typeof r.avg_resolution_hours === "number"
+                        ? `${(r.avg_resolution_hours as number).toFixed(1)} h`
+                        : "—"}
+                    </AdminTd>
+                    <AdminTd className="tabular-nums text-xs">
+                      <span
+                        className={
+                          breachRate >= 25
+                            ? "font-medium text-red-700"
+                            : breachRate >= 10
+                              ? "font-medium text-amber-700"
+                              : "text-gray-700"
+                        }
+                      >
+                        {breachRate.toFixed(1)}%
+                      </span>
+                    </AdminTd>
+                    <AdminTd className="tabular-nums text-xs">
+                      {typeof r.avg_csat === "number" ? (r.avg_csat as number).toFixed(2) : "—"}
+                    </AdminTd>
+                  </tr>
+                );
+              })}
+            </AdminTableBody>
+          </AdminDataTable>
+        </AdminPanel>
+      )}
+
+      {agingBuckets.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Aging unassigned ({fmt(aging.total ?? 0)} tickets)</SectionHeading>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {agingBuckets.map((b) => (
+              <div key={b.bucket} className="rounded-lg bg-gray-50 px-4 py-3">
+                <p className="text-xs text-gray-500">{b.bucket}</p>
+                <p
+                  className={`mt-0.5 text-xl font-bold tabular-nums ${b.bucket === ">7 days" && b.count > 0 ? "text-red-700" : "text-gray-900"}`}
+                >
+                  {fmt(b.count)}
+                </p>
+              </div>
+            ))}
+          </div>
+          {(aging.total ?? 0) === 0 && (
+            <p className="mt-3 text-xs text-gray-500">Inbox is fully triaged. Nice work.</p>
+          )}
+        </AdminPanel>
+      )}
+
+      {topTags.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Top tags</SectionHeading>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {topTags.map((t) => (
+              <span
+                key={t.tag}
+                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-800"
+              >
+                {t.tag}
+                <span className="rounded-full bg-white px-1.5 text-[10px] tabular-nums text-gray-600">
+                  {t.count}
+                </span>
+              </span>
+            ))}
+          </div>
+        </AdminPanel>
+      )}
+
+      {topRequesters.length > 0 && (
+        <AdminPanel>
+          <SectionHeading>Top requesters</SectionHeading>
+          <p className="mt-1 text-xs text-gray-500">
+            Customers / providers with the most tickets in this period — useful to spot friction
+            or churn risk.
+          </p>
+          <AdminDataTable className="mt-3">
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Requester</AdminTh>
+                <AdminTh>Email</AdminTh>
+                <AdminTh>Tickets</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {topRequesters.map((r, i) => (
+                <tr key={String(r.user_id ?? i)}>
+                  <AdminTd className="text-xs">
+                    {String(r.full_name ?? r.email ?? r.user_id ?? "—")}
+                  </AdminTd>
+                  <AdminTd className="text-xs text-gray-500">{String(r.email ?? "—")}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{fmt(r.ticket_count)}</AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        </AdminPanel>
+      )}
+    </div>
+  );
+}
+
 // ── Generic fallback ──────────────────────────────────────────────────────────
 function GenericReport({ data }: { data: Record<string, unknown> }) {
   const scalars = Object.entries(data).filter(
@@ -853,9 +1336,18 @@ export function ReportDetailPage() {
       {reportKey === "bookings" && <BookingsReport data={data} />}
       {reportKey === "gift-cards" && <GiftCardsReport data={data} />}
       {reportKey === "yoco-reconciliation" && <YocoReport data={data} />}
-      {!["revenue", "providers", "customers", "bookings", "gift-cards", "yoco-reconciliation"].includes(
-        reportKey
-      ) && <GenericReport data={data} />}
+      {reportKey === "support-performance" && <SupportPerformanceReport data={data} />}
+      {reportKey === "support-workload" && <SupportWorkloadReport data={data} />}
+      {![
+        "revenue",
+        "providers",
+        "customers",
+        "bookings",
+        "gift-cards",
+        "yoco-reconciliation",
+        "support-performance",
+        "support-workload",
+      ].includes(reportKey) && <GenericReport data={data} />}
     </div>
   );
 }

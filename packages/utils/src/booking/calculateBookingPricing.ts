@@ -13,7 +13,10 @@ export interface BookingPricingInput {
   /** When true, prices already include tax (SA VAT-inclusive model). */
   taxInclusive: boolean;
   travelFee: number;
-  serviceFeePercentage: number;
+  /** Fractional platform-fee rate, e.g. 0.1 for 10%. */
+  platformFeePercentage?: number;
+  /** @deprecated Legacy name for platformFeePercentage. */
+  serviceFeePercentage?: number;
   tipAmount: number;
 }
 
@@ -21,6 +24,8 @@ export interface BookingPricingResult {
   subtotal: number;
   afterDiscount: number;
   taxAmount: number;
+  platformFeeAmount: number;
+  /** @deprecated Legacy alias for platformFeeAmount. */
   serviceFeeAmount: number;
   totalAmount: number;
 }
@@ -30,7 +35,18 @@ export interface BookingPricingResult {
  * Handles both tax-inclusive (prices include VAT) and tax-exclusive modes.
  */
 export function calculateBookingTotals(input: BookingPricingInput): BookingPricingResult {
-  const { subtotal, discountAmount, taxRate, taxInclusive, travelFee, serviceFeePercentage, tipAmount } = input;
+  const {
+    subtotal,
+    discountAmount,
+    taxRate,
+    taxInclusive,
+    travelFee,
+    tipAmount,
+  } = input;
+  const platformFeePercentage =
+    input.platformFeePercentage && input.platformFeePercentage !== 0
+      ? input.platformFeePercentage
+      : input.serviceFeePercentage ?? input.platformFeePercentage ?? 0;
 
   const afterDiscount = Math.max(subtotal - discountAmount, 0);
 
@@ -38,11 +54,18 @@ export function calculateBookingTotals(input: BookingPricingInput): BookingPrici
     ? afterDiscount - afterDiscount / (1 + taxRate)
     : afterDiscount * taxRate;
 
-  const serviceFeeAmount = afterDiscount * serviceFeePercentage;
+  const platformFeeAmount = afterDiscount * platformFeePercentage;
 
   const totalAmount = taxInclusive
-    ? afterDiscount + travelFee + serviceFeeAmount + tipAmount
-    : afterDiscount + taxAmount + travelFee + serviceFeeAmount + tipAmount;
+    ? afterDiscount + travelFee + platformFeeAmount + tipAmount
+    : afterDiscount + taxAmount + travelFee + platformFeeAmount + tipAmount;
 
-  return { subtotal, afterDiscount, taxAmount, serviceFeeAmount, totalAmount };
+  return {
+    subtotal,
+    afterDiscount,
+    taxAmount,
+    platformFeeAmount,
+    serviceFeeAmount: platformFeeAmount,
+    totalAmount,
+  };
 }

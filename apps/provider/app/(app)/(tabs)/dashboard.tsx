@@ -716,6 +716,7 @@ export default function DashboardScreen() {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             router.push(
               newBookingScreenHref({
+                timeZone: provider?.timezone ?? null,
                 ...(selectedLocationId ? { locationId: selectedLocationId } : {}),
               }) as never,
             );
@@ -734,6 +735,7 @@ export default function DashboardScreen() {
             router.push(
               newBookingScreenHref({
                 walkIn: true,
+                timeZone: provider?.timezone ?? null,
                 ...(selectedLocationId ? { locationId: selectedLocationId } : {}),
               }) as never,
             );

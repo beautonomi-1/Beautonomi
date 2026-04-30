@@ -7,9 +7,9 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, format, eachDayOfInterval, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
+import { eachReportDateKey, getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 /**
  * GET /api/provider/reports/weekly-revenue
@@ -30,15 +30,13 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
 
     if (!providerId) return notFoundResponse("Provider not found");
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
 
     const searchParams = request.nextUrl.searchParams;
     const locationId = searchParams.get("location_id");
-    const startDate = searchParams.get("start_date")
-      ? startOfDay(new Date(searchParams.get("start_date")!))
-      : startOfDay(subDays(new Date(), 6));
-    const endDate = searchParams.get("end_date")
-      ? endOfDay(new Date(searchParams.get("end_date")!))
-      : endOfDay(new Date());
+    const { fromDate: startDate, toDate: endDate, fromYmd, toYmd } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+      defaultDays: 7,
+    });
 
     const { revenueByDate } = await getProviderRevenue(
       supabaseAdmin,
@@ -46,12 +44,10 @@ export async function GET(request: NextRequest) {
       startDate,
       endDate,
       locationId,
-      { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES },
+      { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: reportContext.timezone },
     );
 
-    const days = eachDayOfInterval({ start: startDate, end: endDate });
-    const result = days.map((d) => {
-      const key = format(d, "yyyy-MM-dd");
+    const result = eachReportDateKey(fromYmd, toYmd).map((key) => {
       return {
         day: key,
         revenue: revenueByDate.get(key) ?? 0,

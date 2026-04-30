@@ -830,7 +830,7 @@ async function loadActiveBookingHoldsAsSyntheticBookings(
     .from('booking_holds')
     .select('id, start_at, end_at, staff_id')
     .eq('provider_id', providerId)
-    .eq('hold_status', 'active')
+    .in('hold_status', ['active', 'consuming'])
     .gt('expires_at', nowIso)
     .gt('end_at', dayStart)
     .lt('start_at', dayEnd);

@@ -422,17 +422,18 @@ function rruleToRecurrenceRule(rr: string): RecurrenceRule {
 function recurrenceRuleToRrule(rule: RecurrenceRule | string): string {
   if (typeof rule === "string") return rule;
   const i = rule.interval && rule.interval > 1 ? rule.interval : 1;
+  const suffix = rule.occurrences && rule.occurrences > 0 ? `;COUNT=${Math.floor(rule.occurrences)}` : "";
   switch (rule.pattern) {
     case "daily":
-      return i > 1 ? `FREQ=DAILY;INTERVAL=${i}` : "FREQ=DAILY";
+      return `${i > 1 ? `FREQ=DAILY;INTERVAL=${i}` : "FREQ=DAILY"}${suffix}`;
     case "biweekly":
-      return "FREQ=WEEKLY;INTERVAL=2";
+      return `FREQ=WEEKLY;INTERVAL=2${suffix}`;
     case "monthly":
-      return i > 1 ? `FREQ=MONTHLY;INTERVAL=${i}` : "FREQ=MONTHLY";
+      return `${i > 1 ? `FREQ=MONTHLY;INTERVAL=${i}` : "FREQ=MONTHLY"}${suffix}`;
     case "weekly":
-      return i > 1 ? `FREQ=WEEKLY;INTERVAL=${i}` : "FREQ=WEEKLY";
+      return `${i > 1 ? `FREQ=WEEKLY;INTERVAL=${i}` : "FREQ=WEEKLY"}${suffix}`;
     default:
-      return "FREQ=WEEKLY;INTERVAL=1";
+      return `FREQ=WEEKLY;INTERVAL=1${suffix}`;
   }
 }
 
@@ -1008,7 +1009,7 @@ export class ProviderApiClient implements ProviderApi {
         status: DEFAULT_APPOINTMENT_STATUS,
         special_requests: data.notes || null,
         travel_fee: data.travel_fee || 0,
-        // Service fee fields (should be 0 for provider-created appointments)
+        // Platform Fee fields (should be 0 for provider-created appointments)
         service_fee_percentage: (data as any).service_fee_percentage || 0,
         service_fee_amount: (data as any).service_fee_amount || 0,
         booking_source: (data as any).booking_source || 'provider',
@@ -3164,6 +3165,7 @@ export class ProviderApiClient implements ProviderApi {
     params.set("page", String(page));
     params.set("limit", String(limit));
     if (filters?.location_id) params.set("location_id", filters.location_id);
+    if (filters?.search?.trim()) params.set("search", filters.search.trim());
 
     const res = (await fetcher.get(
       `/api/provider/recurring-appointments?${params.toString()}`,
@@ -3176,15 +3178,6 @@ export class ProviderApiClient implements ProviderApi {
     const total = bundle?.total ?? rows.length;
     const total_pages =
       bundle?.total_pages ?? Math.max(1, Math.ceil((bundle?.total ?? rows.length) / limit));
-
-    if (filters?.search) {
-      const s = filters.search.toLowerCase();
-      rows = rows.filter(
-        (r) =>
-          (r.client_snapshot_name || "").toLowerCase().includes(s) ||
-          (r.service_snapshot_title || "").toLowerCase().includes(s)
-      );
-    }
 
     const mapped = rows.map((row: any) => mapRecurringDbRowToAppointment(row));
     return {
@@ -3237,6 +3230,19 @@ export class ProviderApiClient implements ProviderApi {
       ...baseMeta,
       duration_minutes: data.duration_minutes ?? 60,
       price: data.price ?? 0,
+      pricing: {
+        subtotal: (data as any).subtotal ?? data.price ?? 0,
+        discount_amount: (data as any).discount_amount ?? 0,
+        promotion_discount_amount: (data as any).promotion_discount_amount ?? 0,
+        membership_discount_amount: (data as any).membership_discount_amount ?? 0,
+        tax_amount: (data as any).tax_amount ?? 0,
+        tax_rate: (data as any).tax_rate ?? 0,
+        service_fee_percentage: (data as any).service_fee_percentage ?? 0,
+        service_fee_amount: (data as any).service_fee_amount ?? 0,
+        tip_amount: (data as any).tip_amount ?? 0,
+        travel_fee: (data as any).travel_fee ?? 0,
+        total_amount: (data as any).total_amount ?? data.price ?? 0,
+      },
     };
     if (Array.isArray(cartItems)) metadata.cart_items = cartItems;
     if (serviceLines.length > 0) metadata.services = serviceLines;
@@ -3305,6 +3311,10 @@ export class ProviderApiClient implements ProviderApi {
       const rule = data.recurrence_rule as RecurrenceRule;
       patch.recurrence_rule = recurrenceRuleToRrule(rule);
       if (rule.end_date !== undefined) patch.end_date = rule.end_date;
+      if (rule.occurrences !== undefined) {
+        patch.occurrences =
+          rule.occurrences && rule.occurrences > 0 ? Math.floor(rule.occurrences) : null;
+      }
     }
     if (data.status === "cancelled") patch.is_active = false;
     if (data.status === "booked") patch.is_active = true;

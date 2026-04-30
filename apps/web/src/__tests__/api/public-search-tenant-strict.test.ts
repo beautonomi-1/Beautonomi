@@ -15,6 +15,16 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: vi.fn(() => ({
+    from: vi.fn(() => ({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+    })),
+  })),
+}));
+
 vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
   resolveTenantIdWithZaFallback: (...args: unknown[]) => resolveTenantIdWithZaFallback(...args),
   resolveTenantFromRequest: vi.fn(),

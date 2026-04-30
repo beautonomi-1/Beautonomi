@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subMonths } from "date-fns";
+import { endOfDay, endOfMonth, endOfQuarter, endOfYear, startOfMonth, startOfQuarter, startOfYear, subMonths, subQuarters, subYears } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 
@@ -22,52 +22,35 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get("period") || "month"; // month, quarter, year
     const locationId = searchParams.get("location_id") || undefined;
 
     let currentFromDate: Date;
-    const currentToDate = new Date();
+    const now = new Date();
+    let currentToDate = endOfDay(now);
     let previousFromDate: Date;
     let previousToDate: Date;
 
     switch (period) {
       case "month":
-        currentFromDate = new Date(currentToDate.getFullYear(), currentToDate.getMonth(), 1);
-        previousToDate = new Date(currentFromDate);
-        previousToDate.setDate(previousToDate.getDate() - 1);
-        previousFromDate = new Date(previousToDate.getFullYear(), previousToDate.getMonth(), 1);
+        currentFromDate = startOfMonth(now);
+        previousFromDate = startOfMonth(subMonths(now, 1));
+        previousToDate = endOfMonth(subMonths(now, 1));
         break;
       case "quarter":
-        const currentQuarter = Math.floor(currentToDate.getMonth() / 3);
-        currentFromDate = new Date(currentToDate.getFullYear(), currentQuarter * 3, 1);
-        previousToDate = new Date(currentFromDate);
-        previousToDate.setDate(previousToDate.getDate() - 1);
-        const previousQuarter = Math.floor(previousToDate.getMonth() / 3);
-        previousFromDate = new Date(previousToDate.getFullYear(), previousQuarter * 3, 1);
+        currentFromDate = startOfQuarter(now);
+        previousFromDate = startOfQuarter(subQuarters(now, 1));
+        previousToDate = endOfQuarter(subQuarters(now, 1));
         break;
       case "year":
-        currentFromDate = new Date(currentToDate.getFullYear(), 0, 1);
-        previousToDate = new Date(currentFromDate);
-        previousToDate.setDate(previousToDate.getDate() - 1);
-        previousFromDate = new Date(previousToDate.getFullYear(), 0, 1);
+        currentFromDate = startOfYear(now);
+        previousFromDate = startOfYear(subYears(now, 1));
+        previousToDate = endOfYear(subYears(now, 1));
         break;
       default:
-        currentFromDate = subMonths(currentToDate, 1);
+        currentFromDate = subMonths(now, 1);
+        currentToDate = now;
         previousToDate = currentFromDate;
         previousFromDate = subMonths(previousToDate, 1);
     }
@@ -97,6 +80,7 @@ export async function GET(request: NextRequest) {
       .from("bookings")
       .select("id, status, customer_id, scheduled_at")
       .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)")
       .gte("scheduled_at", currentFromDate.toISOString())
       .lte("scheduled_at", currentToDate.toISOString());
 
@@ -111,6 +95,7 @@ export async function GET(request: NextRequest) {
       .from("bookings")
       .select("id, status, customer_id, scheduled_at")
       .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)")
       .gte("scheduled_at", previousFromDate.toISOString())
       .lte("scheduled_at", previousToDate.toISOString());
 
@@ -158,6 +143,8 @@ export async function GET(request: NextRequest) {
         bookings: bookingsGrowth,
         clients: clientsGrowth,
       },
+      reportBasis:
+        "Comparison revenue uses provider_earnings ledger rows. Booking and client counts exclude cancelled/no-show bookings in each calendar period.",
     });
   } catch (error) {
     return handleApiError(error, "BUSINESS_COMPARISON_ERROR", 500);

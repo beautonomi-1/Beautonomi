@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
     const dateStr = searchParams.get("date");
     const startDateStr = searchParams.get("start_date");
     const endDateStr = searchParams.get("end_date");
+    const locationId = searchParams.get("location_id") || null;
 
     let fromDate: Date;
     let toDate: Date;
@@ -94,11 +95,11 @@ export async function GET(request: NextRequest) {
       providerId,
       fromDate,
       toDate,
-      null,
+      locationId,
       { transactionTypes: STAFF_COMMISSION_REVENUE_TYPES }
     );
 
-    const { data: bookings } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select(`
         id,
@@ -109,6 +110,10 @@ export async function GET(request: NextRequest) {
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString())
       .in("status", ["confirmed", "completed"]);
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+    const { data: bookings } = await bookingsQuery;
 
     const { data: timeCards } = await supabaseAdmin
       .from("staff_time_cards")
@@ -126,7 +131,7 @@ export async function GET(request: NextRequest) {
       if (s) hoursByStaff.set(s, (hoursByStaff.get(s) ?? 0) + Number(row.total_hours ?? 0));
     }
 
-    const tipsByStaff = await getTipsByStaff(supabaseAdmin, providerId, fromDate, toDate);
+    const tipsByStaff = await getTipsByStaff(supabaseAdmin, providerId, fromDate, toDate, locationId);
 
     const results: StaffTotalsItem[] = [];
 
@@ -141,7 +146,8 @@ export async function GET(request: NextRequest) {
         providerId,
         staffRow.id,
         fromDate,
-        toDate
+        toDate,
+        locationId
       );
 
       let appointmentsCount = 0;

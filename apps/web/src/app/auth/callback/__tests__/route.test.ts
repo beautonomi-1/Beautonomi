@@ -146,4 +146,30 @@ describe("GET /auth/callback", () => {
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe("https://app.example.com/book/continue?hold_id=hold-123");
   });
+
+  it("preserves non-dashboard admin OAuth next paths through the dedicated admin login", async () => {
+    const mockExchangeCodeForSession = vi.fn().mockResolvedValue({
+      data: { session: { access_token: "token" }, user: { id: "admin-a", user_metadata: {} } },
+      error: null,
+    });
+    mockGetSupabaseServer.mockResolvedValue({
+      auth: { exchangeCodeForSession: mockExchangeCodeForSession },
+      from: () => ({
+        update: () => ({
+          eq: vi.fn().mockResolvedValue({ error: null }),
+        }),
+      }),
+    });
+
+    const { GET } = await import("../route");
+    const req = new NextRequest(
+      "https://app.example.com/auth/callback?code=ok&next=%2Fadmin%2Ffinance%3Ftab%3Dledger"
+    );
+    const res = await GET(req);
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "https://app.example.com/admin/login?next=%2Fadmin%2Ffinance%3Ftab%3Dledger"
+    );
+  });
 });

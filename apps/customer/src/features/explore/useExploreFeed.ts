@@ -158,6 +158,14 @@ export function useExploreFeed() {
     );
   }, []);
 
+  const initialLoad = useCallback(() => {
+    load({});
+  }, [load]);
+
+  const refetch = useCallback(() => {
+    load({ refresh: true });
+  }, [load]);
+
   return {
     posts,
     loading,
@@ -165,9 +173,9 @@ export function useExploreFeed() {
     loadingMore,
     error,
     hasMore,
-    refetch: () => load({ refresh: true }),
+    refetch,
     loadMore,
-    initialLoad: () => load({}),
+    initialLoad,
     applyFilters,
     setPostSaved,
     setPostLiked,

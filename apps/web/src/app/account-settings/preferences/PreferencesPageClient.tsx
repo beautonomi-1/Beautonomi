@@ -149,7 +149,15 @@ const GlobalPreferences: React.FC<{
         updateData.timezone = tempValue;
       }
 
-      await fetcher.patch("/api/me/profile", updateData);
+      if (field === "language") {
+        await fetcher.post("/api/me/preferences", { language: tempValue });
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("preferred_language", tempValue);
+          window.dispatchEvent(new CustomEvent("beautonomi:preferred-language-changed", { detail: { language: tempValue } }));
+        }
+      } else {
+        await fetcher.patch("/api/me/profile", updateData);
+      }
       
       // Find the option to get the name
       const optionList = field === "language" ? options.languages : 

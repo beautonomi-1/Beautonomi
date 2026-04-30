@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
+const mockRequirePermission = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
@@ -31,6 +32,10 @@ vi.mock("@/lib/supabase/api-helpers", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+}));
+
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -71,6 +76,10 @@ describe("POST /api/provider/conversations/[id]/messages", () => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: "provider-user-1", role: "provider_owner", full_name: "Provider Owner" },
+    });
+    mockRequirePermission.mockResolvedValue({
+      authorized: true,
+      user: { id: "provider-user-1", role: "provider_owner" },
     });
     mockGetProviderIdForUser.mockResolvedValue("provider-1");
     mockGetSupabaseServer.mockResolvedValue({});

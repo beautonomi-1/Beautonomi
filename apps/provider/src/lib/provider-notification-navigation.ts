@@ -33,6 +33,24 @@ function getLinkParam(link: string, key: string): string {
   }
 }
 
+function calendarHrefFromNotification(link: string, data: ProviderNotificationNavPayload["data"]): string {
+  const params = new URLSearchParams();
+  const bookingId =
+    (typeof data?.booking_id === "string" ? data.booking_id.trim() : "") ||
+    getLinkParam(link, "booking_id") ||
+    getLinkParam(link, "booking");
+  const date =
+    getLinkParam(link, "date") ||
+    getLinkParam(link, "start_date") ||
+    getLinkParam(link, "day");
+
+  if (date) params.set("date", date);
+  if (bookingId) params.set("booking_id", bookingId);
+
+  const query = params.toString();
+  return query ? `/(app)/(tabs)/calendar?${query}` : "/(app)/(tabs)/calendar";
+}
+
 /**
  * Map notification link/data to provider app route and navigate.
  * Shared by the header dropdown and any legacy entry points.
@@ -62,6 +80,11 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     } else {
       router.push("/(app)/(tabs)/more/support-tickets" as never);
     }
+    return;
+  }
+
+  if (link.includes("calendar")) {
+    router.push(calendarHrefFromNotification(link, data) as never);
     return;
   }
 
@@ -105,10 +128,6 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
       } else {
         router.push("/(app)/(tabs)/chats" as never);
       }
-      return;
-    }
-    if (link.includes("calendar")) {
-      router.push("/(app)/(tabs)/calendar" as never);
       return;
     }
     if (link.includes("ecommerce/orders") || link.includes("/product-orders")) {

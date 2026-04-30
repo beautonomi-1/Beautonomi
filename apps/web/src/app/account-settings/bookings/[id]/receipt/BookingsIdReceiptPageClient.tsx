@@ -65,7 +65,7 @@ interface Receipt {
   subtotal: number;
   tax: number;
   tax_rate?: number;
-  /** Platform / service fee */
+  /** Customer-paid Platform Fee */
   fees: number;
   travel_fee?: number;
   tip_amount?: number;
@@ -323,6 +323,12 @@ export default function ReceiptPage() {
                 <span className="text-slate-600">Subtotal</span>
                 <span>{formatCurrency(receipt.subtotal)}</span>
               </div>
+              {(receipt.travel_fee ?? 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Travel fee</span>
+                  <span>{formatCurrency(receipt.travel_fee!)}</span>
+                </div>
+              )}
               {receipt.tax > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Tax{receipt.tax_rate ? ` (${receipt.tax_rate}%)` : ""}</span>
@@ -333,12 +339,6 @@ export default function ReceiptPage() {
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Service / platform fee</span>
                   <span>{formatCurrency(receipt.fees)}</span>
-                </div>
-              )}
-              {(receipt.travel_fee ?? 0) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Travel fee</span>
-                  <span>{formatCurrency(receipt.travel_fee!)}</span>
                 </div>
               )}
               {(receipt.tip_amount ?? 0) > 0 && (

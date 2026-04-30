@@ -40,8 +40,6 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
   const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
   const [isToggling, setIsToggling] = React.useState(false);
   const [isInWishlist, setIsInWishlist] = React.useState(isInWishlistProp ?? false);
-  const cardRef = React.useRef<HTMLElement | null>(null);
-  const impressionRecordedRef = React.useRef(false);
 
   const formatReviewCount = (count: number) => {
     if (count >= 1000) {
@@ -161,44 +159,6 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     }
   };
 
-  React.useEffect(() => {
-    if (!provider.is_sponsored || !provider.campaign_id || !provider.id) return;
-    if (impressionRecordedRef.current) return;
-
-    const recordImpression = () => {
-      if (impressionRecordedRef.current) return;
-      impressionRecordedRef.current = true;
-      fetcher.post("/api/public/ads/event", {
-        event_type: "impression",
-        campaign_id: provider.campaign_id,
-        provider_id: provider.id,
-        idempotency_key: `web-card-impression:${provider.campaign_id}:${provider.id}:${Date.now()}`,
-        attribution: {
-          source: "provider_card",
-          placement: "web_provider_card_visible",
-        },
-      }).catch(() => {});
-    };
-
-    const node = cardRef.current;
-    if (!node || typeof IntersectionObserver === "undefined") {
-      recordImpression();
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= 0.35)) {
-          recordImpression();
-          observer.disconnect();
-        }
-      },
-      { threshold: [0.35] },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [provider.campaign_id, provider.id, provider.is_sponsored]);
-
   const providerLookup = (provider.slug || "").trim() || provider.id;
   const profileParams = new URLSearchParams({ slug: providerLookup });
   if (provider.id) profileParams.set("provider_id", provider.id);
@@ -212,7 +172,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
       onClick={handleClick}
       aria-label={`View ${businessName}, ${ratingText}, ${reviewCountText}`}
     >
-      <article ref={cardRef} className="w-full cursor-pointer group" aria-labelledby={`provider-name-${provider.id}`}>
+      <article className="w-full cursor-pointer group" aria-labelledby={`provider-name-${provider.id}`}>
         {/* Image Container - card hero (main listing image) */}
         <div className="relative w-full h-40 md:h-64 squircle overflow-hidden mb-2 md:mb-3" role="img" aria-label={`${businessName} listing photo`}>
           <Image

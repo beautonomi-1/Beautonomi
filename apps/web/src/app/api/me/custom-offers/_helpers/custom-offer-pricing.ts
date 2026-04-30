@@ -1,5 +1,5 @@
 /**
- * Custom offer pricing: tax, platform service fee, promo code, tip.
+ * Custom offer pricing: tax, Platform Fee, promo code, tip.
  * Mirrors logic from validate-booking for consistency.
  */
 
@@ -108,7 +108,7 @@ export async function computeCustomOfferPricing(
   const taxAmount =
     taxRate > 0 ? roundCurrency(percentOf(subtotalAfterDiscount, taxRate)) : 0;
 
-  // Platform service fee: provider fee config or platform settings
+  // Platform Fee: provider fee config or platform settings
   let serviceFeeAmount = 0;
   let serviceFeePercentage = 0;
 

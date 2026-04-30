@@ -9,6 +9,32 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 
+async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabaseAdmin>, groupId: string) {
+  const [{ data: group }, { data: participantRows }] = await Promise.all([
+    admin
+      .from("group_bookings")
+      .select("products, travel_fee, location_type")
+      .eq("id", groupId)
+      .maybeSingle(),
+    admin
+      .from("booking_participants")
+      .select("price")
+      .eq("group_booking_id", groupId),
+  ]);
+  const products = Array.isArray(group?.products) ? group.products : [];
+  const participantTotal = (participantRows ?? []).reduce((sum: number, p: any) => sum + Math.max(0, Number(p.price || 0)), 0);
+  const productTotal = products.reduce(
+    (sum: number, p: any) =>
+      sum + Math.max(0, Number(p.total_price ?? p.totalPrice ?? (Number(p.unit_price ?? p.unitPrice ?? 0) * Number(p.quantity ?? 1)))),
+    0,
+  );
+  const travelFee = group?.location_type === "at_home" ? Math.max(0, Number(group.travel_fee || 0)) : 0;
+  await admin
+    .from("group_bookings")
+    .update({ total_price: participantTotal + productTotal + travelFee, updated_at: new Date().toISOString() })
+    .eq("id", groupId);
+}
+
 /**
  * DELETE /api/provider/group-bookings/[id]/participants/[participantId]
  * Removes a participant row (booking_participants.id) and clears booking.group_booking_id when set.
@@ -96,6 +122,8 @@ export async function DELETE(
         throw bookingError;
       }
     }
+
+    await recalculateGroupBookingTotal(admin, groupId);
 
     return successResponse({ success: true });
   } catch (error) {

@@ -17,6 +17,7 @@ import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-paymen
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { cancelStalePendingPaystackProductOrders } from "@/lib/orders/product-order-lifecycle";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { calculateProductDeliveryFee, distanceKmBetween } from "@/lib/orders/delivery-fee";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 
 const createOrderSchema = z.object({
@@ -172,7 +173,7 @@ export async function POST(request: NextRequest) {
         id, quantity, product_variant_id,
         product:products (
           id, name, retail_price, quantity, is_active, retail_sales_enabled,
-          image_urls, tax_rate, provider_id, has_variants
+          image_urls, tax_rate, provider_id, has_variants, weight_grams
         ),
         product_variant:product_variants (
           id, retail_price, quantity
@@ -200,7 +201,7 @@ export async function POST(request: NextRequest) {
         id, quantity, product_variant_id,
         product:products!inner (
           id, name, retail_price, is_active, retail_sales_enabled, quantity,
-          image_urls, tax_rate, provider_id, has_variants
+          image_urls, tax_rate, provider_id, has_variants, weight_grams
         ),
         product_variant:product_variants (
           id, retail_price, quantity
@@ -235,14 +236,15 @@ export async function POST(request: NextRequest) {
 
     // Get shipping config for delivery fee
     let deliveryFee = 0;
+    let deliveryFeeType: string | null = null;
+    let deliveryDistanceKm: number | null = null;
     if (parsed.fulfillment_type === "delivery") {
       const { data: shipConfig } = await (supabase.from("provider_shipping_config") as any)
-        .select("delivery_fee, free_delivery_threshold")
+        .select("delivery_fee, delivery_fee_type, free_delivery_threshold, delivery_radius_km, weight_rate_per_kg, distance_rate_per_km")
         .eq("provider_id", parsed.provider_id)
         .maybeSingle();
 
       if (shipConfig) {
-        deliveryFee = parseFloat(shipConfig.delivery_fee) || 0;
         const subtotalCalc = validatedCartItems.reduce(
           (sum: number, ci: any) => {
             const price = ci.product_variant ? ci.product_variant.retail_price : ci.product.retail_price;
@@ -250,12 +252,43 @@ export async function POST(request: NextRequest) {
           },
           0,
         );
-        if (
-          shipConfig.free_delivery_threshold &&
-          subtotalCalc >= parseFloat(shipConfig.free_delivery_threshold)
-        ) {
-          deliveryFee = 0;
+        const [{ data: addressRow }, { data: originRow }] = await Promise.all([
+          parsed.delivery_address_id
+            ? (supabase.from("user_addresses") as any)
+                .select("latitude, longitude")
+                .eq("id", parsed.delivery_address_id)
+                .eq("user_id", user.id)
+                .maybeSingle()
+            : Promise.resolve({ data: null }),
+          (supabase.from("provider_locations") as any)
+            .select("latitude, longitude")
+            .eq("provider_id", parsed.provider_id)
+            .eq("is_active", true)
+            .order("is_primary", { ascending: false })
+            .order("created_at", { ascending: true })
+            .limit(1)
+            .maybeSingle(),
+        ]);
+        deliveryDistanceKm = distanceKmBetween(originRow as any, addressRow as any);
+        const radiusKm = Number(shipConfig.delivery_radius_km ?? 0) || 0;
+        if (radiusKm > 0 && deliveryDistanceKm != null && deliveryDistanceKm > radiusKm) {
+          return errorResponse(
+            "Delivery address is outside this provider's delivery radius.",
+            "DELIVERY_RADIUS_EXCEEDED",
+            400,
+          );
         }
+        const delivery = calculateProductDeliveryFee({
+          subtotal: subtotalCalc,
+          config: shipConfig,
+          distanceKm: deliveryDistanceKm,
+          items: validatedCartItems.map((ci: any) => ({
+            quantity: ci.quantity,
+            weight_grams: ci.product?.weight_grams,
+          })),
+        });
+        deliveryFee = delivery.fee;
+        deliveryFeeType = delivery.feeType;
       }
     }
 
@@ -356,6 +389,8 @@ export async function POST(request: NextRequest) {
         subtotal: subtotal.toFixed(2),
         tax_amount: taxAmount.toFixed(2),
         delivery_fee: deliveryFee.toFixed(2),
+        delivery_fee_type: deliveryFeeType,
+        delivery_distance_km: deliveryDistanceKm,
         platform_fee: platformFee.toFixed(2),
         total_amount: totalAmount.toFixed(2),
         wallet_amount: walletAmountApplied.toFixed(2),

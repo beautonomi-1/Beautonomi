@@ -69,8 +69,8 @@
 
 ### Platform Revenue Streams
 
-1. **Platform commission** on bookings (% of service revenue, excluding tip/tax/travel/service-fee)
-2. **Customer service fee** (% or fixed, configurable per provider)
+1. **Platform commission** on bookings (% of service revenue, excluding tip/tax/travel/Platform Fee)
+2. **Customer-paid Platform Fee** (% or fixed, configurable by platform/admin)
 3. **Subscription billing** (monthly/yearly Paystack recurring)
 4. **Ad spend** (CPC, impression packs, time-based)
 5. **Wallet topup revenue** (pass-through but tracked)
@@ -106,7 +106,7 @@
 
 ### 3.1 Bookings / Services
 
-**Intended logic:** Customer pays subtotal + tip + tax + service_fee (+ travel for at_home). Commission base = services + addons + products − discounts (excluding tip/tax/travel/service_fee).
+**Intended logic:** Customer pays subtotal + tip + tax + Platform Fee (+ travel for at_home). Commission base = services + addons + products - discounts (excluding tip/tax/travel/platform_fee).
 
 **Critical finding — Tax-inclusive double-counting:**
 
@@ -128,7 +128,7 @@ recomputedTotalAmount = taxInclusive
 | **Tax-inclusive double-count** | **Critical** | Public checkout overcharges by VAT amount for inclusive-tax providers |
 | Booking total DB validation | OK | Trigger `validate_booking_total` exists (migration 148) |
 | Commission base excludes tip/tax/travel | OK | Both validate-booking and charge-success agree |
-| Walk-in service fee waived | OK | Provider route zeros service_fee for walk-ins |
+| Walk-in Platform Fee waived | OK | Provider route zeros platform fee fields for walk-ins |
 | Deposit handling | OK | Proportional commission via migration 458 |
 
 **Files:** `apps/web/src/app/api/public/bookings/_helpers/validate-booking.ts` (line 1079), `apps/web/src/app/api/provider/bookings/route.ts` (lines 672-674)
@@ -156,7 +156,7 @@ recomputedTotalAmount = taxInclusive
 
 | Aspect | Status | Detail |
 |--------|--------|--------|
-| Service fee waived | ✅ | `provider/bookings/route.ts` zeroes it |
+| Platform Fee waived | ✅ | `provider/bookings/route.ts` zeroes it |
 | Platform commission waived | ✅ | DB trigger (migration 458) skips commission for `walk_in`/`provider` sources |
 | Ledger creation | ⚠️ **Medium** | Walk-in cash payments rely on DB trigger (`create_finance_ledger_from_payment`) which fires on `booking_payments` insert. If mark-paid path fails to create `booking_payments`, no ledger row exists. |
 | booking_source set correctly | ✅ | `"walk_in"` for walk-ins, `"provider"` for provider-created |
@@ -196,7 +196,7 @@ recomputedTotalAmount = taxInclusive
 | Aspect | Status | Detail |
 |--------|--------|--------|
 | Points earned on completion | ✅ | `complete-service` route, idempotent check |
-| Earning base | ✅ | Excludes tax/tip/travel/service_fee from base |
+| Earning base | ✅ | Excludes tax/tip/travel/platform_fee from base |
 | Points → wallet redemption | ⚠️ **High** | `POST /api/me/loyalty/redeem`: inserts `redeemed` transaction BEFORE `wallet_credit_admin`. If wallet RPC fails, points are deducted without credit. |
 | Dual loyalty system | ⚠️ **Medium** | Two tables: `loyalty_point_transactions` (migration 010) and `loyalty_points_ledger` (migration 124). Potential for drift. |
 | Balance API | ✅ | Uses `get_user_loyalty_balance` RPC with fallback |
@@ -307,8 +307,8 @@ recomputedTotalAmount = taxInclusive
 |--------|--------|--------|
 | Commission rate source | ✅ | `platform_settings.settings.payouts.platform_commission_percentage` |
 | **Provider override not applied** | ⚠️ **High** | `commission_override` stored via admin API but never read in payment/commission code |
-| Commission base correct | ✅ | Services + addons + products − discounts. Excludes tip/tax/travel/service_fee |
-| Service fee as platform revenue | ✅ | Separate ledger row type |
+| Commission base correct | ✅ | Services + addons + products - discounts. Excludes tip/tax/travel/platform_fee |
+| Platform Fee as platform revenue | ✅ | Separate ledger row type |
 | Walk-in commission waived | ✅ | Both app code and DB trigger |
 | **`calculatePlatformCommission` helper** | ⚠️ **Medium** | `lib/payments/platform-fees.ts` applies % to FULL `bookingTotal` — incorrect base. Used anywhere it could override correct logic? |
 
@@ -317,7 +317,7 @@ recomputedTotalAmount = taxInclusive
 | Aspect | Status | Detail |
 |--------|--------|--------|
 | Admin finance summary | ✅ | Ledger-backed, internally consistent |
-| **Admin dashboard vs finance** | ⚠️ **High** | Dashboard `platform_revenue.total` = commission + subscriptions + ads only. Finance summary includes service_fee, ecommerce fees, wallet topups, cancellation fees. Same label, different values. |
+| **Admin dashboard vs finance** | ⚠️ **High** | Dashboard `platform_revenue.total` = commission + subscriptions + ads only. Finance summary includes Platform Fees, ecommerce fees, wallet topups, cancellation fees. Same label, different values. |
 | Provider revenue headline | ✅ | `provider_earnings` type only (consistent) |
 | End-of-day reports | ⚠️ **Medium** | Based on `booking_payments`, not ledger — will differ from ledger-based views |
 | Provider payment summary | ⚠️ **Medium** | Scoped by `booking_id` join — subscription/ad/payout ledger rows excluded |
@@ -423,7 +423,7 @@ recomputedTotalAmount = taxInclusive
 |---|-------|--------|------------|
 | 21 | `calculatePlatformCommission` helper | Fix to use correct commission base (not full bookingTotal) or remove if unused | Low |
 | 22 | Subscription change route field alignment | Use `price_monthly`/`price_yearly` instead of `amount` | Low |
-| 23 | `service_fee_paid_by` routing | Implement actual routing logic or remove field if always customer-paid | Low |
+| 23 | `platform_fee_paid_by` routing | Keep customer-paid as canonical; legacy `service_fee_paid_by` is a compatibility alias | Low |
 | 24 | Wallet reconciliation check | Add admin tool or cron to verify `balance` matches sum of transactions | Medium |
 | 25 | `past_due` subscription handling | Implement via Paystack `charge.failed` webhook | Medium |
 
@@ -471,7 +471,7 @@ All 4 critical and all 8 high-priority financial fixes have been implemented and
 **Subscriptions: Yes** — yearly expiry correctly uses billing period; expense double-count resolved. **Ads: Yes** — purchase, spend tracking, and revenue recognition work correctly. **Platform fees: Yes** — `commission_override` is now applied; `commission_enabled` default is consistent.
 
 ### Is at_salon / at_home / walk-in accounting reliable?
-**Yes.** Travel fee is excluded from staff commission base. Walk-in commission waiver works. Commission base consistently excludes tip/tax/travel/service_fee.
+**Yes.** Travel fee is excluded from staff commission base. Walk-in commission waiver works. Commission base consistently excludes tip/tax/travel/platform_fee.
 
 ### What works well
 - Finance ledger design with per-payment rows and source_payment_id idempotency (migration 458)
@@ -479,7 +479,7 @@ All 4 critical and all 8 high-priority financial fixes have been implemented and
 - Payout balance with hold window and post-insert race check
 - Gift card reserve/capture/void RPC pattern
 - Walk-in commission waiver in both app code and DB trigger
-- Commission base consistently excludes tip/tax/travel/service_fee across booking and webhook paths
+- Commission base consistently excludes tip/tax/travel/platform_fee across booking and webhook paths
 - DB-level booking total validation trigger
 - Provider commission_override applied via centralized helper
 - Tenant-scoped platform_settings in all commission paths

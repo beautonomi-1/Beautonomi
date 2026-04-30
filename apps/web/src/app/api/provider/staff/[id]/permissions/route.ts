@@ -8,13 +8,42 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
+import {
+  getAllPermissions,
+  isProviderOwner,
+  hasPermission,
+  normalizeStaffPermissions,
+} from "@/lib/auth/permissions";
 import { getProviderStaffIdForUser } from "@/lib/auth/provider-team-roster-access";
 import { z } from "zod";
 
 const patchSchema = z.object({
   permissions: z.record(z.string(), z.boolean()),
 });
+
+function parsePermissionPayload(payload: unknown): {
+  hasPayload: boolean;
+  valid: boolean;
+  value: Record<string, unknown>;
+} {
+  if (payload == null) return { hasPayload: false, valid: true, value: {} };
+  if (typeof payload === "string") {
+    const trimmed = payload.trim();
+    if (!trimmed) return { hasPayload: false, valid: true, value: {} };
+    try {
+      const parsed = JSON.parse(trimmed);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? { hasPayload: true, valid: true, value: parsed as Record<string, unknown> }
+        : { hasPayload: true, valid: false, value: {} };
+    } catch {
+      return { hasPayload: true, valid: false, value: {} };
+    }
+  }
+  if (typeof payload === "object" && !Array.isArray(payload)) {
+    return { hasPayload: true, valid: true, value: payload as Record<string, unknown> };
+  }
+  return { hasPayload: true, valid: false, value: {} };
+}
 
 /**
  * GET /api/provider/staff/[id]/permissions
@@ -50,7 +79,8 @@ export async function GET(
     if (user.role !== "superadmin" && providerId) {
       const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
       const canViewOthers =
-        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+        (await isProviderOwner(user.id, request)) ||
+        (await hasPermission(user.id, "manage_team", undefined, request));
       if (!canViewOthers && ownStaffId !== id) {
         return errorResponse(
           "You can only view your own permissions.",
@@ -75,68 +105,37 @@ export async function GET(
       return notFoundResponse("Staff member not found");
     }
 
-    // Get permissions: check role_id first, then direct permissions, then default role permissions
+    // Get permissions: custom role, direct overrides, then full default access.
     let permissions: Record<string, boolean> = {};
-    
+    let usedCustomRole = false;
+    let usedDirectPermissions = false;
+
     if (staff.role_id) {
-      // Check custom role
+      usedCustomRole = true;
       const { data: customRole } = await supabase
         .from("provider_roles")
-        .select("permissions")
+        .select("permissions, is_active")
         .eq("id", staff.role_id)
         .single();
-      
-      if (customRole?.permissions) {
-        permissions = typeof customRole.permissions === "string"
-          ? JSON.parse(customRole.permissions)
-          : customRole.permissions;
+
+      if (customRole && customRole.is_active !== false) {
+        const parsed = parsePermissionPayload(customRole.permissions);
+        permissions = parsed.valid
+          ? normalizeStaffPermissions(parsed.value) as Record<string, boolean>
+          : {};
       }
     }
-    
-    // If no custom role or custom role has no permissions, check direct permissions
-    if (Object.keys(permissions).length === 0 && staff.permissions) {
-      permissions = typeof staff.permissions === "string"
-        ? JSON.parse(staff.permissions)
-        : staff.permissions;
+
+    if (!usedCustomRole && Object.keys(permissions).length === 0 && staff.permissions) {
+      const parsed = parsePermissionPayload(staff.permissions);
+      usedDirectPermissions = parsed.hasPayload && (!parsed.valid || Object.keys(parsed.value).length > 0);
+      permissions = parsed.valid
+        ? normalizeStaffPermissions(parsed.value) as Record<string, boolean>
+        : {};
     }
-    
-    // If still no permissions, use default for role (owner has all, manager/employee have defaults)
-    if (Object.keys(permissions).length === 0) {
-      if (staff.role === "owner" || staff.is_admin) {
-        // Owner/admin has all permissions
-        permissions = {
-          view_calendar: true,
-          create_appointments: true,
-          edit_appointments: true,
-          cancel_appointments: true,
-          delete_appointments: true,
-          view_sales: true,
-          create_sales: true,
-          process_payments: true,
-          view_reports: true,
-          view_services: true,
-          edit_services: true,
-          view_products: true,
-          edit_products: true,
-          view_team: true,
-          manage_team: true,
-          view_settings: true,
-          edit_settings: true,
-          view_clients: true,
-          edit_clients: true,
-        };
-      } else {
-        // Get default permissions for role
-        const { data: defaultPerms } = await supabase.rpc(
-          "get_default_permissions_for_role",
-          { p_role: staff.role }
-        );
-        if (defaultPerms) {
-          permissions = typeof defaultPerms === "string"
-            ? JSON.parse(defaultPerms)
-            : defaultPerms;
-        }
-      }
+
+    if (!usedCustomRole && !usedDirectPermissions && Object.keys(permissions).length === 0) {
+      permissions = { ...getAllPermissions() } as Record<string, boolean>;
     }
 
     return successResponse({ permissions });
@@ -164,7 +163,8 @@ export async function PATCH(
 
     if (user.role !== "superadmin") {
       const canEdit =
-        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+        (await isProviderOwner(user.id, request)) ||
+        (await hasPermission(user.id, "manage_team", undefined, request));
       if (!canEdit) {
         return errorResponse(
           "Only owners or users with Manage team can edit permissions.",

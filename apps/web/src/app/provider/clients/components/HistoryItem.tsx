@@ -524,7 +524,7 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
                     return (
                       <div className="flex justify-between">
                         <span className="text-gray-600">
-                          Service Fee
+                          Platform Fee
                           {item.service_fee_percentage !== undefined && item.service_fee_percentage !== null && item.service_fee_percentage !== 0 && (
                             <span className="text-xs ml-1">
                               ({(() => {

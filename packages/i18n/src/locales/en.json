@@ -298,6 +298,7 @@
       "cancel": "Cancel",
       "close": "Close",
       "scheduleShareTitle": "Schedule",
+      "browserTitle": "Calendar",
       "appUrlNotConfiguredTitle": "Not available",
       "appUrlNotConfiguredMessage": "App URL is not configured (EXPO_PUBLIC_APP_URL).",
       "bookingHoldTitle": "Booking hold",
@@ -310,10 +311,15 @@
         "footer": "\n— Shared from Beautonomi provider app"
       },
       "monthOverviewLoadingCounts": "Loading counts…",
+      "monthOverviewCountsError": "Could not load booking counts. Tap to retry.",
+      "monthOverviewCountsErrorA11y": "Could not load month booking counts. Tap to retry.",
       "monthOverviewDayA11y": "{{date}}, {{count}} bookings",
       "prevMonthA11y": "Previous month",
       "nextMonthA11y": "Next month",
       "bookingActionsMessage": "Booking actions",
+      "preferencesA11y": "Calendar preferences",
+      "pendingBadge": "{{count}} pending",
+      "overlayPartialWarningA11y": "Some calendar blocks or holds could not load. Tap to refresh.",
       "viewDetails": "View details",
       "collectPayment": "Collect payment",
       "currentStatusLabel": "Current status: {{status}}",
@@ -350,7 +356,235 @@
         "unassigned": "Unassigned"
       },
       "bookingA11yLongPress": "Booking with {{name}} at {{time}}. Long press to drag.",
-      "bookingA11yShort": "Booking with {{name}} at {{time}}, status {{status}}"
+      "bookingA11yShort": "Booking with {{name}} at {{time}}, status {{status}}",
+      "paymentChip": {
+        "paid": "Paid",
+        "partPaid": "Partially paid",
+        "paymentDue": "Payment due"
+      },
+      "card": {
+        "newBadge": "New",
+        "serviceFallback": "Service",
+        "groupPrefix": "Group",
+        "atHome": "At home"
+      },
+      "currentTimeA11yPrefix": "Current time",
+      "overlayBlockA11y": "{{type}} from {{start}} to {{end}}. Tap to edit or delete.",
+      "grid": {
+        "slotBookA11y": "Book at {{time}} on {{day}}",
+        "emptyDayHint": "No appointments — tap a slot to add one"
+      },
+      "pendingBanner": {
+        "accessibility": "Front desk: {{count}} bookings need confirmation",
+        "urgentTitle": "{{count}} pending within 2h — confirm or decline",
+        "pendingTitleSingular": "1 booking needs confirmation",
+        "pendingTitlePlural": "{{count}} bookings need confirmation",
+        "subtitle": "Front Desk shows today's schedule and check-ins"
+      },
+      "staffViewStrip": {
+        "title": "Staff View",
+        "all": "All",
+        "single": "Single"
+      },
+      "allLocations": "All Locations",
+      "allStaff": "All staff",
+      "dateNav": {
+        "prevWeek": "Previous week",
+        "prevDay": "Previous day",
+        "nextWeek": "Next week",
+        "nextDay": "Next day",
+        "today": "Today",
+        "jumpToDate": "Jump to date",
+        "loadingCalendar": "Loading calendar"
+      },
+      "viewModes": {
+        "day": "DAY",
+        "threeDay": "3 DAY",
+        "week": "WEEK"
+      },
+      "colorByChip": {
+        "service": "By Service",
+        "staff": "By Staff"
+      },
+      "colorLegend": {
+        "a11y": "Color legend",
+        "title": "Color Legend",
+        "statusColors": "Status Colors",
+        "serviceColors": "Service Colors",
+        "teamColors": "Team Colors",
+        "closedTimeOff": "Closed & time off",
+        "closedTimeOffDescription": "Staff time off and day off match what customers see when booking. Closed periods come from calendar settings. Tap an availability or time block on the grid to edit or remove it.",
+        "staffTimeOff": "Staff time off / day off",
+        "unavailableClosed": "Unavailable (closed period)",
+        "timeBlocks": "Time Blocks"
+      },
+      "staleDataBanner": {
+        "a11y": "Calendar may be out of date. Tap to refresh.",
+        "body": "Showing last known schedule — tap to refresh"
+      },
+      "datePicker": {
+        "today": "Today",
+        "weekdaysShort": {
+          "sunday": "Su",
+          "monday": "Mo",
+          "tuesday": "Tu",
+          "wednesday": "We",
+          "thursday": "Th",
+          "friday": "Fr",
+          "saturday": "Sa"
+        }
+      },
+      "fetchError": {
+        "title": "Can't load your calendar",
+        "retry": "Reload calendar"
+      },
+      "crashFallback": {
+        "title": "We hit a snag opening your calendar",
+        "body": "Tap reload to try again — your appointments and bookings are safe."
+      },
+      "overlayPartialWarning": "Some blocks or held slots could not load — tap to refresh before editing availability.",
+      "apptSingle": "1 appt",
+      "apptPlural": "{{count}} appts",
+      "timeBlockTypes": {
+        "break": "Break",
+        "lunch": "Lunch",
+        "meeting": "Meeting",
+        "personal": "Personal",
+        "other": "Other"
+      },
+      "availabilityEditTypes": {
+        "unavailable": "Unavailable",
+        "break": "Break",
+        "maintenance": "Maintenance"
+      },
+      "preferencesModal": {
+        "title": "Calendar Preferences",
+        "subtitle": "Customize how your calendar looks and behaves",
+        "closeA11y": "Close preferences",
+        "displaySection": "Display",
+        "colorsSection": "Colors",
+        "timeGridSection": "Time Grid",
+        "advancedToggleShow": "Show advanced settings",
+        "advancedToggleHide": "Hide advanced settings",
+        "advancedHeading": "Advanced Settings",
+        "highContrast": "High Contrast",
+        "highContrastDesc": "Increase contrast for better visibility",
+        "showCanceled": "Show Canceled",
+        "showCanceledDesc": "Display canceled appointments on the grid",
+        "compactMode": "Compact Mode",
+        "compactModeDesc": "Reduce appointment block height for a denser view",
+        "appointmentIcons": "Appointment Icons",
+        "appointmentIconsDesc": "Show icons for new client, notes, etc.",
+        "showPrices": "Show Prices",
+        "showPricesDesc": "Display service prices on appointment blocks",
+        "showClientPhone": "Show Client Phone",
+        "showClientPhoneDesc": "Display client phone number on appointment details",
+        "colorBy": "Color By",
+        "colorByDesc": "How appointment blocks are colored",
+        "colorByStatus": "Status",
+        "colorByService": "Service",
+        "colorByTeam": "Team Member",
+        "timeIncrement": "Time Increment",
+        "timeIncrementDesc": "Grid slot size in minutes",
+        "min5": "5 min",
+        "min10": "10 min",
+        "min15": "15 min",
+        "scrollToNow": "Scroll to Now",
+        "scrollToNowDesc": "Auto-scroll to current time when opening calendar",
+        "workdayStart": "Workday Start",
+        "workdayStartDesc": "Hour the calendar grid begins",
+        "workdayEnd": "Workday End",
+        "workdayEndDesc": "Hour the calendar grid ends",
+        "processingBuffer": "Processing & Buffer",
+        "processingBufferDesc": "Show processing and buffer time segments on blocks",
+        "defaultNewStatus": "Default New Status",
+        "defaultNewStatusDesc": "Status assigned to new appointments",
+        "statusConfirmed": "Confirmed",
+        "statusUnconfirmed": "Unconfirmed",
+        "processingFreesProvider": "Processing Frees Provider",
+        "processingFreesProviderDesc": "Provider can accept other bookings during processing time",
+        "resetA11y": "Reset all preferences to defaults",
+        "reset": "Reset to Defaults",
+        "decreaseA11y": "Decrease {{label}}",
+        "increaseA11y": "Increase {{label}}"
+      },
+      "timeBlockSheet": {
+        "title": "Add Time Block",
+        "submit": "Add Time Block",
+        "blockType": "Block Type",
+        "titleField": "Title",
+        "startTime": "Start Time",
+        "endTime": "End Time",
+        "staffOptional": "Staff Member (optional)"
+      },
+      "availabilityEditModal": {
+        "title": "Edit closed period",
+        "type": "Type",
+        "start": "Start",
+        "end": "End",
+        "staff": "Staff (optional)",
+        "everyone": "Everyone",
+        "cancel": "Cancel",
+        "save": "Save"
+      },
+      "overlayMenu": {
+        "invalidTimeTitle": "Invalid time",
+        "invalidRangeTitle": "Invalid range",
+        "invalidTimeMessage": "Use HH:MM format for start and end time, for example 12:00 and 13:00.",
+        "invalidRangeMessage": "End time must be after start time.",
+        "saveTimeBlockErrorTitle": "Couldn't save time block",
+        "saveBlockErrorTitle": "Couldn't save block",
+        "bookingHoldTitle": "Booking hold",
+        "bookingHoldExpires": " Expires {{time}}.",
+        "bookingHoldMessage": "A customer is currently finalising checkout for this slot.{{expires}} It will clear automatically if they don't complete payment.",
+        "staffOffTitle": "Team time off",
+        "staffOffMessage": "This comes from staff time off or a day off. Update it in team scheduling, not from the calendar grid.",
+        "availabilityBlockTitle": "{{type}} · {{start}}–{{end}}",
+        "edit": "Edit",
+        "delete": "Delete",
+        "manage": "Manage",
+        "removeBlockTitle": "Remove this block?",
+        "removeBlockMessage": "Clients may be able to book this time again.",
+        "removeBlockErrorTitle": "Couldn't remove block",
+        "timeBlockTitle": "Time block",
+        "removeTimeBlockTitle": "Remove time block?",
+        "removeTimeBlockErrorTitle": "Couldn't remove time block"
+      },
+      "cancelBookingModal": {
+        "title": "Cancel booking",
+        "confirm": "Cancel booking",
+        "reasonPlaceholder": "Reason (optional)"
+      },
+      "utilityMenu": {
+        "title": "Calendar tools",
+        "expressBooking": "Express book"
+      },
+      "actionRail": {
+        "newLabel": "New",
+        "newSub": "Appointment",
+        "walkInLabel": "Walk-in",
+        "walkInSub": "Book now",
+        "groupLabel": "Group",
+        "groupSub": "Participants",
+        "saleLabel": "Sale",
+        "saleSub": "Products",
+        "recurringLabel": "Recurring",
+        "recurringSub": "Series",
+        "blockLabel": "Block",
+        "blockSub": "Time off",
+        "waitingLabel": "Waiting",
+        "waitingRoomSub": "Room",
+        "waitingCountSub": "{{count}} waiting"
+      },
+      "mutations": {
+        "completeServiceErrorTitle": "Couldn't complete service",
+        "startServiceErrorTitle": "Couldn't start service",
+        "updateBookingErrorTitle": "Couldn't update booking",
+        "moveAppointmentErrorTitle": "Couldn't move appointment",
+        "moveAppointmentGeneric": "We couldn't move this appointment. Please try again.",
+        "slotUnavailableTitle": "Slot not available",
+        "slotOverlapBody": "Another booking or block overlaps this time."
+      }
     }
   },
   "customer": {

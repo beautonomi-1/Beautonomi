@@ -1,9 +1,9 @@
 /**
- * Platform Service Fee Settings Helper
+ * Platform Fee Settings Helper
  *
- * Provides utilities for getting the effective service fee based on:
+ * Provides utilities for getting the effective customer-paid platform fee based on:
  * 1. Provider's customer_fee_config_id (from platform_fee_config table)
- * 2. Platform default service fee (from platform_settings.payouts)
+ * 2. Platform default platform fee (from platform_settings.payouts)
  * 3. Hard fallback: 0 — never charge unless explicitly configured
  */
 
@@ -12,9 +12,9 @@ import { percentOf, roundCurrency } from "@beautonomi/utils";
 
 // Zero fallback: never silently charge a fee when the platform hasn't configured one.
 // Operators must explicitly set a fee in admin settings.
-const DEFAULT_SERVICE_FEE_PERCENTAGE = 0;
+const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0;
 
-export interface ServiceFeeConfig {
+export interface PlatformFeeConfig {
   percentage: number;
   fixedAmount?: number;
   feeType: "percentage" | "fixed_amount";
@@ -22,18 +22,21 @@ export interface ServiceFeeConfig {
   maxFeeAmount?: number;
 }
 
+/** @deprecated Use PlatformFeeConfig. */
+export type ServiceFeeConfig = PlatformFeeConfig;
+
 /**
- * Get the effective service fee configuration for a provider.
+ * Get the effective platform fee configuration for a provider.
  * Priority: provider customer_fee_config_id → platform default → 0 (no fee).
  *
  * @param providerId - Provider ID
  * @param subtotal - Booking subtotal (for checking min_booking_amount)
- * @returns Service fee configuration
+ * @returns Platform fee configuration
  */
-export async function getEffectiveServiceFeeConfig(
+export async function getEffectivePlatformFeeConfig(
   providerId: string,
   subtotal: number = 0
-): Promise<ServiceFeeConfig> {
+): Promise<PlatformFeeConfig> {
   try {
     const supabaseAdmin = await getSupabaseAdmin();
     
@@ -113,27 +116,30 @@ export async function getEffectiveServiceFeeConfig(
     
     // No settings configured: charge nothing
     return {
-      percentage: DEFAULT_SERVICE_FEE_PERCENTAGE,
+      percentage: DEFAULT_PLATFORM_FEE_PERCENTAGE,
       feeType: "fixed_amount",
     };
   } catch (error) {
-    console.warn("Failed to get service fee config from database, using fallback:", error);
+    console.warn("Failed to get platform fee config from database, using fallback:", error);
     return {
-      percentage: DEFAULT_SERVICE_FEE_PERCENTAGE,
+      percentage: DEFAULT_PLATFORM_FEE_PERCENTAGE,
       feeType: "fixed_amount",
     };
   }
 }
 
+/** @deprecated Use getEffectivePlatformFeeConfig. */
+export const getEffectiveServiceFeeConfig = getEffectivePlatformFeeConfig;
+
 /**
- * Calculate service fee amount based on configuration and subtotal
+ * Calculate platform fee amount based on configuration and subtotal
  * 
- * @param config - Service fee configuration
+ * @param config - Platform fee configuration
  * @param subtotal - Booking subtotal (after discounts)
- * @returns Service fee amount
+ * @returns Platform fee amount
  */
-export function calculateServiceFeeAmount(
-  config: ServiceFeeConfig,
+export function calculatePlatformFeeAmount(
+  config: PlatformFeeConfig,
   subtotal: number
 ): number {
   if (config.minBookingAmount && subtotal < config.minBookingAmount) {
@@ -157,11 +163,14 @@ export function calculateServiceFeeAmount(
   return 0;
 }
 
+/** @deprecated Use calculatePlatformFeeAmount. */
+export const calculateServiceFeeAmount = calculatePlatformFeeAmount;
+
 /**
- * Get the platform default service fee percentage
- * @returns Service fee percentage (e.g., 10.00 for 10%)
+ * Get the platform default platform fee percentage
+ * @returns Platform fee percentage (e.g., 10.00 for 10%)
  */
-export async function getPlatformDefaultServiceFeePercentage(): Promise<number> {
+export async function getPlatformDefaultPlatformFeePercentage(): Promise<number> {
   try {
     const supabaseAdmin = await getSupabaseAdmin();
     
@@ -183,9 +192,12 @@ export async function getPlatformDefaultServiceFeePercentage(): Promise<number> 
       }
     }
     
-    return DEFAULT_SERVICE_FEE_PERCENTAGE;
+    return DEFAULT_PLATFORM_FEE_PERCENTAGE;
   } catch (error) {
-    console.warn("Failed to get platform default service fee, using fallback:", error);
-    return DEFAULT_SERVICE_FEE_PERCENTAGE;
+    console.warn("Failed to get platform default platform fee, using fallback:", error);
+    return DEFAULT_PLATFORM_FEE_PERCENTAGE;
   }
 }
+
+/** @deprecated Use getPlatformDefaultPlatformFeePercentage. */
+export const getPlatformDefaultServiceFeePercentage = getPlatformDefaultPlatformFeePercentage;

@@ -55,6 +55,11 @@ interface InvoicesResponse {
   total: number;
   page: number;
   total_pages: number;
+  summary?: {
+    paid_amount: number;
+    outstanding_amount: number;
+    overdue_count: number;
+  };
 }
 
 const STATUS_FILTERS = [
@@ -79,19 +84,26 @@ function statusColor(status: string) {
   return { bg: "bg-gray-100", text: "text-gray-500", icon: "ellipse" as const, color: "#6b7280" };
 }
 
-function isThisWeek(dateStr: string) {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - now.getDay());
-  startOfWeek.setHours(0, 0, 0, 0);
-  return d >= startOfWeek;
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-function isThisMonth(dateStr: string) {
-  const d = new Date(dateStr);
+function getInvoicePeriodRange(period: string): { from?: string; to?: string } {
+  if (period === "all") return {};
   const now = new Date();
-  return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  const end = formatLocalDate(now);
+  if (period === "week") {
+    const start = new Date(now);
+    start.setDate(now.getDate() - now.getDay());
+    return { from: formatLocalDate(start), to: end };
+  }
+  if (period === "month") {
+    return { from: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`, to: end };
+  }
+  return {};
 }
 
 export default function InvoicesScreen() {
@@ -103,8 +115,14 @@ export default function InvoicesScreen() {
   const [selected, setSelected] = useState<Invoice | null>(null);
 
   const statusParam = filter !== "all" ? `&status=${filter}` : "";
+  const periodRange = useMemo(() => getInvoicePeriodRange(period), [period]);
+  const periodParams = [
+    periodRange.from ? `date_from=${encodeURIComponent(periodRange.from)}` : "",
+    periodRange.to ? `date_to=${encodeURIComponent(periodRange.to)}` : "",
+  ].filter(Boolean).join("&");
+  const periodParam = periodParams ? `&${periodParams}` : "";
   const { data: invData, loading, error: loadError, refresh } = useApi<InvoicesResponse>(
-    `/api/provider/invoices?page=${page}&limit=25${statusParam}`
+    `/api/provider/invoices?page=${page}&limit=25${statusParam}${periodParam}`
   );
   const invoices = useMemo(() => invData?.invoices ?? [], [invData?.invoices]);
   const { execute: updateInvoice, loading: updatingStatus } = useApiMutation("patch");
@@ -122,9 +140,6 @@ export default function InvoicesScreen() {
   const filtered = useMemo(() => {
     let result = invoices;
 
-    if (period === "week") result = result.filter((i) => isThisWeek(i.issue_date));
-    else if (period === "month") result = result.filter((i) => isThisMonth(i.issue_date));
-
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
@@ -137,19 +152,28 @@ export default function InvoicesScreen() {
     }
 
     return result;
-  }, [invoices, period, search]);
+  }, [invoices, search]);
 
   const stats = useMemo(() => {
-    const outstanding = invoices.filter((i) => i.status === "pending" || i.status === "overdue");
-    const paid = invoices.filter((i) => i.status === "paid");
-    const overdue = invoices.filter((i) => i.status === "overdue");
+    const summary = invData?.summary;
+    if (summary && !search.trim()) {
+      return {
+        total: invData?.total ?? invoices.length,
+        outstandingAmount: summary.outstanding_amount,
+        paidAmount: summary.paid_amount,
+        overdueCount: summary.overdue_count,
+      };
+    }
+    const outstanding = filtered.filter((i) => i.status === "pending" || i.status === "overdue");
+    const paid = filtered.filter((i) => i.status === "paid");
+    const overdue = filtered.filter((i) => i.status === "overdue");
     return {
-      total: invData?.total ?? invoices.length,
+      total: search.trim() ? filtered.length : invData?.total ?? filtered.length,
       outstandingAmount: outstanding.reduce((s, i) => s + i.total_amount, 0),
       paidAmount: paid.reduce((s, i) => s + i.total_amount, 0),
       overdueCount: overdue.length,
     };
-  }, [invoices, invData]);
+  }, [filtered, invoices.length, invData, search]);
 
   async function handleMarkPaid(inv: Invoice) {
     Alert.alert("Mark as Paid", `Mark invoice ${inv.invoice_number} as paid?`, [
@@ -249,7 +273,14 @@ export default function InvoicesScreen() {
         </View>
       </View>
 
-      <SearchBar value={search} onChangeText={setSearch} placeholder="Search by number or client..." />
+      <SearchBar
+        value={search}
+        onChangeText={(value) => {
+          setSearch(value);
+          setPage(1);
+        }}
+        placeholder="Search by number or client..."
+      />
 
       <View style={twStyle("my-2")}>
         <FilterChipGroup
@@ -259,7 +290,7 @@ export default function InvoicesScreen() {
         />
       </View>
       <View style={twStyle("mb-3")}>
-        <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={setPeriod} />
+        <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={(v) => { setPeriod(v); setPage(1); }} />
       </View>
 
       {loadError && !invData ? (

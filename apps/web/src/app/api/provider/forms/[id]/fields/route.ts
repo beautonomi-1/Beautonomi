@@ -1,15 +1,35 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser, notFoundResponse, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  successResponse,
+  handleApiError,
+  getProviderIdForUser,
+  notFoundResponse,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import {
   isProviderSubscriptionFeatureEnabled,
   SUBSCRIPTION_FEATURE_KEYS,
 } from "@/lib/subscriptions/feature-access";
 
+const fieldInsertSchema = z
+  .object({
+    name: z.string().min(1),
+    field_type: z.enum(["text", "checkbox", "signature", "date"]),
+    is_required: z.boolean().optional(),
+  })
+  .strict();
+
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -26,8 +46,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    const body = await request.json();
-    const { name, field_type, is_required } = body;
+    const raw = await request.json();
+    const parsed = fieldInsertSchema.safeParse(raw);
+    if (!parsed.success) {
+      return errorResponse("Validation failed", "VALIDATION_ERROR", 400, parsed.error.issues);
+    }
+    const { name, field_type, is_required } = parsed.data;
 
     const { data: form } = await supabase
       .from("provider_forms")

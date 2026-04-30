@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subMonths } from "date-fns";
+import { endOfDay, startOfDay, subMonths } from "date-fns";
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,39 +20,25 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from('providers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error('Provider profile not found'),
-        'NOT_FOUND',
-        404
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get("period") || "month"; // month, quarter, year
     const locationId = searchParams.get("location_id") || undefined;
 
     let fromDate: Date;
-    const toDate = new Date();
+    const toDate = endOfDay(new Date());
 
     switch (period) {
       case "month":
-        fromDate = subMonths(toDate, 12);
+        fromDate = startOfDay(subMonths(toDate, 12));
         break;
       case "quarter":
-        fromDate = subMonths(toDate, 4);
+        fromDate = startOfDay(subMonths(toDate, 4));
         break;
       case "year":
-        fromDate = subMonths(toDate, 24);
+        fromDate = startOfDay(subMonths(toDate, 24));
         break;
       default:
-        fromDate = subMonths(toDate, 12);
+        fromDate = startOfDay(subMonths(toDate, 12));
     }
 
     // Get all bookings
@@ -62,7 +48,7 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString())
-      .in("status", ["confirmed", "completed"]);
+      .eq("status", "completed");
 
     if (locationId) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
@@ -167,6 +153,8 @@ export async function GET(request: NextRequest) {
       overallRetentionRate,
       averageVisitsPerClient,
       retentionByPeriod,
+      reportBasis:
+        "Retention is based on completed visits only. Future confirmed bookings are excluded so visit counts and return rates reflect actual completed customer behavior.",
     });
   } catch (error) {
     return handleApiError(error, "CLIENT_RETENTION_ERROR", 500);

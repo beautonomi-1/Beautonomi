@@ -11,16 +11,20 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { toast } from "sonner";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import LoginModal from "@/components/global/login-modal";
+import { useAuth } from "@/providers/AuthProvider";
 
 export default function GiftCardPurchasePage() {
   const { currencyCode, format: fmt } = useReportCurrency();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user, isLoading: authLoading } = useAuth();
   const [amount, setAmount] = useState("500");
   const [quantity, setQuantity] = useState("1");
   const [recipientEmail, setRecipientEmail] = useState("");
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const { enabled: giftCardsEnabled, loading: flagsLoading } = useFeatureFlag("gift_cards");
 
   // Check if coming from bulk purchase link
@@ -31,6 +35,12 @@ export default function GiftCardPurchasePage() {
   }, [searchParams]);
 
   const submit = async () => {
+    if (authLoading) return;
+    if (!user) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+
     const amt = Number(amount);
     const qty = Number(quantity);
     
@@ -50,6 +60,11 @@ export default function GiftCardPurchasePage() {
         amount: amt,
         quantity: qty,
         recipient_email: recipientEmail.trim() ? recipientEmail.trim() : null,
+        source: isBulkMode ? "gift_card_bulk_purchase" : "gift_card_purchase",
+        campaign_id: searchParams.get("campaign_id") || undefined,
+        utm_source: searchParams.get("utm_source") || undefined,
+        utm_medium: searchParams.get("utm_medium") || undefined,
+        utm_campaign: searchParams.get("utm_campaign") || undefined,
       });
       const url = res?.data?.payment_url;
       if (url) {
@@ -173,11 +188,22 @@ export default function GiftCardPurchasePage() {
             )}
           </div>
 
-          <Button onClick={submit} disabled={isSubmitting} className="w-full bg-gray-900 text-white">
-            {isSubmitting ? "Redirecting..." : `Continue to payment${isBulkMode && Number(quantity) > 1 ? ` (${fmt(totalAmount)})` : ""}`}
+          <Button onClick={submit} disabled={authLoading || isSubmitting} className="w-full bg-gray-900 text-white">
+            {authLoading
+              ? "Checking account..."
+              : isSubmitting
+                ? "Redirecting..."
+                : `Continue to payment${isBulkMode && Number(quantity) > 1 ? ` (${fmt(totalAmount)})` : ""}`}
           </Button>
         </div>
       </div>
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+        redirectContext="customer"
+        onAuthSuccess={() => setIsLoginModalOpen(false)}
+      />
     </div>
   );
 }

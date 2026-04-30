@@ -108,6 +108,8 @@ export const bookingDraftSchema = z.object({
   resource_ids: z.array(z.string().uuid("Invalid resource ID")).optional(),
   /** Minutes after service duration for mobile at-home slots; must match `/api/availability` `travelBuffer`. (Calendar also passes `providerId` to that route when staff is "any" — not part of this JSON body.) */
   availability_travel_buffer_minutes: z.coerce.number().int().min(0).max(360).optional(),
+  /** Sponsored-listing campaign that led to this booking, used for server-side ad attribution/reporting. */
+  campaign_id: z.string().uuid().optional().nullable(),
   /** When enabled, recurring series is created after payment (Paystack metadata) or immediately if no card redirect. */
   subscribe_recurring: z
     .object({

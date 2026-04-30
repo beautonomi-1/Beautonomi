@@ -282,7 +282,11 @@ export async function registerDevice(
 /** Options for which OneSignal app to use (multi-app support). */
 export type OneSignalSendOptions = {
   appType?: OneSignalAppType;
-  /** When sending to users who are not the current requester (e.g. provider when customer creates request), pass admin client so device lookup is not blocked by RLS. */
+  /**
+   * Rare override for device/template queries. Default is service-role admin so cross-user
+   * lookups work from webhooks and admin broadcasts. Do not pass the admin UI session client:
+   * RLS only allows each user to see their own `user_devices` rows.
+   */
   supabaseClient?: SupabaseClient<Database>;
   /** Market tenant: use platform_settings / platform_secrets for this tenant (merged over global), same as admin Settings UI. */
   tenantId?: string | null;
@@ -515,12 +519,9 @@ export async function sendToUser(
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
   const normalizedChannels = parseNotificationChannels(channels);
-  // When sending to provider, device lookup often runs in customer/webhook context; use admin so RLS does not block.
-  const supabase =
-    options?.supabaseClient ??
-    (await (options?.appType === "provider"
-      ? Promise.resolve(getSupabaseAdmin())
-      : getSupabaseServer()));
+  // Device rows live under RLS (owner-only). Server sends (webhooks, provider APIs, cron) have no
+  // customer session — always use admin for user_devices reads so subscription targeting works.
+  const supabase = options?.supabaseClient ?? getSupabaseAdmin();
 
   let query = supabase
     .from("user_devices")
@@ -579,7 +580,7 @@ export async function sendToUsers(
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
   const normalizedChannels = parseNotificationChannels(channels);
-  const supabase = options?.supabaseClient ?? (await getSupabaseServer());
+  const supabase = options?.supabaseClient ?? getSupabaseAdmin();
 
   let query = supabase
     .from("user_devices")
@@ -748,9 +749,7 @@ export async function sendTemplateNotification(
   options?: SendTemplateOptions
 ): Promise<SendNotificationResult> {
   const requestedFilter = parseNotificationChannels(channels);
-  const templateClient =
-    options?.supabaseClient ??
-    (options?.appType === "provider" ? getSupabaseAdmin() : undefined);
+  const templateClient = options?.supabaseClient ?? getSupabaseAdmin();
   const template = await getNotificationTemplate(
     templateKey,
     templateClient,
@@ -937,13 +936,9 @@ export async function sendTemplateNotification(
   }
 
   // When appType is set, target only devices for that app (player_ids + correct app config).
-  // When sending to provider, use admin client so device lookup works from customer/webhook context.
+  // Use admin for user_devices reads — webhooks and provider routes have no customer JWT for RLS.
   if (options?.appType && userIds.length > 0) {
-    const supabase =
-      options?.supabaseClient ??
-      (await (options.appType === "provider"
-        ? Promise.resolve(getSupabaseAdmin())
-        : getSupabaseServer()));
+    const supabase = options?.supabaseClient ?? getSupabaseAdmin();
     let query = supabase
       .from("user_devices")
       .select("onesignal_player_id")
@@ -1001,6 +996,9 @@ export async function sendTemplateNotification(
                 templateKey,
                 recipientUserId: userId,
                 bookingId,
+                tenantId: options?.tenantId ?? null,
+                pushAppType:
+                  channel === "push" ? (options?.appType ?? null) : null,
                 payload: buildQueuePayload(channel, {
                   title,
                   body,

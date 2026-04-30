@@ -49,6 +49,7 @@ interface ProductsData {
   low_stock: { name: string; stock: number; reorder_point: number }[];
   package_usage?: { name: string; active: number; redeemed: number }[];
   package_revenue?: number;
+  report_basis?: string;
 }
 
 export default function ProductsReport() {
@@ -65,6 +66,7 @@ export default function ProductsReport() {
       `Product & Inventory Report (${from} to ${to})`,
       `Total Product Revenue: ${formatCurrency(data.total_product_revenue)}`,
       `Total Units Sold: ${data.total_units_sold}`,
+      data.report_basis || "",
       "",
       "Top Products:",
       ...data.top_products.slice(0, 10).map((p, i) => `  ${i + 1}. ${p.name}: ${p.units_sold} sold, ${formatCurrency(p.revenue)}`),
@@ -105,6 +107,9 @@ export default function ProductsReport() {
               <StatCard title="Product Revenue" value={formatCurrency(data.total_product_revenue)} icon="cash-outline" iconColor="#8b5cf6" iconBg="bg-violet-50" compact />
               <StatCard title="Units Sold" value={String(data.total_units_sold)} icon="cube-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
             </ReportResponsiveStatRow>
+            {data.report_basis ? (
+              <Text style={twStyle("mt-2 text-xs leading-4 text-gray-500")}>{data.report_basis}</Text>
+            ) : null}
           </View>
 
           {data.top_products.length > 0 && (

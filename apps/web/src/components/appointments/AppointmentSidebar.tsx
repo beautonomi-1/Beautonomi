@@ -263,9 +263,9 @@ export function AppointmentSidebar({
   // Tax rate state - loaded from API (must be declared before formData)
   const [defaultTaxRate, setDefaultTaxRate] = useState<number>(0); // Default 0% until loaded from provider settings
   
-  // Service fee state - loaded from API (must be declared before formData)
-  // NOTE: For provider-created appointments (walk-in), service fee is ALWAYS 0
-  const [defaultServiceFeePercentage, setDefaultServiceFeePercentage] = useState<number>(0); // Provider-created = 0% service fee
+  // Platform Fee state - loaded from API (must be declared before formData)
+  // NOTE: For provider-created appointments (walk-in), Platform Fee is ALWAYS 0
+  const [defaultServiceFeePercentage, setDefaultServiceFeePercentage] = useState<number>(0); // Provider-created = 0% Platform Fee
   
   // Travel settings state - loaded from API
   const [_travelSettings, setTravelSettings] = useState<TravelFeeRules>(DEFAULT_TRAVEL_FEE_RULES);
@@ -305,6 +305,11 @@ export function AppointmentSidebar({
     serviceFeePercentage: defaultServiceFeePercentage, // Loaded from platform settings or provider settings
     serviceFeeAmount: 0,
     tipAmount: 0,
+    walletAmount: 0,
+    giftCardAmount: 0,
+    loyaltyDiscountAmount: 0,
+    promotionDiscountAmount: 0,
+    membershipDiscountAmount: 0,
     totalAmount: 0,
     addressLine1: "",
     addressLine2: "",
@@ -1015,7 +1020,7 @@ export function AppointmentSidebar({
     toast.success(`Package "${pkg.name}" added`);
   };
 
-  // Load default tax rate, service fee, travel settings, and buffer time on mount (same as appointments)
+  // Load default tax rate, Platform Fee, travel settings, and buffer time on mount (same as appointments)
   // Preload so correct values are ready when sidebar opens
   useEffect(() => {
     const loadSettings = async () => {
@@ -1034,7 +1039,7 @@ export function AppointmentSidebar({
                 return {
                   ...prev,
                   taxRate: taxRate,
-                  serviceFeePercentage: 0, // Provider-created appointments have no service fee
+                  serviceFeePercentage: 0, // Provider-created appointments have no Platform Fee
                   serviceFeeAmount: 0,
                   taxAmount: pricing.taxAmount,
                   totalAmount: pricing.totalAmount,
@@ -1058,7 +1063,7 @@ export function AppointmentSidebar({
             }
           }
           
-          // Load service fee (for reference, but provider-created appointments use 0)
+          // Load Platform Fee (for reference, but provider-created appointments use 0)
           const serviceFeeResponse = await providerPortalFetch("/api/provider/service-fee");
           if (serviceFeeResponse.ok) {
             const serviceFeeData = await serviceFeeResponse.json();
@@ -1256,7 +1261,7 @@ export function AppointmentSidebar({
     
     setFormData(prev => {
       const newServices = [...prev.services, newService];
-      // Provider-created appointments always have 0 service fee
+      // Provider-created appointments always have 0 Platform Fee
       const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
       
       const tipToUse = prev.tipAmount;
@@ -1283,7 +1288,7 @@ export function AppointmentSidebar({
   const removeService = useCallback((serviceId: string) => {
     setFormData(prev => {
       const newServices = prev.services.filter(s => s.id !== serviceId);
-      // Provider-created appointments always have 0 service fee
+      // Provider-created appointments always have 0 Platform Fee
       const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
       const pricing = calculatePricing(newServices, prev.products, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
       return {
@@ -1372,7 +1377,7 @@ export function AppointmentSidebar({
     };
     setFormData(prev => {
       const newProducts = [...prev.products, newProduct];
-      // Provider-created appointments always have 0 service fee
+      // Provider-created appointments always have 0 Platform Fee
       const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
       const pricing = calculatePricing(prev.services, newProducts, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
       return {
@@ -1388,7 +1393,7 @@ export function AppointmentSidebar({
   const removeProduct = useCallback((productId: string) => {
     setFormData(prev => {
       const newProducts = prev.products.filter(p => p.id !== productId);
-      // Provider-created appointments always have 0 service fee
+      // Provider-created appointments always have 0 Platform Fee
       const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
       const pricing = calculatePricing(prev.services, newProducts, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
       return {
@@ -1412,7 +1417,7 @@ export function AppointmentSidebar({
           ? { ...p, quantity, totalPrice: p.unitPrice * quantity }
           : p
       );
-      // Provider-created appointments always have 0 service fee
+      // Provider-created appointments always have 0 Platform Fee
       const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
       const pricing = calculatePricing(prev.services, newProducts, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
       return {
@@ -1530,7 +1535,7 @@ export function AppointmentSidebar({
     if (mode === "create" && draftSlot) {
       // Don't auto-select any service - let user choose
       const initialServices: AppointmentService[] = [];
-      // Provider-created appointments should have 0 service fee
+      // Provider-created appointments should have 0 Platform Fee
       // Use the loaded tax rate (defaultTaxRate should be loaded from provider settings)
       const pricing = calculatePricing(initialServices, [], 0, 0, defaultTaxRate, 0, 0);
       
@@ -1569,6 +1574,11 @@ export function AppointmentSidebar({
         taxAmount: pricing.taxAmount,
         taxRate: defaultTaxRate,
         tipAmount: 0,
+        walletAmount: 0,
+        giftCardAmount: 0,
+        loyaltyDiscountAmount: 0,
+        promotionDiscountAmount: 0,
+        membershipDiscountAmount: 0,
         totalAmount: pricing.totalAmount,
         addressLine1: "",
         addressLine2: "",
@@ -1693,12 +1703,25 @@ export function AppointmentSidebar({
         };
       });
       
-      const travelFee = selectedAppointment.travel_fee || 0;
-      const discountAmount = selectedAppointment.discount_amount || 0;
+      const travelFee = Number(selectedAppointment.travel_fee || 0);
+      const discountAmount = Number(selectedAppointment.discount_amount || 0);
+      const walletAmount = Number((selectedAppointment as any).wallet_amount || 0);
+      const giftCardAmount = Number((selectedAppointment as any).gift_card_amount || 0);
+      const loyaltyDiscountAmount = Number((selectedAppointment as any).loyalty_discount_amount || 0);
+      const promotionDiscountAmount = Number((selectedAppointment as any).promotion_discount_amount || 0);
+      const membershipDiscountAmount = Number((selectedAppointment as any).membership_discount_amount || 0);
       
       // In VIEW mode, use stored values from database; in EDIT mode, recalculate
       const useStoredValues = mode === "view";
-      const storedSubtotal = (selectedAppointment as any).subtotal;
+      const storedSubtotalRaw = Number((selectedAppointment as any).subtotal ?? 0);
+      const lineSubtotal = [...appointmentServices, ...[]].reduce((sum, s) => sum + Number((s as AppointmentService).price || 0) + ((s as AppointmentService).addons?.reduce((a, ad) => a + Number(ad.price || 0), 0) || 0), 0) +
+        appointmentProducts.reduce((sum, p) => sum + Number(p.totalPrice || 0), 0);
+      // DB subtotal in older rows may include travel. In the modal, keep
+      // Subtotal as services/products only because travel/tip/fees are shown
+      // as separate line items.
+      const storedSubtotal = lineSubtotal > 0
+        ? lineSubtotal
+        : Math.max(0, storedSubtotalRaw - travelFee);
       // Try multiple property names for tax_amount (in case of different API response formats)
       // Also check if it's a string that needs parsing
       let storedTaxAmount = 0;
@@ -1709,8 +1732,8 @@ export function AppointmentSidebar({
         storedTaxAmount = typeof taxAmountRaw === 'string' ? parseFloat(taxAmountRaw) : taxAmountRaw;
       }
       
-      const storedTotalAmount = selectedAppointment.total_amount || 0;
-      const tipAmount = selectedAppointment.tip_amount || 0;
+      const storedTotalAmountRaw = Number(selectedAppointment.total_amount || 0);
+      const tipAmount = Number(selectedAppointment.tip_amount || 0);
       
       // Calculate tax_rate from tax_amount if stored tax_rate is 0 or missing
       let storedTaxRate = (selectedAppointment as any).tax_rate;
@@ -1747,14 +1770,14 @@ export function AppointmentSidebar({
       
       // If service_fee_amount is 0 but total includes it, calculate it
       // Priority: Calculate from total first (to match stored total), then use percentage if needed
-      if (storedServiceFeeAmount === 0 && storedSubtotal && storedTotalAmount) {
+      if (storedServiceFeeAmount === 0 && storedSubtotal && storedTotalAmountRaw) {
         const afterDiscount = storedSubtotal - discountAmount;
         
         // First priority: Calculate from total if we have tax amount
         // This ensures we match the actual stored total_amount exactly
         if (storedTaxAmount > 0) {
           // service_fee = total - subtotal - tax - tip - travel
-          const calculatedServiceFee = storedTotalAmount - storedSubtotal - storedTaxAmount - tipAmount - travelFee;
+          const calculatedServiceFee = storedTotalAmountRaw - storedSubtotal - storedTaxAmount - tipAmount - travelFee;
           if (calculatedServiceFee > 0) {
             storedServiceFeeAmount = calculatedServiceFee;
           }
@@ -1767,7 +1790,7 @@ export function AppointmentSidebar({
         
         // Last resort: Calculate from total without tax (if tax is missing)
         if (storedServiceFeeAmount === 0 && storedTaxAmount === 0) {
-          const calculatedServiceFee = storedTotalAmount - storedSubtotal - tipAmount - travelFee;
+          const calculatedServiceFee = storedTotalAmountRaw - storedSubtotal - tipAmount - travelFee;
           if (calculatedServiceFee > 0) {
             storedServiceFeeAmount = calculatedServiceFee;
           }
@@ -1777,9 +1800,23 @@ export function AppointmentSidebar({
       const storedBookingSource = (selectedAppointment as any).booking_source;
       const isWalkIn = !storedBookingSource || storedBookingSource === 'walk_in';
       
-      // Use 0 service fee for walk-in appointments, otherwise use stored values
+      // Use 0 Platform Fee for walk-in appointments, otherwise use stored values
       const effectiveServiceFeePercentage = isWalkIn ? 0 : storedServiceFeePercentage;
       const effectiveServiceFeeAmount = isWalkIn ? 0 : storedServiceFeeAmount;
+      const computedTotalFromLines =
+        storedSubtotal -
+        discountAmount -
+        loyaltyDiscountAmount -
+        promotionDiscountAmount -
+        membershipDiscountAmount +
+        travelFee +
+        storedTaxAmount +
+        effectiveServiceFeeAmount +
+        tipAmount;
+      const storedTotalAmount = Math.max(
+        storedTotalAmountRaw,
+        Math.round(Math.max(0, computedTotalFromLines) * 100) / 100,
+      );
       
       // Calculate pricing only if we need to (EDIT mode or missing stored values)
       const pricing = useStoredValues && storedSubtotal !== undefined
@@ -1817,6 +1854,11 @@ export function AppointmentSidebar({
         taxAmount: pricing.taxAmount,
         taxRate: storedTaxRate,
         tipAmount,
+        walletAmount,
+        giftCardAmount,
+        loyaltyDiscountAmount,
+        promotionDiscountAmount,
+        membershipDiscountAmount,
         totalAmount: pricing.totalAmount,
         addressLine1: selectedAppointment.address_line1 || "",
         addressLine2: selectedAppointment.address_line2 || "",
@@ -1971,8 +2013,8 @@ export function AppointmentSidebar({
 
       // Add non-standard fields and arrays
       (appointmentData as any).tax_rate = formData.taxRate;
-      // Service fees should only apply to client portal bookings, not provider-created appointments
-      // Provider-created appointments (walk-in, in-salon) should have 0 service fee
+      // Platform Fees should only apply to client portal bookings, not provider-created appointments
+      // Provider-created appointments (walk-in, in-salon) should have 0 Platform Fee
       (appointmentData as any).service_fee_percentage = 0;
       (appointmentData as any).service_fee_amount = 0;
       (appointmentData as any).service_fee_paid_by = 'customer';
@@ -2128,17 +2170,17 @@ export function AppointmentSidebar({
       
       // Add non-standard fields and arrays
       (updates as any).tax_rate = formData.taxRate;
-      // Service fees should only apply to client portal bookings, not provider-created appointments
-      // If updating an existing appointment that was created via provider, keep service fee at 0
-      // Only preserve service fee if it was originally from client portal (check if it exists and > 0)
+      // Platform Fees should only apply to client portal bookings, not provider-created appointments
+      // If updating an existing appointment that was created via provider, keep Platform Fee at 0
+      // Only preserve Platform Fee if it was originally from client portal (check if it exists and > 0)
       const existingServiceFee = (selectedAppointment as any).service_fee_amount || 0;
       const editBookingSource = (selectedAppointment as any).booking_source;
       if (existingServiceFee > 0 && editBookingSource === 'online') {
-        // Preserve existing service fee if it was from client portal booking
+        // Preserve existing Platform Fee if it was from client portal booking
         (updates as any).service_fee_percentage = formData.serviceFeePercentage;
         (updates as any).service_fee_amount = formData.serviceFeeAmount;
       } else {
-        // Walk-in appointments should have 0 service fee
+        // Walk-in appointments should have 0 Platform Fee
         (updates as any).service_fee_percentage = 0;
         (updates as any).service_fee_amount = 0;
       }
@@ -4290,6 +4332,38 @@ export function AppointmentSidebar({
                       <span className="font-medium text-emerald-600">-{formatMoney(formData.discountAmount)}</span>
                     </div>
                   )}
+
+                  {formData.loyaltyDiscountAmount > 0 && (
+                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                      <span className="text-emerald-600">Loyalty points</span>
+                      <span className="font-medium text-emerald-600">-{formatMoney(formData.loyaltyDiscountAmount)}</span>
+                    </div>
+                  )}
+
+                  {formData.membershipDiscountAmount > 0 && (
+                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                      <span className="text-emerald-600">Membership discount</span>
+                      <span className="font-medium text-emerald-600">-{formatMoney(formData.membershipDiscountAmount)}</span>
+                    </div>
+                  )}
+
+                  {formData.promotionDiscountAmount > 0 && (
+                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                      <span className="text-emerald-600">Promotion</span>
+                      <span className="font-medium text-emerald-600">-{formatMoney(formData.promotionDiscountAmount)}</span>
+                    </div>
+                  )}
+                  
+                  {/* Travel Fee */}
+                  {formData.travelFee > 0 && (
+                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                      <span className="text-gray-500 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        Travel fee
+                      </span>
+                      <span className="font-medium text-gray-700">{formatMoney(formData.travelFee)}</span>
+                    </div>
+                  )}
                   
                   {/* Tax */}
                   {formData.taxAmount > 0 && (
@@ -4299,18 +4373,7 @@ export function AppointmentSidebar({
                     </div>
                   )}
                   
-                  {/* Travel Fee */}
-                  {formData.travelFee > 0 && (
-                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
-                      <span className="text-gray-500 flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        Travel Fee
-                      </span>
-                      <span className="font-medium text-gray-700">{formatMoney(formData.travelFee)}</span>
-                    </div>
-                  )}
-                  
-                  {/* Service Fee */}
+                  {/* Platform Fee */}
                   {formData.serviceFeeAmount > 0 && (
                     <div className="flex justify-between text-xs sm:text-xs md:text-sm">
                       <span className="text-gray-500">Platform Fee ({(formData.serviceFeePercentage * 100).toFixed(1)}%)</span>
@@ -4323,6 +4386,20 @@ export function AppointmentSidebar({
                     <div className="flex justify-between text-xs sm:text-xs md:text-sm">
                       <span className="text-gray-500">Tip</span>
                       <span className="font-medium text-gray-700">{formatMoney(formData.tipAmount)}</span>
+                    </div>
+                  )}
+
+                  {formData.walletAmount > 0 && (
+                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                      <span className="text-purple-600">Wallet credit applied</span>
+                      <span className="font-medium text-purple-600">-{formatMoney(formData.walletAmount)}</span>
+                    </div>
+                  )}
+
+                  {formData.giftCardAmount > 0 && (
+                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                      <span className="text-purple-600">Gift card applied</span>
+                      <span className="font-medium text-purple-600">-{formatMoney(formData.giftCardAmount)}</span>
                     </div>
                   )}
                 </div>

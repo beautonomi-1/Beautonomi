@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Ensure request belongs to this provider
     const { data: reqRow } = await supabase
       .from("custom_requests")
-      .select("id, customer_id, provider_id, status")
+      .select("id, customer_id, provider_id, status, providers!custom_requests_provider_id_fkey(business_name)")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -74,6 +74,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const expIso = new Date(body.expiration_at).toISOString();
+    const scheduledIso = body.scheduled_at ? new Date(body.scheduled_at).toISOString() : null;
 
     const travelFeeAmount = body.travel_fee != null && body.travel_fee >= 0 ? Number(body.travel_fee) : 0;
     const { data: offer, error } = await supabase
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         notes: body.notes ?? null,
         staff_id: body.staff_id ?? null,
         location_id: body.location_id ?? null,
-        scheduled_at: body.scheduled_at ? new Date(body.scheduled_at).toISOString() : null,
+        scheduled_at: scheduledIso,
         travel_fee: travelFeeAmount,
         status: "pending",
         created_at: new Date().toISOString(),
@@ -161,6 +162,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 currency: body.currency,
                 duration_minutes: body.duration_minutes,
                 expiration_at: expIso,
+                preferred_start_at: scheduledIso,
               },
             ],
             is_read: false,

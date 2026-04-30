@@ -14,6 +14,8 @@ import RoleGuard from "@/components/auth/RoleGuard";
 import type { MaintenanceScope, MaintenanceScopeConfig } from "@/lib/maintenance-types";
 import { MAINTENANCE_SCOPES } from "@/lib/maintenance-types";
 import { datetimeLocalToIsoOrNull, isoToDatetimeLocalValue } from "@/lib/maintenance-datetime";
+import { PUBLIC_SITE_MAINTENANCE_EXEMPT_PREFIXES } from "@/lib/maintenance-public-site-exempt";
+import { PROVIDER_WEB_MAINTENANCE_EXEMPT_PREFIXES } from "@/lib/provider-web-maintenance-exempt";
 
 const SCOPE_LABELS: Record<MaintenanceScope, string> = {
   public_site: "Customer public site (marketing/booking web)",
@@ -35,7 +37,15 @@ export default function MaintenancePage() {
   const [saving, setSaving] = useState(false);
   const [maintenance, setMaintenance] = useState<Record<MaintenanceScope, MaintenanceScopeConfig>>({
     public_site: { enabled: false, title: "", message: "", cta_label: null, countdown_end_at: null, countdown_label: null },
-    provider_web: { enabled: false, title: "", message: "", cta_label: null, countdown_end_at: null, countdown_label: null },
+    provider_web: {
+      enabled: false,
+      title: "",
+      message: "",
+      cta_label: null,
+      countdown_end_at: null,
+      countdown_label: null,
+      allow_partner_funnel: true,
+    },
     customer_app: { enabled: false, title: "", message: "", cta_label: null, countdown_end_at: null, countdown_label: null },
     provider_app: { enabled: false, title: "", message: "", cta_label: null, countdown_end_at: null, countdown_label: null },
   });
@@ -108,7 +118,35 @@ export default function MaintenancePage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <CardTitle className="text-lg">{SCOPE_LABELS[scope]}</CardTitle>
-                  <CardDescription>Scope: {scope}</CardDescription>
+                  <CardDescription>
+                    Scope: {scope}
+                    {scope === "public_site" ? (
+                      <>
+                        {" "}
+                        · Partner funnel and auth stay live:{" "}
+                        {PUBLIC_SITE_MAINTENANCE_EXEMPT_PREFIXES.map((path, i) => (
+                          <span key={path}>
+                            {i > 0 ? ", " : null}
+                            <code className="text-xs">{path}</code>
+                          </span>
+                        ))}
+                        .
+                      </>
+                    ) : null}
+                    {scope === "provider_web" ? (
+                      <>
+                        {" "}
+                        · Optional funnel bypass when maintenance is on (see toggle below):{" "}
+                        {PROVIDER_WEB_MAINTENANCE_EXEMPT_PREFIXES.map((path, i) => (
+                          <span key={path}>
+                            {i > 0 ? ", " : null}
+                            <code className="text-xs">{path}</code>
+                          </span>
+                        ))}
+                        .
+                      </>
+                    ) : null}
+                  </CardDescription>
                 </div>
                 <a
                   href={getPreviewUrl(scope)}
@@ -128,6 +166,21 @@ export default function MaintenancePage() {
                 />
                 <Label>Enable maintenance for this scope</Label>
               </div>
+              {scope === "provider_web" ? (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 p-3">
+                  <Switch
+                    checked={maintenance.provider_web.allow_partner_funnel !== false}
+                    onCheckedChange={(v) => updateScope("provider_web", { allow_partner_funnel: v })}
+                  />
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium leading-none">Keep onboarding &amp; checkout available</Label>
+                    <p className="text-xs text-muted-foreground">
+                      When off, maintenance covers all of <code className="text-xs">/provider</code>, including
+                      onboarding, embed, and subscription checkout (full provider-web outage).
+                    </p>
+                  </div>
+                </div>
+              ) : null}
               <div>
                 <Label>Title</Label>
                 <Input

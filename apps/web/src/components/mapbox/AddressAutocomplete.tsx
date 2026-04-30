@@ -77,6 +77,7 @@ export default function AddressAutocomplete({
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didSelectRef = useRef(false);
   const [dropdownRect, setDropdownRect] = useState<{
     top: number;
@@ -210,35 +211,42 @@ export default function AddressAutocomplete({
   // Handle manual address entry when user finishes typing (on blur)
   // This allows the form to work even if Mapbox autocomplete isn't available
   const handleBlur = () => {
-    // If user just selected a suggestion, don't overwrite with partial manual entry
-    if (didSelectRef.current) {
-      didSelectRef.current = false;
-      setShowSuggestions(false);
-      return;
-    }
-    // Only update if user typed something and didn't select a suggestion
-    if (onChange && query.trim().length > 0) {
-      const isManualEntry = !showSuggestions || 
-        suggestions.length === 0 ||
-        !suggestions.some(s => s.place_name === query);
-      
-      if (isManualEntry) {
-        onChange({
-          address_line1: query.trim(),
-          city: "",
-          state: undefined,
-          postal_code: undefined,
-          country: defaultCountryName || "",
-          latitude: 0,
-          longitude: 0,
-        });
+    if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+    blurTimerRef.current = setTimeout(() => {
+      // If user just selected a suggestion, don't overwrite with partial manual entry
+      if (didSelectRef.current) {
+        didSelectRef.current = false;
+        setShowSuggestions(false);
+        return;
       }
-    }
-    setShowSuggestions(false);
+      // Only update if user typed something and didn't select a suggestion
+      if (onChange && query.trim().length > 0) {
+        const isManualEntry = !showSuggestions ||
+          suggestions.length === 0 ||
+          !suggestions.some(s => s.place_name === query);
+
+        if (isManualEntry) {
+          onChange({
+            address_line1: query.trim(),
+            city: "",
+            state: undefined,
+            postal_code: undefined,
+            country: defaultCountryName || "",
+            latitude: 0,
+            longitude: 0,
+          });
+        }
+      }
+      setShowSuggestions(false);
+    }, 160);
   };
 
   const handleSelectSuggestion = (suggestion: AddressSuggestion) => {
     didSelectRef.current = true;
+    if (blurTimerRef.current) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
@@ -326,13 +334,15 @@ export default function AddressAutocomplete({
             ref={suggestionsRef}
             data-address-autocomplete-listbox="true"
             role="listbox"
-            className="bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto"
+            className="bg-white border border-gray-200 rounded-lg shadow-xl max-h-72 overflow-y-auto overscroll-contain"
             style={{
               position: "fixed",
               top: dropdownRect.top,
               left: dropdownRect.left,
               width: dropdownRect.width,
               zIndex: 200000,
+              WebkitOverflowScrolling: "touch",
+              touchAction: "pan-y",
             }}
           >
             {suggestions.map((suggestion, index) => (
@@ -343,9 +353,8 @@ export default function AddressAutocomplete({
                 role="option"
                 aria-selected={index === selectedIndex}
                 onPointerDown={(e) => {
-                  e.preventDefault();
+                  if (e.pointerType === "mouse") e.preventDefault();
                   e.stopPropagation();
-                  handleSelectSuggestion(suggestion);
                 }}
                 onMouseDown={(e) => {
                   e.preventDefault();
@@ -354,6 +363,7 @@ export default function AddressAutocomplete({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
+                  handleSelectSuggestion(suggestion);
                 }}
                 onMouseEnter={() => setSelectedIndex(index)}
                 className={`w-full text-left px-4 py-3 hover:bg-[#FF0077]/5 transition-colors border-b border-gray-100 last:border-b-0 ${

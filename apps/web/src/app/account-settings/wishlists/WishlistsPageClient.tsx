@@ -22,16 +22,6 @@ import type {
   WishlistSummary,
   WishlistsPageInitial,
 } from "./wishlists-page-types";
-import RecentlyAdd from "./components/recently-add";
-
-function mapRecentlyViewedThumbnails(res: { data?: unknown }): string[] {
-  const raw = res?.data;
-  const rows = Array.isArray(raw) ? raw : [];
-  return (rows as { thumbnail_url?: string | null; avatar_url?: string | null }[])
-    .slice(0, 4)
-    .map((p) => String(p.thumbnail_url || p.avatar_url || "").trim())
-    .filter((u) => u.length > 0);
-}
 
 const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null }) => {
   const { user, isLoading } = useAuth();
@@ -42,9 +32,6 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
   const [savedPosts, setSavedPosts] = useState<ExplorePost[]>(() => initial?.savedPosts ?? []);
   const [savedPostsLoading, setSavedPostsLoading] = useState(() => initial === null);
   const [collections, setCollections] = useState<ExploreCollectionSummary[]>(() => initial?.collections ?? []);
-  const [recentlyViewedThumbnails, setRecentlyViewedThumbnails] = useState<string[]>(
-    () => initial?.recentlyViewedThumbnails ?? [],
-  );
   const [isCreatingBoard, setIsCreatingBoard] = useState(false);
   const [boardDropdownPostId, setBoardDropdownPostId] = useState<string | null>(null);
   const [boardActionLoading, setBoardActionLoading] = useState(false);
@@ -111,7 +98,6 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
           prodRes,
           savedRes,
           collRes,
-          recentRes,
         ] = await Promise.allSettled([
           fetcher.get<{ data: WishlistSummary[] }>("/api/me/wishlists", stale),
           fetcher.get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", stale),
@@ -121,10 +107,6 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
             stale
           ),
           fetcher.get<{ data: ExploreCollectionSummary[] }>("/api/explore/collections", stale),
-          fetcher.get<{ data: { thumbnail_url?: string | null; avatar_url?: string | null }[] }>(
-            "/api/me/recently-viewed?limit=4",
-            stale,
-          ),
         ]);
 
         if (wlRes.status === "fulfilled") {
@@ -176,13 +158,6 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
         } else {
           console.error("Error loading boards:", collRes.reason);
           setCollections([]);
-        }
-
-        if (recentRes.status === "fulfilled") {
-          setRecentlyViewedThumbnails(mapRecentlyViewedThumbnails(recentRes.value as { data?: unknown }));
-        } else {
-          console.error("Error loading recently viewed:", recentRes.reason);
-          setRecentlyViewedThumbnails([]);
         }
       } catch (err) {
         console.error("Unexpected error:", err);
@@ -262,7 +237,6 @@ const WishlistsPageClient = ({ initial }: { initial: WishlistsPageInitial | null
           { label: "Wishlists" }
         ]} 
       />
-      <RecentlyAdd thumbnails={recentlyViewedThumbnails} />
       <div className="flex items-center justify-between mb-6">
         <h2 className='text-2xl md:text-3xl font-medium text-secondary'>Saved</h2>
         {wishlists.length > 0 && (

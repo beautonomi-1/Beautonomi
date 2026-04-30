@@ -106,7 +106,7 @@ interface HoldData {
   tax_rate_percent?: number;
   /** Whether tax is inclusive in the service prices. */
   tax_inclusive?: boolean;
-  /** Service fee config from provider or platform settings. */
+  /** Platform Fee config from provider or platform settings. */
   service_fee_config?: {
     type: string;
     percentage: number;
@@ -1179,7 +1179,7 @@ export default function BookCheckoutScreen() {
       : Math.round((subtotalAfterLoyalty * taxRatePercent) / 100 * 100) / 100
     : 0;
 
-  // Service fee: only when configured and visible to customer
+  // Platform Fee: only when configured and visible to customer
   const sfConfig = hold?.service_fee_config;
   const serviceFeeAmount = sfConfig && sfConfig.show
     ? sfConfig.type === "percentage"
@@ -1827,10 +1827,6 @@ export default function BookCheckoutScreen() {
           setError(msg403);
           return;
         }
-        if (errStatus === 410 || errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED" || errCode === "HOLD_INACTIVE") {
-          setError(t("checkout.holdExpiredFallback", "Your hold has expired. Please go back and select a new time."));
-          return;
-        }
         if (errStatus === 409 && errCode === "HOLD_IN_FLIGHT") {
           setError(
             (res.error as { message?: string }).message?.trim() ||
@@ -1839,6 +1835,17 @@ export default function BookCheckoutScreen() {
                 "This booking is already being processed. Please wait a moment, then try again.",
               ),
           );
+          return;
+        }
+        if (errCode === "HOLD_INACTIVE") {
+          setError(
+            (res.error as { message?: string }).message?.trim() ||
+              t("checkout.slotTakenFallback", "That time slot was just taken. Please go back and choose another time."),
+          );
+          return;
+        }
+        if (errStatus === 410 || errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED") {
+          setError(t("checkout.holdExpiredFallback", "Your hold has expired. Please go back and select a new time."));
           return;
         }
         if (errStatus === 409 || errCode === "CONFLICT") {

@@ -3,7 +3,8 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
 import type { Booking } from "@/types/beautonomi";
 import {
   mapStatusToProvider,
@@ -203,7 +204,11 @@ export async function GET(
       return NextResponse.redirect(groupUrl, 307);
     }
 
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("view_calendar", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
@@ -544,12 +549,19 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
-
-    const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
     const { status } = body;
+    const requestedDbStatus = status ? mapStatusToDatabase(status) : undefined;
+    const permissionCheck = requestedDbStatus === "cancelled"
+      ? await requireAnyPermission(["cancel_appointments", "edit_appointments"], request)
+      : await requirePermission("edit_appointments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
+
+    const supabase = await getSupabaseServer(request);
 
     // Synthetic group:UUID ids — proxy status update to group-bookings endpoint.
     if (id.startsWith("group:")) {
@@ -592,7 +604,6 @@ export async function PATCH(
       send_arrival_notification,
       referral_source_id,
     } = body;
-    const requestedDbStatus = status ? mapStatusToDatabase(status) : undefined;
     
     // Check if any updateable field is provided
     // Note: duration_minutes is stored in booking_services, not bookings table
@@ -1018,7 +1029,7 @@ export async function PATCH(
     }
 
     // Use service role: RLS only allows the provider *owner* to UPDATE bookings; staff with
-    // Role check already passed requireRoleInApi + branch checks above.
+    // permission + branch checks above can still update through this route.
     // Enforce optimistic lock: UPDATE only succeeds if version still matches the row we read.
     const { data: updatedRows, error: updateError } = await supabaseAdminPatch
       .from("bookings")

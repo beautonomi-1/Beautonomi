@@ -299,14 +299,19 @@ export function ClientsClient({
         // Update existing client - use customer_id for unsaved clients
         const clientId = (selectedClient as any).is_saved ? selectedClient.id : null;
         const customerId = (selectedClient as any).customer_id;
+        const limitedPlatformLink = Boolean((selectedClient as any).is_limited_platform_link);
         
         if (clientId) {
           await fetcher.patch(`/api/provider/clients/${clientId}`, {
             notes: data.notes || "",
             tags: (data as any).tags || [],
             is_favorite: (data as any).is_favorite || false,
-            date_of_birth: data.birth_date || null,
-            ...(addr ? { address: addr } : {}),
+            ...(limitedPlatformLink
+              ? {}
+              : {
+                  date_of_birth: data.birth_date || null,
+                  ...(addr ? { address: addr } : {}),
+                }),
           });
           toast.success("Client updated successfully");
         } else if (customerId) {
@@ -473,6 +478,11 @@ export function ClientsClient({
                           <p className="font-semibold text-gray-900 truncate">
                             {client.first_name} {client.last_name}
                           </p>
+                          {client.is_limited_platform_link && (
+                            <span className="mt-1 inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                              Platform customer
+                            </span>
+                          )}
                           {client.city && (
                             <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                               <MapPin className="w-3 h-3 flex-shrink-0" />{client.city}
@@ -590,6 +600,9 @@ export function ClientsClient({
                             </Avatar>
                             <div>
                               <p className="font-medium">{client.first_name} {client.last_name}</p>
+                              {client.is_limited_platform_link && (
+                                <p className="text-xs font-medium text-sky-700">Existing platform customer</p>
+                              )}
                               {client.city && <p className="text-sm text-gray-500">{client.city}</p>}
                             </div>
                           </div>
@@ -623,7 +636,7 @@ export function ClientsClient({
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => handleViewDetails(client)}><User className="w-4 h-4 mr-2" />View Profile</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleEdit(client)}><Edit className="w-4 h-4 mr-2" />Edit</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleEdit(client)}><Edit className="w-4 h-4 mr-2" />Edit CRM notes/tags</DropdownMenuItem>
                               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setReportCustomerClient(client); }}><Flag className="w-4 h-4 mr-2" />Report customer</DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-red-600" onClick={(e) => { e.stopPropagation(); handleDelete(client); }}><Trash2 className="w-4 h-4 mr-2" />Delete</DropdownMenuItem>
@@ -705,6 +718,7 @@ function ClientCreateEditDialog({
     sms_consent: false,
   });
   const [isLoading, setIsLoading] = useState(false);
+  const isLimitedPlatformLink = Boolean(client?.is_limited_platform_link);
 
   useEffect(() => {
     if (open) {
@@ -773,6 +787,13 @@ function ClientCreateEditDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 w-full overflow-x-hidden">
+          {isLimitedPlatformLink && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              This is an existing Beautonomi customer linked by exact match. You can message, book, sell, and manage
+              provider CRM notes/tags, while their profile fields remain customer-managed.
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="w-full">
               <Label htmlFor="first_name" className="text-sm sm:text-base">First Name *</Label>
@@ -783,6 +804,7 @@ function ClientCreateEditDialog({
                   setFormData({ ...formData, first_name: e.target.value })
                 }
                 required
+                disabled={isLimitedPlatformLink}
                 className="mt-1.5 min-h-[44px] touch-manipulation w-full"
               />
             </div>
@@ -795,6 +817,7 @@ function ClientCreateEditDialog({
                   setFormData({ ...formData, last_name: e.target.value })
                 }
                 required
+                disabled={isLimitedPlatformLink}
                 className="mt-1.5 min-h-[44px] touch-manipulation w-full"
               />
             </div>
@@ -810,6 +833,7 @@ function ClientCreateEditDialog({
                 onChange={(e) =>
                   setFormData({ ...formData, email: e.target.value })
                 }
+                disabled={isLimitedPlatformLink}
                 className="mt-1.5 min-h-[44px] touch-manipulation w-full"
               />
             </div>
@@ -820,13 +844,14 @@ function ClientCreateEditDialog({
                 label="Phone"
                 placeholder="82 123 4567"
                 className="mt-1.5"
+                disabled={isLimitedPlatformLink}
               />
             </div>
           </div>
 
           <div className="w-full">
             <Label className="text-sm sm:text-base">Address (home / house call)</Label>
-            {formData.home_address_read_only ? (
+            {formData.home_address_read_only || isLimitedPlatformLink ? (
               <>
                 <div className="mt-1.5 rounded-md border border-border bg-muted/40 px-3 py-3 text-sm text-foreground">
                   {formData.address_display ||
@@ -885,7 +910,7 @@ function ClientCreateEditDialog({
                 onChange={(e) =>
                   setFormData({ ...formData, city: e.target.value })
                 }
-                disabled={formData.home_address_read_only}
+                disabled={formData.home_address_read_only || isLimitedPlatformLink}
                 className="mt-1.5 min-h-[44px] touch-manipulation w-full"
               />
             </div>
@@ -898,6 +923,7 @@ function ClientCreateEditDialog({
                 onChange={(e) =>
                   setFormData({ ...formData, birth_date: e.target.value })
                 }
+                disabled={isLimitedPlatformLink}
                 className="mt-1.5 min-h-[44px] touch-manipulation w-full"
               />
             </div>
@@ -923,6 +949,7 @@ function ClientCreateEditDialog({
               <Checkbox
                 id="marketing_consent"
                 checked={formData.marketing_consent}
+                disabled={isLimitedPlatformLink}
                 onCheckedChange={(checked) =>
                   setFormData({ ...formData, marketing_consent: !!checked })
                 }
@@ -936,6 +963,7 @@ function ClientCreateEditDialog({
               <Checkbox
                 id="sms_consent"
                 checked={formData.sms_consent}
+                disabled={isLimitedPlatformLink}
                 onCheckedChange={(checked) =>
                   setFormData({ ...formData, sms_consent: !!checked })
                 }
@@ -987,6 +1015,7 @@ function ClientDetailSheet({
 }) {
   const router = useRouter();
   const [isRegistered, setIsRegistered] = useState<boolean | null>(null);
+  const [isLimitedPlatformLink, setIsLimitedPlatformLink] = useState(false);
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(false);
   const [clientDetails, setClientDetails] = useState<any>(null);
   const [ratingStats, setRatingStats] = useState<any>(null);
@@ -1042,10 +1071,12 @@ function ClientDetailSheet({
         const data = await fetcher.get<{ data?: any }>(`/api/provider/clients/${client.id}`);
         setClientDetails(data.data);
         const customer = data.data?.customer;
+        setIsLimitedPlatformLink(Boolean(customer?.is_limited_platform_link || data.data?.privacy_level === "limited"));
         setIsRegistered(customer?.id && !customer?.email?.includes("beautonomi.invalid") && !customer?.email?.includes("beautonomi.local"));
       } catch (error) {
         console.error("Error loading client details:", error);
         setIsRegistered(false);
+        setIsLimitedPlatformLink(false);
         setClientDetails(null);
       } finally {
         setIsCheckingRegistration(false);
@@ -1185,7 +1216,6 @@ function ClientDetailSheet({
       toast.error("This client is not registered on Beautonomi. Only registered clients can receive chat messages.");
       return;
     }
-
     try {
       const data = await fetcher.post<{ data?: { id: string } }>("/api/provider/conversations", {
         customer_id: client.customer_id,
@@ -1223,6 +1253,11 @@ function ClientDetailSheet({
                 <SheetTitle className="text-xl">
                   {client.first_name} {client.last_name}
                 </SheetTitle>
+                {isLimitedPlatformLink && (
+                  <div className="mt-2 rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                    Existing platform customer
+                  </div>
+                )}
                 {client.tags && client.tags.length > 0 && (
                   <div className="flex gap-1 mt-2">
                     {client.tags.map((tag) => (
@@ -1243,10 +1278,18 @@ function ClientDetailSheet({
             </div>
             <Button variant="outline" size="sm" onClick={onEdit}>
               <Edit className="w-4 h-4 mr-2" />
-              Edit
+              Edit CRM
             </Button>
           </div>
         </SheetHeader>
+
+        {/* Stats */}
+        {isLimitedPlatformLink && (
+          <div className="mt-6 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+            This customer already has a Beautonomi account. Their platform profile remains customer-managed,
+            but you can message them, book appointments, sell products, and manage provider CRM notes normally.
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mt-6">
@@ -1546,7 +1589,11 @@ function ClientDetailSheet({
             Send Message
           </Button>
         </div>
-        {!isRegistered && !isCheckingRegistration && client.customer_id && (
+        {isLimitedPlatformLink && !isCheckingRegistration && client.customer_id ? (
+          <p className="text-xs text-sky-700 mt-2 text-center">
+            Platform customer: profile fields are customer-managed. Messaging and booking remain available.
+          </p>
+        ) : !isRegistered && !isCheckingRegistration && client.customer_id && (
           <p className="text-xs text-gray-500 mt-2 text-center">
             This client is not registered. Chat messages are only available for registered clients.
           </p>

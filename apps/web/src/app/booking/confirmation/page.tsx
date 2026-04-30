@@ -577,11 +577,11 @@ export default function BookingConfirmationPage() {
 
             {/* Price breakdown — matches checkout when fees/taxes/loyalty apply */}
             {(() => {
-              const sub = booking.subtotal ?? 0;
+              const travel = booking.travel_fee ?? 0;
+              const sub = Math.max(0, (booking.subtotal ?? 0) - travel);
               const tax = booking.tax_amount ?? 0;
               const taxRate = booking.tax_rate ?? 0;
               const svcFee = booking.service_fee_amount ?? 0;
-              const travel = booking.travel_fee ?? 0;
               const loyalty = booking.loyalty_discount_amount ?? 0;
               const loyaltyPtsUsed = booking.loyalty_points_used ?? 0;
               const membership = booking.membership_discount_amount ?? 0;
@@ -610,32 +610,6 @@ export default function BookingConfirmationPage() {
                       <span>{formatCurrency(sub, booking.currency)}</span>
                     </div>
                   )}
-                  {travel > 0 && (
-                    <div className="flex justify-between text-gray-600">
-                      <span>Travel</span>
-                      <span>{formatCurrency(travel, booking.currency)}</span>
-                    </div>
-                  )}
-                  {tax > 0 && (
-                    <div className="flex justify-between text-gray-600">
-                      <span>
-                        Tax{taxRate > 0 ? ` (${taxRate}%)` : ""}
-                      </span>
-                      <span>{formatCurrency(tax, booking.currency)}</span>
-                    </div>
-                  )}
-                  {svcFee > 0 && (
-                    <div className="flex justify-between text-gray-600">
-                      <span>Service fee</span>
-                      <span>{formatCurrency(svcFee, booking.currency)}</span>
-                    </div>
-                  )}
-                  {giftCard > 0 && (
-                    <div className="flex justify-between text-green-700">
-                      <span>Gift card</span>
-                      <span>−{formatCurrency(giftCard, booking.currency)}</span>
-                    </div>
-                  )}
                   {loyalty > 0 && (
                     <div className="flex justify-between text-green-700">
                       <span>
@@ -660,6 +634,32 @@ export default function BookingConfirmationPage() {
                     <div className="flex justify-between text-green-700">
                       <span>Discount</span>
                       <span>−{formatCurrency(coupon, booking.currency)}</span>
+                    </div>
+                  )}
+                  {giftCard > 0 && (
+                    <div className="flex justify-between text-green-700">
+                      <span>Gift card</span>
+                      <span>−{formatCurrency(giftCard, booking.currency)}</span>
+                    </div>
+                  )}
+                  {travel > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Travel</span>
+                      <span>{formatCurrency(travel, booking.currency)}</span>
+                    </div>
+                  )}
+                  {tax > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>
+                        Tax{taxRate > 0 ? ` (${taxRate}%)` : ""}
+                      </span>
+                      <span>{formatCurrency(tax, booking.currency)}</span>
+                    </div>
+                  )}
+                  {svcFee > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Platform fee</span>
+                      <span>{formatCurrency(svcFee, booking.currency)}</span>
                     </div>
                   )}
                   {tip > 0 && (

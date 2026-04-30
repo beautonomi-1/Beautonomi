@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -119,6 +119,10 @@ function getTypeIcon(type: FormType): keyof typeof Ionicons.glyphMap {
 export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
   useResponsive();
   const router = useRouter();
+  const expandParams = useLocalSearchParams<{ expandId?: string | string[] }>();
+  const expandIdRaw = Array.isArray(expandParams.expandId)
+    ? expandParams.expandId[0]
+    : expandParams.expandId;
   const [refreshing, setRefreshing] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
   const [showFieldModal, setShowFieldModal] = useState(false);
@@ -129,6 +133,12 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
   const [activeFormId, setActiveFormId] = useState<string | null>(null);
 
   const { data: forms, loading, refresh } = useApi<FormTemplate[]>("/api/provider/forms");
+
+  useEffect(() => {
+    if (!expandIdRaw || !forms?.length) return;
+    const exists = forms.some((f) => f.id === expandIdRaw);
+    if (exists) setExpandedForm(expandIdRaw);
+  }, [expandIdRaw, forms]);
   const { execute: createForm, loading: creating } = useApiPost<any, any>("/api/provider/forms");
   const { execute: mutateForm } = useApiMutation("put");
   const { execute: deleteForm } = useApiMutation("delete");
@@ -734,7 +744,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
           <TouchableOpacity
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setShowFormModal(true);
+              openAddForm();
             }}
             style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, backgroundColor: "#e0f2fe", paddingHorizontal: 12, paddingVertical: 8 }}
           >

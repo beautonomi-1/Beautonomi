@@ -14,6 +14,10 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { datetimeLocalToIsoOrNull, isoToDatetimeLocalValue } from "@/lib/maintenance-datetime";
+import {
+  PUBLIC_SITE_MAINTENANCE_EXEMPT_PREFIXES,
+  PROVIDER_WEB_MAINTENANCE_EXEMPT_PREFIXES,
+} from "@beautonomi/maintenance-paths";
 
 type MaintenanceScope = "public_site" | "provider_web" | "customer_app" | "provider_app";
 const MAINTENANCE_SCOPES: MaintenanceScope[] = [
@@ -23,10 +27,10 @@ const MAINTENANCE_SCOPES: MaintenanceScope[] = [
   "provider_app",
 ];
 const SCOPE_LABELS: Record<MaintenanceScope, string> = {
-  public_site: "Customer public site",
-  provider_web: "Provider web",
-  customer_app: "Customer app",
-  provider_app: "Provider app",
+  public_site: "Customer public site (marketing/booking web)",
+  provider_web: "Provider / partner web (/provider)",
+  customer_app: "Customer app (Expo)",
+  provider_app: "Provider app (Expo)",
 };
 
 type MaintConfig = {
@@ -36,6 +40,8 @@ type MaintConfig = {
   cta_label?: string | null;
   countdown_end_at?: string | null;
   countdown_label?: string | null;
+  /** provider_web only: default true */
+  allow_partner_funnel?: boolean;
 };
 
 function defaultMaint(): MaintConfig {
@@ -46,6 +52,30 @@ function defaultMaint(): MaintConfig {
     cta_label: null,
     countdown_end_at: null,
     countdown_label: null,
+    allow_partner_funnel: true,
+  };
+}
+
+function emptyMaintenanceRecord(): Record<MaintenanceScope, MaintConfig> {
+  return {
+    public_site: defaultMaint(),
+    provider_web: defaultMaint(),
+    customer_app: defaultMaint(),
+    provider_app: defaultMaint(),
+  };
+}
+
+/** Deep-merge API payloads with defaults so every scope field (e.g. allow_partner_funnel) is always controlled. */
+function normalizeMaintenanceFromApi(
+  data: Partial<Record<MaintenanceScope, Partial<MaintConfig>>> | null | undefined
+): Record<MaintenanceScope, MaintConfig> {
+  const base = emptyMaintenanceRecord();
+  if (!data) return base;
+  return {
+    public_site: { ...base.public_site, ...data.public_site },
+    provider_web: { ...base.provider_web, ...data.provider_web },
+    customer_app: { ...base.customer_app, ...data.customer_app },
+    provider_app: { ...base.provider_app, ...data.provider_app },
   };
 }
 
@@ -174,12 +204,7 @@ export function CpMaintenancePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [maintenance, setMaintenance] = useState<Record<MaintenanceScope, MaintConfig>>({
-    public_site: defaultMaint(),
-    provider_web: defaultMaint(),
-    customer_app: defaultMaint(),
-    provider_app: defaultMaint(),
-  });
+  const [maintenance, setMaintenance] = useState<Record<MaintenanceScope, MaintConfig>>(emptyMaintenanceRecord());
 
   useEffect(() => {
     if (!allowed) return;
@@ -189,7 +214,7 @@ export function CpMaintenancePage() {
       try {
         const data = await adminApi.getJson<Record<MaintenanceScope, MaintConfig>>("/api/admin/maintenance");
         if (c || !data) return;
-        setMaintenance((prev) => ({ ...prev, ...data }));
+        setMaintenance(normalizeMaintenanceFromApi(data));
       } catch (e) {
         if (!c) setMsg(e instanceof Error ? e.message : "Load failed");
       } finally {
@@ -209,7 +234,10 @@ export function CpMaintenancePage() {
     setSaving(true);
     setMsg(null);
     try {
-      await adminApi.patchJson("/api/admin/maintenance", { maintenance });
+      const saved = await adminApi.patchJson<Record<MaintenanceScope, MaintConfig>>("/api/admin/maintenance", {
+        maintenance,
+      });
+      setMaintenance(normalizeMaintenanceFromApi(saved));
       setMsg("Saved.");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Save failed");
@@ -224,12 +252,13 @@ export function CpMaintenancePage() {
     <div className="space-y-6">
       <CpBack />
       <AdminPageHeader
-        title="Maintenance & coming soon"
+        title="Maintenance & Coming Soon"
         description={
           <span>
-            Per-scope maintenance pages.{" "}
+            Per-scope maintenance or coming-soon pages. Use Preview to open the site in a new tab with maintenance on.
+            Scoped saves use the admin tenant picker (same as Next admin).{" "}
             <Link to="sign-ups" className="font-medium text-primary underline">
-              Notify sign-ups
+              View notify sign-ups
             </Link>
           </span>
         }
@@ -248,7 +277,31 @@ export function CpMaintenancePage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900">{SCOPE_LABELS[scope]}</h2>
-                  <p className="text-xs text-gray-500">{scope}</p>
+                  <p className="text-xs text-gray-500">Scope: {scope}</p>
+                  {scope === "public_site" ? (
+                    <p className="mt-1 text-xs text-gray-600">
+                      Partner funnel and auth stay live:{" "}
+                      {PUBLIC_SITE_MAINTENANCE_EXEMPT_PREFIXES.map((path, i) => (
+                        <span key={path}>
+                          {i > 0 ? ", " : null}
+                          <code className="rounded bg-gray-100 px-0.5 text-[11px]">{path}</code>
+                        </span>
+                      ))}
+                      .
+                    </p>
+                  ) : null}
+                  {scope === "provider_web" ? (
+                    <p className="mt-1 text-xs text-gray-600">
+                      Optional funnel bypass when maintenance is on (toggle below):{" "}
+                      {PROVIDER_WEB_MAINTENANCE_EXEMPT_PREFIXES.map((path, i) => (
+                        <span key={path}>
+                          {i > 0 ? ", " : null}
+                          <code className="rounded bg-gray-100 px-0.5 text-[11px]">{path}</code>
+                        </span>
+                      ))}
+                      .
+                    </p>
+                  ) : null}
                 </div>
                 <a
                   href={previewUrl(scope)}
@@ -259,19 +312,39 @@ export function CpMaintenancePage() {
                   Preview <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-900">
                 <input
                   type="checkbox"
                   checked={maintenance[scope].enabled}
                   onChange={(e) => updateScope(scope, { enabled: e.target.checked })}
                 />
-                Enabled
+                Enable maintenance for this scope
               </label>
+              {scope === "provider_web" ? (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <label className="flex items-start gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={maintenance.provider_web.allow_partner_funnel !== false}
+                      onChange={(e) => updateScope("provider_web", { allow_partner_funnel: e.target.checked })}
+                    />
+                    <span>
+                      <span className="font-medium text-gray-900">Keep onboarding &amp; checkout available</span>
+                      <span className="mt-1 block text-xs text-gray-600">
+                        When unchecked, maintenance covers all of <code className="text-xs">/provider</code>, including
+                        onboarding, embed, and subscription checkout (full provider-web outage).
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              ) : null}
               <CpField label="Title">
                 <input
                   className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
                   value={maintenance[scope].title}
                   onChange={(e) => updateScope(scope, { title: e.target.value })}
+                  placeholder="We'll be back soon"
                 />
               </CpField>
               <CpField label="Message">
@@ -279,13 +352,15 @@ export function CpMaintenancePage() {
                   className="min-h-[80px] w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
                   value={maintenance[scope].message}
                   onChange={(e) => updateScope(scope, { message: e.target.value })}
+                  placeholder="We're performing scheduled maintenance."
                 />
               </CpField>
-              <CpField label="CTA label">
+              <CpField label='CTA button label (optional, e.g. "Notify me when we are back")'>
                 <input
                   className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
                   value={maintenance[scope].cta_label ?? ""}
                   onChange={(e) => updateScope(scope, { cta_label: e.target.value || null })}
+                  placeholder="Notify me"
                 />
               </CpField>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -299,11 +374,12 @@ export function CpMaintenancePage() {
                     }}
                   />
                 </CpField>
-                <CpField label="Countdown label">
+                <CpField label='Countdown label (e.g. "Launching in")'>
                   <input
                     className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
                     value={maintenance[scope].countdown_label ?? ""}
                     onChange={(e) => updateScope(scope, { countdown_label: e.target.value || null })}
+                    placeholder="Launching in"
                   />
                 </CpField>
               </div>

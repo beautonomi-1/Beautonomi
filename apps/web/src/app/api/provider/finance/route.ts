@@ -1,12 +1,29 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import { PROVIDER_LEDGER_VISIBLE_TYPES } from "@/lib/provider/provider-ledger-transaction-view";
+import { getProviderPrimaryReportLocationId, productOrderReportLocationId } from "@/lib/reports/provider-report-utils";
+
+const LEDGER_PAGE_SIZE = 1000;
+
+async function fetchAllLedgerPages(query: any): Promise<any[]> {
+  const rows: any[] = [];
+  for (let from = 0; ; from += LEDGER_PAGE_SIZE) {
+    const { data, error } = await query.range(from, from + LEDGER_PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < LEDGER_PAGE_SIZE) break;
+  }
+  return rows;
+}
 
 /**
  * GET /api/provider/finance
@@ -15,7 +32,11 @@ import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requireAnyPermission(["view_sales", "view_reports", "process_payments"], request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
@@ -101,22 +122,20 @@ export async function GET(request: NextRequest) {
     // only on the rendered transaction list (below).
     const financeQuery = db
       .from("finance_transactions")
-      .select("id, transaction_type, amount, net, fees, commission, created_at, description, booking_id")
+      .select("id, transaction_type, amount, net, fees, commission, created_at, description, booking_id, product_order_id")
       .eq("provider_id", providerId)
       .gte("created_at", startIso)
       .lte("created_at", nowIso)
       .order("created_at", { ascending: false });
 
-    const { data: ledgerRows, error: ledgerError } = await financeQuery;
-
-    if (ledgerError) throw ledgerError;
-
-    let rows = ledgerRows || [];
+    let rows = await fetchAllLedgerPages(financeQuery);
     
-    // Fetch booking information for transactions that have booking_id
-    // This is needed to check booking_source (walk-in vs online) and payment_provider for filtering
+    // Fetch booking/order information for transactions that have source records.
+    // This is needed to check booking_source/payment_provider and to apply location filters.
     const bookingIds = [...new Set(rows.filter((r: any) => r.booking_id).map((r: any) => r.booking_id))];
     let bookingMap: Record<string, { booking_source: string | null; location_id: string | null; payment_provider: string | null }> = {};
+    const productOrderIds = [...new Set(rows.filter((r: any) => r.product_order_id).map((r: any) => r.product_order_id))];
+    let productOrderMap: Record<string, { report_location_id: string | null; collection_location_id: string | null; fulfillment_type: string | null; order_source: string | null; payment_method: string | null }> = {};
     
     if (bookingIds.length > 0) {
       // Fetch bookings
@@ -151,6 +170,27 @@ export async function GET(request: NextRequest) {
         }, {});
       }
     }
+
+    if (productOrderIds.length > 0) {
+      const { data: productOrders } = await db
+        .from("product_orders")
+        .select("id, collection_location_id, fulfillment_type, order_source, payment_method")
+        .in("id", productOrderIds);
+      const primaryLocationId = await getProviderPrimaryReportLocationId(db, providerId);
+
+      if (productOrders) {
+        productOrderMap = productOrders.reduce((acc: any, order: any) => {
+          acc[order.id] = {
+            report_location_id: productOrderReportLocationId(order, primaryLocationId),
+            collection_location_id: order.collection_location_id || null,
+            fulfillment_type: order.fulfillment_type || null,
+            order_source: order.order_source || null,
+            payment_method: order.payment_method || null,
+          };
+          return acc;
+        }, {});
+      }
+    }
     
     // Enrich rows with booking information
     rows = rows.map((r: any) => ({
@@ -158,6 +198,15 @@ export async function GET(request: NextRequest) {
       booking_source: r.booking_id ? (bookingMap[r.booking_id]?.booking_source || null) : null,
       location_id: r.booking_id ? (bookingMap[r.booking_id]?.location_id || null) : null,
       payment_provider: r.booking_id ? (bookingMap[r.booking_id]?.payment_provider || null) : null,
+      product_order_location_id: r.product_order_id
+        ? (productOrderMap[r.product_order_id]?.report_location_id || null)
+        : null,
+      product_order_source: r.product_order_id
+        ? (productOrderMap[r.product_order_id]?.order_source || null)
+        : null,
+      product_order_payment_method: r.product_order_id
+        ? (productOrderMap[r.product_order_id]?.payment_method || null)
+        : null,
     }));
     
     // Filter by location if location_id is provided
@@ -167,8 +216,11 @@ export async function GET(request: NextRequest) {
         if (r.booking_id && r.location_id) {
           return r.location_id === locationId;
         }
-        // For transactions without booking_id (e.g., gift cards, memberships),
-        // exclude them when filtering by location (they're provider-wide)
+        if (r.product_order_id) {
+          return r.product_order_location_id === locationId;
+        }
+        // For transactions without booking_id/product_order_id (e.g., gift cards, memberships),
+        // exclude them when filtering by location because they are provider-wide.
         return false;
       });
     }
@@ -313,32 +365,13 @@ export async function GET(request: NextRequest) {
     });
     const pendingPayouts = pendingPayoutsSum;
 
-    // Filter out internal transaction types that providers shouldn't see
-    // "payment" type represents platform commission (internal accounting)
-    // Only show transactions relevant to providers: provider_earnings, refunds, tips, travel_fees, etc.
-    const visibleTransactionTypes = [
-      "provider_earnings",
-      "refund",
-      "payout",
-      "tip",
-      "travel_fee",
-      "platform_fee",
-      "service_fee",
-      "tax",
-      "membership_sale",
-      "gift_card_sale",
-      "walk_in_additional_charge",
-      "additional_charge",
-      "additional_charge_payment",
-      "cancellation_fee",
-    ];
-    
     const transactions = rows
-      .filter((r: any) => visibleTransactionTypes.includes(r.transaction_type))
+      .filter((r: any) => PROVIDER_LEDGER_VISIBLE_TYPES.has(r.transaction_type))
       .slice(0, 50)
       .map((r: any) => ({
         id: r.id,
         booking_id: r.booking_id || null,
+        product_order_id: r.product_order_id || null,
         transaction_type: r.transaction_type,
         type:
           r.transaction_type === "refund"

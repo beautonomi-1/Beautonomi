@@ -992,28 +992,28 @@ export default function BookingDetailScreen() {
           <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).promotion_discount_amount).toFixed(2)}</Text>
         </View>
       )}
-      {Number((booking as any).service_fee_amount) > 0 && (
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Service / platform fee</Text>
-          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).service_fee_amount).toFixed(2)}</Text>
-        </View>
-      )}
       {Number((booking as any).travel_fee) > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Travel fee</Text>
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).travel_fee).toFixed(2)}</Text>
         </View>
       )}
-      {Number((booking as any).gift_card_amount) > 0 && (
+      {Number((booking as any).service_fee_amount) > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Gift card</Text>
-          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).gift_card_amount).toFixed(2)}</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Platform fee</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).service_fee_amount).toFixed(2)}</Text>
         </View>
       )}
       {Number((booking as any).tip_amount) > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Tip</Text>
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).tip_amount).toFixed(2)}</Text>
+        </View>
+      )}
+      {Number((booking as any).gift_card_amount) > 0 && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Gift card</Text>
+          <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).gift_card_amount).toFixed(2)}</Text>
         </View>
       )}
       {Number((booking as any).cancellation_fee) > 0 && (

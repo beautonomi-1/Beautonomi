@@ -1,14 +1,12 @@
 /**
  * Bottom sheet to create and send a custom offer to a customer.
  * Aligned with API: service_name, service_category_id, location_type (at_salon/at_home),
- * address for at_home, description, price, duration, expiration, location_id, staff_id, scheduled_at.
+ * address for at_home, description, price, duration, expiration, location_id, staff_id, preferred_start_at.
  */
-import { useState, useCallback, useEffect } from "react";
-import { View, Text, TextInput, TouchableOpacity, Alert, Platform } from "react-native";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView } from "react-native";
 import * as Haptics from "expo-haptics";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { BottomSheet } from "@/components/ui/BottomSheet";
-import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useApi } from "@/hooks/useApi";
@@ -17,12 +15,15 @@ import { twStyle } from "@/lib/twStyle";
 import { getCachedConfigBundle, getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
+import { buildZonedIsoForWallClock } from "@/lib/tz";
+import { useProvider } from "@/providers/ProviderContext";
 
 export interface CustomOfferSheetProps {
   visible: boolean;
   onClose: () => void;
   customerId: string;
   customerName?: string | null;
+  conversationId?: string | null;
   onSuccess?: () => void;
 }
 
@@ -37,14 +38,43 @@ interface GlobalCategory {
   slug?: string;
 }
 
+interface AvailableSlotRow {
+  time: string;
+  available?: boolean;
+}
+
+interface AvailableSlotsResponse {
+  slots?: string[];
+  slot_grid?: AvailableSlotRow[];
+  provider_timezone?: string | null;
+}
+
+function dateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function timeKey(date: Date): string {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function labelDate(date: Date): string {
+  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
 export function CustomOfferSheet({
   visible,
   onClose,
   customerId,
   customerName,
+  conversationId,
   onSuccess,
 }: CustomOfferSheetProps) {
   const { isTablet } = useResponsive();
+  const { provider } = useProvider();
+  const providerTz = provider?.timezone ?? null;
   const { data: categoriesData } = useApi<{ global_categories?: GlobalCategory[] }>("/api/provider/categories", { enabled: visible });
   const globalCategories = categoriesData?.global_categories ?? [];
   const { data: locationsData } = useApi<{ id: string; name: string }[]>("/api/provider/locations", { enabled: visible });
@@ -78,6 +108,33 @@ export function CustomOfferSheet({
   const [travelFee, setTravelFee] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const tenantCurrency = getTenantDefaultCurrency();
+  const selectedDateKey = dateKey(scheduledAt);
+  const selectedTimeKey = timeKey(scheduledAt);
+  const dateOptions = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      return d;
+    });
+  }, []);
+  const slotsUrl = useMemo(() => {
+    if (!visible || !selectedDateKey) return "";
+    const durationNum = Number(duration);
+    if (!Number.isFinite(durationNum) || durationNum < 15) return "";
+    let q = `/api/provider/bookings/available-slots?date=${encodeURIComponent(selectedDateKey)}&duration_minutes=${encodeURIComponent(String(durationNum))}`;
+    if (staffId) q += `&staff_ids=${encodeURIComponent(staffId)}`;
+    if (locationType === "at_salon" && locationId) q += `&location_id=${encodeURIComponent(locationId)}`;
+    q += locationType === "at_home" ? "&mode=mobile&travel_buffer=30" : "&mode=salon&travel_buffer=0";
+    return q;
+  }, [duration, locationId, locationType, selectedDateKey, staffId, visible]);
+  const { data: slotsData, loading: slotsLoading } = useApi<AvailableSlotsResponse>(slotsUrl, { enabled: slotsUrl.length > 0 });
+  const slotRows = useMemo(() => {
+    if (Array.isArray(slotsData?.slot_grid) && slotsData.slot_grid.length > 0) return slotsData.slot_grid;
+    if (Array.isArray(slotsData?.slots)) return slotsData.slots.map((time) => ({ time, available: true }));
+    return [] as AvailableSlotRow[];
+  }, [slotsData]);
 
   const resetForm = useCallback(() => {
     setServiceName("");
@@ -116,6 +173,14 @@ export function CustomOfferSheet({
     }
   }, [visible, resetForm]);
 
+  useEffect(() => {
+    const available = slotRows.filter((slot) => slot.available !== false).map((slot) => slot.time.slice(0, 5));
+    if (available.length === 0 || available.includes(selectedTimeKey)) return;
+    const iso = buildZonedIsoForWallClock(selectedDateKey, available[0], slotsData?.provider_timezone ?? providerTz);
+    const next = new Date(iso);
+    if (Number.isFinite(next.getTime())) setScheduledAt(next);
+  }, [providerTz, selectedDateKey, selectedTimeKey, slotRows, slotsData?.provider_timezone]);
+
   const isValid =
     description.trim().length >= 10 &&
     description.trim().length <= 4000 &&
@@ -141,11 +206,16 @@ export function CustomOfferSheet({
         notes: notes.trim() || null,
         location_type: locationType,
       };
+      if (conversationId) payload.conversation_id = conversationId;
       if (serviceName.trim()) payload.service_name = serviceName.trim();
       if (serviceCategoryId) payload.service_category_id = serviceCategoryId;
       if (locationType === "at_salon" && locationId) payload.location_id = locationId;
       if (staffId) payload.staff_id = staffId;
-      payload.scheduled_at = scheduledAt.toISOString();
+      payload.preferred_start_at = buildZonedIsoForWallClock(
+        selectedDateKey,
+        selectedTimeKey,
+        slotsData?.provider_timezone ?? providerTz,
+      );
       if (locationType === "at_home") {
         if (addressLine1.trim()) payload.address_line1 = addressLine1.trim();
         if (addressLine2.trim()) payload.address_line2 = addressLine2.trim();
@@ -197,16 +267,29 @@ export function CustomOfferSheet({
 
         {globalCategories.length > 0 && (
           <View style={twStyle("mb-3")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Service category (optional)</Text>
-            <ChipCombobox
-              singleSelect
-              value={serviceCategoryId}
-              onChange={setServiceCategoryId}
-              staticSuggestions={globalCategories.map((cat) => ({ value: cat.id, label: cat.name }))}
-              allowFreeForm={false}
-              placeholder="Select category"
-              accessibilityLabel="Service category"
-            />
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Service category (optional)</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={twStyle("flex-row")}>
+                <TouchableOpacity
+                  onPress={() => setServiceCategoryId(null)}
+                  style={[twStyle(`rounded-full border px-3 py-2 ${serviceCategoryId == null ? "border-primary bg-primary/10" : "border-gray-200 bg-white"}`), { marginRight: 8 }]}
+                >
+                  <Text style={twStyle(`text-xs font-semibold ${serviceCategoryId == null ? "text-primary" : "text-gray-600"}`)}>Any category</Text>
+                </TouchableOpacity>
+                {globalCategories.map((cat) => {
+                  const active = serviceCategoryId === cat.id;
+                  return (
+                    <TouchableOpacity
+                      key={cat.id}
+                      onPress={() => setServiceCategoryId(active ? null : cat.id)}
+                      style={[twStyle(`rounded-full border px-3 py-2 ${active ? "border-primary bg-primary/10" : "border-gray-200 bg-white"}`), { marginRight: 8 }]}
+                    >
+                      <Text style={twStyle(`text-xs font-semibold ${active ? "text-primary" : "text-gray-600"}`)}>{cat.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </View>
         )}
 
@@ -328,15 +411,57 @@ export function CustomOfferSheet({
           </>
         )}
 
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Appointment date & time</Text>
-        <View style={twStyle("mb-3")}>
-          <DateTimePicker
-            value={scheduledAt}
-            mode="datetime"
-            minimumDate={new Date()}
-            onChange={(_: any, d?: Date) => d && setScheduledAt(d)}
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-          />
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Appointment slot</Text>
+        <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+          Slots come from the same availability engine used for new appointments.
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-2")}>
+          <View style={twStyle("flex-row")}>
+            {dateOptions.map((d) => {
+              const key = dateKey(d);
+              const active = key === selectedDateKey;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => {
+                    const iso = buildZonedIsoForWallClock(key, selectedTimeKey, slotsData?.provider_timezone ?? providerTz);
+                    const next = new Date(iso);
+                    if (Number.isFinite(next.getTime())) setScheduledAt(next);
+                  }}
+                  style={[twStyle(`rounded-2xl border px-3 py-2 ${active ? "border-emerald-600 bg-emerald-50" : "border-gray-200 bg-white"}`), { marginRight: 8 }]}
+                >
+                  <Text style={twStyle(`text-xs font-semibold ${active ? "text-emerald-700" : "text-gray-700"}`)}>{labelDate(d)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+        <View style={twStyle("mb-3 flex-row flex-wrap")}>
+          {slotsLoading ? (
+            <Text style={twStyle("text-xs text-gray-500")}>Loading available times...</Text>
+          ) : slotRows.length === 0 ? (
+            <Text style={twStyle("text-xs text-amber-700")}>No available slots for this date. Try another day, staff member, or duration.</Text>
+          ) : (
+            slotRows.slice(0, 30).map((slot) => {
+              const time = slot.time.slice(0, 5);
+              const available = slot.available !== false;
+              const active = selectedTimeKey === time;
+              return (
+                <TouchableOpacity
+                  key={slot.time}
+                  disabled={!available}
+                  onPress={() => {
+                    const iso = buildZonedIsoForWallClock(selectedDateKey, time, slotsData?.provider_timezone ?? providerTz);
+                    const next = new Date(iso);
+                    if (Number.isFinite(next.getTime())) setScheduledAt(next);
+                  }}
+                  style={[twStyle(`rounded-full border px-3 py-2 ${active ? "border-emerald-700 bg-emerald-600" : available ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-gray-100"}`), { marginRight: 8, marginBottom: 8, opacity: available ? 1 : 0.45 }]}
+                >
+                  <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : available ? "text-emerald-700" : "text-gray-400"}`)}>{time}</Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
         </View>
 
         {locationType === "at_home" && (
