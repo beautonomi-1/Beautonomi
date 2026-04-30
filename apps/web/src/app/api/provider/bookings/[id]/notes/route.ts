@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
 const createNoteSchema = z.object({
@@ -38,10 +38,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
+    const permissionCheck = await requirePermission("view_calendar", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { id: bookingId } = await params;
 
@@ -87,10 +88,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
-    );
+    const permissionCheck = await requirePermission("edit_appointments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { id: bookingId } = await params;
 
@@ -124,7 +126,7 @@ export async function POST(
         booking_id: bookingId,
         provider_id: providerId,
         author_id: user.id,
-        author_name: (profile as any)?.full_name || user.email || "Provider",
+        author_name: (profile as any)?.full_name || "Provider",
         content: body.content,
         is_internal: body.is_internal,
       })

@@ -74,6 +74,12 @@ type MinePostsResponse = ExplorePost[] | {
   total?: number;
 };
 
+type ProviderPermissionsResponse = {
+  permissions?: {
+    create_explore_posts?: boolean;
+  };
+};
+
 function formatDateSafe(value: unknown): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
@@ -179,6 +185,8 @@ export default function ExplorePostsScreen() {
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
 
   const { data, loading, error, refresh } = useApi<MinePostsResponse>("/api/explore/posts/mine?limit=100&offset=0");
+  const { data: permissionData } = useApi<ProviderPermissionsResponse>("/api/provider/permissions");
+  const canCreateExplorePosts = permissionData?.permissions?.create_explore_posts === true;
   const { execute: deletePost } = useApiMutation("delete");
   const { execute: createPost, loading: creating } = useApiMutation<ExplorePost>("post");
   const { execute: updatePost, loading: updating } = useApiMutation<ExplorePost>("patch");
@@ -276,8 +284,8 @@ export default function ExplorePostsScreen() {
   }, []);
 
   useEffect(() => {
-    if (params.create === "1") setCreateOpen(true);
-  }, [params.create]);
+    if (params.create === "1" && canCreateExplorePosts) setCreateOpen(true);
+  }, [params.create, canCreateExplorePosts]);
 
   const diversityTip = useMemo(() => {
     if (posts.length < 3 || categories.length < 2) return null;
@@ -318,6 +326,10 @@ export default function ExplorePostsScreen() {
 
   const handleDelete = useCallback(
     (post: ExplorePost) => {
+      if (!canCreateExplorePosts) {
+        Alert.alert("Permission", "You do not have permission to manage Explore posts.");
+        return;
+      }
       Alert.alert(
         "Delete post",
         "Are you sure you want to delete this post?",
@@ -340,13 +352,17 @@ export default function ExplorePostsScreen() {
         ]
       );
     },
-    [deletePost, refresh]
+    [canCreateExplorePosts, deletePost, refresh]
   );
 
   const editMediaSlotsLeft = 5 - editRemoteUrls.length - editLocalAssets.length;
 
   const handleSaveEdit = useCallback(async () => {
     if (!viewPost) return;
+    if (!canCreateExplorePosts) {
+      Alert.alert("Permission", "You do not have permission to manage Explore posts.");
+      return;
+    }
     const totalMedia = editRemoteUrls.length + editLocalAssets.length;
     if (totalMedia === 0) {
       Alert.alert("Add media", "Select at least one photo or video.");
@@ -423,6 +439,7 @@ export default function ExplorePostsScreen() {
     editLocalAssets,
     updatePost,
     refresh,
+    canCreateExplorePosts,
   ]);
 
   const pickMediaForEdit = useCallback(async () => {
@@ -551,6 +568,10 @@ export default function ExplorePostsScreen() {
   }, []);
 
   const handleCreatePost = useCallback(async () => {
+    if (!canCreateExplorePosts) {
+      Alert.alert("Permission", "You do not have permission to create Explore posts.");
+      return;
+    }
     if (selectedAssets.length === 0) {
       Alert.alert("Add media", "Select at least one photo or video.");
       return;
@@ -601,11 +622,19 @@ export default function ExplorePostsScreen() {
       setUploading(false);
       Alert.alert("Error", e instanceof Error ? e.message : "Something went wrong.");
     }
-  }, [selectedAssets, caption, publishNow, primaryCategorySlug, offeringId, tagInput, createPost, refresh]);
+  }, [canCreateExplorePosts, selectedAssets, caption, publishNow, primaryCategorySlug, offeringId, tagInput, createPost, refresh]);
 
-  const createHeaderAction = (
+  const openCreateIfAllowed = () => {
+    if (!canCreateExplorePosts) {
+      Alert.alert("Permission", "You do not have permission to create Explore posts.");
+      return;
+    }
+    openCreate();
+  };
+
+  const createHeaderAction = canCreateExplorePosts ? (
     <TouchableOpacity
-      onPress={openCreate}
+      onPress={openCreateIfAllowed}
       style={twStyle("h-11 w-11 items-center justify-center rounded-full bg-[#ec4899] shadow-sm")}
       accessibilityLabel="Create new Explore post"
       accessibilityRole="button"
@@ -613,7 +642,7 @@ export default function ExplorePostsScreen() {
     >
       <Ionicons name="add" size={26} color="#fff" />
     </TouchableOpacity>
-  );
+  ) : undefined;
 
   const openExploreFeed = useCallback(() => {
     const url = `${explorePublicBase()}/explore`;
@@ -691,7 +720,7 @@ export default function ExplorePostsScreen() {
                 Earn reward points when you post to Explore. Share your work to grow visibility and unlock rewards.
               </Text>
               <TouchableOpacity
-                onPress={openCreate}
+                onPress={openCreateIfAllowed}
                 style={twStyle("rounded-lg bg-pink-600 px-3 py-2")}
                 accessibilityLabel="Create new post"
                 accessibilityRole="button"
@@ -806,7 +835,7 @@ export default function ExplorePostsScreen() {
         </ScrollView>
 
         <TouchableOpacity
-          onPress={openCreate}
+          onPress={openCreateIfAllowed}
           style={{
             position: "absolute",
             right: 12,
@@ -1366,38 +1395,40 @@ export default function ExplorePostsScreen() {
                   <Text style={twStyle("ml-2 text-sm font-semibold text-[#db2777]")}>View on Explore</Text>
                 </TouchableOpacity>
               ) : null}
-              <View style={twStyle("mb-4 flex-row gap-2")}>
-                <TouchableOpacity
-                  onPress={() => {
-                    setEditCaption(viewPost.caption ?? "");
-                    setEditPublishNow(viewPost.status === "published");
-                    const cat = viewPost.primary_category_id
-                      ? categories.find((c) => c.id === viewPost.primary_category_id)
-                      : null;
-                    setEditPrimaryCategorySlug(cat?.slug ?? null);
-                    setEditTagInput(
-                      Array.isArray(viewPost.tags) && viewPost.tags.length
-                        ? viewPost.tags.join(", ")
-                        : "",
-                    );
-                    setEditOfferingId(viewPost.offering_id ?? null);
-                    setEditRemoteUrls([...(viewPost.media_urls ?? [])]);
-                    setEditLocalAssets([]);
-                    setEditMode(true);
-                  }}
-                  style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3")}
-                >
-                  <Ionicons name="pencil-outline" size={18} color="#6366f1" />
-                  <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-600")}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => viewPost && handleDelete(viewPost)}
-                  style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-red-200 bg-red-50 py-3")}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#dc2626" />
-                  <Text style={twStyle("ml-1.5 text-sm font-medium text-red-600")}>Delete</Text>
-                </TouchableOpacity>
-              </View>
+              {canCreateExplorePosts ? (
+                <View style={twStyle("mb-4 flex-row gap-2")}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setEditCaption(viewPost.caption ?? "");
+                      setEditPublishNow(viewPost.status === "published");
+                      const cat = viewPost.primary_category_id
+                        ? categories.find((c) => c.id === viewPost.primary_category_id)
+                        : null;
+                      setEditPrimaryCategorySlug(cat?.slug ?? null);
+                      setEditTagInput(
+                        Array.isArray(viewPost.tags) && viewPost.tags.length
+                          ? viewPost.tags.join(", ")
+                          : "",
+                      );
+                      setEditOfferingId(viewPost.offering_id ?? null);
+                      setEditRemoteUrls([...(viewPost.media_urls ?? [])]);
+                      setEditLocalAssets([]);
+                      setEditMode(true);
+                    }}
+                    style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3")}
+                  >
+                    <Ionicons name="pencil-outline" size={18} color="#6366f1" />
+                    <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-600")}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => viewPost && handleDelete(viewPost)}
+                    style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-red-200 bg-red-50 py-3")}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                    <Text style={twStyle("ml-1.5 text-sm font-medium text-red-600")}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
 
               <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Comments</Text>
               {commentsLoading ? (

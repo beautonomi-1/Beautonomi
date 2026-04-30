@@ -32,6 +32,7 @@ interface Role {
   member_count?: number;
 }
 interface TeamAccessPayload {
+  is_business_owner?: boolean;
   can_manage_team: boolean;
 }
 
@@ -39,9 +40,11 @@ const PERMISSION_GROUPS = [
   {
     title: "Bookings",
     permissions: [
-      { key: "view_bookings", label: "View Bookings", icon: "calendar-outline" },
+      { key: "view_calendar", label: "View calendar", icon: "calendar-outline" },
       { key: "create_appointments", label: "Create Appointments", icon: "add-circle-outline" },
       { key: "edit_appointments", label: "Edit Appointments", icon: "create-outline" },
+      { key: "cancel_appointments", label: "Cancel appointments", icon: "close-circle-outline" },
+      { key: "delete_appointments", label: "Delete appointments", icon: "trash-outline" },
     ],
   },
   {
@@ -55,27 +58,74 @@ const PERMISSION_GROUPS = [
     title: "Business",
     permissions: [
       { key: "view_reports", label: "View Reports", icon: "bar-chart-outline" },
+      { key: "view_team", label: "View Team", icon: "people-outline" },
       { key: "manage_team", label: "Manage Team", icon: "people-circle-outline" },
+      { key: "view_settings", label: "View Settings", icon: "options-outline" },
       { key: "edit_settings", label: "Edit Settings", icon: "settings-outline" },
     ],
   },
   {
-    title: "Sales",
+    title: "Sales & Products",
     permissions: [
-      { key: "manage_products", label: "Manage Products", icon: "cube-outline" },
-      { key: "process_sales", label: "Process Sales", icon: "card-outline" },
+      { key: "view_sales", label: "View Sales", icon: "receipt-outline" },
+      { key: "create_sales", label: "Create Sales", icon: "add-circle-outline" },
+      { key: "process_payments", label: "Process Payments", icon: "card-outline" },
+      { key: "view_services", label: "View Services", icon: "list-outline" },
+      { key: "edit_services", label: "Edit Services", icon: "construct-outline" },
+      { key: "view_products", label: "View Products", icon: "cube-outline" },
+      { key: "edit_products", label: "Edit Products", icon: "cube-outline" },
     ],
   },
   {
     title: "Communication",
     permissions: [
+      { key: "view_messages", label: "View Messages", icon: "chatbubbles-outline" },
       { key: "send_messages", label: "Send Messages", icon: "chatbubble-outline" },
       { key: "create_explore_posts", label: "Create Explore posts", icon: "share-social-outline" },
+    ],
+  },
+  {
+    title: "Reviews",
+    permissions: [
+      { key: "view_reviews", label: "View Reviews", icon: "star-outline" },
+      { key: "edit_reviews", label: "Edit Reviews", icon: "star-half-outline" },
+      { key: "view_client_ratings", label: "View Client Ratings", icon: "person-circle-outline" },
+      { key: "rate_clients", label: "Rate Clients", icon: "create-outline" },
     ],
   },
 ];
 
 const ALL_PERMISSIONS = PERMISSION_GROUPS.flatMap((g) => g.permissions);
+const LEGACY_PERMISSION_ALIASES: Record<string, string[]> = {
+  view_calendar: ["view_bookings", "manage_bookings"],
+  edit_appointments: ["manage_bookings"],
+  cancel_appointments: ["manage_bookings"],
+  view_products: ["manage_products"],
+  edit_products: ["manage_products"],
+  view_sales: ["process_sales", "view_finances"],
+  create_sales: ["process_sales"],
+  process_payments: ["process_sales", "view_finances"],
+  view_team: ["manage_staff"],
+  manage_team: ["manage_staff"],
+  view_reports: ["view_finances"],
+};
+
+function normalizeRolePermissions(
+  permissions: Record<string, boolean> | null | undefined,
+): Record<string, boolean> {
+  const source = permissions ?? {};
+  const normalized: Record<string, boolean> = {};
+  for (const perm of ALL_PERMISSIONS) {
+    if (source[perm.key] === true) {
+      normalized[perm.key] = true;
+      continue;
+    }
+    if (LEGACY_PERMISSION_ALIASES[perm.key]?.some((legacyKey) => source[legacyKey] === true)) {
+      normalized[perm.key] = true;
+    }
+  }
+  return normalized;
+}
 
 export default function TeamRolesScreen() {
   const [refreshing, setRefreshing] = useState(false);
@@ -88,7 +138,8 @@ export default function TeamRolesScreen() {
     permissions: {} as Record<string, boolean>,
   });
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access");
-  const canManageTeam = teamAccess?.can_manage_team === true;
+  const canManageTeam =
+    teamAccess?.is_business_owner === true || teamAccess?.can_manage_team === true;
 
   const { data: roles, loading, error: loadError, refresh } = useApi<Role[]>(
     "/api/provider/roles"
@@ -146,7 +197,7 @@ export default function TeamRolesScreen() {
     setForm({
       name: role.name,
       description: role.description ?? "",
-      permissions: { ...role.permissions },
+      permissions: normalizeRolePermissions(role.permissions),
     });
     setShowForm(true);
   }
@@ -157,7 +208,7 @@ export default function TeamRolesScreen() {
     setForm({
       name: `${role.name} (Copy)`,
       description: role.description ?? "",
-      permissions: { ...role.permissions },
+      permissions: normalizeRolePermissions(role.permissions),
     });
     setShowForm(true);
   }
@@ -210,7 +261,7 @@ export default function TeamRolesScreen() {
     const payload = {
       name: form.name.trim(),
       description: form.description.trim() || null,
-      permissions: form.permissions,
+      permissions: normalizeRolePermissions(form.permissions),
     };
     const wasEditing = Boolean(editing);
     if (editing) {

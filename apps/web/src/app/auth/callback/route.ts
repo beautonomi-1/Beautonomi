@@ -23,6 +23,7 @@ const ALLOWED_NEXT_PREFIXES = [
   "/book",
   "/checkout",
   "/account-settings",
+  "/admin",
   "/admin/dashboard",
   "/bookings",
 ];

@@ -87,11 +87,11 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
     : [];
 
   const kpis = [
-    { label: "Total revenue (GMV)", value: fmtMoney(data.totalRevenue), sub: "Booking value in period" },
+    { label: "Scheduled gross booked value", value: fmtMoney(data.totalRevenue), sub: "Booking value by report period, not settled cash" },
     { label: "Net collected", value: fmtMoney(data.netCollected), sub: "Cash collected − refunds" },
     ...(pr
       ? [
-          { label: "Platform revenue (net)", value: fmtMoney(pr.total_platform_revenue_net), sub: "Take + subs + ads + service fees" },
+          { label: "Platform revenue (net)", value: fmtMoney(pr.total_platform_revenue_net), sub: "Take + subs + ads + Platform Fees" },
           { label: "Booking commission (net)", value: fmtMoney(pr.booking_commission_net), sub: "After refund contra & gateway fees" },
           { label: "Subscription net", value: fmtMoney(pr.subscription_net) },
           { label: "Ads net", value: fmtMoney(pr.ads_net) },
@@ -109,10 +109,10 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
     <div className="space-y-6">
       <AdminPanel>
         <p className="text-xs leading-5 text-gray-600">
-          <strong>Total revenue</strong> is booking <em>GMV</em> (what the customer was
-          charged at booking time). <strong>Platform revenue</strong> is what the platform
-          actually keeps after refunds, gateway fees and provider payouts are recognised on
-          the finance ledger.
+          <strong>Scheduled gross booked value</strong> is booking value in the report period,
+          distinct from Finance&apos;s settled service GMV and from provider payment-summary
+          settled ledger amount. <strong>Platform revenue</strong> is what the platform keeps
+          after refunds, gateway fees, and provider payouts are recognised on the finance ledger.
         </p>
         {showNegativeExplainer && (
           <p className="mt-2 text-xs leading-5 text-amber-700">

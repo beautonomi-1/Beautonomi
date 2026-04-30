@@ -1000,7 +1000,7 @@ export default function BookingDetailScreen() {
       )}
       {Number((booking as any).service_fee_amount) > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Service / platform fee</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Platform fee</Text>
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).service_fee_amount).toFixed(2)}</Text>
         </View>
       )}

@@ -13,6 +13,10 @@ vi.mock("@/lib/orders/ensure-package-entitlements-from-product-order", () => ({
   ensurePackageEntitlementsFromProductOrder: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/orders/shipping", () => ({
+  bookShippingForOrder: vi.fn().mockResolvedValue({ ok: true, skipped: "no_shipping_preference" }),
+}));
+
 vi.mock("@/lib/utils/logger", () => ({
   logger: {
     error: vi.fn(),
@@ -57,6 +61,9 @@ function makeQuery(table: string, state: { rows: Record<string, Row[]>; inserts:
     insert(payload: Row | Row[]) {
       state.inserts[table] = [...(state.inserts[table] ?? []), Array.isArray(payload) ? payload : [payload]];
       return Promise.resolve({ data: null, error: null });
+    },
+    then(resolve: (value: { data: Row[]; error: null }) => unknown, reject?: (reason: unknown) => unknown) {
+      return Promise.resolve({ data: applyFilters(state.rows[table] ?? []), error: null }).then(resolve, reject);
     },
   };
   return query;
@@ -135,5 +142,34 @@ describe("recordProductOrderPayment", () => {
       "platform_fee",
     ]);
     expect(state.inserts.finance_transactions?.[0].every((row) => row.product_order_id === "order-1")).toBe(true);
+  });
+
+  it("treats platform-held product payments as duplicate when product-order ledger rows already exist", async () => {
+    const { supabase, state } = mockSupabase({
+      product_orders: [{ ...orderRow, payment_status: "paid", payment_reference: "paystack-ref" }],
+      payment_transactions: [{ id: "tx-1", provider: "paystack", reference: "paystack-ref" }],
+      finance_transactions: [
+        {
+          id: "ledger-1",
+          provider_id: "provider-1",
+          product_order_id: "order-1",
+          transaction_type: "provider_earnings",
+          description: "legacy description without order number",
+        },
+      ],
+    });
+
+    const result = await recordProductOrderPayment({
+      supabase,
+      productOrderId: "order-1",
+      reference: "paystack-ref",
+      amountMajor: 100,
+      feesMajor: 2,
+      source: "paystack_webhook",
+      provider: "paystack",
+    });
+
+    expect(result).toEqual({ ok: true, duplicate: true });
+    expect(state.inserts.finance_transactions).toBeUndefined();
   });
 });

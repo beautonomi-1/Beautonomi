@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const rosterDetailLevel = await getTeamRosterDetailLevel(user.id);
+    const rosterDetailLevel = await getTeamRosterDetailLevel(user.id, request);
 
     const { searchParams } = new URL(request.url);
     const locationId = searchParams.get("location_id");

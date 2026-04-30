@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer();
 
     const { data, error } = await (supabase.from("provider_shipping_config") as any)
-      .select("offers_delivery, offers_collection, delivery_fee, free_delivery_threshold, delivery_radius_km, estimated_delivery_days, delivery_notes, collection_notes")
+      .select("offers_delivery, offers_collection, delivery_fee, delivery_fee_type, free_delivery_threshold, delivery_radius_km, weight_rate_per_kg, distance_rate_per_km, estimated_delivery_days, delivery_notes, collection_notes")
       .eq("provider_id", providerId)
       .maybeSingle();
 
@@ -28,8 +28,11 @@ export async function GET(request: NextRequest) {
       offers_delivery: false,
       offers_collection: true,
       delivery_fee: 0,
+      delivery_fee_type: "flat",
       free_delivery_threshold: null,
       delivery_radius_km: null,
+      weight_rate_per_kg: null,
+      distance_rate_per_km: null,
       estimated_delivery_days: 3,
       delivery_notes: null,
       collection_notes: null,

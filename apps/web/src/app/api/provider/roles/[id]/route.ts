@@ -8,7 +8,7 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
+import { isProviderOwner, hasPermission, normalizeStaffPermissions } from "@/lib/auth/permissions";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -30,7 +30,8 @@ export async function PATCH(
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     if (user.role !== "superadmin") {
       const canManageRoles =
-        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+        (await isProviderOwner(user.id, request)) ||
+        (await hasPermission(user.id, "manage_team", undefined, request));
       if (!canManageRoles) {
         return errorResponse(
           "Only owners or users with Manage team can update roles.",
@@ -79,7 +80,7 @@ export async function PATCH(
       updateData.description = validationResult.data.description || null;
     }
     if (validationResult.data.permissions !== undefined) {
-      updateData.permissions = validationResult.data.permissions;
+      updateData.permissions = normalizeStaffPermissions(validationResult.data.permissions);
     }
     if (validationResult.data.is_active !== undefined) {
       updateData.is_active = validationResult.data.is_active;
@@ -100,8 +101,8 @@ export async function PATCH(
       ...data,
       permissions:
         data.permissions && typeof data.permissions === "string"
-          ? JSON.parse(data.permissions)
-          : data.permissions || {},
+          ? normalizeStaffPermissions(JSON.parse(data.permissions))
+          : normalizeStaffPermissions(data.permissions),
     });
   } catch (error) {
     return handleApiError(error, "Failed to update role");
@@ -120,7 +121,8 @@ export async function DELETE(
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     if (user.role !== "superadmin") {
       const canManageRoles =
-        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+        (await isProviderOwner(user.id, request)) ||
+        (await hasPermission(user.id, "manage_team", undefined, request));
       if (!canManageRoles) {
         return errorResponse(
           "Only owners or users with Manage team can delete roles.",

@@ -135,13 +135,13 @@ export function PlatformFeesPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Platform Fees"
-        description="Configure service fees and commission rates applied to bookings."
+        description="Configure customer-paid platform fees and commission rates applied to bookings."
       />
 
-      {/* ── Customer Service Fee ─────────────────────────────────────────────── */}
+      {/* ── Customer-Paid Platform Fee ───────────────────────────────────────── */}
       <AdminPanel>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-800">Customer Service Fee</h2>
+          <h2 className="text-sm font-semibold text-gray-800">Customer-Paid Platform Fee</h2>
           <button
             type="button"
             className={adminToolbarButtonClass(q.isFetching)}
@@ -152,7 +152,7 @@ export function PlatformFeesPage() {
           </button>
         </div>
         <p className="text-xs text-gray-500 mb-5">
-          A service fee added to the customer's booking total. It is separate from the platform commission charged to providers.
+          A Platform Fee added to the customer's booking total and retained by Beautonomi. It is separate from provider earnings and platform commission.
         </p>
 
         <div className="space-y-6 max-w-xl">
@@ -179,7 +179,7 @@ export function PlatformFeesPage() {
           {feeType === "percentage" ? (
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
-                Service Fee Percentage
+                Platform Fee Percentage
               </label>
               <div className="flex items-center gap-2">
                 <input
@@ -198,7 +198,7 @@ export function PlatformFeesPage() {
           ) : (
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
-                Fixed Service Fee Amount
+                Fixed Platform Fee Amount
               </label>
               <input
                 type="number"
@@ -215,9 +215,9 @@ export function PlatformFeesPage() {
           {/* Toggle: show to customer */}
           <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4">
             <div>
-              <p className="text-sm font-medium text-gray-700">Show fee to customer</p>
+              <p className="text-sm font-medium text-gray-700">Show Platform Fee to customer</p>
               <p className="text-xs text-gray-400 mt-0.5">
-                Displays the service fee as an itemised line on the customer checkout summary.
+                Displays the Platform Fee as an itemised line on the customer checkout summary.
               </p>
             </div>
             <Toggle checked={showToCustomer} onChange={setShowToCustomer} id="show-fee-toggle" />

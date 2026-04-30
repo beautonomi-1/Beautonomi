@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
       averagePackageValue,
       packageSales,
       reportBasis:
-        "Package value is based on package/service line prices for confirmed or completed bookings by scheduled date. Booking-level travel fees, tips, and service fees are excluded.",
+        "Package value is based on package/service line prices for confirmed or completed bookings by scheduled date. Booking-level travel fees, tips, and Platform Fees are excluded.",
     });
   } catch (error) {
     return handleApiError(error, "PACKAGE_SALES_ERROR", 500);

@@ -31,6 +31,8 @@ type ProductOrderRow = {
   tax_amount?: number | null;
   delivery_fee?: number | null;
   discount_amount?: number | null;
+  platform_fee?: number | null;
+  wallet_amount?: number | null;
   total_amount: number;
   currency: string;
   payment_status: string;
@@ -168,10 +170,12 @@ export async function GET(
     const tax = Number(order.tax_amount || 0);
     const deliveryFee = Number(order.delivery_fee || 0);
     const discount = Number(order.discount_amount || 0);
+    const platformFee = Number(order.platform_fee || 0);
+    const walletPaid = Number(order.wallet_amount || 0);
     const totalFromRow =
       order.total_amount != null && !Number.isNaN(Number(order.total_amount))
         ? Number(order.total_amount)
-        : subtotal + tax + deliveryFee - discount;
+        : subtotal + tax + deliveryFee + platformFee - discount;
 
     const items =
       order.items?.map((it: OrderItemRow) => {
@@ -211,6 +215,8 @@ export async function GET(
       tax,
       delivery_fee: deliveryFee,
       discount,
+      platform_fee: platformFee,
+      wallet_amount: walletPaid,
       total: totalFromRow,
       currency: order.currency || currencyFallback,
       payment_status: order.payment_status,

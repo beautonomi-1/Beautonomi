@@ -47,7 +47,7 @@ vi.mock('@/lib/supabase/api-helpers', async () => {
 });
 
 vi.mock('@/lib/auth/requirePermission', () => ({
-  requirePermission: vi.fn((handler) => handler),
+  requirePermission: vi.fn(async () => ({ authorized: true, user: mockUser })),
 }));
 
 vi.mock('@/lib/subscriptions/feature-access', () => ({

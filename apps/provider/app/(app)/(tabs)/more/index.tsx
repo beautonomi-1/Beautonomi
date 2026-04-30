@@ -245,7 +245,7 @@ export default function MoreScreen() {
     accounts[0];
   const hasPayoutAccount = accounts.length > 0;
   const payoutAccountLast4 = primaryPayoutAccount?.account_number_last4 ?? primaryPayoutAccount?.account_number?.slice(-4);
-  const canRequestPayouts = teamAccess?.can_process_payments !== false;
+  const canRequestPayouts = teamAccess?.can_process_payments === true;
   const requestPayoutDisabledReason = !canRequestPayouts
     ? "Requires payment-processing permission"
     : !hasPayoutAccount

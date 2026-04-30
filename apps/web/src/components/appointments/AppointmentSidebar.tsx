@@ -263,9 +263,9 @@ export function AppointmentSidebar({
   // Tax rate state - loaded from API (must be declared before formData)
   const [defaultTaxRate, setDefaultTaxRate] = useState<number>(0); // Default 0% until loaded from provider settings
   
-  // Service fee state - loaded from API (must be declared before formData)
-  // NOTE: For provider-created appointments (walk-in), service fee is ALWAYS 0
-  const [defaultServiceFeePercentage, setDefaultServiceFeePercentage] = useState<number>(0); // Provider-created = 0% service fee
+  // Platform Fee state - loaded from API (must be declared before formData)
+  // NOTE: For provider-created appointments (walk-in), Platform Fee is ALWAYS 0
+  const [defaultServiceFeePercentage, setDefaultServiceFeePercentage] = useState<number>(0); // Provider-created = 0% Platform Fee
   
   // Travel settings state - loaded from API
   const [_travelSettings, setTravelSettings] = useState<TravelFeeRules>(DEFAULT_TRAVEL_FEE_RULES);
@@ -1020,7 +1020,7 @@ export function AppointmentSidebar({
     toast.success(`Package "${pkg.name}" added`);
   };
 
-  // Load default tax rate, service fee, travel settings, and buffer time on mount (same as appointments)
+  // Load default tax rate, Platform Fee, travel settings, and buffer time on mount (same as appointments)
   // Preload so correct values are ready when sidebar opens
   useEffect(() => {
     const loadSettings = async () => {
@@ -1039,7 +1039,7 @@ export function AppointmentSidebar({
                 return {
                   ...prev,
                   taxRate: taxRate,
-                  serviceFeePercentage: 0, // Provider-created appointments have no service fee
+                  serviceFeePercentage: 0, // Provider-created appointments have no Platform Fee
                   serviceFeeAmount: 0,
                   taxAmount: pricing.taxAmount,
                   totalAmount: pricing.totalAmount,
@@ -1063,7 +1063,7 @@ export function AppointmentSidebar({
             }
           }
           
-          // Load service fee (for reference, but provider-created appointments use 0)
+          // Load Platform Fee (for reference, but provider-created appointments use 0)
           const serviceFeeResponse = await providerPortalFetch("/api/provider/service-fee");
           if (serviceFeeResponse.ok) {
             const serviceFeeData = await serviceFeeResponse.json();
@@ -1261,7 +1261,7 @@ export function AppointmentSidebar({
     
     setFormData(prev => {
       const newServices = [...prev.services, newService];
-      // Provider-created appointments always have 0 service fee
+      // Provider-created appointments always have 0 Platform Fee
       const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
       
       const tipToUse = prev.tipAmount;
@@ -1288,7 +1288,7 @@ export function AppointmentSidebar({
   const removeService = useCallback((serviceId: string) => {
     setFormData(prev => {
       const newServices = prev.services.filter(s => s.id !== serviceId);
-      // Provider-created appointments always have 0 service fee
+      // Provider-created appointments always have 0 Platform Fee
       const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
       const pricing = calculatePricing(newServices, prev.products, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
       return {
@@ -1377,7 +1377,7 @@ export function AppointmentSidebar({
     };
     setFormData(prev => {
       const newProducts = [...prev.products, newProduct];
-      // Provider-created appointments always have 0 service fee
+      // Provider-created appointments always have 0 Platform Fee
       const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
       const pricing = calculatePricing(prev.services, newProducts, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
       return {
@@ -1393,7 +1393,7 @@ export function AppointmentSidebar({
   const removeProduct = useCallback((productId: string) => {
     setFormData(prev => {
       const newProducts = prev.products.filter(p => p.id !== productId);
-      // Provider-created appointments always have 0 service fee
+      // Provider-created appointments always have 0 Platform Fee
       const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
       const pricing = calculatePricing(prev.services, newProducts, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
       return {
@@ -1417,7 +1417,7 @@ export function AppointmentSidebar({
           ? { ...p, quantity, totalPrice: p.unitPrice * quantity }
           : p
       );
-      // Provider-created appointments always have 0 service fee
+      // Provider-created appointments always have 0 Platform Fee
       const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
       const pricing = calculatePricing(prev.services, newProducts, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
       return {
@@ -1535,7 +1535,7 @@ export function AppointmentSidebar({
     if (mode === "create" && draftSlot) {
       // Don't auto-select any service - let user choose
       const initialServices: AppointmentService[] = [];
-      // Provider-created appointments should have 0 service fee
+      // Provider-created appointments should have 0 Platform Fee
       // Use the loaded tax rate (defaultTaxRate should be loaded from provider settings)
       const pricing = calculatePricing(initialServices, [], 0, 0, defaultTaxRate, 0, 0);
       
@@ -1800,7 +1800,7 @@ export function AppointmentSidebar({
       const storedBookingSource = (selectedAppointment as any).booking_source;
       const isWalkIn = !storedBookingSource || storedBookingSource === 'walk_in';
       
-      // Use 0 service fee for walk-in appointments, otherwise use stored values
+      // Use 0 Platform Fee for walk-in appointments, otherwise use stored values
       const effectiveServiceFeePercentage = isWalkIn ? 0 : storedServiceFeePercentage;
       const effectiveServiceFeeAmount = isWalkIn ? 0 : storedServiceFeeAmount;
       const computedTotalFromLines =
@@ -2013,8 +2013,8 @@ export function AppointmentSidebar({
 
       // Add non-standard fields and arrays
       (appointmentData as any).tax_rate = formData.taxRate;
-      // Service fees should only apply to client portal bookings, not provider-created appointments
-      // Provider-created appointments (walk-in, in-salon) should have 0 service fee
+      // Platform Fees should only apply to client portal bookings, not provider-created appointments
+      // Provider-created appointments (walk-in, in-salon) should have 0 Platform Fee
       (appointmentData as any).service_fee_percentage = 0;
       (appointmentData as any).service_fee_amount = 0;
       (appointmentData as any).service_fee_paid_by = 'customer';
@@ -2170,17 +2170,17 @@ export function AppointmentSidebar({
       
       // Add non-standard fields and arrays
       (updates as any).tax_rate = formData.taxRate;
-      // Service fees should only apply to client portal bookings, not provider-created appointments
-      // If updating an existing appointment that was created via provider, keep service fee at 0
-      // Only preserve service fee if it was originally from client portal (check if it exists and > 0)
+      // Platform Fees should only apply to client portal bookings, not provider-created appointments
+      // If updating an existing appointment that was created via provider, keep Platform Fee at 0
+      // Only preserve Platform Fee if it was originally from client portal (check if it exists and > 0)
       const existingServiceFee = (selectedAppointment as any).service_fee_amount || 0;
       const editBookingSource = (selectedAppointment as any).booking_source;
       if (existingServiceFee > 0 && editBookingSource === 'online') {
-        // Preserve existing service fee if it was from client portal booking
+        // Preserve existing Platform Fee if it was from client portal booking
         (updates as any).service_fee_percentage = formData.serviceFeePercentage;
         (updates as any).service_fee_amount = formData.serviceFeeAmount;
       } else {
-        // Walk-in appointments should have 0 service fee
+        // Walk-in appointments should have 0 Platform Fee
         (updates as any).service_fee_percentage = 0;
         (updates as any).service_fee_amount = 0;
       }
@@ -4373,7 +4373,7 @@ export function AppointmentSidebar({
                     </div>
                   )}
                   
-                  {/* Service Fee */}
+                  {/* Platform Fee */}
                   {formData.serviceFeeAmount > 0 && (
                     <div className="flex justify-between text-xs sm:text-xs md:text-sm">
                       <span className="text-gray-500">Platform Fee ({(formData.serviceFeePercentage * 100).toFixed(1)}%)</span>

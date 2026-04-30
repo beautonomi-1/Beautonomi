@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { effectiveStockQuantity } from "@/lib/provider-portal/product-inventory-metrics";
+import { filterProductOrdersForLocation } from "@/lib/reports/provider-report-utils";
 
 type CatalogRow = {
   id: string;
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
 
     let ordersQuery = supabaseAdmin
       .from("product_orders")
-      .select("id")
+      .select("id, fulfillment_type, collection_location_id")
       .eq("provider_id", providerId)
       .eq("payment_status", "paid")
       // Appointment orders are fulfillment mirrors for booking_products, which
@@ -108,9 +109,6 @@ export async function GET(request: NextRequest) {
       .or("order_source.is.null,order_source.neq.appointment")
       .not("status", "in", "(cancelled,refunded)");
 
-    if (locationId) {
-      ordersQuery = ordersQuery.eq("collection_location_id", locationId);
-    }
     if (from) {
       ordersQuery = ordersQuery.gte("created_at", `${from}T00:00:00.000Z`);
     }
@@ -129,7 +127,13 @@ export async function GET(request: NextRequest) {
       throw ordersError;
     }
 
-    const orderIds = (orders || []).map((o: { id: string }) => o.id);
+    const attributedOrders = await filterProductOrdersForLocation(
+      supabaseAdmin,
+      providerId,
+      (orders || []) as Array<{ id: string; fulfillment_type?: string | null; collection_location_id?: string | null }>,
+      locationId,
+    );
+    const orderIds = attributedOrders.map((o) => o.id);
 
     type SalesAgg = { units: number; revenue: number; fallbackName: string | null };
     const salesByProduct = new Map<string, SalesAgg>();

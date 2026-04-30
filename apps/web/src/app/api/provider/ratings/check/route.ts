@@ -4,8 +4,8 @@ import {
   getProviderIdForUser,
   successResponse,
   handleApiError,
-  requireRoleInApi,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
 const batchCheckSchema = z.object({
@@ -23,10 +23,11 @@ const batchCheckSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request,
-    );
+    const permissionCheck = await requirePermission("view_client_ratings", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 

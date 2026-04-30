@@ -511,6 +511,9 @@ export async function POST(request: NextRequest) {
             ...(recurring_subscription ? { recurring_subscription } : {}),
             // Display hints for confirmation screen — respect admin settings
             display: {
+              show_platform_fee: v.showServiceFeeToCustomer,
+              platform_fee_amount: v.serviceFeeAmount,
+              // Deprecated aliases for active mobile/web clients.
               show_service_fee: v.showServiceFeeToCustomer,
               service_fee_amount: v.serviceFeeAmount,
               tax_amount: v.taxAmount,

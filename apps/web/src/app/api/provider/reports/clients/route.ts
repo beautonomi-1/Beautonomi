@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, subMonths, format, startOfMonth } from "date-fns";
+import { subMonths, format, startOfMonth } from "date-fns";
+import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,17 +16,17 @@ export async function GET(request: NextRequest) {
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
     const sp = request.nextUrl.searchParams;
     const locationId = sp.get("location_id") || null;
-    const fromDate = sp.get("from") ? new Date(sp.get("from")!) : subDays(new Date(), 30);
-    const toDate = sp.get("to") ? new Date(sp.get("to")!) : new Date();
+    const { fromDate, toDate } = reportDateRangeFromParams(sp, reportContext.timezone, { defaultDays: 30 });
 
     let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, customer_id, created_at, total_amount, status")
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", new Date(toDate.getTime() + 86400000).toISOString())
+      .lte("scheduled_at", toDate.toISOString())
       .not("status", "in", "(cancelled,no_show)");
     if (locationId) bookingsQuery = bookingsQuery.eq("location_id", locationId);
     const { data: bookings } = await bookingsQuery;

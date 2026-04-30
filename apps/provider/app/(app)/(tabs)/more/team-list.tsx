@@ -70,6 +70,8 @@ interface LocationItem {
 
 interface TeamAccessPayload {
   staff_id: string | null;
+  /** True when `providers.user_id` matches the signed-in user (same as server `is_business_owner`). */
+  is_business_owner?: boolean;
   can_manage_team: boolean;
   roster_detail_level?: "full" | "redacted";
   can_view_team_roster_pii?: boolean;
@@ -112,7 +114,8 @@ export default function TeamListScreen() {
 
   const { data: teamAccess, loading: teamAccessLoading } =
     useApi<TeamAccessPayload>("/api/provider/team-access");
-  const canManageTeam = teamAccess?.can_manage_team === true;
+  const canManageTeam =
+    teamAccess?.is_business_owner === true || teamAccess?.can_manage_team === true;
   const rosterRedacted = teamAccess?.roster_detail_level === "redacted";
 
   const { data: staff, loading, error: staffError, refresh } = useApi<StaffMember[]>(staffUrl);

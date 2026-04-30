@@ -21,6 +21,7 @@ interface PermissionsResponse {
 }
 interface TeamAccessPayload {
   staff_id: string | null;
+  is_business_owner?: boolean;
   can_manage_team: boolean;
 }
 
@@ -83,6 +84,8 @@ const PERMISSION_CATEGORIES: {
     permissions: [
       { id: "view_reviews", label: "View reviews" },
       { id: "edit_reviews", label: "Edit / respond to reviews" },
+      { id: "view_client_ratings", label: "View client ratings" },
+      { id: "rate_clients", label: "Rate clients" },
     ],
   },
   {
@@ -107,7 +110,8 @@ export default function StaffPermissionEditScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [local, setLocal] = useState<Record<string, boolean>>({});
   const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
-  const canManageTeam = access?.can_manage_team === true;
+  const canManageTeam =
+    access?.is_business_owner === true || access?.can_manage_team === true;
   const isSelf = Boolean(id && access?.staff_id === id);
   const canEdit = canManageTeam;
   const readOnlyReason = !canEdit && isSelf

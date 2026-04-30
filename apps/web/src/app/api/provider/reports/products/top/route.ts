@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { endOfDay, startOfDay, subDays } from "date-fns";
+import { filterProductOrdersForLocation } from "@/lib/reports/provider-report-utils";
 
 function lineRevenue(qty: number, unitPrice: number, totalPrice: number): number {
   const total = Number(totalPrice) || 0;
@@ -59,16 +60,12 @@ export async function GET(request: NextRequest) {
 
     let ordersQuery = supabaseAdmin
       .from("product_orders")
-      .select("id, created_at")
+      .select("id, created_at, fulfillment_type, collection_location_id")
       .eq("provider_id", providerId)
       .eq("payment_status", "paid")
       .or("order_source.is.null,order_source.neq.appointment")
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", toDate.toISOString());
-
-    if (locationId) {
-      ordersQuery = ordersQuery.eq("collection_location_id", locationId);
-    }
 
     const [bookingsResult, ordersResult] = await Promise.all([
       bookingsQuery,
@@ -76,9 +73,15 @@ export async function GET(request: NextRequest) {
     ]);
 
     const { data: bookings } = bookingsResult;
-    const { data: orders } = ordersResult;
+    const { data: ordersRaw } = ordersResult;
     const bookingIds = bookings?.map((b) => b.id) || [];
-    const orderIds = orders?.map((s) => s.id) || [];
+    const orders = await filterProductOrdersForLocation(
+      supabaseAdmin,
+      providerId,
+      (ordersRaw || []) as Array<{ id: string; fulfillment_type?: string | null; collection_location_id?: string | null }>,
+      locationId,
+    );
+    const orderIds = orders.map((s) => s.id) || [];
 
     // Get booking_products
     let bookingProductsQuery = supabaseAdmin

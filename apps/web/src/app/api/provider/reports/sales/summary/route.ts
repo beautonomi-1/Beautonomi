@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, startOfDay, endOfDay } from "date-fns";
+import { subDays } from "date-fns";
 import { getProviderRevenue, getPreviousPeriodRevenue } from "@/lib/reports/revenue-helpers";
-import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { getProviderReportContext, reportDateRangeFromParams, reportDateKey } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,22 +24,16 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
 
     if (!providerId) return notFoundResponse("Provider not found");
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
 
 
     // Get date range from query params
     const searchParams = request.nextUrl.searchParams;
     const locationId = searchParams.get("location_id");
-    let fromDate = searchParams.get("from")
-      ? startOfDay(new Date(searchParams.get("from")!))
-      : startOfDay(subDays(new Date(), 30));
-    const toDate = searchParams.get("to")
-      ? endOfDay(new Date(searchParams.get("to")!))
-      : endOfDay(new Date());
-
-    const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysDiff > MAX_REPORT_DAYS) {
-      fromDate = subDays(toDate, MAX_REPORT_DAYS);
-    }
+    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+      defaultDays: 30,
+      maxDays: MAX_REPORT_DAYS,
+    });
 
     // Get bookings in date range (simplified query to avoid nested join issues)
     let bookingsQuery = supabaseAdmin
@@ -70,8 +65,7 @@ export async function GET(request: NextRequest) {
     }
     
     const { data: bookings, error: bookingsError } = await bookingsQuery
-      .order("scheduled_at", { ascending: false })
-      .limit(MAX_BOOKINGS_FOR_REPORT);
+      .order("scheduled_at", { ascending: false });
 
     if (bookingsError) {
       console.error("Error fetching bookings:", bookingsError);
@@ -110,7 +104,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: reportContext.timezone };
 
     // Get provider revenue — same net as main dashboard revenue cards
     const { totalRevenue, revenueByBooking, revenueByDate } = await getProviderRevenue(
@@ -170,7 +164,7 @@ export async function GET(request: NextRequest) {
       .map(([date, revenue]) => {
         // Count bookings for this date
         const bookingsForDate = bookings?.filter(
-          (b) => new Date(b.scheduled_at).toISOString().split("T")[0] === date
+          (b) => reportDateKey(new Date(b.scheduled_at), reportContext.timezone) === date
         ).length || 0;
         return { date, revenue, bookings: bookingsForDate };
       })

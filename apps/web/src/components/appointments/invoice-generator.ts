@@ -123,10 +123,10 @@ export function generateInvoiceHTMLFromData(
               <span>${formatCurrency(invoiceData.tax_amount)}</span>
             </div>
           ` : ''}
-          ${(invoiceData as any).service_fee_amount > 0 ? `
+          ${((invoiceData as any).platform_fee_amount ?? (invoiceData as any).service_fee_amount) > 0 ? `
             <div class="summary-row">
-              <span>Service Fee${(invoiceData as any).service_fee_percentage > 0 ? ` (${((invoiceData as any).service_fee_percentage * 100).toFixed(1)}%)` : ''}:</span>
-              <span>${formatCurrency((invoiceData as any).service_fee_amount)}</span>
+              <span>Platform Fee${((invoiceData as any).platform_fee_percentage ?? (invoiceData as any).service_fee_percentage) > 0 ? ` (${(((invoiceData as any).platform_fee_percentage ?? (invoiceData as any).service_fee_percentage) * 100).toFixed(1)}%)` : ''}:</span>
+              <span>${formatCurrency((invoiceData as any).platform_fee_amount ?? (invoiceData as any).service_fee_amount)}</span>
             </div>
           ` : ''}
           ${invoiceData.tip_amount > 0 ? `

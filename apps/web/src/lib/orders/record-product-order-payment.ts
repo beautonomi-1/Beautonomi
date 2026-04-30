@@ -4,6 +4,7 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { subtractMoney } from "@beautonomi/utils";
 import { clearCustomerCartForProvider } from "@/lib/orders/product-order-lifecycle";
 import { ensurePackageEntitlementsFromProductOrder } from "@/lib/orders/ensure-package-entitlements-from-product-order";
+import { bookShippingForOrder } from "@/lib/orders/shipping";
 import { logger } from "@/lib/utils/logger";
 
 type RecordProductOrderPaymentInput = {
@@ -79,7 +80,7 @@ async function recordProductOrderPaymentInner(
     .select("id")
     .eq("provider_id", (order as any).provider_id ?? null)
     .eq("transaction_type", "provider_earnings")
-    .ilike("description", `%${orderReferenceForLedger}%`);
+    .eq("product_order_id", productOrderId);
 
   // If the order was already marked paid and both the gateway audit row and
   // platform-held provider ledger are present, this is an idempotent retry.
@@ -140,6 +141,15 @@ async function recordProductOrderPaymentInner(
       e,
       { productOrderId },
     );
+  }
+
+  try {
+    const shippingResult = await bookShippingForOrder(supabase, productOrderId);
+    if (!shippingResult.ok) {
+      logger.error("recordProductOrderPayment.bookShipping.failed", shippingResult.error, { productOrderId });
+    }
+  } catch (e) {
+    logger.error("recordProductOrderPayment.bookShipping.unhandled", e, { productOrderId });
   }
 
   // Provider-collected product/COD/POS money is tracked on product_orders and

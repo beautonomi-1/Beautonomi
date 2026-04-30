@@ -122,7 +122,7 @@ Work through each item in order. Mark `[x]` when complete.
 ### Content
 - [ ] At least 5 active providers onboarded and verified
 - [ ] Global service categories seeded
-- [ ] Platform settings configured in admin (payout %, service fee, etc.)
+- [ ] Platform settings configured in admin (payout %, Platform Fee, etc.)
 
 ---
 

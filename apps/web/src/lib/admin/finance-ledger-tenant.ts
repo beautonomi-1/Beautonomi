@@ -5,6 +5,7 @@ export type FinanceLedgerRow = {
   id: string;
   transaction_type: string;
   booking_id?: string | null;
+  product_order_id?: string | null;
   provider_id?: string | null;
   amount?: number | null;
   fees?: number | null;
@@ -14,12 +15,27 @@ export type FinanceLedgerRow = {
 };
 
 const LEDGER_SELECT =
-  "id, booking_id, provider_id, transaction_type, amount, fees, commission, net, created_at";
+  "id, booking_id, product_order_id, provider_id, transaction_type, amount, fees, commission, net, created_at";
 
 export type FetchFinanceLedgerRange = {
   start?: string | null;
   end?: string | null;
 };
+
+export function normalizeAdminLedgerRange(range: FetchFinanceLedgerRange): FetchFinanceLedgerRange {
+  const normalizeStart = (value?: string | null) => {
+    if (!value) return value;
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00.000Z` : value;
+  };
+  const normalizeEnd = (value?: string | null) => {
+    if (!value) return value;
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value;
+  };
+  return {
+    start: normalizeStart(range.start),
+    end: normalizeEnd(range.end),
+  };
+}
 
 export type FetchFinanceLedgerOptions = {
   /** When set (and not `"all"`), filter both ledger queries to this transaction_type. */
@@ -74,6 +90,20 @@ const EXPORT_SELECT_PROVIDER =
   "*, providers!inner(tenant_id), booking:bookings(id, booking_number, customer_id, provider_id, tenant_id)";
 const EXPORT_SELECT_BOOKING =
   "*, bookings!inner(id, booking_number, customer_id, provider_id, tenant_id)";
+const LEDGER_PAGE_SIZE = 1000;
+
+async function fetchAllPages<T>(query: any): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += LEDGER_PAGE_SIZE) {
+    const to = from + LEDGER_PAGE_SIZE - 1;
+    const { data, error } = await query.range(from, to);
+    if (error) throw error;
+    const page = (data || []) as T[];
+    rows.push(...page);
+    if (page.length < LEDGER_PAGE_SIZE) break;
+  }
+  return rows;
+}
 
 export type FinanceExportRow = Record<string, unknown> & {
   id: string;
@@ -160,6 +190,7 @@ export async function fetchFinanceLedgerExportRowsForTenant(
   range: FetchFinanceLedgerRange,
   options?: FinanceLedgerMergedQueryOptions | null
 ): Promise<FinanceExportRow[]> {
+  const normalizedRange = normalizeAdminLedgerRange(range);
   let q1 = supabase
     .from("finance_transactions")
     .select(EXPORT_SELECT_PROVIDER)
@@ -173,21 +204,22 @@ export async function fetchFinanceLedgerExportRowsForTenant(
 
   [q1, q2] = applyMergedLedgerFilters(q1, q2, options);
 
-  if (range.start) {
-    q1 = q1.gte("created_at", range.start);
-    q2 = q2.gte("created_at", range.start);
+  if (normalizedRange.start) {
+    q1 = q1.gte("created_at", normalizedRange.start);
+    q2 = q2.gte("created_at", normalizedRange.start);
   }
-  if (range.end) {
-    q1 = q1.lte("created_at", range.end);
-    q2 = q2.lte("created_at", range.end);
+  if (normalizedRange.end) {
+    q1 = q1.lte("created_at", normalizedRange.end);
+    q2 = q2.lte("created_at", normalizedRange.end);
   }
 
-  const [r1, r2] = await Promise.all([q1, q2]);
-  if (r1.error) throw r1.error;
-  if (r2.error) throw r2.error;
+  const [providerRows, bookingRows] = await Promise.all([
+    fetchAllPages<Record<string, unknown>>(q1),
+    fetchAllPages<Record<string, unknown>>(q2),
+  ]);
 
-  const a = (r1.data || []).map((row) => normalizeFinanceExportRow(row as Record<string, unknown>));
-  const b = (r2.data || []).map((row) => normalizeFinanceExportRow(row as Record<string, unknown>));
+  const a = providerRows.map((row) => normalizeFinanceExportRow(row));
+  const b = bookingRows.map((row) => normalizeFinanceExportRow(row));
   const merged = mergeLedgerRowsByIdPreferProvider(a, b);
   merged.sort((x, y) => {
     const ax = x.created_at ? String(x.created_at) : "";
@@ -209,6 +241,7 @@ export async function fetchMergedFinanceLedgerSliceForTenant(
   sortBy: "created_at" | "amount" = "created_at",
   amountDesc = false
 ): Promise<FinanceExportRow[]> {
+  const normalizedRange = normalizeAdminLedgerRange(range);
   const perBranchCap = Math.min(200, Math.max(take * 4, take));
   let q1 = supabase
     .from("finance_transactions")
@@ -223,13 +256,13 @@ export async function fetchMergedFinanceLedgerSliceForTenant(
 
   [q1, q2] = applyMergedLedgerFilters(q1, q2, options);
 
-  if (range.start) {
-    q1 = q1.gte("created_at", range.start);
-    q2 = q2.gte("created_at", range.start);
+  if (normalizedRange.start) {
+    q1 = q1.gte("created_at", normalizedRange.start);
+    q2 = q2.gte("created_at", normalizedRange.start);
   }
-  if (range.end) {
-    q1 = q1.lte("created_at", range.end);
-    q2 = q2.lte("created_at", range.end);
+  if (normalizedRange.end) {
+    q1 = q1.lte("created_at", normalizedRange.end);
+    q2 = q2.lte("created_at", normalizedRange.end);
   }
 
   q1 = q1.order(sortBy, { ascending: sortBy === "amount" ? !amountDesc : false }).limit(perBranchCap);
@@ -265,6 +298,7 @@ export async function fetchFinanceLedgerRowsForTenant(
   range: FetchFinanceLedgerRange,
   options?: FetchFinanceLedgerOptions
 ): Promise<FinanceLedgerRow[]> {
+  const normalizedRange = normalizeAdminLedgerRange(range);
   let q1 = supabase
     .from("finance_transactions")
     .select(`${LEDGER_SELECT}, providers!inner(tenant_id)`)
@@ -296,23 +330,24 @@ export async function fetchFinanceLedgerRowsForTenant(
     q1 = q1.in("transaction_type", tts);
     q2 = q2.in("transaction_type", tts);
   }
-  if (range.start) {
-    q1 = q1.gte("created_at", range.start);
-    q2 = q2.gte("created_at", range.start);
+  if (normalizedRange.start) {
+    q1 = q1.gte("created_at", normalizedRange.start);
+    q2 = q2.gte("created_at", normalizedRange.start);
   }
-  if (range.end) {
-    q1 = q1.lte("created_at", range.end);
-    q2 = q2.lte("created_at", range.end);
+  if (normalizedRange.end) {
+    q1 = q1.lte("created_at", normalizedRange.end);
+    q2 = q2.lte("created_at", normalizedRange.end);
   }
 
-  const [r1, r2] = await Promise.all([q1, q2]);
-  if (r1.error) throw r1.error;
-  if (r2.error) throw r2.error;
+  const [providerRows, bookingRows] = await Promise.all([
+    fetchAllPages<FinanceLedgerRow & { providers?: unknown; bookings?: unknown }>(q1),
+    fetchAllPages<FinanceLedgerRow & { providers?: unknown; bookings?: unknown }>(q2),
+  ]);
 
-  const rows1 = (r1.data || []).map((row) =>
+  const rows1 = providerRows.map((row) =>
     stripLedgerEmbeds(row as FinanceLedgerRow & { providers?: unknown; bookings?: unknown })
   );
-  const rows2 = (r2.data || []).map((row) =>
+  const rows2 = bookingRows.map((row) =>
     stripLedgerEmbeds(row as FinanceLedgerRow & { providers?: unknown; bookings?: unknown })
   );
   return mergeLedgerRowsByIdPreferProvider(rows1, rows2);

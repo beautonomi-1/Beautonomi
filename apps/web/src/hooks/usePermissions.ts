@@ -149,11 +149,10 @@ export function usePermissions(): UsePermissionsResult {
         setPermissions(cached.permissions);
         setIsOwner(cached.isOwner);
         setIsLoading(false);
-        return;
       }
 
       try {
-        setIsLoading(true);
+        setIsLoading(!cached);
         const requestKey = user.id;
         let pending = pendingPermissionsRequests.get(requestKey);
         if (!pending) {

@@ -71,7 +71,6 @@ export async function POST(request: NextRequest) {
       ["email"],
       {
         ...(appType ? { appType } : {}),
-        supabaseClient: supabase,
         tenantId,
       }
     );

@@ -1,13 +1,29 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { PROVIDER_LEDGER_VISIBLE_TYPES } from "@/lib/provider/provider-ledger-transaction-view";
+import { getProviderPrimaryReportLocationId, productOrderReportLocationId } from "@/lib/reports/provider-report-utils";
+
+const LEDGER_PAGE_SIZE = 1000;
+
+async function fetchAllLedgerPages(query: any): Promise<any[]> {
+  const rows: any[] = [];
+  for (let from = 0; ; from += LEDGER_PAGE_SIZE) {
+    const { data, error } = await query.range(from, from + LEDGER_PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < LEDGER_PAGE_SIZE) break;
+  }
+  return rows;
+}
 
 /**
  * GET /api/provider/finance
@@ -16,7 +32,11 @@ import { PROVIDER_LEDGER_VISIBLE_TYPES } from "@/lib/provider/provider-ledger-tr
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requireAnyPermission(["view_sales", "view_reports", "process_payments"], request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
@@ -108,18 +128,14 @@ export async function GET(request: NextRequest) {
       .lte("created_at", nowIso)
       .order("created_at", { ascending: false });
 
-    const { data: ledgerRows, error: ledgerError } = await financeQuery;
-
-    if (ledgerError) throw ledgerError;
-
-    let rows = ledgerRows || [];
+    let rows = await fetchAllLedgerPages(financeQuery);
     
     // Fetch booking/order information for transactions that have source records.
     // This is needed to check booking_source/payment_provider and to apply location filters.
     const bookingIds = [...new Set(rows.filter((r: any) => r.booking_id).map((r: any) => r.booking_id))];
     let bookingMap: Record<string, { booking_source: string | null; location_id: string | null; payment_provider: string | null }> = {};
     const productOrderIds = [...new Set(rows.filter((r: any) => r.product_order_id).map((r: any) => r.product_order_id))];
-    let productOrderMap: Record<string, { collection_location_id: string | null; order_source: string | null; payment_method: string | null }> = {};
+    let productOrderMap: Record<string, { report_location_id: string | null; collection_location_id: string | null; fulfillment_type: string | null; order_source: string | null; payment_method: string | null }> = {};
     
     if (bookingIds.length > 0) {
       // Fetch bookings
@@ -158,13 +174,16 @@ export async function GET(request: NextRequest) {
     if (productOrderIds.length > 0) {
       const { data: productOrders } = await db
         .from("product_orders")
-        .select("id, collection_location_id, order_source, payment_method")
+        .select("id, collection_location_id, fulfillment_type, order_source, payment_method")
         .in("id", productOrderIds);
+      const primaryLocationId = await getProviderPrimaryReportLocationId(db, providerId);
 
       if (productOrders) {
         productOrderMap = productOrders.reduce((acc: any, order: any) => {
           acc[order.id] = {
+            report_location_id: productOrderReportLocationId(order, primaryLocationId),
             collection_location_id: order.collection_location_id || null,
+            fulfillment_type: order.fulfillment_type || null,
             order_source: order.order_source || null,
             payment_method: order.payment_method || null,
           };
@@ -180,7 +199,7 @@ export async function GET(request: NextRequest) {
       location_id: r.booking_id ? (bookingMap[r.booking_id]?.location_id || null) : null,
       payment_provider: r.booking_id ? (bookingMap[r.booking_id]?.payment_provider || null) : null,
       product_order_location_id: r.product_order_id
-        ? (productOrderMap[r.product_order_id]?.collection_location_id || null)
+        ? (productOrderMap[r.product_order_id]?.report_location_id || null)
         : null,
       product_order_source: r.product_order_id
         ? (productOrderMap[r.product_order_id]?.order_source || null)

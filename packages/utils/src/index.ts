@@ -105,6 +105,12 @@ export {
   type BookingPricingInput,
   type BookingPricingResult,
 } from "./booking/calculateBookingPricing";
+export {
+  normalizePlatformFeeFields,
+  type CanonicalPlatformFeeFields,
+  type LegacyPlatformFeeFields,
+  type PlatformFeePaidBy,
+} from "./platformFee";
 export { mapToBookingStatusEnum } from "./booking/mapToBookingStatusEnum";
 export {
   getHoldTimeRemaining,

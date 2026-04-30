@@ -214,7 +214,7 @@ export default function AdminFinance() {
                     <div>
                       <h4 className="font-medium text-xs mb-1">Service Revenue Flow:</h4>
                       <div className="text-xs text-gray-600 space-y-1">
-                        <p><strong>1. Gross Amount:</strong> Total amount customer pays (services + addons + travel fees + tips)</p>
+                        <p><strong>1. Settled service GMV:</strong> Ledger-backed service, add-on, travel, tip, tax, wallet, gift-card, and platform-fee activity.</p>
                         <p><strong>2. Gateway Fees:</strong> Payment processing fees deducted (e.g., 1.5% + R2.50 per transaction)</p>
                         <p><strong>3. Net Collected:</strong> Gross - Gateway Fees = What actually arrives in your account</p>
                       </div>
@@ -234,8 +234,8 @@ export default function AdminFinance() {
                     <div>
                       <h4 className="font-medium text-xs mb-1">Provider Earnings:</h4>
                       <div className="text-xs text-gray-600 space-y-1">
-                        <p><strong>Provider Share:</strong> Remaining amount after platform commission</p>
-                        <p><strong>Formula:</strong> Net Collected - Platform Commission = Provider Earnings</p>
+                        <p><strong>Provider Share:</strong> Net provider_earnings ledger rows.</p>
+                        <p><strong>Provider net activity:</strong> Provider earnings + provider-retained fees, tips, and refund impact.</p>
                         <p className="text-gray-500 italic">Note: Gateway fees are deducted from platform revenue, not provider earnings</p>
                       </div>
                     </div>
@@ -349,12 +349,12 @@ export default function AdminFinance() {
             {summary && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
                 <SummaryCard
-                  title="Services Collected (Gross)"
+                  title="Settled Service GMV"
                   value={summary.service_collected_gross}
                   icon={<DollarSign className="w-5 h-5" />}
                   trend={summary.gmv_growth}
                   format="currency"
-                  infoTooltip="Total amount customers paid for services, addons, travel fees, and tips before any deductions. This is the gross transaction value (GMV)."
+                  infoTooltip="Ledger-backed service GMV from payment, wallet, gift-card, tax, tip, travel, platform-fee, and additional-charge rows. Use provider reports for scheduled gross booked value."
                 />
                 <SummaryCard
                   title="Commission (Gross)"
@@ -375,7 +375,7 @@ export default function AdminFinance() {
                   value={summary.provider_earnings}
                   icon={<DollarSign className="w-5 h-5" />}
                   format="currency"
-                  infoTooltip="Amount providers receive after platform commission is deducted. Formula: Net Collected - Platform Commission. Gateway fees do not affect provider earnings."
+                  infoTooltip="Net provider_earnings ledger rows. Provider net activity is shown in the Provider Revenue section after tips, provider-retained fees, and refunds."
                 />
               </div>
             )}
@@ -449,13 +449,13 @@ export default function AdminFinance() {
                   format="currency"
                 />
                 <SummaryCard
-                  title="Tips (Gross)"
+                  title="Tips Collected"
                   value={summary.tips_gross}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
                 />
                 <SummaryCard
-                  title="Taxes (Gross)"
+                  title="Taxes Collected"
                   value={summary.taxes_gross}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
@@ -493,10 +493,9 @@ export default function AdminFinance() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                     {[
                       { label: "Booking Commission", value: summary.revenue_streams.booking_commission, desc: "Net commission after gateway fees" },
-                      { label: "Platform Fees (Customer-Paid)", value: summary.revenue_streams.customer_paid_platform_fees ?? summary.revenue_streams.service_fees, desc: "Checkout platform fees paid by customers" },
+                      { label: "Platform Fees (Customer-Paid)", value: summary.revenue_streams.customer_paid_platform_fees ?? summary.revenue_streams.service_fees, desc: "Checkout platform fees paid by customers and retained by the platform" },
                       { label: "Subscriptions", value: summary.revenue_streams.subscriptions, desc: "Provider subscription payments" },
                       { label: "Ads Revenue", value: summary.revenue_streams.ads, desc: "Ad campaign prepayments" },
-                      { label: "Service Fees (Legacy Label)", value: summary.revenue_streams.service_fees, desc: "Same as customer-paid platform fees" },
                       { label: "Ecommerce Fees (in commission)", value: summary.revenue_streams.ecommerce_fees_detail ?? 0, desc: "Included in booking commission total" },
                       { label: "Wallet Top-ups", value: summary.revenue_streams.wallet_topups, desc: "Wallet funding by customers" },
                       
@@ -521,7 +520,7 @@ export default function AdminFinance() {
               <div className="bg-white border rounded-lg overflow-hidden shadow-sm mb-6 sm:mb-8">
                 <div className="px-3 sm:px-6 py-3 sm:py-4 border-b">
                   <h2 className="text-base sm:text-lg font-semibold">Provider Revenue via Platform</h2>
-                  <p className="text-xs text-gray-500 mt-1">How much providers are earning through bookings, e-commerce, tips, and other services.</p>
+                  <p className="text-xs text-gray-500 mt-1">Provider ledger activity aligned with provider reports: earnings are payoutable share; net activity includes tips, retained fees, and refunds.</p>
                 </div>
                 <div className="p-3 sm:p-6">
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
@@ -531,7 +530,7 @@ export default function AdminFinance() {
                       { label: "Tips", value: summary.provider_revenue?.tips ?? summary.tips_gross, desc: "Customer tips (100% to provider)" },
                       { label: "Taxes Collected", value: summary.provider_revenue?.taxes_collected ?? summary.taxes_gross, desc: "Tax pass-through (provider remits)" },
                       { label: "Refunds", value: summary.provider_revenue?.refunds ?? summary.refunds_gross, desc: "Refunds deducted from provider balance" },
-                      { label: "Net After Refunds", value: summary.provider_revenue?.net_after_refunds ?? (summary.provider_earnings - Math.abs(summary.refunds_gross)), desc: "Earnings minus refunds" },
+                      { label: "Provider Net Activity", value: summary.provider_revenue?.net_after_refunds ?? (summary.provider_earnings - Math.abs(summary.refunds_gross)), desc: "Earnings + tips/retained fees minus provider-side refunds" },
                     ].map((item) => (
                       <div key={item.label} className="bg-gray-50 rounded-lg p-3">
                         <p className="text-xs text-gray-500">{item.label}</p>

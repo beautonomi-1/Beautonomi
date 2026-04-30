@@ -23,6 +23,8 @@ export const PROVIDER_LEDGER_VISIBLE_TYPES = new Set<string>([
   "additional_charge",
   "additional_charge_payment",
   "cancellation_fee",
+  "provider_subscription_payment",
+  "provider_ads_payment",
 ]);
 
 export type ProviderTxnUiType =
@@ -150,18 +152,19 @@ export function mapFinanceLedgerRowToProviderUi(row: {
     const amt = Math.abs(net) > 0 ? Math.abs(net) : Math.abs(gross);
     return {
       ...base,
-      type: "fee",
+      type: "earning",
       amount: amt,
-      sign: -1,
-      description: typeof row.description === "string" ? row.description : "Travel / mobility fee",
+      sign: 1,
+      description: typeof row.description === "string" ? row.description : "Travel fee (provider payoutable)",
     };
   }
 
   if (tt === "tax") {
+    const amt = Math.abs(net) > 0 ? Math.abs(net) : Math.abs(gross);
     return {
       ...base,
       type: "fee",
-      amount: Math.abs(net),
+      amount: amt,
       sign: -1,
       description: typeof row.description === "string" ? row.description : "Tax",
     };
@@ -204,6 +207,19 @@ export function mapFinanceLedgerRowToProviderUi(row: {
       amount: Math.abs(net),
       sign: net >= 0 ? 1 : -1,
       description: typeof row.description === "string" ? row.description : "Additional charge",
+    };
+  }
+
+  if (tt === "provider_subscription_payment" || tt === "provider_ads_payment") {
+    return {
+      ...base,
+      type: "fee",
+      amount: Math.abs(net || gross),
+      sign: -1,
+      description:
+        tt === "provider_subscription_payment"
+          ? "Provider subscription charge"
+          : "Ads or boost spend",
     };
   }
 

@@ -17,6 +17,7 @@ import type {
 } from "@/hooks/useCalendarPreferences";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
 
 /* ================================================================== */
 /*  Props                                                              */
@@ -147,6 +148,8 @@ function NumberStepper({
   min,
   max,
   suffix,
+  decreaseA11y,
+  increaseA11y,
 }: {
   label: string;
   description?: string;
@@ -155,6 +158,8 @@ function NumberStepper({
   min: number;
   max: number;
   suffix?: string;
+  decreaseA11y?: string;
+  increaseA11y?: string;
 }) {
   return (
     <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 py-3")}>
@@ -169,7 +174,7 @@ function NumberStepper({
           style={twStyle("px-3 py-2")}
           onPress={() => onChange(Math.max(min, value - 1))}
           disabled={value <= min}
-          accessibilityLabel={`Decrease ${label}`}
+          accessibilityLabel={decreaseA11y ?? `Decrease ${label}`}
           accessibilityRole="button"
         >
           <Ionicons
@@ -186,7 +191,7 @@ function NumberStepper({
           style={twStyle("px-3 py-2")}
           onPress={() => onChange(Math.min(max, value + 1))}
           disabled={value >= max}
-          accessibilityLabel={`Increase ${label}`}
+          accessibilityLabel={increaseA11y ?? `Increase ${label}`}
           accessibilityRole="button"
         >
           <Ionicons
@@ -211,6 +216,8 @@ export function CalendarPreferencesModal({
   onUpdate,
   onReset,
 }: Props) {
+  const { t } = useTranslation();
+  const p = "provider.calendarScreen.preferencesModal" as const;
   const { screenPadding } = useResponsive();
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -236,17 +243,17 @@ export function CalendarPreferencesModal({
           <View style={twStyle("flex-row items-center justify-between border-b border-gray-100 px-5 pb-3")}>
             <View>
               <Text style={twStyle("text-lg font-bold text-gray-900")}>
-                Calendar Preferences
+                {t(`${p}.title`)}
               </Text>
               <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                Customize how your calendar looks and behaves
+                {t(`${p}.subtitle`)}
               </Text>
             </View>
             <TouchableOpacity
               onPress={onClose}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Close preferences"
+              accessibilityLabel={t(`${p}.closeA11y`)}
             >
               <Ionicons name="close" size={22} color="#6b7280" />
             </TouchableOpacity>
@@ -260,83 +267,83 @@ export function CalendarPreferencesModal({
             keyboardShouldPersistTaps="handled"
           >
             {/* ──────────── DISPLAY ──────────── */}
-            <SectionHeader title="Display" icon="eye-outline" />
+            <SectionHeader title={t(`${p}.displaySection`)} icon="eye-outline" />
 
             <ToggleRow
-              label="High Contrast"
-              description="Increase contrast for better visibility"
+              label={t(`${p}.highContrast`)}
+              description={t(`${p}.highContrastDesc`)}
               value={preferences.highContrast}
               onToggle={(v) => onUpdate("highContrast", v)}
             />
 
             <ToggleRow
-              label="Show Canceled"
-              description="Display canceled appointments on the grid"
+              label={t(`${p}.showCanceled`)}
+              description={t(`${p}.showCanceledDesc`)}
               value={preferences.showCanceled}
               onToggle={(v) => onUpdate("showCanceled", v)}
             />
 
             <ToggleRow
-              label="Compact Mode"
-              description="Reduce appointment block height for a denser view"
+              label={t(`${p}.compactMode`)}
+              description={t(`${p}.compactModeDesc`)}
               value={preferences.compactMode}
               onToggle={(v) => onUpdate("compactMode", v)}
             />
 
             <ToggleRow
-              label="Appointment Icons"
-              description="Show icons for new client, notes, etc."
+              label={t(`${p}.appointmentIcons`)}
+              description={t(`${p}.appointmentIconsDesc`)}
               value={preferences.showAppointmentIcons}
               onToggle={(v) => onUpdate("showAppointmentIcons", v)}
             />
 
             <ToggleRow
-              label="Show Prices"
-              description="Display service prices on appointment blocks"
+              label={t(`${p}.showPrices`)}
+              description={t(`${p}.showPricesDesc`)}
               value={preferences.showPrices}
               onToggle={(v) => onUpdate("showPrices", v)}
             />
 
             <ToggleRow
-              label="Show Client Phone"
-              description="Display client phone number on appointment details"
+              label={t(`${p}.showClientPhone`)}
+              description={t(`${p}.showClientPhoneDesc`)}
               value={preferences.showClientPhone}
               onToggle={(v) => onUpdate("showClientPhone", v)}
             />
 
             {/* ──────────── COLORS ──────────── */}
-            <SectionHeader title="Colors" icon="color-palette-outline" />
+            <SectionHeader title={t(`${p}.colorsSection`)} icon="color-palette-outline" />
 
             <PillSelector<ColorByMode>
-              label="Color By"
-              description="How appointment blocks are colored"
+              label={t(`${p}.colorBy`)}
+              description={t(`${p}.colorByDesc`)}
               options={[
-                { label: "Status", value: "status" },
-                { label: "Service", value: "service" },
-                { label: "Team Member", value: "team_member" },
+                { label: t(`${p}.colorByStatus`), value: "status" },
+                { label: t(`${p}.colorByService`), value: "service" },
+                { label: t(`${p}.colorByTeam`), value: "team_member" },
               ]}
               value={preferences.colorBy}
               onChange={(v) => onUpdate("colorBy", v)}
             />
 
             {/* ──────────── TIME GRID ──────────── */}
-            <SectionHeader title="Time Grid" icon="time-outline" />
+            <SectionHeader title={t(`${p}.timeGridSection`)} icon="time-outline" />
 
             <PillSelector<TimeIncrement>
-              label="Time Increment"
-              description="Grid slot size in minutes"
+              label={t(`${p}.timeIncrement`)}
+              description={t(`${p}.timeIncrementDesc`)}
               options={[
-                { label: "5 min", value: 5 },
-                { label: "10 min", value: 10 },
-                { label: "15 min", value: 15 },
+                { label: t(`${p}.min5`), value: 5 },
+                { label: t(`${p}.min10`), value: 10 },
+                { label: t(`${p}.min15`), value: 15 },
               ]}
               value={preferences.timeIncrementMinutes}
               onChange={(v) => onUpdate("timeIncrementMinutes", v)}
             />
 
             <ToggleRow
-              label="Scroll to Now"
-              description="Auto-scroll to current time when opening calendar"
+              label={t(`${p}.scrollToNow`)}
+              description={t(`${p}.scrollToNowDesc`)}
               value={preferences.scrollToNow}
               onToggle={(v) => onUpdate("scrollToNow", v)}
             />
@@ -348,14 +355,14 @@ export function CalendarPreferencesModal({
               accessibilityRole="button"
               accessibilityLabel={
                 showAdvanced
-                  ? "Hide advanced settings"
-                  : "Show advanced settings"
+                  ? t(`${p}.advancedToggleHide`)
+                  : t(`${p}.advancedToggleShow`)
               }
             >
               <View style={twStyle("flex-row items-center")}>
                 <Ionicons name="settings-outline" size={16} color="#6b7280" />
                 <Text style={twStyle("ml-2 text-sm font-semibold text-gray-700")}>
-                  Advanced Settings
+                  {t(`${p}.advancedHeading`)}
                 </Text>
               </View>
               <Ionicons
@@ -368,38 +375,42 @@ export function CalendarPreferencesModal({
             {showAdvanced && (
               <View style={twStyle("mt-2")}>
                 <NumberStepper
-                  label="Workday Start"
-                  description="Hour the calendar grid begins"
+                  label={t(`${p}.workdayStart`)}
+                  description={t(`${p}.workdayStartDesc`)}
                   value={preferences.workdayStartHour}
                   onChange={(v) => onUpdate("workdayStartHour", v)}
                   min={0}
                   max={preferences.workdayEndHour - 1}
                   suffix=":00"
+                  decreaseA11y={t(`${p}.decreaseA11y`, { label: t(`${p}.workdayStart`) })}
+                  increaseA11y={t(`${p}.increaseA11y`, { label: t(`${p}.workdayStart`) })}
                 />
 
                 <NumberStepper
-                  label="Workday End"
-                  description="Hour the calendar grid ends"
+                  label={t(`${p}.workdayEnd`)}
+                  description={t(`${p}.workdayEndDesc`)}
                   value={preferences.workdayEndHour}
                   onChange={(v) => onUpdate("workdayEndHour", v)}
                   min={preferences.workdayStartHour + 1}
                   max={23}
                   suffix=":00"
+                  decreaseA11y={t(`${p}.decreaseA11y`, { label: t(`${p}.workdayEnd`) })}
+                  increaseA11y={t(`${p}.increaseA11y`, { label: t(`${p}.workdayEnd`) })}
                 />
 
                 <ToggleRow
-                  label="Processing & Buffer"
-                  description="Show processing and buffer time segments on blocks"
+                  label={t(`${p}.processingBuffer`)}
+                  description={t(`${p}.processingBufferDesc`)}
                   value={preferences.showProcessingAndBuffer}
                   onToggle={(v) => onUpdate("showProcessingAndBuffer", v)}
                 />
 
                 <PillSelector<DefaultAppointmentStatus>
-                  label="Default New Status"
-                  description="Status assigned to new appointments"
+                  label={t(`${p}.defaultNewStatus`)}
+                  description={t(`${p}.defaultNewStatusDesc`)}
                   options={[
-                    { label: "Confirmed", value: "confirmed" },
-                    { label: "Unconfirmed", value: "unconfirmed" },
+                    { label: t(`${p}.statusConfirmed`), value: "confirmed" },
+                    { label: t(`${p}.statusUnconfirmed`), value: "unconfirmed" },
                   ]}
                   value={preferences.defaultNewAppointmentStatus}
                   onChange={(v) =>
@@ -408,8 +419,8 @@ export function CalendarPreferencesModal({
                 />
 
                 <ToggleRow
-                  label="Processing Frees Provider"
-                  description="Provider can accept other bookings during processing time"
+                  label={t(`${p}.processingFreesProvider`)}
+                  description={t(`${p}.processingFreesProviderDesc`)}
                   value={preferences.processingFreesProvider}
                   onToggle={(v) => onUpdate("processingFreesProvider", v)}
                 />
@@ -421,10 +432,10 @@ export function CalendarPreferencesModal({
               style={twStyle("mt-6 items-center rounded-xl border border-red-200 bg-red-50 py-3")}
               onPress={onReset}
               accessibilityRole="button"
-              accessibilityLabel="Reset all preferences to defaults"
+              accessibilityLabel={t(`${p}.resetA11y`)}
             >
               <Text style={twStyle("text-sm font-semibold text-red-600")}>
-                Reset to Defaults
+                {t(`${p}.reset`)}
               </Text>
             </TouchableOpacity>
           </ScrollView>

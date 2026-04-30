@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { ReportFilters, DateRange } from "../../components/ReportFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, DollarSign, TrendingUp, Percent, Calendar } from "lucide-react";
+import { Download, DollarSign, TrendingUp, Calendar } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { subDays, format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
@@ -19,6 +19,10 @@ interface PayoutsData {
   totalPayouts: number;
   totalPayoutAmount: number;
   totalGrossAmount: number;
+  totalBookedAmount?: number;
+  totalBookedNetOfRefunds?: number;
+  bookedAmount?: number;
+  bookedNetOfRefunds?: number;
   totalPlatformFees: number;
   totalRefunded: number;
   averagePayout: number;
@@ -30,13 +34,23 @@ interface PayoutsData {
   }>;
   recentPayouts: Array<{
     paymentId: string;
+    bookingId?: string;
+    productOrderId?: string;
     grossAmount: number;
+    bookedAmount?: number;
+    bookedNetOfRefunds?: number;
     refundedAmount: number;
     netAmount: number;
     platformFee: number;
     payoutAmount: number;
     createdAt: string;
   }>;
+  reportBasis?: {
+    bookedAmount?: string;
+    bookedNetOfRefunds?: string;
+    payoutAmount?: string;
+    platformFee?: string;
+  };
 }
 
 export default function PayoutsReport() {
@@ -126,6 +140,9 @@ export default function PayoutsReport() {
     );
   }
 
+  const totalBookedAmount = data.totalBookedAmount ?? data.bookedAmount ?? data.totalGrossAmount;
+  const totalBookedNetOfRefunds = data.totalBookedNetOfRefunds ?? data.bookedNetOfRefunds ?? data.totalGrossAmount - data.totalRefunded;
+
   return (
     <SettingsDetailLayout
       breadcrumbs={[
@@ -139,7 +156,7 @@ export default function PayoutsReport() {
       <div className="space-y-6">
         <PageHeader
           title="Payouts"
-          subtitle="Track payouts and platform fees"
+          subtitle="Track booked value, payoutable earnings, payouts, and platform fees"
           actions={
             <Button variant="outline" onClick={handleExport}>
               <Download className="w-4 h-4 mr-2" />
@@ -184,16 +201,16 @@ export default function PayoutsReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Platform Fees</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">Booked net of refunds</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  {fmt(data.totalPlatformFees)}
+                  {fmt(totalBookedNetOfRefunds)}
                 </p>
-                <Percent className="w-5 h-5 text-orange-600" />
+                <TrendingUp className="w-5 h-5 text-purple-600" />
               </div>
-              <p className="text-xs text-gray-500 mt-1">{data.platformFeeRate}% fee rate</p>
+              <p className="text-xs text-gray-500 mt-1">Booked value after refunds</p>
             </CardContent>
           </Card>
 
@@ -211,6 +228,40 @@ export default function PayoutsReport() {
             </CardContent>
           </Card>
         </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card className="border-gray-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-gray-600">Gross booked value</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-semibold text-gray-900">{fmt(totalBookedAmount)}</p>
+              <p className="text-xs text-gray-500 mt-1">Customer booking value before refunds</p>
+            </CardContent>
+          </Card>
+          <Card className="border-gray-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-gray-600">Platform fees</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-semibold text-gray-900">{fmt(data.totalPlatformFees)}</p>
+              <p className="text-xs text-gray-500 mt-1">{data.platformFeeRate}% fee rate</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {data.reportBasis ? (
+          <Card className="border-gray-200 bg-gray-50">
+            <CardContent className="pt-6">
+              <div className="space-y-2 text-xs text-gray-600">
+                {data.reportBasis.bookedAmount ? <p><strong>Booked amount:</strong> {data.reportBasis.bookedAmount}</p> : null}
+                {data.reportBasis.bookedNetOfRefunds ? <p><strong>Booked net of refunds:</strong> {data.reportBasis.bookedNetOfRefunds}</p> : null}
+                {data.reportBasis.payoutAmount ? <p><strong>Payout amount:</strong> {data.reportBasis.payoutAmount}</p> : null}
+                {data.reportBasis.platformFee ? <p><strong>Platform fee:</strong> {data.reportBasis.platformFee}</p> : null}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Monthly Breakdown */}
         <Card className="border-gray-200">
@@ -257,7 +308,7 @@ export default function PayoutsReport() {
               <div className="space-y-3">
                 {data.recentPayouts.map((payout) => (
                   <div
-                    key={payout.paymentId}
+                    key={payout.paymentId || payout.bookingId || payout.productOrderId}
                     className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
                   >
                     <div>
@@ -265,7 +316,7 @@ export default function PayoutsReport() {
                         {format(new Date(payout.createdAt), "MMM dd, yyyy 'at' h:mm a")}
                       </p>
                       <p className="text-sm text-gray-600">
-                        Gross: {fmt(payout.grossAmount)} • 
+                        Booked: {fmt(payout.bookedAmount ?? payout.grossAmount)} • 
                         Fee: {fmt(payout.platformFee)}
                       </p>
                     </div>

@@ -1,6 +1,6 @@
 /**
  * Push Notifications Provider – OneSignal
- * Fetches app_id from superadmin (GET /api/public/third-party-config?service=onesignal).
+ * Fetches app_id from superadmin (GET /api/public/third-party-config?service=onesignal&app=customer).
  * Fallback: EXPO_PUBLIC_ONESIGNAL_APP_ID from env.
  * Registers device with POST /api/me/devices (onesignal_player_id = OneSignal subscription ID).
  * Handles notification tap deep links via expo-router.
@@ -15,7 +15,7 @@ import { ONE_SIGNAL_APP_ID } from "@/config/public-env";
 import { api } from "@/lib/api-client";
 import { getOneSignalAppId } from "@/lib/third-party-config";
 import { trackNotificationOpened } from "@/lib/analytics";
-import { addBreadcrumb } from "@/lib/sentry";
+import { addBreadcrumb, captureError } from "@/lib/sentry";
 import { navigateFromNotification, type Notification } from "@/lib/notifications";
 
 /**
@@ -122,9 +122,14 @@ function usePushRegistration() {
         });
         if (!res.error) {
           registeredRef.current = true;
+        } else {
+          captureError(new Error(`Device registration rejected: ${res.error.message}`), {
+            scope: "push_notifications:device_register",
+            code: res.error.code,
+          });
         }
-      } catch {
-        // Silent fail – device registration is best-effort
+      } catch (err) {
+        captureError(err, { scope: "push_notifications:device_register" });
       }
     };
 
@@ -190,8 +195,10 @@ function usePushRegistration() {
           }, 3000);
           unsubscribe = () => clearTimeout(retry);
         }
-      } catch {
-        // OneSignal not available (e.g. Expo Go)
+      } catch (err) {
+        captureError(err instanceof Error ? err : new Error("OneSignal init failed"), {
+          scope: "push_notifications:onesignal_init",
+        });
       }
     };
 
@@ -223,9 +230,14 @@ function usePushRegistration() {
         });
         if (!res.error) {
           registeredRef.current = true;
+        } else {
+          captureError(new Error(`Device registration rejected: ${res.error.message}`), {
+            scope: "push_notifications:device_register",
+            code: res.error.code,
+          });
         }
-      } catch {
-        // OneSignal not available
+      } catch (err) {
+        captureError(err, { scope: "push_notifications:device_register" });
       }
     };
 

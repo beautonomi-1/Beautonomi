@@ -31,9 +31,11 @@ export async function getAvailablePayoutBalance(
   const holdDays = options?.holdDays ?? 0;
   const availableFrom = holdDays > 0 ? new Date(now.getTime() - holdDays * 24 * 60 * 60 * 1000).toISOString() : allTime;
 
-  // Include all platform-held provider revenue types:
+  // Include all platform-held provider-payoutable revenue types:
   // - provider_earnings: core service income
-  // - tip, travel_fee, service_fee: pass-through amounts held by platform
+  // - tip, travel_fee: pass-through amounts held by platform and owed to provider
+  // - service_fee: legacy booking name for platform fee, selected only so old rows are
+  //   explicitly excluded from payout calculations
   // - cancellation_fee: provider-retained income when a customer cancels late
   // - payout: completed payouts (subtracted)
   // - refund: refund clawbacks (negative amounts)
@@ -108,8 +110,13 @@ export async function getAvailablePayoutBalance(
       onlineEarnings += Number(row.net ?? row.amount ?? 0);
       continue;
     }
-    // Tips, travel fees, and service fees are platform-held pass-throughs owed to the provider.
-    if (row.transaction_type === "tip" || row.transaction_type === "travel_fee" || row.transaction_type === "service_fee") {
+    if (row.transaction_type === "service_fee") {
+      // Historical ledger rows used this name for customer-paid platform fees.
+      // They are platform revenue, not provider payoutable balance.
+      continue;
+    }
+    // Tips and travel fees are platform-held pass-throughs owed to the provider.
+    if (row.transaction_type === "tip" || row.transaction_type === "travel_fee") {
       if (excludeWalkInNotOnPlatform(row.booking_id)) continue;
       onlineEarnings += Number(row.net ?? row.amount ?? 0);
       continue;

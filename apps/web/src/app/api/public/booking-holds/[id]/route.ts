@@ -180,7 +180,7 @@ export async function GET(
       : 0;
     const taxInclusive = Boolean((providerRow as any)?.tax_inclusive ?? false);
 
-    // Resolve service fee config (same priority as validate-booking / platform-fees API)
+    // Resolve customer-paid Platform Fee config (same priority as validate-booking / platform-fees API)
     let serviceFeeConfig = {
       type: "fixed" as string,
       percentage: 0,

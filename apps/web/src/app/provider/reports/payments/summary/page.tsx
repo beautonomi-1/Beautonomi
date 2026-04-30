@@ -18,6 +18,12 @@ import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../ut
 interface PaymentSummaryData {
   totalPayments: number;
   totalAmount: number;
+  totalCollected?: number;
+  grossBookedValue?: number;
+  settledLedgerAmount?: number;
+  customerPaymentsByMethodTotal?: number;
+  providerEarnings?: number;
+  providerNetActivity?: number;
   successfulPayments: number;
   failedPayments: number;
   refundedAmount: number;
@@ -35,6 +41,13 @@ interface PaymentSummaryData {
   }>;
   averageTransactionValue: number;
   refundRate: number;
+  basis?: {
+    grossBookedValue?: string;
+    settledLedgerAmount?: string;
+    customerPaymentsByMethodTotal?: string;
+    providerEarnings?: string;
+    providerNetActivity?: string;
+  };
 }
 
 export default function PaymentSummaryReport() {
@@ -118,6 +131,11 @@ export default function PaymentSummaryReport() {
     );
   }
 
+  const grossBookedValue = data.grossBookedValue ?? data.totalAmount;
+  const settledLedgerAmount = data.settledLedgerAmount ?? data.totalCollected ?? 0;
+  const providerNetActivity = data.providerNetActivity ?? data.netAmount;
+  const providerEarnings = data.providerEarnings ?? 0;
+
   return (
     <SettingsDetailLayout
       breadcrumbs={[
@@ -132,7 +150,7 @@ export default function PaymentSummaryReport() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <PageHeader
             title="Payment Summary"
-            subtitle="Track payment transactions and methods"
+            subtitle="Booked value, settlement ledger activity, provider earnings, and payment methods"
           />
           <Button 
             variant="outline" 
@@ -176,14 +194,14 @@ export default function PaymentSummaryReport() {
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-600">
-                Total Amount
+                Gross booked value
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-green-600" />
                 <p className="text-2xl font-semibold text-gray-900">
-                  {fmt(data.totalAmount)}
+                  {fmt(grossBookedValue)}
                 </p>
               </div>
             </CardContent>
@@ -192,14 +210,14 @@ export default function PaymentSummaryReport() {
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-600">
-                Net Amount
+                Provider net activity
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-2">
                 <ArrowUpRight className="w-5 h-5 text-purple-600" />
                 <p className="text-2xl font-semibold text-gray-900">
-                  {fmt(data.netAmount)}
+                  {fmt(providerNetActivity)}
                 </p>
               </div>
             </CardContent>
@@ -223,7 +241,39 @@ export default function PaymentSummaryReport() {
         </div>
 
         {/* Secondary Metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-gray-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-gray-600">
+                Settled ledger amount
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-semibold text-gray-900">
+                {fmt(settledLedgerAmount)}
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                Payment, wallet, and gift-card ledger rows
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-gray-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-gray-600">
+                Provider earnings
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-semibold text-gray-900">
+                {fmt(providerEarnings)}
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                Net provider_earnings ledger rows
+              </p>
+            </CardContent>
+          </Card>
+
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-600">
@@ -243,7 +293,7 @@ export default function PaymentSummaryReport() {
                 {data.totalPayments > 0
                   ? ((data.successfulPayments / data.totalPayments) * 100).toFixed(1)
                   : 0}
-                % success rate
+                % booking-payment coverage
               </p>
             </CardContent>
           </Card>
@@ -287,6 +337,27 @@ export default function PaymentSummaryReport() {
             </CardContent>
           </Card>
         </div>
+
+        {data.basis ? (
+          <Card className="border-gray-200 bg-gray-50">
+            <CardContent className="pt-6">
+              <div className="space-y-2 text-xs text-gray-600">
+                {data.basis.grossBookedValue ? (
+                  <p><strong>Gross booked value:</strong> {data.basis.grossBookedValue}</p>
+                ) : null}
+                {data.basis.settledLedgerAmount ? (
+                  <p><strong>Settled ledger amount:</strong> {data.basis.settledLedgerAmount}</p>
+                ) : null}
+                {data.basis.customerPaymentsByMethodTotal ? (
+                  <p><strong>Payment methods:</strong> {data.basis.customerPaymentsByMethodTotal}</p>
+                ) : null}
+                {data.basis.providerNetActivity ? (
+                  <p><strong>Provider net activity:</strong> {data.basis.providerNetActivity}</p>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Payments by Method */}
         {data.paymentsByMethod && data.paymentsByMethod.length > 0 ? (

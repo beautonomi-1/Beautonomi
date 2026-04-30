@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getAllPermissions } from "@/lib/auth/permissions";
 import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
 import { checkStaffManagementFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { checkStaffLimit, formatLimitError } from "@/lib/subscriptions/limit-checker";
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
     
     const isFreelancer = providerData?.business_type === 'freelancer';
 
-    const rosterDetailLevel = await getTeamRosterDetailLevel(user.id);
+    const rosterDetailLevel = await getTeamRosterDetailLevel(user.id, request);
     
     // If location_id is provided, first get staff IDs assigned to that location
     let staffIds: string[] | null = null;
@@ -563,6 +564,7 @@ export async function POST(request: Request) {
         email: foundUser.email,
         phone: staffPhone,
         role: dbRole,
+        permissions: getAllPermissions(),
         is_active: true,
         mobile_ready: mobileReady || false,
         commission_rate: commission_rate != null ? Number(commission_rate) : null,

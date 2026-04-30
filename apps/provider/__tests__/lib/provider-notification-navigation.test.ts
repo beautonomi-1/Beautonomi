@@ -34,4 +34,31 @@ describe("navigateFromProviderNotification", () => {
 
     expect(router.push).toHaveBeenCalledWith("/(app)/on-demand/incoming/req-123");
   });
+
+  it("preserves calendar notification date and booking focus params", () => {
+    const router = { push: jest.fn() };
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-4",
+      link: "/provider/calendar?date=2026-05-02&booking_id=booking-123",
+    });
+
+    expect(router.push).toHaveBeenCalledWith(
+      "/(app)/(tabs)/calendar?date=2026-05-02&booking_id=booking-123",
+    );
+  });
+
+  it("keeps data booking ids on calendar links instead of opening booking detail", () => {
+    const router = { push: jest.fn() };
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-5",
+      link: "/provider/calendar?date=2026-05-02",
+      data: { booking_id: "booking-456" },
+    });
+
+    expect(router.push).toHaveBeenCalledWith(
+      "/(app)/(tabs)/calendar?date=2026-05-02&booking_id=booking-456",
+    );
+  });
 });

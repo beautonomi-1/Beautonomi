@@ -41,6 +41,7 @@ const CIRCUIT_BREAKER_CONSECUTIVE_FAIL = 10;
 const DLQ_ALERT_THRESHOLD = 10;
 
 import type { QueuedNotificationRow } from "@/lib/notifications/queued-senders";
+import { parseQueuePayloadMeta } from "@/lib/notifications/enqueue";
 
 type QueueRow = QueuedNotificationRow;
 
@@ -77,18 +78,33 @@ async function deliverRow(row: QueueRow): Promise<DeliveryResult> {
           sendToUser: null as unknown as (
             userId: string,
             payload: { title: string; message: string; url?: string; data?: Record<string, unknown> },
+            channels?: unknown,
+            opts?: unknown,
           ) => Promise<unknown>,
         }),
       );
       if (!sendToUser || !row.recipient_user_id) {
         return { ok: false, error: "push sender unavailable or missing recipient" };
       }
-      await sendToUser(row.recipient_user_id, {
-        title: String(row.payload?.title ?? "Beautonomi"),
-        message: String(row.payload?.message ?? ""),
-        url: row.payload?.url ? String(row.payload.url) : undefined,
-        data: (row.payload?.data as Record<string, unknown>) ?? {},
-      });
+      const meta = parseQueuePayloadMeta(row.payload);
+      const sendOpts =
+        meta.push_app_type || meta.tenant_id
+          ? {
+              ...(meta.push_app_type ? { appType: meta.push_app_type } : {}),
+              ...(meta.tenant_id ? { tenantId: meta.tenant_id } : {}),
+            }
+          : undefined;
+      await sendToUser(
+        row.recipient_user_id,
+        {
+          title: String(row.payload?.title ?? "Beautonomi"),
+          message: String(row.payload?.message ?? ""),
+          url: row.payload?.url ? String(row.payload.url) : undefined,
+          data: (row.payload?.data as Record<string, unknown>) ?? {},
+        },
+        ["push"],
+        sendOpts,
+      );
       return { ok: true };
     }
 

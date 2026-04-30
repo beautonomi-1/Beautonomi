@@ -47,7 +47,7 @@ const defaultFaqData: FAQItem[] = [
   {
     id: "item-4",
     question: "How and when do I receive payments for the services I provide?",
-    answer: "Payments are processed on a regular schedule, typically weekly or monthly. Funds are transferred to your designated bank account or payment method. You'll receive a notification when payments are processed. Be aware of any service fees or commissions that might apply.",
+    answer: "Payments are processed on a regular schedule, typically weekly or monthly. Funds are transferred to your designated bank account or payment method. You'll receive a notification when payments are processed. Platform Fees and commissions are shown clearly where they apply.",
   },
   {
     id: "item-5",

@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   notFoundResponse,
   handleApiError,
   errorResponse,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { sendCancellationNotification } from "@/lib/notifications/appointment-notifications";
 
 /**
@@ -19,11 +19,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
-    const providerId = await getProviderIdForUser(user.id);
+    const permissionCheck = await requireAnyPermission(["cancel_appointments", "edit_appointments"], request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
+    const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
     const cancellationType = body.cancellation_type as "normal" | "late_cancel" | "no_show";

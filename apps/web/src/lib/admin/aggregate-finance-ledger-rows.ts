@@ -41,9 +41,11 @@ export type FinanceLedgerAggregate = {
   promotion_discounts: number;
   /** Gift card liability reduced when gift cards are redeemed (offsets gift_card_sales on balance sheet). */
   gift_card_liability_reductions: number;
-  /** Ecommerce product order platform fees (separate from booking commission). */
+  /** Ecommerce product order platform fees (separate from booking platform fees). */
   ecommerce_platform_fees: number;
-  /** Customer-facing service fee revenue (booking add-on). */
+  /** Customer-paid booking platform fee revenue. */
+  platform_fee_revenue: number;
+  /** @deprecated Legacy API name for booking platform_fee_revenue. */
   service_fee_revenue: number;
   /** Travel fee pass-through amount. */
   travel_fees: number;
@@ -53,7 +55,7 @@ export type FinanceLedgerAggregate = {
   manual_adjustments_net: number;
 };
 
-type Row = Pick<FinanceLedgerRow, "transaction_type" | "amount" | "fees" | "net" | "commission">;
+type Row = Pick<FinanceLedgerRow, "transaction_type" | "amount" | "fees" | "net" | "commission" | "booking_id" | "product_order_id">;
 
 function sum(tx: Row[], types: string[], field: "amount" | "fees" | "net" | "commission"): number {
   return tx.filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => s + Number(r[field] ?? 0), 0);
@@ -74,9 +76,19 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
 
   const gatewayFeesServices = sumFees(tx, ["payment", "additional_charge_payment"]);
 
+  const bookingPlatformFees = tx
+    .filter((r) =>
+      (r.transaction_type === "platform_fee" && !!r.booking_id) ||
+      r.transaction_type === "service_fee"
+    )
+    .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const ecommercePlatformFees = tx
+    .filter((r) => r.transaction_type === "platform_fee" && !!r.product_order_id)
+    .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+
   // bookingGmv: The full value of services rendered, combining gateway-paid amounts (recorded
   // under "payment") with wallet and gift card credits (recorded under wallet_payment /
-  // gift_card_payment). Tip, tax, travel fee, and service fee are additive line items.
+  // gift_card_payment). Tip, tax, travel fee, and booking platform fee are additive line items.
   // NOTE: wallet_payment and gift_card_payment are only present for gateway-less (fully covered)
   // bookings. For split wallet+card bookings, wallet_payment is added by process-payment.ts at
   // booking creation and idempotently by charge-success.ts, so do not double-count with "payment".
@@ -89,7 +101,7 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     sum(tx, ["tip"], "amount") +
     sum(tx, ["tax"], "amount") +
     sum(tx, ["travel_fee"], "amount") +
-    sum(tx, ["service_fee"], "amount");
+    bookingPlatformFees;
   const additionalChargeGross =
     sum(tx, ["additional_charge_payment"], "amount") + sumFees(tx, ["additional_charge_payment"]);
   const serviceCollectedGross = bookingGmv + additionalChargeGross;
@@ -148,8 +160,9 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     cancellation_fees_retained: cancellationFeesRetained,
     promotion_discounts: promotionDiscounts,
     gift_card_liability_reductions: giftCardLiabilityReductions,
-    ecommerce_platform_fees: sum(tx, ["platform_fee"], "amount"),
-    service_fee_revenue: sum(tx, ["service_fee"], "amount"),
+    ecommerce_platform_fees: ecommercePlatformFees,
+    platform_fee_revenue: bookingPlatformFees,
+    service_fee_revenue: bookingPlatformFees,
     travel_fees: sum(tx, ["travel_fee"], "amount"),
     additional_charge_gross: additionalChargeGross,
     manual_adjustments_net: manualAdjustmentsNet,

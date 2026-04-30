@@ -44,6 +44,7 @@ export interface ValidatedBookingData {
   subtotal: number;
 
   membershipPlanId: string | null;
+  membershipId: string | null;
   membershipDiscountAmount: number;
   subtotalAfterMembership: number;
   commissionBase: number;
@@ -57,7 +58,7 @@ export interface ValidatedBookingData {
   serviceFeeAmount: number;
   serviceFeePercentage: number;
   serviceFeeConfigId: string | null;
-  /** Whether the service fee should be displayed to the customer on the booking confirmation screen */
+  /** Whether the Platform Fee should be displayed to the customer on the booking confirmation screen */
   showServiceFeeToCustomer: boolean;
 
   totalAmount: number;
@@ -1203,6 +1204,7 @@ export async function validateBooking(
 
   // ── Membership discount ──────────────────────────────────────────────────
   let membershipPlanId: string | null = null;
+  let membershipId: string | null = null;
   let membershipDiscountAmount = 0;
   try {
     const { data: membership } = await (supabase.from("user_memberships") as any)
@@ -1227,6 +1229,33 @@ export async function validateBooking(
       if (pct > 0) {
         membershipDiscountAmount = Math.max(0, percentOf(subtotal, pct));
         membershipDiscountAmount = Math.min(membershipDiscountAmount, subtotal);
+      }
+    }
+
+    const { data: platformMemberships } = await (supabase.from("customer_memberships") as any)
+      .select("id, status, expires_at, provider_id, membership:memberships(id, discount_percentage, discount_cap_per_booking, discount_applies_to)")
+      .eq("customer_id", customerId)
+      .eq("status", "active");
+
+    for (const row of platformMemberships ?? []) {
+      const providerScope = row.provider_id ?? null;
+      if (providerScope && providerScope !== draft.provider_id) continue;
+      const expiresAt = row.expires_at ? new Date(row.expires_at).getTime() : null;
+      if (expiresAt != null && Number.isFinite(expiresAt) && expiresAt < Date.now()) continue;
+      const membership = row.membership;
+      if (!membership || (membership.discount_applies_to && membership.discount_applies_to !== "all_services")) {
+        continue;
+      }
+      const pct = Number(membership.discount_percentage || 0);
+      if (pct <= 0) continue;
+      const cap = Number(membership.discount_cap_per_booking || 0) || 0;
+      let discount = Math.max(0, percentOf(subtotal, pct));
+      if (cap > 0) discount = Math.min(discount, cap);
+      discount = Math.min(discount, subtotal);
+      if (discount > membershipDiscountAmount) {
+        membershipDiscountAmount = discount;
+        membershipPlanId = null;
+        membershipId = membership.id || null;
       }
     }
   } catch {
@@ -1284,7 +1313,7 @@ export async function validateBooking(
     }
   }
 
-  // ── Service fee ──────────────────────────────────────────────────────────
+  // ── Platform Fee ─────────────────────────────────────────────────────────
   let serviceFeeAmount = 0;
   let serviceFeePercentage = 0;
   let serviceFeeConfigId: string | null = null;
@@ -1999,6 +2028,7 @@ export async function validateBooking(
     subtotal,
 
     membershipPlanId,
+    membershipId,
     membershipDiscountAmount,
     subtotalAfterMembership,
     commissionBase,

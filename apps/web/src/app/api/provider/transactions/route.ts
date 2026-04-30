@@ -1,13 +1,15 @@
 import { NextRequest } from "next/server";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { subDays, subMonths, startOfDay, startOfWeek, startOfMonth } from "date-fns";
+import { fromBusinessTime, nowInTz } from "@/lib/dates/provider-tz";
+import { filterLedgerRowsForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import {
   mapFinanceLedgerRowToProviderUi,
   type ProviderLedgerUiRow,
@@ -15,33 +17,39 @@ import {
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requireAnyPermission(["view_sales", "view_reports", "process_payments"], request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
     const sp = request.nextUrl.searchParams;
     const period = sp.get("period") || "month";
     const limit = Math.min(parseInt(sp.get("limit") || "50", 10), 200);
 
     const locationId = sp.get("location_id") || null;
     let fromDate: Date;
+    const businessNow = nowInTz(reportContext.timezone);
     switch (period) {
       case "today":
-        fromDate = startOfDay(new Date());
+        fromDate = fromBusinessTime(startOfDay(businessNow), reportContext.timezone);
         break;
       case "week":
-        fromDate = startOfWeek(new Date(), { weekStartsOn: 1 });
+        fromDate = fromBusinessTime(startOfWeek(businessNow, { weekStartsOn: 1 }), reportContext.timezone);
         break;
       case "month":
-        fromDate = startOfMonth(new Date());
+        fromDate = fromBusinessTime(startOfMonth(businessNow), reportContext.timezone);
         break;
       case "3months":
-        fromDate = subMonths(new Date(), 3);
+        fromDate = fromBusinessTime(subMonths(businessNow, 3), reportContext.timezone);
         break;
       case "year":
-        fromDate = subMonths(new Date(), 12);
+        fromDate = fromBusinessTime(subMonths(businessNow, 12), reportContext.timezone);
         break;
       case "all":
         fromDate = new Date(2000, 0, 1);
@@ -54,30 +62,14 @@ export async function GET(request: NextRequest) {
 
     const query = supabaseAdmin
       .from("finance_transactions")
-      .select("id, transaction_type, amount, net, created_at, description, booking_id, metadata")
+      .select("id, transaction_type, amount, net, created_at, description, booking_id, product_order_id, metadata")
       .eq("provider_id", providerId)
       .gte("created_at", fromDate.toISOString())
       .order("created_at", { ascending: false })
       .limit(fetchLimit);
 
     const { data: txnsRaw } = await query;
-    let txns = txnsRaw ?? [];
-
-    // Filter by location_id when provided (match portal finance behaviour)
-    if (locationId && txns.length > 0) {
-      const bookingIds = [...new Set(txns.filter((t: any) => t.booking_id).map((t: any) => t.booking_id))];
-      if (bookingIds.length > 0) {
-        const { data: bookings } = await supabaseAdmin
-          .from("bookings")
-          .select("id")
-          .in("id", bookingIds)
-          .eq("location_id", locationId);
-        const allowedIds = new Set((bookings ?? []).map((b: any) => b.id));
-        txns = txns.filter((t: any) => !t.booking_id || allowedIds.has(t.booking_id));
-      } else {
-        txns = txns.filter((t: any) => !t.booking_id);
-      }
-    }
+    const txns = await filterLedgerRowsForLocation(supabaseAdmin, providerId, txnsRaw ?? [], locationId);
 
     const mapped: ProviderLedgerUiRow[] = txns
       .map((t: any) => mapFinanceLedgerRowToProviderUi(t))

@@ -110,7 +110,7 @@ export default function RevenueReportPage() {
       if (startDate) params.set("start_date", startDate);
       if (endDate) params.set("end_date", endDate);
 
-      const response = await fetch(`/api/admin/export/analytics?period=${period}&report_type=revenue`);
+      const response = await fetch(`/api/admin/export/analytics?${params.toString()}&report_type=revenue`);
       if (!response.ok) throw new Error("Export failed");
 
       const blob = await response.blob();
@@ -161,7 +161,7 @@ export default function RevenueReportPage() {
         <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Revenue Report</h1>
-            <p className="text-gray-600 mt-1">Platform revenue analysis and trends</p>
+            <p className="text-gray-600 mt-1">Scheduled booked value, platform revenue, and ledger-backed trends</p>
           </div>
           <Button onClick={handleExport}>
             <Download className="w-4 h-4 mr-2" />
@@ -226,7 +226,7 @@ export default function RevenueReportPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+              <CardTitle className="text-sm font-medium">Scheduled Gross Booked Value</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>

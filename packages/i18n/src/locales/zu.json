@@ -282,10 +282,11 @@
       "shareSchedule": "Yabelana ngesheduli",
       "copySchedule": "Kopisha isheduli",
       "monthOverview": "Ukubuka kwenyanga",
-      "fullCalendarBrowser": "Ikhalenda ephelele (isiphequluli)",
+      "fullCalendarBrowser": "Ikhalenda eligcwele (isiphequluli)",
       "cancel": "Khansela",
       "close": "Vala",
       "scheduleShareTitle": "Isheduli",
+      "browserTitle": "Ikhalenda",
       "appUrlNotConfiguredTitle": "Ayitholakali",
       "appUrlNotConfiguredMessage": "I-URL ye-app ayilungiselelwanga (EXPO_PUBLIC_APP_URL).",
       "bookingHoldTitle": "Ukubhukha okubambiwe",
@@ -293,15 +294,20 @@
       "share": {
         "header": "{{businessName}} — Beautonomi",
         "defaultBusinessName": "Isheduli",
-        "noAppointments": "  (awukho amahhovisi)",
+        "noAppointments": "  (azikho izikhathi ezibekiwe)",
         "servicesFallback": "—",
         "footer": "\n— Kuyabelwe kusuka ku-app yomhlinzeki ye-Beautonomi"
       },
       "monthOverviewLoadingCounts": "Kulayisha izibalo…",
+      "monthOverviewCountsError": "Ayikwazanga ukulayisha izibalo zokubhukha. Thepha ukuze uzame futhi.",
+      "monthOverviewCountsErrorA11y": "Ayikwazanga ukulayisha izibalo zokubhukha zenyanga. Thepha ukuze uzame futhi.",
       "monthOverviewDayA11y": "{{date}}, ukubhukha okungu-{{count}}",
       "prevMonthA11y": "Inyanga edlule",
       "nextMonthA11y": "Inyanga ezayo",
       "bookingActionsMessage": "Izenzo zokubhukha",
+      "preferencesA11y": "Izintandokazi zekhalenda",
+      "pendingBadge": "{{count}} kusalindile",
+      "overlayPartialWarningA11y": "Ezinye izivimbelo zekhalenda noma izindawo ezibanjiwe azikwazanga ukulayisha. Thepha ukuze uvuselele.",
       "viewDetails": "Buka imininingwane",
       "collectPayment": "Thola inkokhelo",
       "currentStatusLabel": "Isimo samanje: {{status}}",
@@ -330,7 +336,7 @@
         "walkIn": "Ukungena ngaphandle kokubhukha",
         "expressBook": "Ukubhukha okusheshayo",
         "timeBlock": "Ithuba lesikhathi",
-        "groupBooking": "Ukubhukha kwesiqephu"
+        "groupBooking": "Ukubhukha kweqembu"
       },
       "staffColumn": {
         "viewWeekSchedule": "Buka isheduli yeviki",
@@ -338,7 +344,235 @@
         "unassigned": "Akubekiwe"
       },
       "bookingA11yLongPress": "Ukubhukha no-{{name}} ngo-{{time}}. Cindezela isikhathi eside ukuhudula.",
-      "bookingA11yShort": "Ukubhukha no-{{name}} ngo-{{time}}, isimo {{status}}"
+      "bookingA11yShort": "Ukubhukha no-{{name}} ngo-{{time}}, isimo {{status}}",
+      "paymentChip": {
+        "paid": "Kukhokhiwe",
+        "partPaid": "Kukhokhwe ingxenye",
+        "paymentDue": "Inkokhelo isadingeka"
+      },
+      "card": {
+        "newBadge": "Okusha",
+        "serviceFallback": "Isevisi",
+        "groupPrefix": "Iqembu",
+        "atHome": "Ekhaya"
+      },
+      "currentTimeA11yPrefix": "Isikhathi samanje",
+      "overlayBlockA11y": "{{type}} kusukela {{start}} kuya {{end}}. Thepha ukuze uhlele noma ususe.",
+      "grid": {
+        "slotBookA11y": "Bhukha ngo-{{time}} ngo-{{day}}",
+        "emptyDayHint": "Azikho izikhathi ezibekiwe — thepha indawo ukuze ungeze"
+      },
+      "pendingBanner": {
+        "accessibility": "Ideski langaphambili: ukubhukha okungu-{{count}} kudinga ukuqinisekiswa",
+        "urgentTitle": "{{count}} kusalindile emahoreni angu-2 — qinisekisa noma wenqabe",
+        "pendingTitleSingular": "Ukubhukha oku-1 kudinga ukuqinisekiswa",
+        "pendingTitlePlural": "Ukubhukha okungu-{{count}} kudinga ukuqinisekiswa",
+        "subtitle": "Ideski langaphambili libonisa isheduli yanamuhla nokungena"
+      },
+      "staffViewStrip": {
+        "title": "Ukubuka abasebenzi",
+        "all": "Bonke",
+        "single": "Oyedwa"
+      },
+      "allLocations": "Zonke izindawo",
+      "allStaff": "Bonke abasebenzi",
+      "dateNav": {
+        "prevWeek": "Iviki elidlule",
+        "prevDay": "Usuku olwedlule",
+        "nextWeek": "Iviki elizayo",
+        "nextDay": "Usuku olulandelayo",
+        "today": "Namuhla",
+        "jumpToDate": "Yiya osukwini",
+        "loadingCalendar": "Kulayishwa ikhalenda"
+      },
+      "viewModes": {
+        "day": "USUKU",
+        "threeDay": "IZINSUKU 3",
+        "week": "IVIKI"
+      },
+      "colorByChip": {
+        "service": "Ngesevisi",
+        "staff": "Ngabasebenzi"
+      },
+      "colorLegend": {
+        "a11y": "Incazelo yemibala",
+        "title": "Incazelo yemibala",
+        "statusColors": "Imibala yesimo",
+        "serviceColors": "Imibala yesevisi",
+        "teamColors": "Imibala yethimba",
+        "closedTimeOff": "Kuvaliwe nesikhathi sokuphumula",
+        "closedTimeOffDescription": "Isikhathi sokuphumula sabasebenzi nezinsuku zokuphumula zifana nalokho amakhasimende akubonayo lapho ebhukha. Izikhathi ezivaliwe zivela kuzilungiselelo zekhalenda. Thepha ukutholakala noma isivimbelo sesikhathi kugridi ukuze uhlele noma ususe.",
+        "staffTimeOff": "Isikhathi sokuphumula somsebenzi / usuku lokuphumula",
+        "unavailableClosed": "Akutholakali (isikhathi esivaliwe)",
+        "timeBlocks": "Izivimbelo zesikhathi"
+      },
+      "staleDataBanner": {
+        "a11y": "Ikhalenda lingase libe lidala. Thepha ukuze uvuselele.",
+        "body": "Kuboniswa isheduli yokugcina eyaziwayo — thepha ukuze uvuselele"
+      },
+      "datePicker": {
+        "today": "Namuhla",
+        "weekdaysShort": {
+          "sunday": "So",
+          "monday": "Ms",
+          "tuesday": "Bi",
+          "wednesday": "Th",
+          "thursday": "Si",
+          "friday": "Hl",
+          "saturday": "Mg"
+        }
+      },
+      "fetchError": {
+        "title": "Ayikwazi ukulayisha ikhalenda lakho",
+        "retry": "Layisha kabusha ikhalenda"
+      },
+      "crashFallback": {
+        "title": "Kube nenkinga ukuvula ikhalenda lakho",
+        "body": "Thepha ukulayisha kabusha ukuze uzame futhi — izikhathi zakho nokubhukha kuphephile."
+      },
+      "overlayPartialWarning": "Ezinye izivimbelo noma izindawo ezibanjiwe azikwazanga ukulayisha — thepha ukuze uvuselele ngaphambi kokuhlela ukutholakala.",
+      "apptSingle": "1 isikhathi",
+      "apptPlural": "{{count}} izikhathi",
+      "timeBlockTypes": {
+        "break": "Ikhefu",
+        "lunch": "Isidlo sasemini",
+        "meeting": "Umhlangano",
+        "personal": "Okomuntu siqu",
+        "other": "Okunye"
+      },
+      "availabilityEditTypes": {
+        "unavailable": "Akutholakali",
+        "break": "Ikhefu",
+        "maintenance": "Ukulungisa"
+      },
+      "preferencesModal": {
+        "title": "Izintandokazi zekhalenda",
+        "subtitle": "Lungisa indlela ikhalenda lakho elibukeka futhi lisebenza ngayo",
+        "closeA11y": "Vala izintandokazi",
+        "displaySection": "Ukubonisa",
+        "colorsSection": "Imibala",
+        "timeGridSection": "Igridi yesikhathi",
+        "advancedToggleShow": "Bonisa izilungiselelo ezithuthukile",
+        "advancedToggleHide": "Fihla izilungiselelo ezithuthukile",
+        "advancedHeading": "Izilungiselelo ezithuthukile",
+        "highContrast": "Ukuqhathanisa okuphezulu",
+        "highContrastDesc": "Khulisa ukuqhathanisa ukuze kubonakale kangcono",
+        "showCanceled": "Bonisa okukhanseliwe",
+        "showCanceledDesc": "Bonisa izikhathi ezikhanseliwe kugridi",
+        "compactMode": "Imodi ehlangene",
+        "compactModeDesc": "Yehlisa ukuphakama kwamabhulokhi ukuze kubonakale okuningi",
+        "appointmentIcons": "Izithonjana zezikhathi",
+        "appointmentIconsDesc": "Bonisa izithonjana zekhasimende elisha, amanothi, njll.",
+        "showPrices": "Bonisa amanani",
+        "showPricesDesc": "Bonisa amanani esevisi kumabhulokhi ezikhathi",
+        "showClientPhone": "Bonisa ifoni yekhasimende",
+        "showClientPhoneDesc": "Bonisa inombolo yekhasimende emininingwaneni",
+        "colorBy": "Faka umbala ngo",
+        "colorByDesc": "Indlela amabhulokhi ezikhathi afakwa ngayo umbala",
+        "colorByStatus": "Isimo",
+        "colorByService": "Isevisi",
+        "colorByTeam": "Ilungu lethimba",
+        "timeIncrement": "Isikhawu sesikhathi",
+        "timeIncrementDesc": "Usayizi wesikhala segridi ngemizuzu",
+        "min5": "5 min",
+        "min10": "10 min",
+        "min15": "15 min",
+        "scrollToNow": "Skrolela manje",
+        "scrollToNowDesc": "Skrolela ngokuzenzakalela esikhathini samanje uma kuvulwa ikhalenda",
+        "workdayStart": "Ukuqala kosuku lomsebenzi",
+        "workdayStartDesc": "Ihora i-gridi yekhalenda eqala ngalo",
+        "workdayEnd": "Ukuphela kosuku lomsebenzi",
+        "workdayEndDesc": "Ihora i-gridi yekhalenda ephela ngalo",
+        "processingBuffer": "Ukucubungula nesikhathi sokuvikela",
+        "processingBufferDesc": "Bonisa izingxenye zokucubungula nezokuvikela kumabhulokhi",
+        "defaultNewStatus": "Isimo esizenzakalelayo sezikhathi ezintsha",
+        "defaultNewStatusDesc": "Isimo esinikezwa izikhathi ezintsha",
+        "statusConfirmed": "Kuqinisekisiwe",
+        "statusUnconfirmed": "Akuqinisekisiwe",
+        "processingFreesProvider": "Ukucubungula kukhulula umhlinzeki",
+        "processingFreesProviderDesc": "Umhlinzeki angamukela okunye ukubhukha ngesikhathi sokucubungula",
+        "resetA11y": "Buyisela zonke izintandokazi kokumisiwe",
+        "reset": "Buyisela kokumisiwe",
+        "decreaseA11y": "Yehlisa {{label}}",
+        "increaseA11y": "Khulisa {{label}}"
+      },
+      "timeBlockSheet": {
+        "title": "Engeza isivimbelo sesikhathi",
+        "submit": "Engeza isivimbelo sesikhathi",
+        "blockType": "Uhlobo lwesivimbelo",
+        "titleField": "Isihloko",
+        "startTime": "Isikhathi sokuqala",
+        "endTime": "Isikhathi sokuphela",
+        "staffOptional": "Ilungu lethimba (ngokuzithandela)"
+      },
+      "availabilityEditModal": {
+        "title": "Hlela isikhathi esivaliwe",
+        "type": "Uhlobo",
+        "start": "Qala",
+        "end": "Phela",
+        "staff": "Abasebenzi (ngokuzithandela)",
+        "everyone": "Wonke umuntu",
+        "cancel": "Khansela",
+        "save": "Londoloza"
+      },
+      "overlayMenu": {
+        "invalidTimeTitle": "Isikhathi asilungile",
+        "invalidRangeTitle": "Ibanga alilungile",
+        "invalidTimeMessage": "Sebenzisa ifomethi ye-HH:MM yesikhathi sokuqala nesokuphela, isibonelo 12:00 no-13:00.",
+        "invalidRangeMessage": "Isikhathi sokuphela kufanele sibe ngemva kwesikhathi sokuqala.",
+        "saveTimeBlockErrorTitle": "Ayikwazanga ukulondoloza isivimbelo sesikhathi",
+        "saveBlockErrorTitle": "Ayikwazanga ukulondoloza isivimbelo",
+        "bookingHoldTitle": "Ukubhukha okubanjelwe",
+        "bookingHoldExpires": " Kuphelelwa ngo-{{time}}.",
+        "bookingHoldMessage": "Ikhasimende liqedela ukukhokha kwalesi sikhala.{{expires}} Sizozisula ngokuzenzakalela uma lingaqedi inkokhelo.",
+        "staffOffTitle": "Isikhathi sokuphumula sethimba",
+        "staffOffMessage": "Lokhu kuvela esikhathini sokuphumula noma osukwini lokuphumula lomsebenzi. Kubuyekeze ekuhlelweni kwethimba, hhayi kugridi yekhalenda.",
+        "availabilityBlockTitle": "{{type}} · {{start}}–{{end}}",
+        "edit": "Hlela",
+        "delete": "Susa",
+        "manage": "Phatha",
+        "removeBlockTitle": "Susa lesi sivimbelo?",
+        "removeBlockMessage": "Amakhasimende angase akwazi ukubhukha lesi sikhathi futhi.",
+        "removeBlockErrorTitle": "Ayikwazanga ukususa isivimbelo",
+        "timeBlockTitle": "Isivimbelo sesikhathi",
+        "removeTimeBlockTitle": "Susa isivimbelo sesikhathi?",
+        "removeTimeBlockErrorTitle": "Ayikwazanga ukususa isivimbelo sesikhathi"
+      },
+      "cancelBookingModal": {
+        "title": "Khansela ukubhukha",
+        "confirm": "Khansela ukubhukha",
+        "reasonPlaceholder": "Isizathu (ngokuzithandela)"
+      },
+      "utilityMenu": {
+        "title": "Amathuluzi ekhalenda",
+        "expressBooking": "Bhukha ngokushesha"
+      },
+      "actionRail": {
+        "newLabel": "Okusha",
+        "newSub": "Isikhathi",
+        "walkInLabel": "Ukungena",
+        "walkInSub": "Bhukha manje",
+        "groupLabel": "Iqembu",
+        "groupSub": "Ababambiqhaza",
+        "saleLabel": "Ukuthengisa",
+        "saleSub": "Imikhiqizo",
+        "recurringLabel": "Okuphindayo",
+        "recurringSub": "Uchungechunge",
+        "blockLabel": "Vimba",
+        "blockSub": "Isikhathi sokuphumula",
+        "waitingLabel": "Kulindile",
+        "waitingRoomSub": "Igumbi",
+        "waitingCountSub": "{{count}} kulindile"
+      },
+      "mutations": {
+        "completeServiceErrorTitle": "Ayikwazanga ukuqedela isevisi",
+        "startServiceErrorTitle": "Ayikwazanga ukuqala isevisi",
+        "updateBookingErrorTitle": "Ayikwazanga ukubuyekeza ukubhukha",
+        "moveAppointmentErrorTitle": "Ayikwazanga ukuhambisa isikhathi",
+        "moveAppointmentGeneric": "Asikwazanga ukuhambisa lesi sikhathi. Sicela uzame futhi.",
+        "slotUnavailableTitle": "Isikhala asitholakali",
+        "slotOverlapBody": "Okunye ukubhukha noma isivimbelo sigqagqana nalesi sikhathi."
+      }
     }
   },
   "customer": {

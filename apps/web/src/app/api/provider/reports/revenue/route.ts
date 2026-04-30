@@ -7,9 +7,9 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, eachDayOfInterval, format, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue, getPreviousPeriodRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
+import { eachReportDateKey, getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,11 +24,11 @@ export async function GET(request: NextRequest) {
     const locationId = sp.get("location_id") || null;
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
 
-    const fromDate = sp.get("from") ? startOfDay(new Date(sp.get("from")!)) : startOfDay(subDays(new Date(), 30));
-    const toDate = sp.get("to") ? endOfDay(new Date(sp.get("to")!)) : endOfDay(new Date());
+    const { fromDate, toDate, fromYmd, toYmd } = reportDateRangeFromParams(sp, reportContext.timezone, { defaultDays: 30 });
 
-    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: reportContext.timezone };
 
     const [{ totalRevenue, revenueByBooking, revenueByDate }, previousRevenue, cancelFeeResult] = await Promise.all([
       getProviderRevenue(supabaseAdmin, providerId, fromDate, toDate, locationId, dashOpts),
@@ -57,13 +57,34 @@ export async function GET(request: NextRequest) {
     if (locationId) bkQuery = bkQuery.eq("location_id", locationId);
     const { data: bookingsRes } = await bkQuery;
 
-    const days = eachDayOfInterval({ start: fromDate, end: toDate });
-    const daily_trend = days.map((d) => ({
-      date: format(d, "yyyy-MM-dd"),
-      revenue: revenueByDate.get(format(d, "yyyy-MM-dd")) ?? 0,
+    const staffIds = [
+      ...new Set(
+        (bookingsRes || []).flatMap((b: any) =>
+          (b.booking_services || [])
+            .map((sv: any) => sv.staff_id)
+            .filter(Boolean),
+        ),
+      ),
+    ];
+    const staffNameById = new Map<string, string>();
+    if (staffIds.length > 0) {
+      const { data: staffRows } = await supabaseAdmin
+        .from("provider_staff")
+        .select("id, users(full_name)")
+        .in("id", staffIds);
+      (staffRows || []).forEach((row: any) => {
+        const userName = Array.isArray(row.users) ? row.users[0]?.full_name : row.users?.full_name;
+        staffNameById.set(row.id, userName || "Unassigned");
+      });
+    }
+
+    const daily_trend = eachReportDateKey(fromYmd, toYmd).map((date) => ({
+      date,
+      revenue: revenueByDate.get(date) ?? 0,
     }));
 
     const serviceMap = new Map<string, number>();
+    const staffMap = new Map<string, number>();
     (bookingsRes || []).forEach((b: any) => {
       const bRev = revenueByBooking.get(b.id) || 0;
       const services = b.booking_services || [];
@@ -71,12 +92,18 @@ export async function GET(request: NextRequest) {
       services.forEach((sv: any) => {
         const name = sv.offerings?.title || "Unknown";
         const proportion = total > 0 ? Number(sv.price || 0) / total : 1 / Math.max(services.length, 1);
-        serviceMap.set(name, (serviceMap.get(name) ?? 0) + bRev * proportion);
+        const allocatedRevenue = bRev * proportion;
+        serviceMap.set(name, (serviceMap.get(name) ?? 0) + allocatedRevenue);
+        const staffName = sv.staff_id ? staffNameById.get(sv.staff_id) || "Unassigned" : "Unassigned";
+        staffMap.set(staffName, (staffMap.get(staffName) ?? 0) + allocatedRevenue);
       });
     });
 
     const revenue_by_service = Array.from(serviceMap.entries())
       .map(([service, revenue]) => ({ service, revenue }))
+      .sort((a, b) => b.revenue - a.revenue);
+    const revenue_by_staff = Array.from(staffMap.entries())
+      .map(([staff, revenue]) => ({ staff, revenue }))
       .sort((a, b) => b.revenue - a.revenue);
 
     let bookingCountWithRevenue = 0;
@@ -90,7 +117,7 @@ export async function GET(request: NextRequest) {
       total_revenue_inclusive: totalRevenue + cancellationFees,
       previous_revenue: previousRevenue,
       revenue_by_service,
-      revenue_by_staff: [] as { staff: string; revenue: number }[],
+      revenue_by_staff,
       daily_trend,
       avg_per_booking: bookingCountWithRevenue > 0 ? totalRevenue / bookingCountWithRevenue : 0,
       transaction_count: bookingCountWithRevenue,

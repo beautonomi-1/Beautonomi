@@ -658,7 +658,7 @@ export default function BookingConfirmationPage() {
                   )}
                   {svcFee > 0 && (
                     <div className="flex justify-between text-gray-600">
-                      <span>Service fee</span>
+                      <span>Platform fee</span>
                       <span>{formatCurrency(svcFee, booking.currency)}</span>
                     </div>
                   )}

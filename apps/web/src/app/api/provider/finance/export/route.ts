@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser, handleApiError } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
+import { fromBusinessTime, nowInTz } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 function csvEscape(value: any): string {
   const s = String(value ?? "");
@@ -9,11 +12,12 @@ function csvEscape(value: any): string {
   return s;
 }
 
-function formatRangeStart(range: string, now: Date): Date {
-  if (range === "week") return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-  if (range === "year") return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+function formatRangeStart(range: string, timezone: string): Date {
+  const now = nowInTz(timezone);
+  if (range === "week") return fromBusinessTime(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7), timezone);
+  if (range === "year") return fromBusinessTime(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()), timezone);
   if (range === "all") return new Date(0);
-  return new Date(now.getFullYear(), now.getMonth(), 1); // month default
+  return fromBusinessTime(new Date(now.getFullYear(), now.getMonth(), 1), timezone); // month default
 }
 
 /**
@@ -22,7 +26,11 @@ function formatRangeStart(range: string, now: Date): Date {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requireAnyPermission(["view_sales", "view_reports", "process_payments"], request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -41,19 +49,26 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const range = searchParams.get("range") || "month";
     const now = new Date();
-    const startDate = formatRangeStart(range, now);
+    const reportContext = await getProviderReportContext(db as any, providerId);
+    const startDate = formatRangeStart(range, reportContext.timezone);
     const startIso = startDate.toISOString();
     const endIso = now.toISOString();
 
-    const { data, error } = await db
-      .from("finance_transactions")
-      .select("id, created_at, transaction_type, amount, net, description")
-      .eq("provider_id", providerId)
-      .gte("created_at", startIso)
-      .lte("created_at", endIso)
-      .order("created_at", { ascending: false })
-      .limit(5000);
-    if (error) throw error;
+    const data: any[] = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data: page, error } = await db
+        .from("finance_transactions")
+        .select("id, created_at, transaction_type, amount, net, description")
+        .eq("provider_id", providerId)
+        .gte("created_at", startIso)
+        .lte("created_at", endIso)
+        .order("created_at", { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      data.push(...(page ?? []));
+      if (!page || page.length < pageSize) break;
+    }
 
     const header = ["id", "created_at", "transaction_type", "amount", "net", "description"];
     const lines = [header.join(",")];

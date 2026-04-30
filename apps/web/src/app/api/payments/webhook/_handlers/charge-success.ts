@@ -273,7 +273,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
-  // Tip/Tax/Travel fees/Service fee are excluded from commission.
+  // Tip/tax/travel and customer-paid platform fees are excluded from commission.
   // These are the FULL booking-level amounts (used for booking-level ledger entries).
   const tipAmount = Number(metadata?.tip_amount ?? bookingData.tip_amount ?? 0);
   const taxAmount = Number(metadata?.tax_amount ?? bookingData.tax_amount ?? 0);
@@ -477,7 +477,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   //      Detected by: finance_transactions already has a 'payment' row for this
   //      booking but the Paystack reference is new.
   //      Action: write payment + provider_earnings ONLY (per-charge amounts).
-  //      Booking-level rows (service_fee, tax, tip, travel_fee) are recorded once
+  //      Booking-level rows (platform_fee, tax, tip, travel_fee) are recorded once
   //      from the first charge and must NOT be written again.
   const { data: existingPaymentTxForRef } = await supabase
     .from("payment_transactions")
@@ -566,18 +566,18 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
     created_at: new Date().toISOString(),
   });
 
-  // Platform service fee entry
+  // Customer-paid Platform Fee entry
   if (serviceFeeAmount > 0) {
     await supabase.from("finance_transactions").insert({
       booking_id: metadata.booking_id,
       provider_id: bookingData.provider_id || null,
       tenant_id: financeTenantId,
-      transaction_type: "service_fee",
+      transaction_type: "platform_fee",
       amount: serviceFeeAmount,
       fees: 0,
       commission: 0,
       net: serviceFeeAmount,
-      description: `Service fee for booking ${bookingData.booking_number}`,
+      description: `Platform fee for booking ${bookingData.booking_number}`,
       created_at: new Date().toISOString(),
     });
   }
@@ -630,7 +630,7 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   ]);
   } else {
     // Scenario B: second Paystack charge for this booking. Booking-level rows
-    // (service_fee, tax, tip, travel) were already recorded for the first charge.
+    // (platform_fee, tax, tip, travel) were already recorded for the first charge.
     // Only append the per-charge payment + provider_earnings rows.
     console.log(`[charge-success] Second charge detected for booking ${metadata.booking_id} (ref: ${reference}) — writing payment+earnings only.`);
     await supabase.from("finance_transactions").insert([
@@ -1574,19 +1574,19 @@ async function handleCustomOfferSuccess(
   ]);
 
   // Booking-level ledger entries: only create when amount > 0 (aligned with standard booking flow).
-  // Use correct `net` values: tip and travel_fee flow to provider, tax and service_fee do not.
+  // Use correct `net` values: tip and travel_fee flow to provider; tax and platform_fee do not.
   const extraRows: any[] = [];
   if (serviceFeeAmount > 0) {
     extraRows.push({
       booking_id: booking.id,
       provider_id: req.provider_id,
       tenant_id: customOfferFinanceTenantId,
-      transaction_type: "service_fee",
+      transaction_type: "platform_fee",
       amount: serviceFeeAmount,
       fees: 0,
       commission: 0,
       net: serviceFeeAmount,
-      description: `Service fee (custom order)`,
+      description: `Platform fee (custom order)`,
       created_at: new Date().toISOString(),
     });
   }

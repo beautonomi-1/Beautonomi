@@ -1009,7 +1009,7 @@ export class ProviderApiClient implements ProviderApi {
         status: DEFAULT_APPOINTMENT_STATUS,
         special_requests: data.notes || null,
         travel_fee: data.travel_fee || 0,
-        // Service fee fields (should be 0 for provider-created appointments)
+        // Platform Fee fields (should be 0 for provider-created appointments)
         service_fee_percentage: (data as any).service_fee_percentage || 0,
         service_fee_amount: (data as any).service_fee_amount || 0,
         booking_source: (data as any).booking_source || 'provider',

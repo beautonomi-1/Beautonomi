@@ -33,6 +33,13 @@ type BookingRow = {
   total_amount?: number | string | null;
 };
 
+type BookingAddonRow = {
+  addon_id?: string | null;
+  quantity?: number | string | null;
+  price?: number | string | null;
+  currency?: string | null;
+};
+
 /**
  * After a booking exists (and payment succeeded when applicable), create a customer recurring row.
  * Idempotent via `metadata.source_booking_id`.
@@ -90,6 +97,15 @@ export async function insertCustomerRecurringSeriesFromPaidBooking(params: {
     return { ok: false as const, message: "No services on booking" };
   }
 
+  const { data: addonRows, error: addonErr } = await admin
+    .from("booking_addons")
+    .select("addon_id, quantity, price, currency")
+    .eq("booking_id", bookingId);
+
+  if (addonErr) {
+    return { ok: false as const, message: addonErr.message || "Failed to load add-ons" };
+  }
+
   const first = svcRows[0] as { offering_id?: string; staff_id?: string | null };
   const offeringId = first?.offering_id?.trim();
   if (!offeringId) {
@@ -118,6 +134,14 @@ export async function insertCustomerRecurringSeriesFromPaidBooking(params: {
       staff_id: (s as { staff_id?: string | null }).staff_id ?? undefined,
     }))
     .filter((s) => Boolean(s.offering_id));
+  const addons = ((addonRows ?? []) as BookingAddonRow[])
+    .map((a) => ({
+      addon_id: a.addon_id,
+      quantity: Math.max(1, Math.floor(Number(a.quantity ?? 1)) || 1),
+      price: Number(a.price ?? 0) || 0,
+      currency: a.currency ?? undefined,
+    }))
+    .filter((a) => Boolean(a.addon_id));
 
   const locationType = b.location_type === "at_home" ? ("at_home" as const) : ("at_salon" as const);
 
@@ -166,7 +190,9 @@ export async function insertCustomerRecurringSeriesFromPaidBooking(params: {
       last_booking_date: startYmd,
       metadata: {
         services,
+        ...(addons.length > 0 ? { addons } : {}),
         address: addrPayload,
+        booking_source: "online",
         pricing: {
           subtotal: Number(b.subtotal ?? 0) || 0,
           discount_amount: Number(b.discount_amount ?? 0) || 0,

@@ -29,8 +29,35 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import type { OneSignalAppType } from "@/lib/platform/secrets";
 
 export type NotificationChannel = "email" | "push" | "sms" | "in_app";
+
+/** Embedded in queue JSON payload for cron retries (OneSignal tenant + app). */
+export type QueuePayloadMeta = {
+  tenant_id?: string | null;
+  push_app_type?: OneSignalAppType | null;
+};
+
+export const QUEUE_PAYLOAD_META_KEY = "_queue_meta" as const;
+
+/** Read retry metadata stored by `enqueueNotification` (cron / workers). */
+export function parseQueuePayloadMeta(payload: unknown): QueuePayloadMeta {
+  if (!payload || typeof payload !== "object") return {};
+  const p = payload as Record<string, unknown>;
+  const raw = p[QUEUE_PAYLOAD_META_KEY];
+  if (!raw || typeof raw !== "object" || raw === null) return {};
+  const m = raw as Record<string, unknown>;
+  const tenant_id =
+    typeof m.tenant_id === "string" && m.tenant_id.trim() ? m.tenant_id.trim() : null;
+  const pt = m.push_app_type;
+  const push_app_type =
+    pt === "customer" || pt === "provider" ? pt : null;
+  const out: QueuePayloadMeta = {};
+  if (tenant_id) out.tenant_id = tenant_id;
+  if (push_app_type) out.push_app_type = push_app_type;
+  return out;
+}
 
 export interface EnqueueNotificationInput {
   channel: NotificationChannel;
@@ -71,6 +98,10 @@ export interface EnqueueNotificationInput {
   scheduleAt?: Date | null;
   /** Override default retry budget (5). */
   maxAttempts?: number;
+  /** Passed through to queued push retries (`resolveOneSignalCredentials`). */
+  tenantId?: string | null;
+  /** For push channel: customer vs provider OneSignal app (ignored for email/sms/in_app). */
+  pushAppType?: OneSignalAppType | null;
 }
 
 export interface EnqueueNotificationResult {
@@ -106,13 +137,34 @@ export async function enqueueNotification(
   client?: AdminClient,
 ): Promise<EnqueueNotificationResult> {
   const supabase = admin(client);
+  const basePayload = { ...(input.payload ?? {}) } as Record<string, unknown>;
+  const hasTenant =
+    typeof input.tenantId === "string" && input.tenantId.trim().length > 0;
+  const hasPushApp =
+    input.channel === "push" &&
+    (input.pushAppType === "customer" || input.pushAppType === "provider");
+  if (hasTenant || hasPushApp) {
+    const prev =
+      basePayload[QUEUE_PAYLOAD_META_KEY] &&
+      typeof basePayload[QUEUE_PAYLOAD_META_KEY] === "object" &&
+      basePayload[QUEUE_PAYLOAD_META_KEY] !== null
+        ? (basePayload[QUEUE_PAYLOAD_META_KEY] as Record<string, unknown>)
+        : {};
+    const meta: QueuePayloadMeta = {
+      ...(prev as QueuePayloadMeta),
+      ...(hasTenant ? { tenant_id: input.tenantId!.trim() } : {}),
+      ...(hasPushApp ? { push_app_type: input.pushAppType! } : {}),
+    };
+    basePayload[QUEUE_PAYLOAD_META_KEY] = meta;
+  }
+
   const row = {
     channel: input.channel,
     template_key: input.templateKey,
     recipient_user_id: input.recipientUserId ?? null,
     booking_id: input.bookingId ?? null,
     notification_id: input.notificationId ?? null,
-    payload: input.payload ?? {},
+    payload: basePayload,
     dedupe_key: input.dedupeKey ?? null,
     next_attempt_at: (input.scheduleAt ?? new Date()).toISOString(),
     max_attempts: typeof input.maxAttempts === "number" ? input.maxAttempts : 5,

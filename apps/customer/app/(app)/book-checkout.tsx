@@ -106,7 +106,7 @@ interface HoldData {
   tax_rate_percent?: number;
   /** Whether tax is inclusive in the service prices. */
   tax_inclusive?: boolean;
-  /** Service fee config from provider or platform settings. */
+  /** Platform Fee config from provider or platform settings. */
   service_fee_config?: {
     type: string;
     percentage: number;
@@ -1179,7 +1179,7 @@ export default function BookCheckoutScreen() {
       : Math.round((subtotalAfterLoyalty * taxRatePercent) / 100 * 100) / 100
     : 0;
 
-  // Service fee: only when configured and visible to customer
+  // Platform Fee: only when configured and visible to customer
   const sfConfig = hold?.service_fee_config;
   const serviceFeeAmount = sfConfig && sfConfig.show
     ? sfConfig.type === "percentage"

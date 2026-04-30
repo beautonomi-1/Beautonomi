@@ -99,6 +99,8 @@ export async function GET(
       bookingId: id,
       totalAmount: Number(r.total_amount || 0),
       totalPaid: Number(r.amount_paid || 0),
+      walletAmount: Number((r as ReceiptData & { wallet_amount?: number }).wallet_amount || 0),
+      giftCardAmount: Number((r as ReceiptData & { gift_card_amount?: number }).gift_card_amount || 0),
       totalRefunded: Number((r as ReceiptData & { total_refunded?: number }).total_refunded || 0),
       paymentStatus: String(r.payment_status || ""),
       balanceDue: Number(r.balance_due || 0),
@@ -186,17 +188,28 @@ export async function GET(
       doc,
       [
         { label: "Subtotal", value: money(r.subtotal) },
-        ...(r.discount_amount > 0
+        ...(r.discount_amount > 0 &&
+        Number(r.package_discount_amount || 0) +
+          Number(r.promotion_discount_amount || 0) +
+          Number(r.membership_discount_amount || 0) +
+          Number(r.loyalty_discount_amount || 0) === 0
           ? [{ label: r.discount_reason ? `Discount (${r.discount_reason})` : "Discount", value: `-${money(r.discount_amount)}`, tone: "success" as const }]
           : []),
+        ...(Number(r.package_discount_amount || 0) > 0 ? [{ label: "Package discount", value: `-${money(r.package_discount_amount)}`, tone: "success" as const }] : []),
+        ...(Number(r.promotion_discount_amount || 0) > 0 ? [{ label: "Promotion discount", value: `-${money(r.promotion_discount_amount)}`, tone: "success" as const }] : []),
+        ...(Number(r.membership_discount_amount || 0) > 0 ? [{ label: "Membership discount", value: `-${money(r.membership_discount_amount)}`, tone: "success" as const }] : []),
+        ...(Number(r.loyalty_discount_amount || 0) > 0 ? [{ label: "Loyalty discount", value: `-${money(r.loyalty_discount_amount)}`, tone: "success" as const }] : []),
         ...(r.travel_fee > 0 ? [{ label: "Travel fee", value: money(r.travel_fee) }] : []),
         ...(r.tax_amount > 0 ? [{ label: r.tax_rate > 0 ? `Tax (${r.tax_rate.toFixed(1)}%)` : "Tax", value: money(r.tax_amount) }] : []),
-        ...(r.service_fee_amount > 0 ? [{ label: "Service fee", value: money(r.service_fee_amount) }] : []),
+        ...(r.service_fee_amount > 0 ? [{ label: "Platform fee", value: money(r.service_fee_amount) }] : []),
         ...(r.tip_amount > 0 ? [{ label: "Tip", value: money(r.tip_amount) }] : []),
         ...(r.cancellation_fee > 0 ? [{ label: "Cancellation fee", value: money(r.cancellation_fee), tone: "warning" as const }] : []),
         ...(r.deposit_required && r.payment_option === "deposit"
           ? [{ label: `Deposit${r.deposit_percentage ? ` (${r.deposit_percentage}%)` : ""}`, value: money(r.deposit_amount) }]
           : []),
+        ...(Number(r.wallet_amount || 0) > 0 ? [{ label: "Wallet applied", value: `-${money(r.wallet_amount)}`, tone: "success" as const }] : []),
+        ...(Number(r.gift_card_amount || 0) > 0 ? [{ label: "Gift card applied", value: `-${money(r.gift_card_amount)}`, tone: "success" as const }] : []),
+        ...(Number(r.total_refunded || 0) > 0 ? [{ label: "Refunded", value: `-${money(r.total_refunded)}`, tone: "warning" as const }] : []),
         ...(Number(r.amount_paid || 0) > 0 ? [{ label: "Amount paid", value: money(r.amount_paid) }] : []),
         ...(Number(r.balance_due || 0) > 0 ? [{ label: "Balance due", value: money(r.balance_due), tone: "danger" as const }] : []),
       ],
@@ -281,6 +294,10 @@ type ReceiptData = {
   }>;
   subtotal: number;
   discount_amount: number;
+  promotion_discount_amount?: number;
+  membership_discount_amount?: number;
+  loyalty_discount_amount?: number;
+  package_discount_amount?: number;
   discount_reason?: string | null;
   travel_fee: number;
   tax_amount: number;
@@ -297,6 +314,9 @@ type ReceiptData = {
   deposit_percentage?: number;
   payment_option?: string;
   amount_paid?: number;
+  wallet_amount?: number;
+  gift_card_amount?: number;
+  total_refunded?: number;
   balance_due?: number;
   additional_charges?: Array<{
     description?: string;

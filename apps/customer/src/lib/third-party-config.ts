@@ -20,7 +20,8 @@ export interface ThirdPartyConfig {
 let cachedConfig: ThirdPartyConfig | null = null;
 
 export async function getThirdPartyConfig(
-  service?: "mapbox" | "onesignal" | "social_auth"
+  service?: "mapbox" | "onesignal" | "social_auth",
+  options?: { app?: "customer" | "provider" },
 ): Promise<ThirdPartyConfig> {
   if (cachedConfig && !service) return cachedConfig;
 
@@ -28,18 +29,25 @@ export async function getThirdPartyConfig(
   if (!origin) {
     return {} as ThirdPartyConfig;
   }
-  const url = service
-    ? `${origin}/api/public/third-party-config?service=${service}`
-    : `${origin}/api/public/third-party-config`;
 
-  const res = await fetch(url, withWebApiTenantHeaders());
-  const json = await res.json().catch(() => ({}));
-  const data = json.data ?? {};
+  const params = new URLSearchParams();
+  if (service) params.set("service", service);
+  if (options?.app) params.set("app", options.app);
 
-  if (!service) {
-    cachedConfig = data;
+  const url = `${origin}/api/public/third-party-config${params.toString() ? `?${params.toString()}` : ""}`;
+
+  try {
+    const res = await fetch(url, withWebApiTenantHeaders());
+    const json = await res.json().catch(() => ({}));
+    const data = json.data ?? {};
+
+    if (!service) {
+      cachedConfig = data;
+    }
+    return data;
+  } catch {
+    return {} as ThirdPartyConfig;
   }
-  return data;
 }
 
 export async function getMapboxToken(): Promise<string | null> {
@@ -50,26 +58,28 @@ export async function getMapboxToken(): Promise<string | null> {
 /** Mapbox client config (token + optional style). Aligned with web; source: superadmin Mapbox config. */
 export async function getMapboxConfig(): Promise<{ token: string; style_url?: string } | null> {
   const data = await getThirdPartyConfig("mapbox");
-  const mapbox = (data as any)?.mapbox ?? data;
-  if (!mapbox?.enabled || !mapbox?.public_token) return null;
-  return {
-    token: mapbox.public_token,
-    style_url: mapbox.style_url,
-  };
+  const mapbox = (data as Record<string, unknown>)?.mapbox ?? data;
+  const cfg = mapbox as { public_token?: string; style_url?: string; enabled?: boolean };
+  if (cfg?.enabled !== false && cfg?.public_token) {
+    return { token: cfg.public_token, style_url: cfg.style_url };
+  }
+  return null;
 }
 
-/** OneSignal app_id from superadmin – used by customer mobile app for push notifications */
+/** OneSignal app_id from superadmin – customer mobile app (must match server sends with appType customer). */
 export async function getOneSignalAppId(): Promise<string | null> {
-  const data = await getThirdPartyConfig("onesignal");
-  const onesignal = (data as any)?.onesignal ?? data;
-  return onesignal?.enabled && onesignal?.app_id ? onesignal.app_id : null;
+  const data = await getThirdPartyConfig("onesignal", { app: "customer" });
+  const onesignal = (data as Record<string, unknown>)?.onesignal ?? data;
+  const cfg = onesignal as { enabled?: boolean; app_id?: string };
+  return cfg?.enabled && cfg?.app_id ? cfg.app_id : null;
 }
 
 export async function getSocialAuthConfig(): Promise<{ google: boolean; apple: boolean }> {
   const data = await getThirdPartyConfig("social_auth");
-  const social = (data as any)?.social_auth ?? data;
+  const social = (data as Record<string, unknown>)?.social_auth ?? data;
+  const cfg = social as { google?: boolean; apple?: boolean };
   return {
-    google: social?.google !== false,
-    apple: social?.apple !== false,
+    google: cfg?.google !== false,
+    apple: cfg?.apple !== false,
   };
 }

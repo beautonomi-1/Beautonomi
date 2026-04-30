@@ -344,7 +344,7 @@ export async function GET(
     const subtotal = storedSubtotal != null && !Number.isNaN(storedSubtotal) ? storedSubtotal : linesSubtotal;
 
     const tax = Number(booking.tax_amount || 0);
-    const serviceFee = Number(booking.service_fee_amount || 0);
+    const platformFee = Number((bookingRaw as Record<string, unknown>).platform_fee_amount ?? booking.service_fee_amount ?? 0);
     const travelFee = Number(booking.travel_fee || 0);
     const tipAmount = Number(booking.tip_amount || 0);
     const discount = Number(booking.discount_amount || 0);
@@ -359,7 +359,7 @@ export async function GET(
     const totalFromRow =
       booking.total_amount != null && !Number.isNaN(Number(booking.total_amount))
         ? Number(booking.total_amount)
-        : subtotal + tax + serviceFee + travelFee + tipAmount - discountTotal - cancellationFee;
+        : subtotal + tax + platformFee + travelFee + tipAmount - discountTotal - cancellationFee;
 
     const additionalCharges = (booking.additional_charges || []).map((ac: AdditionalChargeRow) => ({
       id: ac.id,
@@ -482,7 +482,9 @@ export async function GET(
       subtotal: Math.max(0, subtotal - travelFee),
       tax,
       tax_rate: Number(bRaw.tax_rate || 0),
-      fees: serviceFee,
+      platform_fee_amount: platformFee,
+      fees: platformFee,
+      service_fee_amount: platformFee,
       travel_fee: travelFee,
       tip_amount: tipAmount,
       cancellation_fee: cancellationFee,
@@ -498,6 +500,8 @@ export async function GET(
       currency: booking.currency || currencyFallback,
       payment_status: booking.payment_status,
       amount_paid: amountPaid,
+      wallet_amount: walletCredit,
+      gift_card_amount: giftCardCredit,
       balance_due: balanceDue,
       // B14: expose `total_refunded` so customer-facing receipts can render
       // "Refunded" lines and compute net paid without re-hitting the refunds

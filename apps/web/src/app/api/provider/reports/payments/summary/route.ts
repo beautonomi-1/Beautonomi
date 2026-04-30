@@ -1,8 +1,12 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { subDays, startOfDay, endOfDay } from "date-fns";
-import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import {
+  filterLedgerRowsForLocation,
+  getProviderReportContext,
+  reportDateRangeFromParams,
+} from "@/lib/reports/provider-report-utils";
 
 /**
  * GET /api/provider/reports/payments/summary
@@ -27,18 +31,14 @@ export async function GET(request: NextRequest) {
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
 
     const searchParams = request.nextUrl.searchParams;
-    let fromDate = searchParams.get("from")
-      ? startOfDay(new Date(searchParams.get("from")!))
-      : startOfDay(subDays(new Date(), 30));
-    const toDate = searchParams.get("to") ? endOfDay(new Date(searchParams.get("to")!)) : endOfDay(new Date());
+    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+      defaultDays: 30,
+      maxDays: MAX_REPORT_DAYS,
+    });
     const locationId = searchParams.get("location_id") || undefined;
-
-    const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysDiff > MAX_REPORT_DAYS) {
-      fromDate = startOfDay(subDays(toDate, MAX_REPORT_DAYS));
-    }
 
     // ── 1. Bookings in period (for payment_status + wallet_amount aggregates) ──
     let bookingsQuery = supabaseAdmin
@@ -49,8 +49,7 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", toDate.toISOString())
-      .not("status", "eq", "cancelled")
-      .limit(MAX_BOOKINGS_FOR_REPORT);
+      .not("status", "eq", "cancelled");
 
     if (locationId) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
@@ -66,32 +65,21 @@ export async function GET(request: NextRequest) {
       amount: number;
       net: number;
       booking_id: string | null;
+      product_order_id: string | null;
       created_at: string;
     };
     const { data: ft } = await supabaseAdmin
       .from("finance_transactions")
-      .select("transaction_type, amount, net, booking_id, created_at")
+      .select("transaction_type, amount, net, booking_id, product_order_id, created_at")
       .eq("provider_id", providerId)
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", toDate.toISOString());
-    let financeRows = (ft ?? []) as FinanceRow[];
-
-    if (locationId && financeRows.length > 0) {
-      const financeBookingIds = [...new Set(financeRows.map((r) => r.booking_id).filter(Boolean))] as string[];
-      const allowedBookingIds = new Set<string>();
-      if (financeBookingIds.length > 0) {
-        const { data: locationBookings } = await supabaseAdmin
-          .from("bookings")
-          .select("id")
-          .eq("provider_id", providerId)
-          .eq("location_id", locationId)
-          .in("id", financeBookingIds);
-        for (const b of locationBookings ?? []) {
-          allowedBookingIds.add((b as { id: string }).id);
-        }
-      }
-      financeRows = financeRows.filter((r) => r.booking_id != null && allowedBookingIds.has(r.booking_id));
-    }
+    const financeRows = await filterLedgerRowsForLocation(
+      supabaseAdmin,
+      providerId,
+      (ft ?? []) as FinanceRow[],
+      locationId,
+    );
 
     // ── 3. Payment transactions (gateway + no-gateway settlements) ──
     let paymentTxRows: Array<{ provider: string; amount: number; net_amount: number; status: string; booking_id: string | null; metadata: Record<string, unknown> | null }> = [];
@@ -121,7 +109,7 @@ export async function GET(request: NextRequest) {
     const totalGiftCardApplied = financeRows
       .filter((r) => r.transaction_type === "gift_card_payment")
       .reduce((s, r) => s + Number(r.amount ?? 0), 0);
-    const totalCollected = totalPaidFromGateway + totalWalletApplied + totalGiftCardApplied;
+    const settledLedgerAmount = totalPaidFromGateway + totalWalletApplied + totalGiftCardApplied;
 
     // Revenue breakdown by payment method (from payment_transactions)
     const byMethod: Record<string, { count: number; amount: number }> = {};
@@ -142,12 +130,13 @@ export async function GET(request: NextRequest) {
         byMethod["wallet"].amount += Number(b.wallet_amount ?? 0);
       });
     }
+    const customerPaymentsByMethodTotal = Object.values(byMethod).reduce((sum, d) => sum + d.amount, 0);
     const paymentsByMethod = Object.entries(byMethod)
       .map(([method, d]) => ({
         method,
         count: d.count,
         amount: d.amount,
-        percentage: totalCollected > 0 ? (d.amount / totalCollected) * 100 : 0,
+        percentage: customerPaymentsByMethodTotal > 0 ? (d.amount / customerPaymentsByMethodTotal) * 100 : 0,
       }))
       .sort((a, b) => b.amount - a.amount);
 
@@ -168,9 +157,9 @@ export async function GET(request: NextRequest) {
       .filter((r) => r.transaction_type === "provider_earnings")
       .reduce((s, r) => s + Number(r.net ?? r.amount ?? 0), 0);
 
-    // Service fee (platform revenue)
+    // Platform Fee (platform revenue; legacy rows may still be transaction_type=service_fee)
     const serviceFeeCollected = financeRows
-      .filter((r) => r.transaction_type === "service_fee")
+      .filter((r) => r.transaction_type === "platform_fee" || r.transaction_type === "service_fee")
       .reduce((s, r) => s + Number(r.amount ?? 0), 0);
 
     // Tips collected
@@ -207,17 +196,24 @@ export async function GET(request: NextRequest) {
     const refundedAmount = financeRows
       .filter((r) => r.transaction_type === "refund")
       .reduce((s, r) => s + Math.abs(Number(r.amount ?? 0)), 0);
-    const netAmount = totalCollected - refundedAmount + cancellationFeesRetained;
+    const providerEarningsReversals = financeRows
+      .filter((r) => r.transaction_type === "provider_earnings" && Number(r.net ?? r.amount ?? 0) < 0)
+      .reduce((s, r) => s + Math.abs(Number(r.net ?? r.amount ?? 0)), 0);
+    const providerNetActivity =
+      providerEarnings + tipsCollected + travelFeesCollected + cancellationFeesRetained - refundedAmount;
 
     const averageTransactionValue = totalPayments > 0 ? gmv / totalPayments : 0;
-    const refundRate = totalCollected > 0 ? (refundedAmount / totalCollected) * 100 : 0;
+    const refundRate = settledLedgerAmount > 0 ? (refundedAmount / settledLedgerAmount) * 100 : 0;
 
     return successResponse({
       // Core metrics
       gmv,
-      totalCollected,
-      netAmount,
+      grossBookedValue: gmv,
+      settledLedgerAmount,
+      customerPaymentsByMethodTotal,
+      providerNetActivity,
       refundedAmount,
+      providerEarningsReversals,
       providerEarnings,
       serviceFeeCollected,
       tipsCollected,
@@ -227,19 +223,23 @@ export async function GET(request: NextRequest) {
       promotionDiscountsGiven,
       // Breakdown of how "totalCollected" is composed
       collectionBreakdown: {
-        gateway: totalPaidFromGateway,
+        ledger_payment_amount: totalPaidFromGateway,
         wallet: totalWalletApplied,
         gift_card: totalGiftCardApplied,
       },
       basis: {
-        gmv: "Non-cancelled bookings scheduled in the selected period.",
-        collected:
-          "Settled payment, wallet, and gift-card finance ledger rows created in the selected period.",
+        grossBookedValue: "Non-cancelled bookings scheduled in the selected provider-timezone period.",
+        settledLedgerAmount:
+          "Payment, wallet, and gift-card finance ledger rows created in the selected provider-timezone period. Payment ledger rows are settlement/accounting rows and may not equal full customer gross.",
+        customerPaymentsByMethodTotal:
+          "Successful booking payment transactions for bookings scheduled in the selected period, grouped by provider/method.",
         providerEarnings:
           "Provider_earnings ledger net created in the selected period; may differ from gross collected cash.",
+        providerNetActivity:
+          "Provider earnings plus tips, travel, and cancellation fees, less refund ledger rows in the selected period.",
         location:
           locationId
-            ? "Location filter includes only ledger rows linked to bookings at the selected location; non-booking platform charges are excluded."
+            ? "Location filter includes ledger rows linked to bookings at the selected location and product orders collected at the selected location; provider-level unlinked rows are excluded."
             : "All provider locations and provider-level ledger rows.",
       },
       // Booking counts
@@ -248,6 +248,8 @@ export async function GET(request: NextRequest) {
       pendingPayments,
       // Legacy-compatible fields (kept for backward compat with existing portal UI)
       totalAmount: gmv,
+      totalCollected: settledLedgerAmount,
+      netAmount: providerNetActivity,
       averageTransactionValue,
       refundRate,
       paymentsByMethod,

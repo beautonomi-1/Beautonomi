@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   notFoundResponse,
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import type { Booking } from "@/types/beautonomi";
 import { awardPointsForBooking, checkProviderMilestones } from "@/lib/services/provider-gamification";
@@ -47,14 +47,18 @@ function resolveLoyaltyBaseAmount(booking: {
  * customer loyalty points (only on completion), and deducts any product
  * stock tied to the booking.
  *
- * Auth matches PATCH booking: provider_owner / provider_staff can complete.
+ * Requires `edit_appointments`, matching booking status update permissions.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("edit_appointments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;

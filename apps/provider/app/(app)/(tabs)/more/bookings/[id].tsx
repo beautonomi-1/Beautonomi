@@ -299,6 +299,17 @@ type AppointmentProductOrderResponse = {
   }[];
 };
 
+type ProviderPermissionsResponse = {
+  permissions?: {
+    edit_appointments?: boolean;
+    cancel_appointments?: boolean;
+    create_sales?: boolean;
+    process_payments?: boolean;
+    rate_clients?: boolean;
+    view_client_ratings?: boolean;
+  };
+};
+
 type BookingResourceRow = {
   id: string;
   resource_id: string;
@@ -512,7 +523,16 @@ export default function BookingDetailScreen() {
   // §Release-audit 2026-04: provider timezone for tz-aware reschedule. Falls
   // back to device local via buildZonedIsoForWallClock when unavailable.
   const { provider: providerProfile } = useProvider();
+  const { data: permissionData } = useApi<ProviderPermissionsResponse>("/api/provider/permissions");
   const providerTimezone = providerProfile?.timezone ?? null;
+  const permissions = permissionData?.permissions;
+  const canEditAppointments = permissions?.edit_appointments === true;
+  const canCancelAppointments =
+    permissions?.cancel_appointments === true || canEditAppointments;
+  const canProcessPayments = permissions?.process_payments === true;
+  const canCreateSales = permissions?.create_sales === true;
+  const canRateClients = permissions?.rate_clients === true;
+  const canViewClientRatings = permissions?.view_client_ratings === true || canRateClients;
   const bookingIdStr = typeof id === "string" ? id : Array.isArray(id) ? id[0] ?? "" : "";
   const appointmentProductOrdersUrl =
     bookingIdStr && (data?.products?.length ?? 0) > 0
@@ -541,9 +561,16 @@ export default function BookingDetailScreen() {
     return "confirmed";
   }, [data]);
 
-  const allowedStatusTargets = useMemo(
+  const rawAllowedStatusTargets = useMemo(
     () => getAllowedTransitionTargets(currentDbStatus),
     [currentDbStatus],
+  );
+  const allowedStatusTargets = useMemo(
+    () =>
+      rawAllowedStatusTargets.filter((target) =>
+        target === "cancelled" ? canCancelAppointments : canEditAppointments,
+      ),
+    [rawAllowedStatusTargets, canCancelAppointments, canEditAppointments],
   );
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationPermissionDeniedRef = useRef(false);
@@ -874,6 +901,10 @@ export default function BookingDetailScreen() {
       setHasProviderClientRating(null);
       return;
     }
+    if (!canViewClientRatings) {
+      setHasProviderClientRating(false);
+      return;
+    }
     let cancelled = false;
     setHasProviderClientRating(null);
     api
@@ -889,7 +920,7 @@ export default function BookingDetailScreen() {
     return () => {
       cancelled = true;
     };
-  }, [bookingIdStr, data]);
+  }, [bookingIdStr, data, canViewClientRatings]);
 
   // Show provider post-completion modal once per booking when opening a completed booking
   useEffect(() => {
@@ -913,6 +944,10 @@ export default function BookingDetailScreen() {
   };
 
   const handleRateClientSubmit = async () => {
+    if (!canRateClients) {
+      Alert.alert("Permission", "You do not have permission to rate clients.");
+      return;
+    }
     if (!bookingIdStr || rateClientStars < 1 || rateClientStars > 5) {
       Alert.alert("Required", "Please select a rating (1–5 stars).");
       return;
@@ -1049,10 +1084,11 @@ export default function BookingDetailScreen() {
         hasAccessCodes
     );
   const canStartJourney =
+    canEditAppointments &&
     isAtHome &&
     (b.status === "confirmed" || b.status === "booked") &&
     (b.current_stage == null || b.current_stage === "confirmed");
-  const canMarkArrived = isAtHome && b.current_stage === "provider_on_way";
+  const canMarkArrived = canEditAppointments && isAtHome && b.current_stage === "provider_on_way";
   const isEnRoute = b.current_stage === "provider_on_way";
   const isArrived = b.current_stage === "provider_arrived";
   const arrivalVerified =
@@ -1064,6 +1100,7 @@ export default function BookingDetailScreen() {
   const isStarted = ["started", "in_progress"].includes(b.status);
   const clientArrivedAtSalon = isAtSalon && b.current_stage === "client_arrived";
   const canCheckInAtSalon =
+    canEditAppointments &&
     isAtSalon &&
     (b.status === "confirmed" || b.status === "booked" || b.status === "pending") &&
     b.current_stage !== "client_arrived" &&
@@ -1110,10 +1147,11 @@ export default function BookingDetailScreen() {
     "completed",
   ]);
   const canMarkPaid =
+    canProcessPayments &&
     yocoTerminalAmount > 0 &&
     typeof b.status === "string" &&
     statusesAllowingPayment.has(b.status);
-  const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
+  const canRefund = canProcessPayments && totalPaid > 0 && totalRefunded < totalPaid;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
 
   /** Show payment lines + receipt actions for paid bookings and for closed bookings that may be $0 (complimentary / settled). */
@@ -1246,8 +1284,14 @@ export default function BookingDetailScreen() {
     if (!canMarkPaid) {
       Alert.alert(
         "Cannot take card payment",
-        "This booking is not in a state where a card payment can be recorded (for example it may be cancelled).",
+        canProcessPayments
+          ? "This booking is not in a state where a card payment can be recorded (for example it may be cancelled)."
+          : "You do not have permission to process payments.",
       );
+      return;
+    }
+    if (!canCreateSales) {
+      Alert.alert("Cannot take card payment", "You do not have permission to create sales records.");
       return;
     }
     let saleId = yocoBookingSaleIdRef.current ?? yocoBookingSaleId;
@@ -1388,6 +1432,10 @@ export default function BookingDetailScreen() {
    */
   const applyDbStatusTransition = async (dbTarget: string) => {
     if (!id) return;
+    if (dbTarget === "cancelled" ? !canCancelAppointments : !canEditAppointments) {
+      Alert.alert("Permission", "You do not have permission to update this booking status.");
+      return;
+    }
     setShowStatusPicker(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -1442,6 +1490,10 @@ export default function BookingDetailScreen() {
   const handleReschedule = async () => {
     if (!id || !rescheduleTime) {
       Alert.alert("Required", "Please select a time.");
+      return;
+    }
+    if (!canEditAppointments) {
+      Alert.alert("Permission", "You do not have permission to reschedule bookings.");
       return;
     }
     setRescheduling(true);
@@ -1533,6 +1585,10 @@ export default function BookingDetailScreen() {
 
   const handleSaveNotes = async () => {
     if (!id) return;
+    if (!canEditAppointments) {
+      Alert.alert("Permission", "You do not have permission to edit booking notes.");
+      return;
+    }
     setSavingNotes(true);
     const version = (b as BookingDetail & { version?: number }).version;
     const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
@@ -1558,6 +1614,10 @@ export default function BookingDetailScreen() {
 
   const handleMarkPaid = async () => {
     if (!id) return;
+    if (!canProcessPayments) {
+      Alert.alert("Permission", "You do not have permission to process payments.");
+      return;
+    }
     if (yocoTerminalAmount <= 0) {
       Alert.alert("Nothing to record", "There is no remaining balance to mark as paid.");
       return;
@@ -1578,6 +1638,10 @@ export default function BookingDetailScreen() {
   };
 
   const handleRefund = async () => {
+    if (!canProcessPayments) {
+      Alert.alert("Permission", "You do not have permission to process payments.");
+      return;
+    }
     const amount = parseFloat(refundAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       Alert.alert("Invalid amount", "Enter a valid refund amount.");
@@ -1611,6 +1675,10 @@ export default function BookingDetailScreen() {
 
   const handleStartJourney = async () => {
     if (!id) return;
+    if (!canEditAppointments) {
+      Alert.alert("Permission", "You do not have permission to update this booking.");
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const body: Record<string, unknown> = {};
     if (etaMinutes != null && etaMinutes > 0) {
@@ -1626,6 +1694,10 @@ export default function BookingDetailScreen() {
 
   const handleMarkArrived = async () => {
     if (!id) return;
+    if (!canEditAppointments) {
+      Alert.alert("Permission", "You do not have permission to update this booking.");
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const body: Record<string, unknown> = {};
     try {
@@ -1788,6 +1860,10 @@ export default function BookingDetailScreen() {
 
   const handleClientArrived = async () => {
     if (!id) return;
+    if (!canEditAppointments) {
+      Alert.alert("Permission", "You do not have permission to update this booking.");
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsCheckingIn(true);
     try {
@@ -1837,6 +1913,10 @@ export default function BookingDetailScreen() {
   };
 
   const handleRequestPayment = async () => {
+    if (!canProcessPayments) {
+      Alert.alert("Permission", "You do not have permission to process payments.");
+      return;
+    }
     const description = requestPaymentDescription.trim();
     if (!description) {
       Alert.alert("Required", "Please enter a description for the charge.");
@@ -1867,6 +1947,10 @@ export default function BookingDetailScreen() {
 
   const handleSendPaymentLink = async () => {
     if (!id) return;
+    if (!canProcessPayments) {
+      Alert.alert("Permission", "You do not have permission to process payments.");
+      return;
+    }
     setSendingPaymentLink(true);
     const res = await postMutation(`/api/provider/bookings/${id}/send-payment-link`, {
       delivery_method: sendPaymentLinkMethod,
@@ -1884,6 +1968,10 @@ export default function BookingDetailScreen() {
 
   const handleChargeMarkPaid = async () => {
     if (!id || !chargeMarkPaidId) return;
+    if (!canProcessPayments) {
+      Alert.alert("Permission", "You do not have permission to process payments.");
+      return;
+    }
     setMarkingChargePaid(true);
     const res = await postMutation(
       `/api/provider/bookings/${id}/additional-charges/${chargeMarkPaidId}/mark-paid`,
@@ -1899,9 +1987,9 @@ export default function BookingDetailScreen() {
     await Promise.all([refresh(), refreshCharges()]);
   };
 
-  const canRequestPayment = isStarted || b.status === "completed";
-  const canSendPaymentLink = outstanding > 0 && b.status !== "cancelled";
-  const canReschedule = (isActive || isStarted) && Boolean(b.scheduled_at);
+  const canRequestPayment = canProcessPayments && (isStarted || b.status === "completed");
+  const canSendPaymentLink = canProcessPayments && outstanding > 0 && b.status !== "cancelled";
+  const canReschedule = canEditAppointments && (isActive || isStarted) && Boolean(b.scheduled_at);
   const nextStep = getBookingNextStep(b, { outstanding, isAtHome, isAtSalon });
   const primaryServiceName = services[0]?.offering_name ?? "Appointment";
   const serviceCountLabel =
@@ -1946,7 +2034,8 @@ export default function BookingDetailScreen() {
           yocoTerminalAmount > 0 &&
           yocoIntegration?.is_enabled === true &&
           Boolean(yocoIntegration?.api_key_set) &&
-          canMarkPaid
+          canMarkPaid &&
+          canCreateSales
         }
         onTrigger={() => {
           router.setParams({ collectYoco: undefined });
@@ -2212,17 +2301,19 @@ export default function BookingDetailScreen() {
                 <Text style={twStyle("text-sm font-semibold text-primary")}>Reschedule</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity
-              onPress={() => {
-                setNotesText(b.special_requests ?? "");
-                setEditingNotes(true);
-              }}
-              style={twStyle("rounded-xl border border-gray-300 px-4 py-2.5")}
-              accessibilityRole="button"
-              accessibilityLabel="Edit booking notes"
-            >
-              <Text style={twStyle("text-sm font-semibold text-gray-800")}>Edit notes</Text>
-            </TouchableOpacity>
+            {canEditAppointments ? (
+              <TouchableOpacity
+                onPress={() => {
+                  setNotesText(b.special_requests ?? "");
+                  setEditingNotes(true);
+                }}
+                style={twStyle("rounded-xl border border-gray-300 px-4 py-2.5")}
+                accessibilityRole="button"
+                accessibilityLabel="Edit booking notes"
+              >
+                <Text style={twStyle("text-sm font-semibold text-gray-800")}>Edit notes</Text>
+              </TouchableOpacity>
+            ) : null}
             {canMarkPaid ? (
               <TouchableOpacity
                 onPress={() => setShowMarkPaid(true)}
@@ -2651,12 +2742,12 @@ export default function BookingDetailScreen() {
         )}
 
         {/* Client rating (provider → customer via provider_client_ratings) */}
-        {(b.status === "completed" || b.status === "no_show") && hasProviderClientRating !== null && (
+        {(b.status === "completed" || b.status === "no_show") && canViewClientRatings && hasProviderClientRating !== null && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Client rating</Text>
             {hasProviderClientRating ? (
               <Text style={twStyle("text-sm text-gray-600")}>You have rated this client for this booking.</Text>
-            ) : (
+            ) : canRateClients ? (
               <TouchableOpacity
                 onPress={() => setShowRateClientSheet(true)}
                 style={twStyle("rounded-xl py-3 px-4 self-start")}
@@ -2664,6 +2755,8 @@ export default function BookingDetailScreen() {
               >
                 <Text style={twStyle("font-semibold text-primary")}>Rate this client</Text>
               </TouchableOpacity>
+            ) : (
+              <Text style={twStyle("text-sm text-gray-600")}>You do not have permission to rate clients.</Text>
             )}
           </View>
         )}
@@ -2794,7 +2887,7 @@ export default function BookingDetailScreen() {
                       <Text style={twStyle("font-medium text-white")}>Mark paid</Text>
                     )}
                   </TouchableOpacity>
-                  {yocoIntegration?.is_enabled && yocoIntegration?.api_key_set && outstanding > 0 && (
+                  {canCreateSales && yocoIntegration?.is_enabled && yocoIntegration?.api_key_set && outstanding > 0 && (
                     <TouchableOpacity
                       onPress={() => void openYocoCheckout()}
                       disabled={preparingYocoSale}
@@ -2940,7 +3033,7 @@ export default function BookingDetailScreen() {
                       {c.currency} {Number(c.amount).toFixed(2)} · {c.status}
                     </Text>
                   </View>
-                  {(c.status === "pending" || c.status === "approved") && (
+                  {canProcessPayments && (c.status === "pending" || c.status === "approved") && (
                     <TouchableOpacity
                       onPress={() => {
                         setChargeMarkPaidId(c.id);
@@ -3062,7 +3155,7 @@ export default function BookingDetailScreen() {
         <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-3 mb-3")}>
           <View style={twStyle("flex-row items-center justify-between mb-2")}>
             <Text style={twStyle("text-sm font-medium text-gray-700")}>Notes / Special requests</Text>
-            {!editingNotes ? (
+            {!editingNotes && canEditAppointments ? (
               <TouchableOpacity
                 onPress={() => {
                   setNotesText(b.special_requests ?? "");

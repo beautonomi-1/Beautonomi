@@ -22,6 +22,20 @@ const SECTION_TITLES: Record<string, string> = {
 const VALID_SECTIONS = new Set(["top-rated", "sponsored", "nearest", "hottest", "upcoming"]);
 const PAGE_SIZE = 20;
 
+function hasUsableCoords(latitude?: number | null, longitude?: number | null): boolean {
+  return (
+    latitude != null &&
+    longitude != null &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180 &&
+    !(latitude === 0 && longitude === 0)
+  );
+}
+
 function getProviders(data: ReturnType<typeof useHomeData>["data"], section: string): PublicProviderCard[] {
   if (!data) return [];
   switch (section) {
@@ -81,7 +95,7 @@ export default function MoreProvidersScreen() {
       setPageError(null);
       if (section === "sponsored") {
         const params = new URLSearchParams();
-        if (effectiveLat != null && effectiveLng != null) {
+        if (hasUsableCoords(effectiveLat, effectiveLng)) {
           params.set("lat", String(effectiveLat));
           params.set("lng", String(effectiveLng));
         }
@@ -106,7 +120,7 @@ export default function MoreProvidersScreen() {
         section === "top-rated" ? "rating" : section === "nearest" ? "distance" : section === "upcoming" ? "newest" : "relevance",
       );
       if (section === "top-rated") params.set("rating_min", "1");
-      if (effectiveLat != null && effectiveLng != null) {
+      if (hasUsableCoords(effectiveLat, effectiveLng)) {
         params.set("lat", String(effectiveLat));
         params.set("lng", String(effectiveLng));
       }

@@ -4,7 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 // Creating up to 12 initial bookings serially can exceed the default 10-second
 // Vercel function budget. Allow up to 60 seconds.
 export const maxDuration = 60;
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { createBookingFromRecurringSeries } from "@/lib/recurring/create-booking-from-series";
 import {
@@ -77,7 +78,11 @@ function buildInitialOccurrenceDates(params: {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("view_calendar", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     
@@ -170,7 +175,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("create_appointments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     
@@ -186,6 +195,16 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validated = createRecurringSchema.parse(body);
+    const metadata = {
+      ...(validated.metadata ?? {}),
+      booking_source: "provider",
+      services:
+        Array.isArray((validated.metadata as { services?: unknown[] } | undefined)?.services)
+          ? (validated.metadata as { services?: unknown[] }).services
+          : validated.service_id
+            ? [{ offering_id: validated.service_id, staff_id: validated.staff_id ?? null }]
+            : undefined,
+    };
     const requestedOccurrences =
       validated.occurrences ?? occurrenceCountFromRule(validated.recurrence_rule);
 
@@ -204,6 +223,7 @@ export async function POST(request: NextRequest) {
       .insert({
         provider_id: providerId,
         ...validated,
+        metadata,
         occurrences: requestedOccurrences,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

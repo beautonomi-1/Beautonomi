@@ -25,6 +25,12 @@ type ProductLine = {
   unit_price: number;
   total_price: number;
 };
+type AddonLine = {
+  addon_id: string;
+  quantity: number;
+  price: number;
+  currency?: string | null;
+};
 
 function toHhMmSs(t: string | null | undefined): string {
   const s = (t || "10:00:00").trim();
@@ -74,7 +80,40 @@ function resolveProductLines(row: SeriesRow): ProductLine[] {
     });
 }
 
+function resolveAddonLines(row: SeriesRow): AddonLine[] {
+  const meta = row.metadata as { addons?: Array<Record<string, unknown>> } | null;
+  if (!Array.isArray(meta?.addons)) return [];
+  return meta.addons
+    .filter((item) => typeof (item.addon_id ?? item.addonId) === "string")
+    .map((item) => {
+      const quantity = Math.max(1, Math.floor(Number(item.quantity || 1)) || 1);
+      const price = Number(item.price ?? 0) || 0;
+      return {
+        addon_id: String(item.addon_id ?? item.addonId),
+        quantity,
+        price,
+        currency: typeof item.currency === "string" ? item.currency : null,
+      };
+    });
+}
+
 const BUFFER_MINUTES = 15;
+
+function taxSnapshotForRecurringLine(
+  providerId: string,
+  providerTaxRatePct: unknown,
+  taxRate: number
+): Record<string, unknown> {
+  return {
+    code: "RESOLVED",
+    rate: taxRate,
+    inclusive: false,
+    jurisdiction: null,
+    source: providerTaxRatePct != null ? "provider_override" : "platform_default",
+    provider_id: providerId,
+    resolved_at: new Date().toISOString(),
+  };
+}
 
 /**
  * Create a single booking (+ booking_services) from a recurring series row. Does not charge payment.
@@ -97,6 +136,7 @@ export async function createBookingFromRecurringSeries(
     return { error: "no_services" };
   }
   const productLines = resolveProductLines(row);
+  const addonLines = resolveAddonLines(row);
 
   const timeStr = toHhMmSs(row.start_time || row.preferred_time);
 
@@ -137,6 +177,7 @@ export async function createBookingFromRecurringSeries(
     subtotal += Number(o.price || 0);
   }
   subtotal += productLines.reduce((sum, p) => sum + Number(p.total_price || 0), 0);
+  subtotal += addonLines.reduce((sum, a) => sum + Number(a.price || 0) * Number(a.quantity || 1), 0);
 
   // Pass provider's tax_rate_percent directly to avoid a second DB lookup.
   // getEffectiveTaxRate treats null as "unset" and falls back to platform default.
@@ -144,7 +185,7 @@ export async function createBookingFromRecurringSeries(
   const taxRate = await getEffectiveTaxRate(row.provider_id, providerTaxRatePct);
   const taxAmount = Math.round(subtotal * (Number(taxRate) / 100) * 100) / 100;
 
-  // Service fee — mirrors validate-booking.ts priority:
+  // Platform Fee — mirrors validate-booking.ts priority:
   //   1. Provider customer_fee_config_id  2. platform_settings.payouts fallback
   let serviceFeePercentage = 0;
   let serviceFeeAmount = 0;
@@ -211,6 +252,7 @@ export async function createBookingFromRecurringSeries(
       duration_minutes: duration,
       price,
       currency: cur,
+      tax_snapshot: taxSnapshotForRecurringLine(row.provider_id, providerTaxRatePct, taxRate),
       scheduled_start_at: start.toISOString(),
       scheduled_end_at: end.toISOString(),
     });
@@ -231,10 +273,11 @@ export async function createBookingFromRecurringSeries(
     }
   }
 
-  const metaAddr = row.metadata as { address?: Record<string, unknown>; pricing?: Record<string, unknown> } | null;
+  const metaAddr = row.metadata as { address?: Record<string, unknown>; pricing?: Record<string, unknown>; booking_source?: string } | null;
   const addr = metaAddr?.address;
   const locationType = (row.location_type || "at_salon") as string;
   const pricingMeta = metaAddr?.pricing ?? {};
+  const bookingSource = typeof metaAddr?.booking_source === "string" ? metaAddr.booking_source : "online";
   const { data: previousBookingPricing } =
     Object.keys(pricingMeta).length === 0
       ? await admin
@@ -284,7 +327,7 @@ export async function createBookingFromRecurringSeries(
     scheduled_at: scheduledAtLocal.toISOString(),
     location_type: locationType,
     location_id: row.location_id,
-    booking_source: "online",
+    booking_source: bookingSource,
     address_line1: typeof addr === "object" && addr && "line1" in addr ? String((addr as { line1?: string }).line1) : null,
     address_city: typeof addr === "object" && addr && "city" in addr ? String((addr as { city?: string }).city) : null,
     address_country: typeof addr === "object" && addr && "country" in addr ? String((addr as { country?: string }).country) : null,
@@ -358,7 +401,7 @@ export async function createBookingFromRecurringSeries(
     await admin
       .from("bookings")
       .update({
-        booking_source: "online",
+        booking_source: bookingSource,
         tenant_id: (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
         ...(bookingData.payment_provider ? { payment_provider: bookingData.payment_provider } : {}),
       })
@@ -368,6 +411,7 @@ export async function createBookingFromRecurringSeries(
       admin,
       bookingId as string,
       productLines,
+      addonLines,
       primaryStaffId,
       row,
       occurrenceDateYmd,
@@ -392,6 +436,7 @@ export async function createBookingFromRecurringSeries(
     duration_minutes: s.duration_minutes,
     price: s.price,
     currency: s.currency,
+    tax_snapshot: s.tax_snapshot,
     scheduled_start_at: s.scheduled_start_at,
     scheduled_end_at: s.scheduled_end_at,
   }));
@@ -406,6 +451,7 @@ export async function createBookingFromRecurringSeries(
     admin,
     bookingId,
     productLines,
+    addonLines,
     primaryStaffId,
     row,
     occurrenceDateYmd,
@@ -419,11 +465,27 @@ async function insertRecurringBookingProductsAndAudit(
   admin: SupabaseClient,
   bookingId: string,
   productLines: ProductLine[],
+  addonLines: AddonLine[],
   primaryStaffId: string | null,
   row: SeriesRow,
   occurrenceDateYmd: string,
   totalAmount: number
 ): Promise<void> {
+  if (addonLines.length > 0) {
+    const { error } = await admin.from("booking_addons").insert(
+      addonLines.map((addon) => ({
+        booking_id: bookingId,
+        addon_id: addon.addon_id,
+        quantity: addon.quantity,
+        price: addon.price,
+        currency: addon.currency ?? LAST_RESORT_CURRENCY,
+      }))
+    );
+    if (error) {
+      console.warn(`Failed to insert recurring booking add-ons for ${bookingId}:`, error);
+    }
+  }
+
   if (productLines.length > 0) {
     const { error } = await admin.from("booking_products").insert(
       productLines.map((product) => ({

@@ -9,6 +9,7 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import type { PermissionRequestContext } from "@/lib/auth/permissions";
 import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 import {
   getTeamRosterDetailLevel,
@@ -43,12 +44,13 @@ async function respondWithStaffDetail(
   viewerUserId: string,
   staffId: string,
   providerId: string,
+  request?: PermissionRequestContext,
 ) {
   const detail = await fetchStaffDetailForApi(supabase, staffId, providerId);
   if (!detail) {
     return notFoundResponse("Staff member not found");
   }
-  const rosterDetailLevel = await getTeamRosterDetailLevel(viewerUserId);
+  const rosterDetailLevel = await getTeamRosterDetailLevel(viewerUserId, request);
   const redacted = redactStaffRowForViewer(
     {
       ...detail,
@@ -63,9 +65,12 @@ async function respondWithStaffDetail(
   return successResponse(safe);
 }
 
-async function canManageOwnerSensitiveOps(user: { id: string; role?: string }): Promise<boolean> {
+async function canManageOwnerSensitiveOps(
+  user: { id: string; role?: string },
+  request?: PermissionRequestContext,
+): Promise<boolean> {
   if (user.role === "superadmin") return true;
-  return isProviderOwner(user.id);
+  return isProviderOwner(user.id, request);
 }
 
 async function countOwners(
@@ -213,7 +218,7 @@ export async function GET(
       return notFoundResponse("Provider not found");
     }
 
-    return respondWithStaffDetail(supabase, user.id, id, providerId);
+    return respondWithStaffDetail(supabase, user.id, id, providerId, request);
   } catch (error) {
     return handleApiError(error, "Failed to fetch staff member");
   }
@@ -244,8 +249,8 @@ export async function PATCH(
 
     const canManageTeam =
       user.role === "superadmin" ||
-      (await isProviderOwner(user.id)) ||
-      (await hasPermission(user.id, "manage_team"));
+      (await isProviderOwner(user.id, request)) ||
+      (await hasPermission(user.id, "manage_team", undefined, request));
 
     if (!canManageTeam && !editingSelf) {
       return errorResponse(
@@ -272,7 +277,7 @@ export async function PATCH(
           throw updateError;
         }
       }
-      return respondWithStaffDetail(supabase, user.id, id, providerId);
+      return respondWithStaffDetail(supabase, user.id, id, providerId, request);
     }
 
     const validationResult = updateStaffSchema.safeParse(body);
@@ -300,7 +305,7 @@ export async function PATCH(
     }
 
     const existing = existingRow as { id: string; role: string };
-    const ownerOps = await canManageOwnerSensitiveOps(user);
+    const ownerOps = await canManageOwnerSensitiveOps(user, request);
 
     if (existing.role === "owner" && !ownerOps) {
       return errorResponse(
@@ -398,7 +403,7 @@ export async function PATCH(
       }
     }
 
-    return respondWithStaffDetail(supabase, user.id, id, providerId);
+    return respondWithStaffDetail(supabase, user.id, id, providerId, request);
   } catch (error) {
     return handleApiError(error, "Failed to update staff member");
   }
@@ -440,7 +445,7 @@ export async function DELETE(
     }
 
     const existing = existingRow as { id: string; role: string };
-    const ownerOps = await canManageOwnerSensitiveOps(user);
+    const ownerOps = await canManageOwnerSensitiveOps(user, request);
 
     if (existing.role === "owner") {
       if (!ownerOps) {

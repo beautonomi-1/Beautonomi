@@ -1017,7 +1017,7 @@ export default function ProviderFinance() {
                       )}
                       {transactionDetails.service_fee_amount && Number(transactionDetails.service_fee_amount) > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Service Fee:</span>
+                          <span className="text-gray-600">Platform Fee:</span>
                           <span className="font-medium">
                             {fmt(Number(transactionDetails.service_fee_amount))}
                           </span>

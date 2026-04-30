@@ -1,7 +1,7 @@
 /**
  * Platform Fee Calculation Utilities
  * 
- * These functions help calculate customer service fees and commissions
+ * These functions help calculate customer-paid Platform Fees and commissions
  * based on the platform settings configured by superadmin.
  */
 
@@ -16,22 +16,20 @@ interface PlatformFeeSettings {
 }
 
 /**
- * Calculate customer service fee (customer-facing)
- * This is the fee shown to customers during checkout
- * @deprecated Use calculateServiceFee instead
+ * Calculate customer-paid Platform Fee.
+ * @deprecated Use calculatePlatformFee instead
  */
 export function calculatePlatformServiceFee(
   bookingSubtotal: number,
   settings: PlatformFeeSettings
 ): number {
-  return calculateServiceFee(bookingSubtotal, settings);
+  return calculatePlatformFee(bookingSubtotal, settings);
 }
 
 /**
- * Calculate customer service fee (customer-facing)
- * This is the fee shown to customers during checkout
+ * Calculate customer-paid Platform Fee (customer-facing)
  */
-export function calculateServiceFee(
+export function calculatePlatformFee(
   bookingSubtotal: number,
   settings: PlatformFeeSettings
 ): number {
@@ -46,6 +44,9 @@ export function calculateServiceFee(
   }
 }
 
+/** @deprecated Use calculatePlatformFee. */
+export const calculateServiceFee = calculatePlatformFee;
+
 /**
  * Calculate platform commission (what platform takes from booking)
  * This is the revenue split between platform and provider.
@@ -53,7 +54,7 @@ export function calculateServiceFee(
  * @deprecated Prefer the inline commission calculation in charge-success.ts which
  *   correctly derives the commission base from finance_transactions. If you use this
  *   helper, you MUST pass the commission base (services + addons + products − discounts),
- *   EXCLUDING tip, tax, travel fee, and service fee — never the full booking total.
+ *   EXCLUDING tip, tax, travel fee, and customer-paid Platform Fee — never the full booking total.
  *
  * @param commissionBase The commission-eligible amount, NOT the booking total.
  */
@@ -75,25 +76,31 @@ export function calculatePlatformCommission(
 }
 
 /**
- * Calculate total amount with customer service fee
+ * Calculate total amount with customer-paid Platform Fee
  */
-export function calculateTotalWithServiceFee(
+export function calculateTotalWithPlatformFee(
   bookingSubtotal: number,
   settings: PlatformFeeSettings
 ): {
   subtotal: number;
+  platformFee: number;
+  /** @deprecated Use platformFee. */
   serviceFee: number;
   total: number;
 } {
-  const serviceFee = calculateServiceFee(bookingSubtotal, settings);
-  const total = bookingSubtotal + serviceFee;
+  const platformFee = calculatePlatformFee(bookingSubtotal, settings);
+  const total = bookingSubtotal + platformFee;
 
   return {
     subtotal: bookingSubtotal,
-    serviceFee,
+    platformFee,
+    serviceFee: platformFee,
     total,
   };
 }
+
+/** @deprecated Use calculateTotalWithPlatformFee. */
+export const calculateTotalWithServiceFee = calculateTotalWithPlatformFee;
 
 /**
  * Get platform fee settings from API

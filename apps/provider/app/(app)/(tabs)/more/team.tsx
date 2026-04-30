@@ -31,6 +31,7 @@ type StaffMember = {
 };
 
 type TeamAccessPayload = {
+  is_business_owner?: boolean;
   can_manage_team: boolean;
 };
 
@@ -50,7 +51,8 @@ export default function TeamScreen() {
 
   const { data: teamAccess, loading: teamAccessLoading } =
     useApi<TeamAccessPayload>("/api/provider/team-access");
-  const canManageTeam = teamAccess?.can_manage_team === true;
+  const canManageTeam =
+    teamAccess?.is_business_owner === true || teamAccess?.can_manage_team === true;
 
   const { data, loading, error, refresh } = useApi<
     StaffMember[] | { data?: StaffMember[] }

@@ -333,7 +333,7 @@ export default function StepPayment({
   }, [paystackEnabled, giftCardsEnabled, paymentMethod, cashEnabledOnPlatform]);
 
   // Fetch platform fees only to determine cash availability.
-  // Tax and service fee amounts are computed by booking-flow.tsx from the same API and stored in
+  // Tax and Platform Fee amounts are computed by booking-flow.tsx from the same API and stored in
   // bookingState — we trust those values here to keep fees perfectly consistent across all steps.
   useEffect(() => {
     let cancelled = false;

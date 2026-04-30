@@ -175,7 +175,7 @@ export default function AdminDashboard() {
                       <div>
                         <h4 className="font-medium text-xs mb-1 text-gray-700">Revenue Flow:</h4>
                         <div className="text-xs text-gray-600 space-y-1">
-                          <p><strong>1. GMV (Gross Merchandise Value):</strong> Total transaction value before any deductions</p>
+                          <p><strong>1. Settled service GMV:</strong> Ledger-backed service, wallet, gift-card, tax, tip, travel, platform-fee, and additional-charge activity</p>
                           <p><strong>2. Gateway Fees:</strong> Payment processing fees (deducted from platform revenue)</p>
                           <p><strong>3. Commission (Gross):</strong> Platform&apos;s % share of revenue</p>
                           <p><strong>4. Platform Take (Net):</strong> Commission - Gateway Fees = Your actual revenue</p>
@@ -187,7 +187,7 @@ export default function AdminDashboard() {
                         <div className="text-xs text-gray-700 space-y-0.5">
                           <p>R1,000 booking → Gateway Fee: R15 → Net: R985</p>
                           <p>20% Commission: R197 → Platform Take: R197 - R15 = R182</p>
-                          <p>Provider gets: R985 - R197 = R788</p>
+                          <p>Provider earnings come from net provider_earnings ledger rows.</p>
                         </div>
                       </div>
 
@@ -233,7 +233,7 @@ export default function AdminDashboard() {
                 icon={<DollarSign className="w-6 h-6" />}
                 color="orange"
                 trend={stats.revenue_growth !== 0 ? `${stats.revenue_growth >= 0 ? '+' : ''}${stats.revenue_growth}%` : undefined}
-                infoTooltip="Matches finance summary platform revenue: booking take + subscriptions + ads + service fees + paid wallet topups. Rolling ledger window for ledger-backed lines (see API metrics_notes)."
+                infoTooltip="Matches finance summary platform revenue: booking take + subscriptions + ads + Platform Fees + paid wallet topups. Rolling ledger window for ledger-backed lines (see API metrics_notes)."
               />
             </div>
           </motion.div>
@@ -263,7 +263,7 @@ export default function AdminDashboard() {
                 <RevenueRow label="Booking Commission" value={fmtMoney(stats.platform_revenue?.booking_commission ?? stats.platform_net_total - stats.subscription_net_total - (stats.ads_net_total ?? 0))} />
                 <RevenueRow label="Provider Subscriptions" value={fmtMoney(stats.subscription_net_total)} />
                 <RevenueRow label="Ads Revenue" value={fmtMoney(stats.ads_net_total ?? 0)} />
-                <RevenueRow label="Service Fees" value={fmtMoney(stats.platform_revenue?.service_fees ?? 0)} />
+                <RevenueRow label="Platform Fees" value={fmtMoney(stats.platform_revenue?.service_fees ?? 0)} />
                 <RevenueRow label="Wallet topups (paid)" value={fmtMoney(stats.platform_revenue?.wallet_topups ?? 0)} />
                 <RevenueRow label="E-commerce Fees (in commission)" value={fmtMoney(stats.platform_revenue?.ecommerce_fees_detail ?? 0)} muted />
                 
@@ -282,7 +282,7 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900">Provider Revenue</h2>
-                  <p className="text-xs text-gray-500">How much providers are earning via the platform</p>
+              <p className="text-xs text-gray-500">Provider earnings and pass-through ledger activity</p>
                 </div>
               </div>
               <div className="text-3xl font-bold text-gray-900 mb-4">
@@ -306,11 +306,11 @@ export default function AdminDashboard() {
           {/* GMV & Transaction Flow */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <StatCard
-              title="GMV (Gross Merchandise Value)"
+              title="Settled Service GMV"
               value={fmtMoney(stats.gmv_total)}
               icon={<DollarSign className="w-6 h-6" />}
               color="purple"
-              infoTooltip="Total value of all transactions before deductions. GMV = Platform Revenue + Provider Revenue + Gateway Fees."
+              infoTooltip="Ledger-backed service GMV. Provider reports show scheduled gross booked value separately."
             />
             <StatCard
               title="Commission (Gross)"

@@ -34,7 +34,9 @@ export async function GET(
     if (user.role !== "superadmin") {
       const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
       const canViewOthers =
-        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "view_team")) || (await hasPermission(user.id, "manage_team"));
+        (await isProviderOwner(user.id, request)) ||
+        (await hasPermission(user.id, "view_team", undefined, request)) ||
+        (await hasPermission(user.id, "manage_team", undefined, request));
       if (!canViewOthers && ownStaffId !== staffId) {
         return errorResponse(
           "You can only view your own location assignments.",

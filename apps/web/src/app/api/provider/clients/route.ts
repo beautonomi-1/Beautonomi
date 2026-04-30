@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireRoleInApi,
   successResponse,
   handleApiError,
   getProviderIdForUser,
@@ -14,6 +13,7 @@ import {
   upsertCustomerDefaultAddress,
   CustomerHomeAddressLockedError,
 } from "@/lib/provider-portal/user-default-address";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { hasProviderCustomerRelationship } from "@/lib/provider/client-access";
 import { isSalonMembershipEntitledForDiscount } from "@/lib/provider/salon-membership-entitlement";
 
@@ -23,7 +23,11 @@ import { isSalonMembershipEntitledForDiscount } from "@/lib/provider/salon-membe
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("view_clients", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const locationId = searchParams.get("location_id");
@@ -385,7 +389,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("edit_clients", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 

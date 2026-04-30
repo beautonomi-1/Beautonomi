@@ -11,7 +11,7 @@ export interface ProductOrder {
   tax_amount: number;
   delivery_fee: number;
   discount_amount: number;
-  /** Platform service fee on online card payments (0 for pay-on-delivery / walk-in). */
+  /** Platform Fee on online card payments (0 for pay-on-delivery / walk-in). */
   platform_fee?: number | null;
   /** Amount applied from customer wallet at checkout. */
   wallet_amount?: number | null;

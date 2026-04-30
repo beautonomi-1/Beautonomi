@@ -28,27 +28,34 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "30d";
-    const _reportType = searchParams.get("report_type") || "summary";
-    void _reportType;
+    const reportType = searchParams.get("report_type") || "summary";
+    const startDateParam = searchParams.get("start_date");
+    const endDateParam = searchParams.get("end_date");
 
     const now = new Date();
     let startDate: Date;
+    let endDate = now;
 
-    switch (period) {
-      case "7d":
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case "30d":
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case "90d":
-        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        break;
-      case "1y":
-        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-        break;
-      default:
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    if (startDateParam && endDateParam) {
+      startDate = new Date(`${startDateParam}T00:00:00.000Z`);
+      endDate = new Date(`${endDateParam}T23:59:59.999Z`);
+    } else {
+      switch (period) {
+        case "7d":
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case "30d":
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          break;
+        case "90d":
+          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+          break;
+        case "1y":
+          startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      }
     }
 
     // Get summary statistics
@@ -78,7 +85,7 @@ export async function GET(request: NextRequest) {
           return await fetchFinanceLedgerRowsForTenant(
             supabase,
             tenantId,
-            { start: startDate.toISOString(), end: now.toISOString() },
+            { start: startDate.toISOString(), end: endDate.toISOString() },
             {
               transactionTypes: ["payment", "additional_charge_payment"],
             }
@@ -95,12 +102,14 @@ export async function GET(request: NextRequest) {
     );
 
     // Convert to CSV
-    const headers = ["Metric", "Value", "Period", "Date Range"];
+    const reportLabel = reportType === "revenue" ? "Revenue report" : "Analytics summary";
+    const dateRangeLabel = `${startDate.toISOString().split("T")[0]} to ${endDate.toISOString().split("T")[0]}`;
+    const headers = ["Report", "Metric", "Value", "Period", "Date Range"];
     const rows = [
-      ["Total Users", totalUsers, period, `${startDate.toISOString().split("T")[0]} to ${now.toISOString().split("T")[0]}`],
-      ["Total Providers", totalProviders, period, `${startDate.toISOString().split("T")[0]} to ${now.toISOString().split("T")[0]}`],
-      ["Total Bookings", totalBookings, period, `${startDate.toISOString().split("T")[0]} to ${now.toISOString().split("T")[0]}`],
-      ["Total Revenue", totalRevenue.toFixed(2), period, `${startDate.toISOString().split("T")[0]} to ${now.toISOString().split("T")[0]}`],
+      [reportLabel, "Total Users", totalUsers, period, dateRangeLabel],
+      [reportLabel, "Total Providers", totalProviders, period, dateRangeLabel],
+      [reportLabel, "Total Bookings", totalBookings, period, dateRangeLabel],
+      [reportLabel, "Settled Service GMV", totalRevenue.toFixed(2), period, dateRangeLabel],
     ];
 
     const csvContent = [

@@ -3,10 +3,12 @@
  * If deactivated or (for providers) suspended, signs out and redirects to login with query params for messaging.
  */
 import { useEffect, useState, useRef } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { GateLoadingScreen } from "@/components/GateLoadingScreen";
+import { Colors } from "@/constants/colors";
 import {
   authFlowBreadcrumb,
   captureAuthMessage,
@@ -32,6 +34,8 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
   const { session, signOut } = useAuth();
   const userId = session?.user?.id ?? null;
   const [checked, setChecked] = useState(false);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const didCheckForUser = useRef<string | null>(null);
   const hangReportedRef = useRef(false);
   const userPresenceLoggedRef = useRef(false);
@@ -67,6 +71,7 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!userId) {
       didCheckForUser.current = null;
+      setCheckError(null);
       setChecked(true);
       return;
     }
@@ -76,6 +81,8 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
     }
 
     let cancelled = false;
+    setChecked(false);
+    setCheckError(null);
     didCheckForUser.current = userId;
 
     (async () => {
@@ -89,12 +96,8 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
       }
       try {
         /**
-         * §Release-audit 2026-04: retry transient failures before falling
-         * open. Previously a single 5xx / timeout would let the user
-         * through as if no account-status check had happened, so a
-         * flaky backend could momentarily admit suspended users. Retry
-         * up to 3 times for non-4xx errors; 4xx failures are authoritative
-         * and still pass through (user isn't deactivated/suspended there).
+         * Retry transient failures, then fail closed behind a retry screen so
+         * a flaky backend does not admit suspended or deactivated users.
          */
         const MAX_ATTEMPTS = 3;
         let res: { data?: AccountStatus; error?: { message?: string; status?: number } } | null = null;
@@ -115,11 +118,14 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
         if (cancelled || !res) return;
         const status = res.data;
         if (res.error || !status) {
+          const message =
+            res.error?.message ||
+            "We couldn't verify your account status. Check your connection and try again.";
           if (isSentryEnabled()) {
             setAuthGateContext("account_status", { phase: "resolved", outcome: "no_status" });
             authFlowBreadcrumb(`${GUARD}.request_complete`, { ok: false, hasBody: !!status });
           }
-          setChecked(true);
+          setCheckError(message);
           return;
         }
         if (isSentryEnabled()) {
@@ -135,7 +141,9 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
           return;
         }
         if (status.is_deactivated) {
-          if (status.deactivated_by === "user") {
+          const canSelfReactivate =
+            status.deactivated_by === "user" || status.deactivated_by === "inactive_retention";
+          if (canSelfReactivate) {
             try {
               const reactivateRes = (await api.post<{ data?: { reactivated?: boolean } }>(
                 "/api/me/reactivate-account",
@@ -170,6 +178,13 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
           authFlowBreadcrumb(`${GUARD}.path_active_ok`, {});
         }
       } catch (e) {
+        if (!cancelled) {
+          setCheckError(
+            e instanceof Error
+              ? e.message
+              : "We couldn't verify your account status. Check your connection and try again.",
+          );
+        }
         if (isSentryEnabled()) {
           captureError(e, { area: "AccountStatusGuard.account-status" });
           authFlowBreadcrumb(`${GUARD}.catch_error`, {
@@ -190,7 +205,7 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
     return () => {
       cancelled = true;
     };
-  }, [userId, signOut, router]);
+  }, [userId, signOut, router, retryKey]);
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -215,6 +230,59 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
   // §Customer-audit 2026-04 (loading-polish): branded gate across session /
   // account-status checks so the flash between login and home is on-brand.
   if (!session) return <GateLoadingScreen />;
+  if (checkError) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+          backgroundColor: Colors.white,
+        }}
+      >
+        <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], textAlign: "center" }}>
+          Account check needed
+        </Text>
+        <Text style={{ marginTop: 10, fontSize: 15, lineHeight: 22, color: Colors.gray[600], textAlign: "center" }}>
+          {checkError}
+        </Text>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Retry account status check"
+          onPress={() => {
+            didCheckForUser.current = null;
+            setCheckError(null);
+            setChecked(false);
+            setRetryKey((value) => value + 1);
+          }}
+          style={{
+            marginTop: 24,
+            minHeight: 48,
+            minWidth: 180,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 14,
+            backgroundColor: Colors.primary,
+            paddingHorizontal: 24,
+            paddingVertical: 12,
+          }}
+        >
+          <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>Try again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+          onPress={() => {
+            void signOut();
+          }}
+          style={{ marginTop: 14, paddingHorizontal: 20, paddingVertical: 10 }}
+        >
+          <Text style={{ color: Colors.gray[500], fontSize: 14, fontWeight: "600" }}>Sign out</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
   if (!checked) return <GateLoadingScreen message="Checking account…" />;
   return <>{children}</>;
 }

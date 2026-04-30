@@ -13,8 +13,12 @@ interface ShippingConfig {
   offers_delivery: boolean;
   offers_collection: boolean;
   delivery_fee: number;
+  delivery_fee_type: "flat" | "weight_based" | "distance_based";
   free_delivery_threshold: number | null;
   delivery_radius_km: number | null;
+  weight_rate_per_kg: number | null;
+  distance_rate_per_km: number | null;
+  shipping_provider_preference: "aramex" | "courier-guy" | "bob-go" | null;
   estimated_delivery_days: number;
   delivery_notes: string | null;
   collection_notes: string | null;
@@ -24,8 +28,12 @@ const DEFAULTS: ShippingConfig = {
   offers_delivery: false,
   offers_collection: true,
   delivery_fee: 0,
+  delivery_fee_type: "flat",
   free_delivery_threshold: null,
   delivery_radius_km: null,
+  weight_rate_per_kg: null,
+  distance_rate_per_km: null,
+  shipping_provider_preference: null,
   estimated_delivery_days: 3,
   delivery_notes: null,
   collection_notes: null,
@@ -94,7 +102,24 @@ export default function ProviderShippingConfigPage() {
         {config.offers_delivery && (
           <div className="pl-4 border-l-2 border-pink-200 space-y-4">
             <div>
-              <Label>Delivery Fee ({currency})</Label>
+              <Label>Delivery Fee Model</Label>
+              <select
+                value={config.delivery_fee_type}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    delivery_fee_type: e.target.value as ShippingConfig["delivery_fee_type"],
+                  })
+                }
+                className="mt-1 max-w-[260px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="flat">Flat fee</option>
+                <option value="weight_based">Base fee + weight rate</option>
+                <option value="distance_based">Base fee + distance rate</option>
+              </select>
+            </div>
+            <div>
+              <Label>Base Delivery Fee ({currency})</Label>
               <Input
                 type="number"
                 min={0}
@@ -104,6 +129,45 @@ export default function ProviderShippingConfigPage() {
                 className="mt-1 max-w-[200px]"
               />
             </div>
+            {config.delivery_fee_type === "weight_based" && (
+              <div>
+                <Label>Weight Rate ({currency} per kg)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={config.weight_rate_per_kg ?? ""}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      weight_rate_per_kg: e.target.value ? parseFloat(e.target.value) : null,
+                    })
+                  }
+                  className="mt-1 max-w-[200px]"
+                />
+              </div>
+            )}
+            {config.delivery_fee_type === "distance_based" && (
+              <div>
+                <Label>Distance Rate ({currency} per km)</Label>
+                <p className="text-xs text-gray-400 mb-1">
+                  Applied when customer and provider coordinates are available; otherwise only the base fee applies.
+                </p>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={config.distance_rate_per_km ?? ""}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      distance_rate_per_km: e.target.value ? parseFloat(e.target.value) : null,
+                    })
+                  }
+                  className="mt-1 max-w-[200px]"
+                />
+              </div>
+            )}
             <div>
               <Label>Free Delivery Threshold ({currency})</Label>
               <p className="text-xs text-gray-400 mb-1">Leave empty for no free delivery</p>
@@ -150,6 +214,27 @@ export default function ProviderShippingConfigPage() {
                 }
                 className="mt-1 max-w-[200px]"
               />
+            </div>
+            <div>
+              <Label>Courier Booking</Label>
+              <p className="text-xs text-gray-400 mb-1">
+                Optional. Leave manual unless a courier integration has been configured.
+              </p>
+              <select
+                value={config.shipping_provider_preference ?? ""}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    shipping_provider_preference: (e.target.value || null) as ShippingConfig["shipping_provider_preference"],
+                  })
+                }
+                className="mt-1 max-w-[260px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Manual tracking only</option>
+                <option value="aramex">Aramex</option>
+                <option value="courier-guy">Courier Guy</option>
+                <option value="bob-go">Bob Go</option>
+              </select>
             </div>
             <div>
               <Label>Delivery Notes</Label>

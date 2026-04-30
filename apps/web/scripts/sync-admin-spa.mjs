@@ -18,6 +18,12 @@ if (process.env.SKIP_ADMIN_SPA_SYNC === "1") {
 }
 
 if (!existsSync(adminDist)) {
+  if ((process.env.ADMIN_SPA_ROUTING || "").toLowerCase() === "spa") {
+    console.error(
+      "[admin-spa] apps/admin-web/dist not found while ADMIN_SPA_ROUTING=spa — failing build to avoid shipping a missing admin SPA."
+    );
+    process.exit(1);
+  }
   console.warn(
     "[admin-spa] apps/admin-web/dist not found — run `pnpm exec turbo run build --filter=admin-web` first. Web build continues (legacy /admin only)."
   );

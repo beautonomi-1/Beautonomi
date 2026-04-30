@@ -18,7 +18,7 @@ const DEFAULT_FEES = {
 /**
  * GET /api/public/platform-fees?provider_id=<uuid>
  *
- * Returns the effective service fee settings the customer will be charged.
+ * Returns the effective customer-paid Platform Fee settings.
  * When provider_id is supplied, mirrors validate-booking.ts logic:
  *   1. Provider customer_fee_config_id → platform_fee_config row (provider-specific override)
  *   2. Fallback: platform_settings.payouts (global platform fee)

@@ -528,7 +528,7 @@ export default function BookingFlow() {
   // Membership discount is applied server-side from provider membership plans (user_memberships) in validate-booking
   const membershipDiscountPercent = 0;
 
-  // Calculate membership discount, tax, and platform service fee whenever relevant values change
+  // Calculate membership discount, tax, and Platform Fee whenever relevant values change
   useEffect(() => {
     if (!platformFeeSettings) return;
 
@@ -571,7 +571,7 @@ export default function BookingFlow() {
     const taxRate = bookingState.taxRate || 0;
     const taxAmount = taxRate > 0 ? Number(((subtotalAfterDiscounts * taxRate) / 100).toFixed(2)) : 0;
 
-    // Calculate customer service fee (on subtotal after all discounts)
+    // Calculate customer-paid Platform Fee (on subtotal after all discounts)
     const serviceFeeAmount =
       platformFeeSettings.platform_service_fee_type === "percentage"
         ? Number(((subtotalAfterDiscounts * platformFeeSettings.platform_service_fee_percentage) / 100).toFixed(2))

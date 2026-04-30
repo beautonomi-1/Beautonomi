@@ -18,8 +18,6 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
 } from "react-native";
-import { GestureDetector, Gesture } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,14 +27,10 @@ import {
   addDays,
   subDays,
   startOfWeek,
-  startOfDay,
   startOfMonth,
   endOfMonth,
   isSameDay,
   parseISO,
-  getHours,
-  getMinutes,
-  differenceInHours,
   differenceInMinutes,
 } from "date-fns";
 import * as Clipboard from "expo-clipboard";
@@ -49,6 +43,26 @@ import { useCalendarPreferences } from "@/hooks/useCalendarPreferences";
 import { useProvider } from "@/providers/ProviderContext";
 import type { ColorByMode } from "@/hooks/useCalendarPreferences";
 import { CalendarPreferencesModal } from "@/components/calendar/CalendarPreferencesModal";
+import { CalendarActionRail } from "@/components/calendar/CalendarActionRail";
+import { CalendarBookingBlock } from "@/components/calendar/CalendarBookingBlock";
+import { CalendarDayGridColumn } from "@/components/calendar/CalendarDayGridColumn";
+import { CalendarDragGhost } from "@/components/calendar/CalendarDragGhost";
+import { CurrentTimeIndicator } from "@/components/calendar/CurrentTimeIndicator";
+import {
+  CALENDAR_GRID_TOP_PADDING,
+  addCalendarDaysToDateKey,
+  getBlockHeight,
+  getHourMinuteForInstantInZone,
+  getTopOffset,
+  parseApiDateTime,
+} from "@/components/calendar/calendar-layout";
+import type { Booking, CalendarBooking, CalendarBookingDropContext } from "@/components/calendar/calendar-booking-types";
+import { isNewBooking } from "@/components/calendar/calendar-booking-helpers";
+import {
+  BLOCK_TYPE_COLORS,
+  STAFF_TIMEOFF_OVERLAY_COLORS,
+} from "@/components/calendar/calendar-overlay-colors";
+import { getCalendarPaymentLabel, paymentNeedsAttention } from "@/lib/calendar-payment-label";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { Avatar } from "@/components/ui/Avatar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
@@ -58,13 +72,12 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import {
   formatTime,
   formatTimeInZone,
-  formatCurrency,
   capitalizeFirst,
 } from "@/lib/format";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { trackCalendarView } from "@/lib/analytics";
-import { supabase } from "@/lib/supabase/client";
+import { useCalendarBookingsRealtime } from "@/hooks/useCalendarBookingsRealtime";
 import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
@@ -74,7 +87,6 @@ import {
 } from "@/lib/expand-time-blocks";
 import {
   expandBookingsForCalendar,
-  parseCalendarTimeStrict,
   validateCalendarTimeRange,
 } from "@/lib/provider-calendar-parity";
 import { newBookingScreenHrefFromCalendarDay } from "@/lib/new-booking-nav-defaults";
@@ -83,7 +95,6 @@ import {
   deriveGridHourWindow,
   formatDateKeyInTimeZone,
   mergeOperatingHours,
-  mergeRanges,
   mergeStaffWorkingHours,
   timeStringToMinutes as sharedTimeStringToMinutes,
   wallClockInTimeZone,
@@ -92,56 +103,8 @@ import {
 } from "@beautonomi/utils";
 
 /* ================================================================== */
-/*  Types                                                              */
+/*  Types (Booking / CalendarBooking: `@/components/calendar/calendar-booking-types`) */
 /* ================================================================== */
-
-interface BookingService {
-  name: string;
-  offering_name?: string;
-  /** Present when the calendar API returns offering ids (resource / check-availability parity). */
-  offering_id?: string | null;
-  scheduled_start_at?: string | null;
-  duration_minutes: number;
-  price?: number | null;
-  staff_name: string | null;
-  staff_id: string | null;
-  guest_name?: string | null;
-}
-
-interface Booking {
-  id: string;
-  booking_number: string;
-  status: string;
-  /** Raw DB status from API — pending vs confirmed for calendar colors when `status` is `booked`. */
-  db_status?: string;
-  scheduled_at: string;
-  subtotal?: number;
-  tax_amount?: number;
-  total_amount: number;
-  total_paid?: number;
-  total_refunded?: number;
-  payment_status?: string | null;
-  currency: string;
-  location_type: string;
-  created_at?: string;
-  notes?: string;
-  services: BookingService[];
-  customers: { full_name: string; phone: string } | null;
-  locations: { id: string; name: string } | null;
-  is_group_booking?: boolean;
-  group_booking_id?: string | null;
-  group_booking_ref?: string | null;
-}
-
-type CalendarBooking = Booking & {
-  calendar_item_id: string;
-  calendar_parent_booking_id: string;
-  calendar_service_index: number;
-  calendar_service_name: string;
-  calendar_staff_id: string | null;
-  calendar_staff_name: string | null;
-  calendar_price: number;
-};
 
 interface StaffMember {
   id: string;
@@ -461,35 +424,6 @@ const TEAM_COLORS: ColorTriple[] = [
   { bg: "#fdf4ff", border: "#d946ef", text: "#701a75" },
 ];
 
-const BLOCK_TYPE_COLORS: Record<string, { bg: string; border: string; text: string; icon: string }> = {
-  break: { bg: "#fefce8", border: "#facc15", text: "#854d0e", icon: "cafe-outline" },
-  lunch: { bg: "#fefce8", border: "#facc15", text: "#854d0e", icon: "cafe-outline" },
-  meeting: { bg: "#eff6ff", border: "#60a5fa", text: "#1e40af", icon: "people-outline" },
-  maintenance: { bg: "#dbeafe", border: "#3b82f6", text: "#1e40af", icon: "build-outline" },
-  unavailable: { bg: Colors.gray[100], border: Colors.gray[500], text: Colors.gray[700], icon: "ban-outline" },
-  other: { bg: Colors.gray[50], border: Colors.gray[400], text: Colors.gray[600], icon: "ban-outline" },
-};
-
-const STAFF_TIMEOFF_OVERLAY_COLORS = {
-  bg: "#EDE9FE",
-  border: "#8B5CF6",
-  text: "#5B21B6",
-  icon: "calendar-outline",
-};
-
-/**
- * §Provider-launch (audit 2026-04): ghost slot styling for in-checkout
- * booking holds. Mirrors the web calendar B8 behaviour so providers see a
- * faint dashed block where a customer is actively holding a slot and
- * finalising payment, preventing accidental double-booking.
- */
-const BOOKING_HOLD_OVERLAY_COLORS = {
-  bg: "#FFF7ED",
-  border: "#FB923C",
-  text: "#9A3412",
-  icon: "hourglass-outline",
-};
-
 /** Keys for {@link changeBookingStatus}; labels from `provider.calendarScreen.statusActionLabels.*`. */
 const STATUS_ACTION_KEYS = ["booked", "started", "completed", "no_show", "cancelled"] as const;
 
@@ -503,22 +437,36 @@ function getStatusActionLabel(t: TFunction, actionKey: string): string {
   return t(`provider.calendarScreen.statusActionLabels.${actionKey}`);
 }
 
+function translateAvailabilityBlockType(t: TFunction, blockType: string): string {
+  const key = `provider.calendarScreen.availabilityEditTypes.${blockType}`;
+  const v = t(key);
+  return v === key ? capitalizeFirst(blockType.replace(/_/g, " ")) : v;
+}
+
+function translateOverlayBlockType(t: TFunction, blockType: string): string {
+  const availability = translateAvailabilityBlockType(t, blockType);
+  if (availability !== capitalizeFirst(blockType.replace(/_/g, " "))) return availability;
+  const key = `provider.calendarScreen.timeBlockTypes.${blockType}`;
+  const v = t(key);
+  return v === key ? availability : v;
+}
+
 type LayoutMode = "columns" | "single";
 type ViewMode = "day" | "3day" | "week";
 
 const BLOCK_TYPES = [
-  { label: "Break", value: "break", icon: "cafe-outline" as const },
-  { label: "Lunch", value: "lunch", icon: "restaurant-outline" as const },
-  { label: "Meeting", value: "meeting", icon: "people-outline" as const },
-  { label: "Personal", value: "personal", icon: "person-outline" as const },
-  { label: "Other", value: "other", icon: "ban-outline" as const },
+  { value: "break", icon: "cafe-outline" as const },
+  { value: "lunch", icon: "restaurant-outline" as const },
+  { value: "meeting", icon: "people-outline" as const },
+  { value: "personal", icon: "person-outline" as const },
+  { value: "other", icon: "ban-outline" as const },
 ];
 
 /** Editable `availability_blocks.block_type` values (API). */
 const AVAILABILITY_EDIT_TYPES = [
-  { label: "Unavailable", value: "unavailable" as const, icon: "ban-outline" as const },
-  { label: "Break", value: "break" as const, icon: "cafe-outline" as const },
-  { label: "Maintenance", value: "maintenance" as const, icon: "construct-outline" as const },
+  { value: "unavailable" as const, icon: "ban-outline" as const },
+  { value: "break" as const, icon: "cafe-outline" as const },
+  { value: "maintenance" as const, icon: "construct-outline" as const },
 ];
 
 /* ================================================================== */
@@ -576,22 +524,6 @@ function getBlockColors(
   }
 }
 
-function getTimeBlockColors(type: string) {
-  const lower = type.toLowerCase();
-  if (lower === "unavailable" || lower.includes("unavailable")) return BLOCK_TYPE_COLORS.unavailable;
-  if (lower === "maintenance" || lower.includes("maintenance")) return BLOCK_TYPE_COLORS.maintenance;
-  if (lower.includes("break") || lower.includes("lunch"))
-    return BLOCK_TYPE_COLORS.break;
-  if (lower.includes("meeting")) return BLOCK_TYPE_COLORS.meeting;
-  return BLOCK_TYPE_COLORS.other;
-}
-
-function getCalendarOverlayColors(block: TimeBlock) {
-  if (block.calendar_overlay_kind === "booking_hold") return BOOKING_HOLD_OVERLAY_COLORS;
-  if (block.overlay_source === "staff_unavailability") return STAFF_TIMEOFF_OVERLAY_COLORS;
-  return getTimeBlockColors(block.block_type);
-}
-
 /* ================================================================== */
 /*  Helpers                                                            */
 /* ================================================================== */
@@ -603,12 +535,6 @@ function getCalendarOverlayColors(block: TimeBlock) {
  */
 function timeStringToMinutes(t: string | undefined | null): number {
   return sharedTimeStringToMinutes(t ?? null) ?? 0;
-}
-
-function parseApiDateTime(value: unknown): Date | null {
-  if (typeof value !== "string" || !value) return null;
-  const parsed = parseISO(value);
-  return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
 function parseCalendarDateParam(value: string): Date | null {
@@ -629,87 +555,9 @@ function calendarDateKey(day: Date, timeZone?: string | null): string {
   return timeZone ? formatDateKeyInTimeZone(day, timeZone) : format(day, "yyyy-MM-dd");
 }
 
-/**
- * Wall-clock hour/minute for an instant in the business IANA zone (matches
- * {@link CurrentTimeIndicator}). Falls back to the device local clock when
- * no zone is set.
- */
-function getHourMinuteForInstantInZone(
-  instant: Date,
-  timeZone: string | null | undefined,
-): { h: number; m: number } {
-  if (timeZone) {
-    try {
-      const parts = new Intl.DateTimeFormat("en-GB", {
-        timeZone,
-        hour: "2-digit",
-        minute: "2-digit",
-        hourCycle: "h23",
-      }).formatToParts(instant);
-      return {
-        h: Number(parts.find((p) => p.type === "hour")?.value ?? getHours(instant)),
-        m: Number(parts.find((p) => p.type === "minute")?.value ?? getMinutes(instant)),
-      };
-    } catch {
-      /* fall through */
-    }
-  }
-  return { h: getHours(instant), m: getMinutes(instant) };
-}
-
-function getTopOffset(
-  dateStr: string,
-  startHour: number,
-  slotHeight: number,
-  timeZone?: string | null,
-): number {
-  const d = parseApiDateTime(dateStr);
-  if (!d) return 0;
-  const { h, m } = getHourMinuteForInstantInZone(d, timeZone);
-  const slot = Number.isFinite(slotHeight) && slotHeight > 0 ? slotHeight : 60;
-  const safeStart = Number.isFinite(startHour) ? startHour : 0;
-  const hourN = Number.isFinite(h) ? h : 0;
-  const minN = Number.isFinite(m) ? m : 0;
-  const out = (hourN - safeStart) * slot + (minN / 60) * slot;
-  return Math.max(0, Number.isFinite(out) ? out : 0);
-}
-
-function getBlockHeight(booking: Booking | CalendarBooking, slotHeight: number, compact: boolean): number {
-  // §Provider-launch (audit 2026-04): defensive NaN guard. A service row
-  // with a null/undefined `duration_minutes` (possible when the backend
-  // shape drifts ahead of the client types) used to produce NaN here,
-  // which Yoga rejects and iOS JSC reports as an intermittent layout
-  // crash while the calendar scrolls. Coerce to finite numbers and fall
-  // back to a sensible minimum.
-  const rawTotal =
-    booking.services?.reduce((s, svc) => {
-      const n = Number(svc?.duration_minutes);
-      return s + (Number.isFinite(n) && n > 0 ? n : 0);
-    }, 0) ?? 0;
-  const totalMin = rawTotal > 0 ? rawTotal : 30;
-  const slot = Number.isFinite(slotHeight) && slotHeight > 0 ? slotHeight : 60;
-  const raw = (totalMin / 60) * slot;
-  const minH = compact ? slot / 6 : slot / 4;
-  const out = Math.max(raw, minH);
-  return Number.isFinite(out) ? out : minH;
-}
-
-function isNewBooking(booking: Booking): boolean {
-  if (!booking.created_at) return false;
-  if (booking.status === "completed" || booking.status === "cancelled") return false;
-  const createdAt = parseApiDateTime(booking.created_at);
-  if (!createdAt) return false;
-  return differenceInHours(new Date(), createdAt) < 24;
-}
-
-function getCalendarPaymentLabel(booking: Pick<Booking, "payment_status" | "total_amount" | "total_paid">): string | null {
-  const status = String(booking.payment_status ?? "").toLowerCase();
-  const total = Number(booking.total_amount ?? 0);
-  const paid = Number(booking.total_paid ?? 0);
-  if (status === "paid" || status === "completed" || (total > 0 && paid >= total)) return "Paid";
-  if (paid > 0 && total > paid) return "Part paid";
-  if (status === "pending" || status === "unpaid" || total > 0) return "Payment due";
-  return null;
+function currentWallClockTimeInZone(timeZone?: string | null): string {
+  const { hour, minute } = wallClockInTimeZone(new Date(), timeZone);
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 function buildScheduleShareBody(
@@ -763,6 +611,7 @@ function buildScheduleShareBody(
 /* ================================================================== */
 
 function CalendarSkeleton() {
+  const { t } = useTranslation();
   // §Provider-launch (audit 2026-04-21): skeleton now mirrors the real
   // calendar layout (time gutter + faux booking cards at plausible
   // hours). A subtle pulse makes it read as "loading" instead of "broken".
@@ -787,7 +636,7 @@ function CalendarSkeleton() {
   ];
 
   return (
-    <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }} accessibilityLabel="Loading calendar">
+    <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }} accessibilityLabel={t("provider.calendarScreen.dateNav.loadingCalendar")}>
       {rowHours.map((h, i) => (
         <View key={h} style={{ position: "relative", height: 60, flexDirection: "row", alignItems: "flex-start", borderTopWidth: i === 0 ? 0 : 1, borderTopColor: Colors.gray[100] }}>
           <View style={{ width: 40, paddingTop: 2 }}>
@@ -819,74 +668,6 @@ function CalendarSkeleton() {
 }
 
 /* ================================================================== */
-/*  Current time indicator                                             */
-/* ================================================================== */
-
-function CurrentTimeIndicator({
-  startHour,
-  slotHeight,
-  endHour,
-  totalGridHeight,
-  timeZone,
-}: {
-  startHour: number;
-  slotHeight: number;
-  endHour: number;
-  totalGridHeight: number;
-  /**
-   * IANA tz the grid is rendered in (provider business zone). When
-   * set, the "now" line is positioned using the wall-clock H:M in that
-   * zone instead of the device's local time, so providers working from
-   * a different timezone see the correct line.
-   */
-  timeZone?: string | null;
-}) {
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // §UI-audit 2026-04: same wall-clock derivation as booking blocks
-  // ({@link getHourMinuteForInstantInZone}) so the red line aligns with
-  // appointment cards when the device timezone ≠ business timezone.
-  const { h, m } = getHourMinuteForInstantInZone(now, timeZone);
-  const rawTop = (h - startHour) * slotHeight + (m / 60) * slotHeight;
-  // Always show the line when viewing today: clamp so it stays visible in the grid (offset by grid top padding)
-  const GRID_TOP = 8;
-  const top = GRID_TOP + Math.max(0, Math.min(rawTop, totalGridHeight - 4));
-
-  // §Provider-audit 2026-04: a11y label must match the visual line position,
-  // which uses business-TZ wall clock. Previously used device-local time and
-  // could disagree with the on-screen line when the phone zone ≠ business.
-  const a11yHour = String(h).padStart(2, "0");
-  const a11yMinute = String(m).padStart(2, "0");
-
-  return (
-    <View
-      style={{ position: "absolute", left: 0, right: 0, top, flexDirection: "row", alignItems: "center", zIndex: 100, pointerEvents: "none" }}
-      accessibilityLabel={`Current time ${a11yHour}:${a11yMinute}`}
-    >
-      <View
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: 4,
-          backgroundColor: "#dc2626",
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.3,
-          shadowRadius: 1,
-          elevation: 2,
-        }}
-      />
-      <View style={{ height: 3, flex: 1, backgroundColor: "#dc2626" }} />
-    </View>
-  );
-}
-
-/* ================================================================== */
 /*  Date Picker Modal                                                  */
 /* ================================================================== */
 
@@ -901,10 +682,20 @@ function DatePickerModal({
   onSelect: (date: Date) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [month, setMonth] = useState(currentDate);
   useEffect(() => { if (visible) setMonth(currentDate); }, [visible, currentDate]);
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const firstDayOfWeek = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
+  const weekdayLabels = [
+    t("provider.calendarScreen.datePicker.weekdaysShort.sunday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.monday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.tuesday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.wednesday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.thursday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.friday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.saturday"),
+  ];
 
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstDayOfWeek; i++) cells.push(null);
@@ -917,21 +708,21 @@ function DatePickerModal({
           <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <TouchableOpacity
               onPress={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
-              accessibilityLabel="Previous month"
+              accessibilityLabel={t("provider.calendarScreen.prevMonthA11y")}
             >
               <Ionicons name="chevron-back" size={20} color="#111" />
             </TouchableOpacity>
             <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{format(month, "MMMM yyyy")}</Text>
             <TouchableOpacity
               onPress={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
-              accessibilityLabel="Next month"
+              accessibilityLabel={t("provider.calendarScreen.nextMonthA11y")}
             >
               <Ionicons name="chevron-forward" size={20} color="#111" />
             </TouchableOpacity>
           </View>
 
           <View style={{ marginBottom: 4, flexDirection: "row" }}>
-            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+            {weekdayLabels.map((d) => (
               <View key={d} style={{ flex: 1, alignItems: "center" }}>
                 <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[400] }}>{d}</Text>
               </View>
@@ -974,8 +765,10 @@ function DatePickerModal({
           <TouchableOpacity
             style={{ marginTop: 12, alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingVertical: 8 }}
             onPress={() => { onSelect(new Date()); onClose(); }}
+            accessibilityRole="button"
+            accessibilityLabel={t("provider.calendarScreen.datePicker.today")}
           >
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Today</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{t("provider.calendarScreen.datePicker.today")}</Text>
           </TouchableOpacity>
         </Pressable>
       </Pressable>
@@ -1032,6 +825,15 @@ function MonthOverviewModal({
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstDayOfWeek; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  const weekdayLabels = [
+    t("provider.calendarScreen.datePicker.weekdaysShort.sunday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.monday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.tuesday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.wednesday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.thursday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.friday"),
+    t("provider.calendarScreen.datePicker.weekdaysShort.saturday"),
+  ];
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -1062,15 +864,15 @@ function MonthOverviewModal({
               onPress={refreshMonthCounts}
               style={{ marginBottom: 8, borderRadius: 10, borderWidth: 1, borderColor: "#FED7AA", backgroundColor: "#FFF7ED", padding: 8 }}
               accessibilityRole="button"
-              accessibilityLabel="Could not load month booking counts. Tap to retry."
+              accessibilityLabel={t("provider.calendarScreen.monthOverviewCountsErrorA11y")}
             >
               <Text style={{ fontSize: 12, fontWeight: "600", color: "#92400E" }}>
-                Could not load booking counts. Tap to retry.
+                {t("provider.calendarScreen.monthOverviewCountsError")}
               </Text>
             </TouchableOpacity>
           )}
           <View style={{ marginBottom: 4, flexDirection: "row" }}>
-            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+            {weekdayLabels.map((d) => (
               <View key={d} style={{ flex: 1, alignItems: "center" }}>
                 <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[400] }}>{d}</Text>
               </View>
@@ -1140,24 +942,25 @@ function MonthOverviewModal({
  * looks like the whole app broke.
  */
 function CalendarCrashFallback({ onReset }: { onReset: () => void }) {
+  const { t } = useTranslation();
   return (
     <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
       <View style={{ height: 72, width: 72, alignItems: "center", justifyContent: "center", borderRadius: 24, backgroundColor: "#fef2f2", marginBottom: 16 }}>
         <Ionicons name="calendar-outline" size={30} color="#ef4444" />
       </View>
       <Text style={{ fontSize: 17, fontWeight: "700", color: Colors.gray[900], textAlign: "center" }}>
-        We hit a snag opening your calendar
+        {t("provider.calendarScreen.crashFallback.title")}
       </Text>
       <Text style={{ marginTop: 8, fontSize: 14, lineHeight: 20, color: Colors.gray[500], textAlign: "center" }}>
-        Tap reload to try again — your appointments and bookings are safe.
+        {t("provider.calendarScreen.crashFallback.body")}
       </Text>
       <TouchableOpacity
         onPress={onReset}
         style={{ marginTop: 20, borderRadius: 12, backgroundColor: DARK_HEADER, paddingHorizontal: 28, paddingVertical: 12, minHeight: 44, alignItems: "center", justifyContent: "center" }}
         accessibilityRole="button"
-        accessibilityLabel="Reload calendar"
+        accessibilityLabel={t("provider.calendarScreen.fetchError.retry")}
       >
-        <Text style={{ color: Colors.white, fontWeight: "600" }}>Reload calendar</Text>
+        <Text style={{ color: Colors.white, fontWeight: "600" }}>{t("provider.calendarScreen.fetchError.retry")}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -1179,7 +982,6 @@ export default function CalendarScreen() {
 function CalendarScreenBody() {
   const { t } = useTranslation();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   // §Provider-launch (audit 2026-04): accept `?date=YYYY-MM-DD` +
   // `?booking_id=...` deep-link params so push notifications and email
   // reminders can land the provider on the exact day (and optionally open
@@ -1189,6 +991,7 @@ function CalendarScreenBody() {
     if (typeof searchParams.date !== "string" || !searchParams.date) return null;
     return parseCalendarDateParam(searchParams.date);
   }, [searchParams.date]);
+  const handledBookingDeepLinkRef = useRef<string | null>(null);
   const [isFocused, setIsFocused] = useState(true);
   const [secondaryEnabled, setSecondaryEnabled] = useState(false);
   useAuth();
@@ -1203,8 +1006,10 @@ function CalendarScreenBody() {
     }
   }, [deepLinkDate]);
   useEffect(() => {
-    if (typeof searchParams.booking_id === "string" && searchParams.booking_id) {
-      router.push(`/(app)/(tabs)/bookings/${searchParams.booking_id}` as never);
+    const bookingId = typeof searchParams.booking_id === "string" ? searchParams.booking_id : "";
+    if (bookingId && handledBookingDeepLinkRef.current !== bookingId) {
+      handledBookingDeepLinkRef.current = bookingId;
+      router.push(`/(app)/(tabs)/bookings/${bookingId}` as never);
     }
   }, [searchParams.booking_id, router]);
   const [viewMode, setViewMode] = useState<ViewMode>("day");
@@ -1243,8 +1048,11 @@ function CalendarScreenBody() {
   /** Android: long-press booking menu (avoids Alert button limits when many status actions exist). */
   const [androidBookingMenu, setAndroidBookingMenu] = useState<CalendarBooking | null>(null);
   const [prefsVisible, setPrefsVisible] = useState(false);
-  const [fabOpen, setFabOpen] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
+  /** Booking-level status / cancel API in flight (by parent booking id). */
+  const [pendingBookingActionIds, setPendingBookingActionIds] = useState<Set<string>>(new Set());
+  /** Drag-reschedule PATCH in flight. */
+  const [pendingRescheduleBookingIds, setPendingRescheduleBookingIds] = useState<Set<string>>(new Set());
   const [showTimeBlockForm, setShowTimeBlockForm] = useState(false);
   const [timeBlockForm, setTimeBlockForm] = useState({
     type: "break",
@@ -1261,7 +1069,6 @@ function CalendarScreenBody() {
     end_time: string;
     staff_id: string | null;
   } | null>(null);
-  const fabAnim = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
   const hasScrolledToNow = useRef(false);
   const prevViewModeRef = useRef(viewMode);
@@ -1278,7 +1085,7 @@ function CalendarScreenBody() {
 
   const SLOT_HEIGHT = preferences.compactMode ? 40 : 60;
   const QUARTER_HEIGHT = SLOT_HEIGHT / 4;
-  const GRID_TOP_PADDING = 8;
+  const GRID_TOP_PADDING = CALENDAR_GRID_TOP_PADDING;
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -1319,7 +1126,6 @@ function CalendarScreenBody() {
     loading,
     error: fetchError,
     refresh,
-    mutate: setBookings,
   } = usePagedProviderBookings<Booking>(calendarBookingsPath, {
     enabled: isFocused,
     timeoutMs: 60_000,
@@ -1410,7 +1216,7 @@ function CalendarScreenBody() {
         id: raw.id,
         staff_id: raw.staff_id ?? raw.team_member_id ?? null,
         block_type: raw.block_type || raw.blocked_time_type_name || raw.title || raw.name || "blocked",
-        title: raw.title || raw.name || "Time block",
+        title: raw.title || raw.name || t("provider.calendarScreen.overlayMenu.timeBlockTitle"),
         start_time: st,
         end_time: et,
         date: raw.date,
@@ -1420,56 +1226,35 @@ function CalendarScreenBody() {
         recurrence_rule: raw.recurrence_rule ?? raw.recurring_pattern,
       };
     });
-  }, [timeBlocks]);
+  }, [timeBlocks, t]);
 
   const expandedApiTimeBlocks = useMemo(
     () => expandTimeBlocksForCalendarRange(normalizedApiTimeBlocks, startDate, endDate),
     [normalizedApiTimeBlocks, startDate, endDate],
   );
 
-  const calendarRefreshRef = useRef(refresh);
-  useEffect(() => { calendarRefreshRef.current = refresh; }, [refresh]);
-  const calendarRealtimeGenRef = useRef(0);
+  const refreshCalendarOverlays = useCallback(async () => {
+    if (!secondaryEnabled) return;
+    await Promise.all([
+      refreshPrimaryShifts(),
+      ...(needsSecondaryShiftWeek ? [refreshSecondaryShifts()] : []),
+      refreshTimeBlocks(),
+      refreshAvailabilityBlocks(),
+      refreshStaffUnavail(),
+      refreshBookingHolds(),
+    ]);
+  }, [
+    refreshPrimaryShifts,
+    refreshSecondaryShifts,
+    needsSecondaryShiftWeek,
+    refreshTimeBlocks,
+    refreshAvailabilityBlocks,
+    refreshStaffUnavail,
+    refreshBookingHolds,
+    secondaryEnabled,
+  ]);
 
-  useEffect(() => {
-    if (!isFocused || !provider?.id) return;
-    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleRefresh = () => {
-      if (refreshTimer) return;
-      refreshTimer = setTimeout(() => {
-        refreshTimer = null;
-        calendarRefreshRef.current();
-      }, 400);
-    };
-
-    const topic = `calendar-bookings:${provider.id}:${++calendarRealtimeGenRef.current}`;
-    const channel = supabase
-      .channel(topic)
-      .on(
-        "postgres_changes" as never,
-        { event: "*", schema: "public", table: "bookings", filter: `provider_id=eq.${provider.id}` },
-        () => {
-          scheduleRefresh();
-        },
-      )
-      .on(
-        "postgres_changes" as never,
-        {
-          event: "*",
-          schema: "public",
-          table: "booking_services",
-          filter: `bookings!inner(provider_id=eq.${provider.id})`,
-        },
-        () => {
-          scheduleRefresh();
-        },
-      )
-      .subscribe();
-    return () => {
-      if (refreshTimer) clearTimeout(refreshTimer);
-      supabase.removeChannel(channel);
-    };
-  }, [isFocused, provider?.id]);
+  useCalendarBookingsRealtime(provider?.id, isFocused, refresh, refreshCalendarOverlays);
 
   /* ─── Swipe navigation via PanResponder ─── */
   const panResponder = useMemo(
@@ -1497,14 +1282,7 @@ function CalendarScreenBody() {
     try {
       const tasks = [refresh()];
       if (secondaryEnabled) {
-        tasks.push(
-          refreshPrimaryShifts(),
-          ...(needsSecondaryShiftWeek ? [refreshSecondaryShifts()] : []),
-          refreshTimeBlocks(),
-          refreshAvailabilityBlocks(),
-          refreshStaffUnavail(),
-          refreshBookingHolds(),
-        );
+        tasks.push(refreshCalendarOverlays());
       }
       await Promise.all(tasks);
     } finally {
@@ -1512,13 +1290,7 @@ function CalendarScreenBody() {
     }
   }, [
     refresh,
-    refreshPrimaryShifts,
-    refreshSecondaryShifts,
-    needsSecondaryShiftWeek,
-    refreshTimeBlocks,
-    refreshAvailabilityBlocks,
-    refreshStaffUnavail,
-    refreshBookingHolds,
+    refreshCalendarOverlays,
     secondaryEnabled,
   ]);
 
@@ -1567,10 +1339,10 @@ function CalendarScreenBody() {
     [bookings],
   );
   const staffOptions = useMemo(() => {
-    const opts: { label: string; value: string }[] = [{ label: "All", value: "all" }];
+    const opts: { label: string; value: string }[] = [{ label: t("provider.calendarScreen.allStaff"), value: "all" }];
     effectiveStaffList.forEach((s) => opts.push({ label: s.name, value: s.id }));
     return opts;
-  }, [effectiveStaffList]);
+  }, [effectiveStaffList, t]);
 
   // All views use operating hours; week/3-day views union hours across visible days.
   const { startHour, endHour } = useMemo(() => {
@@ -1645,10 +1417,10 @@ function CalendarScreenBody() {
   const totalGridHeight = (endHour - startHour) * SLOT_HEIGHT;
 
   const locationOptions = useMemo(() => {
-    const opts: { label: string; value: string }[] = [{ label: "All Locations", value: "all" }];
+    const opts: { label: string; value: string }[] = [{ label: t("provider.calendarScreen.allLocations"), value: "all" }];
     locations?.forEach((l) => opts.push({ label: l.name, value: l.id }));
     return opts;
-  }, [locations]);
+  }, [locations, t]);
 
   const filteredBookings = useMemo(() => {
     let result = calendarBookings;
@@ -1718,36 +1490,38 @@ function CalendarScreenBody() {
       );
       return;
     }
-    const d = format(selectedDate, "yyyy-MM-dd");
-    pushInAppBrowser(router, `${base}/provider/calendar?date=${encodeURIComponent(d)}`, "Calendar");
-  }, [router, selectedDate, t]);
+    const d = calendarDateKey(selectedDate, provider?.timezone ?? null);
+    pushInAppBrowser(router, `${base}/provider/calendar?date=${encodeURIComponent(d)}`, t("provider.calendarScreen.browserTitle"));
+  }, [provider?.timezone, router, selectedDate, t]);
 
   const openNewBookingFromCalendar = useCallback(() => {
     const selectedStaffId = staffList[selectedStaffIndex]?.id;
     const href = newBookingScreenHrefFromCalendarDay(selectedDate, {
       status: preferences.defaultNewAppointmentStatus,
+      timeZone: provider?.timezone ?? null,
       ...(locationFilter !== "all" ? { locationId: locationFilter } : {}),
       ...(staffFilter !== "all" ? { staffId: staffFilter } : selectedStaffId ? { staffId: selectedStaffId } : {}),
     });
     router.push(href as never);
-  }, [locationFilter, preferences.defaultNewAppointmentStatus, router, selectedDate, selectedStaffIndex, staffFilter, staffList]);
+  }, [locationFilter, preferences.defaultNewAppointmentStatus, provider?.timezone, router, selectedDate, selectedStaffIndex, staffFilter, staffList]);
 
   const openWalkInBookingFromCalendar = useCallback(() => {
     const selectedStaffId = staffList[selectedStaffIndex]?.id;
     router.push(
       newBookingScreenHrefFromCalendarDay(selectedDate, {
         walkIn: true,
+        timeZone: provider?.timezone ?? null,
         ...(locationFilter !== "all" ? { locationId: locationFilter } : {}),
         ...(staffFilter !== "all" ? { staffId: staffFilter } : selectedStaffId ? { staffId: selectedStaffId } : {}),
       }) as never,
     );
-  }, [locationFilter, router, selectedDate, selectedStaffIndex, staffFilter, staffList]);
+  }, [locationFilter, provider?.timezone, router, selectedDate, selectedStaffIndex, staffFilter, staffList]);
 
   const openGroupBookingFromCalendar = useCallback(() => {
     const selectedStaffId = staffList[selectedStaffIndex]?.id;
     const params = new URLSearchParams();
-    params.set("default_date", format(selectedDate, "yyyy-MM-dd"));
-    params.set("default_time", format(new Date(), "HH:mm"));
+    params.set("default_date", calendarDateKey(selectedDate, provider?.timezone ?? null));
+    params.set("default_time", currentWallClockTimeInZone(provider?.timezone ?? null));
     if (staffFilter !== "all") {
       params.set("default_staff_id", staffFilter);
     } else if (selectedStaffId) {
@@ -1757,7 +1531,7 @@ function CalendarScreenBody() {
       params.set("default_location_id", locationFilter);
     }
     router.push(`/(app)/(tabs)/more/group-bookings?${params.toString()}` as never);
-  }, [locationFilter, router, selectedDate, selectedStaffIndex, staffFilter, staffList]);
+  }, [locationFilter, provider?.timezone, router, selectedDate, selectedStaffIndex, staffFilter, staffList]);
 
   const openTimeBlockFormFromCalendar = useCallback(() => {
     const selectedStaffId = staffFilter !== "all" ? staffFilter : staffList[selectedStaffIndex]?.id;
@@ -1768,14 +1542,8 @@ function CalendarScreenBody() {
     setShowTimeBlockForm(true);
   }, [selectedStaffIndex, staffFilter, staffList]);
 
+  /** Secondary utilities only — primary actions live on `CalendarActionRail`. */
   const openCalendarActionsMenu = useCallback(() => {
-    const runNewBooking = () => openNewBookingFromCalendar();
-    const runWalkIn = () => openWalkInBookingFromCalendar();
-    const runGroup = () => openGroupBookingFromCalendar();
-    const runTimeBlock = () => openTimeBlockFormFromCalendar();
-    const runProductSale = () => router.push("/(app)/(tabs)/more/walk-in-sale" as never);
-    const runRecurring = () => router.push("/(app)/(tabs)/more/recurring-appointments" as never);
-    const runWaiting = () => router.push("/(app)/(tabs)/more/waiting-room" as never);
     const runShare = () => {
       void handleShareSchedule();
     };
@@ -1784,53 +1552,36 @@ function CalendarScreenBody() {
     };
     const runMonth = () => setMonthOverviewVisible(true);
     const runWeb = () => handleOpenWebCalendar();
+    const runExpress = () => router.push("/(app)/(tabs)/more/express-booking" as never);
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
         {
           options: [
             t("provider.calendarScreen.cancel"),
-            "New appointment",
-            "Walk-in appointment",
-            "Group booking",
-            "Add time block",
-            "Product sale",
-            "Recurring bookings",
-            "Waiting room",
             t("provider.calendarScreen.shareSchedule"),
             t("provider.calendarScreen.copySchedule"),
             t("provider.calendarScreen.monthOverview"),
             t("provider.calendarScreen.fullCalendarBrowser"),
+            t("provider.calendarScreen.utilityMenu.expressBooking"),
           ],
           cancelButtonIndex: 0,
-          title: t("provider.calendarScreen.calendarActions"),
+          title: t("provider.calendarScreen.utilityMenu.title"),
         },
         (idx) => {
-          if (idx === 1) runNewBooking();
-          else if (idx === 2) runWalkIn();
-          else if (idx === 3) runGroup();
-          else if (idx === 4) runTimeBlock();
-          else if (idx === 5) runProductSale();
-          else if (idx === 6) runRecurring();
-          else if (idx === 7) runWaiting();
-          else if (idx === 8) runShare();
-          else if (idx === 9) runCopy();
-          else if (idx === 10) runMonth();
-          else if (idx === 11) runWeb();
+          if (idx === 1) runShare();
+          else if (idx === 2) runCopy();
+          else if (idx === 3) runMonth();
+          else if (idx === 4) runWeb();
+          else if (idx === 5) runExpress();
         },
       );
     } else {
-      Alert.alert(t("provider.calendarScreen.calendarActions"), undefined, [
-        { text: "New appointment", onPress: runNewBooking },
-        { text: "Walk-in appointment", onPress: runWalkIn },
-        { text: "Group booking", onPress: runGroup },
-        { text: "Add time block", onPress: runTimeBlock },
-        { text: "Product sale", onPress: runProductSale },
-        { text: "Recurring bookings", onPress: runRecurring },
-        { text: "Waiting room", onPress: runWaiting },
+      Alert.alert(t("provider.calendarScreen.utilityMenu.title"), undefined, [
         { text: t("provider.calendarScreen.shareSchedule"), onPress: runShare },
         { text: t("provider.calendarScreen.copySchedule"), onPress: runCopy },
         { text: t("provider.calendarScreen.monthOverview"), onPress: runMonth },
         { text: t("provider.calendarScreen.fullCalendarBrowser"), onPress: runWeb },
+        { text: t("provider.calendarScreen.utilityMenu.expressBooking"), onPress: runExpress },
         { text: t("provider.calendarScreen.close"), style: "cancel" },
       ]);
     }
@@ -1838,10 +1589,6 @@ function CalendarScreenBody() {
     handleCopySchedule,
     handleOpenWebCalendar,
     handleShareSchedule,
-    openGroupBookingFromCalendar,
-    openNewBookingFromCalendar,
-    openTimeBlockFormFromCalendar,
-    openWalkInBookingFromCalendar,
     router,
     t,
   ]);
@@ -1988,14 +1735,18 @@ function CalendarScreenBody() {
     const counts = new Map<string, number>();
     if (!bookings) return counts;
     const tz = provider?.timezone ?? null;
-    bookings.forEach((b) => {
+    let list = bookings;
+    if (!preferences.showCanceled) {
+      list = list.filter((b) => b.status !== "cancelled");
+    }
+    list.forEach((b) => {
       const bDate = parseApiDateTime(b.scheduled_at);
       if (!bDate) return;
       const key = calendarDateKey(bDate, tz);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     });
     return counts;
-  }, [bookings, provider?.timezone]);
+  }, [bookings, provider?.timezone, preferences.showCanceled]);
 
   const staffColumns = useMemo(() => {
     if (viewMode !== "day") return null;
@@ -2034,15 +1785,18 @@ function CalendarScreenBody() {
   /** Pending confirmations in the next week — surface on calendar so nothing slips. */
   const pendingAttentionCount = useMemo(() => {
     if (!bookings || !Array.isArray(bookings)) return 0;
-    const start = startOfDay(new Date());
-    const end = addDays(start, 8);
+    const tz = provider?.timezone ?? null;
+    const startKey = providerTodayKey;
+    const endExclusive = addCalendarDaysToDateKey(startKey, 8);
     return bookings.filter((b) => {
       if (b.status === "cancelled") return false;
       if (b.db_status !== "pending") return false;
       const d = parseApiDateTime(b.scheduled_at);
-      return d != null && d >= start && d < end;
+      if (!d) return false;
+      const bk = calendarDateKey(d, tz);
+      return bk >= startKey && bk < endExclusive;
     }).length;
-  }, [bookings]);
+  }, [bookings, provider?.timezone, providerTodayKey]);
 
   const urgentPendingCount = useMemo(() => {
     if (!bookings || !Array.isArray(bookings)) return 0;
@@ -2095,6 +1849,12 @@ function CalendarScreenBody() {
   }
 
   function handleTapBooking(booking: CalendarBooking) {
+    if (
+      pendingBookingActionIds.has(booking.id) ||
+      pendingRescheduleBookingIds.has(booking.id)
+    ) {
+      return;
+    }
     const groupId = typeof booking.group_booking_id === "string" ? booking.group_booking_id : null;
     if (booking.is_group_booking && groupId) {
       router.push(
@@ -2109,6 +1869,12 @@ function CalendarScreenBody() {
   }
 
   function handleLongPressBooking(booking: CalendarBooking) {
+    if (
+      pendingBookingActionIds.has(booking.id) ||
+      pendingRescheduleBookingIds.has(booking.id)
+    ) {
+      return;
+    }
     const currentActionStatus = booking.db_status === "pending" ? "pending" : booking.status;
     const availableActions = STATUS_ACTION_KEYS.filter((key) => key !== currentActionStatus);
     const actionLabels = availableActions.map((key) => getStatusActionLabel(t, key));
@@ -2199,23 +1965,44 @@ function CalendarScreenBody() {
   }
 
   async function applyBookingStatus(bookingId: string, newStatus: string, reason?: string) {
-    if (bookings) {
-      setBookings(bookings.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b)));
+    setPendingBookingActionIds((prev) => new Set(prev).add(bookingId));
+    try {
+      if (newStatus === "completed") {
+        const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/complete-service`, {});
+        if (error) {
+          Alert.alert(t("provider.calendarScreen.mutations.completeServiceErrorTitle"), error);
+          await refresh();
+          return;
+        }
+        await refresh();
+        return;
+      }
+      if (newStatus === "started") {
+        const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/start-service`, {});
+        if (error) {
+          Alert.alert(t("provider.calendarScreen.mutations.startServiceErrorTitle"), error);
+          await refresh();
+          return;
+        }
+        await refresh();
+        return;
+      }
+      const body: Record<string, unknown> = { status: newStatus };
+      if (newStatus === "cancelled" && reason) body.cancellation_reason = reason;
+      const { error } = await patchBooking(`/api/provider/bookings/${bookingId}`, body);
+      if (error) {
+        Alert.alert(t("provider.calendarScreen.mutations.updateBookingErrorTitle"), error);
+        await refresh();
+        return;
+      }
+      await refresh();
+    } finally {
+      setPendingBookingActionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(bookingId);
+        return next;
+      });
     }
-    if (newStatus === "completed") {
-      const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/complete-service`, {});
-      if (error) { Alert.alert("Couldn't complete service", error); refresh(); }
-      return;
-    }
-    if (newStatus === "started") {
-      const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/start-service`, {});
-      if (error) { Alert.alert("Couldn't start service", error); refresh(); }
-      return;
-    }
-    const body: Record<string, unknown> = { status: newStatus };
-    if (newStatus === "cancelled" && reason) body.cancellation_reason = reason;
-    const { error } = await patchBooking(`/api/provider/bookings/${bookingId}`, body);
-    if (error) { Alert.alert("Couldn't update booking", error); refresh(); }
   }
 
   /** Drag-and-drop: compute new time and optionally staff from drop position, check availability, then PATCH */
@@ -2307,29 +2094,43 @@ function CalendarScreenBody() {
       checkUrl += `&mode=${encodeURIComponent(dragAtHome ? "mobile" : "salon")}&travel_buffer=${encodeURIComponent(dragAtHome ? "30" : "0")}`;
 
       (async () => {
-        const res = await api.get<{ available?: boolean; conflicts?: string[] }>(checkUrl);
-        if (res.error) {
-          Alert.alert("Couldn't move appointment", res.error.message ?? "We couldn't check availability for that slot. Please try again.");
-          return;
+        setPendingRescheduleBookingIds((prev) => new Set(prev).add(booking.id));
+        try {
+          const res = await api.get<{ available?: boolean; conflicts?: string[] }>(checkUrl);
+          if (res.error) {
+            Alert.alert(
+              t("provider.calendarScreen.mutations.moveAppointmentErrorTitle"),
+              res.error.message ?? t("provider.calendarScreen.mutations.moveAppointmentGeneric"),
+            );
+            return;
+          }
+          if (res.data?.available !== true) {
+            Alert.alert(
+              res.data?.available === false
+                ? t("provider.calendarScreen.mutations.slotUnavailableTitle")
+                : t("provider.calendarScreen.mutations.moveAppointmentErrorTitle"),
+              res.data?.available === false
+                ? res.data?.conflicts?.join("\n") ?? t("provider.calendarScreen.mutations.slotOverlapBody")
+                : t("provider.calendarScreen.mutations.moveAppointmentGeneric"),
+            );
+            return;
+          }
+          const payload: { scheduled_at: string; staff_id?: string | null } = { scheduled_at: newScheduledAt };
+          if (newStaffId !== undefined) payload.staff_id = newStaffId || null;
+          const { error } = await patchBooking(`/api/provider/bookings/${booking.id}`, payload);
+          if (error) {
+            Alert.alert(t("provider.calendarScreen.mutations.moveAppointmentErrorTitle"), error);
+            return;
+          }
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          await refresh();
+        } finally {
+          setPendingRescheduleBookingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(booking.id);
+            return next;
+          });
         }
-        if (res.data?.available !== true) {
-          Alert.alert(
-            res.data?.available === false ? "Slot not available" : "Couldn't move appointment",
-            res.data?.available === false
-              ? res.data?.conflicts?.join("\n") ?? "Another booking or block overlaps this time."
-              : "We couldn't verify availability for that slot. Please try again.",
-          );
-          return;
-        }
-        const payload: { scheduled_at: string; staff_id?: string | null } = { scheduled_at: newScheduledAt };
-        if (newStaffId !== undefined) payload.staff_id = newStaffId || null;
-        const { error } = await patchBooking(`/api/provider/bookings/${booking.id}`, payload);
-        if (error) {
-          Alert.alert("Couldn't move appointment", error);
-          return;
-        }
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        refresh();
       })();
     });
   }
@@ -2339,23 +2140,17 @@ function CalendarScreenBody() {
     return Array.from({ length: 3 }, (_, i) => addDays(selectedDate, i));
   }, [selectedDate]);
 
-  /* ─── FAB toggle ─── */
-  function toggleFab() {
-    const toValue = fabOpen ? 0 : 1;
-    Animated.spring(fabAnim, { toValue, useNativeDriver: true, friction: 6 }).start();
-    setFabOpen(!fabOpen);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }
-
   /* ─── Time block creation ─── */
   async function handleCreateTimeBlock() {
     const range = validateCalendarTimeRange(timeBlockForm.startTime, timeBlockForm.endTime);
     if (!range.ok) {
       Alert.alert(
-        range.reason === "format" ? "Invalid time" : "Invalid range",
         range.reason === "format"
-          ? "Use HH:MM format for start and end time, for example 12:00 and 13:00."
-          : "End time must be after start time.",
+          ? t("provider.calendarScreen.overlayMenu.invalidTimeTitle")
+          : t("provider.calendarScreen.overlayMenu.invalidRangeTitle"),
+        range.reason === "format"
+          ? t("provider.calendarScreen.overlayMenu.invalidTimeMessage")
+          : t("provider.calendarScreen.overlayMenu.invalidRangeMessage"),
       );
       return;
     }
@@ -2367,7 +2162,7 @@ function CalendarScreenBody() {
       staff_id: timeBlockForm.staffId ? timeBlockForm.staffId : null,
     });
     if (error) {
-      Alert.alert("Couldn't save time block", error);
+      Alert.alert(t("provider.calendarScreen.overlayMenu.saveTimeBlockErrorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2383,28 +2178,34 @@ function CalendarScreenBody() {
       // "edit" or "delete" them from the calendar; they'd collide with the
       // checkout finalising flow.
       const expiresText = block.hold_expires_at
-        ? ` Expires ${new Date(block.hold_expires_at).toLocaleTimeString()}.`
+        ? t("provider.calendarScreen.overlayMenu.bookingHoldExpires", {
+            time: new Date(block.hold_expires_at).toLocaleTimeString(),
+          })
         : "";
       Alert.alert(
-        "Booking hold",
-        `A customer is currently finalising checkout for this slot.${expiresText} It will clear automatically if they don't complete payment.`,
+        t("provider.calendarScreen.overlayMenu.bookingHoldTitle"),
+        t("provider.calendarScreen.overlayMenu.bookingHoldMessage", { expires: expiresText }),
       );
       return;
     }
     if (block.calendar_overlay_kind === "staff_off") {
       Alert.alert(
-        "Team time off",
-        "This comes from staff time off or day off. Update it in team scheduling, not from the calendar grid.",
+        t("provider.calendarScreen.overlayMenu.staffOffTitle"),
+        t("provider.calendarScreen.overlayMenu.staffOffMessage"),
       );
       return;
     }
     if (block.calendar_overlay_kind === "availability" && block.availability_block_id) {
       Alert.alert(
-        `${capitalizeFirst(block.block_type)} · ${block.start_time}–${block.end_time}`,
+        t("provider.calendarScreen.overlayMenu.availabilityBlockTitle", {
+          type: translateAvailabilityBlockType(t, block.block_type),
+          start: block.start_time,
+          end: block.end_time,
+        }),
         block.title,
         [
           {
-            text: "Edit",
+            text: t("provider.calendarScreen.overlayMenu.edit"),
             onPress: () =>
               setAvailabilityEdit({
                 id: block.availability_block_id!,
@@ -2416,20 +2217,20 @@ function CalendarScreenBody() {
               }),
           },
           {
-            text: "Delete",
+            text: t("provider.calendarScreen.overlayMenu.delete"),
             style: "destructive",
             onPress: () => {
-              Alert.alert("Remove this block?", "Clients may be able to book this time again.", [
-                { text: "Cancel", style: "cancel" },
+              Alert.alert(t("provider.calendarScreen.overlayMenu.removeBlockTitle"), t("provider.calendarScreen.overlayMenu.removeBlockMessage"), [
+                { text: t("provider.calendarScreen.cancel"), style: "cancel" },
                 {
-                  text: "Delete",
+                  text: t("provider.calendarScreen.overlayMenu.delete"),
                   style: "destructive",
                   onPress: async () => {
                     const { error } = await deleteAvailabilityBlock(
                       `/api/provider/availability-blocks/${block.availability_block_id}`,
                     );
                     if (error) {
-                      Alert.alert("Couldn't remove block", error);
+                      Alert.alert(t("provider.calendarScreen.overlayMenu.removeBlockErrorTitle"), error);
                       return;
                     }
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2439,15 +2240,15 @@ function CalendarScreenBody() {
               ]);
             },
           },
-          { text: "Cancel", style: "cancel" },
+          { text: t("provider.calendarScreen.cancel"), style: "cancel" },
         ],
       );
       return;
     }
     if (block.calendar_overlay_kind === "time_block") {
-      Alert.alert("Time block", block.title, [
+      Alert.alert(t("provider.calendarScreen.overlayMenu.timeBlockTitle"), block.title, [
         {
-          text: "Manage",
+          text: t("provider.calendarScreen.overlayMenu.manage"),
           onPress: () => {
             const params = new URLSearchParams();
             params.set("date", block.date);
@@ -2456,19 +2257,19 @@ function CalendarScreenBody() {
           },
         },
         {
-          text: "Delete",
+          text: t("provider.calendarScreen.overlayMenu.delete"),
           style: "destructive",
           onPress: () => {
-            Alert.alert("Remove time block?", "", [
-              { text: "Cancel", style: "cancel" },
+            Alert.alert(t("provider.calendarScreen.overlayMenu.removeTimeBlockTitle"), "", [
+              { text: t("provider.calendarScreen.cancel"), style: "cancel" },
               {
-                text: "Delete",
+                text: t("provider.calendarScreen.overlayMenu.delete"),
                 style: "destructive",
                 onPress: async () => {
                   const recordId = resolveTimeBlockRecordId(block);
                   const { error } = await deleteCalendarTimeBlock(`/api/provider/time-blocks/${recordId}`);
                   if (error) {
-                    Alert.alert("Couldn't remove time block", error);
+                    Alert.alert(t("provider.calendarScreen.overlayMenu.removeTimeBlockErrorTitle"), error);
                     return;
                   }
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2478,7 +2279,7 @@ function CalendarScreenBody() {
             ]);
           },
         },
-        { text: "Cancel", style: "cancel" },
+        { text: t("provider.calendarScreen.cancel"), style: "cancel" },
       ]);
     }
   }
@@ -2487,7 +2288,7 @@ function CalendarScreenBody() {
     if (!availabilityEdit) return;
     const timePattern = /^\d{2}:\d{2}$/;
     if (!timePattern.test(availabilityEdit.start_time) || !timePattern.test(availabilityEdit.end_time)) {
-      Alert.alert("Invalid time", "Use HH:MM format for start and end.");
+      Alert.alert(t("provider.calendarScreen.overlayMenu.invalidTimeTitle"), t("provider.calendarScreen.overlayMenu.invalidTimeMessage"));
       return;
     }
     const providerTimezone = provider?.timezone ?? null;
@@ -2496,11 +2297,11 @@ function CalendarScreenBody() {
     const start = new Date(startIso);
     const end = new Date(endIso);
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
-      Alert.alert("Invalid time", "Use HH:MM format for start and end.");
+      Alert.alert(t("provider.calendarScreen.overlayMenu.invalidTimeTitle"), t("provider.calendarScreen.overlayMenu.invalidTimeMessage"));
       return;
     }
     if (end.getTime() <= start.getTime()) {
-      Alert.alert("Invalid range", "End time must be after start time.");
+      Alert.alert(t("provider.calendarScreen.overlayMenu.invalidRangeTitle"), t("provider.calendarScreen.overlayMenu.invalidRangeMessage"));
       return;
     }
     const { error } = await updateAvailabilityBlock(`/api/provider/availability-blocks/${availabilityEdit.id}`, {
@@ -2510,7 +2311,7 @@ function CalendarScreenBody() {
       staff_id: availabilityEdit.staff_id,
     });
     if (error) {
-      Alert.alert("Couldn't save block", error);
+      Alert.alert(t("provider.calendarScreen.overlayMenu.saveBlockErrorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2541,361 +2342,80 @@ function CalendarScreenBody() {
     ? staffColumns.length * dayColumnWidth
     : undefined;
 
+  const calendarBookingPreferences = useMemo(
+    () => ({
+      highContrast: preferences.highContrast,
+      compactMode: preferences.compactMode,
+      showAppointmentIcons: preferences.showAppointmentIcons,
+      showPrices: preferences.showPrices,
+      showClientPhone: preferences.showClientPhone,
+    }),
+    [
+      preferences.highContrast,
+      preferences.compactMode,
+      preferences.showAppointmentIcons,
+      preferences.showPrices,
+      preferences.showClientPhone,
+    ],
+  );
+
   /* ═══════════════ Render a booking block (optional drag when dropContext provided) ═══════════════ */
 
   function renderBookingBlock(
     booking: CalendarBooking,
     colWidth: number,
     day: Date,
-    dropContext?: DropContext | null,
+    dropContext?: CalendarBookingDropContext | null,
   ) {
     const walkInLabel = t("provider.calendarScreen.walkIn");
     const top = GRID_TOP_PADDING + getTopOffset(booking.scheduled_at, startHour, SLOT_HEIGHT, provider?.timezone ?? null);
     const height = getBlockHeight(booking, SLOT_HEIGHT, preferences.compactMode);
     const colors = getBlockColors(booking, preferences.colorBy, staffList);
-    const isSmall = height < (preferences.compactMode ? 24 : 40);
+    const paymentLabel = getCalendarPaymentLabel(booking, t);
+    const paymentNeedsAction = paymentNeedsAttention(booking);
     const isNew = isNewBooking(booking);
-    const isCancelled = booking.status === "cancelled";
-    const hasNotes = !!booking.notes;
-    const paymentLabel = getCalendarPaymentLabel(booking);
-    const paymentNeedsAction = paymentLabel === "Payment due" || paymentLabel === "Part paid";
-    const blockBg = preferences.highContrast ? Colors.gray[800] : colors.bg;
-    const blockTextColor = preferences.highContrast ? Colors.white : colors.text;
-    const canDrag =
-      dropContext &&
-      booking.status !== "completed" &&
-      booking.status !== "cancelled" &&
-      viewMode === "day";
-
-    const subTextColor = preferences.highContrast ? Colors.gray[400] : Colors.gray[500];
-    // §Provider-launch (audit 2026-04): drag-to-reschedule claims the
-    // long-press gesture on day view, which used to completely block the
-    // status action menu (Confirm / Start / Complete / No-show / Cancel).
-    // Add an explicit overflow ("⋯") affordance in the corner of the
-    // booking card so the menu is still one tap away even when the card is
-    // drag-enabled. Hidden for very small cards to avoid crowding.
-    const overflowButton =
-      !isSmall && height >= 30 ? (
-        <TouchableOpacity
-          onPress={(e) => {
-            // Don't let the tap bubble into the parent card's onPress
-            // (which would open booking detail) or trigger drag.
-            e?.stopPropagation?.();
-            handleLongPressBooking(booking);
-          }}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{
-            position: "absolute",
-            top: 2,
-            right: 2,
-            zIndex: 20,
-            paddingHorizontal: 4,
-            paddingVertical: 2,
-            borderRadius: 6,
-            backgroundColor: preferences.highContrast ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.06)",
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={t("provider.calendarScreen.bookingActionsMessage")}
-        >
-          <Ionicons
-            name="ellipsis-horizontal"
-            size={12}
-            color={preferences.highContrast ? Colors.white : Colors.gray[700]}
-          />
-        </TouchableOpacity>
-      ) : null;
-
-    const blockContent = (
-      <>
-        {preferences.showAppointmentIcons && isNew && (
-          <View style={{ position: "absolute", right: -2, top: -2, borderBottomLeftRadius: 6, backgroundColor: "#4f46e6", paddingHorizontal: 4, paddingVertical: 2 }}>
-            <Text
-              style={{ fontSize: 9, fontWeight: "700", color: Colors.white }}
-              allowFontScaling={false}
-            >
-              NEW
-            </Text>
-          </View>
-        )}
-        {overflowButton}
-        {/**
-         * §UX-audit 2026-04: raised legibility floor on calendar chips.
-         * Primary name was 10px (below mobile minimums and unusable for
-         * Dynamic Type / high-contrast modes). Locked to 12px with
-         * `allowFontScaling={false}` + a compact 11px for secondary rows
-         * so chips still fit but don't require a magnifier.
-         */}
-        {isSmall ? (
-          <Text
-            style={{ fontSize: 12, fontWeight: "600", color: blockTextColor }}
-            numberOfLines={1}
-            allowFontScaling={false}
-          >
-            {booking.customers?.full_name ?? walkInLabel}
-          </Text>
-        ) : (
-          <>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Text
-                style={{ flex: 1, fontSize: 12, fontWeight: "700", color: blockTextColor }}
-                numberOfLines={1}
-                allowFontScaling={false}
-              >
-                {booking.customers?.full_name ?? walkInLabel}
-              </Text>
-              {preferences.showAppointmentIcons && hasNotes && (
-                <Ionicons name="document-text-outline" size={12} color={preferences.highContrast ? "#fff" : "#6b7280"} />
-              )}
-            </View>
-            {booking.services?.length > 0 && (
-              <Text
-                style={{ fontSize: 11, color: preferences.highContrast ? Colors.gray[300] : Colors.gray[600] }}
-                numberOfLines={1}
-                allowFontScaling={false}
-              >
-                {booking.services.map((s) => {
-                  const name = booking.calendar_service_name || s.name || s.offering_name || "Service";
-                  return s.guest_name ? `${name} (${s.guest_name})` : name;
-                }).join(", ")}
-              </Text>
-            )}
-            {booking.is_group_booking && booking.group_booking_ref && (
-              <Text
-                style={{ marginTop: 2, fontSize: 11, color: subTextColor }}
-                numberOfLines={1}
-                allowFontScaling={false}
-              >
-                Group: {booking.group_booking_ref}
-              </Text>
-            )}
-            {booking.location_type === "at_home" && (
-              <Text
-                style={{ marginTop: 2, fontSize: 11, color: subTextColor }}
-                numberOfLines={1}
-                allowFontScaling={false}
-              >
-                At home
-              </Text>
-            )}
-            {!preferences.compactMode && height >= 55 && (
-              <Text
-                style={{ marginTop: 2, fontSize: 11, color: subTextColor }}
-                allowFontScaling={false}
-              >
-                {formatTimeInZone(booking.scheduled_at, provider?.timezone ?? null)}
-                {preferences.showPrices && <> &middot; {formatCurrency(booking.total_amount, booking.currency)}</>}
-              </Text>
-            )}
-            {!preferences.compactMode && height >= 70 && paymentLabel && (
-              <View style={{ marginTop: 2, flexDirection: "row", alignItems: "center" }}>
-                <Ionicons
-                  name={paymentNeedsAction ? "card-outline" : "checkmark-circle-outline"}
-                  size={10}
-                  color={paymentNeedsAction ? "#b45309" : "#047857"}
-                  style={{ marginRight: 3 }}
-                />
-                <Text
-                  style={{ fontSize: 9, fontWeight: "700", color: paymentNeedsAction ? "#b45309" : "#047857" }}
-                  numberOfLines={1}
-                  allowFontScaling={false}
-                >
-                  {paymentLabel}
-                </Text>
-              </View>
-            )}
-            {preferences.showClientPhone && !preferences.compactMode && height >= 70 && booking.customers?.phone && (
-              <Text style={{ fontSize: 8, color: subTextColor }} numberOfLines={1}>
-                {booking.customers.phone}
-              </Text>
-            )}
-          </>
-        )}
-      </>
-    );
-
-    const blockStyle = {
-      position: "absolute" as const,
-      left: 4,
-      right: 4,
-      top,
-      height: Math.max(height, 20),
-      zIndex: 10,
-      opacity: draggingBooking?.calendar_item_id === booking.calendar_item_id ? 0.4 : isCancelled ? 0.5 : 1,
-      overflow: "hidden" as const,
-      borderRadius: 8,
-      borderLeftWidth: 3,
-      borderLeftColor: colors.border,
-      backgroundColor: blockBg,
-      paddingHorizontal: 6,
-      paddingVertical: 4,
-    };
-
-    if (canDrag) {
-      const longPress = Gesture.LongPress()
-        .runOnJS(true)
-        .minDuration(400)
-        .onStart(() => {
-          draggingRef.current = true;
-          draggingBookingIdRef.current = booking.calendar_item_id;
-          setDraggingBooking(booking);
-          setDragPosition({ x: 0, y: 0 });
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        });
-
-      const pan = Gesture.Pan()
-        .runOnJS(true)
-        .onUpdate((e) => {
-          if (draggingRef.current) {
-            setDragPosition({ x: e.absoluteX - colWidth / 2, y: e.absoluteY - 24 });
-          }
-        })
-        .onEnd((e) => {
-          if (draggingRef.current && draggingBookingIdRef.current === booking.calendar_item_id) {
-            handleBookingDrop(
-              booking,
-              e.absoluteX,
-              e.absoluteY,
-              dropContext?.staffColumns ?? null,
-              dropContext?.dayColumnWidth ?? colWidth,
-              dropContext?.day ?? day,
-            );
-          }
-          draggingRef.current = false;
-          draggingBookingIdRef.current = null;
-          setDraggingBooking(null);
-          setDragPosition(null);
-        });
-
-      const composed = Gesture.Simultaneous(longPress, pan);
-
-      return (
-        <GestureDetector key={booking.calendar_item_id} gesture={composed}>
-          <TouchableOpacity
-            style={blockStyle}
-            activeOpacity={0.7}
-            onPress={() => !draggingRef.current && handleTapBooking(booking)}
-            onLongPress={() => {
-              if (!draggingRef.current) handleLongPressBooking(booking);
-            }}
-            delayLongPress={500}
-            accessibilityRole="button"
-            accessibilityLabel={t("provider.calendarScreen.bookingA11yLongPress", {
-              name: booking.customers?.full_name?.trim() || walkInLabel,
-              time: formatTimeInZone(booking.scheduled_at, provider?.timezone ?? null),
-            })}
-          >
-            {blockContent}
-            {paymentNeedsAction && !isSmall && (
-              <View style={{ position: "absolute", right: 4, bottom: 4, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.82)", padding: 2 }}>
-                <Ionicons name="card-outline" size={12} color="#6b7280" />
-              </View>
-            )}
-          </TouchableOpacity>
-        </GestureDetector>
-      );
-    }
-
     return (
-      <TouchableOpacity
+      <CalendarBookingBlock
         key={booking.calendar_item_id}
-        style={blockStyle}
-        activeOpacity={0.7}
-        onPress={() => handleTapBooking(booking)}
+        booking={booking}
+        colWidth={colWidth}
+        dropContext={dropContext}
+        viewMode={viewMode}
+        top={top}
+        blockHeight={height}
+        colors={colors}
+        providerTimezone={provider?.timezone ?? null}
+        walkInLabel={walkInLabel}
+        pendingBookingActionIds={pendingBookingActionIds}
+        pendingRescheduleBookingIds={pendingRescheduleBookingIds}
+        draggingBooking={draggingBooking}
+        preferences={calendarBookingPreferences}
+        paymentLabel={paymentLabel}
+        paymentNeedsAction={paymentNeedsAction}
+        isNew={isNew}
+        onTap={() => handleTapBooking(booking)}
         onLongPress={() => handleLongPressBooking(booking)}
-        delayLongPress={400}
-        accessibilityRole="button"
-        accessibilityLabel={t("provider.calendarScreen.bookingA11yShort", {
-          name: booking.customers?.full_name?.trim() || walkInLabel,
-          time: formatTimeInZone(booking.scheduled_at, provider?.timezone ?? null),
-          status: translateBookingStatusLabel(t, booking.status),
-        })}
-      >
-        {blockContent}
-        {paymentNeedsAction && !isSmall && (
-          <View style={{ position: "absolute", right: 4, bottom: 4, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.82)", padding: 2 }}>
-            <Ionicons name="card-outline" size={12} color="#6b7280" />
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  }
-
-  /* ═══════════════ Render a time block ═══════════════ */
-
-  function renderTimeBlock(block: TimeBlock) {
-    const bColors = getCalendarOverlayColors(block);
-    const startMin = parseCalendarTimeStrict(block.start_time);
-    const endMin = parseCalendarTimeStrict(block.end_time);
-    if (startMin == null || endMin == null || endMin <= startMin) return null;
-    const top = GRID_TOP_PADDING + Math.max(0, (startMin / 60 - startHour) * SLOT_HEIGHT);
-    const height = Math.max(((endMin - startMin) / 60) * SLOT_HEIGHT, QUARTER_HEIGHT);
-    const interactive = !!block.calendar_overlay_kind;
-    // §Provider-launch (audit 2026-04): ghost booking_holds should read as
-    // tentative slots, matching the web `TimeBlockElement` which uses a
-    // dashed border. Regular time blocks / staff-off / availability still
-    // get the solid accent stripe on the left.
-    const isBookingHold = block.calendar_overlay_kind === "booking_hold";
-    const boxStyle = isBookingHold
-      ? {
-          position: "absolute" as const,
-          left: 4,
-          right: 4,
-          top,
-          height,
-          zIndex: 5,
-          overflow: "hidden" as const,
-          borderRadius: 6,
-          borderWidth: 1,
-          borderStyle: "dashed" as const,
-          borderColor: bColors.border,
-          backgroundColor: bColors.bg,
-          paddingHorizontal: 6,
-          paddingVertical: 2,
+        onDrop={(ax, ay) =>
+          handleBookingDrop(
+            booking,
+            ax,
+            ay,
+            dropContext?.staffColumns ?? null,
+            dropContext?.dayColumnWidth ?? colWidth,
+            dropContext?.day ?? day,
+          )
         }
-      : {
-          position: "absolute" as const,
-          left: 4,
-          right: 4,
-          top,
-          height,
-          zIndex: 5,
-          overflow: "hidden" as const,
-          borderRadius: 6,
-          borderLeftWidth: 3,
-          borderLeftColor: bColors.border,
-          backgroundColor: bColors.bg,
-          paddingHorizontal: 6,
-          paddingVertical: 2,
-        };
-    const label = (
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <Ionicons name={bColors.icon as keyof typeof Ionicons.glyphMap} size={10} color={bColors.text} />
-        <Text style={{ marginLeft: 4, fontSize: 9, fontWeight: "500", color: bColors.text }} numberOfLines={1}>
-          {block.title || capitalizeFirst(block.block_type)}
-        </Text>
-      </View>
-    );
-    if (interactive) {
-      return (
-        <Pressable
-          key={block.id}
-          onPress={() => openOverlayBlockMenu(block)}
-          style={({ pressed }) => [boxStyle, { opacity: pressed ? 0.88 : 1 }]}
-          accessibilityRole="button"
-          accessibilityLabel={`${block.block_type} ${block.start_time} to ${block.end_time}. Tap for edit or delete.`}
-        >
-          {label}
-        </Pressable>
-      );
-    }
-    return (
-      <View key={block.id} style={[boxStyle, { pointerEvents: "none" }]}>
-        {label}
-      </View>
+        draggingRef={draggingRef}
+        draggingBookingIdRef={draggingBookingIdRef}
+        setDraggingBooking={setDraggingBooking}
+        setDragPosition={setDragPosition}
+        t={t}
+        translateBookingStatusLabel={translateBookingStatusLabel}
+      />
     );
   }
 
-  /* ═══════════════ Operating hours shading ═══════════════ */
+  /* ═══════════════ Operating hours shading (ranges → CalendarDayGridColumn) ═══════════════ */
 
   function getOpenRangesForCalendarShading(
     day: Date,
@@ -2926,152 +2446,61 @@ function CalendarScreenBody() {
     );
   }
 
-  function renderHoursShading(day: Date, blockContext?: { staffColumnId?: string | null } | null) {
-    const shadeBg = preferences.highContrast ? Colors.gray[700] : Colors.gray[200];
-
-    // §Calendar-hours: use the shared engine so overnight shifts (22:00-02:00)
-    // render correctly on BOTH days — the grid gets an open range on the
-    // opening day and another on the wrap-around day, with the non-open
-    // portions shaded in between.
-    const openRanges = getOpenRangesForCalendarShading(day, blockContext);
-    if (openRanges == null) return null;
-
-    const gridStartMin = startHour * 60;
-    const gridEndMin = (endHour + 1) * 60;
-    const minToTop = (min: number) =>
-      GRID_TOP_PADDING + ((Math.max(gridStartMin, Math.min(gridEndMin, min)) - gridStartMin) / 60) * SLOT_HEIGHT;
-
-    const elements: React.ReactNode[] = [];
-    let cursor = gridStartMin;
-    mergeRanges(openRanges).forEach((range, idx) => {
-      if (range.endMin <= gridStartMin || range.startMin >= gridEndMin) return;
-      if (range.startMin > cursor) {
-        const top = minToTop(cursor);
-        const bottom = minToTop(range.startMin);
-        const height = bottom - top;
-        if (height > 0) {
-          elements.push(
-            <View
-              key={`gap-${idx}-before`}
-              style={{ position: "absolute", left: 0, right: 0, top, height, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }}
-            />,
-          );
-        }
-      }
-      cursor = Math.max(cursor, range.endMin);
-    });
-    if (cursor < gridEndMin) {
-      const top = minToTop(cursor);
-      const bottom = minToTop(gridEndMin);
-      const height = bottom - top;
-      if (height > 0) {
-        elements.push(
-          <View
-            key="tail"
-            style={{ position: "absolute", left: 0, right: 0, top, height, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }}
-          />,
-        );
-      }
-    }
-    return <>{elements}</>;
-  }
-
   /* ═══════════════ Render a day grid column ═══════════════ */
-
-  type DropContext = {
-    staffColumns: { staffId: string; staffName: string; bookings: CalendarBooking[] }[];
-    dayColumnWidth: number;
-    day: Date;
-  } | null;
 
   function renderDayGrid(
     day: Date,
     bookingsForDay: CalendarBooking[],
     colWidth: number,
     showTimeIndicator = true,
-    dropContext?: DropContext | null,
+    dropContext?: CalendarBookingDropContext | null,
     blockContext?: { staffColumnId?: string | null } | null,
   ) {
     const dayBlocks = getCalendarBlocksForDay(day, blockContext);
+    const closedRanges = getOpenRangesForCalendarShading(day, blockContext);
+    const closedHoursShadeBg = preferences.highContrast ? Colors.gray[700] : Colors.gray[200];
     return (
-      <View style={{ width: colWidth, height: totalGridHeight + GRID_TOP_PADDING, paddingTop: GRID_TOP_PADDING, position: "relative" }}>
-        {renderHoursShading(day, blockContext)}
-
-        {/* Grid rows + half-hour dashed lines */}
-        <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 1 }}>
-          {gridRows.map((row, idx) => (
-            <TouchableOpacity
-              key={`${row.hour}-${row.minute}`}
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                top: idx * rowHeight + GRID_TOP_PADDING,
-                height: rowHeight,
-                borderTopWidth: 1,
-                borderTopColor: row.minute === 0 ? Colors.gray[200] : Colors.gray[50],
-              }}
-              activeOpacity={0.6}
-              onPress={() =>
-                handleTapSlot(row.hour, row.minute, day, blockContext?.staffColumnId ?? null)
-              }
-              accessibilityRole="button"
-              accessibilityLabel={`Book at ${row.label} on ${format(day, "EEEE, MMMM d")}`}
-            />
-          ))}
-          {/* Half-hour dashed lines */}
-          {Array.from({ length: endHour - startHour }, (_, i) => (
-            <View
-              key={`half-${i}`}
-              style={{ position: "absolute", left: 0, right: 0, top: i * SLOT_HEIGHT + SLOT_HEIGHT / 2 + GRID_TOP_PADDING, height: 1, borderTopWidth: 1, borderStyle: "dashed", borderColor: "#e5e7eb", zIndex: 0, pointerEvents: "none" }}
-            />
-          ))}
-        </View>
-
-        <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 5, pointerEvents: "box-none" }}>
-          {dayBlocks.map((tb) => renderTimeBlock(tb))}
-        </View>
-
-        <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 10, pointerEvents: "box-none" }}>
-          {bookingsForDay.map((b) => renderBookingBlock(b, colWidth, day, dropContext))}
-        </View>
-
-        {/*
-          §Provider-launch (audit 2026-04): explicit empty-day copy so the
-          calendar doesn't read as "broken or still loading" when a staff
-          member has a clean diary. Only shown in day view and only when
-          nothing at all would render (no bookings, no blocks).
-        */}
-        {viewMode === "day" && bookingsForDay.length === 0 && dayBlocks.length === 0 && !loading && (
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: GRID_TOP_PADDING + 40,
-              alignItems: "center",
-              zIndex: 4,
-            }}
-          >
-            <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[200] }}>
-              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-                No appointments — tap a slot to add one
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {showTimeIndicator && viewMode === "day" && isProviderToday(day) && (
-          <CurrentTimeIndicator
-            startHour={startHour}
-            slotHeight={SLOT_HEIGHT}
-            endHour={endHour}
-            totalGridHeight={totalGridHeight}
-            timeZone={provider?.timezone ?? null}
-          />
-        )}
-      </View>
+      <CalendarDayGridColumn
+        day={day}
+        colWidth={colWidth}
+        totalGridHeight={totalGridHeight}
+        gridTopPadding={GRID_TOP_PADDING}
+        rowHeight={rowHeight}
+        slotHeight={SLOT_HEIGHT}
+        startHour={startHour}
+        endHour={endHour}
+        quarterHeight={QUARTER_HEIGHT}
+        gridRows={gridRows}
+        closedRanges={closedRanges}
+        closedHoursShadeBg={closedHoursShadeBg}
+        overlayBlocks={dayBlocks}
+        bookingsForDay={bookingsForDay}
+        renderBookingBlock={(b) => renderBookingBlock(b, colWidth, day, dropContext)}
+        onSlotPress={(hour, minute) => handleTapSlot(hour, minute, day, blockContext?.staffColumnId ?? null)}
+        onOverlayBlockPress={(block) => openOverlayBlockMenu(block as TimeBlock)}
+        getOverlayAccessibilityLabel={(tb) =>
+          t("provider.calendarScreen.overlayBlockA11y", {
+            type: translateOverlayBlockType(t, tb.block_type),
+            start: tb.start_time,
+            end: tb.end_time,
+          })
+        }
+        slotAccessibilityLabel={(row, d) =>
+          t("provider.calendarScreen.grid.slotBookA11y", {
+            time: row.label,
+            day: format(d, "EEEE, MMMM d"),
+          })
+        }
+        showEmptyDayHint={
+          viewMode === "day" && bookingsForDay.length === 0 && dayBlocks.length === 0 && !loading
+        }
+        emptyDayHint={t("provider.calendarScreen.grid.emptyDayHint")}
+        showTimeIndicator={showTimeIndicator}
+        viewMode={viewMode}
+        isTodayInBusinessZone={isProviderToday(day)}
+        providerTimezone={provider?.timezone ?? null}
+        currentTimeA11yPrefix={t("provider.calendarScreen.currentTimeA11yPrefix")}
+      />
     );
   }
 
@@ -3101,7 +2530,7 @@ function CalendarScreenBody() {
             onPress={() => navigateDate(-1)}
             hitSlop={8}
             style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" }}
-            accessibilityLabel={viewMode === "week" ? "Previous week" : "Previous day"}
+            accessibilityLabel={viewMode === "week" ? t("provider.calendarScreen.dateNav.prevWeek") : t("provider.calendarScreen.dateNav.prevDay")}
           >
             <Ionicons name="chevron-back" size={22} color="#fff" />
           </TouchableOpacity>
@@ -3109,7 +2538,7 @@ function CalendarScreenBody() {
           <TouchableOpacity
             onPress={() => setDatePickerVisible(true)}
             style={{ flexDirection: "row", alignItems: "center" }}
-            accessibilityLabel="Jump to date"
+            accessibilityLabel={t("provider.calendarScreen.dateNav.jumpToDate")}
           >
             <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.white }}>
               {viewMode === "week"
@@ -3127,7 +2556,9 @@ function CalendarScreenBody() {
             )}
             {pendingOnSelectedDay > 0 && viewMode === "day" && (
               <View style={{ marginLeft: 6, borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: "#F59E0B" }}>
-                <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>{pendingOnSelectedDay} pending</Text>
+                <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>
+                  {t("provider.calendarScreen.pendingBadge", { count: pendingOnSelectedDay })}
+                </Text>
               </View>
             )}
           </TouchableOpacity>
@@ -3137,7 +2568,7 @@ function CalendarScreenBody() {
               onPress={openCalendarActionsMenu}
               hitSlop={8}
               style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", marginRight: 4 }}
-              accessibilityLabel="Calendar actions: share, copy, month, open in browser"
+              accessibilityLabel={t("provider.calendarScreen.utilityMenu.title")}
             >
               <Ionicons name="ellipsis-horizontal" size={22} color="rgba(255,255,255,0.85)" />
             </TouchableOpacity>
@@ -3145,7 +2576,7 @@ function CalendarScreenBody() {
               onPress={() => setPrefsVisible(true)}
               hitSlop={8}
               style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", marginRight: 8 }}
-              accessibilityLabel="Calendar preferences"
+              accessibilityLabel={t("provider.calendarScreen.preferencesA11y")}
             >
               <Ionicons name="settings-outline" size={20} color="rgba(255,255,255,0.7)" />
             </TouchableOpacity>
@@ -3153,7 +2584,7 @@ function CalendarScreenBody() {
               onPress={() => navigateDate(1)}
               hitSlop={8}
               style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" }}
-              accessibilityLabel={viewMode === "week" ? "Next week" : "Next day"}
+              accessibilityLabel={viewMode === "week" ? t("provider.calendarScreen.dateNav.nextWeek") : t("provider.calendarScreen.dateNav.nextDay")}
             >
               <Ionicons name="chevron-forward" size={22} color="#fff" />
             </TouchableOpacity>
@@ -3164,9 +2595,9 @@ function CalendarScreenBody() {
         <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16 }}>
           <View style={{ flexDirection: "row", borderRadius: 8, padding: 2, backgroundColor: "rgba(255,255,255,0.1)" }}>
             {([
-              { key: "day" as ViewMode, label: "DAY" },
-              { key: "3day" as ViewMode, label: "3 DAY" },
-              { key: "week" as ViewMode, label: "WEEK" },
+              { key: "day" as ViewMode, label: t("provider.calendarScreen.viewModes.day") },
+              { key: "3day" as ViewMode, label: t("provider.calendarScreen.viewModes.threeDay") },
+              { key: "week" as ViewMode, label: t("provider.calendarScreen.viewModes.week") },
             ]).map((v) => (
               <TouchableOpacity
                 key={v.key}
@@ -3185,7 +2616,7 @@ function CalendarScreenBody() {
               <TouchableOpacity
                 style={{ flexDirection: "row", alignItems: "center", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "rgba(239,68,68,0.2)", marginRight: 8 }}
                 onPress={() => router.push("/(app)/(tabs)/more/waiting-room" as never)}
-                accessibilityLabel={`${waitingCount} waiting`}
+                accessibilityLabel={t("provider.calendarScreen.actionRail.waitingCountSub", { count: waitingCount })}
               >
                 <Ionicons name="people" size={12} color="#fca5a5" style={{ marginRight: 4 }} />
                 <Text style={{ fontSize: 10, fontWeight: "700", color: "#fca5a5" }}>{waitingCount}</Text>
@@ -3194,23 +2625,25 @@ function CalendarScreenBody() {
             {preferences.colorBy !== "status" && (
               <View style={{ borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "rgba(79,209,197,0.2)", marginRight: 8 }}>
                 <Text style={{ fontSize: 10, fontWeight: "500", color: TEAL_ACCENT }}>
-                  {preferences.colorBy === "service" ? "By Service" : "By Staff"}
+                  {preferences.colorBy === "service"
+                    ? t("provider.calendarScreen.colorByChip.service")
+                    : t("provider.calendarScreen.colorByChip.staff")}
                 </Text>
               </View>
             )}
             <TouchableOpacity
               onPress={() => setShowLegend(true)}
               style={{ borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "rgba(255,255,255,0.1)", marginRight: 8 }}
-              accessibilityLabel="Color legend"
+              accessibilityLabel={t("provider.calendarScreen.colorLegend.a11y")}
             >
               <Ionicons name="color-palette-outline" size={14} color="rgba(255,255,255,0.7)" />
             </TouchableOpacity>
             <TouchableOpacity
               style={{ backgroundColor: TEAL_ACCENT, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}
               onPress={() => { setSelectedDate(new Date()); hasScrolledToNow.current = false; }}
-              accessibilityLabel="Today"
+              accessibilityLabel={t("provider.calendarScreen.dateNav.today")}
             >
-              <Text style={{ fontSize: 12, fontWeight: "600", color: DARK_HEADER }}>Today</Text>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: DARK_HEADER }}>{t("provider.calendarScreen.dateNav.today")}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -3275,129 +2708,42 @@ function CalendarScreenBody() {
             borderColor: urgentPendingCount > 0 ? "#FECACA" : "#FDE68A",
           }}
           accessibilityRole="button"
-          accessibilityLabel={`Front desk: ${pendingAttentionCount} bookings need confirmation`}
+          accessibilityLabel={t("provider.calendarScreen.pendingBanner.accessibility", {
+            count: pendingAttentionCount,
+          })}
         >
           <Ionicons name={urgentPendingCount > 0 ? "flash" : "alert-circle"} size={22} color={urgentPendingCount > 0 ? "#DC2626" : "#D97706"} />
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={{ fontSize: 14, fontWeight: "700", color: urgentPendingCount > 0 ? "#991B1B" : "#78350F" }}>
               {urgentPendingCount > 0
-                ? `${urgentPendingCount} pending within 2h — confirm or decline`
-                : `${pendingAttentionCount} booking${pendingAttentionCount !== 1 ? "s" : ""} need confirmation`}
+                ? t("provider.calendarScreen.pendingBanner.urgentTitle", { count: urgentPendingCount })
+                : pendingAttentionCount === 1
+                  ? t("provider.calendarScreen.pendingBanner.pendingTitleSingular")
+                  : t("provider.calendarScreen.pendingBanner.pendingTitlePlural", {
+                      count: pendingAttentionCount,
+                    })}
             </Text>
             <Text style={{ fontSize: 12, color: urgentPendingCount > 0 ? "#B91C1C" : "#92400E", marginTop: 2 }}>
-              Front Desk shows today’s schedule and check-ins
+              {t("provider.calendarScreen.pendingBanner.subtitle")}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={urgentPendingCount > 0 ? "#DC2626" : "#D97706"} />
         </TouchableOpacity>
       )}
 
-      <View style={{ backgroundColor: Colors.white, borderBottomWidth: 1, borderBottomColor: Colors.gray[100], paddingVertical: 10 }}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingHorizontal: isTablet ? screenPadding : 12,
-            gap: 8,
-          }}
-        >
-          {[
-            {
-              label: "New",
-              sub: "Appointment",
-              icon: "calendar-outline" as keyof typeof Ionicons.glyphMap,
-              color: "#4f46e5",
-              bg: "#eef2ff",
-              onPress: openNewBookingFromCalendar,
-            },
-            {
-              label: "Walk-in",
-              sub: "Book now",
-              icon: "walk-outline" as keyof typeof Ionicons.glyphMap,
-              color: "#16a34a",
-              bg: "#f0fdf4",
-              onPress: openWalkInBookingFromCalendar,
-            },
-            {
-              label: "Group",
-              sub: "Participants",
-              icon: "people-outline" as keyof typeof Ionicons.glyphMap,
-              color: "#db2777",
-              bg: "#fdf2f8",
-              onPress: openGroupBookingFromCalendar,
-            },
-            {
-              label: "Sale",
-              sub: "Products",
-              icon: "bag-handle-outline" as keyof typeof Ionicons.glyphMap,
-              color: "#0891b2",
-              bg: "#ecfeff",
-              onPress: () => router.push("/(app)/(tabs)/more/walk-in-sale" as never),
-            },
-            {
-              label: "Recurring",
-              sub: "Series",
-              icon: "repeat-outline" as keyof typeof Ionicons.glyphMap,
-              color: "#7c3aed",
-              bg: "#f5f3ff",
-              onPress: () => router.push("/(app)/(tabs)/more/recurring-appointments" as never),
-            },
-            {
-              label: "Block",
-              sub: "Time off",
-              icon: "ban-outline" as keyof typeof Ionicons.glyphMap,
-              color: "#d97706",
-              bg: "#fffbeb",
-              onPress: openTimeBlockFormFromCalendar,
-            },
-            {
-              label: "Waiting",
-              sub: waitingCount > 0 ? `${waitingCount} waiting` : "Room",
-              icon: "hourglass-outline" as keyof typeof Ionicons.glyphMap,
-              color: "#dc2626",
-              bg: "#fef2f2",
-              onPress: () => router.push("/(app)/(tabs)/more/waiting-room" as never),
-            },
-          ].map((item) => (
-            <TouchableOpacity
-              key={item.label}
-              onPress={item.onPress}
-              activeOpacity={0.78}
-              style={{
-                minWidth: 104,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: Colors.gray[100],
-                backgroundColor: item.bg,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={`${item.label} ${item.sub}`}
-            >
-              <View
-                style={{
-                  height: 30,
-                  width: 30,
-                  borderRadius: 15,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: Colors.white,
-                  marginRight: 8,
-                }}
-              >
-                <Ionicons name={item.icon} size={16} color={item.color} />
-              </View>
-              <View>
-                <Text style={{ fontSize: 12, fontWeight: "800", color: Colors.gray[900] }}>{item.label}</Text>
-                <Text style={{ marginTop: 1, fontSize: 10, color: Colors.gray[500] }}>{item.sub}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+      <CalendarActionRail
+        isTablet={isTablet}
+        screenPadding={screenPadding}
+        waitingCount={waitingCount}
+        onNewAppointment={openNewBookingFromCalendar}
+        onWalkIn={openWalkInBookingFromCalendar}
+        onGroup={openGroupBookingFromCalendar}
+        onSale={() => router.push("/(app)/(tabs)/more/walk-in-sale" as never)}
+        onRecurring={() => router.push("/(app)/(tabs)/more/recurring-appointments" as never)}
+        onBlock={openTimeBlockFormFromCalendar}
+        onWaiting={() => router.push("/(app)/(tabs)/more/waiting-room" as never)}
+        t={t}
+      />
 
       {/* ─── Layout Toggle + Staff Filter (matches web "Staff View" bar) ─── */}
       {viewMode === "day" && staffList.length > 1 && staffFilter === "all" && (
@@ -3405,7 +2751,7 @@ function CalendarScreenBody() {
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Ionicons name="people-outline" size={14} color="#6366f1" style={{ marginRight: 6 }} />
-              <Text style={{ fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2, color: Colors.gray[900] }}>Staff View</Text>
+              <Text style={{ fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2, color: Colors.gray[900] }}>{t("provider.calendarScreen.staffViewStrip.title")}</Text>
             </View>
             <View style={{ flexDirection: "row", borderRadius: 8, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[100], padding: 2 }}>
               <TouchableOpacity
@@ -3413,14 +2759,14 @@ function CalendarScreenBody() {
                 onPress={() => setLayoutMode("columns")}
               >
                 <Ionicons name="grid-outline" size={12} color={layoutMode === "columns" ? "#111" : "#9ca3af"} />
-                <Text style={{ fontSize: 12, fontWeight: "600", color: layoutMode === "columns" ? Colors.gray[900] : Colors.gray[500] }}>All</Text>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: layoutMode === "columns" ? Colors.gray[900] : Colors.gray[500] }}>{t("provider.calendarScreen.staffViewStrip.all")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={{ flexDirection: "row", alignItems: "center", borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: layoutMode === "single" ? Colors.white : "transparent", elevation: layoutMode === "single" ? 1 : 0, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 }}
                 onPress={() => setLayoutMode("single")}
               >
                 <Ionicons name="person-outline" size={12} color={layoutMode === "single" ? "#111" : "#9ca3af"} style={{ marginRight: 4 }} />
-                <Text style={{ fontSize: 12, fontWeight: "600", color: layoutMode === "single" ? Colors.gray[900] : Colors.gray[500] }}>Single</Text>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: layoutMode === "single" ? Colors.gray[900] : Colors.gray[500] }}>{t("provider.calendarScreen.staffViewStrip.single")}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -3495,11 +2841,11 @@ function CalendarScreenBody() {
             borderColor: "#FED7AA",
           }}
           accessibilityRole="button"
-          accessibilityLabel="Calendar may be out of date. Tap to refresh."
+          accessibilityLabel={t("provider.calendarScreen.staleDataBanner.a11y")}
         >
           <Ionicons name="cloud-offline-outline" size={18} color="#B45309" />
           <Text style={{ flex: 1, marginLeft: 10, fontSize: 12, fontWeight: "600", color: "#92400E" }} numberOfLines={2}>
-            Showing last known schedule — tap to refresh
+            {t("provider.calendarScreen.staleDataBanner.body")}
           </Text>
           <Ionicons name="refresh" size={16} color="#B45309" />
         </TouchableOpacity>
@@ -3522,11 +2868,11 @@ function CalendarScreenBody() {
             borderColor: "#FED7AA",
           }}
           accessibilityRole="button"
-          accessibilityLabel="Some calendar blocks or holds could not load. Tap to refresh."
+          accessibilityLabel={t("provider.calendarScreen.overlayPartialWarningA11y")}
         >
           <Ionicons name="warning-outline" size={18} color="#B45309" />
           <Text style={{ flex: 1, marginLeft: 10, fontSize: 12, fontWeight: "600", color: "#92400E" }} numberOfLines={2}>
-            Some blocks or held slots could not load — tap to refresh before editing availability.
+            {t("provider.calendarScreen.overlayPartialWarning")}
           </Text>
           <Ionicons name="refresh" size={16} color="#B45309" />
         </TouchableOpacity>
@@ -3537,10 +2883,10 @@ function CalendarScreenBody() {
         <CalendarSkeleton />
       ) : fetchError && !bookings ? (
         <ErrorState
-          title="Can't load your calendar"
+          title={t("provider.calendarScreen.fetchError.title")}
           message={fetchError}
           onRetry={refresh}
-          retryLabel="Reload"
+          retryLabel={t("provider.calendarScreen.fetchError.retry")}
           icon="calendar-outline"
         />
       ) : (
@@ -3601,7 +2947,11 @@ function CalendarScreenBody() {
                             >
                               <Text style={{ fontSize: 10, color: Colors.gray[400] }}>{format(day, "EEE")}</Text>
                               <Text style={{ fontSize: 14, fontWeight: "700", color: isToday ? "#4f46e6" : Colors.gray[700] }}>{format(day, "d MMM")}</Text>
-                              <Text style={{ fontSize: 9, color: Colors.gray[400] }}>{dayBookings.length} appt{dayBookings.length !== 1 ? "s" : ""}</Text>
+                              <Text style={{ fontSize: 9, color: Colors.gray[400] }}>
+                                {dayBookings.length === 1
+                                  ? t("provider.calendarScreen.apptSingle")
+                                  : t("provider.calendarScreen.apptPlural", { count: dayBookings.length })}
+                              </Text>
                             </TouchableOpacity>
                             <View style={{ borderRightWidth: 1, borderRightColor: Colors.gray[50] }}>
                               {renderDayGrid(day, dayBookings, threeDayColWidth, false)}
@@ -3630,6 +2980,7 @@ function CalendarScreenBody() {
                         endHour={endHour}
                         totalGridHeight={totalGridHeight}
                         timeZone={provider?.timezone ?? null}
+                        accessibilityLabelPrefix={t("provider.calendarScreen.currentTimeA11yPrefix")}
                       />
                     </View>
                   )}
@@ -3661,7 +3012,9 @@ function CalendarScreenBody() {
                               </View>
                               <Text style={{ fontSize: 10, fontWeight: "600", color: Colors.white }} numberOfLines={1}>{col.staffName.split(" ")[0]}</Text>
                               <Text style={{ fontSize: 9, color: TEAL_ACCENT }}>
-                                {col.bookings.length} appt{col.bookings.length !== 1 ? "s" : ""}
+                                {col.bookings.length === 1
+                                  ? t("provider.calendarScreen.apptSingle")
+                                  : t("provider.calendarScreen.apptPlural", { count: col.bookings.length })}
                               </Text>
                             </TouchableOpacity>
                             <View>
@@ -3695,6 +3048,7 @@ function CalendarScreenBody() {
                         endHour={endHour}
                         totalGridHeight={totalGridHeight}
                         timeZone={provider?.timezone ?? null}
+                        accessibilityLabelPrefix={t("provider.calendarScreen.currentTimeA11yPrefix")}
                       />
                     </View>
                   )}
@@ -3755,6 +3109,7 @@ function CalendarScreenBody() {
                       endHour={endHour}
                       totalGridHeight={totalGridHeight}
                       timeZone={provider?.timezone ?? null}
+                      accessibilityLabelPrefix={t("provider.calendarScreen.currentTimeA11yPrefix")}
                     />
                   </View>
                 )}
@@ -3767,40 +3122,13 @@ function CalendarScreenBody() {
 
       {/* Drag ghost: follows finger when dragging a booking */}
       {draggingBooking && dragPosition && (
-        <Modal visible transparent animationType="none" statusBarTranslucent>
-          <View style={{ flex: 1, pointerEvents: "none" }}>
-            <View
-              style={{
-                position: "absolute",
-                left: dragPosition.x,
-                top: dragPosition.y,
-                width: Math.min(dayColumnWidth - 8, 200),
-                minHeight: 44,
-                borderRadius: 8,
-                paddingHorizontal: 6,
-                paddingVertical: 4,
-                borderLeftWidth: 3,
-                backgroundColor: "#fff",
-                borderLeftColor: "#6366f1",
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.25,
-                shadowRadius: 8,
-                elevation: 8,
-              }}
-            >
-              <Text style={{ fontSize: 10, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
-                {draggingBooking.customers?.full_name ?? t("provider.calendarScreen.walkIn")}
-              </Text>
-              {draggingBooking.services?.length > 0 && (
-                <Text style={{ marginTop: 2, fontSize: 9, color: Colors.gray[600] }} numberOfLines={1}>
-                  {draggingBooking.services.map((s) => s.name).join(", ")}
-                </Text>
-              )}
-              <Text style={{ marginTop: 2, fontSize: 9, color: Colors.gray[500] }}>{formatTimeInZone(draggingBooking.scheduled_at, provider?.timezone ?? null)}</Text>
-            </View>
-          </View>
-        </Modal>
+        <CalendarDragGhost
+          dragPosition={dragPosition}
+          width={dayColumnWidth}
+          draggingBooking={draggingBooking}
+          walkInLabel={t("provider.calendarScreen.walkIn")}
+          providerTimezone={provider?.timezone ?? null}
+        />
       )}
 
       <DatePickerModal
@@ -3898,145 +3226,17 @@ function CalendarScreenBody() {
         onReset={resetToDefaults}
       />
 
-      {/* ─── Floating Action Button ─── */}
-      {/* §UI-audit 2026-04: `bottom: 24` previously hid the FAB under
-          the iPhone home-indicator area (and tab bar on small phones).
-          Offset by `insets.bottom` + tab bar chrome so it never lands
-          on the system gesture region. */}
-      <View style={{ position: "absolute", bottom: 24 + insets.bottom + 56, right: 20, zIndex: 100 }}>
-        {fabOpen && (
-          <View style={{ marginBottom: 12 }}>
-            {[
-              {
-                labelKey: "newBooking",
-                label: t("provider.calendarScreen.fab.newBooking"),
-                icon: "calendar-outline" as keyof typeof Ionicons.glyphMap,
-                color: "#4f46e5",
-                onPress: () => {
-                  setFabOpen(false);
-                  openNewBookingFromCalendar();
-                },
-              },
-              {
-                labelKey: "walkIn",
-                label: t("provider.calendarScreen.fab.walkIn"),
-                icon: "walk-outline" as keyof typeof Ionicons.glyphMap,
-                color: "#22c55e",
-                onPress: () => {
-                  setFabOpen(false);
-                  openWalkInBookingFromCalendar();
-                },
-              },
-              {
-                labelKey: "productSale",
-                label: "Product sale",
-                icon: "bag-handle-outline" as keyof typeof Ionicons.glyphMap,
-                color: "#0891b2",
-                onPress: () => {
-                  setFabOpen(false);
-                  router.push("/(app)/(tabs)/more/walk-in-sale" as never);
-                },
-              },
-              {
-                labelKey: "expressBook",
-                label: t("provider.calendarScreen.fab.expressBook"),
-                icon: "flash-outline" as keyof typeof Ionicons.glyphMap,
-                color: "#f59e0b",
-                onPress: () => {
-                  setFabOpen(false);
-                  router.push("/(app)/(tabs)/more/express-booking" as never);
-                },
-              },
-              {
-                labelKey: "timeBlock",
-                label: t("provider.calendarScreen.fab.timeBlock"),
-                icon: "ban-outline" as keyof typeof Ionicons.glyphMap,
-                color: "#6366f1",
-                onPress: () => {
-                  setFabOpen(false);
-                  openTimeBlockFormFromCalendar();
-                },
-              },
-              {
-                labelKey: "groupBooking",
-                label: t("provider.calendarScreen.fab.groupBooking"),
-                icon: "people-outline" as keyof typeof Ionicons.glyphMap,
-                color: "#ec4899",
-                onPress: () => {
-                  setFabOpen(false);
-                  openGroupBookingFromCalendar();
-                },
-              },
-            ].map((action, index) => (
-              <Animated.View
-                key={action.labelKey}
-                style={{
-                  opacity: fabAnim,
-                  transform: [
-                    {
-                      translateY: fabAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [20, 0],
-                      }),
-                    },
-                  ],
-                }}
-              >
-                <TouchableOpacity
-                  style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", alignSelf: "flex-end" }}
-                  onPress={action.onPress}
-                  activeOpacity={0.7}
-                >
-                  <View style={{ marginRight: 8, borderRadius: 8, backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 6, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 }}>
-                    <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[800] }}>{action.label}</Text>
-                  </View>
-                  <View
-                    style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: action.color, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 }}
-                  >
-                    <Ionicons name={action.icon} size={18} color="#fff" />
-                  </View>
-                </TouchableOpacity>
-              </Animated.View>
-            ))}
-          </View>
-        )}
-        <TouchableOpacity
-          style={{ height: 56, width: 56, alignItems: "center", justifyContent: "center", borderRadius: 28, backgroundColor: fabOpen ? "#ef4444" : DARK_HEADER, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 }}
-          onPress={toggleFab}
-          activeOpacity={0.8}
-        >
-          <Animated.View
-            style={{
-              transform: [
-                {
-                  rotate: fabAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["0deg", "45deg"],
-                  }),
-                },
-              ],
-            }}
-          >
-            <Ionicons name="add" size={28} color="#fff" />
-          </Animated.View>
-        </TouchableOpacity>
-      </View>
-
-      {/* Dismiss FAB overlay */}
-      {fabOpen && (
-        <Pressable
-          style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 99 }}
-          onPress={() => { setFabOpen(false); Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true, friction: 6 }).start(); }}
-        />
-      )}
-
       {/* ─── Legend Modal ─── */}
       <Modal visible={showLegend} transparent animationType="fade" onRequestClose={() => setShowLegend(false)}>
         <Pressable style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.4)" }} onPress={() => setShowLegend(false)}>
           <Pressable style={{ marginHorizontal: 24, width: 320, maxHeight: "82%", borderRadius: 16, backgroundColor: Colors.white, padding: 20 }} onPress={() => {}}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Color Legend</Text>
-              <TouchableOpacity onPress={() => setShowLegend(false)}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{t("provider.calendarScreen.colorLegend.title")}</Text>
+              <TouchableOpacity
+                onPress={() => setShowLegend(false)}
+                accessibilityRole="button"
+                accessibilityLabel={t("provider.calendarScreen.close")}
+              >
                 <Ionicons name="close" size={20} color="#6b7280" />
               </TouchableOpacity>
             </View>
@@ -4044,10 +3244,12 @@ function CalendarScreenBody() {
             <ScrollView showsVerticalScrollIndicator={false}>
             {preferences.colorBy === "status" && (
               <View>
-                <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Status Colors</Text>
+                <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>
+                  {t("provider.calendarScreen.colorLegend.statusColors")}
+                </Text>
                 {Object.entries(STATUS_COLORS).map(([key, colors]) => (
                   <View key={key} style={{ marginBottom: 6, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: colors.bg, borderLeftWidth: 3, borderLeftColor: colors.border, paddingHorizontal: 12, paddingVertical: 8 }}>
-                    <Text style={{ fontSize: 12, fontWeight: "500", textTransform: "capitalize", color: colors.text }}>{key.replace(/_/g, " ")}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: colors.text }}>{translateBookingStatusLabel(t, key)}</Text>
                   </View>
                 ))}
               </View>
@@ -4055,7 +3257,9 @@ function CalendarScreenBody() {
 
             {preferences.colorBy === "service" && (
               <View>
-                <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Service Colors</Text>
+                <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>
+                  {t("provider.calendarScreen.colorLegend.serviceColors")}
+                </Text>
                 {SERVICE_COLOR_MAP.map(([keywords, colors], i) => (
                   <View key={i} style={{ marginBottom: 6, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: colors.bg, borderLeftWidth: 3, borderLeftColor: colors.border, paddingHorizontal: 12, paddingVertical: 8 }}>
                     <Text style={{ fontSize: 12, fontWeight: "500", textTransform: "capitalize", color: colors.text }}>{(keywords as string[])[0]}</Text>
@@ -4066,7 +3270,9 @@ function CalendarScreenBody() {
 
             {preferences.colorBy === "team_member" && (
               <View>
-                <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Team Colors</Text>
+                <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>
+                  {t("provider.calendarScreen.colorLegend.teamColors")}
+                </Text>
                 {staffList.slice(0, TEAM_COLORS.length).map((member, i) => {
                   const tc = TEAM_COLORS[i % TEAM_COLORS.length]!;
                   return (
@@ -4080,27 +3286,37 @@ function CalendarScreenBody() {
 
             <View style={{ marginTop: 12 }}>
               <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>
-                Closed &amp; time off
+                {t("provider.calendarScreen.colorLegend.closedTimeOff")}
               </Text>
               <Text style={{ marginBottom: 8, fontSize: 11, lineHeight: 15, color: Colors.gray[500] }}>
-                Staff time off and day off match what customers see when booking. Closed periods come from calendar settings. Tap an availability or time block on the grid to edit or remove it.
+                {t("provider.calendarScreen.colorLegend.closedTimeOffDescription")}
               </Text>
               <View style={{ marginBottom: 6, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: STAFF_TIMEOFF_OVERLAY_COLORS.bg, borderLeftWidth: 3, borderLeftColor: STAFF_TIMEOFF_OVERLAY_COLORS.border, paddingHorizontal: 12, paddingVertical: 8 }}>
                 <Ionicons name="calendar-outline" size={12} color={STAFF_TIMEOFF_OVERLAY_COLORS.text} style={{ marginRight: 8 }} />
-                <Text style={{ fontSize: 12, fontWeight: "500", color: STAFF_TIMEOFF_OVERLAY_COLORS.text }}>Staff time off / day off</Text>
+                <Text style={{ fontSize: 12, fontWeight: "500", color: STAFF_TIMEOFF_OVERLAY_COLORS.text }}>
+                  {t("provider.calendarScreen.colorLegend.staffTimeOff")}
+                </Text>
               </View>
               <View style={{ marginBottom: 10, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: BLOCK_TYPE_COLORS.unavailable.bg, borderLeftWidth: 3, borderLeftColor: BLOCK_TYPE_COLORS.unavailable.border, paddingHorizontal: 12, paddingVertical: 8 }}>
                 <Ionicons name="ban-outline" size={12} color={BLOCK_TYPE_COLORS.unavailable.text} style={{ marginRight: 8 }} />
-                <Text style={{ fontSize: 12, fontWeight: "500", color: BLOCK_TYPE_COLORS.unavailable.text }}>Unavailable (closed period)</Text>
+                <Text style={{ fontSize: 12, fontWeight: "500", color: BLOCK_TYPE_COLORS.unavailable.text }}>
+                  {t("provider.calendarScreen.colorLegend.unavailableClosed")}
+                </Text>
               </View>
             </View>
 
             <View style={{ marginTop: 4 }}>
-              <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Time Blocks</Text>
+              <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>
+                {t("provider.calendarScreen.colorLegend.timeBlocks")}
+              </Text>
               {Object.entries(BLOCK_TYPE_COLORS).map(([key, colors]) => (
                 <View key={key} style={{ marginBottom: 6, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: colors.bg, borderLeftWidth: 3, borderLeftColor: colors.border, paddingHorizontal: 12, paddingVertical: 8 }}>
                   <Ionicons name={colors.icon as keyof typeof Ionicons.glyphMap} size={12} color="#92400e" style={{ marginRight: 8 }} />
-                  <Text style={{ fontSize: 12, fontWeight: "500", textTransform: "capitalize", color: colors.text }}>{key}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "500", color: colors.text }}>
+                    {key === "unavailable" || key === "maintenance"
+                      ? translateAvailabilityBlockType(t, key)
+                      : t(`provider.calendarScreen.timeBlockTypes.${key}`)}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -4121,13 +3337,13 @@ function CalendarScreenBody() {
             onPress={(e) => e.stopPropagation()}
             style={{ borderRadius: 16, backgroundColor: Colors.white, padding: 20, maxHeight: "90%" }}
           >
-            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>Edit closed period</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>{t("provider.calendarScreen.availabilityEditModal.title")}</Text>
             {availabilityEdit ? (
               <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>{availabilityEdit.date}</Text>
             ) : null}
             {availabilityEdit ? (
               <>
-                <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Type</Text>
+                <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.availabilityEditModal.type")}</Text>
                 <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
                   {AVAILABILITY_EDIT_TYPES.map((bt) => (
                     <TouchableOpacity
@@ -4157,14 +3373,14 @@ function CalendarScreenBody() {
                           color: availabilityEdit.block_type === bt.value ? Colors.white : Colors.gray[700],
                         }}
                       >
-                        {bt.label}
+                        {t(`provider.calendarScreen.availabilityEditTypes.${bt.value}`)}
                       </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
                 <View style={{ marginBottom: 12, flexDirection: "row" }}>
                   <View style={{ flex: 1, marginRight: 12 }}>
-                    <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Start</Text>
+                    <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.availabilityEditModal.start")}</Text>
                     <TextInput
                       style={{
                         borderRadius: 12,
@@ -4183,7 +3399,7 @@ function CalendarScreenBody() {
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>End</Text>
+                    <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.availabilityEditModal.end")}</Text>
                     <TextInput
                       style={{
                         borderRadius: 12,
@@ -4204,7 +3420,7 @@ function CalendarScreenBody() {
                 </View>
                 {staffList.length > 0 ? (
                   <>
-                    <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Staff (optional)</Text>
+                    <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.availabilityEditModal.staff")}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ flexDirection: "row" }}>
                       <TouchableOpacity
                         style={{
@@ -4223,7 +3439,7 @@ function CalendarScreenBody() {
                             color: availabilityEdit.staff_id == null ? Colors.white : Colors.gray[700],
                           }}
                         >
-                          Everyone
+                          {t("provider.calendarScreen.availabilityEditModal.everyone")}
                         </Text>
                       </TouchableOpacity>
                       {staffList.map((member) => (
@@ -4257,10 +3473,10 @@ function CalendarScreenBody() {
                     style={{ flex: 1, marginRight: 10, paddingVertical: 14, borderRadius: 12, backgroundColor: Colors.gray[100], alignItems: "center" }}
                     onPress={() => setAvailabilityEdit(null)}
                   >
-                    <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>Cancel</Text>
+                    <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{t("provider.calendarScreen.availabilityEditModal.cancel")}</Text>
                   </TouchableOpacity>
                   <View style={{ flex: 1 }}>
-                    <ActionButton label="Save" onPress={handleSaveAvailabilityEdit} loading={savingAvailabilityEdit} fullWidth />
+                    <ActionButton label={t("provider.calendarScreen.availabilityEditModal.save")} onPress={handleSaveAvailabilityEdit} loading={savingAvailabilityEdit} fullWidth />
                   </View>
                 </View>
               </>
@@ -4273,14 +3489,14 @@ function CalendarScreenBody() {
       <BottomSheet
         visible={showTimeBlockForm}
         onClose={() => setShowTimeBlockForm(false)}
-        title="Add Time Block"
+        title={t("provider.calendarScreen.timeBlockSheet.title")}
       >
         <View>
           <Text style={{ marginBottom: 8, fontSize: 14, color: Colors.gray[500] }}>
             {format(selectedDate, "EEEE, MMMM d, yyyy")}
           </Text>
 
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Block Type</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.blockType")}</Text>
           <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
             {BLOCK_TYPES.map((bt) => (
               <TouchableOpacity
@@ -4295,13 +3511,13 @@ function CalendarScreenBody() {
                   style={{ marginRight: 6 }}
                 />
                 <Text style={{ fontSize: 12, fontWeight: "500", color: timeBlockForm.type === bt.value ? Colors.white : Colors.gray[700] }}>
-                  {bt.label}
+                  {t(`provider.calendarScreen.timeBlockTypes.${bt.value}`)}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Title</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.titleField")}</Text>
           <TextInput
             style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={timeBlockForm.title}
@@ -4312,7 +3528,7 @@ function CalendarScreenBody() {
 
           <View style={{ marginBottom: 12, flexDirection: "row" }}>
             <View style={{ flex: 1, marginRight: 12 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Start Time</Text>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.startTime")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={timeBlockForm.startTime}
@@ -4322,7 +3538,7 @@ function CalendarScreenBody() {
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>End Time</Text>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.endTime")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={timeBlockForm.endTime}
@@ -4335,7 +3551,7 @@ function CalendarScreenBody() {
 
           {staffList.length > 0 && (
             <>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Staff Member (optional)</Text>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.staffOptional")}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ flexDirection: "row" }}>
                 <TouchableOpacity
                   style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, backgroundColor: !timeBlockForm.staffId ? "#4f46e6" : Colors.gray[100] }}
@@ -4360,14 +3576,14 @@ function CalendarScreenBody() {
             </>
           )}
 
-          <ActionButton label="Add Time Block" onPress={handleCreateTimeBlock} loading={creatingBlock} fullWidth />
+          <ActionButton label={t("provider.calendarScreen.timeBlockSheet.submit")} onPress={handleCreateTimeBlock} loading={creatingBlock} fullWidth />
         </View>
       </BottomSheet>
       {cancelReasonBookingId && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setCancelReasonBookingId(null)}>
           <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" }} onPress={() => setCancelReasonBookingId(null)}>
             <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, marginHorizontal: 24, width: 320 }}>
-              <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Cancel booking</Text>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>{t("provider.calendarScreen.cancelBookingModal.title")}</Text>
               <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 8 }}>Reason for cancellation (optional):</Text>
               <TextInput
                 value={cancelReasonText}
@@ -4389,7 +3605,7 @@ function CalendarScreenBody() {
                   }}
                   style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#DC2626", alignItems: "center" }}
                 >
-                  <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel booking</Text>
+                  <Text style={{ fontWeight: "600", color: "#fff" }}>{t("provider.calendarScreen.cancelBookingModal.confirm")}</Text>
                 </TouchableOpacity>
               </View>
             </Pressable>

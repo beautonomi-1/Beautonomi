@@ -232,8 +232,8 @@ export async function GET(
     const travelFee = Number(b.travel_fee || 0);
     const taxAmount = Number(b.tax_amount || 0);
     const taxRate = Number(b.tax_rate || 0);
-    const serviceFeeAmount = Number(b.service_fee_amount || 0);
-    const serviceFeePercentage = Number(b.service_fee_percentage || 0);
+    const platformFeeAmount = Number(b.platform_fee_amount ?? b.service_fee_amount ?? 0);
+    const platformFeePercentage = Number(b.platform_fee_percentage ?? b.service_fee_percentage ?? 0);
     const tipAmount = Number(b.tip_amount || 0);
     const discountAmount = Number(b.discount_amount || 0);
     const promotionDiscountAmount = Number(b.promotion_discount_amount || 0);
@@ -246,7 +246,7 @@ export async function GET(
     const totalAmount =
       b.total_amount != null && !Number.isNaN(Number(b.total_amount))
         ? Number(b.total_amount)
-        : subtotal + taxAmount + serviceFeeAmount + travelFee + tipAmount - discountTotalAmount - cancellationFee;
+        : subtotal + taxAmount + platformFeeAmount + travelFee + tipAmount - discountTotalAmount - cancellationFee;
 
     const completedPayments = (b.booking_payments || []).filter((p: any) => p.status === "completed");
     const paymentsPaid = completedPayments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
@@ -324,8 +324,10 @@ export async function GET(
       travel_fee: travelFee,
       tax_amount: taxAmount,
       tax_rate: taxRate,
-      service_fee_amount: serviceFeeAmount,
-      service_fee_percentage: serviceFeePercentage,
+      platform_fee_amount: platformFeeAmount,
+      platform_fee_percentage: platformFeePercentage,
+      service_fee_amount: platformFeeAmount,
+      service_fee_percentage: platformFeePercentage,
       tip_amount: tipAmount,
       cancellation_fee: cancellationFee,
       total_amount: totalAmount,
@@ -346,6 +348,8 @@ export async function GET(
           }
         : null,
       amount_paid: amountPaid,
+      wallet_amount: walletCredit,
+      gift_card_amount: giftCardCredit,
       balance_due: balanceDue,
       // B14: expose aggregated refund total so the invoice can render a
       // "Refunded" line and compute net paid. `bookings.total_refunded` is

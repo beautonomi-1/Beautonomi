@@ -6,8 +6,8 @@ import {
   handleApiError,
   errorResponse,
   successResponse,
-  requireRoleInApi,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { resendNotification } from "@/lib/notifications/appointment-notifications";
 import type { NotificationType } from "@/lib/notifications/appointment-notifications";
 
@@ -20,11 +20,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
-    const providerId = await getProviderIdForUser(user.id);
+    const permissionCheck = await requirePermission("edit_appointments", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
+    const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
     const type = body.type as NotificationType;

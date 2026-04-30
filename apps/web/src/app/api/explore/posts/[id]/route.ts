@@ -178,7 +178,9 @@ export async function PATCH(
     if (!isOwner) {
       const hasCreatePermission = await hasPermission(
         user.id,
-        "create_explore_posts"
+        "create_explore_posts",
+        undefined,
+        request,
       );
       if (!hasCreatePermission) {
         return errorResponse(
@@ -358,7 +360,9 @@ export async function DELETE(
     if (!isOwner) {
       const hasCreatePermission = await hasPermission(
         user.id,
-        "create_explore_posts"
+        "create_explore_posts",
+        undefined,
+        request,
       );
       if (!hasCreatePermission) {
         return errorResponse(

@@ -21,8 +21,14 @@ export interface PricingInput {
   discountPercentage?: number;
   promoDiscount?: number;
   taxRate?: number; // As decimal (e.g., 0.15 for 15%)
+  platformFeePercentage?: number; // As decimal (e.g., 0.10 for 10%)
+  /** @deprecated Use platformFeePercentage. */
   serviceFeePercentage?: number; // As decimal (e.g., 0.10 for 10%)
+  platformFeeFixedAmount?: number;
+  /** @deprecated Use platformFeeFixedAmount. */
   serviceFeeFixedAmount?: number;
+  platformFeeAppliesAfterTax?: boolean;
+  /** @deprecated Use platformFeeAppliesAfterTax. */
   serviceFeeAppliesAfterTax?: boolean;
 }
 
@@ -45,6 +51,8 @@ export interface PricingBreakdown {
   
   // Fees
   travelFee: number;
+  platformFeeAmount: number;
+  /** @deprecated Use platformFeeAmount. */
   serviceFeeAmount: number;
   tipAmount: number;
   
@@ -104,24 +112,24 @@ export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
   const travelFee = input.travelFee || 0;
   const tipAmount = input.tipAmount || 0;
   
-  // Step 5: Calculate total before service fee
+  // Step 5: Calculate total before platform fee
   const totalBeforeServiceFee = sumMoney(subtotalAfterDiscount, taxAmount, travelFee, tipAmount);
   
-  // Step 6: Calculate service fee
-  let serviceFeeAmount = 0;
+  // Step 6: Calculate customer-paid platform fee
+  let platformFeeAmount = 0;
   
-  if (input.serviceFeeFixedAmount) {
-    serviceFeeAmount = input.serviceFeeFixedAmount;
-  } else if (input.serviceFeePercentage) {
-    // Service fee can be calculated on amount before or after tax
-    const serviceFeeBase = input.serviceFeeAppliesAfterTax
+  if (input.platformFeeFixedAmount ?? input.serviceFeeFixedAmount) {
+    platformFeeAmount = input.platformFeeFixedAmount ?? input.serviceFeeFixedAmount ?? 0;
+  } else if (input.platformFeePercentage ?? input.serviceFeePercentage) {
+    // Platform fee can be calculated on amount before or after tax
+    const platformFeeBase = (input.platformFeeAppliesAfterTax ?? input.serviceFeeAppliesAfterTax)
       ? (subtotalAfterDiscount + taxAmount)
       : subtotalAfterDiscount;
-    serviceFeeAmount = serviceFeeBase * input.serviceFeePercentage;
+    platformFeeAmount = platformFeeBase * (input.platformFeePercentage ?? input.serviceFeePercentage ?? 0);
   }
   
   // Step 7: Calculate final total
-  const totalAmount = sumMoney(totalBeforeServiceFee, serviceFeeAmount);
+  const totalAmount = sumMoney(totalBeforeServiceFee, platformFeeAmount);
   
   // Build breakdown for display
   const items: PricingBreakdown['items'] = [];
@@ -156,10 +164,10 @@ export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
     });
   }
   
-  if (serviceFeeAmount > 0) {
+  if (platformFeeAmount > 0) {
     items.push({
-      label: 'Service Fee',
-      amount: serviceFeeAmount,
+      label: 'Platform Fee',
+      amount: platformFeeAmount,
       type: 'fee',
     });
   }
@@ -190,7 +198,8 @@ export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
     taxableAmount,
     taxAmount,
     travelFee,
-    serviceFeeAmount,
+    platformFeeAmount,
+    serviceFeeAmount: platformFeeAmount,
     tipAmount,
     totalBeforeServiceFee,
     totalAmount,
@@ -199,9 +208,9 @@ export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
 }
 
 /**
- * Calculate service fee based on configuration
+ * Calculate platform fee based on configuration
  */
-export function calculateServiceFee(
+export function calculatePlatformFee(
   baseAmount: number,
   config: {
     fee_type: 'percentage' | 'fixed_amount' | 'tiered';
@@ -243,3 +252,6 @@ export function calculateServiceFee(
   
   return Math.max(0, fee);
 }
+
+/** @deprecated Use calculatePlatformFee. */
+export const calculateServiceFee = calculatePlatformFee;

@@ -42,6 +42,14 @@ function parseJsonBody(raw: string): unknown | null {
   }
 }
 
+/** True if the human `message` already names this permission (snake key or "words with spaces"). */
+function messageAlreadyCoversPermission(message: string, permissionKey: string): boolean {
+  if (!permissionKey) return false;
+  if (message.includes(permissionKey)) return true;
+  const asWords = permissionKey.replace(/_/g, " ").toLowerCase();
+  return message.toLowerCase().includes(asWords);
+}
+
 function extractErrorFromPayload(
   json: unknown,
   fallback: string,
@@ -59,7 +67,7 @@ function extractErrorFromPayload(
   const err = o.error;
   if (typeof err === "string") {
     let message = topMessage || err || fallback;
-    if (permissionKey && !message.includes(permissionKey)) {
+    if (permissionKey && !messageAlreadyCoversPermission(message, permissionKey)) {
       message = `${message}\n\nPermission: ${permissionKey}`;
     }
     return {
@@ -73,7 +81,7 @@ function extractErrorFromPayload(
     const nested =
       typeof e.message === "string" && e.message.trim() ? e.message.trim() : null;
     let message = topMessage || nested || fallback;
-    if (permissionKey && !message.includes(permissionKey)) {
+    if (permissionKey && !messageAlreadyCoversPermission(message, permissionKey)) {
       message = `${message}\n\nPermission: ${permissionKey}`;
     }
     return {
@@ -84,7 +92,7 @@ function extractErrorFromPayload(
   }
   if (topMessage) {
     let message = topMessage;
-    if (permissionKey && !message.includes(permissionKey)) {
+    if (permissionKey && !messageAlreadyCoversPermission(message, permissionKey)) {
       message = `${message}\n\nPermission: ${permissionKey}`;
     }
     return {

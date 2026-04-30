@@ -80,7 +80,7 @@ function isDebitType(t: Transaction): boolean {
 
 function signedContributionForSummary(t: Transaction): number {
   if (t.type === "earning" || t.type === "tip") return t.amount;
-  if (t.type === "payout" || t.type === "fee" || t.type === "refund") return -t.amount;
+  if (t.type === "payout" || t.type === "refund") return -t.amount;
   if (t.type === "adjustment") return (t.sign ?? 1) * t.amount;
   return 0;
 }
@@ -115,7 +115,7 @@ export default function TransactionsScreen() {
   );
   const { execute: exportTransactions, loading: exporting } = useApiPost<
     { period: string; format: string },
-    { url: string }
+    { url?: string; csv?: string; filename?: string; row_count?: number; truncated?: boolean }
   >("/api/provider/transactions/export");
 
   const handleRefresh = useCallback(async () => {
@@ -155,7 +155,7 @@ export default function TransactionsScreen() {
   const totalOut = useMemo(
     () =>
       (transactions ?? [])
-        .filter((t) => t.type === "payout" || t.type === "fee" || t.type === "refund")
+        .filter((t) => t.type === "payout" || t.type === "refund")
         .reduce((s, t) => s + t.amount, 0),
     [transactions]
   );
@@ -173,7 +173,14 @@ export default function TransactionsScreen() {
       Alert.alert("Export Failed", error);
       return;
     }
-    if (data?.url) {
+    if (data?.csv) {
+      await Share.share({
+        title: data.filename ?? "Transaction report",
+        message: data.truncated
+          ? `${data.filename ?? "Transaction report"}\n\n${data.csv}\n\nNote: export is capped at 5,000 ledger rows.`
+          : `${data.filename ?? "Transaction report"}\n\n${data.csv}`,
+      });
+    } else if (data?.url) {
       await Share.share({
         message: `Transaction report for ${period}`,
         url: data.url,
@@ -271,7 +278,7 @@ export default function TransactionsScreen() {
           </Text>
         </View>
         <View style={[twStyle("flex-1 rounded-xl border border-red-100 bg-red-50 p-3"), { marginRight: 8 }]}>
-          <Text style={twStyle("text-[10px] font-medium text-red-600")}>Fees & payouts</Text>
+          <Text style={twStyle("text-[10px] font-medium text-red-600")}>Payouts & refunds</Text>
           <Text style={twStyle("text-base font-bold text-red-700")}>
             {formatCurrency(totalOut)}
           </Text>

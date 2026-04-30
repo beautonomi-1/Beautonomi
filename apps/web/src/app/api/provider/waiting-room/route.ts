@@ -21,6 +21,40 @@ const createWaitingRoomEntrySchema = z.object({
   notes: z.string().optional(),
 });
 
+function createWalkInEmail() {
+  const uuid =
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `walkin+${uuid}@beautonomi.invalid`;
+}
+
+async function ensureWaitingRoomCustomer(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  data: z.infer<typeof createWaitingRoomEntrySchema>,
+) {
+  const email = data.client_email?.trim().toLowerCase();
+  if (email) {
+    const { data: existing } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+    if (existing?.id) return existing.id as string;
+  }
+
+  const { data: created, error } = await supabase
+    .from("users")
+    .insert({
+      email: email || createWalkInEmail(),
+      full_name: data.client_name,
+      phone: data.client_phone || null,
+      role: "customer",
+    })
+    .select("id")
+    .single();
+  if (error || !created?.id) throw error || new Error("Failed to create waiting-room customer");
+  return created.id as string;
+}
+
 /**
  * GET /api/provider/waiting-room
  * 
@@ -242,17 +276,19 @@ export async function POST(request: NextRequest) {
 
     // If no appointment_id, create a new booking for walk-in
     // This is for walk-in clients who don't have a pre-existing appointment
+    const customerId = await ensureWaitingRoomCustomer(supabase, data);
     const { data: newBooking, error: createError } = await supabase
       .from("bookings")
       .insert({
         provider_id: providerId,
         tenant_id: effectiveTenantId,
-        customer_id: null, // Walk-in, no customer account
+        customer_id: customerId,
         customer_name: data.client_name,
         customer_email: data.client_email,
         customer_phone: data.client_phone,
         scheduled_at: new Date().toISOString(), // Current time for walk-in
         location_type: 'at_salon',
+        booking_source: 'walk_in',
         status: 'checked_in',
         checked_in_time: checkedInTime,
         staff_id: data.team_member_id || null,

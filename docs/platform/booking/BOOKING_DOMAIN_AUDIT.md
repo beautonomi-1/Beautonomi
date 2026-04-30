@@ -135,7 +135,7 @@ Residual **product / cross-surface** gaps (backend alone ≠ end-to-end correctn
 
 ## 8. Pricing and Payment Assessment
 
-- **Subtotals** for services (incl. at-home adjustment), addons, products, travel, package discount, promos, membership, tax, service fee, tip — computed in `validateBooking` (authoritative for creation/payment). **Service line prices from the client are not trusted** for the final total; product rows carry `totalPrice` in the schema but server recomputes where stock/variant rules apply.
+- **Subtotals** for services (incl. at-home adjustment), addons, products, travel, package discount, promos, membership, tax, Platform Fee, tip — computed in `validateBooking` (authoritative for creation/payment). **Service line prices from the client are not trusted** for the final total; product rows carry `totalPrice` in the schema but server recomputes where stock/variant rules apply.
 - **Catalog package discount** requires **item entitlement** when `service_package_items` exist (see §4).
 
 ---

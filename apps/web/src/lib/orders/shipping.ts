@@ -30,7 +30,25 @@ export async function bookShippingForOrder(
 ): Promise<BookShippingResult> {
   const { data: order, error } = await supabase
     .from("product_orders")
-    .select("id, provider_id, customer_id, shipping_address, status, tracking_number")
+    .select(`
+      id,
+      provider_id,
+      customer_id,
+      fulfillment_type,
+      status,
+      tracking_number,
+      delivery_address:user_addresses (
+        name,
+        label,
+        address_line1,
+        address_line2,
+        city,
+        state,
+        postal_code,
+        country,
+        phone
+      )
+    `)
     .eq("id", orderId)
     .single();
 
@@ -41,13 +59,17 @@ export async function bookShippingForOrder(
     return { ok: true, skipped: "already_booked", trackingNumber: order.tracking_number };
   }
 
-  const { data: provider } = await supabase
-    .from("providers")
-    .select("id, business_name, physical_address, shipping_provider_preference")
-    .eq("id", order.provider_id)
-    .single();
+  if ((order as { fulfillment_type?: string | null }).fulfillment_type !== "delivery") {
+    return { ok: true, skipped: "not_delivery_order" };
+  }
 
-  const providerPreference = (provider as { shipping_provider_preference?: string | null } | null)
+  const { data: shippingConfig } = await supabase
+    .from("provider_shipping_config")
+    .select("shipping_provider_preference")
+    .eq("provider_id", order.provider_id)
+    .maybeSingle();
+
+  const providerPreference = (shippingConfig as { shipping_provider_preference?: string | null } | null)
     ?.shipping_provider_preference as ShippingProviderId | null | undefined;
 
   if (!providerPreference) {
@@ -61,9 +83,26 @@ export async function bookShippingForOrder(
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 
-  const origin = toAddress((provider as { physical_address?: unknown })?.physical_address, provider?.business_name ?? "");
+  const [{ data: provider }, { data: originLocation }] = await Promise.all([
+    supabase
+      .from("providers")
+      .select("id, business_name")
+      .eq("id", order.provider_id)
+      .single(),
+    supabase
+      .from("provider_locations")
+      .select("name, address_line1, address_line2, city, state, postal_code, country, phone")
+      .eq("provider_id", order.provider_id)
+      .eq("is_active", true)
+      .order("is_primary", { ascending: false })
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const origin = toAddress(originLocation, provider?.business_name ?? "");
   const destination = toAddress(
-    (order as { shipping_address?: unknown })?.shipping_address,
+    (order as { delivery_address?: unknown })?.delivery_address,
     "Customer",
   );
 
@@ -73,23 +112,20 @@ export async function bookShippingForOrder(
 
   const { data: items } = await supabase
     .from("product_order_items")
-    .select("quantity, products(weight_g, length_mm, width_mm, height_mm, title)")
+    .select("quantity, total_price, product_name, products(weight_grams, name)")
     .eq("order_id", orderId);
 
   const parcels = (items ?? []).map((row: { quantity?: number | null; products?: unknown }) => {
     const p = (row.products as {
-      weight_g?: number | null;
-      length_mm?: number | null;
-      width_mm?: number | null;
-      height_mm?: number | null;
-      title?: string | null;
+      weight_grams?: number | null;
+      name?: string | null;
     }) ?? {};
     return {
-      weightKg: ((p.weight_g ?? 500) / 1000) * Math.max(1, row.quantity ?? 1),
-      lengthCm: (p.length_mm ?? 200) / 10,
-      widthCm: (p.width_mm ?? 150) / 10,
-      heightCm: (p.height_mm ?? 50) / 10,
-      description: p.title ?? "Product order",
+      weightKg: ((p.weight_grams ?? 500) / 1000) * Math.max(1, row.quantity ?? 1),
+      lengthCm: 20,
+      widthCm: 15,
+      heightCm: 5,
+      description: p.name ?? "Product order",
     };
   });
 
@@ -107,8 +143,8 @@ export async function bookShippingForOrder(
     })
       .update({
         tracking_number: shipment.trackingNumber,
-        shipping_provider: shipment.providerId,
-        shipping_waybill_url: shipment.waybillUrl ?? null,
+        carrier: shipment.providerId,
+        tracking_url: shipment.waybillUrl ?? null,
       })
       .eq("id", order.id);
 

@@ -65,7 +65,7 @@ interface Receipt {
   subtotal: number;
   tax: number;
   tax_rate?: number;
-  /** Platform / service fee */
+  /** Customer-paid Platform Fee */
   fees: number;
   travel_fee?: number;
   tip_amount?: number;

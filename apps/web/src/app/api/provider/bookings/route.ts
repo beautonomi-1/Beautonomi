@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse, normalizePhoneToE164 } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse, normalizePhoneToE164 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkBookingLimitsFeatureAccess } from "@/lib/subscriptions/feature-access";
 import type { Booking } from "@/types/beautonomi";
@@ -89,7 +89,11 @@ async function waitForUserProfileRow(supabaseAdmin: any, userId: string) {
  */
 async function handleGetProviderBookings(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("view_calendar", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     // NOTE: We use the admin client for provider booking reads.
     // RLS for bookings is intentionally strict and depends on provider<->user links.
@@ -871,10 +875,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
       if (!src) referralSourceId = null; // Invalid or wrong provider, ignore
     }
 
-    // For walk-in bookings, set service fee to 0 (platform doesn't charge for direct customers)
+    // For walk-in bookings, set Platform Fee to 0 (platform doesn't charge direct customers)
     const isWalkIn = bookingSource === 'walk_in';
-    const serviceFeeAmount = isWalkIn ? 0 : (body.service_fee_amount || 0);
-    const serviceFeePercentage = isWalkIn ? 0 : (body.service_fee_percentage || 0);
+    const platformFeeAmount = isWalkIn ? 0 : (body.platform_fee_amount ?? body.service_fee_amount ?? 0);
+    const platformFeePercentage = isWalkIn ? 0 : (body.platform_fee_percentage ?? body.service_fee_percentage ?? 0);
 
     const numOrNull = (v: unknown): number | null => {
       if (v == null || v === "") return null;
@@ -935,8 +939,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
       }
     }
     const serverTipAmount = Number(body.tip_amount) || 0;
-    const serverTravelFee = Number(body.travel_fee) || 0;
-    const serverServiceFeeAmount = Number(serviceFeeAmount) || 0;
+    const bookingLocationType = body.location_type || "at_salon";
+    const serverTravelFee = bookingLocationType === "at_home" ? Number(body.travel_fee) || 0 : 0;
+    const serverPlatformFeeAmount = Number(platformFeeAmount) || 0;
     const taxableAmount = Math.max(0, serverSubtotal - serverDiscountAmount);
     const taxRateDecimal = effectiveTaxRate / 100;
 
@@ -945,8 +950,8 @@ async function handleCreateProviderBooking(request: NextRequest) {
       : Math.round(taxableAmount * taxRateDecimal * 100) / 100;
 
     const recomputedTotalAmount = taxInclusive
-      ? Math.round((taxableAmount + serverTipAmount + serverTravelFee + serverServiceFeeAmount) * 100) / 100
-      : Math.round((taxableAmount + recomputedTaxAmount + serverTipAmount + serverTravelFee + serverServiceFeeAmount) * 100) / 100;
+      ? Math.round((taxableAmount + serverTipAmount + serverTravelFee + serverPlatformFeeAmount) * 100) / 100
+      : Math.round((taxableAmount + recomputedTaxAmount + serverTipAmount + serverTravelFee + serverPlatformFeeAmount) * 100) / 100;
 
     const finalTaxAmount = recomputedTaxAmount;
     const finalTotalAmount = recomputedTotalAmount;
@@ -958,7 +963,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       customer_id: customerId,
       booking_number: bookingNumber,
       scheduled_at: body.scheduled_at,
-      location_type: body.location_type || "at_salon",
+      location_type: bookingLocationType,
       location_id: locationId,
       booking_source: bookingSource,
       address_line1: body.address?.line1 || body.address_line1 || null,
@@ -999,10 +1004,13 @@ async function handleCreateProviderBooking(request: NextRequest) {
       deposit_amount: body.deposit_amount || null,
       payment_option: body.payment_option || "full",
       loyalty_points_earned: 0,
-      travel_fee: body.travel_fee || 0,
-      service_fee_percentage: serviceFeePercentage,
-      service_fee_amount: serviceFeeAmount,
-      service_fee_paid_by: isWalkIn ? null : (body.service_fee_paid_by || 'customer'),
+      travel_fee: serverTravelFee,
+      platform_fee_percentage: platformFeePercentage,
+      platform_fee_amount: platformFeeAmount,
+      platform_fee_paid_by: isWalkIn ? null : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? 'customer'),
+      service_fee_percentage: platformFeePercentage,
+      service_fee_amount: platformFeeAmount,
+      service_fee_paid_by: isWalkIn ? null : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? 'customer'),
       referral_source_id: referralSourceId,
       ...(providerFormResponses ? { provider_form_responses: providerFormResponses } : {}),
     };

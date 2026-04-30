@@ -9,11 +9,30 @@ import { isCustomerShellPublicRoute } from "@/lib/navigation/customer-shell-publ
 /**
  * AccountStatusGuard - Redirects suspended/deactivated users to appropriate pages
  */
+const ACCOUNT_STATUS_BLOCKING_PREFIXES = [
+  "/account-settings",
+  "/bookings",
+  "/cart",
+  "/checkout",
+  "/inbox",
+  "/orders",
+  "/profile",
+] as const;
+
+function requiresConfirmedAccountStatus(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return ACCOUNT_STATUS_BLOCKING_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 export default function AccountStatusGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, isLoading, signOut } = useAuth();
   const [isChecking, setIsChecking] = useState(true);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     if (isLoading || !user) {
@@ -64,24 +83,62 @@ export default function AccountStatusGuard({ children }: { children: React.React
             router.replace("/?deactivated=true");
             return;
           }
+        } else {
+          setCheckError("We couldn't verify your account status. Check your connection and try again.");
         }
       } catch (error) {
         console.error("Error checking account status:", error);
+        setCheckError("We couldn't verify your account status. Check your connection and try again.");
       } finally {
         setIsChecking(false);
       }
     };
 
+    setCheckError(null);
+    setIsChecking(true);
     checkAccountStatus();
-  }, [user, isLoading, pathname, router, signOut]);
+  }, [user, isLoading, pathname, router, signOut, retryKey]);
 
-  // Marketplace + bookings + shop shell: render immediately; account-status effect still redirects if needed.
-  if (isCustomerShellPublicRoute(pathname)) {
+  // Public marketplace shell renders immediately. Authenticated account surfaces wait for account-status.
+  if (!user && isCustomerShellPublicRoute(pathname)) {
+    return <>{children}</>;
+  }
+
+  if (user && isCustomerShellPublicRoute(pathname) && !requiresConfirmedAccountStatus(pathname)) {
     return <>{children}</>;
   }
 
   if (isLoading || isChecking) {
-    return <LoadingTimeout />;
+    return <LoadingTimeout loadingMessage="Checking account status..." />;
+  }
+
+  if (user && checkError && requiresConfirmedAccountStatus(pathname)) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <div className="max-w-md rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+          <h1 className="text-lg font-semibold text-gray-900">Account check needed</h1>
+          <p className="mt-2 text-sm leading-6 text-gray-600">{checkError}</p>
+          <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
+            <button
+              type="button"
+              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
+              onClick={() => setRetryKey((value) => value + 1)}
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700"
+              onClick={() => {
+                void signOut();
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return <>{children}</>;

@@ -9,6 +9,7 @@ import type { SearchFilters, SearchResult } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 // Cache search results for 30 seconds
 export const revalidate = 30;
 
@@ -20,6 +21,21 @@ function sanitizeSearchTerm(value: string): string {
   return value.trim().replace(/[,%()]/g, " ").replace(/\s+/g, " ").slice(0, 80);
 }
 
+function finiteNumberParam(value: string | null): number | undefined {
+  if (value == null || value.trim() === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function isUsableCoordinatePair(latitude?: number, longitude?: number): boolean {
+  if (latitude == null || longitude == null) return false;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return false;
+  // Customer app/web can temporarily emit 0,0 before location is available.
+  // Treat that as "no location" rather than sorting around the Gulf of Guinea.
+  return !(latitude === 0 && longitude === 0);
+}
+
 /**
  * GET /api/public/search
  * 
@@ -27,7 +43,13 @@ function sanitizeSearchTerm(value: string): string {
  */
 export async function GET(request: Request) {
   try {
-    const supabase = await getSupabaseServer();
+    let supabase;
+    try {
+      supabase = getSupabaseAdmin();
+    } catch (adminError) {
+      console.warn("Admin client not available in /api/public/search; falling back to server client:", adminError);
+      supabase = await getSupabaseServer(request);
+    }
     let tenantId: string;
     try {
       tenantId = await resolveTenantIdWithZaFallback(request);
@@ -57,12 +79,12 @@ export async function GET(request: Request) {
       at_home: searchParams.get("at_home") === "true" ? true : undefined,
       date: searchParams.get("date") || undefined,
       time_preference: (searchParams.get("time_preference") as any) || undefined,
-      price_min: searchParams.get("price_min") ? Number(searchParams.get("price_min")) : undefined,
-      price_max: searchParams.get("price_max") ? Number(searchParams.get("price_max")) : undefined,
-      rating_min: searchParams.get("rating_min") ? Number(searchParams.get("rating_min")) : undefined,
+      price_min: finiteNumberParam(searchParams.get("price_min")),
+      price_max: finiteNumberParam(searchParams.get("price_max")),
+      rating_min: finiteNumberParam(searchParams.get("rating_min")),
       sort_by: (searchParams.get("sort_by") as any) || "relevance",
-      page: Math.max(1, searchParams.get("page") ? Number(searchParams.get("page")) : 1),
-      limit: Math.min(50, Math.max(1, searchParams.get("limit") ? Number(searchParams.get("limit")) : 20)),
+      page: Math.max(1, finiteNumberParam(searchParams.get("page")) ?? 1),
+      limit: Math.min(50, Math.max(1, finiteNumberParam(searchParams.get("limit")) ?? 20)),
     };
 
     // Location filters
@@ -72,34 +94,23 @@ export async function GET(request: Request) {
     const lng = searchParams.get("lng");
     const radius = searchParams.get("radius_km");
 
-    if (city || country || (lat && lng)) {
+    const latitude = finiteNumberParam(lat);
+    const longitude = finiteNumberParam(lng);
+    const hasUsableCoords = isUsableCoordinatePair(latitude, longitude);
+
+    if (city || country || hasUsableCoords) {
       filters.location = {
         city: city || undefined,
         country: country || undefined,
-        latitude: lat ? Number(lat) : undefined,
-        longitude: lng ? Number(lng) : undefined,
-        radius_km: radius ? Number(radius) : undefined,
+        latitude: hasUsableCoords ? latitude : undefined,
+        longitude: hasUsableCoords ? longitude : undefined,
+        radius_km: finiteNumberParam(radius),
       };
     }
 
     const page = Number.isFinite(filters.page) ? filters.page || 1 : 1;
     const limit = Number.isFinite(filters.limit) ? filters.limit || 20 : 20;
     const offset = (page - 1) * limit;
-
-    // Build query with count
-    // Note: city and country are in provider_locations, not providers table
-    // starting_price may need to be calculated from offerings
-    // Exclude providers whose user has opted out of public search / SEO
-    const { data: seoOptedOutProviders, error: seoOptOutError } = await supabase
-      .from("providers")
-      .select("id, users!inner(include_in_search_engines)")
-      .eq("tenant_id", tenantId)
-      .eq("status", "active")
-      .eq("users.include_in_search_engines", false);
-    if (seoOptOutError) {
-      console.warn("Failed to load SEO opt-out provider filter:", seoOptOutError);
-    }
-    const seoOptedOutIds = (seoOptedOutProviders ?? []).map((p: any) => p.id as string);
 
     let query = supabase
       .from("providers")
@@ -121,10 +132,8 @@ export async function GET(request: Request) {
       .eq("status", "active")
       .eq("tenant_id", tenantId);
 
-    // Filter out SEO-opted-out providers
-    if (seoOptedOutIds.length > 0) {
-      query = query.not("id", "in", `(${seoOptedOutIds.join(",")})`);
-    }
+    // `users.include_in_search_engines` controls external SEO indexing only.
+    // Home/search discovery must keep showing active providers to customers.
 
     // Apply text search for provider name
     // Search in business_name and description

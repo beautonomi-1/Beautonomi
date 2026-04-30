@@ -91,6 +91,7 @@ const ROLES = [
 
 interface TeamAccessPayload {
   staff_id: string | null;
+  is_business_owner?: boolean;
   can_manage_team: boolean;
 }
 
@@ -151,7 +152,8 @@ export default function TeamMemberDetailScreen() {
   });
 
   const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
-  const canManageTeam = access?.can_manage_team === true;
+  const canManageTeam =
+    access?.is_business_owner === true || access?.can_manage_team === true;
   const isSelf = Boolean(id && access?.staff_id === id);
 
   const { data: member, loading, error, refresh } = useApi<StaffMember>(

@@ -199,6 +199,29 @@ export async function PATCH(request: NextRequest) {
       throw error;
     }
 
+    const onlineBookingUpdates: Record<string, any> = {};
+    if (body.requiresDeposit !== undefined) {
+      onlineBookingUpdates.deposit_required = body.requiresDeposit;
+    }
+    if (body.depositPercentage !== undefined) {
+      onlineBookingUpdates.deposit_percent = Number(body.depositPercentage);
+    }
+    if (Object.keys(onlineBookingUpdates).length > 0) {
+      const { error: onlineBookingError } = await supabase
+        .from("provider_online_booking_settings")
+        .upsert(
+          {
+            provider_id: providerId,
+            ...onlineBookingUpdates,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "provider_id" },
+        );
+      if (onlineBookingError) {
+        throw onlineBookingError;
+      }
+    }
+
     return successResponse(provider);
   } catch (error) {
     return handleApiError(error, "Failed to update payment settings");

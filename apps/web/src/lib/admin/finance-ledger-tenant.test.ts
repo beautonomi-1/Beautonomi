@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   mergeLedgerRowsByIdPreferProvider,
+  normalizeAdminLedgerRange,
   resolveFinanceLedgerRowCustomerId,
   resolveFinanceLedgerRowProviderId,
 } from "./finance-ledger-tenant";
@@ -18,6 +19,27 @@ describe("mergeLedgerRowsByIdPreferProvider", () => {
   it("returns only booking rows when provider list is empty", () => {
     const out = mergeLedgerRowsByIdPreferProvider([], [{ id: "x", amount: 5 }]);
     expect(out).toEqual([{ id: "x", amount: 5 }]);
+  });
+});
+
+describe("normalizeAdminLedgerRange", () => {
+  it("expands date-only admin filters to inclusive UTC day bounds", () => {
+    expect(normalizeAdminLedgerRange({ start: "2026-04-30", end: "2026-04-30" })).toEqual({
+      start: "2026-04-30T00:00:00.000Z",
+      end: "2026-04-30T23:59:59.999Z",
+    });
+  });
+
+  it("keeps explicit timestamps unchanged", () => {
+    expect(
+      normalizeAdminLedgerRange({
+        start: "2026-04-29T22:00:00.000Z",
+        end: "2026-04-30T21:59:59.999Z",
+      }),
+    ).toEqual({
+      start: "2026-04-29T22:00:00.000Z",
+      end: "2026-04-30T21:59:59.999Z",
+    });
   });
 });
 
