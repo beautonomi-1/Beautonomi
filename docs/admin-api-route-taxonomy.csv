@@ -249,6 +249,8 @@ path,class,note
 /api/admin/reports/providers,T,"uses resolveAdminApiTenantId"
 /api/admin/reports/revenue,T,"uses resolveAdminApiTenantId"
 /api/admin/reports/gift-cards,T,"uses resolveAdminApiTenantId"
+/api/admin/reports/support-performance,T,"uses resolveAdminApiTenantId"
+/api/admin/reports/support-workload,T,"uses resolveAdminApiTenantId"
 /api/admin/reports/yoco-reconciliation,T,"uses resolveAdminApiTenantId"
 /api/admin/reviews/[id],T,"needs explicit tenant filter"
 /api/admin/reviews,T,"uses resolveAdminApiTenantId"
