@@ -4,7 +4,9 @@ import {
   successResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { addDays } from "date-fns";
 import { percentOf, sumMoney } from "@beautonomi/utils";
+import { formatDateYmd, resolveTz } from "@/lib/dates/provider-tz";
 
 /**
  * POST /api/provider/invoices/generate
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
     // Verify provider exists
     const { data: providerData, error: providerError } = await supabase
       .from("providers")
-      .select("id, business_name, billing_email, billing_address")
+      .select("id, business_name, billing_email, billing_address, timezone")
       .eq("id", providerId)
       .single();
 
@@ -156,8 +158,10 @@ export async function POST(request: NextRequest) {
     const taxAmount = percentOf(subtotal, taxRate);
     const totalAmount = sumMoney(subtotal, taxAmount);
 
-    // Generate invoice number
-    const year = new Date().getFullYear();
+    const invoiceTz = resolveTz((providerData as { timezone?: string | null }).timezone);
+
+    // Generate invoice number (calendar year in provider timezone)
+    const year = parseInt(formatDateYmd(new Date(), invoiceTz).slice(0, 4), 10);
     const { data: lastInvoice } = await supabase
       .from("provider_invoices")
       .select("invoice_number")
@@ -176,10 +180,9 @@ export async function POST(request: NextRequest) {
 
     const invoiceNumber = `INV-${year}-${sequenceNum.toString().padStart(6, "0")}`;
 
-    // Calculate due date (30 days from issue date)
-    const issueDate = new Date().toISOString().split("T")[0];
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 30);
+    // Calculate due date (30 calendar days from issue date in provider timezone)
+    const issueDate = formatDateYmd(new Date(), invoiceTz);
+    const dueDate = formatDateYmd(addDays(new Date(`${issueDate}T12:00:00.000Z`), 30), invoiceTz);
 
     // Create invoice
     const { data: invoice, error: invoiceError } = await supabase
@@ -191,7 +194,7 @@ export async function POST(request: NextRequest) {
         period_start: periodStart,
         period_end: periodEnd,
         issue_date: issueDate,
-        due_date: dueDate.toISOString().split("T")[0],
+        due_date: dueDate,
         subtotal,
         tax_rate: taxRate,
         tax_amount: taxAmount,

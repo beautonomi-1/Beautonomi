@@ -293,6 +293,10 @@ export function navigateFromNotification(n: Notification): void {
     if (link.includes("payments")) { router.push("/(app)/account-settings/payments"); return; }
     if (link.includes("messaging") || link.includes("messages")) { router.push("/(app)/(tabs)/chats" as never); return; }
     if (link.includes("bookings")) { router.push("/(app)/account-settings/bookings"); return; }
+    if (link.includes("contact-support")) {
+      router.push("/(app)/(tabs)/support-tickets/new" as never);
+      return;
+    }
     if (link.includes("my-tickets") || link.includes("/help/my-tickets")) {
       const m = link.match(/my-tickets\/([a-f0-9-]{36})/i) || link.match(/ticket[s]?\/([a-f0-9-]{36})/i);
       const tid = m?.[1];

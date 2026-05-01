@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,12 +23,11 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
     const searchParams = request.nextUrl.searchParams;
-    const fromDate = searchParams.get("from")
-      ? startOfDay(new Date(searchParams.get("from")!))
-      : startOfDay(subDays(new Date(), 30));
-    const toDate = searchParams.get("to")
-      ? endOfDay(new Date(searchParams.get("to")!))
-      : endOfDay(new Date());
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+      defaultDays: 30,
+      maxDays: MAX_REPORT_DAYS,
+    });
     const locationId = searchParams.get("location_id") || undefined;
 
     // Get bookings with services (simplified query to avoid deep nesting)
@@ -107,7 +106,7 @@ export async function GET(request: NextRequest) {
       fromDate,
       toDate,
       locationId ?? null,
-      { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES }
+      { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: reportContext.timezone }
     );
 
     // Aggregate by service - distribute booking revenue proportionally across services

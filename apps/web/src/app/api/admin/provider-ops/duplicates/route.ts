@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { chunkIds } from "@/lib/provider-ops/postgrest-unbounded";
 
 /**
  * Admin provider-ops duplicate detection.
@@ -141,20 +142,35 @@ export async function GET(request: NextRequest) {
     if (leadsErr) throw leadsErr;
     const leads = (leadsData ?? []) as DupLead[];
 
-    const [{ data: providers, error: provErr }, { data: owners, error: ownErr }] =
-      await Promise.all([
-        supabase
-          .from("providers")
-          .select("id, business_name, email, billing_email, phone, billing_phone, status")
-          .eq("tenant_id", tenantId),
-        supabase
-          .from("users")
-          .select("id, full_name, email, phone")
-          .eq("preferred_home_tenant_id", tenantId)
-          .eq("role", "provider_owner"),
-      ]);
+    const { data: providers, error: provErr } = await supabase
+      .from("providers")
+      .select("id, business_name, email, billing_email, phone, billing_phone, status")
+      .eq("tenant_id", tenantId);
     if (provErr) throw provErr;
-    if (ownErr) throw ownErr;
+
+    const { data: ownerScopeRows, error: ownerScopeErr } = await supabase.rpc(
+      "admin_user_ids_in_tenant_scope_for_role",
+      {
+        p_tenant_id: tenantId,
+        p_role: "provider_owner",
+        p_limit: 50000,
+      }
+    );
+    if (ownerScopeErr) throw ownerScopeErr;
+    const ownerIds = ((ownerScopeRows ?? []) as { id: string }[])
+      .map((r) => r.id)
+      .filter(Boolean);
+
+    const owners: { id: string; full_name: string | null; email: string | null; phone: string | null }[] =
+      [];
+    for (const chunk of chunkIds(ownerIds, 400)) {
+      const { data: ownerChunk, error: ownErr } = await supabase
+        .from("users")
+        .select("id, full_name, email, phone")
+        .in("id", chunk);
+      if (ownErr) throw ownErr;
+      owners.push(...((ownerChunk ?? []) as typeof owners));
+    }
 
     const emailGroups = new Map<string, { leads: DupLead[]; display: string }>();
     const phoneGroups = new Map<string, { leads: DupLead[]; display: string }>();

@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
 import {
   fetchFinanceLedgerExportRowsForTenant,
   fetchFinanceLedgerRowsForTenant,
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
-    const scopedUserIds = await collectTenantScopedUserIds(supabase, tenantId);
+    const admin = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d'; // 7d, 30d, 90d, 1y
@@ -59,12 +59,32 @@ export async function GET(request: NextRequest) {
         query = query.eq(extraFilter.column, extraFilter.value);
       }
       if (table === "users") {
-        query = query.eq("role", "customer");
-        if (scopedUserIds.length > 0) {
-          query = query.or(`preferred_home_tenant_id.eq.${tenantId},id.in.(${scopedUserIds.join(",")})`);
-        } else {
-          query = query.eq("preferred_home_tenant_id", tenantId);
+        const { data: createdRows, error: usersRpcErr } = await admin.rpc("admin_users_created_at_in_scope", {
+          p_tenant_id: tenantId,
+          p_since: startDate.toISOString(),
+          p_role: "customer",
+        });
+        if (usersRpcErr) {
+          console.error("Error fetching users (scoped created_at):", usersRpcErr);
+          return [];
         }
+        const grouped: Record<string, number> = {};
+        type CreatedRow = { created_at?: string };
+        ((createdRows || []) as CreatedRow[]).forEach((item) => {
+          const date = new Date(String(item.created_at ?? "")).toISOString().split("T")[0];
+          grouped[date] = (grouped[date] || 0) + 1;
+        });
+        const result: Array<{ date: string; count: number }> = [];
+        const current = new Date(startDate);
+        while (current <= now) {
+          const dateStr = current.toISOString().split("T")[0];
+          result.push({
+            date: dateStr,
+            count: grouped[dateStr] || 0,
+          });
+          current.setDate(current.getDate() + 1);
+        }
+        return result;
       }
 
       const { data, error } = await query;

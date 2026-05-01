@@ -10,6 +10,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
@@ -28,15 +29,8 @@ export async function GET(
     const tenantId = await resolveAdminApiTenantId(request);
     const { page, limit, offset } = getPaginationParams(request);
 
-    // Verify user belongs to this tenant
-    const { data: targetUser, error: targetErr } = await supabase
-      .from("users")
-      .select("id")
-      .eq("id", userId)
-      .eq("preferred_home_tenant_id", tenantId)
-      .maybeSingle();
-    if (targetErr) throw targetErr;
-    if (!targetUser) return notFoundResponse("User not found");
+    const accessible = await getUserRowIfAccessibleToAdminTenant(supabase, tenantId, userId);
+    if (!accessible) return notFoundResponse("User not found");
 
     const { data: wallet, error: walletError } = await supabase
       .from("user_wallets")
@@ -92,15 +86,8 @@ export async function POST(
     const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
-    // Verify user belongs to this tenant
-    const { data: postTarget, error: postTargetErr } = await supabase
-      .from("users")
-      .select("id")
-      .eq("id", userId)
-      .eq("preferred_home_tenant_id", tenantId)
-      .maybeSingle();
-    if (postTargetErr) throw postTargetErr;
-    if (!postTarget) return notFoundResponse("User not found");
+    const postAccessible = await getUserRowIfAccessibleToAdminTenant(supabase, tenantId, userId);
+    if (!postAccessible) return notFoundResponse("User not found");
 
     const amount = Number(body.amount);
     if (!amount || amount <= 0) {

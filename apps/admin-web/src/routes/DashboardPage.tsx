@@ -81,7 +81,7 @@ type MarketingInsightsPayload = {
     bookings_last_7d: number;
     bookings_prior_7d: number;
     booking_velocity_pct_vs_prior_week: number;
-    users_with_preferred_home: number;
+    users_in_tenant_scope: number;
     signup_source_attribution_rate: number;
   };
   marketing_funnel_events: {
@@ -287,7 +287,7 @@ export function DashboardPage() {
                       <strong className="text-gray-900">
                         {Math.round(insightsQ.data.product_signals.signup_source_attribution_rate * 100)}%
                       </strong>{" "}
-                      of preferred-home users specified a source
+                      of tenant-scoped users specified a source
                     </span>
                     <Link
                       className="font-medium text-gray-900 underline"
@@ -377,9 +377,9 @@ export function DashboardPage() {
                     </dd>
                   </div>
                   <div className="rounded-lg bg-gray-50 px-3 py-2">
-                    <dt className="text-xs text-gray-500">Users (preferred home)</dt>
+                    <dt className="text-xs text-gray-500">Users (tenant scope)</dt>
                     <dd className="font-semibold tabular-nums text-gray-900">
-                      {formatAdminNumber(insightsQ.data.product_signals.users_with_preferred_home)}
+                      {formatAdminNumber(insightsQ.data.product_signals.users_in_tenant_scope)}
                     </dd>
                   </div>
                 </dl>

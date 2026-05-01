@@ -13,8 +13,36 @@ import { NextRequest } from "next/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { sendMessage } from "@/lib/marketing/unified-service";
-import { subDays, subMinutes } from "date-fns";
+import { addDays, subDays, subMinutes } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  dateRangeBoundsUtc,
+  formatDateYmd,
+  formatInTz,
+  nowInTz,
+  resolveTz,
+} from "@/lib/dates/provider-tz";
+
+async function providerTimezone(
+  supabaseAdmin: SupabaseClient,
+  providerId: string,
+): Promise<string> {
+  const { data } = await supabaseAdmin
+    .from("providers")
+    .select("timezone")
+    .eq("id", providerId)
+    .maybeSingle();
+  return resolveTz((data as { timezone?: string | null } | null)?.timezone);
+}
+
+/** Month/day from `YYYY-MM-DD` (or ISO prefix) without timezone shift. */
+function calendarMonthDayFromDob(value: unknown): { month: number; day: number } | null {
+  if (value == null) return null;
+  const s = typeof value === "string" ? value : String(value);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return null;
+  return { month: Number(m[2]), day: Number(m[3]) };
+}
 
 /**
  * POST /api/provider/automations/execute
@@ -309,6 +337,10 @@ async function shouldExecuteAutomation(
     }
 
     case "client_birthday": {
+      const tz = await providerTimezone(supabaseAdmin, automation.provider_id);
+      const month = Number(formatInTz(now, "M", tz));
+      const day = Number(formatInTz(now, "d", tz));
+
       // Check for clients with birthdays today who have booked with this provider
       // Get distinct customers who have booked with this provider
       const { data: providerBookings } = await supabaseAdmin
@@ -323,23 +355,17 @@ async function shouldExecuteAutomation(
 
       const customerIds = [...new Set(providerBookings.map((b: any) => b.customer_id))];
 
-      // Find which of these customers have birthdays today
-      // Users table has date_of_birth (DATE type)
-      const month = now.getMonth() + 1; // 1-12
-      const day = now.getDate();
-
       const { data: birthdayUsers } = await supabaseAdmin
         .from("users")
-        .select("id")
+        .select("id, date_of_birth")
         .in("id", customerIds)
         .not("date_of_birth", "is", null);
 
-      // Filter users whose birthday is today
-      const birthdayClients = birthdayUsers?.filter((user: any) => {
-        if (!user.date_of_birth) return false;
-        const birthDate = new Date(user.date_of_birth);
-        return birthDate.getMonth() + 1 === month && birthDate.getDate() === day;
-      }).map((user: any) => ({ user_id: user.id })) || [];
+      const birthdayClients =
+        birthdayUsers?.filter((user: any) => {
+          const parts = calendarMonthDayFromDob(user.date_of_birth);
+          return parts != null && parts.month === month && parts.day === day;
+        }).map((user: any) => ({ user_id: user.id })) || [];
 
       if (birthdayClients.length > 0) {
         return {
@@ -414,8 +440,9 @@ async function shouldExecuteAutomation(
 
     case "package_expiring": {
       const daysBefore = triggerConfig.days_before || 7;
-      const expiryDate = new Date(now);
-      expiryDate.setDate(expiryDate.getDate() + daysBefore);
+      const tz = await providerTimezone(supabaseAdmin, automation.provider_id);
+      const limitYmd = formatDateYmd(addDays(nowInTz(tz), daysBefore), tz);
+      const { toIso: expiryUpperBound } = dateRangeBoundsUtc(limitYmd, limitYmd, tz);
 
       // Find packages expiring soon
       const { data: packages } = await supabaseAdmin
@@ -423,7 +450,7 @@ async function shouldExecuteAutomation(
         .select("id, customer_id, expires_at")
         .eq("provider_id", automation.provider_id)
         .eq("is_active", true)
-        .lte("expires_at", expiryDate.toISOString())
+        .lte("expires_at", expiryUpperBound)
         .gte("expires_at", now.toISOString());
 
       if (packages && packages.length > 0) {
@@ -498,10 +525,9 @@ async function shouldExecuteAutomation(
     }
 
     case "seasonal_promotion": {
-      // Check if it's a seasonal period (e.g., holidays, summer, etc.)
-      // This is a simple implementation - you might want more sophisticated logic
-      const month = now.getMonth() + 1; // 1-12
-      const day = now.getDate();
+      const tz = await providerTimezone(supabaseAdmin, automation.provider_id);
+      const month = Number(formatInTz(now, "M", tz));
+      const day = Number(formatInTz(now, "d", tz));
 
       // Example: Check for major holidays or seasonal periods
       const isHolidaySeason = (month === 11 && day >= 20) || (month === 12) || (month === 1 && day <= 7); // Nov 20 - Jan 7
@@ -527,9 +553,9 @@ async function shouldExecuteAutomation(
     }
 
     case "holiday": {
-      // Similar to seasonal, but more specific to holidays
-      const month = now.getMonth() + 1;
-      const day = now.getDate();
+      const tz = await providerTimezone(supabaseAdmin, automation.provider_id);
+      const month = Number(formatInTz(now, "M", tz));
+      const day = Number(formatInTz(now, "d", tz));
 
       // Major holidays
       const isHoliday = 

@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { endOfDay, startOfDay, subDays } from "date-fns";
-import { filterProductOrdersForLocation } from "@/lib/reports/provider-report-utils";
+import { filterProductOrdersForLocation, getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 
 function lineRevenue(qty: number, unitPrice: number, totalPrice: number): number {
   const total = Number(totalPrice) || 0;
@@ -36,12 +36,11 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const fromDate = searchParams.get("from")
-      ? startOfDay(new Date(searchParams.get("from")!))
-      : startOfDay(subDays(new Date(), 30));
-    const toDate = searchParams.get("to")
-      ? endOfDay(new Date(searchParams.get("to")!))
-      : endOfDay(new Date());
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+      defaultDays: 30,
+      maxDays: MAX_REPORT_DAYS,
+    });
     const limit = parseInt(searchParams.get("limit") || "20");
     const locationId = searchParams.get("location_id") || undefined;
 

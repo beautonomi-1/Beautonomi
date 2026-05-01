@@ -103,7 +103,7 @@ interface Bank {
 }
 
 export default function ProviderFinance() {
-  const { selectedLocationId } = useProviderPortal();
+  const { selectedLocationId, provider: portalProvider } = useProviderPortal();
   const { hasPermission } = usePermissions();
   const { currencyCode, format: fmt } = useReportCurrency();
   const canRequestPayout = hasPermission("process_payments");
@@ -156,7 +156,7 @@ export default function ProviderFinance() {
       setError(null);
 
       const url = selectedLocationId
-        ? `/api/provider/finance?range=${dateRange}&location_id=${selectedLocationId}`
+        ? `/api/provider/finance?range=${dateRange}&location_id=${selectedLocationId}&transaction_feed=all`
         : `/api/provider/finance?range=${dateRange}`;
       
       const response = await fetcher.get<{
@@ -336,7 +336,6 @@ export default function ProviderFinance() {
   const handleExport = () => {
     try {
       const params = new URLSearchParams({ range: dateRange });
-      if (selectedLocationId) params.set("location_id", selectedLocationId);
       const url = `/api/provider/finance/export?${params.toString()}`;
       // Browser will download due to Content-Disposition on the response.
       window.open(url, "_blank", "noopener,noreferrer");
@@ -881,7 +880,12 @@ export default function ProviderFinance() {
         {/* Transactions */}
         <div className="bg-white border rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Transaction History</h2>
+            <div>
+              <h2 className="text-xl font-semibold">Transaction History</h2>
+              {(portalProvider?.locations?.length ?? 0) > 1 && selectedLocationId ? (
+                <p className="text-sm text-gray-500 mt-1">Recent activity across all locations. Earnings above reflect the selected branch.</p>
+              ) : null}
+            </div>
           </div>
 
           {transactions.length === 0 ? (

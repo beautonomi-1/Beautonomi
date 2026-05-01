@@ -7,7 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+import { fetchProviderOnboardingDraftsForTenantScope } from "@/lib/provider-ops/scoped-onboarding-drafts";
 
 const STEP_NAMES: Record<number, string> = {
   1: "Team Size",
@@ -35,14 +35,10 @@ export async function GET(request: NextRequest) {
     const stallThresholdMs = 7 * 24 * 60 * 60 * 1000;
     const now = Date.now();
 
-    const draftsRaw = await fetchAllPaged<Record<string, unknown>>(async (from, to) => {
-      const r = await supabase
-        .from("provider_onboarding_drafts")
-        .select("user_id, current_step, updated_at, users!inner(preferred_home_tenant_id, role)")
-        .eq("users.preferred_home_tenant_id", tenantId)
-        .range(from, to);
-      return { data: r.data as Record<string, unknown>[] | null, error: r.error };
-    });
+    const draftsRaw = await fetchProviderOnboardingDraftsForTenantScope(
+      "user_id, current_step, updated_at, users!inner(role)",
+      tenantId
+    );
 
     const drafts = draftsRaw.filter((d) => {
       const u = (d as any).users;

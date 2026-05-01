@@ -14,6 +14,8 @@ import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { addMonths, addYears } from "date-fns";
+import { fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 
 /**
  * POST /api/provider/subscription/renew
@@ -33,9 +35,12 @@ export async function POST(request: NextRequest) {
     }
     const { data: providerTenantRow } = await supabase
       .from("providers")
-      .select("tenant_id")
+      .select("tenant_id, timezone")
       .eq("id", providerId)
       .maybeSingle();
+    const tz = resolveTz(
+      (providerTenantRow as { tenant_id?: string | null; timezone?: string | null } | null)?.timezone,
+    );
     if (
       !resourceTenantMatchesHostTenant(
         tenantId,
@@ -84,12 +89,11 @@ export async function POST(request: NextRequest) {
         : Number(planData.price_monthly ?? 0);
     if (!amount || amount <= 0) {
       const now = new Date();
-      const expiresAt = new Date(now);
-      if (billingPeriod === "yearly") {
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-      } else {
-        expiresAt.setMonth(expiresAt.getMonth() + 1);
-      }
+      const zNow = nowInTz(tz);
+      const expiresAt =
+        billingPeriod === "yearly"
+          ? fromBusinessTime(addYears(zNow, 1), tz)
+          : fromBusinessTime(addMonths(zNow, 1), tz);
       await supabase
         .from("provider_subscriptions")
         .update({

@@ -2,9 +2,17 @@ import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { canAccessReport } from "@/lib/subscriptions/report-gating";
 import { createClient } from "@supabase/supabase-js";
-import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { startOfMonth, endOfMonth } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
+import {
+  dateRangeBoundsUtc,
+  endOfWeekInTz,
+  formatDateYmd,
+  startOfWeekInTz,
+} from "@/lib/dates/provider-tz";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,23 +48,28 @@ export async function GET(request: NextRequest) {
     const locationId = request.nextUrl.searchParams.get("location_id") || null;
 
     const now = new Date();
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const tz = reportContext.timezone;
+    const todayYmd = formatDateYmd(now, tz);
+    const zNow = toZonedTime(now, tz);
 
-    // Today's metrics
-    const startOfToday = new Date(now);
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(now);
-    endOfToday.setHours(23, 59, 59, 999);
+    const todayBounds = dateRangeBoundsUtc(todayYmd, todayYmd, tz);
+    const startOfToday = new Date(todayBounds.fromIso);
+    const endOfToday = new Date(todayBounds.toIso);
 
-    // This week's metrics
-    const weekStart = startOfWeek(now);
-    const weekEnd = endOfWeek(now);
+    const weekStartYmd = formatDateYmd(startOfWeekInTz(now, tz, 1), tz);
+    const weekEndYmd = formatDateYmd(endOfWeekInTz(now, tz, 1), tz);
+    const weekBounds = dateRangeBoundsUtc(weekStartYmd, weekEndYmd, tz);
+    const weekStart = new Date(weekBounds.fromIso);
+    const weekEnd = new Date(weekBounds.toIso);
 
-    // This month's metrics
-    const monthStart = startOfMonth(now);
-    const monthEnd = endOfMonth(now);
+    const monthStartYmd = formatDateYmd(startOfMonth(zNow), tz);
+    const monthEndYmd = formatDateYmd(endOfMonth(zNow), tz);
+    const monthBounds = dateRangeBoundsUtc(monthStartYmd, monthEndYmd, tz);
+    const monthStart = new Date(monthBounds.fromIso);
+    const monthEnd = new Date(monthBounds.toIso);
 
-    // Get provider revenue from finance_transactions for different periods
-    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: tz };
 
     const { totalRevenue: todayRevenue } = await getProviderRevenue(
       supabaseAdmin,

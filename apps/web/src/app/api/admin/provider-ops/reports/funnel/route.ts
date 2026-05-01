@@ -7,7 +7,8 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+import { chunkIds, fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+import { loadTenantScopedUserIds } from "@/lib/provider-ops/scoped-onboarding-drafts";
 import { PROVIDER_LEAD_PIPELINE_STAGES } from "@/lib/provider-ops/lead-pipeline-stages";
 
 export async function GET(request: NextRequest) {
@@ -16,16 +17,34 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    const { count: totalSignups } = await supabase
-      .from("users")
-      .select("id", { count: "exact", head: true })
-      .eq("preferred_home_tenant_id", tenantId)
-      .eq("role", "provider_owner");
+    const { data: signupRpc, error: signupRpcErr } = await supabase.rpc(
+      "admin_count_users_in_tenant_scope",
+      {
+        p_tenant_id: tenantId,
+        p_role: "provider_owner",
+      }
+    );
+    if (signupRpcErr) {
+      console.warn("admin_count_users_in_tenant_scope (funnel):", signupRpcErr.message);
+    }
+    const parsedSignup =
+      signupRpcErr || signupRpc == null
+        ? 0
+        : typeof signupRpc === "number"
+          ? signupRpc
+          : Number(signupRpc);
+    const totalSignups = Number.isFinite(parsedSignup) ? parsedSignup : 0;
 
-    const { count: startedWizard } = await supabase
-      .from("provider_onboarding_drafts")
-      .select("id, users!inner(preferred_home_tenant_id)", { count: "exact", head: true })
-      .eq("users.preferred_home_tenant_id", tenantId);
+    const scopedIds = await loadTenantScopedUserIds(tenantId);
+    let startedWizard = 0;
+    for (const chunk of chunkIds(scopedIds, 400)) {
+      const { count, error: wizErr } = await supabase
+        .from("provider_onboarding_drafts")
+        .select("id", { count: "exact", head: true })
+        .in("user_id", chunk);
+      if (wizErr) throw wizErr;
+      startedWizard += count ?? 0;
+    }
 
     const { count: submitted } = await supabase
       .from("providers")

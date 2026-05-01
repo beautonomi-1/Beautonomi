@@ -840,7 +840,6 @@ export default function BookCheckoutScreen() {
       const data = (res as any).data ?? res;
       setGroupBookingEnabled(!!data?.enabled);
     }).catch(() => setGroupBookingEnabled(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveProviderSlug]);
 
   useEffect(() => {
@@ -964,7 +963,6 @@ export default function BookCheckoutScreen() {
         );
       })
       .catch(() => setProductsList([]));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveProviderSlug]);
 
   useEffect(() => {
@@ -1008,7 +1006,6 @@ export default function BookCheckoutScreen() {
     return () => {
       cancelled = true;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveProviderSlug, productsList]);
 
   // Fetch provider packages (optional add-to-booking)
@@ -1025,7 +1022,6 @@ export default function BookCheckoutScreen() {
         setPackagesList(Array.isArray(arr) ? arr.map((p: any) => ({ id: p.id, name: p.name || "Package", description: p.description, price: Number(p.price) || 0, currency: p.currency || getTenantDefaultCurrency() })) : []);
       })
       .catch(() => setPackagesList([]));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveProviderSlug, hold?.location_id]);
 
   /** After packages load, keep route `package_id` only if that package is available (e.g. location-scoped list). */

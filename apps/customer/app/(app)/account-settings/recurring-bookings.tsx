@@ -520,7 +520,7 @@ export default function RecurringBookingsScreen() {
         </View>
       );
     },
-    [cancellingId, togglingId, cancelBooking, togglePauseResume, openEdit, router]
+    [cancellingId, togglingId, cancelBooking, togglePauseResume, openEdit]
   );
 
   if (loading && bookings.length === 0) {

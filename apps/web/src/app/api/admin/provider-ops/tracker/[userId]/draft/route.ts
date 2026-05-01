@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function GET(
@@ -19,15 +20,8 @@ export async function GET(
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    // Verify user belongs to this tenant
-    const { data: targetUser, error: userErr } = await supabase
-      .from("users")
-      .select("id")
-      .eq("id", userId)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
-    if (userErr) throw userErr;
-    if (!targetUser) {
+    const accessible = await getUserRowIfAccessibleToAdminTenant(supabase, tenantId, userId);
+    if (!accessible) {
       const { notFoundResponse } = await import("@/lib/supabase/api-helpers");
       return notFoundResponse("User not found in this tenant");
     }
@@ -58,16 +52,13 @@ export async function PATCH(
     const supabase = getSupabaseAdmin();
     const body = await request.json();
 
-    // Verify user belongs to this tenant before modifying draft
     const tenantIdForPatch = await resolveAdminApiTenantId(request);
-    const { data: tenantUser, error: tuErr } = await supabase
-      .from("users")
-      .select("id")
-      .eq("id", userId)
-      .eq("tenant_id", tenantIdForPatch)
-      .maybeSingle();
-    if (tuErr) throw tuErr;
-    if (!tenantUser) {
+    const accessiblePatch = await getUserRowIfAccessibleToAdminTenant(
+      supabase,
+      tenantIdForPatch,
+      userId
+    );
+    if (!accessiblePatch) {
       const { notFoundResponse } = await import("@/lib/supabase/api-helpers");
       return notFoundResponse("User not found in this tenant");
     }

@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { disableSubscriptionByCode } from '@/lib/payments/paystack-complete';
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { providerTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
+import { formatInTz, resolveTz } from "@/lib/dates/provider-tz";
 
 /**
  * POST /api/provider/subscription/cancel
@@ -85,15 +86,18 @@ export async function POST(request: NextRequest) {
 
     const { data: providerData } = await supabaseAdmin
       .from("providers")
-      .select("id, business_name, user_id")
+      .select("id, business_name, user_id, timezone")
       .eq("id", providerId)
       .single();
+
+    const tz = resolveTz((providerData as { timezone?: string | null } | null)?.timezone);
 
     // Send cancellation notification
     if (providerData?.user_id) {
       try {
-        const expiresAt = (subscriptionToCancel as any).expires_at 
-          ? new Date((subscriptionToCancel as any).expires_at).toLocaleDateString()
+        const expiresAtRaw = (subscriptionToCancel as any).expires_at;
+        const expiresAt = expiresAtRaw
+          ? formatInTz(new Date(expiresAtRaw), "MMM d, yyyy", tz)
           : "End of billing period";
         const planName = (subscriptionToCancel as any).subscription_plans?.name || "Current Plan";
 
@@ -105,7 +109,7 @@ export async function POST(request: NextRequest) {
             plan_name: planName,
             expires_at: expiresAt,
             app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
-            year: new Date().getFullYear().toString(),
+            year: formatInTz(new Date(), "yyyy", tz),
           },
           ["push", "email", "sms"],
           { appType: "provider" }

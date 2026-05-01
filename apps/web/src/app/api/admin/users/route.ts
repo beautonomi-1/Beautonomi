@@ -5,7 +5,6 @@ import { requireAdminSection, requireRoleInApi, successResponse, handleApiError,
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
-import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
 import { z } from "zod";
 import type { UserRole } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -19,9 +18,8 @@ export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
 
-    const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
-    const scopedUserIds = await collectTenantScopedUserIds(supabase, tenantId);
+    const admin = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const { page, limit, offset } = getPaginationParams(request);
 
@@ -29,44 +27,27 @@ export async function GET(request: NextRequest) {
     const role = searchParams.get("role");
     const signupSource = searchParams.get("signup_source");
 
-    let query = supabase.from("users").select("*", { count: "exact" });
-
-    if (scopedUserIds.length > 0) {
-      query = query.or(`preferred_home_tenant_id.eq.${tenantId},id.in.(${scopedUserIds.join(",")})`);
-    } else {
-      query = query.eq("preferred_home_tenant_id", tenantId);
-    }
-
-    // Apply filters
-    if (search) {
-      query = query.or(
-        `full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
-      );
-    }
-
-    if (role && role !== "all") {
-      query = query.eq("role", role);
-    }
-
-    if (signupSource && signupSource !== "all") {
-      query = query.eq("signup_source", signupSource);
-    }
-
-    // Apply pagination
-    const { data: users, error, count } = await query
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+    const { data: payload, error } = await admin.rpc("admin_users_list_for_tenant", {
+      p_tenant_id: tenantId,
+      p_limit: limit,
+      p_offset: offset,
+      p_search: search?.trim() || null,
+      p_role: role && role !== "all" ? role : null,
+      p_signup_source: signupSource && signupSource !== "all" ? signupSource : null,
+    });
 
     if (error) {
       throw error;
     }
 
-    const total = count || 0;
+    const box = payload as { total?: unknown; data?: unknown } | null;
+    const users = Array.isArray(box?.data) ? box.data : [];
+    const total = typeof box?.total === "number" ? box.total : Number(box?.total ?? 0);
     const hasMore = total > page * limit;
 
     // Return in format expected by frontend
     return successResponse({
-      data: users || [],
+      data: users,
       meta: {
         page,
         limit,

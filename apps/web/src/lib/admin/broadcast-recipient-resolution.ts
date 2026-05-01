@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export function isMissingColumnError(error: unknown, column: string): boolean {
   if (!error || typeof error !== "object") return false;
@@ -9,22 +10,39 @@ export function isMissingColumnError(error: unknown, column: string): boolean {
 }
 
 export type CustomerRecipientResolution =
-  | { userIds: string[]; mode: "tenant_preferred" }
-  | { userIds: string[]; mode: "fallback_all_customers_column_missing" }
-  | { userIds: string[]; mode: "fallback_all_customers_empty_tenant" };
+  | { userIds: string[]; mode: "tenant_admin_scope" }
+  | { userIds: string[]; mode: "fallback_preferred_home" }
+  | { userIds: string[]; mode: "fallback_all_customers_column_missing" };
 
 export type ProviderRecipientResolution =
   | { userIds: string[]; mode: "tenant_scoped" }
   | { userIds: string[]; mode: "fallback_active_providers_empty_tenant" };
 
 /**
- * Resolve customer user IDs for admin broadcasts — mirrors push-route fallback when
- * `preferred_home_tenant_id` is missing or yields zero rows.
+ * Resolve customer user IDs for admin broadcasts — tenant scope matches the admin user directory.
+ * If the RPC is unavailable, falls back to preferred_home_tenant_id only (degraded).
  */
 export async function resolveBroadcastCustomerUserIds(
   supabase: SupabaseClient,
   tenantId: string,
 ): Promise<CustomerRecipientResolution> {
+  const admin = getSupabaseAdmin();
+  const { data: rpcRows, error: rpcErr } = await admin.rpc("admin_customer_ids_in_tenant_scope", {
+    p_tenant_id: tenantId,
+  });
+
+  if (!rpcErr && rpcRows != null) {
+    const userIds = ((rpcRows as { id: string }[]) ?? []).map((r) => r.id).filter(Boolean);
+    return { userIds, mode: "tenant_admin_scope" };
+  }
+
+  if (rpcErr) {
+    console.warn(
+      "[broadcast] admin_customer_ids_in_tenant_scope failed; using preferred_home fallback:",
+      rpcErr.message,
+    );
+  }
+
   const { data: users, error: usersError } = await supabase
     .from("users")
     .select("id")
@@ -51,24 +69,8 @@ export async function resolveBroadcastCustomerUserIds(
     throw usersError;
   }
 
-  let userIds = users?.map((u: { id: string }) => u.id) ?? [];
-  if (userIds.length === 0) {
-    console.warn(
-      "[broadcast] No customers with preferred_home_tenant_id=%s; falling back to all customers",
-      tenantId,
-    );
-    const { data: fallbackUsers, error: fallbackUsersError } = await supabase
-      .from("users")
-      .select("id")
-      .eq("role", "customer");
-    if (fallbackUsersError) {
-      throw fallbackUsersError;
-    }
-    userIds = fallbackUsers?.map((u: { id: string }) => u.id) ?? [];
-    return { userIds, mode: "fallback_all_customers_empty_tenant" };
-  }
-
-  return { userIds, mode: "tenant_preferred" };
+  const userIds = users?.map((u: { id: string }) => u.id) ?? [];
+  return { userIds, mode: "fallback_preferred_home" };
 }
 
 /**

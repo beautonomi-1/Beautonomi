@@ -8,6 +8,8 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { dateRangeBoundsUtc, getDayInTz } from "@/lib/dates/provider-tz";
+import { eachReportDateKey, getProviderReportContext, reportDateKey } from "@/lib/reports/provider-report-utils";
 
 const MAX_DAYS = 31;
 
@@ -60,18 +62,24 @@ export async function GET(request: NextRequest) {
     if (!fromStr || !toStr) {
       return errorResponse("Query parameters 'from' and 'to' (YYYY-MM-DD) are required", "VALIDATION_ERROR", 400);
     }
-    const fromDate = new Date(fromStr + "T00:00:00Z");
-    const toDate = new Date(toStr + "T00:00:00Z");
-    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+    const fromYmd = fromStr.slice(0, 10);
+    const toYmd = toStr.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fromYmd) || !/^\d{4}-\d{2}-\d{2}$/.test(toYmd)) {
       return errorResponse("Invalid date format. Use YYYY-MM-DD.", "VALIDATION_ERROR", 400);
     }
-    if (fromDate > toDate) {
+    if (fromYmd > toYmd) {
       return errorResponse("'from' must be before or equal to 'to'.", "VALIDATION_ERROR", 400);
     }
-    const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    if (daysDiff > MAX_DAYS) {
+
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const tz = reportContext.timezone;
+
+    const dates = eachReportDateKey(fromYmd, toYmd);
+    if (dates.length > MAX_DAYS) {
       return errorResponse(`Date range cannot exceed ${MAX_DAYS} days.`, "VALIDATION_ERROR", 400);
     }
+
+    const { fromIso, toIso } = dateRangeBoundsUtc(fromYmd, toYmd, tz);
 
     let staffQuery = supabaseAdmin
       .from("provider_staff")
@@ -105,11 +113,6 @@ export async function GET(request: NextRequest) {
       staffNames.set(s.id, name);
     });
 
-    const dates: string[] = [];
-    for (let d = new Date(fromDate); d <= toDate; d.setUTCDate(d.getUTCDate() + 1)) {
-      dates.push(d.toISOString().slice(0, 10));
-    }
-
     if (staffIds.length === 0) {
       return successResponse({
         byStaff: [],
@@ -133,7 +136,10 @@ export async function GET(request: NextRequest) {
 
     if (toError) throw toError;
 
-    const dayOfWeek = (dateStr: string) => new Date(dateStr + "T12:00:00Z").getUTCDay();
+    const dayOfWeekInTz = (dateStr: string) => {
+      const { fromIso } = dateRangeBoundsUtc(dateStr, dateStr, tz);
+      return getDayInTz(new Date(fromIso), tz);
+    };
 
     type TimeOffRow = { staff_id: string; start_date: string; end_date: string };
     type SchedRow = { staff_id: string; day_of_week: number; start_time?: string; end_time?: string; is_working?: boolean };
@@ -142,7 +148,7 @@ export async function GET(request: NextRequest) {
         (t: TimeOffRow) => t.staff_id === sid && dateStr >= t.start_date && dateStr <= t.end_date
       );
       if (off) return 0;
-      const dow = dayOfWeek(dateStr);
+      const dow = dayOfWeekInTz(dateStr);
       const sched = (schedules ?? []).find(
         (s: SchedRow) => s.staff_id === sid && s.day_of_week === dow && s.is_working
       );
@@ -157,8 +163,8 @@ export async function GET(request: NextRequest) {
       .select("id, scheduled_at, location_id")
       .eq("provider_id", providerId)
       .in("status", ["confirmed", "checked_in", "in_progress", "completed"])
-      .gte("scheduled_at", fromStr + "T00:00:00Z")
-      .lte("scheduled_at", toStr + "T23:59:59.999Z");
+      .gte("scheduled_at", fromIso)
+      .lte("scheduled_at", toIso);
 
     if (bookError) throw bookError;
 
@@ -169,7 +175,7 @@ export async function GET(request: NextRequest) {
       .map((b) => b.id);
     const bookingDateById = new Map<string, string>();
     bookingRows.forEach((b) => {
-      if (b.scheduled_at) bookingDateById.set(b.id, b.scheduled_at.slice(0, 10));
+      if (b.scheduled_at) bookingDateById.set(b.id, reportDateKey(new Date(b.scheduled_at), tz));
     });
 
     const bookedByStaffDate = new Map<string, number>();
@@ -184,7 +190,7 @@ export async function GET(request: NextRequest) {
         const sid = bs.staff_id;
         if (!sid) continue;
         const dateStr = bookingDateById.get(bs.booking_id);
-        if (!dateStr || dateStr < fromStr || dateStr > toStr) continue;
+        if (!dateStr || dateStr < fromYmd || dateStr > toYmd) continue;
         const key = `${sid}:${dateStr}`;
         const mins = bs.duration_minutes ?? 0;
         bookedByStaffDate.set(key, (bookedByStaffDate.get(key) || 0) + mins);

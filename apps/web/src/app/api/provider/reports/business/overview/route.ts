@@ -1,7 +1,15 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { startOfDay, endOfDay, startOfWeek, startOfMonth, startOfQuarter, startOfYear } from "date-fns";
+import { startOfWeek, startOfMonth, startOfQuarter, startOfYear } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
+import { formatDateYmd, dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
+import {
+  filterLedgerRowsForLocation,
+  getProviderReportContext,
+  type LedgerLocationAttributionSummary,
+  summarizeLedgerLocationAttribution,
+} from "@/lib/reports/provider-report-utils";
 import { getProviderRevenue, getPreviousPeriodRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 
@@ -24,27 +32,34 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const locationId = searchParams.get("location_id");
-    const period = searchParams.get("period") || "month"; // month, quarter, year
+    const period = searchParams.get("period") || "month"; // week, month, quarter, year
 
-    let fromDate: Date;
-    const toDate = endOfDay(new Date());
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const timezone = reportContext.timezone;
+    const todayYmd = formatDateYmd(new Date(), timezone);
+    const zNow = toZonedTime(new Date(), timezone);
 
+    let fromYmd: string;
     switch (period) {
       case "week":
-        fromDate = startOfWeek(toDate, { weekStartsOn: 1 });
+        fromYmd = formatDateYmd(startOfWeek(zNow, { weekStartsOn: 1 }), timezone);
         break;
       case "month":
-        fromDate = startOfMonth(toDate);
+        fromYmd = formatDateYmd(startOfMonth(zNow), timezone);
         break;
       case "quarter":
-        fromDate = startOfQuarter(toDate);
+        fromYmd = formatDateYmd(startOfQuarter(zNow), timezone);
         break;
       case "year":
-        fromDate = startOfYear(toDate);
+        fromYmd = formatDateYmd(startOfYear(zNow), timezone);
         break;
       default:
-        fromDate = startOfMonth(toDate);
+        fromYmd = formatDateYmd(startOfMonth(zNow), timezone);
     }
+
+    const { fromIso, toIso } = dateRangeBoundsUtc(fromYmd, todayYmd, timezone);
+    const fromDate = new Date(fromIso);
+    const toDate = new Date(toIso);
 
     // Get bookings
     let bookingsQuery = supabaseAdmin
@@ -75,27 +90,25 @@ export async function GET(request: NextRequest) {
       .select("id")
       .eq("provider_id", providerId);
 
-    // Get refund data from ledger (finance_transactions) for consistency.
-    // NOTE: finance_transactions does NOT have a `location_id` column. Location scoping
-    // for refunds is applied indirectly by restricting to booking_ids of the filtered
-    // bookings in the period. Non-booking refunds (e.g. gift card voids) are provider-wide
-    // and therefore excluded when a specific location is selected — matches dashboard behavior.
     const bookingIds = bookings?.map((b) => b.id) || [];
-    let refundQuery = supabaseAdmin
+    const { data: refundAll } = await supabaseAdmin
       .from("finance_transactions")
-      .select("amount, booking_id")
+      .select("amount, booking_id, product_order_id")
       .eq("provider_id", providerId)
       .eq("transaction_type", "refund")
-      .gte("created_at", startOfDay(fromDate).toISOString())
-      .lte("created_at", endOfDay(toDate).toISOString());
+      .gte("created_at", fromDate.toISOString())
+      .lte("created_at", toDate.toISOString());
+    type RefundRow = { amount?: number | null; booking_id?: string | null; product_order_id?: string | null };
+    let refundRowsForSum = (refundAll ?? []) as RefundRow[];
+    const refundLocationAttribution = summarizeLedgerLocationAttribution(refundRowsForSum, locationId);
     if (locationId) {
-      if (bookingIds.length > 0) {
-        refundQuery = refundQuery.in("booking_id", bookingIds);
-      } else {
-        refundQuery = refundQuery.eq("booking_id", "00000000-0000-0000-0000-000000000000");
-      }
+      refundRowsForSum = await filterLedgerRowsForLocation(
+        supabaseAdmin,
+        providerId,
+        refundRowsForSum,
+        locationId,
+      );
     }
-    const { data: refundRows } = await refundQuery;
 
     // Get payment counts from booking_payments for stats
     let paymentsCountQuery = supabaseAdmin
@@ -110,9 +123,12 @@ export async function GET(request: NextRequest) {
     }
     const { data: payments } = await paymentsCountQuery;
 
-    const periodStart = startOfDay(fromDate);
+    const periodStart = fromDate;
     const periodEnd = toDate;
-    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+    const dashOpts = {
+      transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES,
+      timezone: reportContext.timezone,
+    };
 
     const { totalRevenue, revenueByBooking } = await getProviderRevenue(
       supabaseAdmin,
@@ -132,21 +148,40 @@ export async function GET(request: NextRequest) {
 
     const totalPayments = payments?.length || 0;
     const successfulPayments = payments?.filter((p: any) => p.status === "completed" || p.status === "succeeded").length || 0;
-    const totalRefunded = Math.abs(refundRows?.reduce((sum, r) => sum + Number(r.amount || 0), 0) || 0);
+    const totalRefunded = Math.abs(refundRowsForSum.reduce((sum, r) => sum + Number(r.amount || 0), 0));
 
     // Cancellation fees: provider-retained income from late cancellations
     let cancellationFeesTotal = 0;
     let tipsTotal = 0;
     let additionalChargesTotal = 0;
+    let extraLocationAttribution: LedgerLocationAttributionSummary = {
+      scopedByLocation: Boolean(locationId),
+      excludedUnattributedRows: 0,
+      note: locationId
+        ? "No add-on ledger rows were available for location attribution."
+        : "All provider locations and provider-level ledger rows.",
+    };
     try {
       const { data: extraLedgerRows } = await supabaseAdmin
         .from("finance_transactions")
-        .select("transaction_type, net, amount")
+        .select("transaction_type, net, amount, booking_id, product_order_id")
         .eq("provider_id", providerId)
         .in("transaction_type", ["cancellation_fee", "tip", "additional_charge", "additional_charge_payment"])
         .gte("created_at", periodStart.toISOString())
         .lte("created_at", periodEnd.toISOString());
-      for (const r of extraLedgerRows ?? []) {
+      type ExtraLedgerRow = {
+        transaction_type: string;
+        net?: number;
+        amount?: number;
+        booking_id?: string | null;
+        product_order_id?: string | null;
+      };
+      let scopedExtras = (extraLedgerRows ?? []) as ExtraLedgerRow[];
+      extraLocationAttribution = summarizeLedgerLocationAttribution(scopedExtras, locationId);
+      if (locationId) {
+        scopedExtras = await filterLedgerRowsForLocation(supabaseAdmin, providerId, scopedExtras, locationId);
+      }
+      for (const r of scopedExtras) {
         const row = r as { transaction_type: string; net?: number; amount?: number };
         if (row.transaction_type === "cancellation_fee") {
           cancellationFeesTotal += Number(row.net ?? row.amount ?? 0);
@@ -200,6 +235,16 @@ export async function GET(request: NextRequest) {
       revenueGrowth,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
+      locationAttribution: {
+        scopedByLocation: Boolean(locationId),
+        excludedUnattributedRows:
+          refundLocationAttribution.excludedUnattributedRows +
+          extraLocationAttribution.excludedUnattributedRows,
+        note:
+          locationId
+            ? "Location-filtered business overview excludes provider-level refund/add-on ledger rows with no booking/order linkage and reports them as unattributed."
+            : "All provider locations and provider-level ledger rows.",
+      },
     });
   } catch (error) {
     return handleApiError(error, "BUSINESS_OVERVIEW_ERROR", 500);

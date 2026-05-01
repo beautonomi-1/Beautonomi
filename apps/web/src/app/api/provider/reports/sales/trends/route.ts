@@ -1,9 +1,33 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
+import { subDays, subMonths, subYears, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
+import {
+  dateRangeBoundsUtc,
+  endOfWeekInTz,
+  formatDateYmd,
+  startOfWeekInTz,
+} from "@/lib/dates/provider-tz";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
+import { getProviderReportContext, reportDateKey } from "@/lib/reports/provider-report-utils";
+
+function trendBucketKey(ymd: string, granularity: string, tz: string): string {
+  const anchor = new Date(`${ymd}T12:00:00.000Z`);
+  switch (granularity) {
+    case "day":
+      return ymd;
+    case "week":
+      return formatDateYmd(startOfWeekInTz(anchor, tz, 1), tz);
+    case "month":
+      return ymd.slice(0, 7);
+    case "year":
+      return ymd.slice(0, 4);
+    default:
+      return ymd;
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,30 +50,41 @@ export async function GET(request: NextRequest) {
     const period = searchParams.get("period") || "month"; // day, week, month, year
     const locationId = searchParams.get("location_id") || undefined;
 
-    let fromDate: Date;
-    let toDate = new Date();
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const tz = reportContext.timezone;
+    const todayYmd = formatDateYmd(new Date(), tz);
+    const zNow = toZonedTime(new Date(), tz);
+
+    let fromYmd: string;
+    let toYmd: string;
 
     switch (period) {
       case "day":
-        fromDate = subDays(toDate, 30);
-        toDate = endOfDay(toDate);
+        fromYmd = formatDateYmd(subDays(zNow, 30), tz);
+        toYmd = todayYmd;
         break;
-      case "week":
-        fromDate = startOfWeek(subDays(toDate, 12 * 7));
-        toDate = endOfWeek(toDate);
+      case "week": {
+        const anchorUtc = subDays(zNow, 12 * 7);
+        fromYmd = formatDateYmd(startOfWeekInTz(anchorUtc, tz, 1), tz);
+        toYmd = formatDateYmd(endOfWeekInTz(new Date(), tz, 1), tz);
         break;
+      }
       case "month":
-        fromDate = startOfMonth(subDays(toDate, 12));
-        toDate = endOfMonth(toDate);
+        fromYmd = formatDateYmd(startOfMonth(subMonths(zNow, 12)), tz);
+        toYmd = formatDateYmd(endOfMonth(zNow), tz);
         break;
       case "year":
-        fromDate = startOfYear(subDays(toDate, 3));
-        toDate = endOfYear(toDate);
+        fromYmd = formatDateYmd(startOfYear(subYears(zNow, 3)), tz);
+        toYmd = formatDateYmd(endOfYear(zNow), tz);
         break;
       default:
-        fromDate = subDays(toDate, 30);
-        toDate = endOfDay(toDate);
+        fromYmd = formatDateYmd(subDays(zNow, 30), tz);
+        toYmd = todayYmd;
     }
+
+    const range = dateRangeBoundsUtc(fromYmd, toYmd, tz);
+    const fromDate = new Date(range.fromIso);
+    const toDate = new Date(range.toIso);
 
     const { revenueByDate } = await getProviderRevenue(
       supabaseAdmin,
@@ -57,7 +92,7 @@ export async function GET(request: NextRequest) {
       fromDate,
       toDate,
       locationId ?? null,
-      { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES }
+      { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: tz }
     );
 
     // Get bookings for counting
@@ -89,27 +124,7 @@ export async function GET(request: NextRequest) {
 
     // Process revenue by date from finance_transactions
     revenueByDate.forEach((revenue, dateStr) => {
-      const date = new Date(dateStr);
-      let key: string;
-
-      switch (period) {
-        case "day":
-          key = date.toISOString().split("T")[0];
-          break;
-        case "week":
-          const weekStart = startOfWeek(date);
-          key = weekStart.toISOString().split("T")[0];
-          break;
-        case "month":
-          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-          break;
-        case "year":
-          key = String(date.getFullYear());
-          break;
-        default:
-          key = date.toISOString().split("T")[0];
-      }
-
+      const key = trendBucketKey(dateStr, period, tz);
       const existing = trendMap.get(key) || { revenue: 0, bookings: 0 };
       existing.revenue += revenue;
       trendMap.set(key, existing);
@@ -117,34 +132,15 @@ export async function GET(request: NextRequest) {
 
     // Add booking counts
     bookings?.forEach((booking) => {
-      const date = new Date(booking.scheduled_at);
-      let key: string;
-
-      switch (period) {
-        case "day":
-          key = date.toISOString().split("T")[0];
-          break;
-        case "week":
-          const weekStart = startOfWeek(date);
-          key = weekStart.toISOString().split("T")[0];
-          break;
-        case "month":
-          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-          break;
-        case "year":
-          key = String(date.getFullYear());
-          break;
-        default:
-          key = date.toISOString().split("T")[0];
-      }
-
+      const ymd = reportDateKey(new Date(booking.scheduled_at), tz);
+      const key = trendBucketKey(ymd, period, tz);
       const existing = trendMap.get(key) || { revenue: 0, bookings: 0 };
       existing.bookings += 1;
       trendMap.set(key, existing);
     });
 
     const trends = Array.from(trendMap.entries())
-      .map(([period, data]) => ({ period, ...data }))
+      .map(([bucketPeriod, data]) => ({ period: bucketPeriod, ...data }))
       .sort((a, b) => a.period.localeCompare(b.period));
 
     // Calculate growth

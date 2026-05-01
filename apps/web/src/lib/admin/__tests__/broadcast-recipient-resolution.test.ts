@@ -1,39 +1,71 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   resolveBroadcastCustomerUserIds,
   resolveBroadcastProviderUserIds,
   isMissingColumnError,
 } from "../broadcast-recipient-resolution";
 
+const rpcMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({
+    rpc: rpcMock,
+  }),
+}));
+
 describe("isMissingColumnError", () => {
   it("detects Postgres undefined_column", () => {
     expect(
-      isMissingColumnError({ code: "42703", message: 'column "preferred_home_tenant_id" does not exist' }, "preferred_home_tenant_id"),
+      isMissingColumnError(
+        { code: "42703", message: 'column "preferred_home_tenant_id" does not exist' },
+        "preferred_home_tenant_id",
+      ),
     ).toBe(true);
     expect(isMissingColumnError({ code: "42703", message: "other" }, "preferred_home_tenant_id")).toBe(false);
   });
 });
 
 describe("resolveBroadcastCustomerUserIds", () => {
-  it("falls back to all customers when tenant-preferred returns zero rows", async () => {
-    let eqCalls = 0;
+  beforeEach(() => {
+    rpcMock.mockReset();
+  });
+
+  it("returns tenant-scoped customer ids from admin RPC", async () => {
+    rpcMock.mockResolvedValue({
+      data: [{ id: "c1" }, { id: "c2" }],
+      error: null,
+    });
+    const r = await resolveBroadcastCustomerUserIds({} as never, "tenant-x");
+    expect(r.mode).toBe("tenant_admin_scope");
+    expect(r.userIds).toEqual(["c1", "c2"]);
+    expect(rpcMock).toHaveBeenCalledWith("admin_customer_ids_in_tenant_scope", {
+      p_tenant_id: "tenant-x",
+    });
+  });
+
+  it("returns empty list when RPC succeeds with no rows", async () => {
+    rpcMock.mockResolvedValue({ data: [], error: null });
+    const r = await resolveBroadcastCustomerUserIds({} as never, "tenant-x");
+    expect(r.mode).toBe("tenant_admin_scope");
+    expect(r.userIds).toEqual([]);
+  });
+
+  it("falls back to preferred_home when RPC fails", async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: "rpc unavailable" } });
     const supabase = {
       from() {
         return {
           select() {
             return {
-              eq() {
-                eqCalls++;
-                // First query: .eq(role).eq(tenantId) — chained
-                if (eqCalls === 1) {
+              eq(col: string) {
+                if (col === "role") {
                   return {
                     eq() {
-                      return Promise.resolve({ data: [], error: null });
+                      return Promise.resolve({ data: [{ id: "ph1" }], error: null });
                     },
                   };
                 }
-                // Second query: .eq(role) only
-                return Promise.resolve({ data: [{ id: "cust-fallback" }], error: null });
+                return Promise.resolve({ data: [], error: null });
               },
             };
           },
@@ -41,9 +73,9 @@ describe("resolveBroadcastCustomerUserIds", () => {
       },
     };
 
-    const r = await resolveBroadcastCustomerUserIds(supabase as never, "tenant-x");
-    expect(r.mode).toBe("fallback_all_customers_empty_tenant");
-    expect(r.userIds).toEqual(["cust-fallback"]);
+    const r = await resolveBroadcastCustomerUserIds(supabase as never, "tenant-y");
+    expect(r.mode).toBe("fallback_preferred_home");
+    expect(r.userIds).toEqual(["ph1"]);
   });
 });
 

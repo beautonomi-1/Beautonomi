@@ -48,23 +48,19 @@ export async function fetchGodsEyeCustomerMarkers(
   tenantId: string,
   maxMarkers: number
 ): Promise<GodsEyeCustomerMarker[]> {
-  const [{ data: preferredRows }, { data: bookingCustomerRows }] = await Promise.all([
-    admin.from("users").select("id").eq("role", "customer").eq("preferred_home_tenant_id", tenantId),
-    admin.from("bookings").select("customer_id").eq("tenant_id", tenantId).not("customer_id", "is", null).limit(12000),
-  ]);
+  const MARKER_CANDIDATE_CAP = 4000;
 
-  const idSet = new Set<string>();
-  for (const r of preferredRows ?? []) {
-    const id = (r as { id: string }).id;
-    if (id) idSet.add(id);
-  }
-  for (const r of bookingCustomerRows ?? []) {
-    const id = (r as { customer_id: string }).customer_id;
-    if (id) idSet.add(id);
-  }
+  const { data: scopedRows, error: scopeErr } = await admin.rpc(
+    "admin_user_ids_in_tenant_scope_for_role",
+    {
+      p_tenant_id: tenantId,
+      p_role: "customer",
+      p_limit: MARKER_CANDIDATE_CAP,
+    }
+  );
+  if (scopeErr) throw scopeErr;
 
-  /** Cap candidate pool so `.in()` filters stay within PostgREST practical limits */
-  const customerIds = [...idSet].slice(0, 4000);
+  const customerIds = ((scopedRows ?? []) as { id: string }[]).map((r) => r.id).filter(Boolean);
   if (customerIds.length === 0) return [];
 
   type AddrRow = {

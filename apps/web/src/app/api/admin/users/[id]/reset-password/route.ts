@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 export async function POST(
@@ -11,14 +13,12 @@ export async function POST(
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const { id } = await params;
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const admin = getSupabaseAdmin();
 
-    const { data: targetUser } = await admin
-      .from("users")
-      .select("id, email, full_name, role")
-      .eq("id", id)
-      .single();
+    const accessible = await getUserRowIfAccessibleToAdminTenant(admin, tenantId, id);
+    const targetUser = accessible as { id?: string; email?: string | null; full_name?: string | null; role?: string } | null;
 
     if (!targetUser?.email) {
       return NextResponse.json(

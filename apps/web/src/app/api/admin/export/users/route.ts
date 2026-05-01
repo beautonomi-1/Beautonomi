@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * GET /api/admin/export/users
- * 
- * Export users as CSV (rate limited)
+ *
+ * Export users as CSV (rate limited). Rows are limited to admin tenant scope (same as user directory).
  */
 export async function GET(request: Request) {
   try {
@@ -37,32 +38,26 @@ export async function GET(request: Request) {
       );
     }
 
-    const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
 
-    const role = searchParams.get("role");
+    const roleParam = searchParams.get("role");
+    const roleFilter =
+      roleParam && roleParam.trim() !== "" && roleParam.toLowerCase() !== "all"
+        ? roleParam.trim()
+        : null;
+
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
 
-    let query = supabase
-      .from("users")
-      .select("id, email, full_name, role, created_at, last_login");
+    const admin = getSupabaseAdmin();
+    const { data: scopedUsers, error: rpcErr } = await admin.rpc("admin_users_in_tenant_scope", {
+      p_tenant_id: tenantId,
+      p_role: roleFilter,
+    });
 
-    // Apply filters
-    if (role) {
-      query = query.eq("role", role);
-    }
-    if (startDate) {
-      query = query.gte("created_at", startDate);
-    }
-    if (endDate) {
-      query = query.lte("created_at", endDate);
-    }
-
-    const { data: users, error } = await query.order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching users:", error);
+    if (rpcErr) {
+      console.error("admin_users_in_tenant_scope (export users):", rpcErr);
       return NextResponse.json(
         {
           data: null,
@@ -75,15 +70,52 @@ export async function GET(request: Request) {
       );
     }
 
-    // Transform data for CSV
-    type UserRow = { id: string; email?: string; full_name?: string; role: string; created_at?: string; last_login?: string };
-    const csvData = (users || []).map((user: UserRow) => ({
-      "User ID": user.id,
-      "Email": user.email ?? "",
-      "Full Name": user.full_name ?? "",
-      "Role": user.role,
-      "Created At": user.created_at ?? "",
-      "Last Login": user.last_login ?? "",
+    type UserRow = {
+      id: string;
+      email?: string | null;
+      full_name?: string | null;
+      role?: string | null;
+      created_at?: string | null;
+      last_login?: string | null;
+    };
+
+    let rows = ((scopedUsers ?? []) as UserRow[]).map((u) => ({
+      id: u.id,
+      email: u.email ?? "",
+      full_name: u.full_name ?? "",
+      role: u.role ?? "",
+      created_at: u.created_at ?? "",
+      last_login: u.last_login ?? "",
+    }));
+
+    if (startDate) {
+      const s = new Date(`${startDate}T00:00:00.000Z`).getTime();
+      rows = rows.filter((u) => {
+        if (!u.created_at) return false;
+        return new Date(u.created_at).getTime() >= s;
+      });
+    }
+    if (endDate) {
+      const e = new Date(`${endDate}T23:59:59.999Z`).getTime();
+      rows = rows.filter((u) => {
+        if (!u.created_at) return false;
+        return new Date(u.created_at).getTime() <= e;
+      });
+    }
+
+    rows.sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+
+    const csvData = rows.map((u) => ({
+      "User ID": u.id,
+      Email: u.email,
+      "Full Name": u.full_name,
+      Role: u.role,
+      "Created At": u.created_at,
+      "Last Login": u.last_login,
     }));
 
     const csv = arrayToCSV(csvData);
@@ -109,4 +141,3 @@ export async function GET(request: Request) {
     );
   }
 }
-

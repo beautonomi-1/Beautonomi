@@ -3,8 +3,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, handleApiError } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
-import { fromBusinessTime, nowInTz } from "@/lib/dates/provider-tz";
+import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { subDays, subYears, startOfMonth } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 
 function csvEscape(value: any): string {
   const s = String(value ?? "");
@@ -13,16 +15,26 @@ function csvEscape(value: any): string {
 }
 
 function formatRangeStart(range: string, timezone: string): Date {
-  const now = nowInTz(timezone);
-  if (range === "week") return fromBusinessTime(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7), timezone);
-  if (range === "year") return fromBusinessTime(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()), timezone);
+  const now = new Date();
+  const todayYmd = formatDateYmd(now, timezone);
+  const zNow = toZonedTime(now, timezone);
   if (range === "all") return new Date(0);
-  return fromBusinessTime(new Date(now.getFullYear(), now.getMonth(), 1), timezone); // month default
+  if (range === "week") {
+    const fromYmd = formatDateYmd(subDays(zNow, 7), timezone);
+    return new Date(dateRangeBoundsUtc(fromYmd, todayYmd, timezone).fromIso);
+  }
+  if (range === "year") {
+    const fromYmd = formatDateYmd(subYears(zNow, 1), timezone);
+    return new Date(dateRangeBoundsUtc(fromYmd, fromYmd, timezone).fromIso);
+  }
+  const monthStartYmd = formatDateYmd(startOfMonth(zNow), timezone);
+  return new Date(dateRangeBoundsUtc(monthStartYmd, monthStartYmd, timezone).fromIso);
 }
 
 /**
  * GET /api/provider/finance/export?range=month|week|year|all
- * Returns a basic CSV export of finance_transactions for the provider.
+ * Returns a basic CSV export of finance_transactions for the provider (org-wide; not branch-filtered).
+ * `location_id` and other query keys are ignored — use reports for location-scoped exports if needed.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -85,7 +97,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const filename = `provider-finance-${range}-${now.toISOString().slice(0, 10)}.csv`;
+    const filename = `provider-finance-${range}-${formatDateYmd(now, reportContext.timezone)}.csv`;
     return new Response(lines.join("\n") + "\n", {
       status: 200,
       headers: {

@@ -7,11 +7,8 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import {
-  fetchAllPaged,
-  chunkIds,
-  unwrapEmbedded,
-} from "@/lib/provider-ops/postgrest-unbounded";
+import { chunkIds, unwrapEmbedded } from "@/lib/provider-ops/postgrest-unbounded";
+import { fetchProviderOnboardingDraftsForTenantScope } from "@/lib/provider-ops/scoped-onboarding-drafts";
 import { PROVIDER_LEAD_PIPELINE_STAGES } from "@/lib/provider-ops/lead-pipeline-stages";
 
 export async function GET(request: NextRequest) {
@@ -25,14 +22,10 @@ export async function GET(request: NextRequest) {
     const dropOffThresholdMs = 7 * 24 * 60 * 60 * 1000;
     const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const rawDrafts = await fetchAllPaged<Record<string, unknown>>(async (from, to) => {
-      const r = await supabase
-        .from("provider_onboarding_drafts")
-        .select("user_id, current_step, updated_at, created_at, users!inner(preferred_home_tenant_id, role)")
-        .eq("users.preferred_home_tenant_id", tenantId)
-        .range(from, to);
-      return { data: r.data as Record<string, unknown>[] | null, error: r.error };
-    });
+    const rawDrafts = await fetchProviderOnboardingDraftsForTenantScope(
+      "user_id, current_step, updated_at, created_at, users!inner(role)",
+      tenantId
+    );
 
     const drafts = rawDrafts.filter((d) => {
       const u = unwrapEmbedded<{ role?: string }>(d, "users");

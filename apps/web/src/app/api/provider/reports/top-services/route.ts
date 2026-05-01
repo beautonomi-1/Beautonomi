@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,6 +24,7 @@ export async function GET(request: NextRequest) {
     const locationId = searchParams.get("location_id");
     const fromParam = searchParams.get("from") || searchParams.get("start_date");
     const toParam = searchParams.get("to") || searchParams.get("end_date");
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
 
     let bookingServicesQuery = supabaseAdmin
       .from("booking_services")
@@ -37,11 +40,14 @@ export async function GET(request: NextRequest) {
       .eq("bookings.provider_id", providerId)
       .not("bookings.status", "in", "(cancelled,no_show)");
 
-    if (fromParam) {
-      bookingServicesQuery = bookingServicesQuery.gte("bookings.scheduled_at", new Date(fromParam).toISOString());
-    }
-    if (toParam) {
-      bookingServicesQuery = bookingServicesQuery.lte("bookings.scheduled_at", new Date(toParam).toISOString());
+    if (fromParam || toParam) {
+      const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+        defaultDays: 30,
+        maxDays: MAX_REPORT_DAYS,
+      });
+      bookingServicesQuery = bookingServicesQuery
+        .gte("bookings.scheduled_at", fromDate.toISOString())
+        .lte("bookings.scheduled_at", toDate.toISOString());
     }
     if (locationId) {
       bookingServicesQuery = bookingServicesQuery.eq("bookings.location_id", locationId);

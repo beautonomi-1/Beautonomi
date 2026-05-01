@@ -537,11 +537,11 @@ export function DashboardClient({
               <span className="text-sm text-gray-600">Travel Fees</span>
               <span className="text-lg font-semibold text-purple-600">{formatCurrency(stats.travel_fees_total || 0, tenantCurrency)}</span>
             </div>
-            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/reports/gift-cards")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/reports/gift-cards"); }}>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/reports/gift-cards/sales")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/reports/gift-cards/sales"); }}>
               <span className="text-sm text-gray-600">Gift Card Sales</span>
               <span className="text-lg font-semibold text-blue-600">{formatCurrency(stats.gift_card_sales_total || 0, tenantCurrency)}</span>
             </div>
-            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/reports/packages")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/reports/packages"); }}>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/reports/packages/sales")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/reports/packages/sales"); }}>
               <span className="text-sm text-gray-600">Membership Sales</span>
               <span className="text-lg font-semibold text-indigo-600">{formatCurrency(stats.membership_sales_total || 0, tenantCurrency)}</span>
             </div>
@@ -752,8 +752,8 @@ export function DashboardClient({
           className="bg-white border rounded-lg p-4 sm:p-6 cursor-pointer hover:shadow-md transition-shadow"
           role="button"
           tabIndex={0}
-          onClick={() => navigateTo("/provider/reports/bookings")}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateTo("/provider/reports/bookings"); } }}
+          onClick={() => navigateTo("/provider/reports/bookings/summary")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateTo("/provider/reports/bookings/summary"); } }}
         >
           <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">This Week</h3>
           <div className="space-y-2">
@@ -768,8 +768,8 @@ export function DashboardClient({
           className="bg-white border rounded-lg p-4 sm:p-6 cursor-pointer hover:shadow-md transition-shadow"
           role="button"
           tabIndex={0}
-          onClick={() => navigateTo("/provider/reports/business")}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateTo("/provider/reports/business"); } }}
+          onClick={() => navigateTo("/provider/reports/business/overview")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateTo("/provider/reports/business/overview"); } }}
         >
           <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">This Month</h3>
           <div className="space-y-2">

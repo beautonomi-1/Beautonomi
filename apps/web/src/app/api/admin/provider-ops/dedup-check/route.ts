@@ -35,6 +35,14 @@ export async function GET(request: NextRequest) {
 
     const matches: DedupMatch[] = [];
 
+    const { data: scopeRows, error: scopeErr } = await supabase.rpc("admin_user_ids_in_tenant_scope", {
+      p_tenant_id: tenantId,
+    });
+    if (scopeErr) throw scopeErr;
+    const scopedUserIds = new Set(
+      ((scopeRows ?? []) as { id: string }[]).map((r) => r.id).filter(Boolean),
+    );
+
     // Check against existing leads
     if (email) {
       let query = supabase
@@ -107,10 +115,10 @@ export async function GET(request: NextRequest) {
       const { data: emailUsers } = await supabase
         .from("users")
         .select("id, full_name, email, phone")
-        .eq("tenant_id", tenantId)
         .eq("email", email);
 
       for (const u of emailUsers || []) {
+        if (!scopedUserIds.has(u.id)) continue;
         matches.push({
           type: "user",
           id: u.id,
@@ -127,10 +135,10 @@ export async function GET(request: NextRequest) {
       const { data: phoneUsers } = await supabase
         .from("users")
         .select("id, full_name, email, phone")
-        .eq("tenant_id", tenantId)
         .eq("phone", phone);
 
       for (const u of phoneUsers || []) {
+        if (!scopedUserIds.has(u.id)) continue;
         if (!matches.some((m) => m.type === "user" && m.id === u.id)) {
           matches.push({
             type: "user",

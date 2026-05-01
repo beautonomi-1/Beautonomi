@@ -6,7 +6,9 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
-import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
+import { dateRangeBoundsUtc, formatDateYmd, formatInTz } from "@/lib/dates/provider-tz";
+import { endOfMonth } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 
 /**
  * GET /api/provider/finance/vat-reports
@@ -39,6 +41,13 @@ export async function GET(request: NextRequest) {
 
     if (providerError) throw providerError;
 
+    const providerTimezoneEarly =
+      (provider as { timezone?: string | null }).timezone || "Africa/Johannesburg";
+    const defaultCalendarYear = parseInt(
+      formatDateYmd(new Date(), providerTimezoneEarly).slice(0, 4),
+      10,
+    );
+
     if (!provider?.is_vat_registered) {
       return successResponse({ 
         reports: [],
@@ -46,7 +55,7 @@ export async function GET(request: NextRequest) {
           vat_number: null,
           is_vat_registered: false,
         },
-        year: parseInt(searchParams.get("year") || new Date().getFullYear().toString()),
+        year: parseInt(searchParams.get("year") || String(defaultCalendarYear)),
         message: "Provider is not VAT-registered. VAT reports are only available for VAT-registered providers."
       });
     }
@@ -59,23 +68,39 @@ export async function GET(request: NextRequest) {
     const intlLocale = getTenantLocaleTagFromRegionConfig(tenantRegion);
     const providerTimezone = (provider as { timezone?: string | null }).timezone || "Africa/Johannesburg";
 
-    // Get year filter (default: current year)
-    const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString());
+    // Get year filter (default: calendar year in provider timezone)
+    const year = parseInt(searchParams.get("year") || String(defaultCalendarYear));
 
-    // Calculate bi-monthly periods for the year
-    const periods = [];
-    const ymd = (date: Date) =>
-      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    // Calculate bi-monthly periods for the year (civil calendar; boundaries queried via dateRangeBoundsUtc)
+    const periods: {
+      period_start: string;
+      period_end: string;
+      deadline_date: string;
+      period_label: string;
+    }[] = [];
     for (let month = 0; month < 12; month += 2) {
-      const periodStart = new Date(year, month, 1);
-      const periodEnd = new Date(year, month + 2, 0); // Last day of second month
-      const deadlineDate = new Date(year, month + 2, 25); // 25th of month after period
-      
+      const period_start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+      const secondMonthYmd = `${year}-${String(month + 2).padStart(2, "0")}-01`;
+      const zSecond = toZonedTime(new Date(`${secondMonthYmd}T12:00:00.000Z`), providerTimezone);
+      const period_end = formatDateYmd(endOfMonth(zSecond), providerTimezone);
+
+      let deadlineMonth = month + 3;
+      let deadlineYear = year;
+      if (deadlineMonth > 12) {
+        deadlineMonth -= 12;
+        deadlineYear += 1;
+      }
+      const deadline_date = `${deadlineYear}-${String(deadlineMonth).padStart(2, "0")}-25`;
+
+      const { fromIso: pStartIso } = dateRangeBoundsUtc(period_start, period_start, providerTimezone);
+      const { fromIso: pEndIso } = dateRangeBoundsUtc(period_end, period_end, providerTimezone);
+      const period_label = `${formatInTz(new Date(pStartIso), "MMM yyyy", providerTimezone)} – ${formatInTz(new Date(pEndIso), "MMM yyyy", providerTimezone)}`;
+
       periods.push({
-        period_start: ymd(periodStart),
-        period_end: ymd(periodEnd),
-        deadline_date: ymd(deadlineDate),
-        period_label: `${periodStart.toLocaleDateString(intlLocale, { month: 'short', year: 'numeric' })} - ${periodEnd.toLocaleDateString(intlLocale, { month: 'short', year: 'numeric' })}`,
+        period_start,
+        period_end,
+        deadline_date,
+        period_label,
       });
     }
 

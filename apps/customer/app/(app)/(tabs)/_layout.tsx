@@ -43,7 +43,7 @@ function fetchChatUnreadCount(setCount: (n: number) => void, isUser: boolean) {
     return;
   }
   api
-    .get<Array<{ unread_count_customer?: number }> | { data?: Array<{ unread_count_customer?: number }> }>(
+    .get<{ unread_count_customer?: number }[] | { data?: { unread_count_customer?: number }[] }>(
       "/api/me/conversations",
     )
     .then((res) => {

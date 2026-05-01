@@ -238,7 +238,7 @@ export default function AppLayout() {
         <Stack.Screen name="help" options={{ headerShown: true, title: "Help" }} />
         <Stack.Screen name="privacy-policy" options={{ headerShown: true, title: "Privacy policy" }} />
         <Stack.Screen name="terms-of-service" options={{ headerShown: true, title: "Terms of service" }} />
-        <Stack.Screen name="contact-support" options={{ headerShown: true, title: "Contact support" }} />
+        <Stack.Screen name="contact-support" options={{ headerShown: false }} />
         <Stack.Screen name="about" options={{ headerShown: true, title: "About Us" }} />
         <Stack.Screen name="gift-card-purchase" options={{ headerShown: true, title: "Buy Gift Card" }} />
         <Stack.Screen name="review-write" options={{ headerShown: true, title: "Write Review" }} />
@@ -251,7 +251,7 @@ export default function AppLayout() {
         <Stack.Screen name="on-demand/result" options={{ headerShown: true, title: "Result" }} />
         <Stack.Screen name="more-providers/[section]" options={{ headerShown: true }} />
         <Stack.Screen name="in-app-browser" options={{ headerShown: false, title: "Link" }} />
-        <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false, animation: "fade" }} />
+        <Stack.Screen name="onboarding/index" options={{ headerShown: false, gestureEnabled: false, animation: "fade" }} />
       </Stack>
       </View>
     </RoleGate>

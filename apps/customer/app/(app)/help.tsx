@@ -1,6 +1,6 @@
 import { View, StyleSheet, TouchableOpacity, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { pushWebPrivacyPolicy, pushWebTermsOfService } from "@/lib/legal-web";
+import { pushWebLearningCenter, pushWebPrivacyPolicy, pushWebTermsOfService } from "@/lib/legal-web";
 import { Ionicons } from "@expo/vector-icons";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
@@ -14,12 +14,12 @@ export default function HelpScreen() {
       <View style={styles.quickLinks}>
         <TouchableOpacity
           style={[styles.quickLink, styles.quickLinkFirst]}
-          onPress={() => router.push("/(app)/contact-support" as never)}
-          accessibilityLabel="Contact support"
+          onPress={() => pushWebLearningCenter(router)}
+          accessibilityLabel="Open Learning Centre articles"
           accessibilityRole="button"
         >
-          <Ionicons name="chatbubble-ellipses-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
-          <Text style={styles.quickLinkText}>Contact</Text>
+          <Ionicons name="school-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
+          <Text style={styles.quickLinkText}>Learning Centre</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.quickLink}
@@ -65,13 +65,17 @@ export default function HelpScreen() {
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Help center</Text>
         <Text style={styles.sectionBody}>
-          Get support faster by opening a ticket with your booking/order details and screenshots where possible.
-          You can track updates in My tickets and reply directly from the app.
+          Browse the Learning Centre for guides and common answers. For account or booking-specific help, open a
+          ticket with your details and screenshots where possible. Track replies in My tickets.
         </Text>
       </View>
 
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Common questions</Text>
+        <Text style={styles.faqTitle}>Where are guides and how-to articles?</Text>
+        <Text style={styles.faqBody}>
+          Tap Learning Centre above to browse articles on our website (opens in the app browser).
+        </Text>
         <Text style={styles.faqTitle}>How long does support take?</Text>
         <Text style={styles.faqBody}>Most requests are answered within 1-2 business days.</Text>
         <Text style={styles.faqTitle}>How do I follow up on a ticket?</Text>

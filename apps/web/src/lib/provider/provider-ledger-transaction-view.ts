@@ -1,7 +1,8 @@
 /**
  * Maps `finance_transactions` rows to a stable provider-facing shape for
  * mobile / portal lists. Must stay aligned with GET /api/provider/finance
- * (visible types, gross `payment` rows excluded).
+ * and GET /api/provider/transactions (visible types, gross `payment` rows excluded).
+ * Finance JSON lists respect `transaction_feed=all` when `location_id` is set (see finance route).
  */
 
 /** Gross customer-charge rows — not provider take-home; hide from provider activity feed. */

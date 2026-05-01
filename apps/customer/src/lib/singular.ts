@@ -88,6 +88,9 @@ export function buildCustomerRoute(params: SingularLinkParams): { pathname: stri
   if (screen === "help" || path === "help") {
     return { pathname: "/(app)/help" };
   }
+  if (screen === "contact-support" || path === "contact-support") {
+    return { pathname: "/(app)/(tabs)/support-tickets/new" };
+  }
   if (
     screen === "support-tickets" ||
     path === "support-tickets" ||

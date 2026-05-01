@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect, type ElementRef } from "react";
 import {
   View,
   Text,
@@ -11,13 +11,13 @@ import {
   ActionSheetIOS,
   Platform,
   Share,
-  PanResponder,
   TextInput,
   useWindowDimensions,
   Animated,
   NativeScrollEvent,
   NativeSyntheticEvent,
 } from "react-native";
+import { ScrollView as CalendarGridScrollView, Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
 import { Ionicons } from "@expo/vector-icons";
@@ -87,6 +87,7 @@ import {
 } from "@/lib/expand-time-blocks";
 import {
   expandBookingsForCalendar,
+  normalizeCalendarWallClockLoose as normalizeCalendarTime,
   validateCalendarTimeRange,
 } from "@/lib/provider-calendar-parity";
 import { newBookingScreenHrefFromCalendarDay } from "@/lib/new-booking-nav-defaults";
@@ -241,13 +242,15 @@ function normalizeAvailabilityBlocksToSegments(
 
 function availabilitySegmentToTimeBlock(seg: AvailabilitySegment): TimeBlock {
   const isStaff = seg._source === "staff_unavailability";
+  const startNorm = normalizeCalendarTime(seg.start_time) ?? seg.start_time;
+  const endNorm = normalizeCalendarTime(seg.end_time) ?? seg.end_time;
   return {
     id: seg.id,
     staff_id: seg.team_member_id,
     block_type: seg.block_type,
     title: (seg.reason && seg.reason.trim()) || seg.block_type,
-    start_time: seg.start_time,
-    end_time: seg.end_time,
+    start_time: startNorm,
+    end_time: endNorm,
     date: seg.date,
     overlay_source: seg._source,
     availability_block_id: isStaff ? undefined : seg.parent_block_id,
@@ -256,16 +259,6 @@ function availabilitySegmentToTimeBlock(seg: AvailabilitySegment): TimeBlock {
 }
 
 const CALENDAR_DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
-
-function normalizeCalendarTime(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const match = value.trim().match(/^(\d{1,2}):(\d{1,2})/);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
-  return `${Math.max(0, Math.min(23, hour)).toString().padStart(2, "0")}:${Math.max(0, Math.min(59, minute)).toString().padStart(2, "0")}`;
-}
 
 function datesInRange(dateFrom: string, dateTo: string): string[] {
   const start = parseISO(dateFrom);
@@ -542,8 +535,22 @@ function timeStringToMinutes(t: string | undefined | null): number {
   return sharedTimeStringToMinutes(t ?? null) ?? 0;
 }
 
-function parseCalendarDateParam(value: string): Date | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+/**
+ * Parse `?date=` deep links. When `providerTimezone` is set, `YYYY-MM-DD` is interpreted as that
+ * zone's wall calendar date (aligned with `formatDateKeyInTimeZone`), not the device's local date.
+ */
+function parseCalendarDateParam(value: string, providerTimezone?: string | null): Date | null {
+  const trimmed = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (match && providerTimezone) {
+    try {
+      const iso = buildZonedIsoForWallClock(trimmed, "12:00", providerTimezone);
+      const d = parseISO(iso);
+      return Number.isFinite(d.getTime()) ? d : null;
+    } catch {
+      /* fall through */
+    }
+  }
   if (match) {
     const y = Number(match[1]);
     const m = Number(match[2]);
@@ -552,7 +559,7 @@ function parseCalendarDateParam(value: string): Date | null {
       return new Date(y, m - 1, d);
     }
   }
-  const parsed = new Date(value);
+  const parsed = new Date(trimmed);
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
@@ -1005,15 +1012,15 @@ function CalendarScreenBody() {
   // reminders can land the provider on the exact day (and optionally open
   // the booking detail). Falls back to today + no booking highlight.
   const searchParams = useLocalSearchParams<{ date?: string; booking_id?: string }>();
+  useAuth();
+  const { provider, selectedLocationId: globalLocationId } = useProvider();
   const deepLinkDate = useMemo(() => {
     if (typeof searchParams.date !== "string" || !searchParams.date) return null;
-    return parseCalendarDateParam(searchParams.date);
-  }, [searchParams.date]);
+    return parseCalendarDateParam(searchParams.date, provider?.timezone ?? null);
+  }, [searchParams.date, provider?.timezone]);
   const handledBookingDeepLinkRef = useRef<string | null>(null);
   const [isFocused, setIsFocused] = useState(true);
   const [secondaryEnabled, setSecondaryEnabled] = useState(false);
-  useAuth();
-  const { provider, selectedLocationId: globalLocationId } = useProvider();
   const { isTablet, screenPadding } = useResponsive();
   const { preferences, updatePreference, resetToDefaults } = useCalendarPreferences();
 
@@ -1087,7 +1094,7 @@ function CalendarScreenBody() {
     end_time: string;
     staff_id: string | null;
   } | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ElementRef<typeof CalendarGridScrollView>>(null);
   const hasScrolledToNow = useRef(false);
   const prevViewModeRef = useRef(viewMode);
   if (prevViewModeRef.current !== viewMode) {
@@ -1229,8 +1236,8 @@ function CalendarScreenBody() {
         blocked_time_type_name?: string;
         recurring_pattern?: unknown;
       };
-      const st = String(raw.start_time ?? "00:00").slice(0, 5);
-      const et = String(raw.end_time ?? "00:00").slice(0, 5);
+      const st = normalizeCalendarTime(String(raw.start_time ?? "00:00")) ?? "00:00";
+      const et = normalizeCalendarTime(String(raw.end_time ?? "00:00")) ?? "00:00";
       return {
         id: raw.id,
         staff_id: raw.staff_id ?? raw.team_member_id ?? null,
@@ -1274,27 +1281,6 @@ function CalendarScreenBody() {
   ]);
 
   useCalendarBookingsRealtime(provider?.id, isFocused, refresh, refreshCalendarOverlays);
-
-  /* ─── Swipe navigation via PanResponder ─── */
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_, gestureState) => {
-          return Math.abs(gestureState.dx) > 30 && Math.abs(gestureState.dy) < 30;
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dx > 50) {
-            navigateDate(-1);
-          } else if (gestureState.dx < -50) {
-            navigateDate(1);
-          }
-        },
-      }),
-    // navigateDate is stable by identity; including it would recreate the gesture every time
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedDate, viewMode],
-  );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1680,8 +1666,8 @@ function CalendarScreenBody() {
         staff_id: seg.team_member_id,
         block_type: "booking_hold",
         title: seg.reason?.trim() || t("provider.calendarScreen.bookingHoldTitle"),
-        start_time: seg.start_time,
-        end_time: seg.end_time,
+        start_time: normalizeCalendarTime(seg.start_time) ?? seg.start_time,
+        end_time: normalizeCalendarTime(seg.end_time) ?? seg.end_time,
         date: seg.date,
         calendar_overlay_kind: "booking_hold",
         hold_id: seg.hold_id ?? seg.id,
@@ -1829,11 +1815,32 @@ function CalendarScreenBody() {
     }).length;
   }, [bookings]);
 
-  function navigateDate(direction: number) {
+  const navigateDate = useCallback((direction: number) => {
     const amount = viewMode === "week" ? 7 : viewMode === "3day" ? 3 : 1;
     hasScrolledToNow.current = false;
     setSelectedDate((prev) => (direction > 0 ? addDays(prev, amount) : subDays(prev, amount)));
-  }
+  }, [viewMode]);
+
+  /** Horizontal day swipe: RNGH pan with failOffsetY so vertical scroll wins; disabled in multi-column staff view (nested horizontal scroll). */
+  const swipeDayPanGesture = useMemo(() => {
+    const disableSwipe =
+      viewMode === "day" &&
+      layoutMode === "columns" &&
+      staffColumns != null &&
+      staffColumns.length > 1;
+    return Gesture.Pan()
+      .enabled(!disableSwipe)
+      .activeOffsetX([-52, 52])
+      .failOffsetY([-24, 24])
+      .runOnJS(true)
+      .onEnd((e) => {
+        if (e.translationX > 72) {
+          navigateDate(-1);
+        } else if (e.translationX < -72) {
+          navigateDate(1);
+        }
+      });
+  }, [viewMode, layoutMode, staffColumns, navigateDate]);
 
   function handleTapSlot(
     hour: number,
@@ -2230,7 +2237,7 @@ function CalendarScreenBody() {
       // checkout finalising flow.
       const expiresText = block.hold_expires_at
         ? t("provider.calendarScreen.overlayMenu.bookingHoldExpires", {
-            time: new Date(block.hold_expires_at).toLocaleTimeString(),
+            time: formatTimeInZone(block.hold_expires_at, provider?.timezone ?? null),
           })
         : "";
       Alert.alert(
@@ -2691,7 +2698,13 @@ function CalendarScreenBody() {
             </TouchableOpacity>
             <TouchableOpacity
               style={{ backgroundColor: TEAL_ACCENT, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}
-              onPress={() => { setSelectedDate(new Date()); hasScrolledToNow.current = false; }}
+              onPress={() => {
+                const tz = provider?.timezone ?? null;
+                const todayKey = formatDateKeyInTimeZone(new Date(), tz);
+                const next = parseCalendarDateParam(todayKey, tz) ?? new Date();
+                setSelectedDate(next);
+                hasScrolledToNow.current = false;
+              }}
               accessibilityLabel={t("provider.calendarScreen.dateNav.today")}
             >
               <Text style={{ fontSize: 12, fontWeight: "600", color: DARK_HEADER }}>{t("provider.calendarScreen.dateNav.today")}</Text>
@@ -2941,7 +2954,8 @@ function CalendarScreenBody() {
           icon="calendar-outline"
         />
       ) : (
-        <ScrollView
+        <GestureDetector gesture={swipeDayPanGesture}>
+        <CalendarGridScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
@@ -2952,7 +2966,6 @@ function CalendarScreenBody() {
             scrollOffsetRef.current.y = e.nativeEvent.contentOffset.y;
           }}
           scrollEventThrottle={32}
-          {...panResponder.panHandlers}
         >
           <View style={isTablet ? { paddingHorizontal: screenPadding, width: "100%" } : {}}>
           <View ref={gridContainerRef} style={{ flexDirection: "row", paddingHorizontal: 8 }}>
@@ -3168,7 +3181,8 @@ function CalendarScreenBody() {
             )}
           </View>
           </View>
-        </ScrollView>
+        </CalendarGridScrollView>
+        </GestureDetector>
       )}
 
       {/* Drag ghost: follows finger when dragging a booking */}

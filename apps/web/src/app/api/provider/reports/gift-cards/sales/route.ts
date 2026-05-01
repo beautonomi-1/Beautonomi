@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { endOfDay, startOfDay, subDays } from "date-fns";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,12 +22,11 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
     const searchParams = request.nextUrl.searchParams;
-    const fromDate = searchParams.get("from")
-      ? startOfDay(new Date(searchParams.get("from")!))
-      : startOfDay(subDays(new Date(), 30));
-    const toDate = searchParams.get("to")
-      ? endOfDay(new Date(searchParams.get("to")!))
-      : endOfDay(new Date());
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+      defaultDays: 30,
+      maxDays: MAX_REPORT_DAYS,
+    });
     const locationId = searchParams.get("location_id") || undefined;
 
     // Platform-only gift cards - providers don't sell gift cards

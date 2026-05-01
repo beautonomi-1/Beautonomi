@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 
 /**
  * GET /api/admin/users/[id]/loyalty
@@ -24,14 +25,8 @@ export async function GET(
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    // Verify user belongs to this tenant (same guard as GET /api/admin/users/[id])
-    const { data: targetUser, error: targetErr } = await supabase
-      .from("users")
-      .select("id")
-      .eq("id", userId)
-      .eq("preferred_home_tenant_id", tenantId)
-      .maybeSingle();
-    if (targetErr || !targetUser) {
+    const accessible = await getUserRowIfAccessibleToAdminTenant(supabase, tenantId, userId);
+    if (!accessible) {
       return notFoundResponse("User not found");
     }
 

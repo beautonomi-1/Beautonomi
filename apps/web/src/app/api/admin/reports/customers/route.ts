@@ -3,14 +3,11 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
-
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
-    const scopedUserIds = await collectTenantScopedUserIds(supabase, tenantId);
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';
@@ -46,18 +43,17 @@ export async function GET(request: NextRequest) {
     const startISO = startDate.toISOString();
     const endISO = endDate.toISOString();
 
-    let customersQuery = supabase
-      .from("users")
-      .select("id, full_name, email, created_at")
-      .eq("role", "customer");
-    if (scopedUserIds.length > 0) {
-      customersQuery = customersQuery.or(
-        `preferred_home_tenant_id.eq.${tenantId},id.in.(${scopedUserIds.join(",")})`
-      );
-    } else {
-      customersQuery = customersQuery.eq("preferred_home_tenant_id", tenantId);
-    }
-    const { data: customers } = await customersQuery;
+    const { data: customersRaw, error: customersErr } = await supabase.rpc("admin_users_in_tenant_scope", {
+      p_tenant_id: tenantId,
+      p_role: "customer",
+    });
+    if (customersErr) throw customersErr;
+    const customers = (customersRaw ?? []).map((row: Record<string, unknown>) => ({
+      id: String(row.id ?? ""),
+      full_name: row.full_name != null ? String(row.full_name) : null,
+      email: row.email != null ? String(row.email) : null,
+      created_at: row.created_at != null ? String(row.created_at) : null,
+    }));
 
     const customerIds = (customers || []).map((c: { id: string }) => c.id);
 

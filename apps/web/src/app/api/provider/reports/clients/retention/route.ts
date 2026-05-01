@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { endOfDay, startOfDay, subMonths } from "date-fns";
+import { subMonths } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
+import { dateRangeBoundsUtc, formatDateYmd, formatInTz } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,25 +24,19 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
     const searchParams = request.nextUrl.searchParams;
-    const period = searchParams.get("period") || "month"; // month, quarter, year
+    const periodParam = searchParams.get("period") || "month"; // month, quarter, year
     const locationId = searchParams.get("location_id") || undefined;
 
-    let fromDate: Date;
-    const toDate = endOfDay(new Date());
-
-    switch (period) {
-      case "month":
-        fromDate = startOfDay(subMonths(toDate, 12));
-        break;
-      case "quarter":
-        fromDate = startOfDay(subMonths(toDate, 4));
-        break;
-      case "year":
-        fromDate = startOfDay(subMonths(toDate, 24));
-        break;
-      default:
-        fromDate = startOfDay(subMonths(toDate, 12));
-    }
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const timezone = reportContext.timezone;
+    const todayYmd = formatDateYmd(new Date(), timezone);
+    const zNow = toZonedTime(new Date(), timezone);
+    const monthsBack =
+      periodParam === "quarter" ? 4 : periodParam === "year" ? 24 : 12;
+    const fromYmd = formatDateYmd(subMonths(zNow, monthsBack), timezone);
+    const { fromIso, toIso } = dateRangeBoundsUtc(fromYmd, todayYmd, timezone);
+    const fromDate = new Date(fromIso);
+    const toDate = new Date(toIso);
 
     // Get all bookings
     let bookingsQuery = supabaseAdmin
@@ -87,13 +84,15 @@ export async function GET(request: NextRequest) {
       const date = new Date(booking.scheduled_at);
       let periodKey: string;
 
-      if (period === "month") {
-        periodKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      } else if (period === "quarter") {
-        const quarter = Math.floor(date.getMonth() / 3) + 1;
-        periodKey = `${date.getFullYear()}-Q${quarter}`;
+      if (periodParam === "month") {
+        periodKey = formatInTz(date, "yyyy-MM", timezone);
+      } else if (periodParam === "quarter") {
+        const y = formatInTz(date, "yyyy", timezone);
+        const m = Number(formatInTz(date, "M", timezone));
+        const quarter = Math.floor((m - 1) / 3) + 1;
+        periodKey = `${y}-Q${quarter}`;
       } else {
-        periodKey = String(date.getFullYear());
+        periodKey = formatInTz(date, "yyyy", timezone);
       }
 
       const clients = periodMap.get(periodKey) || new Set();

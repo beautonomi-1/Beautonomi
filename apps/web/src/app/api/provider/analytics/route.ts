@@ -10,17 +10,16 @@ import {
   sumCancellationFeeNetAbs,
   sumSubscriptionAndAdsExpenses,
 } from "@/lib/reports/analytics-ledger-breakdown";
+import { subMonths, subWeeks, subYears, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 import {
-  subMonths,
-  startOfMonth,
-  endOfMonth,
-  subWeeks,
-  startOfWeek,
-  endOfWeek,
-  subYears,
-  startOfYear,
-  endOfYear,
-} from "date-fns";
+  dateRangeBoundsUtc,
+  endOfWeekInTz,
+  formatDateYmd,
+  formatInTz,
+  startOfWeekInTz,
+} from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 /**
  * GET /api/provider/analytics
@@ -60,36 +59,55 @@ export async function GET(request: NextRequest) {
     const period = searchParams.get("period") || "month";
     const locationId = searchParams.get("location_id") || null;
 
-    // Calculate date ranges based on period
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const tz = reportContext.timezone;
     const now = new Date();
+    const zNow = toZonedTime(now, tz);
+
     let currentStart: Date;
     let currentEnd: Date;
     let previousStart: Date;
     let previousEnd: Date;
 
     if (period === "week") {
-      const dayOfWeek = now.getDay(); // 0 = Sunday
-      currentStart = new Date(now);
-      currentStart.setDate(now.getDate() - dayOfWeek);
-      currentStart.setHours(0, 0, 0, 0);
-      currentEnd = new Date(currentStart);
-      currentEnd.setDate(currentStart.getDate() + 6);
-      currentEnd.setHours(23, 59, 59, 999);
-      previousStart = new Date(currentStart);
-      previousStart.setDate(currentStart.getDate() - 7);
-      previousEnd = new Date(currentEnd);
-      previousEnd.setDate(currentEnd.getDate() - 7);
+      const curStartYmd = formatDateYmd(startOfWeekInTz(now, tz, 1), tz);
+      const curEndYmd = formatDateYmd(endOfWeekInTz(now, tz, 1), tz);
+      const cur = dateRangeBoundsUtc(curStartYmd, curEndYmd, tz);
+      currentStart = new Date(cur.fromIso);
+      currentEnd = new Date(cur.toIso);
+
+      const prevAnchor = subWeeks(now, 1);
+      const prevStartYmd = formatDateYmd(startOfWeekInTz(prevAnchor, tz, 1), tz);
+      const prevEndYmd = formatDateYmd(endOfWeekInTz(prevAnchor, tz, 1), tz);
+      const prev = dateRangeBoundsUtc(prevStartYmd, prevEndYmd, tz);
+      previousStart = new Date(prev.fromIso);
+      previousEnd = new Date(prev.toIso);
     } else if (period === "year") {
-      currentStart = new Date(now.getFullYear(), 0, 1);
-      currentEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-      previousStart = new Date(now.getFullYear() - 1, 0, 1);
-      previousEnd = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+      const curFrom = formatDateYmd(startOfYear(zNow), tz);
+      const curTo = formatDateYmd(endOfYear(zNow), tz);
+      const cur = dateRangeBoundsUtc(curFrom, curTo, tz);
+      currentStart = new Date(cur.fromIso);
+      currentEnd = new Date(cur.toIso);
+
+      const prevY = subYears(zNow, 1);
+      const prevFrom = formatDateYmd(startOfYear(prevY), tz);
+      const prevTo = formatDateYmd(endOfYear(prevY), tz);
+      const prev = dateRangeBoundsUtc(prevFrom, prevTo, tz);
+      previousStart = new Date(prev.fromIso);
+      previousEnd = new Date(prev.toIso);
     } else {
-      // Default: month
-      currentStart = startOfMonth(now);
-      currentEnd = endOfMonth(now);
-      previousStart = startOfMonth(subMonths(now, 1));
-      previousEnd = endOfMonth(subMonths(now, 1));
+      const curFrom = formatDateYmd(startOfMonth(zNow), tz);
+      const curTo = formatDateYmd(endOfMonth(zNow), tz);
+      const cur = dateRangeBoundsUtc(curFrom, curTo, tz);
+      currentStart = new Date(cur.fromIso);
+      currentEnd = new Date(cur.toIso);
+
+      const prevM = subMonths(zNow, 1);
+      const prevFrom = formatDateYmd(startOfMonth(prevM), tz);
+      const prevTo = formatDateYmd(endOfMonth(prevM), tz);
+      const prev = dateRangeBoundsUtc(prevFrom, prevTo, tz);
+      previousStart = new Date(prev.fromIso);
+      previousEnd = new Date(prev.toIso);
     }
 
     const thisMonthStart = currentStart;
@@ -100,7 +118,7 @@ export async function GET(request: NextRequest) {
     // Ensure current period query only includes up to now (not future)
     const thisMonthEndDate = now < thisMonthEnd ? now : thisMonthEnd;
 
-    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: tz };
 
     // Parallel queries for better performance
     const [
@@ -165,35 +183,41 @@ export async function GET(request: NextRequest) {
 
     if (period === "week") {
       for (let i = 11; i >= 0; i--) {
-        const weekRef = subWeeks(now, i);
-        const start = startOfWeek(weekRef, { weekStartsOn: 1 });
-        const end = endOfWeek(weekRef, { weekStartsOn: 1 });
+        const refUtc = subWeeks(now, i);
+        const startYmd = formatDateYmd(startOfWeekInTz(refUtc, tz, 1), tz);
+        const endYmd = formatDateYmd(endOfWeekInTz(refUtc, tz, 1), tz);
+        const { fromIso, toIso } = dateRangeBoundsUtc(startYmd, endYmd, tz);
+        const start = new Date(fromIso);
         trendBuckets.push({
           start,
-          end,
-          label: `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+          end: new Date(toIso),
+          label: formatInTz(start, "MMM d", tz),
         });
       }
     } else if (period === "year") {
       for (let i = 4; i >= 0; i--) {
-        const yearRef = subYears(now, i);
-        const start = startOfYear(yearRef);
-        const end = endOfYear(yearRef);
+        const yearRef = subYears(zNow, i);
+        const startYmd = formatDateYmd(startOfYear(yearRef), tz);
+        const endYmd = formatDateYmd(endOfYear(yearRef), tz);
+        const { fromIso, toIso } = dateRangeBoundsUtc(startYmd, endYmd, tz);
+        const start = new Date(fromIso);
         trendBuckets.push({
           start,
-          end,
-          label: `${start.getFullYear()}`,
+          end: new Date(toIso),
+          label: formatInTz(start, "yyyy", tz),
         });
       }
     } else {
       for (let i = 11; i >= 0; i--) {
-        const monthRef = subMonths(now, i);
-        const start = startOfMonth(monthRef);
-        const end = endOfMonth(monthRef);
+        const monthRef = subMonths(zNow, i);
+        const startYmd = formatDateYmd(startOfMonth(monthRef), tz);
+        const endYmd = formatDateYmd(endOfMonth(monthRef), tz);
+        const { fromIso, toIso } = dateRangeBoundsUtc(startYmd, endYmd, tz);
+        const start = new Date(fromIso);
         trendBuckets.push({
           start,
-          end,
-          label: start.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+          end: new Date(toIso),
+          label: formatInTz(start, "MMM yyyy", tz),
         });
       }
     }

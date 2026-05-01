@@ -6,6 +6,8 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { addDays } from "date-fns";
+import { dateRangeBoundsUtc, formatDateYmd, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 
 const createCustomOfferSchema = z.object({
   customer_id: z.string().uuid(),
@@ -52,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     const { data: prow } = await supabase
       .from("providers")
-      .select("tenant_id")
+      .select("tenant_id, timezone")
       .eq("id", providerId)
       .maybeSingle();
     const effectiveTenantId =
@@ -78,8 +80,9 @@ export async function POST(request: NextRequest) {
 
     const requestedStart = body.preferred_start_at ?? body.scheduled_at ?? null;
     const preferredIso = requestedStart ? new Date(requestedStart).toISOString() : null;
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    const offerTz = resolveTz((prow as { timezone?: string | null } | null)?.timezone);
+    const limitYmd = formatDateYmd(addDays(nowInTz(offerTz), 7), offerTz);
+    const { toIso: requestExpiresIso } = dateRangeBoundsUtc(limitYmd, limitYmd, offerTz);
 
     // Verify staff_id belongs to this provider (if provided)
     if (body.staff_id) {
@@ -123,7 +126,7 @@ export async function POST(request: NextRequest) {
         preferred_start_at: preferredIso,
         duration_minutes: body.duration_minutes,
         status: "offered",
-        expires_at: expiresAt.toISOString(),
+        expires_at: requestExpiresIso,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         address_line1: body.address_line1 ?? null,

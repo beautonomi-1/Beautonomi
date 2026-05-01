@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { cookies } from "next/headers";
 
 const MAX_IMPERSONATIONS_PER_HOUR = 5;
@@ -39,6 +41,12 @@ export async function POST(
     const { user: adminUser } = await requireRoleInApi(["superadmin"], request);
 
     const { id } = await params;
+
+    const tenantId = await resolveAdminApiTenantId(request);
+    const accessible = await getUserRowIfAccessibleToAdminTenant(getSupabaseAdmin(), tenantId, id);
+    if (!accessible) {
+      return errorResponse("User not found or outside your tenant scope", "USER_NOT_FOUND", 404);
+    }
 
     // Parse request body and require a reason
     let body: { reason?: string } = {};

@@ -7,7 +7,12 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { format } from "date-fns";
+import {
+  addOneDayYmd,
+  dateRangeBoundsUtc,
+  formatInTz,
+} from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import type { AvailabilityBlockDisplay } from "@/lib/provider-portal/types";
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -23,6 +28,11 @@ const YMD = /^\d{4}-\d{2}-\d{2}$/;
  * we don't accidentally double-book while the checkout finalises.
  *
  * Note: expired / cancelled / consumed holds are intentionally excluded.
+ *
+ * Date params match the provider portal calendar — each YMD is a wall date in
+ * `providers.timezone` (same as `formatDateKeyInTimeZone` + `dateRangeBoundsUtc`
+ * in `fetch-calendar-initial.ts`). Range filtering uses those bounds, not
+ * naive UTC midnight on the string.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -35,6 +45,8 @@ export async function GET(request: NextRequest) {
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
+
+    const { timezone: tz } = await getProviderReportContext(supabase, providerId);
 
     const { searchParams } = new URL(request.url);
     const dateFrom = searchParams.get("date_from")?.trim() ?? "";
@@ -49,10 +61,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // We use inclusive-exclusive bounds in UTC so the range covers the full
-    // local span even when hold rows were stored in a different offset.
-    const rangeStart = `${dateFrom}T00:00:00Z`;
-    const rangeEnd = `${dateTo}T23:59:59Z`;
+    const { fromIso } = dateRangeBoundsUtc(dateFrom, dateTo, tz);
+    const rangeExclusiveEndIso = dateRangeBoundsUtc(
+      addOneDayYmd(dateTo),
+      addOneDayYmd(dateTo),
+      tz,
+    ).fromIso;
     const nowIso = new Date().toISOString();
 
     const { data, error } = await supabase
@@ -63,8 +77,8 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .in("hold_status", ["active", "consuming"])
       .gt("expires_at", nowIso)
-      .lt("start_at", rangeEnd)
-      .gt("end_at", rangeStart);
+      .lt("start_at", rangeExclusiveEndIso)
+      .gt("end_at", fromIso);
 
     if (error) {
       if (error.code === "42P01") {
@@ -95,23 +109,24 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      // Split across day boundaries the same way the staff unavailability
-      // builder does, so the grid can place each day's segment under the
-      // correct column.
-      let cursor = new Date(startDate);
+      // Split across day boundaries using the provider timezone (aligned with
+      // CalendarGrid `formatDateKeyInTimeZone` / staff unavailability splitting).
+      let cursor = new Date(startDate.getTime());
       while (cursor < endDate) {
-        const dayStart = new Date(
-          cursor.getFullYear(),
-          cursor.getMonth(),
-          cursor.getDate(),
+        const ymd = formatInTz(cursor, "yyyy-MM-dd", tz);
+        const { fromIso: dayStartIso, toIso: dayEndIso } = dateRangeBoundsUtc(
+          ymd,
+          ymd,
+          tz,
         );
-        const dayEnd = new Date(dayStart);
-        dayEnd.setDate(dayEnd.getDate() + 1);
-        const segStart = cursor < dayStart ? dayStart : cursor;
-        const segEnd = endDate < dayEnd ? endDate : dayEnd;
-        const ymd = format(segStart, "yyyy-MM-dd");
-        const startTime = format(segStart, "HH:mm");
-        const endTime = format(segEnd, "HH:mm");
+        const dayStart = new Date(dayStartIso);
+        const dayEndIncl = new Date(dayEndIso);
+        const segStart =
+          cursor.getTime() < dayStart.getTime() ? dayStart : cursor;
+        const segEnd =
+          endDate.getTime() < dayEndIncl.getTime() ? endDate : dayEndIncl;
+        const startTime = formatInTz(segStart, "HH:mm", tz);
+        let endTime = formatInTz(segEnd, "HH:mm", tz);
 
         const isConsuming = row.hold_status === "consuming";
         const reasonLabel = isConsuming
@@ -132,7 +147,10 @@ export async function GET(request: NextRequest) {
           hold_expires_at: row.expires_at,
         });
 
-        cursor = dayEnd;
+        const nextYmd = addOneDayYmd(ymd);
+        cursor = new Date(
+          dateRangeBoundsUtc(nextYmd, nextYmd, tz).fromIso,
+        );
       }
     }
 

@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { subDays } from "date-fns";
+import { dateRangeBoundsUtc, formatDateYmd, nowInTz } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,10 +20,16 @@ export async function GET(request: NextRequest) {
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const tz = reportContext.timezone;
+    const zNow = nowInTz(tz);
+    const fromYmd = formatDateYmd(subDays(zNow, 13), tz);
+    const todayYmd = formatDateYmd(zNow, tz);
+    const since = new Date(dateRangeBoundsUtc(fromYmd, todayYmd, tz).fromIso);
+
     const searchParams = request.nextUrl.searchParams;
     const limit = Math.min(parseInt(searchParams.get("limit") ?? "10", 10), 50);
     const locationId = searchParams.get("location_id");
-    const since = subDays(new Date(), 14);
 
     let bookingsQuery = supabaseAdmin
       .from("bookings")

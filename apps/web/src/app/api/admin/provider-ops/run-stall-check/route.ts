@@ -4,6 +4,7 @@ import { requireAdminSection, successResponse, handleApiError } from "@/lib/supa
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { chunkIds } from "@/lib/provider-ops/postgrest-unbounded";
 
 /**
  * POST /api/admin/provider-ops/run-stall-check
@@ -79,14 +80,20 @@ export async function POST(request: NextRequest) {
     const dropoffCutoff = new Date(now.getTime() - dropoffThresholdHours * 60 * 60 * 1000).toISOString();
     const slaCutoff = new Date(now.getTime() - slaContactStalledHours * 60 * 60 * 1000).toISOString();
 
-    // ── 2. Fetch active onboarding drafts for this tenant ───────────────────
-    const { data: tenantUsers } = await supabase
-      .from("users")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .in("role", ["provider_owner", "provider_staff", "provider"]);
+    // ── 2. Fetch active onboarding drafts for tenant-scoped provider owners ─
+    const { data: ownerScopeRows, error: ownerScopeErr } = await supabase.rpc(
+      "admin_user_ids_in_tenant_scope_for_role",
+      {
+        p_tenant_id: tenantId,
+        p_role: "provider_owner",
+        p_limit: 50000,
+      }
+    );
+    if (ownerScopeErr) throw ownerScopeErr;
 
-    const tenantUserIds = (tenantUsers ?? []).map((u: { id: string }) => u.id);
+    const tenantUserIds = ((ownerScopeRows ?? []) as { id: string }[])
+      .map((r) => r.id)
+      .filter(Boolean);
 
     if (tenantUserIds.length === 0) {
       return successResponse({
@@ -100,17 +107,23 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const { data: drafts } = await supabase
-      .from("provider_onboarding_drafts")
-      .select("id, user_id, step, status, updated_at, metadata")
-      .in("user_id", tenantUserIds)
-      .in("status", ["in_progress", "stalled"]); // only active/stalled, not completed/dropped
+    const drafts: Record<string, unknown>[] = [];
+    for (const chunk of chunkIds(tenantUserIds, 400)) {
+      const { data: draftChunk, error: draftErr } = await supabase
+        .from("provider_onboarding_drafts")
+        .select("id, user_id, step, status, updated_at, metadata")
+        .in("user_id", chunk)
+        .in("status", ["in_progress", "stalled"]);
+      if (draftErr) throw draftErr;
+      drafts.push(...((draftChunk ?? []) as Record<string, unknown>[]));
+    }
 
     const results = { stalled: 0, dropped: 0, on_track: 0, sms_sent: 0 };
     const toUpdateStalled: string[] = [];
     const toUpdateDropped: string[] = [];
 
-    for (const draft of drafts ?? []) {
+    for (const raw of drafts) {
+      const draft = raw as { id: string; user_id: string; updated_at?: string | null; created_at?: string | null };
       const lastUpdated = draft.updated_at ? new Date(draft.updated_at) : null;
       if (!lastUpdated) continue;
 

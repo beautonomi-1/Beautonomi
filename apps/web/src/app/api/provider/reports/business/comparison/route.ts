@@ -1,9 +1,22 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { endOfDay, endOfMonth, endOfQuarter, endOfYear, startOfMonth, startOfQuarter, startOfYear, subMonths, subQuarters, subYears } from "date-fns";
+import {
+  endOfMonth,
+  endOfQuarter,
+  endOfYear,
+  startOfMonth,
+  startOfQuarter,
+  startOfYear,
+  subMonths,
+  subQuarters,
+  subYears,
+} from "date-fns";
+import { toZonedTime } from "date-fns-tz";
+import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,36 +39,71 @@ export async function GET(request: NextRequest) {
     const period = searchParams.get("period") || "month"; // month, quarter, year
     const locationId = searchParams.get("location_id") || undefined;
 
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const tz = reportContext.timezone;
+    const todayYmd = formatDateYmd(new Date(), tz);
+    const zNow = toZonedTime(new Date(), tz);
+
     let currentFromDate: Date;
-    const now = new Date();
-    let currentToDate = endOfDay(now);
+    let currentToDate: Date;
     let previousFromDate: Date;
     let previousToDate: Date;
 
     switch (period) {
-      case "month":
-        currentFromDate = startOfMonth(now);
-        previousFromDate = startOfMonth(subMonths(now, 1));
-        previousToDate = endOfMonth(subMonths(now, 1));
+      case "month": {
+        const curFrom = formatDateYmd(startOfMonth(zNow), tz);
+        const cur = dateRangeBoundsUtc(curFrom, todayYmd, tz);
+        currentFromDate = new Date(cur.fromIso);
+        currentToDate = new Date(cur.toIso);
+        const prevMonth = subMonths(zNow, 1);
+        const pFrom = formatDateYmd(startOfMonth(prevMonth), tz);
+        const pTo = formatDateYmd(endOfMonth(prevMonth), tz);
+        const prev = dateRangeBoundsUtc(pFrom, pTo, tz);
+        previousFromDate = new Date(prev.fromIso);
+        previousToDate = new Date(prev.toIso);
         break;
-      case "quarter":
-        currentFromDate = startOfQuarter(now);
-        previousFromDate = startOfQuarter(subQuarters(now, 1));
-        previousToDate = endOfQuarter(subQuarters(now, 1));
+      }
+      case "quarter": {
+        const curFrom = formatDateYmd(startOfQuarter(zNow), tz);
+        const cur = dateRangeBoundsUtc(curFrom, todayYmd, tz);
+        currentFromDate = new Date(cur.fromIso);
+        currentToDate = new Date(cur.toIso);
+        const prevQ = subQuarters(zNow, 1);
+        const pFrom = formatDateYmd(startOfQuarter(prevQ), tz);
+        const pTo = formatDateYmd(endOfQuarter(prevQ), tz);
+        const prev = dateRangeBoundsUtc(pFrom, pTo, tz);
+        previousFromDate = new Date(prev.fromIso);
+        previousToDate = new Date(prev.toIso);
         break;
-      case "year":
-        currentFromDate = startOfYear(now);
-        previousFromDate = startOfYear(subYears(now, 1));
-        previousToDate = endOfYear(subYears(now, 1));
+      }
+      case "year": {
+        const curFrom = formatDateYmd(startOfYear(zNow), tz);
+        const cur = dateRangeBoundsUtc(curFrom, todayYmd, tz);
+        currentFromDate = new Date(cur.fromIso);
+        currentToDate = new Date(cur.toIso);
+        const prevY = subYears(zNow, 1);
+        const pFrom = formatDateYmd(startOfYear(prevY), tz);
+        const pTo = formatDateYmd(endOfYear(prevY), tz);
+        const prev = dateRangeBoundsUtc(pFrom, pTo, tz);
+        previousFromDate = new Date(prev.fromIso);
+        previousToDate = new Date(prev.toIso);
         break;
-      default:
-        currentFromDate = subMonths(now, 1);
-        currentToDate = now;
-        previousToDate = currentFromDate;
-        previousFromDate = subMonths(previousToDate, 1);
+      }
+      default: {
+        const curFrom = formatDateYmd(subMonths(zNow, 1), tz);
+        const cur = dateRangeBoundsUtc(curFrom, todayYmd, tz);
+        currentFromDate = new Date(cur.fromIso);
+        currentToDate = new Date(cur.toIso);
+        const pFrom = formatDateYmd(subMonths(zNow, 2), tz);
+        const pTo = formatDateYmd(subMonths(zNow, 1), tz);
+        const prev = dateRangeBoundsUtc(pFrom, pTo, tz);
+        previousFromDate = new Date(prev.fromIso);
+        previousToDate = new Date(prev.toIso);
+        break;
+      }
     }
 
-    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES, timezone: tz };
 
     const { totalRevenue: currentRevenue } = await getProviderRevenue(
       supabaseAdmin,

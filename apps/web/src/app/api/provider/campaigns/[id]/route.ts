@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { calculateSegmentCount, getProviderTimezoneForCampaigns } from "../route";
 
 /**
  * GET /api/provider/campaigns/[id]
@@ -111,38 +112,8 @@ export async function PATCH(
       } else if (recipientType === "segment") {
         const segmentCriteria = body.segment_criteria !== undefined ? body.segment_criteria : existingCampaign.segment_criteria;
         if (segmentCriteria) {
-          // Import the calculateSegmentCount function logic inline
-          let segmentQuery = supabase
-            .from("provider_clients")
-            .select("customer_id", { count: "exact", head: true })
-            .eq("provider_id", providerId);
-
-          if (segmentCriteria.min_bookings !== undefined) {
-            segmentQuery = segmentQuery.gte("total_bookings", segmentCriteria.min_bookings);
-          }
-          if (segmentCriteria.max_bookings !== undefined) {
-            segmentQuery = segmentQuery.lte("total_bookings", segmentCriteria.max_bookings);
-          }
-          if (segmentCriteria.min_spent !== undefined) {
-            segmentQuery = segmentQuery.gte("total_spent", segmentCriteria.min_spent);
-          }
-          if (segmentCriteria.max_spent !== undefined) {
-            segmentQuery = segmentQuery.lte("total_spent", segmentCriteria.max_spent);
-          }
-          if (segmentCriteria.is_favorite !== undefined) {
-            segmentQuery = segmentQuery.eq("is_favorite", segmentCriteria.is_favorite);
-          }
-          if (segmentCriteria.tags && segmentCriteria.tags.length > 0) {
-            segmentQuery = segmentQuery.overlaps("tags", segmentCriteria.tags);
-          }
-          if (segmentCriteria.last_booking_days !== undefined) {
-            const cutoffDate = new Date();
-            cutoffDate.setDate(cutoffDate.getDate() - segmentCriteria.last_booking_days);
-            segmentQuery = segmentQuery.gte("last_service_date", cutoffDate.toISOString());
-          }
-
-          const { count } = await segmentQuery;
-          totalRecipients = count || 0;
+          const tz = await getProviderTimezoneForCampaigns(supabase, providerId);
+          totalRecipients = await calculateSegmentCount(supabase, providerId, segmentCriteria, tz);
         }
       }
       updateData.total_recipients = totalRecipients;

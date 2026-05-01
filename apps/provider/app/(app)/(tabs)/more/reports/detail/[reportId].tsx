@@ -96,13 +96,16 @@ export default function ReportDetailScreen() {
   const reportId = Array.isArray(rawId) ? rawId[0] : rawId;
   const def = reportId ? REPORT_DETAIL_REGISTRY[reportId] : undefined;
 
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId, provider } = useProvider();
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
   const [periodMQY, setPeriodMQY] = useState("month");
   const [periodDMWY, setPeriodDMWY] = useState("month");
   const [eodDate, setEodDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
 
-  const { from, to } = useMemo(() => getReportDateRange(dateRange), [dateRange]);
+  const { from, to } = useMemo(
+    () => getReportDateRange(dateRange, { timezone: provider?.timezone }),
+    [dateRange, provider?.timezone],
+  );
   const rangeCaption = useMemo(() => formatReportRangeCaption(from, to), [from, to]);
 
   const path = useMemo(() => {
@@ -197,7 +200,7 @@ export default function ReportDetailScreen() {
                 key={r.value}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  const d = getReportDateRange(r.value);
+                  const d = getReportDateRange(r.value, { timezone: provider?.timezone });
                   setEodDate(d.to);
                 }}
                 style={[twStyle("mr-2 rounded-full border border-gray-200 bg-white px-3 py-1.5")]}

@@ -8,6 +8,14 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
+import {
+  filterLedgerRowsForLocation,
+  filterProductOrdersForLocation,
+  getProviderReportContext,
+  summarizeLedgerLocationAttribution,
+  type LedgerLocationAttributionSummary,
+} from "@/lib/reports/provider-report-utils";
 
 /** Payment method key used in response (normalized from booking_payments, bookings.wallet_amount, and sales). */
 const PAYMENT_METHODS = ["cash", "card", "bank_transfer", "paystack", "yoco", "gift_card", "wallet", "other"] as const;
@@ -25,6 +33,7 @@ export interface EndOfDayResponse {
   bookingCount: number;
   salesCount: number;
   note: string;
+  locationAttribution?: LedgerLocationAttributionSummary;
 }
 
 /**
@@ -59,14 +68,12 @@ export async function GET(request: NextRequest) {
     if (!dateStr) {
       return errorResponse("Query parameter 'date' (YYYY-MM-DD) is required", "VALIDATION_ERROR", 400);
     }
-    const date = new Date(dateStr + "T00:00:00Z");
-    if (isNaN(date.getTime())) {
+    const ymd = dateStr.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
       return errorResponse("Invalid date format. Use YYYY-MM-DD.", "VALIDATION_ERROR", 400);
     }
-    const dayStart = date.toISOString();
-    const dayEnd = new Date(date);
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
-    const dayEndISO = dayEnd.toISOString();
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const { fromIso: dayStart, toIso: dayEnd } = dateRangeBoundsUtc(ymd, ymd, reportContext.timezone);
 
     const byPaymentMethod: Record<string, number> = {};
     PAYMENT_METHODS.forEach((m) => (byPaymentMethod[m] = 0));
@@ -77,7 +84,7 @@ export async function GET(request: NextRequest) {
       .select("booking_id, amount, payment_method")
       .eq("status", "completed")
       .gte("created_at", dayStart)
-      .lt("created_at", dayEndISO);
+      .lte("created_at", dayEnd);
     if (providerTenantId) {
       bpQuery = bpQuery.eq("tenant_id", providerTenantId);
     }
@@ -125,7 +132,7 @@ export async function GET(request: NextRequest) {
         .select("id, wallet_amount, location_id")
         .eq("provider_id", providerId)
         .gte("scheduled_at", dayStart)
-        .lt("scheduled_at", dayEndISO)
+        .lte("scheduled_at", dayEnd)
         .gt("wallet_amount", 0);
       for (const wb of (walletBookings ?? []) as { id: string; wallet_amount?: number; location_id?: string }[]) {
         if (bpBookingIds.has(wb.id)) continue;
@@ -146,7 +153,7 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .eq("payment_status", "completed")
       .gte("sale_date", dayStart)
-      .lt("sale_date", dayEndISO);
+      .lte("sale_date", dayEnd);
 
     if (locationId) {
       salesQuery = salesQuery.eq("location_id", locationId);
@@ -169,12 +176,12 @@ export async function GET(request: NextRequest) {
     {
       let productOrderQuery = supabaseAdmin
         .from("product_orders")
-        .select("total_amount, payment_method")
+        .select("id, total_amount, payment_method, fulfillment_type, collection_location_id")
         .eq("provider_id", providerId)
         .eq("order_source", "walk_in")
         .eq("payment_status", "paid")
         .gte("paid_at", dayStart)
-        .lt("paid_at", dayEndISO);
+        .lte("paid_at", dayEnd);
 
       if (providerTenantId) {
         productOrderQuery = productOrderQuery.eq("tenant_id", providerTenantId);
@@ -182,8 +189,18 @@ export async function GET(request: NextRequest) {
 
       const { data: productOrderRows, error: productOrderError } = await productOrderQuery;
       if (productOrderError) throw productOrderError;
-      productOrderSalesCount = (productOrderRows || []).length;
-      for (const row of (productOrderRows ?? []) as { total_amount?: number; payment_method?: string }[]) {
+      let walkInOrders = (productOrderRows ?? []) as {
+        id: string;
+        total_amount?: number;
+        payment_method?: string;
+        fulfillment_type?: string | null;
+        collection_location_id?: string | null;
+      }[];
+      if (locationId) {
+        walkInOrders = await filterProductOrdersForLocation(supabaseAdmin, providerId, walkInOrders, locationId);
+      }
+      productOrderSalesCount = walkInOrders.length;
+      for (const row of walkInOrders) {
         const amount = Number(row.total_amount ?? 0);
         const method = normalizePaymentMethod(row.payment_method);
         byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
@@ -194,14 +211,27 @@ export async function GET(request: NextRequest) {
     // Ledger-based tips and cancellation fees for the day
     let tipsTotal = 0;
     let cancellationFeesTotal = 0;
+    let ledgerLocationAttribution: LedgerLocationAttributionSummary | undefined;
     try {
-      const { data: ledgerRows } = await supabaseAdmin
+      const { data: ledgerRowsRaw } = await supabaseAdmin
         .from("finance_transactions")
-        .select("transaction_type, amount, net")
+        .select("transaction_type, amount, net, booking_id, product_order_id")
         .eq("provider_id", providerId)
         .in("transaction_type", ["tip", "cancellation_fee"])
         .gte("created_at", dayStart)
-        .lt("created_at", dayEndISO);
+        .lte("created_at", dayEnd);
+      type LedgerTipCancelRow = {
+        transaction_type: string;
+        amount?: number;
+        net?: number;
+        booking_id?: string | null;
+        product_order_id?: string | null;
+      };
+      let ledgerRows = (ledgerRowsRaw ?? []) as LedgerTipCancelRow[];
+      ledgerLocationAttribution = summarizeLedgerLocationAttribution(ledgerRows, locationId);
+      if (locationId) {
+        ledgerRows = await filterLedgerRowsForLocation(supabaseAdmin, providerId, ledgerRows, locationId);
+      }
       for (const r of ledgerRows ?? []) {
         const row = r as { transaction_type: string; amount?: number; net?: number };
         if (row.transaction_type === "tip") {
@@ -226,7 +256,8 @@ export async function GET(request: NextRequest) {
       total,
       bookingCount,
       salesCount: salesCount + productOrderSalesCount,
-      note: "Cash-register style: sums booking_payments, sales, tips, and cancellation fees by payment date. For ledger-based revenue, use the payments report.",
+      note: `Cash-register style: sums booking_payments, sales, tips, and cancellation fees by payment date. For ledger-based revenue, use the payments report. ${ledgerLocationAttribution?.note ?? ""}`.trim(),
+      locationAttribution: ledgerLocationAttribution,
     };
 
     return successResponse(response);

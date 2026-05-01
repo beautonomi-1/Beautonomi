@@ -8,7 +8,7 @@ import {
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { subDays, subMonths, startOfDay, startOfWeek, startOfMonth } from "date-fns";
-import { fromBusinessTime, nowInTz } from "@/lib/dates/provider-tz";
+import { formatDateYmd, fromBusinessTime, nowInTz } from "@/lib/dates/provider-tz";
 import { filterLedgerRowsForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import {
   mapFinanceLedgerRowToProviderUi,
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       .filter((x): x is ProviderLedgerUiRow => x != null);
 
     return successResponse({
-      filename: `beautonomi_transactions_${period}_${new Date().toISOString().slice(0, 10)}.csv`,
+      filename: `beautonomi_transactions_${period}_${formatDateYmd(new Date(), reportContext.timezone)}.csv`,
       csv: toCsv(transactions),
       row_count: transactions.length,
       truncated: false,

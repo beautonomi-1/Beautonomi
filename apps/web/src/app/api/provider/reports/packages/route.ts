@@ -8,6 +8,9 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { subMonths } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
+import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,12 +31,23 @@ export async function GET(request: NextRequest) {
     const period = sp.get("period") || "month";
     const locationId = sp.get("location_id") || null;
 
-    const toDate = new Date();
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const tz = reportContext.timezone;
+    const todayYmd = formatDateYmd(new Date(), tz);
+    const zNow = toZonedTime(new Date(), tz);
+
     let fromDate: Date;
-    if (period === "all") fromDate = new Date(0);
-    else if (period === "year") fromDate = subMonths(toDate, 12);
-    else if (period === "quarter") fromDate = subMonths(toDate, 3);
-    else fromDate = subMonths(toDate, 1);
+    let toDate: Date;
+    if (period === "all") {
+      fromDate = new Date(0);
+      toDate = new Date();
+    } else {
+      const monthsBack = period === "year" ? 12 : period === "quarter" ? 3 : 1;
+      const fromYmd = formatDateYmd(subMonths(zNow, monthsBack), tz);
+      const { fromIso, toIso } = dateRangeBoundsUtc(fromYmd, todayYmd, tz);
+      fromDate = new Date(fromIso);
+      toDate = new Date(toIso);
+    }
 
     let bookingsQuery = supabaseAdmin
       .from("bookings")

@@ -23,7 +23,7 @@ export type ProviderReportCategory = { title: string; reports: ProviderReportIte
 
 export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
   {
-    title: "Sales",
+    title: "Sales & revenue",
     reports: [
       {
         id: "sales-summary",
@@ -44,16 +44,6 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         bg: "#fef3c7",
         target: "native",
         screen: "services",
-      },
-      {
-        id: "product-sales",
-        name: "Product Sales",
-        description: "Retail product revenue",
-        icon: "bag-outline",
-        color: "#4f46e5",
-        bg: "#e0e7ff",
-        target: "detail",
-        reportId: "product-sales",
       },
       {
         id: "revenue-trends",
@@ -208,7 +198,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "payment-summary",
         name: "Payment Summary",
-        description: "Totals, methods, payouts",
+        description: "Totals and methods (ledger activity)",
         icon: "card-outline",
         color: "#0284c7",
         bg: "#e0f2fe",
@@ -247,8 +237,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       },
       {
         id: "payouts",
-        name: "Payouts",
-        description: "Provider payout history",
+        name: "Payout earnings (ledger)",
+        description: "Platform-held provider earnings — not bank payout transfers",
         icon: "arrow-redo-outline",
         color: "#65a30d",
         bg: "#ecfccb",
@@ -268,17 +258,27 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
     ],
   },
   {
-    title: "Products",
+    title: "Product & inventory",
     reports: [
       {
         id: "product-analytics",
         name: "Product & Inventory",
-        description: "Top sellers and stock",
+        description: "Native catalog: stock and velocity",
         icon: "cube-outline",
         color: "#7c3aed",
         bg: "#ede9fe",
         target: "native",
         screen: "products",
+      },
+      {
+        id: "product-sales",
+        name: "Product Sales",
+        description: "Retail revenue from product orders",
+        icon: "bag-outline",
+        color: "#4f46e5",
+        bg: "#e0e7ff",
+        target: "detail",
+        reportId: "product-sales",
       },
       {
         id: "inventory",
@@ -318,7 +318,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
     ],
   },
   {
-    title: "Packages",
+    title: "Packages & memberships",
     reports: [
       {
         id: "package-sales",
@@ -353,12 +353,12 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
     ],
   },
   {
-    title: "Business",
+    title: "Business overview",
     reports: [
       {
         id: "business-overview",
         name: "Business Overview",
-        description: "Key metrics dashboard",
+        description: "Operational KPIs (native)",
         icon: "pie-chart-outline",
         color: "#6366f1",
         bg: "#eef2ff",
@@ -368,7 +368,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "performance-dashboard",
         name: "Performance Dashboard",
-        description: "KPIs at a glance",
+        description: "Snapshot KPIs (web-style report)",
         icon: "flash-outline",
         color: "#7c3aed",
         bg: "#ede9fe",
@@ -403,7 +403,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "analytics-tab",
         name: "Analytics",
-        description: "Performance and trends",
+        description: "Charts and trends (separate from ledger reports)",
         icon: "analytics-outline",
         color: "#8b5cf6",
         bg: "#ede9fe",
@@ -413,7 +413,7 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
       {
         id: "activity-tab",
         name: "Activity",
-        description: "Recent business activity",
+        description: "Recent timeline — not a finance export",
         icon: "pulse-outline",
         color: "#0d9488",
         bg: "#ccfbf1",

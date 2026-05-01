@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, format, eachDayOfInterval } from "date-fns";
+import { subDays } from "date-fns";
+import { dateRangeBoundsUtc, formatDateYmd, formatInTz, nowInTz } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -16,8 +18,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
-    const endDate = new Date();
-    const startDate = subDays(endDate, 6);
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const tz = reportContext.timezone;
+
+    const zEnd = nowInTz(tz);
+    const fromYmd = formatDateYmd(subDays(zEnd, 6), tz);
+    const toYmd = formatDateYmd(zEnd, tz);
+    const { fromIso, toIso } = dateRangeBoundsUtc(fromYmd, toYmd, tz);
 
     const { data: bookingServiceIds } = await supabaseAdmin
       .from("booking_services")
@@ -26,9 +33,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const bookingIds = [...new Set((bookingServiceIds || []).map((bs: any) => bs.booking_id))];
 
-    const days = eachDayOfInterval({ start: startDate, end: endDate });
+    const orderedYmds = Array.from({ length: 7 }, (_, i) => formatDateYmd(subDays(zEnd, 6 - i), tz));
     const dayMap = new Map<string, number>();
-    days.forEach((d) => dayMap.set(format(d, "yyyy-MM-dd"), 0));
+    orderedYmds.forEach((ymd) => dayMap.set(ymd, 0));
 
     if (bookingIds.length > 0) {
       const { data: bookings } = await supabaseAdmin
@@ -36,19 +43,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .select("scheduled_at")
         .eq("provider_id", providerId)
         .in("id", bookingIds)
-        .gte("scheduled_at", startDate.toISOString())
-        .lte("scheduled_at", new Date(endDate.getTime() + 86400000).toISOString())
+        .gte("scheduled_at", fromIso)
+        .lte("scheduled_at", toIso)
         .not("status", "in", "(cancelled,no_show)");
 
       (bookings || []).forEach((b: any) => {
-        const day = format(new Date(b.scheduled_at), "yyyy-MM-dd");
+        const day = formatInTz(new Date(b.scheduled_at), "yyyy-MM-dd", tz);
         dayMap.set(day, (dayMap.get(day) ?? 0) + 1);
       });
     }
 
-    const result = days.map((d) => ({
-      day: format(d, "yyyy-MM-dd"),
-      count: dayMap.get(format(d, "yyyy-MM-dd")) ?? 0,
+    const result = orderedYmds.map((day) => ({
+      day,
+      count: dayMap.get(day) ?? 0,
     }));
 
     return successResponse(result);

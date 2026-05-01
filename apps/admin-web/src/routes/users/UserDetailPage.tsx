@@ -272,6 +272,9 @@ export function UserDetailPage() {
         <AdminPageHeader title="User" />
         <AdminPanel>
           <p className="text-sm text-gray-600">User not found.</p>
+          <p className="mt-2 text-sm text-gray-500">
+            The account may be outside your current tenant scope, or the link contains an invalid user ID.
+          </p>
         </AdminPanel>
       </div>
     );
@@ -303,6 +306,7 @@ export function UserDetailPage() {
           impersonatePost.error instanceof Error ? impersonatePost.error : null,
           bookingsQ.error instanceof Error ? bookingsQ.error : null,
           walletTxQ.error instanceof Error ? walletTxQ.error : null,
+          loyaltyQ.error instanceof Error ? loyaltyQ.error : null,
           exportErr ? new Error(exportErr) : null,
         ]}
       />
@@ -754,26 +758,55 @@ export function UserDetailPage() {
         )}
       </AdminPanel>
 
-      {/* Loyalty Points */}
+      {/* Loyalty points (API: balance + transactions) */}
       <AdminPanel>
         <h2 className="text-lg font-semibold text-gray-900">Loyalty points</h2>
+        <p className="mt-1 text-sm text-gray-600">Balance and recent ledger rows from the loyalty service.</p>
         {loyaltyQ.isLoading ? (
           <p className="mt-2 text-sm text-gray-400">Loading…</p>
+        ) : loyaltyQ.error ? (
+          <p className="mt-2 text-sm text-red-600">{loyaltyQ.error.message}</p>
         ) : loyaltyQ.data ? (
-          <div className="mt-4 space-y-3">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {[
-                { label: "Balance", value: String(loyaltyQ.data.balance ?? loyaltyQ.data.points ?? "—") },
-                { label: "Tier / Level", value: String(loyaltyQ.data.tier ?? loyaltyQ.data.level ?? "—") },
-                { label: "Lifetime Earned", value: String(loyaltyQ.data.lifetime_earned ?? loyaltyQ.data.total_earned ?? "—") },
-                { label: "Lifetime Redeemed", value: String(loyaltyQ.data.lifetime_redeemed ?? loyaltyQ.data.total_redeemed ?? "—") },
-              ].map(({ label, value }) => (
-                <div key={label} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                  <div className="text-xs text-gray-500">{label}</div>
-                  <div className="mt-1 text-xl font-bold text-gray-900">{value}</div>
-                </div>
-              ))}
+          <div className="mt-4 space-y-4">
+            <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+              <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Balance (points)</div>
+              <div className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">
+                {String(loyaltyQ.data.balance ?? loyaltyQ.data.points ?? 0)}
+              </div>
             </div>
+            {Array.isArray(loyaltyQ.data.transactions) && loyaltyQ.data.transactions.length > 0 ? (
+              <AdminDataTable className="mt-2">
+                <AdminTableHead>
+                  <tr>
+                    <AdminTh>When</AdminTh>
+                    <AdminTh>Type</AdminTh>
+                    <AdminTh className="text-right">Points</AdminTh>
+                    <AdminTh>Reference</AdminTh>
+                    <AdminTh>Description</AdminTh>
+                  </tr>
+                </AdminTableHead>
+                <AdminTableBody>
+                  {(loyaltyQ.data.transactions as Record<string, unknown>[]).map((row) => (
+                    <tr key={str(row.id)}>
+                      <AdminTd>
+                        {row.created_at ? new Date(String(row.created_at)).toLocaleString() : "—"}
+                      </AdminTd>
+                      <AdminTd className="capitalize">{str(row.transaction_type)}</AdminTd>
+                      <AdminTd className="text-right tabular-nums">{str(row.points)}</AdminTd>
+                      <AdminTd className="font-mono text-xs">
+                        {row.reference_type ? `${str(row.reference_type)} ` : ""}
+                        {row.reference_id ? String(row.reference_id).slice(0, 10) : "—"}
+                      </AdminTd>
+                      <AdminTd className="max-w-[240px] truncate">
+                        <span title={str(row.description)}>{str(row.description) || "—"}</span>
+                      </AdminTd>
+                    </tr>
+                  ))}
+                </AdminTableBody>
+              </AdminDataTable>
+            ) : (
+              <p className="text-sm text-gray-500">No loyalty transactions yet.</p>
+            )}
           </div>
         ) : (
           <p className="mt-2 text-sm text-gray-500">No loyalty data available.</p>

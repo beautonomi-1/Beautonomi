@@ -4,10 +4,11 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  FlatList,
+  ActivityIndicator,
   Alert,
   RefreshControl,
   TextInput,
-  Dimensions,
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -88,8 +89,8 @@ function formatDateSafe(value: unknown): string {
 }
 
 function isVideoUrl(url: string): boolean {
-  const lower = url.toLowerCase();
-  return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov");
+  const lower = url.toLowerCase().split("?")[0].split("#")[0];
+  return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov") || lower.endsWith(".m4v");
 }
 
 function formatPublishedLine(post: ExplorePost): string {
@@ -154,8 +155,18 @@ type PickedAsset = { uri: string; mimeType?: string; fileName?: string };
 export default function ExplorePostsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const windowWidth = Dimensions.get("window").width;
-  const { screenPadding } = useResponsive();
+  const { width: windowWidth, isTablet } = useResponsive();
+  /** BottomSheet content uses paddingHorizontal: 20 — carousel must match or nested horizontal ScrollView gets zero height. */
+  const exploreDetailSheetPadding = 20;
+  const exploreDetailMediaWidth = Math.max(
+    280,
+    windowWidth - exploreDetailSheetPadding * 2,
+  );
+  /** Instagram-style grid: 3 on phone, 4 on tablet; thin gutters */
+  const exploreGridGap = 2;
+  const exploreGridColumns = isTablet ? 4 : 3;
+  const exploreGridCellSize =
+    (windowWidth - exploreGridGap * (exploreGridColumns - 1)) / exploreGridColumns;
   const params = useLocalSearchParams<{ create?: string }>();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -624,13 +635,13 @@ export default function ExplorePostsScreen() {
     }
   }, [canCreateExplorePosts, selectedAssets, caption, publishNow, primaryCategorySlug, offeringId, tagInput, createPost, refresh]);
 
-  const openCreateIfAllowed = () => {
+  const openCreateIfAllowed = useCallback(() => {
     if (!canCreateExplorePosts) {
       Alert.alert("Permission", "You do not have permission to create Explore posts.");
       return;
     }
     openCreate();
-  };
+  }, [canCreateExplorePosts, openCreate]);
 
   const createHeaderAction = canCreateExplorePosts ? (
     <TouchableOpacity
@@ -656,6 +667,144 @@ export default function ExplorePostsScreen() {
     },
     [router],
   );
+
+  const renderExploreGridItem = useCallback(
+    ({ item: post, index }: { item: ExplorePost; index: number }) => {
+      const thumb = post.media_urls?.[0];
+      const col = index % exploreGridColumns;
+      return (
+        <TouchableOpacity
+          onPress={() => openView(post)}
+          activeOpacity={0.85}
+          style={{
+            width: exploreGridCellSize,
+            height: exploreGridCellSize,
+            marginRight: col === exploreGridColumns - 1 ? 0 : exploreGridGap,
+            marginBottom: exploreGridGap,
+            overflow: "hidden",
+            backgroundColor: "#f3f4f6",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={
+            post.caption ? `Post: ${post.caption.slice(0, 80)}` : "Explore post"
+          }
+        >
+          {thumb ? (
+            <ExploreFeedMediaThumb uri={thumb} height={exploreGridCellSize} />
+          ) : (
+            <View style={twStyle("h-full w-full items-center justify-center")}>
+              <Ionicons name="image-outline" size={28} color="#d1d5db" />
+            </View>
+          )}
+          {post.status !== "published" ? (
+            <View
+              style={{
+                position: "absolute",
+                top: 6,
+                left: 6,
+                backgroundColor: "rgba(0,0,0,0.55)",
+                paddingHorizontal: 6,
+                paddingVertical: 2,
+                borderRadius: 4,
+              }}
+              pointerEvents="none"
+            >
+              <Text style={{ fontSize: 10, fontWeight: "600", color: "#fff" }}>Draft</Text>
+            </View>
+          ) : null}
+          {(post.media_urls?.length ?? 0) > 1 ? (
+            <View style={{ position: "absolute", top: 6, right: 6 }} pointerEvents="none">
+              <Ionicons name="layers-outline" size={18} color="rgba(255,255,255,0.95)" />
+            </View>
+          ) : null}
+        </TouchableOpacity>
+      );
+    },
+    [
+      exploreGridCellSize,
+      exploreGridColumns,
+      exploreGridGap,
+      openView,
+    ],
+  );
+
+  const exploreListHeader = useMemo(() => {
+    if (posts.length === 0) return null;
+    return (
+      <>
+        <View style={twStyle("mb-3 mt-1 flex-row flex-wrap items-center gap-2 rounded-xl bg-pink-50 p-3")}>
+          <Ionicons name="gift-outline" size={20} color="#be185d" />
+          <Text style={twStyle("min-w-[48%] flex-1 text-sm text-pink-900")}>
+            Earn reward points when you post to Explore. Share your work to grow visibility and unlock rewards.
+          </Text>
+          <TouchableOpacity
+            onPress={openCreateIfAllowed}
+            style={twStyle("rounded-lg bg-pink-600 px-3 py-2")}
+            accessibilityLabel="Create new post"
+            accessibilityRole="button"
+          >
+            <Text style={twStyle("text-xs font-semibold text-white")}>Post now</Text>
+          </TouchableOpacity>
+        </View>
+        <View
+          style={twStyle("mb-4 flex-row flex-wrap items-center gap-y-2 rounded-xl border border-gray-100 bg-gray-50 p-4")}
+        >
+          <View style={twStyle("mr-6 flex-row items-center gap-2")}>
+            <Ionicons name="eye-outline" size={20} color="#6b7280" />
+            <Text style={twStyle("text-sm text-gray-600")}>Total views</Text>
+            <Text style={twStyle("text-base font-semibold text-gray-900")}>{analyticsTotals.views}</Text>
+          </View>
+          <View style={twStyle("mr-6 flex-row items-center gap-2")}>
+            <Ionicons name="heart-outline" size={20} color="#6b7280" />
+            <Text style={twStyle("text-sm text-gray-600")}>Total likes</Text>
+            <Text style={twStyle("text-base font-semibold text-gray-900")}>{analyticsTotals.likes}</Text>
+          </View>
+          <TouchableOpacity
+            onPress={openExploreFeed}
+            style={twStyle("ml-auto flex-row items-center gap-1")}
+            accessibilityRole="button"
+            accessibilityLabel="Open Explore feed in browser"
+          >
+            <Ionicons name="open-outline" size={18} color="#db2777" />
+            <Text style={twStyle("text-sm font-semibold text-[#db2777]")}>View Explore</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={twStyle("mb-2 px-1 text-xs font-medium uppercase tracking-wide text-gray-500")}>
+          Your posts
+        </Text>
+      </>
+    );
+  }, [
+    posts.length,
+    analyticsTotals.views,
+    analyticsTotals.likes,
+    openCreateIfAllowed,
+    openExploreFeed,
+  ]);
+
+  const exploreListFooter = useMemo(() => {
+    if (!canLoadMorePosts) return null;
+    return (
+      <TouchableOpacity
+        onPress={() => void loadMorePosts()}
+        disabled={loadingMorePosts}
+        style={twStyle("mt-2 items-center rounded-xl border border-gray-200 bg-white px-4 py-3")}
+        accessibilityRole="button"
+        accessibilityLabel="Load more Explore posts"
+      >
+        {loadingMorePosts ? (
+          <ActivityIndicator color="#ec4899" />
+        ) : (
+          <Text style={twStyle("text-sm font-semibold text-[#ec4899]")}>Load more posts</Text>
+        )}
+      </TouchableOpacity>
+    );
+  }, [canLoadMorePosts, loadMorePosts, loadingMorePosts]);
+
+  const handleEndReachedExplore = useCallback(() => {
+    if (!canLoadMorePosts || loadingMorePosts) return;
+    void loadMorePosts();
+  }, [canLoadMorePosts, loadingMorePosts, loadMorePosts]);
 
   if (loading && !data) {
     return (
@@ -696,143 +845,37 @@ export default function ExplorePostsScreen() {
       <View style={{ flex: 1, minHeight: 0 }}>
         <ScreenHeader title="Explore" showBack subtitle="Your Explore posts" rightAction={createHeaderAction} />
 
-        <ScrollView
+        <FlatList
+          key={`explore-grid-${exploreGridColumns}`}
           style={twStyle("flex-1")}
-          contentContainerStyle={{ paddingBottom: scrollBottomPad }}
+          data={posts}
+          numColumns={exploreGridColumns}
+          keyExtractor={(item: ExplorePost) => item.id}
+          renderItem={renderExploreGridItem}
+          ListHeaderComponent={exploreListHeader ?? undefined}
+          ListFooterComponent={exploreListFooter ?? undefined}
+          ListEmptyComponent={
+            <EmptyState
+              icon="camera-outline"
+              title="No posts yet"
+              description="Create your first post to appear in the Explore feed and earn reward points."
+              actionLabel="Create post"
+              onAction={openCreate}
+            />
+          }
+          contentContainerStyle={{
+            paddingBottom: scrollBottomPad,
+            flexGrow: 1,
+          }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
           showsVerticalScrollIndicator={false}
-        >
-        {posts.length === 0 ? (
-          <EmptyState
-            icon="camera-outline"
-            title="No posts yet"
-            description="Create your first post to appear in the Explore feed and earn reward points."
-            actionLabel="Create post"
-            onAction={openCreate}
-          />
-        ) : (
-          <>
-            <View style={twStyle("mb-3 mt-1 flex-row flex-wrap items-center gap-2 rounded-xl bg-pink-50 p-3")}>
-              <Ionicons name="gift-outline" size={20} color="#be185d" />
-              <Text style={twStyle("min-w-[48%] flex-1 text-sm text-pink-900")}>
-                Earn reward points when you post to Explore. Share your work to grow visibility and unlock rewards.
-              </Text>
-              <TouchableOpacity
-                onPress={openCreateIfAllowed}
-                style={twStyle("rounded-lg bg-pink-600 px-3 py-2")}
-                accessibilityLabel="Create new post"
-                accessibilityRole="button"
-              >
-                <Text style={twStyle("text-xs font-semibold text-white")}>Post now</Text>
-              </TouchableOpacity>
-            </View>
-            <View
-              style={twStyle("mb-4 flex-row flex-wrap items-center gap-y-2 rounded-xl border border-gray-100 bg-gray-50 p-4")}
-            >
-              <View style={twStyle("mr-6 flex-row items-center gap-2")}>
-                <Ionicons name="eye-outline" size={20} color="#6b7280" />
-                <Text style={twStyle("text-sm text-gray-600")}>Total views</Text>
-                <Text style={twStyle("text-base font-semibold text-gray-900")}>{analyticsTotals.views}</Text>
-              </View>
-              <View style={twStyle("mr-6 flex-row items-center gap-2")}>
-                <Ionicons name="heart-outline" size={20} color="#6b7280" />
-                <Text style={twStyle("text-sm text-gray-600")}>Total likes</Text>
-                <Text style={twStyle("text-base font-semibold text-gray-900")}>{analyticsTotals.likes}</Text>
-              </View>
-              <TouchableOpacity
-                onPress={openExploreFeed}
-                style={twStyle("ml-auto flex-row items-center gap-1")}
-                accessibilityRole="button"
-                accessibilityLabel="Open Explore feed in browser"
-              >
-                <Ionicons name="open-outline" size={18} color="#db2777" />
-                <Text style={twStyle("text-sm font-semibold text-[#db2777]")}>View Explore</Text>
-              </TouchableOpacity>
-            </View>
-            <View>
-              {posts.map((post, idx) => {
-                const thumb = post.media_urls?.[0];
-                const tileSize = windowWidth - screenPadding * 2;
-                return (
-                <TouchableOpacity
-                    key={post.id}
-                    onPress={() => openView(post)}
-                    activeOpacity={0.85}
-                    style={[twStyle("overflow-hidden rounded-2xl border border-gray-200 bg-white"), idx > 0 ? { marginTop: 16 } : undefined]}
-                  >
-                    <View style={[twStyle("overflow-hidden bg-gray-100"), { width: "100%", aspectRatio: 1 }]}>
-                      {thumb ? (
-                        <ExploreFeedMediaThumb uri={thumb} height={tileSize} />
-                      ) : (
-                        <View style={twStyle("h-full w-full items-center justify-center")}>
-                          <Ionicons name="image-outline" size={48} color="#d1d5db" />
-                        </View>
-                      )}
-                    </View>
-                    <View style={twStyle("p-3")}>
-                      <Text
-                        style={twStyle("text-sm text-gray-700")}
-                        numberOfLines={2}
-                      >
-                        {post.caption || "No caption"}
-                      </Text>
-                      <View style={twStyle("mt-2 flex-row flex-wrap items-center gap-y-1")}>
-                        <View
-                          style={[twStyle(`rounded-full px-2.5 py-0.5 ${
-                            post.status === "published"
-                              ? "bg-green-100"
-                              : "bg-gray-100"
-                          }`), { marginRight: 8 }]}
-                        >
-                          <Text
-                            style={twStyle(`text-xs font-medium ${
-                              post.status === "published"
-                                ? "text-green-800"
-                                : "text-gray-600"
-                            }`)}
-                          >
-                            {post.status}
-                          </Text>
-                        </View>
-                        <Text style={twStyle("text-xs text-gray-500")}>
-                          {post.like_count ?? 0} likes · {post.comment_count ?? 0} comments ·{" "}
-                          {typeof post.view_count === "number" ? post.view_count : 0} views
-                        </Text>
-                      </View>
-                      {post.status === "published" ? (
-                        <TouchableOpacity
-                          onPress={() => openPublicPost(post.id)}
-                          style={twStyle("mt-2 flex-row items-center self-start")}
-                          accessibilityRole="button"
-                          accessibilityLabel="View this post on the public Explore page"
-                        >
-                          <Ionicons name="open-outline" size={14} color="#db2777" />
-                          <Text style={twStyle("ml-1 text-xs font-medium text-[#db2777]")}>View on Explore</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-              {canLoadMorePosts && (
-                <TouchableOpacity
-                  onPress={loadMorePosts}
-                  disabled={loadingMorePosts}
-                  style={twStyle("mt-4 items-center rounded-xl border border-gray-200 bg-white px-4 py-3")}
-                  accessibilityRole="button"
-                  accessibilityLabel="Load more Explore posts"
-                >
-                  <Text style={twStyle("text-sm font-semibold text-[#ec4899]")}>
-                    {loadingMorePosts ? "Loading..." : "Load more posts"}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </>
-        )}
-        </ScrollView>
+          onEndReached={handleEndReachedExplore}
+          onEndReachedThreshold={0.35}
+          initialNumToRender={18}
+          windowSize={7}
+        />
 
         <TouchableOpacity
           onPress={openCreateIfAllowed}
@@ -1276,22 +1319,33 @@ export default function ExplorePostsScreen() {
             <>
               {(() => {
                 const urls = viewPost.media_urls ?? [];
-                const pageW = Math.max(280, windowWidth - screenPadding * 2);
+                const pageW = exploreDetailMediaWidth;
                 if (urls.length === 0) return null;
                 return (
-                  <View style={{ marginBottom: 16, alignItems: "center" }}>
+                  <View
+                    style={{
+                      marginBottom: 16,
+                      width: pageW,
+                      alignSelf: "center",
+                    }}
+                  >
+                    {/*
+                      Nested horizontal ScrollView must have an explicit height; otherwise
+                      aspectRatio children do not lay out and images appear blank (RN).
+                    */}
                     <ScrollView
                       horizontal
+                      nestedScrollEnabled
                       pagingEnabled
                       showsHorizontalScrollIndicator={false}
-                      style={{ width: pageW }}
+                      style={{ width: pageW, height: pageW }}
                     >
                       {urls.map((url, idx) => (
-                        <View key={`${url}-${idx}`} style={{ width: pageW }}>
+                        <View key={`${url}-${idx}`} style={{ width: pageW, height: pageW }}>
                           <View
                             style={{
                               width: "100%",
-                              aspectRatio: 1,
+                              height: "100%",
                               borderRadius: 12,
                               overflow: "hidden",
                               backgroundColor: "#f3f4f6",
@@ -1314,12 +1368,25 @@ export default function ExplorePostsScreen() {
                                 accessibilityLabel={`Post media ${idx + 1} of ${urls.length}`}
                               />
                             )}
+                            {urls.length > 1 ? (
+                              <View
+                                style={{
+                                  position: "absolute",
+                                  bottom: 10,
+                                  alignSelf: "center",
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 4,
+                                  borderRadius: 12,
+                                  backgroundColor: "rgba(0,0,0,0.5)",
+                                }}
+                                pointerEvents="none"
+                              >
+                                <Text style={twStyle("text-xs font-medium text-white")}>
+                                  {idx + 1} / {urls.length}
+                                </Text>
+                              </View>
+                            ) : null}
                           </View>
-                          {urls.length > 1 ? (
-                            <Text style={twStyle("mt-1 text-center text-xs text-gray-400")}>
-                              {idx + 1} / {urls.length}
-                            </Text>
-                          ) : null}
                         </View>
                       ))}
                     </ScrollView>

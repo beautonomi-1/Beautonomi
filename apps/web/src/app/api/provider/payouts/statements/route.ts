@@ -6,6 +6,10 @@ import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { dateRangeBoundsUtc, formatDateYmd, nowInTz } from "@/lib/dates/provider-tz";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import { subDays } from "date-fns";
 
 /**
  * GET /api/provider/payouts/statements
@@ -46,22 +50,42 @@ export async function GET(request: NextRequest) {
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const { searchParams } = new URL(request.url);
-    const now = new Date();
-    const defaultTo = now;
-    const defaultFrom = new Date(now);
-    defaultFrom.setDate(defaultFrom.getDate() - 90);
+    const supabaseAdmin = getSupabaseAdmin();
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const tz = reportContext.timezone;
 
     const fromParam = searchParams.get("from");
     const toParam = searchParams.get("to");
-    const fromDate = fromParam ? new Date(fromParam + "T00:00:00") : defaultFrom;
-    const toDate = toParam ? new Date(toParam + "T23:59:59") : defaultTo;
-
-    const supabaseAdmin = getSupabaseAdmin();
+    let fromDate: Date;
+    let toDate: Date;
+    let periodFromYmd: string;
+    let periodToYmd: string;
+    if (fromParam || toParam) {
+      const r = reportDateRangeFromParams(searchParams, tz, {
+        defaultDays: 90,
+        maxDays: MAX_REPORT_DAYS,
+      });
+      fromDate = r.fromDate;
+      toDate = r.toDate;
+      periodFromYmd = r.fromYmd;
+      periodToYmd = r.toYmd;
+    } else {
+      const zNow = nowInTz(tz);
+      const todayYmd = formatDateYmd(zNow, tz);
+      const fromYmd = formatDateYmd(subDays(zNow, 89), tz);
+      const bounds = dateRangeBoundsUtc(fromYmd, todayYmd, tz);
+      fromDate = new Date(bounds.fromIso);
+      toDate = new Date(bounds.toIso);
+      periodFromYmd = fromYmd;
+      periodToYmd = todayYmd;
+    }
     const { totalRevenue, revenueByBooking: _rbk, revenueByDate: _rd } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       fromDate,
-      toDate
+      toDate,
+      null,
+      { timezone: tz },
     );
 
     // Platform commission: sum the `net` field of "payment" ledger rows — that is the actual
@@ -106,8 +130,8 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       period: {
-        from: fromDate.toISOString().slice(0, 10),
-        to: toDate.toISOString().slice(0, 10),
+        from: periodFromYmd,
+        to: periodToYmd,
       },
       total_earnings: totalRevenue,
       total_payouts: totalPayouts,

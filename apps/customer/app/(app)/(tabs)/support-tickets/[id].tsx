@@ -392,7 +392,7 @@ export default function SupportTicketDetailScreen() {
 
           {!canReply && (
             <Text style={styles.closedNote}>
-              This ticket is {ticket.status}. Open Help → Contact support to start a new ticket if you need further
+              This ticket is {ticket.status}. Open Help → New ticket if you need further
               help.
             </Text>
           )}

@@ -155,8 +155,8 @@ export default function PayoutsReport() {
     >
       <div className="space-y-6">
         <PageHeader
-          title="Payouts"
-          subtitle="Track booked value, payoutable earnings, payouts, and platform fees"
+          title="Payout earnings (ledger)"
+          subtitle="Ledger-based booked value and provider earnings held by the platform — not bank transfer payout history"
           actions={
             <Button variant="outline" onClick={handleExport}>
               <Download className="w-4 h-4 mr-2" />

@@ -16,11 +16,15 @@ const patchSchema = z.object({
   notification_delay_minutes: z.number().min(0).max(60).optional(),
   allow_client_self_check_in: z.boolean().optional(),
   allow_online_waitlist: z.boolean().optional(),
+  waitlist_auto_booking_enabled: z.boolean().optional(),
   max_waitlist_size: z.number().min(10).max(500).optional(),
   auto_remove_after_days: z.number().min(1).max(365).optional(),
   enable_virtual_waiting_room: z.boolean().optional(),
   show_estimated_wait_time: z.boolean().optional(),
 });
+
+const WAITLIST_SETTINGS_SELECT =
+  "waitlist_intelligent_enabled, waitlist_auto_notify, waitlist_notify_priority_first, waitlist_notification_delay_minutes, waitlist_client_self_checkin, waitlist_online_enabled, waitlist_max_size, waitlist_auto_remove_days, waitlist_virtual_room_enabled, waitlist_show_estimated_time, waitlist_auto_booking_enabled" as const;
 
 /**
  * GET /api/provider/settings/waitlist
@@ -43,9 +47,7 @@ export async function GET(request: NextRequest) {
 
     const { data: provider, error } = await supabase
       .from("providers")
-      .select(
-        "waitlist_intelligent_enabled, waitlist_auto_notify, waitlist_notify_priority_first, waitlist_notification_delay_minutes, waitlist_client_self_checkin, waitlist_online_enabled, waitlist_max_size, waitlist_auto_remove_days, waitlist_virtual_room_enabled, waitlist_show_estimated_time"
-      )
+      .select(WAITLIST_SETTINGS_SELECT)
       .eq("id", providerId)
       .single();
 
@@ -60,6 +62,7 @@ export async function GET(request: NextRequest) {
       notificationDelayMinutes: provider?.waitlist_notification_delay_minutes ?? 0,
       allowClientSelfCheckIn: provider?.waitlist_client_self_checkin ?? true,
       allowOnlineWaitlist: provider?.waitlist_online_enabled ?? true,
+      waitlistAutoBookingEnabled: provider?.waitlist_auto_booking_enabled ?? false,
       maxWaitlistSize: provider?.waitlist_max_size ?? 50,
       autoRemoveAfterDays: provider?.waitlist_auto_remove_days ?? 30,
       enableVirtualWaitingRoom: provider?.waitlist_virtual_room_enabled ?? true,
@@ -118,6 +121,9 @@ export async function PATCH(request: NextRequest) {
     if (body.allow_online_waitlist !== undefined) {
       updateData.waitlist_online_enabled = body.allow_online_waitlist;
     }
+    if (body.waitlist_auto_booking_enabled !== undefined) {
+      updateData.waitlist_auto_booking_enabled = body.waitlist_auto_booking_enabled;
+    }
     if (body.max_waitlist_size !== undefined) {
       updateData.waitlist_max_size = body.max_waitlist_size;
     }
@@ -135,9 +141,7 @@ export async function PATCH(request: NextRequest) {
       .from("providers")
       .update(updateData)
       .eq("id", providerId)
-      .select(
-        "waitlist_intelligent_enabled, waitlist_auto_notify, waitlist_notify_priority_first, waitlist_notification_delay_minutes, waitlist_client_self_checkin, waitlist_online_enabled, waitlist_max_size, waitlist_auto_remove_days, waitlist_virtual_room_enabled, waitlist_show_estimated_time"
-      )
+      .select(WAITLIST_SETTINGS_SELECT)
       .single();
 
     if (error) {
@@ -151,6 +155,7 @@ export async function PATCH(request: NextRequest) {
       notificationDelayMinutes: data?.waitlist_notification_delay_minutes ?? 0,
       allowClientSelfCheckIn: data?.waitlist_client_self_checkin ?? true,
       allowOnlineWaitlist: data?.waitlist_online_enabled ?? true,
+      waitlistAutoBookingEnabled: data?.waitlist_auto_booking_enabled ?? false,
       maxWaitlistSize: data?.waitlist_max_size ?? 50,
       autoRemoveAfterDays: data?.waitlist_auto_remove_days ?? 30,
       enableVirtualWaitingRoom: data?.waitlist_virtual_room_enabled ?? true,

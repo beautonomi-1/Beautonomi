@@ -1012,7 +1012,7 @@ function MembershipCard({
             borderColor: Colors.gray[200],
           }}
         >
-          <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>You're subscribed</Text>
+          <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>{"You're subscribed"}</Text>
           <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 4 }}>Manage in Account → Membership</Text>
         </View>
       ) : (
@@ -1368,7 +1368,7 @@ export default function PartnerProfileScreen() {
       reviewCount: provider.review_count,
       distanceKm: provider.distance_km ?? null,
     });
-  }, [provider, slug]);
+  }, [provider, effectiveSlug]);
 
   /* ── Message ── */
   const handleMessage = useCallback(() => {
@@ -1827,7 +1827,7 @@ export default function PartnerProfileScreen() {
 
             <TrustModule
               distance_km={provider.distance_km as number | null | undefined}
-              rating={provider.rating}
+              rating={Number(provider.rating ?? 0)}
               review_count={provider.review_count}
               onPressSetAddress={() => router.push("/(app)/account-settings/addresses")}
               onPressReviews={() => {
@@ -2383,13 +2383,13 @@ export default function PartnerProfileScreen() {
                     >
                       <View style={{ alignItems: "center", width: 108, paddingRight: 12, justifyContent: "center" }}>
                         <Text style={{ fontSize: 36, fontWeight: "800", color: Colors.gray[900], lineHeight: 38, letterSpacing: -0.8 }}>
-                          {provider.rating.toFixed(1)}
+                          {Number(provider.rating ?? 0).toFixed(1)}
                         </Text>
                         <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[500], marginTop: 2, letterSpacing: 0.2 }}>
                           out of 5
                         </Text>
                         <View style={{ marginTop: 8 }}>
-                          <StarRow rating={provider.rating} size={14} />
+                          <StarRow rating={Number(provider.rating ?? 0)} size={14} />
                         </View>
                         <View style={{ flexDirection: "row", alignItems: "center", marginTop: 10, maxWidth: 108 }}>
                           <Ionicons name="chatbubbles-outline" size={15} color={Colors.gray[500]} style={{ marginRight: 5 }} />

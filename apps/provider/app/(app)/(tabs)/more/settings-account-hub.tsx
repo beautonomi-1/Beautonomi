@@ -48,7 +48,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     title: "App",
     description: "Language and display",
     items: [
-      { title: "Language", description: "App language (English, Afrikaans, isiZulu, Sesotho, and more)", href: "/provider/settings/language", mobileRoute: "/(app)/(tabs)/more/settings/language" },
+      { title: "Language & region", description: "App language & market entry point", href: "/provider/settings/language", mobileRoute: "/(app)/(tabs)/more/settings/language" },
     ],
   },
   {

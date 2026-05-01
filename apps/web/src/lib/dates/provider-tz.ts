@@ -61,9 +61,25 @@ function buildLocalDateFromYmd(
 }
 
 /**
+ * Shift a YYYY-MM-DD label by `deltaDays` on the Gregorian calendar (no IANA conversion).
+ * Matches portal date-key iteration and exclusive range ends.
+ */
+export function addDaysToYmd(ymd: string, deltaDays: number): string {
+  const [y, mo, d] = ymd.split("-").map(Number);
+  const u = new Date(Date.UTC(y, mo - 1, d));
+  u.setUTCDate(u.getUTCDate() + deltaDays);
+  return u.toISOString().slice(0, 10);
+}
+
+/** Gregorian calendar +1 day on a YYYY-MM-DD label (no IANA conversion). */
+export function addOneDayYmd(ymd: string): string {
+  return addDaysToYmd(ymd, 1);
+}
+
+/**
  * Resolve the effective timezone string, falling back to Africa/Johannesburg.
  *
- * §Launch-audit 2026-04-18: legacy provider rows can have offset-style
+ * Launch-audit 2026-04-18: legacy provider rows can have offset-style
  * timezones like "GMT+2" or "+02:00". Previously `isValidTimezone`
  * would reject these and we'd silently fall back to Africa/Johannesburg
  * — catastrophic for a New York provider stored as "GMT-05". We now

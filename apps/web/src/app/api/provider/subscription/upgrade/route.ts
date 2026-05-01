@@ -17,6 +17,8 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
+import { addYears } from "date-fns";
+import { formatInTz, fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 
 const upgradeSubscriptionSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -54,9 +56,12 @@ export async function POST(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
     const { data: providerTenantRow } = await supabase
       .from("providers")
-      .select("tenant_id")
+      .select("tenant_id, timezone")
       .eq("id", providerId)
       .maybeSingle();
+    const tz = resolveTz(
+      (providerTenantRow as { tenant_id?: string | null; timezone?: string | null } | null)?.timezone,
+    );
     if (
       !resourceTenantMatchesHostTenant(
         tenantId,
@@ -90,8 +95,7 @@ export async function POST(request: NextRequest) {
 
     if (planRow.is_free) {
       const now = new Date();
-      const expiresAt = new Date(now);
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      const expiresAt = fromBusinessTime(addYears(nowInTz(tz), 1), tz);
 
       const { data: subscription, error: subError } = await supabase.from("provider_subscriptions")
         .upsert({
@@ -155,9 +159,9 @@ export async function POST(request: NextRequest) {
               old_plan_name: oldPlanName,
               new_amount: "Free",
               billing_period: "yearly",
-              effective_date: new Date().toLocaleDateString(),
+              effective_date: formatInTz(now, "MMM d, yyyy", tz),
               app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
-              year: new Date().getFullYear().toString(),
+              year: formatInTz(now, "yyyy", tz),
             },
             ["push", "email", "sms"],
             { appType: "provider" }
@@ -300,8 +304,8 @@ export async function POST(request: NextRequest) {
       const oldPlanName = oldPlan?.name ?? "Previous Plan";
       const newPlanName = planRow.name;
       const newAmount = billing_period === "yearly" ? planRow.price_yearly : planRow.price_monthly;
-      const nextPaymentDate = paystackSubscription?.next_payment_date 
-        ? new Date(paystackSubscription.next_payment_date).toLocaleDateString()
+      const nextPaymentDate = paystackSubscription?.next_payment_date
+        ? formatInTz(new Date(paystackSubscription.next_payment_date), "MMM d, yyyy", tz)
         : "N/A";
 
       // Determine if upgrade or downgrade by comparing plan prices
@@ -325,9 +329,9 @@ export async function POST(request: NextRequest) {
               new_amount: newAmount ? `${planRow.currency ?? lastResortCurrency} ${newAmount.toLocaleString()}` : "N/A",
               billing_period: billing_period,
               next_payment_date: nextPaymentDate,
-              effective_date: new Date().toLocaleDateString(),
+              effective_date: formatInTz(new Date(), "MMM d, yyyy", tz),
               app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
-              year: new Date().getFullYear().toString(),
+              year: formatInTz(new Date(), "yyyy", tz),
             },
             ["push", "email", "sms"],
             { appType: "provider" }

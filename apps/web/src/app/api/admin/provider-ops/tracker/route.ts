@@ -8,11 +8,8 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import {
-  fetchAllPaged,
-  chunkIds,
-  unwrapEmbedded,
-} from "@/lib/provider-ops/postgrest-unbounded";
+import { chunkIds, unwrapEmbedded } from "@/lib/provider-ops/postgrest-unbounded";
+import { fetchProviderOnboardingDraftsForTenantScope } from "@/lib/provider-ops/scoped-onboarding-drafts";
 
 const STEP_NAMES: Record<number, string> = {
   1: "Team Size",
@@ -100,25 +97,18 @@ export async function GET(request: NextRequest) {
       };
     };
 
-    const joined = await fetchAllPaged<Record<string, unknown>>(async (from, to) => {
-      const r = await supabase
-        .from("provider_onboarding_drafts")
-        .select(
-          `
+    const joined = await fetchProviderOnboardingDraftsForTenantScope(
+      `
         id,
         user_id,
         draft_data,
         current_step,
         created_at,
         updated_at,
-        users!inner(id, email, full_name, phone, role, created_at, preferred_home_tenant_id)
-      `
-        )
-        .eq("users.preferred_home_tenant_id", tenantId)
-        .order("updated_at", { ascending: false })
-        .range(from, to);
-      return { data: r.data as Record<string, unknown>[] | null, error: r.error };
-    });
+        users!inner(id, email, full_name, phone, role, created_at)
+      `,
+      tenantId
+    );
 
     const drafts: DraftWithUser[] = joined
       .map((row) => {

@@ -6,6 +6,7 @@ import {
   filterLedgerRowsForLocation,
   getProviderReportContext,
   reportDateRangeFromParams,
+  summarizeLedgerLocationAttribution,
 } from "@/lib/reports/provider-report-utils";
 
 /**
@@ -74,6 +75,10 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", toDate.toISOString());
+    const ledgerLocationAttribution = summarizeLedgerLocationAttribution(
+      (ft ?? []) as FinanceRow[],
+      locationId,
+    );
     const financeRows = await filterLedgerRowsForLocation(
       supabaseAdmin,
       providerId,
@@ -239,9 +244,10 @@ export async function GET(request: NextRequest) {
           "Provider earnings plus tips, travel, and cancellation fees, less refund ledger rows in the selected period.",
         location:
           locationId
-            ? "Location filter includes ledger rows linked to bookings at the selected location and product orders collected at the selected location; provider-level unlinked rows are excluded."
+            ? ledgerLocationAttribution.note
             : "All provider locations and provider-level ledger rows.",
       },
+      locationAttribution: ledgerLocationAttribution,
       // Booking counts
       totalPayments,
       successfulPayments,

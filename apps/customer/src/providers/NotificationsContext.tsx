@@ -9,6 +9,26 @@ import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 
+/** Extra callbacks when `notifications` rows change — avoids a second postgres_changes channel (Supabase rejects duplicate bindings after subscribe). */
+const notificationsRealtimeListeners = new Set<() => void>();
+
+export function registerNotificationsRealtimeCallback(fn: () => void): () => void {
+  notificationsRealtimeListeners.add(fn);
+  return () => {
+    notificationsRealtimeListeners.delete(fn);
+  };
+}
+
+function notifyNotificationsRealtimeListeners() {
+  notificationsRealtimeListeners.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      // ignore listener errors
+    }
+  });
+}
+
 type NotificationsContextValue = {
   unreadCount: number;
   refetchUnreadCount: () => Promise<void>;
@@ -90,7 +110,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
         () => {
-          refetchRef.current();
+          void refetchRef.current();
+          notifyNotificationsRealtimeListeners();
         }
       )
       .subscribe();

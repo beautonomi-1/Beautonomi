@@ -898,7 +898,7 @@ export default function ProductOrderDetailScreen() {
         {["delivered", "ready_for_collection"].includes(order.status) && !isWithinReturnWindow(order) && (
           <View style={{ padding: contentPadding, marginTop: 12 }}>
             <Text style={{ fontSize: 13, color: "#6B7280", textAlign: "center" }}>
-              Return window ({RETURN_WINDOW_DAYS} days) has passed. For help, contact support.
+              Return window ({RETURN_WINDOW_DAYS} days) has passed. For help, open Profile → Help centre → New ticket.
             </Text>
           </View>
         )}

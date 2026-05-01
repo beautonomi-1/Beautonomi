@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { canAccessReportType } from "@/lib/subscriptions/report-gating";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, startOfDay, endOfDay } from "date-fns";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { calculateStaffCommission } from "@/lib/payroll/commission-calculator";
 
@@ -30,12 +31,11 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
     const searchParams = request.nextUrl.searchParams;
-    const fromDate = searchParams.get("from")
-      ? startOfDay(new Date(searchParams.get("from")!))
-      : startOfDay(subDays(new Date(), 30));
-    const toDate = searchParams.get("to")
-      ? endOfDay(new Date(searchParams.get("to")!))
-      : endOfDay(new Date());
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+      defaultDays: 30,
+      maxDays: MAX_REPORT_DAYS,
+    });
     const staffId = searchParams.get("staffId");
     const locationId = searchParams.get("location_id") || undefined;
 
@@ -69,13 +69,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Get provider revenue from finance_transactions
-    const { revenueByBooking } = await getProviderRevenue(
-      supabaseAdmin,
-      providerId,
-      fromDate,
-      toDate,
-      locationId ?? null
-    );
+    const { revenueByBooking } = await getProviderRevenue(supabaseAdmin, providerId, fromDate, toDate, locationId ?? null, {
+      timezone: reportContext.timezone,
+    });
 
     // Get bookings for date range
     let bookingsQuery = supabaseAdmin

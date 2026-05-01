@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireRoleInApi, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { z } from "zod";
 import type { UserRole } from "@/types/beautonomi";
 import { writeAuditLog } from "@/lib/audit/audit";
@@ -39,10 +42,15 @@ export async function PUT(
     const { user } = await requireRoleInApi(["superadmin"], request);
 
     const { id } = await params;
+    const tenantId = await resolveAdminApiTenantId(request);
+    const visible = await getUserRowIfAccessibleToAdminTenant(getSupabaseAdmin(), tenantId, id);
+    if (!visible) {
+      return notFoundResponse("User not found");
+    }
+
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
-    // Validate request body
     const validationResult = roleUpdateSchema.safeParse(body);
     if (!validationResult.success) {
       return errorResponse(

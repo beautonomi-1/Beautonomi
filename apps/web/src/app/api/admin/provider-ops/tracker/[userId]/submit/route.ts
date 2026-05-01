@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function POST(
@@ -41,13 +42,7 @@ export async function POST(
       return errorResponse("Draft is missing business_name", "VALIDATION_ERROR", 400);
     }
 
-    const { data: targetUser, error: userErr } = await supabase
-      .from("users")
-      .select("id, email, full_name, phone, role")
-      .eq("id", userId)
-      .eq("preferred_home_tenant_id", tenantId)
-      .single();
-    if (userErr) throw userErr;
+    const targetUser = await getUserRowIfAccessibleToAdminTenant(supabase, tenantId, userId);
     if (!targetUser) {
       return notFoundResponse("User not found");
     }
@@ -86,8 +81,10 @@ export async function POST(
         team_size: (draftData.team_size as string) || "just_me",
         status: "pending_approval",
         onboarding_state: "ready_for_activation",
-        billing_email: targetUser.email,
-        billing_phone: targetUser.phone || (draftData.owner_phone as string),
+        billing_email: typeof targetUser.email === "string" ? targetUser.email : "",
+        billing_phone:
+          (typeof targetUser.phone === "string" ? targetUser.phone : null) ||
+          (draftData.owner_phone as string),
         is_verified: false,
         yoco_machine_id: (draftData.yoco_machine as string) || null,
       })
@@ -177,7 +174,11 @@ export async function POST(
     if (trackErr) throw trackErr;
 
     // Run lead matching
-    await matchLeadToProvider(supabase, provider, targetUser, tenantId);
+    await matchLeadToProvider(supabase, provider, {
+      id: String(targetUser.id),
+      email: typeof targetUser.email === "string" ? targetUser.email : "",
+      phone: typeof targetUser.phone === "string" ? targetUser.phone : "",
+    }, tenantId);
 
     void writeAuditLog({
       actor_user_id: user.id,

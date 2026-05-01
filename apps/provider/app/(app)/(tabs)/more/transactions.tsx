@@ -80,7 +80,7 @@ function isDebitType(t: Transaction): boolean {
 
 function signedContributionForSummary(t: Transaction): number {
   if (t.type === "earning" || t.type === "tip") return t.amount;
-  if (t.type === "payout" || t.type === "refund") return -t.amount;
+  if (t.type === "payout" || t.type === "refund" || t.type === "fee") return -t.amount;
   if (t.type === "adjustment") return (t.sign ?? 1) * t.amount;
   return 0;
 }
@@ -110,6 +110,7 @@ export default function TransactionsScreen() {
   const [search, setSearch] = useState("");
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
 
+  /** Org-wide ledger: omit `location_id` so payouts and non-booking rows still appear when a branch is selected in the app (matches Transactions hub behaviour). */
   const { data: transactions, loading, error: txnError, refresh } = useApi<Transaction[]>(
     `/api/provider/transactions?period=${period}&limit=200`
   );
@@ -134,12 +135,14 @@ export default function TransactionsScreen() {
     }
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(
-        (t) =>
-          t.description.toLowerCase().includes(q) ||
+      list = list.filter((t) => {
+        const desc = String(t.description ?? "").toLowerCase();
+        return (
+          desc.includes(q) ||
           t.client_name?.toLowerCase().includes(q) ||
           t.reference?.toLowerCase().includes(q)
-      );
+        );
+      });
     }
     return list;
   }, [transactions, typeFilter, search]);
@@ -300,6 +303,7 @@ export default function TransactionsScreen() {
               netAmount >= 0 ? "text-blue-700" : "text-orange-700"
             }`)}
           >
+            {netAmount < 0 ? "−" : ""}
             {formatCurrency(Math.abs(netAmount))}
           </Text>
         </View>
