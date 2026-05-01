@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function PUT(
@@ -10,22 +12,25 @@ export async function PUT(
 ) {
   try {
     const { user: admin } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
-    const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
+    const adminClient = getSupabaseAdmin();
 
-    if (!supabase) {
+    const { id } = await params;
+
+    const accessible = await getUserRowIfAccessibleToAdminTenant(adminClient, tenantId, id);
+    if (!accessible) {
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: "Supabase client not available",
-            code: "SERVER_ERROR",
+            message: "User not found",
+            code: "USER_NOT_FOUND",
           },
         },
-        { status: 500 }
+        { status: 404 }
       );
     }
 
-    const { id } = await params;
     const body = await request.json();
     const { new_password } = body;
 
@@ -42,9 +47,7 @@ export async function PUT(
       );
     }
 
-    // Use Supabase Admin API to update password
-    // Note: This requires service role key or admin API access
-    const { error } = await supabase.auth.admin.updateUserById(id, {
+    const { error } = await adminClient.auth.admin.updateUserById(id, {
       password: new_password,
     });
 

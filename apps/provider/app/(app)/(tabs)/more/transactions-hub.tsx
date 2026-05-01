@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -8,8 +8,29 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+
+const FINANCE_RANGE_OPTIONS: { label: string; value: "week" | "month" | "year" | "all" }[] = [
+  { label: "Week", value: "week" },
+  { label: "Month", value: "month" },
+  { label: "Year", value: "year" },
+  { label: "All", value: "all" },
+];
+
+function recentListCaption(range: string): string {
+  switch (range) {
+    case "week":
+      return "Last 7 days";
+    case "year":
+      return "Last 12 months";
+    case "all":
+      return "All time";
+    default:
+      return "Month to date";
+  }
+}
 
 /**
  * §Provider-audit 2026-04 (B1): when we replaced the "Transaction history"
@@ -28,8 +49,16 @@ type ShortcutRow = {
 
 const SHORTCUTS: ShortcutRow[] = [
   {
+    icon: "list-outline",
+    label: "Finance ledger",
+    subtitle: "Fees, payouts, tips, filters & CSV export",
+    route: "/(app)/(tabs)/more/transactions",
+    color: "#2563eb",
+    bg: "#dbeafe",
+  },
+  {
     icon: "card-outline",
-    label: "Transaction history",
+    label: "Walk-in & POS sales",
     subtitle: "Appointments, products & add-ons",
     route: "/(app)/(tabs)/sales",
     color: "#0d9488",
@@ -78,14 +107,16 @@ function formatDateTimeSafe(value: unknown): string {
 export default function TransactionsHubScreen() {
   const router = useRouter();
   const tenantCurrency = getTenantDefaultCurrency();
-  const { selectedLocationId } = useProvider();
+  const { provider } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
-  const financeUrl = selectedLocationId
-    ? `/api/provider/finance?range=month&location_id=${encodeURIComponent(selectedLocationId)}`
-    : `/api/provider/finance?range=month`;
+  const [range, setRange] = useState<"week" | "month" | "year" | "all">("month");
+  const showAllLocationsHint = (provider?.locations?.length ?? 0) > 1;
+  /** Org-wide ledger snapshot: do not pass `location_id` — finance filters drop payouts and other non-booking rows when scoped to a branch, which made this hub look empty or wrong for multi-location businesses. */
+  const financeUrl = `/api/provider/finance?range=${range}`;
   const { data, loading, error, refresh } = useApi<FinanceResponse>(financeUrl);
 
   const transactions: Transaction[] = (data as FinanceResponse)?.transactions ?? [];
+  const periodCaption = recentListCaption(range);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -151,12 +182,30 @@ export default function TransactionsHubScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
           <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], letterSpacing: 0.5 }}>
             RECENT TRANSACTIONS
           </Text>
+          <Text style={{ marginTop: 4, fontSize: 13, color: Colors.gray[600] }}>{periodCaption}</Text>
+          <View style={{ marginTop: 10 }}>
+            <FilterChipGroup
+              options={FINANCE_RANGE_OPTIONS}
+              selected={range}
+              onSelect={(v) => setRange(v as "week" | "month" | "year" | "all")}
+            />
+          </View>
+          {showAllLocationsHint ? (
+            <Text style={{ marginTop: 10, fontSize: 13, color: Colors.gray[500] }}>
+              All locations — switch branch in the header to filter sales elsewhere.
+            </Text>
+          ) : null}
         </View>
-        {transactions.length === 0 ? (
+        {loading && data && !refreshing ? (
+          <View style={{ paddingVertical: 40, paddingHorizontal: 16, alignItems: "center" }}>
+            <ActivityIndicator color={Colors.gray[500]} />
+            <Text style={{ marginTop: 12, fontSize: 13, color: Colors.gray[500] }}>Updating…</Text>
+          </View>
+        ) : transactions.length === 0 ? (
           <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="swap-horizontal-outline" size={48} color="#9ca3af" />
             <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No transactions yet</Text>

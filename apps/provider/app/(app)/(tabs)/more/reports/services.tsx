@@ -44,9 +44,9 @@ interface ServicesData {
 }
 
 export default function ServicesReport() {
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId, provider } = useProvider();
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
-  const { from, to } = getReportDateRange(dateRange);
+  const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
   const rangeCaption = formatReportRangeCaption(from, to);
   const servicesReportUrl = appendReportLocation(`/api/provider/reports/services?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, refresh } = useApi<ServicesData>(servicesReportUrl);

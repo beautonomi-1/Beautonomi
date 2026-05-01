@@ -14,7 +14,9 @@ import { Save, Bell, MessageSquare, Clock, Users } from "lucide-react";
 
 export default function WaitlistSettings() {
   const [isSaving, setIsSaving] = useState(false);
-  
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
   const [settings, setSettings] = useState({
     enableIntelligentWaitlist: true,
     autoNotifyOnAvailability: true,
@@ -34,6 +36,8 @@ export default function WaitlistSettings() {
   }, []);
 
   const loadSettings = async () => {
+    setLoadError(null);
+    setLoading(true);
     try {
       const response = await fetcher.get<{
         data: {
@@ -48,12 +52,20 @@ export default function WaitlistSettings() {
           autoRemoveAfterDays: number;
           enableVirtualWaitingRoom: boolean;
           showEstimatedWaitTime: boolean;
-        };
-      }>("/api/provider/settings/waitlist");
-      setSettings(response.data);
+        } | null;
+      }>("/api/provider/settings/waitlist", { staleTimeMs: 0 });
+      const payload = response.data;
+      if (payload && typeof payload === "object") {
+        setSettings((prev) => ({ ...prev, ...payload }));
+      }
     } catch (error) {
       console.error("Failed to load settings:", error);
-      // Keep defaults on error
+      const message =
+        error instanceof Error ? error.message : "Could not load waitlist settings.";
+      setLoadError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -95,7 +107,22 @@ export default function WaitlistSettings() {
         ]}
       />
 
-      <div className="space-y-6">
+      {loadError ? (
+        <div className="mb-6 flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-red-800">{loadError}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 border-red-300 text-red-900 hover:bg-red-100"
+            onClick={() => void loadSettings()}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : null}
+
+      <div className={`space-y-6 ${loading ? "pointer-events-none opacity-60" : ""}`}>
         {/* Intelligent Waitlist */}
         <SectionCard>
           <div className="space-y-4">

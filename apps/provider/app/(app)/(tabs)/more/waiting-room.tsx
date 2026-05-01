@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format, parseISO, isSameDay } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -39,7 +39,7 @@ interface TodayBookingRow {
   services?: { name?: string; offering_name?: string; duration_minutes?: number }[];
 }
 
-const METRIC_RANGES: Array<{ id: FrontDeskMetricRange; label: string }> = [
+const METRIC_RANGES: { id: FrontDeskMetricRange; label: string }[] = [
   { id: "all", label: "All" },
   { id: "today", label: "Today" },
   { id: "week", label: "Week" },
@@ -59,6 +59,16 @@ function isActiveScheduleBooking(b: TodayBookingRow): boolean {
 
 export default function WaitingRoomScreen() {
   const router = useRouter();
+  const routeParams = useLocalSearchParams<{
+    highlight?: string;
+    booking_id?: string;
+    pending_booking_id?: string;
+  }>();
+  const highlightTarget =
+    (typeof routeParams.pending_booking_id === "string" && routeParams.pending_booking_id.trim()) ||
+    (typeof routeParams.highlight === "string" && routeParams.highlight.trim()) ||
+    (typeof routeParams.booking_id === "string" && routeParams.booking_id.trim()) ||
+    "";
 
   /** Navigate to the correct screen for a booking row (group or individual). */
   const openBooking = useCallback(
@@ -207,7 +217,6 @@ export default function WaitingRoomScreen() {
 
   /** Today's schedule comes from the same endpoint as Calendar — primary load. */
   const scheduleStillLoading = bookingsLoading && rawBookings === null;
-  const scheduleLoadError = bookingsError && rawBookings === null;
 
   if (scheduleStillLoading) {
     return (
@@ -220,16 +229,7 @@ export default function WaitingRoomScreen() {
     );
   }
 
-  if (scheduleLoadError) {
-    return (
-      <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Front Desk" subtitle="Could not load schedule" showBack />
-        <View style={twStyle("flex-1 justify-center px-4")}>
-          <ErrorState message={bookingsError ?? "Could not load today's bookings"} onRetry={onRefresh} />
-        </View>
-      </ScreenContainer>
-    );
-  }
+  const scheduleLoadError = Boolean(bookingsError && rawBookings === null);
 
   return (
     <ScreenContainer scrollable={false}>
@@ -242,6 +242,12 @@ export default function WaitingRoomScreen() {
           <RefreshControl refreshing={waitingLoading || bookingsLoading} onRefresh={onRefresh} tintColor="#1a1f3c" />
         }
       >
+        {scheduleLoadError ? (
+          <View style={twStyle("mx-4 mb-4")}>
+            <ErrorState message={bookingsError ?? "Could not load today's bookings"} onRetry={onRefresh} />
+          </View>
+        ) : null}
+
         <View style={twStyle("mx-4 mb-3")}>
           <Text style={twStyle("mb-2 text-[10px] font-black uppercase tracking-widest text-gray-500")}>Metrics</Text>
           <View style={twStyle("flex-row flex-wrap")}>
@@ -325,11 +331,15 @@ export default function WaitingRoomScreen() {
               const t = format(parseISO(b.scheduled_at), "HH:mm");
               const name = b.customers?.full_name ?? "Guest";
               const svc = b.services?.[0];
+              const isHighlight = highlightTarget.length > 0 && b.id === highlightTarget;
               return (
                 <TouchableOpacity
                   key={b.id}
                   onPress={() => openBooking(b)}
-                  style={twStyle("mb-2 flex-row items-center rounded-xl border-2 border-amber-300 bg-amber-50/90 p-4")}
+                  style={[
+                    twStyle("mb-2 flex-row items-center rounded-xl border-2 border-amber-300 bg-amber-50/90 p-4"),
+                    isHighlight ? { borderColor: "#C026D3", backgroundColor: "#FAE8FF" } : null,
+                  ]}
                   accessibilityRole="button"
                   accessibilityLabel={`Pending booking ${name} at ${t}`}
                 >
@@ -363,11 +373,15 @@ export default function WaitingRoomScreen() {
               const t = format(parseISO(b.scheduled_at), "HH:mm");
               const name = b.customers?.full_name ?? "Guest";
               const svc = b.services?.[0];
+              const isHighlight = highlightTarget.length > 0 && b.id === highlightTarget;
               return (
                 <TouchableOpacity
                   key={b.id}
                   onPress={() => openBooking(b)}
-                  style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
+                  style={[
+                    twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4"),
+                    isHighlight ? { borderColor: "#C026D3", borderWidth: 2, backgroundColor: "#FAE8FF" } : null,
+                  ]}
                   accessibilityRole="button"
                 >
                   <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-slate-100")}>
@@ -400,7 +414,15 @@ export default function WaitingRoomScreen() {
               </View>
             ) : (
               waitingList.map((entry) => (
-                <View key={entry.id} style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-3")}>
+                <View
+                  key={entry.id}
+                  style={[
+                    twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-3"),
+                    highlightTarget.length > 0 && entry.id === highlightTarget
+                      ? { borderColor: "#C026D3", borderWidth: 2, backgroundColor: "#FAE8FF" }
+                      : null,
+                  ]}
+                >
                   <TouchableOpacity
                     onPress={() => openBooking(entry)}
                     style={twStyle("min-w-0 flex-1 flex-row items-center")}
@@ -439,7 +461,15 @@ export default function WaitingRoomScreen() {
               </View>
             ) : (
               inServiceList.map((entry) => (
-                <View key={entry.id} style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-3")}>
+                <View
+                  key={entry.id}
+                  style={[
+                    twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-3"),
+                    highlightTarget.length > 0 && entry.id === highlightTarget
+                      ? { borderColor: "#C026D3", borderWidth: 2, backgroundColor: "#FAE8FF" }
+                      : null,
+                  ]}
+                >
                   <TouchableOpacity
                     onPress={() => openBooking(entry)}
                     style={twStyle("min-w-0 flex-1 flex-row items-center")}

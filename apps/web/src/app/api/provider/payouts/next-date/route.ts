@@ -1,7 +1,16 @@
 import { NextRequest } from "next/server";
+import { addDays, addMonths, startOfMonth } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import {
+  addOneDayYmd,
+  dateRangeBoundsUtc,
+  formatDateYmd,
+  getDayInTz,
+  resolveTz,
+} from "@/lib/dates/provider-tz";
 
 /**
  * GET /api/provider/payouts/next-date
@@ -28,7 +37,7 @@ export async function GET(request: NextRequest) {
     // Fetch the provider's tenant so settings are scoped correctly in a multi-tenant deployment.
     const { data: prow } = await supabase
       .from("providers")
-      .select("tenant_id")
+      .select("tenant_id, timezone")
       .eq("id", providerId)
       .maybeSingle();
     const providerTenantId = (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
@@ -46,24 +55,26 @@ export async function GET(request: NextRequest) {
     const minimum = payouts.minimum_payout_amount ?? 100;
     const holdDays = payouts.payout_hold_days ?? 0;
 
+    const tz = resolveTz((prow as { timezone?: string | null } | null)?.timezone);
     const now = new Date();
-    let nextDate: Date | null = null;
+    const todayYmd = formatDateYmd(now, tz);
+    let nextPayoutYmd: string | null = null;
     let description: string;
 
     if (schedule === "daily") {
-      nextDate = new Date(now);
-      nextDate.setDate(nextDate.getDate() + 1);
-      nextDate.setHours(0, 0, 0, 0);
+      nextPayoutYmd = addOneDayYmd(todayYmd);
       description = "Payouts can be processed daily. Request from Finance when your balance is available.";
     } else if (schedule === "weekly") {
-      const dayOfWeek = 2;
-      const daysUntilNext = (dayOfWeek - now.getDay() + 7) % 7 || 7;
-      nextDate = new Date(now);
-      nextDate.setDate(nextDate.getDate() + daysUntilNext);
-      nextDate.setHours(0, 0, 0, 0);
+      const targetDow = 2;
+      const todayDow = getDayInTz(now, tz);
+      let daysUntilNext = (targetDow - todayDow + 7) % 7;
+      if (daysUntilNext === 0) daysUntilNext = 7;
+      const { fromIso } = dateRangeBoundsUtc(todayYmd, todayYmd, tz);
+      nextPayoutYmd = formatDateYmd(addDays(new Date(fromIso), daysUntilNext), tz);
       description = "Payouts typically run weekly. Request from Finance when your balance is available.";
     } else {
-      nextDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const zNow = toZonedTime(now, tz);
+      nextPayoutYmd = formatDateYmd(startOfMonth(addMonths(zNow, 1)), tz);
       description = "Payouts typically run monthly. Request from Finance when your balance is available.";
     }
 
@@ -71,7 +82,7 @@ export async function GET(request: NextRequest) {
       payout_schedule: schedule,
       minimum_payout_amount: minimum,
       payout_hold_days: holdDays,
-      next_payout_date: nextDate ? nextDate.toISOString().slice(0, 10) : null,
+      next_payout_date: nextPayoutYmd,
       next_payout_description: description,
     });
   } catch (error) {

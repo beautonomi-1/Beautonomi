@@ -1,6 +1,15 @@
 import { NextRequest } from "next/server";
+import { addDays, differenceInCalendarDays } from "date-fns";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  addOneDayYmd,
+  dateRangeBoundsUtc,
+  formatDateYmd,
+  formatInTz,
+  getDayInTz,
+} from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { z } from "zod";
 
 const createShiftSchema = z.object({
@@ -13,41 +22,44 @@ const createShiftSchema = z.object({
   recurring_pattern: z.any().optional(),
 });
 
-function formatDateLocal(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+function utcStartOfYmd(ymd: string, tz: string): Date {
+  return new Date(dateRangeBoundsUtc(ymd, ymd, tz).fromIso);
 }
 
-function parseDateLocal(value: string): Date {
-  return new Date(`${value}T00:00:00`);
+function calendarDaysBetween(fromYmd: string, toYmd: string, tz: string): number {
+  return differenceInCalendarDays(utcStartOfYmd(toYmd, tz), utcStartOfYmd(fromYmd, tz));
 }
 
-function daysBetween(start: Date, end: Date): number {
-  return Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+function monthsBetweenYmd(anchorYmd: string, targetYmd: string, tz: string): number {
+  const a = utcStartOfYmd(anchorYmd, tz);
+  const t = utcStartOfYmd(targetYmd, tz);
+  const ay = Number(formatInTz(a, "yyyy", tz));
+  const am = Number(formatInTz(a, "M", tz));
+  const ty = Number(formatInTz(t, "yyyy", tz));
+  const tm = Number(formatInTz(t, "M", tz));
+  return (ty - ay) * 12 + (tm - am);
 }
 
-function monthsBetween(start: Date, end: Date): number {
-  return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-}
-
-function shiftAppliesOnDate(shift: any, date: string): boolean {
+/**
+ * Recurring shift applicability using the provider timezone — aligned with
+ * provider calendar `formatDateKeyInTimeZone` / `week_start` from the portal.
+ */
+function shiftAppliesOnDate(shift: any, date: string, tz: string): boolean {
   if (!shift.is_recurring) return shift.date === date;
 
   const rule = shift.recurring_pattern && typeof shift.recurring_pattern === "object"
     ? shift.recurring_pattern
     : {};
   const pattern = String(rule.pattern || rule.frequency || (rule.type === "alternating" ? "biweekly" : "weekly"));
-  const anchor = parseDateLocal(shift.date);
-  const target = parseDateLocal(date);
-  if (target < anchor) return false;
+  const anchorYmd = String(shift.date).slice(0, 10);
+  if (date < anchorYmd) return false;
 
-  if (rule.end_date && date > String(rule.end_date)) return false;
+  const endRule = rule.end_date != null ? String(rule.end_date).slice(0, 10) : null;
+  if (endRule && date > endRule) return false;
 
   const intervalRaw = Number(rule.interval || (pattern === "biweekly" ? 2 : 1));
   const interval = Number.isFinite(intervalRaw) && intervalRaw > 0 ? intervalRaw : 1;
-  const diffDays = daysBetween(anchor, target);
+  const diffDays = calendarDaysBetween(anchorYmd, date, tz);
   let occurrenceIndex: number | null = null;
   let applies = false;
 
@@ -56,26 +68,33 @@ function shiftAppliesOnDate(shift: any, date: string): boolean {
     occurrenceIndex = Math.floor(diffDays / interval) + 1;
   } else if (pattern === "weekly" || pattern === "biweekly") {
     const explicitDays = Array.isArray(rule.days) ? rule.days : Array.isArray(rule.days_of_week) ? rule.days_of_week : null;
+    const targetDow = getDayInTz(utcStartOfYmd(date, tz), tz);
     if (explicitDays && explicitDays.length > 0) {
-      applies = explicitDays.includes(target.getDay()) && Math.floor(diffDays / 7) % interval === 0;
+      applies = explicitDays.includes(targetDow) && Math.floor(diffDays / 7) % interval === 0;
       if (applies) {
-        // Multiple-days-per-week rules are uncommon for shifts; count conservatively by scanning.
         let count = 0;
-        for (let d = new Date(anchor); d <= target; d.setDate(d.getDate() + 1)) {
-          if (explicitDays.includes(d.getDay()) && Math.floor(daysBetween(anchor, d) / 7) % interval === 0) {
+        for (let cursorYmd = anchorYmd; cursorYmd <= date; cursorYmd = addOneDayYmd(cursorYmd)) {
+          const dow = getDayInTz(utcStartOfYmd(cursorYmd, tz), tz);
+          if (
+            explicitDays.includes(dow) &&
+            Math.floor(calendarDaysBetween(anchorYmd, cursorYmd, tz) / 7) % interval === 0
+          ) {
             count += 1;
           }
         }
         occurrenceIndex = count;
       }
     } else {
+      const anchorDow = getDayInTz(utcStartOfYmd(anchorYmd, tz), tz);
       const weeks = Math.floor(diffDays / 7);
-      applies = target.getDay() === anchor.getDay() && weeks % interval === 0;
+      applies = targetDow === anchorDow && weeks % interval === 0;
       occurrenceIndex = applies ? Math.floor(weeks / interval) + 1 : null;
     }
   } else if (pattern === "monthly") {
-    const months = monthsBetween(anchor, target);
-    applies = target.getDate() === anchor.getDate() && months >= 0 && months % interval === 0;
+    const months = monthsBetweenYmd(anchorYmd, date, tz);
+    const anchorDom = Number(formatInTz(utcStartOfYmd(anchorYmd, tz), "d", tz));
+    const targetDom = Number(formatInTz(utcStartOfYmd(date, tz), "d", tz));
+    applies = targetDom === anchorDom && months >= 0 && months % interval === 0;
     occurrenceIndex = applies ? Math.floor(months / interval) + 1 : null;
   }
 
@@ -112,6 +131,8 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
+    const { timezone: tz } = await getProviderReportContext(supabase, providerId);
+
     let shiftQuery = supabase
       .from("staff_shifts")
       .select(`
@@ -130,17 +151,13 @@ export async function GET(request: NextRequest) {
 
     let weekDates: string[] = [];
     if (weekStart) {
-      const start = parseDateLocal(weekStart);
-      const end = new Date(start);
-      end.setDate(end.getDate() + 6);
-      weekDates = Array.from({ length: 7 }, (_, index) => {
-        const d = new Date(start);
-        d.setDate(d.getDate() + index);
-        return formatDateLocal(d);
-      });
+      const mondayStartUtc = new Date(dateRangeBoundsUtc(weekStart, weekStart, tz).fromIso);
+      weekDates = Array.from({ length: 7 }, (_, index) =>
+        formatDateYmd(addDays(mondayStartUtc, index), tz),
+      );
       // Include one-off rows in the week and recurring anchors that started
       // before this week ends; expand/filter in application code below.
-      shiftQuery = shiftQuery.lte("date", formatDateLocal(end));
+      shiftQuery = shiftQuery.lte("date", weekDates[6] ?? weekStart);
     }
 
     if (staffId) {
@@ -166,7 +183,7 @@ export async function GET(request: NextRequest) {
     const transformedShifts = (shifts || []).flatMap((shift: any) => {
       const dates = weekDates.length > 0 ? weekDates : [shift.date];
       return dates
-        .filter((dateStr) => shiftAppliesOnDate(shift, dateStr))
+        .filter((dateStr) => shiftAppliesOnDate(shift, dateStr, tz))
         .map((dateStr) => ({
           id: shift.id,
           team_member_id: shift.staff_id,
@@ -227,12 +244,9 @@ export async function GET(request: NextRequest) {
         scheduleByStaffDay.set(`${sched.staff_id}::${sched.day_of_week}`, sched);
       }
 
-      const start = new Date(weekStart + "T00:00:00");
       for (let i = 0; i < 7; i++) {
-        const d = new Date(start);
-        d.setDate(d.getDate() + i);
-        const dow = d.getDay();
-        const dateStr = formatDateLocal(d);
+        const dateStr = weekDates[i]!;
+        const dow = getDayInTz(utcStartOfYmd(dateStr, tz), tz);
         const dayKey = DAY_KEYS[dow];
 
         for (const sid of allStaffIds) {

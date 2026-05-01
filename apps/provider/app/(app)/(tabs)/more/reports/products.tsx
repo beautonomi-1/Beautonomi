@@ -53,9 +53,9 @@ interface ProductsData {
 }
 
 export default function ProductsReport() {
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId, provider } = useProvider();
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
-  const { from, to } = getReportDateRange(dateRange);
+  const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
   const rangeCaption = formatReportRangeCaption(from, to);
   const productsReportUrl = appendReportLocation(`/api/provider/reports/products?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, refresh } = useApi<ProductsData>(productsReportUrl);

@@ -8,7 +8,8 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { effectiveStockQuantity } from "@/lib/provider-portal/product-inventory-metrics";
-import { filterProductOrdersForLocation } from "@/lib/reports/provider-report-utils";
+import { filterProductOrdersForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
 
 type CatalogRow = {
   id: string;
@@ -53,6 +54,9 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
 
+    const { timezone: tz } = await getProviderReportContext(supabaseAdmin, providerId);
+    const ymdParam = /^\d{4}-\d{2}-\d{2}$/;
+
     const { searchParams } = request.nextUrl;
     const locationId = searchParams.get("location_id");
     const from = searchParams.get("from");
@@ -92,11 +96,13 @@ export async function GET(request: NextRequest) {
     if (locationId) {
       bookingsQuery = bookingsQuery.eq("location_id", locationId);
     }
-    if (from) {
-      bookingsQuery = bookingsQuery.gte("scheduled_at", `${from}T00:00:00.000Z`);
+    if (from && ymdParam.test(from.slice(0, 10))) {
+      const d0 = from.slice(0, 10);
+      bookingsQuery = bookingsQuery.gte("scheduled_at", dateRangeBoundsUtc(d0, d0, tz).fromIso);
     }
-    if (to) {
-      bookingsQuery = bookingsQuery.lte("scheduled_at", `${to}T23:59:59.999Z`);
+    if (to && ymdParam.test(to.slice(0, 10))) {
+      const d1 = to.slice(0, 10);
+      bookingsQuery = bookingsQuery.lte("scheduled_at", dateRangeBoundsUtc(d1, d1, tz).toIso);
     }
 
     let ordersQuery = supabaseAdmin
@@ -109,11 +115,13 @@ export async function GET(request: NextRequest) {
       .or("order_source.is.null,order_source.neq.appointment")
       .not("status", "in", "(cancelled,refunded)");
 
-    if (from) {
-      ordersQuery = ordersQuery.gte("created_at", `${from}T00:00:00.000Z`);
+    if (from && ymdParam.test(from.slice(0, 10))) {
+      const d0 = from.slice(0, 10);
+      ordersQuery = ordersQuery.gte("created_at", dateRangeBoundsUtc(d0, d0, tz).fromIso);
     }
-    if (to) {
-      ordersQuery = ordersQuery.lte("created_at", `${to}T23:59:59.999Z`);
+    if (to && ymdParam.test(to.slice(0, 10))) {
+      const d1 = to.slice(0, 10);
+      ordersQuery = ordersQuery.lte("created_at", dateRangeBoundsUtc(d1, d1, tz).toIso);
     }
 
     const [{ data: bookings, error: bookingsError }, { data: orders, error: ordersError }] = await Promise.all([

@@ -8,7 +8,7 @@ import {
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { subDays, subMonths, startOfDay, startOfWeek, startOfMonth } from "date-fns";
-import { fromBusinessTime, nowInTz } from "@/lib/dates/provider-tz";
+import { dateRangeBoundsUtc, formatDateYmd, fromBusinessTime, nowInTz } from "@/lib/dates/provider-tz";
 import { filterLedgerRowsForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import {
   mapFinanceLedgerRowToProviderUi,
@@ -54,8 +54,13 @@ export async function GET(request: NextRequest) {
       case "all":
         fromDate = new Date(2000, 0, 1);
         break;
-      default:
-        fromDate = subDays(new Date(), 30);
+      default: {
+        const tz = reportContext.timezone;
+        const fromYmd = formatDateYmd(subDays(businessNow, 29), tz);
+        const todayYmd = formatDateYmd(businessNow, tz);
+        fromDate = new Date(dateRangeBoundsUtc(fromYmd, todayYmd, tz).fromIso);
+        break;
+      }
     }
 
     const fetchLimit = Math.min(limit * 3, 600);

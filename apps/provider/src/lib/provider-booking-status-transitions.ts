@@ -56,3 +56,11 @@ export function dbTargetToPatchStatusField(dbTarget: string): string {
 export function labelForDbStatus(db: string): string {
   return LABELS[db] ?? db.replace(/_/g, " ");
 }
+
+/** Local optimistic overlay fields after the user triggers a transition (before refresh completes). */
+export function optimisticBookingFieldsForDbTarget(dbTarget: string): { db_status: string; status: string } {
+  return {
+    db_status: dbTarget,
+    status: dbTargetToPatchStatusField(dbTarget),
+  };
+}

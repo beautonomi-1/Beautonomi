@@ -40,17 +40,39 @@ async function sumWalletTopupsForTenant(
   }
 }
 
+function rpcCountValue(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  return NaN;
+}
+
 async function tenantCustomerCountFallback(
   supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
   tenantId: string
 ): Promise<number> {
-  const { count, error } = await supabase
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin.rpc("admin_count_users_in_tenant_scope", {
+    p_tenant_id: tenantId,
+    p_role: "customer",
+  });
+  if (!error && data != null) {
+    const n = rpcCountValue(data);
+    if (Number.isFinite(n)) return n;
+  }
+  if (error) {
+    console.warn("tenantCustomerCountFallback admin_count_users_in_tenant_scope:", error.message);
+  }
+
+  const { count, error: cErr } = await supabase
     .from("users")
     .select("*", { count: "exact", head: true })
     .eq("role", "customer")
     .eq("preferred_home_tenant_id", tenantId);
-  if (error) {
-    console.error("tenantCustomerCountFallback:", error);
+  if (cErr) {
+    console.error("tenantCustomerCountFallback preferred_home:", cErr);
     return 0;
   }
   return count ?? 0;
@@ -116,20 +138,24 @@ export async function GET(request: NextRequest) {
       totalCustomers = await tenantCustomerCountFallback(supabase, tenantId);
     }
 
-    const queryResults = await Promise.allSettled([
-      supabase
-        .from("users")
-        .select("*", { count: "exact", head: true })
-        .eq("role", "customer")
-        .eq("preferred_home_tenant_id", tenantId)
-        .gte("created_at", startOfMonth.toISOString()),
-      supabase
-        .from("users")
-        .select("*", { count: "exact", head: true })
-        .eq("role", "customer")
-        .eq("preferred_home_tenant_id", tenantId)
-        .gte("created_at", startOfLastMonth.toISOString())
-        .lte("created_at", endOfLastMonth.toISOString()),
+    const [
+      signupThisMonthRes,
+      signupLastMonthRes,
+      queryResults,
+    ] = await Promise.all([
+      supabaseAdmin.rpc("admin_count_users_in_tenant_scope_created_between", {
+        p_tenant_id: tenantId,
+        p_role: "customer",
+        p_created_at_min: startOfMonth.toISOString(),
+        p_created_at_max: null,
+      }),
+      supabaseAdmin.rpc("admin_count_users_in_tenant_scope_created_between", {
+        p_tenant_id: tenantId,
+        p_role: "customer",
+        p_created_at_min: startOfLastMonth.toISOString(),
+        p_created_at_max: endOfLastMonth.toISOString(),
+      }),
+      Promise.allSettled([
       supabase.from("providers").select("*", { count: "exact", head: true }).eq("status", "active").eq("tenant_id", tenantId),
       supabase
         .from("providers")
@@ -166,7 +192,20 @@ export async function GET(request: NextRequest) {
         .select("*", { count: "exact", head: true })
         .eq("status", "pending_approval")
         .eq("tenant_id", tenantId),
+      ]),
     ]);
+
+    const usersThisMonthRaw = signupThisMonthRes.error ? NaN : rpcCountValue(signupThisMonthRes.data);
+    const usersThisMonth = Number.isFinite(usersThisMonthRaw) ? usersThisMonthRaw : 0;
+    if (signupThisMonthRes.error) {
+      console.error("admin_count_users_in_tenant_scope_created_between (this month):", signupThisMonthRes.error.message);
+    }
+
+    const usersLastMonthRaw = signupLastMonthRes.error ? NaN : rpcCountValue(signupLastMonthRes.data);
+    const usersLastMonth = Number.isFinite(usersLastMonthRaw) ? usersLastMonthRaw : 0;
+    if (signupLastMonthRes.error) {
+      console.error("admin_count_users_in_tenant_scope_created_between (last month):", signupLastMonthRes.error.message);
+    }
 
     const getCount = (result: PromiseSettledResult<{ count?: number | null; error?: unknown }>) => {
       if (result.status === "rejected") {
@@ -180,16 +219,14 @@ export async function GET(request: NextRequest) {
       return result.value.count || 0;
     };
 
-    const usersThisMonth = getCount(queryResults[0]);
-    const usersLastMonth = getCount(queryResults[1]);
-    const totalProviders = getCount(queryResults[2]);
-    const providersThisMonth = getCount(queryResults[3]);
-    const providersLastMonth = getCount(queryResults[4]);
-    const totalBookings = getCount(queryResults[5]);
-    const bookingsToday = getCount(queryResults[6]);
-    const bookingsThisMonth = getCount(queryResults[7]);
-    const bookingsLastMonth = getCount(queryResults[8]);
-    const pendingApprovals = getCount(queryResults[9]);
+    const totalProviders = getCount(queryResults[0]);
+    const providersThisMonth = getCount(queryResults[1]);
+    const providersLastMonth = getCount(queryResults[2]);
+    const totalBookings = getCount(queryResults[3]);
+    const bookingsToday = getCount(queryResults[4]);
+    const bookingsThisMonth = getCount(queryResults[5]);
+    const bookingsLastMonth = getCount(queryResults[6]);
+    const pendingApprovals = getCount(queryResults[7]);
 
     const ledgerStart = new Date(now.getFullYear(), now.getMonth() - LEDGER_TOTAL_MONTHS, 1);
 
@@ -360,11 +397,11 @@ export async function GET(request: NextRequest) {
       metrics_notes: {
         ledger_window_months: LEDGER_TOTAL_MONTHS,
         customer_count_basis:
-          "Distinct customers with preferred_home_tenant OR at least one booking in tenant (RPC).",
+          "Distinct customers in tenant admin scope (same as user directory; RPC).",
         customer_count_fallback_basis:
-          "When the RPC is unavailable, count is customers with preferred_home_tenant only (understates market reach).",
+          "When the primary RPC fails, tries admin_count_users_in_tenant_scope; last resort is preferred_home_tenant only.",
         customer_growth_basis:
-          "New customer accounts with preferred_home_tenant in this market (this month vs last month).",
+          "New customer accounts in tenant admin scope (created_at this calendar month vs last; RPC).",
         platform_net_includes:
           "Booking platform take (includes ecommerce in commission) + subscription net + ads net + customer-paid Platform Fees. Wallet topups are tracked as cash/liability, not recognized revenue. Cancellation fees are provider revenue.",
         bookings_growth_basis: "Bookings created this calendar month vs last month (tenant scope).",

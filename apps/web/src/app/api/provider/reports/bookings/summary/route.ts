@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { getProviderReportContext, reportDateKey, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,17 +23,11 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
     const locationId = searchParams.get("location_id");
-    let fromDate = searchParams.get("from")
-      ? startOfDay(new Date(searchParams.get("from")!))
-      : startOfDay(subDays(new Date(), 30));
-    const toDate = searchParams.get("to")
-      ? endOfDay(new Date(searchParams.get("to")!))
-      : endOfDay(new Date());
-
-    const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysDiff > MAX_REPORT_DAYS) {
-      fromDate = subDays(toDate, MAX_REPORT_DAYS);
-    }
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+      defaultDays: 30,
+      maxDays: MAX_REPORT_DAYS,
+    });
 
     // Get all bookings
     let bookingsQuery = supabaseAdmin
@@ -79,7 +73,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+    const dashOpts = {
+      transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES,
+      timezone: reportContext.timezone,
+    };
 
     const { totalRevenue, revenueByBooking, revenueByDate } = await getProviderRevenue(
       supabaseAdmin,
@@ -114,7 +111,7 @@ export async function GET(request: NextRequest) {
     // Group by day (use finance_transactions revenue)
     const bookingsByDay = new Map<string, { count: number; revenue: number }>();
     bookings?.forEach((booking) => {
-      const date = new Date(booking.scheduled_at).toISOString().split("T")[0];
+      const date = reportDateKey(booking.scheduled_at, reportContext.timezone);
       const existing = bookingsByDay.get(date) || { count: 0, revenue: 0 };
       existing.count += 1;
       bookingsByDay.set(date, existing);

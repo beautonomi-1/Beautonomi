@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect, type ElementRef } from "react";
 import {
   View,
   Text,
@@ -11,13 +11,13 @@ import {
   ActionSheetIOS,
   Platform,
   Share,
-  PanResponder,
   TextInput,
   useWindowDimensions,
   Animated,
   NativeScrollEvent,
   NativeSyntheticEvent,
 } from "react-native";
+import { ScrollView as CalendarGridScrollView, Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
 import { Ionicons } from "@expo/vector-icons";
@@ -87,9 +87,16 @@ import {
 } from "@/lib/expand-time-blocks";
 import {
   expandBookingsForCalendar,
+  normalizeCalendarWallClockLoose as normalizeCalendarTime,
   validateCalendarTimeRange,
 } from "@/lib/provider-calendar-parity";
 import { newBookingScreenHrefFromCalendarDay } from "@/lib/new-booking-nav-defaults";
+import {
+  dbTargetToPatchStatusField,
+  getAllowedTransitionTargets,
+  labelForDbStatus,
+  optimisticBookingFieldsForDbTarget,
+} from "@/lib/provider-booking-status-transitions";
 import {
   dayMinuteRanges,
   deriveGridHourWindow,
@@ -235,13 +242,15 @@ function normalizeAvailabilityBlocksToSegments(
 
 function availabilitySegmentToTimeBlock(seg: AvailabilitySegment): TimeBlock {
   const isStaff = seg._source === "staff_unavailability";
+  const startNorm = normalizeCalendarTime(seg.start_time) ?? seg.start_time;
+  const endNorm = normalizeCalendarTime(seg.end_time) ?? seg.end_time;
   return {
     id: seg.id,
     staff_id: seg.team_member_id,
     block_type: seg.block_type,
     title: (seg.reason && seg.reason.trim()) || seg.block_type,
-    start_time: seg.start_time,
-    end_time: seg.end_time,
+    start_time: startNorm,
+    end_time: endNorm,
     date: seg.date,
     overlay_source: seg._source,
     availability_block_id: isStaff ? undefined : seg.parent_block_id,
@@ -250,16 +259,6 @@ function availabilitySegmentToTimeBlock(seg: AvailabilitySegment): TimeBlock {
 }
 
 const CALENDAR_DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
-
-function normalizeCalendarTime(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const match = value.trim().match(/^(\d{1,2}):(\d{1,2})/);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
-  return `${Math.max(0, Math.min(23, hour)).toString().padStart(2, "0")}:${Math.max(0, Math.min(59, minute)).toString().padStart(2, "0")}`;
-}
 
 function datesInRange(dateFrom: string, dateTo: string): string[] {
   const start = parseISO(dateFrom);
@@ -424,9 +423,6 @@ const TEAM_COLORS: ColorTriple[] = [
   { bg: "#fdf4ff", border: "#d946ef", text: "#701a75" },
 ];
 
-/** Keys for {@link changeBookingStatus}; labels from `provider.calendarScreen.statusActionLabels.*`. */
-const STATUS_ACTION_KEYS = ["booked", "started", "completed", "no_show", "cancelled"] as const;
-
 function translateBookingStatusLabel(t: TFunction, status: string): string {
   const key = `provider.calendarScreen.bookingStatusLabels.${status}`;
   const v = t(key);
@@ -434,7 +430,9 @@ function translateBookingStatusLabel(t: TFunction, status: string): string {
 }
 
 function getStatusActionLabel(t: TFunction, actionKey: string): string {
-  return t(`provider.calendarScreen.statusActionLabels.${actionKey}`);
+  const key = `provider.calendarScreen.statusActionLabels.${actionKey}`;
+  const v = t(key);
+  return v === key ? labelForDbStatus(actionKey) : v;
 }
 
 function translateAvailabilityBlockType(t: TFunction, blockType: string): string {
@@ -537,8 +535,22 @@ function timeStringToMinutes(t: string | undefined | null): number {
   return sharedTimeStringToMinutes(t ?? null) ?? 0;
 }
 
-function parseCalendarDateParam(value: string): Date | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+/**
+ * Parse `?date=` deep links. When `providerTimezone` is set, `YYYY-MM-DD` is interpreted as that
+ * zone's wall calendar date (aligned with `formatDateKeyInTimeZone`), not the device's local date.
+ */
+function parseCalendarDateParam(value: string, providerTimezone?: string | null): Date | null {
+  const trimmed = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (match && providerTimezone) {
+    try {
+      const iso = buildZonedIsoForWallClock(trimmed, "12:00", providerTimezone);
+      const d = parseISO(iso);
+      return Number.isFinite(d.getTime()) ? d : null;
+    } catch {
+      /* fall through */
+    }
+  }
   if (match) {
     const y = Number(match[1]);
     const m = Number(match[2]);
@@ -547,12 +559,24 @@ function parseCalendarDateParam(value: string): Date | null {
       return new Date(y, m - 1, d);
     }
   }
-  const parsed = new Date(value);
+  const parsed = new Date(trimmed);
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
 function calendarDateKey(day: Date, timeZone?: string | null): string {
   return timeZone ? formatDateKeyInTimeZone(day, timeZone) : format(day, "yyyy-MM-dd");
+}
+
+function bookingDbStatus(booking: Booking | CalendarBooking): string {
+  if (typeof booking.db_status === "string" && booking.db_status.trim()) return booking.db_status;
+  const s = booking.status;
+  if (s === "booked") return "confirmed";
+  if (s === "started") return "in_progress";
+  return s;
+}
+
+function bookingActionTargets(booking: Booking | CalendarBooking): string[] {
+  return getAllowedTransitionTargets(bookingDbStatus(booking));
 }
 
 function currentWallClockTimeInZone(timeZone?: string | null): string {
@@ -581,9 +605,10 @@ function buildScheduleShareBody(
 
   const parts: string[] = [header];
   for (const day of days) {
+    const dayKey = calendarDateKey(day, timeZone);
     const dayBookings = sorted.filter((b) => {
       const d = parseApiDateTime(b.scheduled_at);
-      return d != null && isSameDay(d, day);
+      return d != null && calendarDateKey(d, timeZone) === dayKey;
     });
     parts.push(`\n${format(day, "EEE, MMM d")}`);
     if (dayBookings.length === 0) parts.push(t("provider.calendarScreen.share.noAppointments"));
@@ -987,15 +1012,15 @@ function CalendarScreenBody() {
   // reminders can land the provider on the exact day (and optionally open
   // the booking detail). Falls back to today + no booking highlight.
   const searchParams = useLocalSearchParams<{ date?: string; booking_id?: string }>();
+  useAuth();
+  const { provider, selectedLocationId: globalLocationId } = useProvider();
   const deepLinkDate = useMemo(() => {
     if (typeof searchParams.date !== "string" || !searchParams.date) return null;
-    return parseCalendarDateParam(searchParams.date);
-  }, [searchParams.date]);
+    return parseCalendarDateParam(searchParams.date, provider?.timezone ?? null);
+  }, [searchParams.date, provider?.timezone]);
   const handledBookingDeepLinkRef = useRef<string | null>(null);
   const [isFocused, setIsFocused] = useState(true);
   const [secondaryEnabled, setSecondaryEnabled] = useState(false);
-  useAuth();
-  const { provider, selectedLocationId: globalLocationId } = useProvider();
   const { isTablet, screenPadding } = useResponsive();
   const { preferences, updatePreference, resetToDefaults } = useCalendarPreferences();
 
@@ -1069,7 +1094,7 @@ function CalendarScreenBody() {
     end_time: string;
     staff_id: string | null;
   } | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ElementRef<typeof CalendarGridScrollView>>(null);
   const hasScrolledToNow = useRef(false);
   const prevViewModeRef = useRef(viewMode);
   if (prevViewModeRef.current !== viewMode) {
@@ -1087,11 +1112,12 @@ function CalendarScreenBody() {
   const QUARTER_HEIGHT = SLOT_HEIGHT / 4;
   const GRID_TOP_PADDING = CALENDAR_GRID_TOP_PADDING;
 
-  const dateStr = format(selectedDate, "yyyy-MM-dd");
+  const providerTz = provider?.timezone ?? null;
+  const dateStr = calendarDateKey(selectedDate, providerTz);
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
-  const weekEnd = format(addDays(weekStart, 6), "yyyy-MM-dd");
-  const weekStartStr = format(weekStart, "yyyy-MM-dd");
-  const threeDayEnd = format(addDays(selectedDate, 2), "yyyy-MM-dd");
+  const weekEnd = calendarDateKey(addDays(weekStart, 6), providerTz);
+  const weekStartStr = calendarDateKey(weekStart, providerTz);
+  const threeDayEnd = calendarDateKey(addDays(selectedDate, 2), providerTz);
 
   // Day view still shows one day in the grid, but we load the full ISO week so the date strip
   // booking dots, share/print, and month counts stay accurate without extra fetches.
@@ -1100,7 +1126,6 @@ function CalendarScreenBody() {
   const locationParam = locationFilter !== "all" ? `&location_id=${locationFilter}` : "";
 
   // TZ-aware "today" key — matches the provider's wall-clock date, not the device's.
-  const providerTz = provider?.timezone ?? null;
   const providerTodayKey = useMemo(
     () => formatDateKeyInTimeZone(new Date(), providerTz),
     // Recompute at most once per render; selectedDate change refreshes the memo
@@ -1126,6 +1151,7 @@ function CalendarScreenBody() {
     loading,
     error: fetchError,
     refresh,
+    mutate: mutateBookings,
   } = usePagedProviderBookings<Booking>(calendarBookingsPath, {
     enabled: isFocused,
     timeoutMs: 60_000,
@@ -1210,8 +1236,8 @@ function CalendarScreenBody() {
         blocked_time_type_name?: string;
         recurring_pattern?: unknown;
       };
-      const st = String(raw.start_time ?? "00:00").slice(0, 5);
-      const et = String(raw.end_time ?? "00:00").slice(0, 5);
+      const st = normalizeCalendarTime(String(raw.start_time ?? "00:00")) ?? "00:00";
+      const et = normalizeCalendarTime(String(raw.end_time ?? "00:00")) ?? "00:00";
       return {
         id: raw.id,
         staff_id: raw.staff_id ?? raw.team_member_id ?? null,
@@ -1255,27 +1281,6 @@ function CalendarScreenBody() {
   ]);
 
   useCalendarBookingsRealtime(provider?.id, isFocused, refresh, refreshCalendarOverlays);
-
-  /* ─── Swipe navigation via PanResponder ─── */
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_, gestureState) => {
-          return Math.abs(gestureState.dx) > 30 && Math.abs(gestureState.dy) < 30;
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dx > 50) {
-            navigateDate(-1);
-          } else if (gestureState.dx < -50) {
-            navigateDate(1);
-          }
-        },
-      }),
-    // navigateDate is stable by identity; including it would recreate the gesture every time
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedDate, viewMode],
-  );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1661,8 +1666,8 @@ function CalendarScreenBody() {
         staff_id: seg.team_member_id,
         block_type: "booking_hold",
         title: seg.reason?.trim() || t("provider.calendarScreen.bookingHoldTitle"),
-        start_time: seg.start_time,
-        end_time: seg.end_time,
+        start_time: normalizeCalendarTime(seg.start_time) ?? seg.start_time,
+        end_time: normalizeCalendarTime(seg.end_time) ?? seg.end_time,
         date: seg.date,
         calendar_overlay_kind: "booking_hold",
         hold_id: seg.hold_id ?? seg.id,
@@ -1810,11 +1815,32 @@ function CalendarScreenBody() {
     }).length;
   }, [bookings]);
 
-  function navigateDate(direction: number) {
+  const navigateDate = useCallback((direction: number) => {
     const amount = viewMode === "week" ? 7 : viewMode === "3day" ? 3 : 1;
     hasScrolledToNow.current = false;
     setSelectedDate((prev) => (direction > 0 ? addDays(prev, amount) : subDays(prev, amount)));
-  }
+  }, [viewMode]);
+
+  /** Horizontal day swipe: RNGH pan with failOffsetY so vertical scroll wins; disabled in multi-column staff view (nested horizontal scroll). */
+  const swipeDayPanGesture = useMemo(() => {
+    const disableSwipe =
+      viewMode === "day" &&
+      layoutMode === "columns" &&
+      staffColumns != null &&
+      staffColumns.length > 1;
+    return Gesture.Pan()
+      .enabled(!disableSwipe)
+      .activeOffsetX([-52, 52])
+      .failOffsetY([-24, 24])
+      .runOnJS(true)
+      .onEnd((e) => {
+        if (e.translationX > 72) {
+          navigateDate(-1);
+        } else if (e.translationX < -72) {
+          navigateDate(1);
+        }
+      });
+  }, [viewMode, layoutMode, staffColumns, navigateDate]);
 
   function handleTapSlot(
     hour: number,
@@ -1823,7 +1849,7 @@ function CalendarScreenBody() {
     columnStaffId?: string | null,
   ) {
     const targetDay = day ?? selectedDate;
-    const dateParam = format(targetDay, "yyyy-MM-dd");
+    const dateParam = calendarDateKey(targetDay, provider?.timezone ?? null);
     const timeParam = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
     // §Provider-launch (audit 2026-04): when a slot is tapped inside a
     // specific staff column (multi-staff day view), or when a single
@@ -1875,9 +1901,14 @@ function CalendarScreenBody() {
     ) {
       return;
     }
-    const currentActionStatus = booking.db_status === "pending" ? "pending" : booking.status;
-    const availableActions = STATUS_ACTION_KEYS.filter((key) => key !== currentActionStatus);
-    const actionLabels = availableActions.map((key) => getStatusActionLabel(t, key));
+    const availableActions = bookingActionTargets(booking);
+    const actionLabels = availableActions.map((dbTarget) =>
+      getStatusActionLabel(t, dbTargetToPatchStatusField(dbTarget)),
+    );
+    if (availableActions.length === 0) {
+      handleTapBooking(booking);
+      return;
+    }
     if (Platform.OS === "ios") {
       const sheetOptions = [
         t("provider.calendarScreen.cancel"),
@@ -1905,8 +1936,8 @@ function CalendarScreenBody() {
             router.push(`/(app)/(tabs)/bookings/${booking.id}?focusPayment=1` as never);
             return;
           }
-          const actionKey = availableActions[buttonIndex - 3];
-          if (actionKey) changeBookingStatus(booking.id, actionKey);
+          const dbTarget = availableActions[buttonIndex - 3];
+          if (dbTarget) changeBookingStatus(booking.id, dbTarget);
         },
       );
     } else {
@@ -1955,21 +1986,37 @@ function CalendarScreenBody() {
     }
   }
 
-  async function changeBookingStatus(bookingId: string, newStatus: string) {
-    if (newStatus === "cancelled") {
+  async function changeBookingStatus(bookingId: string, dbTarget: string) {
+    if (dbTarget === "cancelled") {
       setCancelReasonBookingId(bookingId);
       setCancelReasonText("");
       return;
     }
-    await applyBookingStatus(bookingId, newStatus);
+    await applyBookingStatus(bookingId, dbTarget);
   }
 
-  async function applyBookingStatus(bookingId: string, newStatus: string, reason?: string) {
+  function optimisticallyUpdateBooking(
+    bookingId: string,
+    update: Partial<Booking>,
+  ): Booking[] | null {
+    if (!bookings) return null;
+    const next = bookings.map((b) => (b.id === bookingId ? { ...b, ...update } : b));
+    mutateBookings(next);
+    return bookings;
+  }
+
+  async function applyBookingStatus(bookingId: string, dbTarget: string, reason?: string) {
     setPendingBookingActionIds((prev) => new Set(prev).add(bookingId));
+    const patchStatus = dbTargetToPatchStatusField(dbTarget);
+    const previousBookings = optimisticallyUpdateBooking(
+      bookingId,
+      optimisticBookingFieldsForDbTarget(dbTarget),
+    );
     try {
-      if (newStatus === "completed") {
+      if (dbTarget === "completed") {
         const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/complete-service`, {});
         if (error) {
+          if (previousBookings) mutateBookings(previousBookings);
           Alert.alert(t("provider.calendarScreen.mutations.completeServiceErrorTitle"), error);
           await refresh();
           return;
@@ -1977,9 +2024,10 @@ function CalendarScreenBody() {
         await refresh();
         return;
       }
-      if (newStatus === "started") {
+      if (dbTarget === "in_progress") {
         const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/start-service`, {});
         if (error) {
+          if (previousBookings) mutateBookings(previousBookings);
           Alert.alert(t("provider.calendarScreen.mutations.startServiceErrorTitle"), error);
           await refresh();
           return;
@@ -1987,10 +2035,11 @@ function CalendarScreenBody() {
         await refresh();
         return;
       }
-      const body: Record<string, unknown> = { status: newStatus };
-      if (newStatus === "cancelled" && reason) body.cancellation_reason = reason;
+      const body: Record<string, unknown> = { status: patchStatus };
+      if (dbTarget === "cancelled" && reason) body.cancellation_reason = reason;
       const { error } = await patchBooking(`/api/provider/bookings/${bookingId}`, body);
       if (error) {
+        if (previousBookings) mutateBookings(previousBookings);
         Alert.alert(t("provider.calendarScreen.mutations.updateBookingErrorTitle"), error);
         await refresh();
         return;
@@ -2037,7 +2086,7 @@ function CalendarScreenBody() {
       // "booking moved to 3am" after a drag. The helper falls back to the
       // device zone if the provider record has no timezone yet, preserving
       // the pre-fix behaviour for that legacy case.
-      const naiveDateStr = format(targetDay, "yyyy-MM-dd");
+      const naiveDateStr = calendarDateKey(targetDay, provider?.timezone ?? null);
       const naiveTimeStr = `${String(hourClamp).padStart(2, "0")}:${String(clampedMinute).padStart(2, "0")}`;
       const providerTimezone = provider?.timezone ?? null;
       const newScheduledAt = buildZonedIsoForWallClock(
@@ -2117,8 +2166,17 @@ function CalendarScreenBody() {
           }
           const payload: { scheduled_at: string; staff_id?: string | null } = { scheduled_at: newScheduledAt };
           if (newStaffId !== undefined) payload.staff_id = newStaffId || null;
+          const optimisticUpdate: Partial<Booking> = { scheduled_at: newScheduledAt };
+          if (newStaffId !== undefined) {
+            optimisticUpdate.services = (booking.services ?? []).map((svc) => ({
+              ...svc,
+              staff_id: newStaffId || null,
+            }));
+          }
+          const previousBookings = optimisticallyUpdateBooking(booking.id, optimisticUpdate);
           const { error } = await patchBooking(`/api/provider/bookings/${booking.id}`, payload);
           if (error) {
+            if (previousBookings) mutateBookings(previousBookings);
             Alert.alert(t("provider.calendarScreen.mutations.moveAppointmentErrorTitle"), error);
             return;
           }
@@ -2179,7 +2237,7 @@ function CalendarScreenBody() {
       // checkout finalising flow.
       const expiresText = block.hold_expires_at
         ? t("provider.calendarScreen.overlayMenu.bookingHoldExpires", {
-            time: new Date(block.hold_expires_at).toLocaleTimeString(),
+            time: formatTimeInZone(block.hold_expires_at, provider?.timezone ?? null),
           })
         : "";
       Alert.alert(
@@ -2640,7 +2698,13 @@ function CalendarScreenBody() {
             </TouchableOpacity>
             <TouchableOpacity
               style={{ backgroundColor: TEAL_ACCENT, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}
-              onPress={() => { setSelectedDate(new Date()); hasScrolledToNow.current = false; }}
+              onPress={() => {
+                const tz = provider?.timezone ?? null;
+                const todayKey = formatDateKeyInTimeZone(new Date(), tz);
+                const next = parseCalendarDateParam(todayKey, tz) ?? new Date();
+                setSelectedDate(next);
+                hasScrolledToNow.current = false;
+              }}
               accessibilityLabel={t("provider.calendarScreen.dateNav.today")}
             >
               <Text style={{ fontSize: 12, fontWeight: "600", color: DARK_HEADER }}>{t("provider.calendarScreen.dateNav.today")}</Text>
@@ -2890,7 +2954,8 @@ function CalendarScreenBody() {
           icon="calendar-outline"
         />
       ) : (
-        <ScrollView
+        <GestureDetector gesture={swipeDayPanGesture}>
+        <CalendarGridScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
@@ -2901,7 +2966,6 @@ function CalendarScreenBody() {
             scrollOffsetRef.current.y = e.nativeEvent.contentOffset.y;
           }}
           scrollEventThrottle={32}
-          {...panResponder.panHandlers}
         >
           <View style={isTablet ? { paddingHorizontal: screenPadding, width: "100%" } : {}}>
           <View ref={gridContainerRef} style={{ flexDirection: "row", paddingHorizontal: 8 }}>
@@ -3117,7 +3181,8 @@ function CalendarScreenBody() {
             )}
           </View>
           </View>
-        </ScrollView>
+        </CalendarGridScrollView>
+        </GestureDetector>
       )}
 
       {/* Drag ghost: follows finger when dragging a booking */}
@@ -3176,7 +3241,7 @@ function CalendarScreenBody() {
                   {t("provider.calendarScreen.collectPayment")}
                 </Text>
               </TouchableOpacity>
-              {STATUS_ACTION_KEYS.filter((key) => key !== (androidBookingMenu.db_status === "pending" ? "pending" : androidBookingMenu.status)).map((key, idx, arr) => (
+              {bookingActionTargets(androidBookingMenu).map((key, idx, arr) => (
                 <TouchableOpacity
                   key={key}
                   style={{
@@ -3197,7 +3262,7 @@ function CalendarScreenBody() {
                       color: key === "cancelled" ? "#dc2626" : Colors.gray[900],
                     }}
                   >
-                    {getStatusActionLabel(t, key)}
+                    {getStatusActionLabel(t, dbTargetToPatchStatusField(key))}
                   </Text>
                 </TouchableOpacity>
               ))}

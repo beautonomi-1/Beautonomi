@@ -3,7 +3,13 @@ import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespo
 import { createClient } from "@supabase/supabase-js";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
-import { filterLedgerRowsForLocation, getProviderReportContext, reportDateKey, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import {
+  filterLedgerRowsForLocation,
+  getProviderReportContext,
+  reportDateKey,
+  reportDateRangeFromParams,
+  summarizeLedgerLocationAttribution,
+} from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -77,6 +83,10 @@ export async function GET(request: NextRequest) {
       .lte("created_at", toDate.toISOString());
 
     const { data: rawFeeRows } = await feeQuery;
+    const feeLocationAttribution = summarizeLedgerLocationAttribution(
+      (rawFeeRows ?? []) as Array<{ booking_id: string | null; product_order_id: string | null }>,
+      locationId,
+    );
     const feeRows = await filterLedgerRowsForLocation(
       supabaseAdmin,
       providerId,
@@ -182,6 +192,7 @@ export async function GET(request: NextRequest) {
       platformFeeRate: platformFeeRate * 100,
       monthlyBreakdown,
       recentPayouts: payouts.slice(0, 20),
+      locationAttribution: feeLocationAttribution,
       // Deprecated compatibility aliases. Prefer totalBookedAmount / bookedAmount.
       totalGrossAmount: totalBookedAmount,
     });

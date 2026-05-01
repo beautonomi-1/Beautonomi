@@ -16,9 +16,8 @@ import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeabl
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
-import { useNotifications } from "@/providers/NotificationsContext";
+import { registerNotificationsRealtimeCallback, useNotifications } from "@/providers/NotificationsContext";
 import { api } from "@/lib/api-client";
-import { supabase } from "@/lib/supabase/client";
 import { Colors, Shadows } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM, RADIUS_CARD } from "@/constants/layout";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -156,30 +155,10 @@ export default function NotificationsScreen() {
   loadRef.current = load;
   useEffect(() => {
     if (!user?.id) return;
-    const channel = supabase
-      .channel(`notifications:user:${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          void loadRef.current({ refresh: true });
-          void refetchUnreadCount();
-        },
-      )
-      .subscribe();
-    return () => {
-      try {
-        supabase.removeChannel(channel);
-      } catch {
-        // ignore
-      }
-    };
-  }, [user?.id, refetchUnreadCount]);
+    return registerNotificationsRealtimeCallback(() => {
+      void loadRef.current({ refresh: true });
+    });
+  }, [user?.id]);
 
   const markRead = useCallback(
     async (id: string, wasUnread: boolean) => {

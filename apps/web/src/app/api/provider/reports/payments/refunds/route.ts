@@ -1,7 +1,14 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { endOfDay, startOfDay, subDays } from "date-fns";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import {
+  filterLedgerRowsForLocation,
+  getProviderReportContext,
+  reportDateKey,
+  reportDateRangeFromParams,
+  summarizeLedgerLocationAttribution,
+} from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,12 +28,11 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
     const searchParams = request.nextUrl.searchParams;
-    const fromDate = searchParams.get("from")
-      ? startOfDay(new Date(searchParams.get("from")!))
-      : startOfDay(subDays(new Date(), 30));
-    const toDate = searchParams.get("to")
-      ? endOfDay(new Date(searchParams.get("to")!))
-      : endOfDay(new Date());
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+      defaultDays: 30,
+      maxDays: MAX_REPORT_DAYS,
+    });
     const locationId = searchParams.get("location_id") || undefined;
 
     type LedgerRefundRow = {
@@ -35,6 +41,7 @@ export async function GET(request: NextRequest) {
       amount: number | null;
       net: number | null;
       booking_id: string | null;
+      product_order_id?: string | null;
       created_at: string;
       description?: string | null;
       metadata?: Record<string, unknown> | null;
@@ -42,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     const { data: ledgerRows, error: ledgerError } = await supabaseAdmin
       .from("finance_transactions")
-      .select("id, transaction_type, amount, net, booking_id, created_at, description, metadata")
+      .select("id, transaction_type, amount, net, booking_id, product_order_id, created_at, description, metadata")
       .eq("provider_id", providerId)
       .in("transaction_type", ["refund", "provider_earnings", "payment"])
       .gte("created_at", fromDate.toISOString())
@@ -52,23 +59,12 @@ export async function GET(request: NextRequest) {
       return handleApiError(new Error("Failed to fetch refund ledger"), "REFUND_LEDGER_FETCH_ERROR", 500);
     }
 
+    const ledgerLocationAttribution = summarizeLedgerLocationAttribution(
+      (ledgerRows ?? []) as LedgerRefundRow[],
+      locationId || null,
+    );
     let rows = (ledgerRows ?? []) as LedgerRefundRow[];
-    if (locationId && rows.length > 0) {
-      const bookingIds = [...new Set(rows.map((r) => r.booking_id).filter(Boolean))] as string[];
-      const allowedBookingIds = new Set<string>();
-      if (bookingIds.length > 0) {
-        const { data: locationBookings } = await supabaseAdmin
-          .from("bookings")
-          .select("id")
-          .eq("provider_id", providerId)
-          .eq("location_id", locationId)
-          .in("id", bookingIds);
-        for (const b of locationBookings ?? []) {
-          allowedBookingIds.add((b as { id: string }).id);
-        }
-      }
-      rows = rows.filter((r) => r.booking_id != null && allowedBookingIds.has(r.booking_id));
-    }
+    rows = await filterLedgerRowsForLocation(supabaseAdmin, providerId, rows, locationId || null);
 
     const refundRows = rows.filter((r) => r.transaction_type === "refund");
     const negativeEarningsRows = rows.filter(
@@ -106,7 +102,7 @@ export async function GET(request: NextRequest) {
     // Group by day
     const dailyRefunds = new Map<string, { count: number; amount: number }>();
     refundRows.forEach((refund) => {
-      const date = new Date(refund.created_at).toISOString().split("T")[0];
+      const date = reportDateKey(refund.created_at, reportContext.timezone);
       const existing = dailyRefunds.get(date) || { count: 0, amount: 0 };
       dailyRefunds.set(date, {
         count: existing.count + 1,
@@ -128,8 +124,9 @@ export async function GET(request: NextRequest) {
       averageRefundAmount,
       methodBreakdown,
       dailyBreakdown,
+      locationAttribution: ledgerLocationAttribution,
       reportBasis:
-        "Refund report is based on finance_transactions refund rows by ledger created_at. Provider reversal impact is shown separately from customer refund gross.",
+        `Refund report is based on finance_transactions refund rows by ledger created_at (bucketed by provider timezone day). ${ledgerLocationAttribution.note} Provider reversal impact is shown separately from customer refund gross.`,
       recentRefunds: refundRows
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, 20)

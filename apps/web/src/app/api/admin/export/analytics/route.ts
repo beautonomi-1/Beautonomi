@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
@@ -58,18 +59,34 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const admin = getSupabaseAdmin();
+    const { data: scopedCustomersRpc, error: scopedCustomersErr } = await admin.rpc(
+      "admin_count_users_in_tenant_scope_created_between",
+      {
+        p_tenant_id: tenantId,
+        p_role: "customer",
+        p_created_at_min: startDate.toISOString(),
+        p_created_at_max: endDate.toISOString(),
+      }
+    );
+    let totalUsers = 0;
+    if (scopedCustomersErr) {
+      console.warn(
+        "admin_count_users_in_tenant_scope_created_between (export analytics):",
+        scopedCustomersErr.message,
+      );
+    } else if (scopedCustomersRpc != null) {
+      const n =
+        typeof scopedCustomersRpc === "number" ? scopedCustomersRpc : Number(scopedCustomersRpc);
+      if (Number.isFinite(n)) totalUsers = n;
+    }
+
     // Get summary statistics
     const [
-      { count: totalUsers } = { count: 0 },
       { count: totalProviders } = { count: 0 },
       { count: totalBookings } = { count: 0 },
       revenueData = [],
     ] = await Promise.all([
-      supabase
-        .from("users")
-        .select("*", { count: "exact", head: true })
-        .eq("role", "customer")
-        .gte("created_at", startDate.toISOString()),
       supabase
         .from("providers")
         .select("*", { count: "exact", head: true })
@@ -106,7 +123,7 @@ export async function GET(request: NextRequest) {
     const dateRangeLabel = `${startDate.toISOString().split("T")[0]} to ${endDate.toISOString().split("T")[0]}`;
     const headers = ["Report", "Metric", "Value", "Period", "Date Range"];
     const rows = [
-      [reportLabel, "Total Users", totalUsers, period, dateRangeLabel],
+      [reportLabel, "Customers (tenant scope)", totalUsers, period, dateRangeLabel],
       [reportLabel, "Total Providers", totalProviders, period, dateRangeLabel],
       [reportLabel, "Total Bookings", totalBookings, period, dateRangeLabel],
       [reportLabel, "Settled Service GMV", totalRevenue.toFixed(2), period, dateRangeLabel],

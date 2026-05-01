@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { endOfDay, startOfDay, subMonths } from "date-fns";
+import { formatInTz } from "@/lib/dates/provider-tz";
+import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 type ClientSummary = {
   id: string;
@@ -12,28 +14,27 @@ type ClientSummary = {
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request,
     );
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
 
     if (!providerId) return notFoundResponse("Provider not found");
 
     const searchParams = request.nextUrl.searchParams;
-    const fromDate = searchParams.get("from")
-      ? startOfDay(new Date(searchParams.get("from")!))
-      : startOfDay(subMonths(new Date(), 6));
-    const toDate = searchParams.get("to")
-      ? endOfDay(new Date(searchParams.get("to")!))
-      : endOfDay(new Date());
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
+      defaultMonthsBack: 6,
+      maxDays: MAX_REPORT_DAYS,
+    });
     const locationId = searchParams.get("location_id") || undefined;
 
     // Get bookings to find first visit per client. With location_id, this means
@@ -124,8 +125,7 @@ export async function GET(request: NextRequest) {
     // Group by month
     const monthlyNewClients = new Map<string, number>();
     enrichedNewClients.forEach((client) => {
-      const date = new Date(client.firstVisit);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const monthKey = formatInTz(new Date(client.firstVisit), "yyyy-MM", reportContext.timezone);
       monthlyNewClients.set(monthKey, (monthlyNewClients.get(monthKey) || 0) + 1);
     });
 

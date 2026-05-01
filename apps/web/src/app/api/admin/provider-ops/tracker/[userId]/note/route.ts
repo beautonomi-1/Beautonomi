@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function POST(
@@ -28,12 +29,7 @@ export async function POST(
       return errorResponse("note is required", "VALIDATION_ERROR", 400);
     }
 
-    const { data: targetUser } = await supabase
-      .from("users")
-      .select("id")
-      .eq("id", userId)
-      .eq("preferred_home_tenant_id", tenantId)
-      .maybeSingle();
+    const targetUser = await getUserRowIfAccessibleToAdminTenant(supabase, tenantId, userId);
     if (!targetUser) {
       const { notFoundResponse } = await import("@/lib/supabase/api-helpers");
       return notFoundResponse("User not found in this tenant");

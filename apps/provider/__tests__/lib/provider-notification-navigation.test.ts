@@ -48,6 +48,19 @@ describe("navigateFromProviderNotification", () => {
     );
   });
 
+  it("routes pending bookings to Front Desk with highlight params", () => {
+    const router = { push: jest.fn() };
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-pending",
+      data: { booking_id: "booking-pend-1", db_status: "pending" },
+    });
+
+    expect(router.push).toHaveBeenCalledWith(
+      "/(app)/(tabs)/more/waiting-room?highlight=booking-pend-1&pending_booking_id=booking-pend-1",
+    );
+  });
+
   it("keeps data booking ids on calendar links instead of opening booking detail", () => {
     const router = { push: jest.fn() };
 

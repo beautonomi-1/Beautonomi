@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireAdminSection,
@@ -7,6 +8,25 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+
+const GEO_SCOPED_USER_CHUNK = 400;
+
+async function fetchRowsForScopedUsers<T>(
+  supabase: SupabaseClient,
+  table: "user_addresses" | "user_devices",
+  select: string,
+  userIds: string[]
+): Promise<T[]> {
+  if (userIds.length === 0) return [];
+  const acc: T[] = [];
+  for (let i = 0; i < userIds.length; i += GEO_SCOPED_USER_CHUNK) {
+    const chunk = userIds.slice(i, i + GEO_SCOPED_USER_CHUNK);
+    const { data, error } = await supabase.from(table).select(select).in("user_id", chunk);
+    if (error) throw error;
+    acc.push(...((data ?? []) as T[]));
+  }
+  return acc;
+}
 
 /**
  * GET /api/admin/analytics/geo
@@ -22,10 +42,9 @@ export async function GET(request: NextRequest) {
 
     const [
       providerLocationsResult,
-      customerAddressesResult,
       bookingGeoResult,
-      deviceResult,
       bookingValueResult,
+      scopeRpcResult,
     ] = await Promise.all([
       // Provider locations with city/state/postal grouping
       supabase
@@ -35,14 +54,6 @@ export async function GET(request: NextRequest) {
         )
         .eq("providers.tenant_id", tenantId)
         .eq("is_active", true),
-
-      // Customer addresses with city/postal grouping
-      supabase
-        .from("user_addresses")
-        .select(
-          "id, city, state, postal_code, country, latitude, longitude, user_id, users!inner(preferred_home_tenant_id, role)"
-        )
-        .eq("users.preferred_home_tenant_id", tenantId),
 
       // Bookings with geo data (exclude cancelled so city/value views stay aligned)
       supabase
@@ -54,21 +65,58 @@ export async function GET(request: NextRequest) {
         .not("address_city", "is", null)
         .not("status", "eq", "cancelled"),
 
-      // Device platform breakdown
-      supabase
-        .from("user_devices")
-        .select(
-          "id, platform, app_type, last_seen, user_id, users!inner(preferred_home_tenant_id)"
-        )
-        .eq("users.preferred_home_tenant_id", tenantId),
-
       // Booking value aggregation (all non-cancelled bookings, even without geo)
       supabase
         .from("bookings")
         .select("id, total_price, location_type, status, address_city")
         .eq("tenant_id", tenantId)
         .not("status", "eq", "cancelled"),
+
+      supabase.rpc("admin_user_ids_in_tenant_scope", { p_tenant_id: tenantId }),
     ]);
+
+    type CustAddrRow = {
+      city?: string | null;
+      state?: string | null;
+      postal_code?: string | null;
+      country?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+      user_id?: string;
+    };
+    type DeviceRow = {
+      platform?: string | null;
+      app_type?: string | null;
+      last_seen?: string | null;
+      user_id?: string;
+    };
+
+    const tenantScopedUserIds = (
+      (scopeRpcResult.data ?? []) as { id: string }[]
+    )
+      .map((r) => r.id)
+      .filter(Boolean);
+
+    let customerRows: CustAddrRow[] = [];
+    let deviceRows: DeviceRow[] = [];
+    if (scopeRpcResult.error) {
+      console.error("admin_user_ids_in_tenant_scope (geo):", scopeRpcResult.error.message);
+    } else if (tenantScopedUserIds.length > 0) {
+      [customerRows, deviceRows] = await Promise.all([
+        fetchRowsForScopedUsers<CustAddrRow>(
+          supabase,
+          "user_addresses",
+          "id, city, state, postal_code, country, latitude, longitude, user_id",
+          tenantScopedUserIds
+        ),
+        fetchRowsForScopedUsers<DeviceRow>(
+          supabase,
+          "user_devices",
+          "id, platform, app_type, last_seen, user_id",
+          tenantScopedUserIds
+        ),
+      ]);
+    }
 
     // --- Provider Distribution by City ---
     type ProvLocRow = {
@@ -114,16 +162,6 @@ export async function GET(request: NextRequest) {
     }
 
     // --- Customer Distribution by City ---
-    type CustAddrRow = {
-      city?: string | null;
-      state?: string | null;
-      postal_code?: string | null;
-      country?: string | null;
-      latitude?: number | null;
-      longitude?: number | null;
-      user_id?: string;
-    };
-    const customerRows = (customerAddressesResult.data ?? []) as CustAddrRow[];
     const customersByCity: Record<
       string,
       { count: number; lat: number; lng: number }
@@ -184,13 +222,6 @@ export async function GET(request: NextRequest) {
     }
 
     // --- Device Platform Breakdown ---
-    type DeviceRow = {
-      platform?: string | null;
-      app_type?: string | null;
-      last_seen?: string | null;
-      user_id?: string;
-    };
-    const deviceRows = (deviceResult.data ?? []) as DeviceRow[];
     const deviceBreakdown: Record<
       string,
       { total: number; customer: number; provider: number }

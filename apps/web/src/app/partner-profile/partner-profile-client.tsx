@@ -229,7 +229,7 @@ export default function PartnerProfileClient({
             <PartnerReviews slug={provider.slug} rating={provider.rating} review_count={provider.review_count} />
           </TabsContent>
           <TabsContent value="memberships" className="mt-0">
-            <PartnerMemberships providerSlug={provider.slug} />
+            <PartnerMemberships providerSlug={provider.slug} providerId={provider.id} />
           </TabsContent>
           <TabsContent value="giftcard" className="mt-0">
             <PartnerBuy id={provider.id} slug={provider.slug} />

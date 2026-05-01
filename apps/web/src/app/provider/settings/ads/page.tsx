@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -79,7 +79,45 @@ function normalizeCategories(raw: unknown): GlobalCategory[] {
   return [];
 }
 
-function campaignProgress(campaign: Campaign, nowMs: number): number {
+/** Display status: treat exhausted windows/budgets as ended before cron/DB catch up. */
+function effectiveCampaignStatus(campaign: Campaign, nowMs: number, metrics?: CampaignPerformance): string {
+  const base = campaign.status;
+  if (base !== "active") return base;
+
+  if (
+    campaign.billing_model === "time_based" &&
+    campaign.end_at &&
+    new Date(campaign.end_at).getTime() <= nowMs
+  ) {
+    return "ended";
+  }
+
+  const packCap =
+    isImpressionPackCampaign(campaign) && campaign.pack_impressions != null
+      ? Number(campaign.pack_impressions)
+      : null;
+  if (packCap != null && packCap > 0 && metrics && Number(metrics.impressions ?? 0) >= packCap) {
+    return "ended";
+  }
+
+  const budget = Number(campaign.budget || 0);
+  if (
+    campaign.billing_model === "cpc_budget" &&
+    budget > 0 &&
+    Number(campaign.spent ?? 0) >= budget
+  ) {
+    return "ended";
+  }
+
+  return base;
+}
+
+function campaignProgress(campaign: Campaign, nowMs: number, metrics?: CampaignPerformance): number {
+  if (isImpressionPackCampaign(campaign) && campaign.pack_impressions != null && metrics) {
+    const cap = Number(campaign.pack_impressions);
+    if (cap <= 0) return 0;
+    return Math.max(0, Math.min(1, Number(metrics.impressions ?? 0) / cap));
+  }
   if (campaign.billing_model === "time_based" && campaign.start_at && campaign.end_at) {
     const start = new Date(campaign.start_at).getTime();
     const end = new Date(campaign.end_at).getTime();
@@ -155,7 +193,7 @@ export default function ProviderAdsPage() {
   const enabled = Boolean(adsConfig?.enabled) || adsEnabled;
   const cpcBudgetAvailable = availableModels.length === 0 || availableModels.includes("cpc_budget");
 
-  const loadCampaigns = async () => {
+  const loadCampaigns = useCallback(async () => {
     try {
       const res = await fetcher.get<{ data: Campaign[] }>("/api/provider/ads/campaigns");
       setCampaigns(res.data ?? []);
@@ -164,9 +202,9 @@ export default function ProviderAdsPage() {
       setCampaigns([]);
       toast.error("Failed to load campaigns. Please try again.");
     }
-  };
+  }, []);
 
-  const loadPerformance = async () => {
+  const loadPerformance = useCallback(async () => {
     try {
       const res = await fetcher.get<{
         data: { summary: PerformanceSummary; by_campaign?: Record<string, CampaignPerformance> };
@@ -177,7 +215,7 @@ export default function ProviderAdsPage() {
       setPerformance(null);
       setCampaignPerformance({});
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (!enabled) {
@@ -209,7 +247,25 @@ export default function ProviderAdsPage() {
         setLoading(false);
       }
     })();
-  }, [enabled]);
+  }, [enabled, loadCampaigns, loadPerformance]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const tick = () => setNowMs(Date.now());
+    const id = setInterval(tick, 60_000);
+    const onVis = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        tick();
+        void loadCampaigns();
+        void loadPerformance();
+      }
+    };
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [enabled, loadCampaigns, loadPerformance]);
 
   useEffect(() => {
     if (searchParams.get("payment_success") === "1") {
@@ -466,55 +522,70 @@ export default function ProviderAdsPage() {
                     <Label className="text-base font-medium">Boost for a set number of days</Label>
                     {defaultModel === "time_based" ? <Badge variant="secondary">Recommended</Badge> : null}
                   </div>
-                  <p className="text-sm text-muted-foreground mb-3">Pay a flat rate and your listing appears in sponsored slots for the full duration. Predictable and simple.</p>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Pay a flat rate — your listing stays in sponsored slots for the full duration.
+                  </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
                     {timePacks.map((tp) => (
-                      <button
+                      <div
                         key={tp.id}
-                        type="button"
-                        onClick={async () => {
-                          setCreatingPackId(tp.id);
-                          try {
-                            const targeting = createForm.global_category_ids.length > 0
-                              ? { global_category_ids: createForm.global_category_ids }
-                              : {};
-                            const res = await fetcher.post<{
-                              data:
-                                | Campaign
-                                | { campaign: Campaign; requires_payment?: boolean; payment_url?: string | null };
-                            }>("/api/provider/ads/campaigns", {
-                              time_pack_id: tp.id,
-                              targeting,
-                            });
-                            const payload = res.data as {
-                              payment_url?: string | null;
-                              requires_payment?: boolean;
-                              campaign?: Campaign;
-                            };
-                            if (payload?.requires_payment && payload?.payment_url) {
-                              window.location.href = payload.payment_url;
-                              return;
-                            }
-                            toast.success("Campaign created.");
-                            loadCampaigns();
-                          } catch {
-                            toast.error("Failed to create campaign");
-                          } finally {
-                            setCreatingPackId(null);
-                          }
-                        }}
-                        disabled={creatingPackId !== null}
-                        className="rounded-lg border-2 border-emerald-500/30 bg-emerald-50 p-4 text-left hover:border-emerald-500 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                        className="rounded-2xl p-[2px] bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-700 shadow-lg shadow-emerald-500/15"
                       >
-                        <p className="font-semibold text-lg">{tp.duration_days} {tp.duration_days === 1 ? "day" : "days"}</p>
-                        <p className="text-sm text-muted-foreground">{tp.label}</p>
-                        <p className="font-medium mt-1">{fmt(Number(tp.price_zar))}</p>
-                        {creatingPackId === tp.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin mt-2" />
-                        ) : (
-                          <span className="text-xs text-emerald-600 mt-2 inline-block">Buy & boost →</span>
-                        )}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setCreatingPackId(tp.id);
+                            try {
+                              const targeting = createForm.global_category_ids.length > 0
+                                ? { global_category_ids: createForm.global_category_ids }
+                                : {};
+                              const res = await fetcher.post<{
+                                data:
+                                  | Campaign
+                                  | { campaign: Campaign; requires_payment?: boolean; payment_url?: string | null };
+                              }>("/api/provider/ads/campaigns", {
+                                time_pack_id: tp.id,
+                                targeting,
+                              });
+                              const payload = res.data as {
+                                payment_url?: string | null;
+                                requires_payment?: boolean;
+                                campaign?: Campaign;
+                              };
+                              if (payload?.requires_payment && payload?.payment_url) {
+                                window.location.href = payload.payment_url;
+                                return;
+                              }
+                              toast.success("Campaign created.");
+                              loadCampaigns();
+                            } catch {
+                              toast.error("Failed to create campaign");
+                            } finally {
+                              setCreatingPackId(null);
+                            }
+                          }}
+                          disabled={creatingPackId !== null}
+                          className="w-full rounded-[14px] bg-background p-4 text-left transition hover:bg-muted/40 disabled:opacity-50 min-h-[148px] flex flex-col"
+                        >
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
+                            Time boost
+                          </span>
+                          <span className="mt-1 text-3xl font-bold tabular-nums text-foreground">{tp.duration_days}</span>
+                          <span className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
+                            {tp.label?.trim()
+                              ? tp.label
+                              : tp.duration_days === 1
+                                ? "day in sponsored slots"
+                                : "days in sponsored slots"}
+                          </span>
+                          <span className="mt-auto pt-3 border-t border-border text-lg font-semibold">{fmt(Number(tp.price_zar))}</span>
+                          {creatingPackId === tp.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin mt-2 text-emerald-600" />
+                          ) : (
+                            <span className="text-xs font-semibold text-emerald-600 mt-2">Tap to purchase →</span>
+                          )}
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -526,25 +597,38 @@ export default function ProviderAdsPage() {
                     <Label className="text-base font-medium">Buy impressions</Label>
                     {defaultModel === "impression_pack" ? <Badge variant="secondary">Recommended</Badge> : null}
                   </div>
-                <p className="text-sm text-muted-foreground mb-3">Choose a pack, pay once, and the campaign activates after payment until those impressions are delivered.</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Prepaid reach — delivery runs until every impression in the pack is shown.
+                </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                   {packs.map((pack) => (
-                    <button
+                    <div
                       key={pack.id}
-                      type="button"
-                      onClick={() => buyPack(pack)}
-                      disabled={creatingPackId !== null}
-                      className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 text-left hover:border-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                      className="rounded-2xl p-[2px] bg-gradient-to-br from-violet-600 via-indigo-500 to-indigo-700 shadow-lg shadow-indigo-500/15"
                     >
-                      <p className="font-semibold text-lg">{pack.impressions}</p>
-                      <p className="text-sm text-muted-foreground">impressions</p>
-                      <p className="font-medium mt-1">{fmt(Number(pack.price_zar))}</p>
-                      {creatingPackId === pack.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin mt-2" />
-                      ) : (
-                        <span className="text-xs text-primary mt-2 inline-block">Buy & pay →</span>
-                      )}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => buyPack(pack)}
+                        disabled={creatingPackId !== null}
+                        className="w-full rounded-[14px] bg-background p-4 text-left transition hover:bg-muted/40 disabled:opacity-50 min-h-[148px] flex flex-col"
+                      >
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-violet-700">
+                          Impression pack
+                        </span>
+                        <span className="mt-1 text-3xl font-bold tabular-nums text-foreground">
+                          {formatCompactNumber(pack.impressions)}
+                        </span>
+                        <span className="text-sm text-muted-foreground mt-0.5">sponsored impressions</span>
+                        <span className="mt-auto pt-3 border-t border-border text-lg font-semibold">
+                          {fmt(Number(pack.price_zar))}
+                        </span>
+                        {creatingPackId === pack.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin mt-2 text-violet-600" />
+                        ) : (
+                          <span className="text-xs font-semibold text-violet-600 mt-2">Tap to purchase →</span>
+                        )}
+                      </button>
+                    </div>
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground mb-4">Optional: select target categories below to show your ad only for those searches. Leave unchecked for all searches.</p>
@@ -663,15 +747,23 @@ export default function ProviderAdsPage() {
                   books: 0,
                   spent: Number(c.spent ?? 0),
                 };
-                const progress = campaignProgress(c, nowMs);
+                const displayStatus = effectiveCampaignStatus(c, nowMs, metrics);
+                const progress = campaignProgress(c, nowMs, metrics);
                 const remaining =
                   c.billing_model === "time_based"
-                    ? c.end_at
-                      ? `${Math.max(0, Math.ceil((new Date(c.end_at).getTime() - nowMs) / 86400000))} days remaining`
-                      : "Starts after payment"
-                    : c.pack_impressions != null
-                      ? `${formatCompactNumber(Math.max(0, Number(c.pack_impressions) - Number(metrics.impressions || 0)))} impressions remaining`
-                      : `${fmt(Math.max(0, Number(c.budget || 0) - Number(c.spent || 0)))} budget remaining`;
+                    ? !c.end_at
+                      ? "Starts after payment"
+                      : new Date(c.end_at).getTime() <= nowMs
+                        ? "Boost period ended"
+                        : `${Math.max(0, Math.ceil((new Date(c.end_at).getTime() - nowMs) / 86400000))} days remaining`
+                    : isImpressionPackCampaign(c) && c.pack_impressions != null
+                      ? Number(metrics.impressions ?? 0) >= Number(c.pack_impressions)
+                        ? "All impressions delivered"
+                        : `${formatCompactNumber(Math.max(0, Number(c.pack_impressions) - Number(metrics.impressions || 0)))} impressions remaining`
+                      : Number(c.budget || 0) > 0 &&
+                          Number(c.spent ?? 0) >= Number(c.budget || 0)
+                        ? "Budget fully used"
+                        : `${fmt(Math.max(0, Number(c.budget || 0) - Number(c.spent || 0)))} budget remaining`;
                 return (
                 <li
                   key={c.id}
@@ -680,8 +772,8 @@ export default function ProviderAdsPage() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">Campaign</span>
-                      <Badge variant={c.status === "active" ? "default" : "secondary"}>
-                        {c.status}
+                      <Badge variant={displayStatus === "active" ? "default" : "secondary"}>
+                        {displayStatus}
                       </Badge>
                       <Badge variant="outline">{campaignModelLabel(c)}</Badge>
                     </div>
@@ -725,7 +817,7 @@ export default function ProviderAdsPage() {
                       </Button>
                     ) : c.status === "draft" || c.status === "paused" ? (
                       <Badge variant="outline">awaiting payment</Badge>
-                    ) : c.status === "active" ? (
+                    ) : displayStatus === "active" ? (
                       <Button
                         variant="outline"
                         size="sm"
@@ -736,7 +828,7 @@ export default function ProviderAdsPage() {
                         Pause
                       </Button>
                     ) : null}
-                    {c.status !== "ended" && (
+                    {displayStatus !== "ended" && (
                       <Button
                         variant="ghost"
                         size="sm"

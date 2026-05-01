@@ -48,6 +48,20 @@ export function normalizeCalendarTimeStrict(value: string): string | null {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+/**
+ * Accepts loose API/shift strings (`9:30`, `09:5`) and returns `HH:MM` suitable for
+ * {@link parseCalendarTimeStrict} / overlay rendering (matches strict parser expectations).
+ */
+export function normalizeCalendarWallClockLoose(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^(\d{1,2}):(\d{1,2})/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return `${Math.max(0, Math.min(23, hour)).toString().padStart(2, "0")}:${Math.max(0, Math.min(59, minute)).toString().padStart(2, "0")}`;
+}
+
 export function validateCalendarTimeRange(
   startTime: string | null | undefined,
   endTime: string | null | undefined,

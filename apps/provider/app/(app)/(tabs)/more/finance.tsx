@@ -134,9 +134,12 @@ export function FinanceOverviewContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<"week" | "month" | "year" | "all">("month");
   const { screenPadding } = useResponsive();
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId, provider } = useProvider();
   const currency = getTenantDefaultCurrency();
-  const url = `/api/provider/finance?range=${range}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  /** Branch-scoped earnings when a location is selected; `transaction_feed=all` keeps the activity list org-wide (same as Transactions hub). */
+  const url = `/api/provider/finance?range=${range}&transaction_feed=all${
+    selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""
+  }`;
   const { data, loading, error, refresh } = useApi<FinanceData>(url);
 
   const onRefresh = useCallback(async () => {
@@ -322,9 +325,14 @@ export function FinanceOverviewContent() {
         )}
 
         <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-          <Text style={twStyle("text-sm font-semibold text-gray-700")}>Transactions</Text>
+          <View style={twStyle("flex-1 mr-2")}>
+            <Text style={twStyle("text-sm font-semibold text-gray-700")}>Transactions</Text>
+            {(provider?.locations?.length ?? 0) > 1 && selectedLocationId ? (
+              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Recent activity across all locations</Text>
+            ) : null}
+          </View>
           {transactions.length > 0 && (
-            <Text style={twStyle("text-xs text-gray-500")}>{transactions.length} in {rangeLabel.toLowerCase()}</Text>
+            <Text style={twStyle("text-xs text-gray-500 shrink-0")}>{transactions.length} in {rangeLabel.toLowerCase()}</Text>
           )}
         </View>
         {transactions.length === 0 ? (

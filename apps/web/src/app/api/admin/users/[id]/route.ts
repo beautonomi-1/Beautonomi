@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 import { z } from "zod";
 import { writeAuditLog, extractRequestMeta, computeChangedFields } from "@/lib/audit/audit";
 
@@ -29,14 +30,8 @@ export async function GET(
     const admin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    const { data: userData, error } = await admin
-      .from("users")
-      .select("*")
-      .eq("id", id)
-      .eq("preferred_home_tenant_id", tenantId)
-      .single();
-
-    if (error || !userData) {
+    const userData = await getUserRowIfAccessibleToAdminTenant(admin, tenantId, id);
+    if (!userData) {
       return notFoundResponse("User not found");
     }
 
@@ -67,28 +62,28 @@ export async function GET(
       .maybeSingle();
 
     if (userRow.role === "customer") {
+      const bookingOr = `customer_id.eq.${id},user_id.eq.${id}`;
+
       const { count: bookingCount } = await supabase
         .from("bookings")
         .select("*", { count: "exact", head: true })
-        .eq("customer_id", id)
-        .eq("tenant_id", tenantId);
+        .eq("tenant_id", tenantId)
+        .or(bookingOr);
 
-      // Get total spent
       const { data: bookings } = await supabase
         .from("bookings")
         .select("total_amount")
-        .eq("customer_id", id)
         .eq("tenant_id", tenantId)
+        .or(bookingOr)
         .in("status", ["completed", "confirmed"]);
 
       const totalSpent = bookings?.reduce((sum, b) => sum + (b.total_amount || 0), 0) || 0;
 
-      // Get last booking date
       const { data: lastBooking } = await supabase
         .from("bookings")
         .select("scheduled_at")
-        .eq("customer_id", id)
         .eq("tenant_id", tenantId)
+        .or(bookingOr)
         .order("scheduled_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -181,7 +176,6 @@ const updateUserSchema = z.object({
   avatar_url: z.string().url().nullable().optional(),
   deactivated_at: z.string().nullable().optional(),
   deactivation_reason: z.string().nullable().optional(),
-  role: z.enum(["customer", "provider", "admin"]).optional(),
   email_notifications_enabled: z.boolean().optional(),
   sms_notifications_enabled: z.boolean().optional(),
   push_notifications_enabled: z.boolean().optional(),
@@ -218,18 +212,12 @@ export async function PATCH(
     const admin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    // Tenant-scoped admin cannot rely on RLS for other users' rows; use service role
-    // with the same preferred_home_tenant guard as GET /api/admin/users/[id].
-    const { data: existingUser, error: fetchError } = await admin
-      .from("users")
-      .select("id, role")
-      .eq("id", id)
-      .eq("preferred_home_tenant_id", tenantId)
-      .single();
-
-    if (fetchError || !existingUser) {
+    const existingRow = await getUserRowIfAccessibleToAdminTenant(admin, tenantId, id);
+    if (!existingRow) {
       return notFoundResponse("User not found");
     }
+
+    const existingUser = existingRow as { id?: string; role?: string };
 
     // Prevent superadmins from modifying other superadmins (except themselves)
     if (existingUser.role === "superadmin" && id !== user.id) {
@@ -269,11 +257,7 @@ export async function PATCH(
     if (validationResult.data.deactivation_reason !== undefined) {
       updateData.deactivation_reason = validationResult.data.deactivation_reason;
     }
-    
-    if (validationResult.data.role !== undefined) {
-      updateData.role = validationResult.data.role;
-    }
-    
+
     if (validationResult.data.email_notifications_enabled !== undefined) {
       updateData.email_notifications_enabled = validationResult.data.email_notifications_enabled;
     }
@@ -291,7 +275,6 @@ export async function PATCH(
       .from("users")
       .update(updateData)
       .eq("id", id)
-      .eq("preferred_home_tenant_id", tenantId)
       .select()
       .single();
 
@@ -324,7 +307,7 @@ export async function PATCH(
 
     const isDeactivation = !!updateData.deactivated_at;
     const isReactivation = updateData.deactivated_at === null;
-    const riskLevel = isDeactivation || isReactivation || updateData.role ? "high" as const : "medium" as const;
+    const riskLevel = isDeactivation || isReactivation ? "high" as const : "medium" as const;
 
     const reqMeta = extractRequestMeta(request);
     await writeAuditLog({

@@ -9,6 +9,9 @@ import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointm
 import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { dateRangeBoundsUtc, fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { startOfDay, startOfMonth } from "date-fns";
 
 import { mapStatusToProvider } from "@/lib/utils/booking-status";
 import { checkActiveHoldOverlap, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
@@ -121,6 +124,9 @@ async function handleGetProviderBookings(request: NextRequest) {
       return cachedResponse;
     }
 
+    const { timezone: tz } = await getProviderReportContext(supabaseAdmin, providerId);
+    const ymdParam = /^\d{4}-\d{2}-\d{2}$/;
+
     let query = supabaseAdmin
       .from("bookings")
       .select(
@@ -194,13 +200,14 @@ async function handleGetProviderBookings(request: NextRequest) {
 
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
-    if (startDate) {
-      // Include the full start date (from 00:00:00)
-      query = query.gte("scheduled_at", `${startDate}T00:00:00`);
+    if (startDate && ymdParam.test(startDate.slice(0, 10))) {
+      const fromIso = dateRangeBoundsUtc(startDate.slice(0, 10), startDate.slice(0, 10), tz).fromIso;
+      query = query.gte("scheduled_at", fromIso);
     }
-    if (endDate) {
-      // Include the full end date (until 23:59:59)
-      query = query.lte("scheduled_at", `${endDate}T23:59:59`);
+    if (endDate && ymdParam.test(endDate.slice(0, 10))) {
+      const endYmd = endDate.slice(0, 10);
+      const toIso = dateRangeBoundsUtc(endYmd, endYmd, tz).toIso;
+      query = query.lte("scheduled_at", toIso);
     }
 
     // Filter by location_id if provided
@@ -454,8 +461,14 @@ async function handleGetProviderBookings(request: NextRequest) {
       ];
       if (groupStatuses.length) groupQuery = groupQuery.in("status", groupStatuses);
     }
-    if (startDate) groupQuery = groupQuery.gte("scheduled_at", `${startDate}T00:00:00`);
-    if (endDate) groupQuery = groupQuery.lte("scheduled_at", `${endDate}T23:59:59`);
+    if (startDate && ymdParam.test(startDate.slice(0, 10))) {
+      const fromIso = dateRangeBoundsUtc(startDate.slice(0, 10), startDate.slice(0, 10), tz).fromIso;
+      groupQuery = groupQuery.gte("scheduled_at", fromIso);
+    }
+    if (endDate && ymdParam.test(endDate.slice(0, 10))) {
+      const endYmd = endDate.slice(0, 10);
+      groupQuery = groupQuery.lte("scheduled_at", dateRangeBoundsUtc(endYmd, endYmd, tz).toIso);
+    }
     if (locationId) groupQuery = groupQuery.eq("location_id", locationId);
     if (searchRaw && searchRaw.trim().length > 0) {
       const safe = searchRaw.trim().replace(/[%_,()]/g, "");
@@ -645,15 +658,19 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // Check booking limits
     const bookingAccess = await checkBookingLimitsFeatureAccess(providerId);
     if (bookingAccess.enabled && bookingAccess.maxBookingsPerMonth) {
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
+      const { data: tzRow } = await supabaseAdmin
+        .from("providers")
+        .select("timezone")
+        .eq("id", providerId)
+        .maybeSingle();
+      const tz = resolveTz((tzRow as { timezone?: string | null } | null)?.timezone);
+      const monthStartUtc = fromBusinessTime(startOfDay(startOfMonth(nowInTz(tz))), tz);
 
       const { data: bookingsThisMonth } = await supabaseAdmin
         .from("bookings")
         .select("id")
         .eq("provider_id", providerId)
-        .gte("created_at", startOfMonth.toISOString());
+        .gte("created_at", monthStartUtc.toISOString());
 
       if ((bookingsThisMonth?.length || 0) >= bookingAccess.maxBookingsPerMonth) {
         return errorResponse(

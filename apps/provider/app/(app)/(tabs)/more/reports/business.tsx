@@ -112,7 +112,7 @@ function mapOverviewToBusinessReport(overview: OverviewResponse | null): Busines
     clients: {
       total: overview.uniqueClients ?? 0,
       new_this_period: 0,
-      returning: overview.uniqueClients ?? 0,
+      returning: 0,
       retention_rate: 0,
       avg_booking_value: overview.averageBookingValue ?? 0,
     },

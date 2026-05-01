@@ -21,6 +21,10 @@ function sanitizeSearchTerm(value: string): string {
   return value.trim().replace(/[,%()]/g, " ").replace(/\s+/g, " ").slice(0, 80);
 }
 
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
 function finiteNumberParam(value: string | null): number | undefined {
   if (value == null || value.trim() === "") return undefined;
   const parsed = Number(value);
@@ -135,13 +139,76 @@ export async function GET(request: Request) {
     // `users.include_in_search_engines` controls external SEO indexing only.
     // Home/search discovery must keep showing active providers to customers.
 
-    // Apply text search for provider name
-    // Search in business_name and description
+    let textMatchedProviderIds: string[] = [];
     if (queryText && queryText.trim()) {
       const searchTerm = sanitizeSearchTerm(queryText);
-      // Use or() to search across multiple fields with proper wildcard syntax
       if (searchTerm) {
-        query = query.or(`business_name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+        const [offeringMatches, providerCategoryMatches, globalCategoryMatches] = await Promise.all([
+          supabase
+            .from("offerings")
+            .select("provider_id, providers!inner(tenant_id, status)")
+            .eq("is_active", true)
+            .eq("providers.tenant_id", tenantId)
+            .eq("providers.status", "active")
+            .or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
+            .limit(300),
+          supabase
+            .from("provider_categories")
+            .select("provider_id, providers!inner(tenant_id, status)")
+            .eq("is_active", true)
+            .eq("providers.tenant_id", tenantId)
+            .eq("providers.status", "active")
+            .or(`name.ilike.%${searchTerm}%,slug.ilike.%${searchTerm}%`)
+            .limit(300),
+          supabase
+            .from("global_service_categories")
+            .select("id")
+            .eq("is_active", true)
+            .or(`name.ilike.%${searchTerm}%,slug.ilike.%${searchTerm}%`)
+            .limit(50),
+        ]);
+
+        const categoryIds = uniqueStrings((globalCategoryMatches.data ?? []).map((row: any) => row.id));
+        let categoryProviderIds: string[] = [];
+        if (categoryIds.length > 0) {
+          const [associationMatches, offeringCategoryMatches] = await Promise.all([
+            supabase
+              .from("provider_global_category_associations")
+              .select("provider_id, providers!inner(tenant_id, status)")
+              .in("global_category_id", categoryIds)
+              .eq("providers.tenant_id", tenantId)
+              .eq("providers.status", "active")
+              .limit(300),
+            supabase
+              .from("offerings")
+              .select("provider_id, providers!inner(tenant_id, status)")
+              .eq("is_active", true)
+              .in("category_id", categoryIds)
+              .eq("providers.tenant_id", tenantId)
+              .eq("providers.status", "active")
+              .limit(300),
+          ]);
+          categoryProviderIds = uniqueStrings([
+            ...(associationMatches.data ?? []).map((row: any) => row.provider_id),
+            ...(offeringCategoryMatches.data ?? []).map((row: any) => row.provider_id),
+          ]);
+        }
+
+        textMatchedProviderIds = uniqueStrings([
+          ...(offeringMatches.data ?? []).map((row: any) => row.provider_id),
+          ...(providerCategoryMatches.data ?? []).map((row: any) => row.provider_id),
+          ...categoryProviderIds,
+        ]).slice(0, 300);
+
+        const providerTextPredicates = [
+          `business_name.ilike.%${searchTerm}%`,
+          `slug.ilike.%${searchTerm}%`,
+          `description.ilike.%${searchTerm}%`,
+        ];
+        if (textMatchedProviderIds.length > 0) {
+          providerTextPredicates.push(`id.in.(${textMatchedProviderIds.join(",")})`);
+        }
+        query = query.or(providerTextPredicates.join(","));
       }
     }
 
@@ -631,16 +698,16 @@ export async function GET(request: Request) {
         const { data: offerings } = await supabase
         .from("offerings")
         .select(
-          "id, name, description, price, duration_minutes, type, provider_id, providers!inner(id, business_name, slug, avatar_url)"
+          "id, title, description, price, duration_minutes, type, provider_id, providers!inner(id, business_name, slug, avatar_url, tenant_id)"
         )
         .eq("is_active", true)
         .eq("type", "service")
         .eq("providers.tenant_id", tenantId)
-        .or(`name.ilike.%${safeServiceQuery}%,description.ilike.%${safeServiceQuery}%`)
+        .or(`title.ilike.%${safeServiceQuery}%,description.ilike.%${safeServiceQuery}%`)
         .limit(20);
         serviceResults = (offerings ?? []).map((row: any) => {
           const { providers: provider, ...rest } = row;
-          return { ...rest, provider };
+          return { ...rest, name: row.title, provider };
         });
       }
     }

@@ -10,11 +10,30 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import LoginModal from "@/components/global/login-modal";
 import { useAuth } from "@/providers/AuthProvider";
 
-export default function PartnerMemberships({ providerSlug }: { providerSlug: string }) {
+function safeMoney(amount: unknown): string {
+  const n = typeof amount === "number" ? amount : Number(amount);
+  if (!Number.isFinite(n)) return "—";
+  return n.toFixed(2);
+}
+
+function safeDiscountPct(amount: unknown): string {
+  const n = typeof amount === "number" ? amount : Number(amount);
+  if (!Number.isFinite(n)) return "0";
+  return String(Math.round(n));
+}
+
+export default function PartnerMemberships({
+  providerSlug,
+  providerId,
+}: {
+  providerSlug: string;
+  providerId: string;
+}) {
   const [plans, setPlans] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isBuying, setIsBuying] = useState<string | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [activePlanId, setActivePlanId] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
 
@@ -22,10 +41,11 @@ export default function PartnerMemberships({ providerSlug }: { providerSlug: str
     const load = async () => {
       try {
         setIsLoading(true);
-        const res = await fetcher.get<{ data: { plans: any[] } }>(
+        const res = await fetcher.get<{ data?: { plans?: any[] } }>(
           `/api/public/providers/${providerSlug}/membership-plans`
         );
-        setPlans(res.data.plans || []);
+        const inner = res && typeof res === "object" && "data" in res ? (res as { data?: { plans?: any[] } }).data : null;
+        setPlans(inner?.plans ?? []);
       } catch {
         setPlans([]);
       } finally {
@@ -34,6 +54,30 @@ export default function PartnerMemberships({ providerSlug }: { providerSlug: str
     };
     load();
   }, [providerSlug]);
+
+  useEffect(() => {
+    if (!user || authLoading || !providerId) {
+      setActivePlanId(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetcher.get<{
+          data?: { provider_memberships?: { plan_id: string; provider_id: string }[] };
+        }>("/api/me/membership", { staleTimeMs: 0 });
+        if (cancelled) return;
+        const rows = res?.data?.provider_memberships ?? [];
+        const mine = rows.find((r) => r.provider_id === providerId);
+        setActivePlanId(mine?.plan_id ?? null);
+      } catch {
+        if (!cancelled) setActivePlanId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, authLoading, providerId]);
 
   const buy = async (planId: string) => {
     if (authLoading) return;
@@ -84,17 +128,23 @@ export default function PartnerMemberships({ providerSlug }: { providerSlug: str
               <div className="font-semibold">{p.name}</div>
               {p.description && <div className="text-sm text-gray-600 mt-1">{p.description}</div>}
               <div className="text-sm text-gray-900 mt-3">
-                {p.currency} {Number(p.price_monthly).toFixed(2)} / month
+                {p.currency ?? ""} {safeMoney(p.price_monthly ?? p.price)} / month
               </div>
               <div className="text-sm text-gray-600">
-                {Number(p.discount_percent || 0)}% off services
+                {safeDiscountPct(p.discount_percent)}% off services
               </div>
               <Button
                 className="mt-4 w-full bg-gray-900 text-white"
                 onClick={() => buy(p.id)}
-                disabled={authLoading || isBuying === p.id}
+                disabled={authLoading || isBuying === p.id || activePlanId === p.id}
               >
-                {authLoading ? "Checking account..." : isBuying === p.id ? "Redirecting..." : "Buy membership"}
+                {authLoading
+                  ? "Checking account..."
+                  : isBuying === p.id
+                    ? "Redirecting..."
+                    : activePlanId === p.id
+                      ? "Your current plan"
+                      : "Buy membership"}
               </Button>
             </div>
           ))}

@@ -36,7 +36,7 @@ function tenantCountryFallback(): string {
 }
 
 /* ─── types ─── */
-interface Location {
+interface ProviderLocation {
   id: string;
   name: string;
   address_line1: string;
@@ -142,10 +142,10 @@ export default function LocationsSettingsScreen() {
     loading,
     error: loadError,
     refresh,
-  } = useApi<Location[]>("/api/provider/locations?include_inactive=true");
+  } = useApi<ProviderLocation[]>("/api/provider/locations?include_inactive=true");
   const { execute: createLocation, loading: creating } = useApiPost<
     LocationForm,
-    Location
+    ProviderLocation
   >("/api/provider/locations");
   const { execute: updateLocation, loading: updating } =
     useApiMutation("patch");
@@ -171,7 +171,7 @@ export default function LocationsSettingsScreen() {
     setSheetVisible(true);
   }
 
-  function openEditSheet(loc: Location) {
+  function openEditSheet(loc: ProviderLocation) {
     setErrors({});
     setEditingId(loc.id);
     setForm({
@@ -297,7 +297,7 @@ export default function LocationsSettingsScreen() {
     refresh();
   }
 
-  function handleDelete(loc: Location) {
+  function handleDelete(loc: ProviderLocation) {
     Alert.alert(
       "Delete Location",
       `Are you sure you want to delete "${loc.name}"? This action cannot be undone.`,
@@ -323,7 +323,7 @@ export default function LocationsSettingsScreen() {
     );
   }
 
-  async function handleSetPrimary(loc: Location) {
+  async function handleSetPrimary(loc: ProviderLocation) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const { error } = await updateLocation(
       `/api/provider/locations/${loc.id}`,
@@ -372,7 +372,7 @@ export default function LocationsSettingsScreen() {
         <FlatList
           {...verticalFlatListPerf}
           data={locations}
-          keyExtractor={(l: Location) => l.id}
+          keyExtractor={(l: ProviderLocation) => l.id}
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
@@ -380,7 +380,7 @@ export default function LocationsSettingsScreen() {
           ItemSeparatorComponent={!isTablet ? () => <View style={{ height: 8 }} /> : undefined}
           numColumns={isTablet ? 2 : 1}
           columnWrapperStyle={isTablet ? { marginBottom: 12 } : undefined}
-          renderItem={({ item: loc, index }: { item: Location; index: number }) => (
+          renderItem={({ item: loc, index }: { item: ProviderLocation; index: number }) => (
             <View
               style={[twStyle(`rounded-xl border border-gray-100 bg-white p-4 ${isTablet ? "flex-1" : ""}`), isTablet && index % 2 === 0 && { marginRight: 12 }]}
               accessibilityLabel={`Location ${loc.name}`}

@@ -152,9 +152,29 @@ const STATUS_ACTION_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   cancelled: "close-circle-outline",
 };
 
-function getNextStatusOptions(current: string): string[] {
-  if (current === "cancelled" || current === "refunded") return [];
-  return STATUS_OPTIONS.map((x) => x.value).filter((v) => v && v !== current);
+/** Single recommended next step in the fulfillment pipeline */
+function getWorkflowPrimaryNext(current: string, fulfillmentType?: string | null): string | null {
+  const ft = (fulfillmentType ?? "").toLowerCase();
+  const isCollection = ft === "collection" || ft === "pickup";
+  switch (current) {
+    case "pending":
+      return "confirmed";
+    case "confirmed":
+      return "processing";
+    case "processing":
+      return isCollection ? "ready_for_collection" : "shipped";
+    case "ready_for_collection":
+      return "delivered";
+    case "shipped":
+      return "delivered";
+    default:
+      return null;
+  }
+}
+
+function getDestructiveNextStatuses(current: string): string[] {
+  if (current === "cancelled" || current === "refunded" || current === "delivered") return [];
+  return ["cancelled", "refunded"];
 }
 
 function numOrZero(v: unknown): number {
@@ -283,6 +303,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     try {
       const res = await api.get<{ order: Order }>(`/api/provider/product-orders/${order.id}`);
       setOrderDetail(res.data?.order ?? order);
+      void api.post("/api/provider/notifications/mark-related-read", { order_id: order.id }).catch(() => {});
     } catch {
       setOrderDetail(order);
     } finally {
@@ -1047,54 +1068,82 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 </Text>
               </TouchableOpacity>
 
-              {/* Status action buttons */}
-              {getNextStatusOptions(activeOrder.status).length > 0 && (
-                <View>
-                  <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400")}>
-                    Update status
-                  </Text>
-                  <View style={twStyle("flex-row flex-wrap gap-2")}>
-                    {getNextStatusOptions(activeOrder.status).map((status) => {
-                      const isCancel = status === "cancelled";
-                      const isShip = status === "shipped";
-                      const isRefund = status === "refunded";
-                      const bgClass = isCancel || isRefund
-                        ? "border border-red-200 bg-red-50"
-                        : isShip
-                          ? "bg-blue-600"
-                          : "bg-pink-600";
-                      const iconName = STATUS_ACTION_ICON[status] ?? "arrow-forward-circle-outline";
-                      const label = `Mark ${status.replace(/_/g, " ")}`;
-                      const iconColor = isCancel || isRefund ? "#dc2626" : "#fff";
-                      return (
+              {/* Primary next step + destructive actions behind “More” */}
+              {(() => {
+                const primary = getWorkflowPrimaryNext(activeOrder.status, activeOrder.fulfillment_type);
+                const destructive = getDestructiveNextStatuses(activeOrder.status);
+                if (!primary && destructive.length === 0) return null;
+                const primaryLabel =
+                  primary === "confirmed"
+                    ? "Confirm order"
+                    : primary === "processing"
+                      ? "Start processing"
+                      : primary === "ready_for_collection"
+                        ? "Mark ready for collection"
+                        : primary === "shipped"
+                          ? "Mark shipped"
+                          : primary === "delivered"
+                            ? "Mark delivered"
+                            : primary
+                              ? `Mark ${primary.replace(/_/g, " ")}`
+                              : "";
+                const iconName = primary ? STATUS_ACTION_ICON[primary] ?? "arrow-forward-circle-outline" : "arrow-forward-circle-outline";
+                return (
+                  <View style={twStyle("mb-2")}>
+                    <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400")}>
+                      Next step
+                    </Text>
+                    {primary ? (
+                      <>
                         <TouchableOpacity
-                          key={status}
-                          onPress={() => handleStatusTap(activeOrder.id, status)}
+                          onPress={() => handleStatusTap(activeOrder.id, primary)}
                           disabled={patching}
                           style={[
-                            twStyle(`rounded-xl px-4 py-2.5 ${bgClass}`),
+                            twStyle("flex-row items-center justify-center rounded-xl bg-pink-600 px-4 py-3.5"),
                             patching ? { opacity: 0.6 } : undefined,
                           ]}
-                          accessibilityLabel={label}
+                          accessibilityLabel={primaryLabel}
+                          accessibilityRole="button"
                         >
-                          <View style={twStyle("flex-row items-center")}>
-                            <Ionicons name={iconName} size={18} color={iconColor} />
-                            <Text
-                              style={twStyle(
-                                `ml-2 text-sm font-semibold capitalize ${
-                                  isCancel || isRefund ? "text-red-600" : "text-white"
-                                }`
-                              )}
-                            >
-                              {label}
-                            </Text>
-                          </View>
+                          <Ionicons name={iconName} size={20} color="#fff" />
+                          <Text style={twStyle("ml-2 text-base font-bold text-white")}>{primaryLabel}</Text>
                         </TouchableOpacity>
-                      );
-                    })}
+                        {primary === "shipped" ? (
+                          <Text style={twStyle("mt-2 text-xs leading-relaxed text-gray-500")}>
+                            You’ll enter carrier / tracking next so the customer can follow delivery.
+                          </Text>
+                        ) : null}
+                      </>
+                    ) : null}
+
+                    {destructive.length > 0 ? (
+                      <TouchableOpacity
+                        onPress={() => {
+                          Alert.alert(
+                            "More actions",
+                            "Cancellation or refund affects stock and payouts. Use when there’s a problem with this order.",
+                            [
+                              ...destructive.map((st) => ({
+                                text: st === "cancelled" ? "Cancel order" : "Mark refunded",
+                                style: "destructive" as const,
+                                onPress: () => handleStatusTap(activeOrder.id, st),
+                              })),
+                              { text: "Close", style: "cancel" },
+                            ],
+                          );
+                        }}
+                        disabled={patching}
+                        style={twStyle("mt-3 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2.5")}
+                        accessibilityRole="button"
+                        accessibilityLabel="More actions"
+                      >
+                        <Ionicons name="ellipsis-horizontal-circle-outline" size={18} color="#374151" />
+                        <Text style={twStyle("ml-2 text-sm font-semibold text-gray-700")}>More actions</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
-                </View>
-              )}
+                );
+              })()}
             </KeyboardAvoidingView>
           ) : null}
         </BottomSheet>

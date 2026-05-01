@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
 
     const search = searchParams.get("search");
@@ -51,14 +51,16 @@ export async function GET(request: NextRequest) {
         `
         id, name, slug, brand, category, retail_price, image_urls, short_description,
         quantity, tags, created_at, has_variants, track_stock_quantity, variant_option_types,
-        provider:providers (
-          id, business_name, slug, thumbnail_url, avatar_url
+        provider:providers!inner (
+          id, business_name, slug, thumbnail_url, avatar_url, tenant_id, status
         )
       `,
         { count: "exact" },
       )
       .eq("is_active", true)
-      .eq("retail_sales_enabled", true);
+      .eq("retail_sales_enabled", true)
+      .eq("provider.tenant_id", tenantId)
+      .eq("provider.status", "active");
 
     if (search) {
       query = query.or(
@@ -111,9 +113,11 @@ export async function GET(request: NextRequest) {
     let uniqueCategories: string[] = [];
     try {
       const { data: categories } = await (supabase.from("products") as any)
-        .select("category")
+        .select("category, provider:providers!inner(tenant_id, status)")
         .eq("is_active", true)
         .eq("retail_sales_enabled", true)
+        .eq("provider.tenant_id", tenantId)
+        .eq("provider.status", "active")
         .not("category", "is", null)
         .limit(50);
       const categoryList = (categories ?? []) as Array<{ category?: string }>;

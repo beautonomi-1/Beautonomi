@@ -13,6 +13,9 @@ export type ProviderNotificationNavPayload = {
   action_url?: string;
   data?: {
     booking_id?: string;
+    /** Some pushes include workflow status for routing */
+    db_status?: string;
+    status?: string;
     conversation_id?: string;
     product_order_id?: string;
     order_id?: string;
@@ -88,6 +91,50 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     return;
   }
 
+  /** Pending confirmations & physical queue — prefer Front Desk over the bookings hub */
+  const bookingIdFromPayload =
+    (typeof data.booking_id === "string" && data.booking_id.trim()) ||
+    getLinkParam(link, "booking_id") ||
+    getLinkParam(link, "booking") ||
+    "";
+  const dbStatus = String(data.db_status ?? data.status ?? "").toLowerCase();
+  const linkLc = link.toLowerCase();
+  const nTypeLc = (n.type ?? "").toLowerCase();
+  const pendingBooking =
+    dbStatus === "pending" ||
+    nTypeLc.includes("pending") ||
+    linkLc.includes("pending_booking") ||
+    Boolean(getLinkParam(link, "pending_booking_id"));
+  const frontDeskIntent =
+    linkLc.includes("waiting-room") ||
+    linkLc.includes("waiting_room") ||
+    linkLc.includes("front_desk") ||
+    linkLc.includes("front-desk") ||
+    linkLc.includes("frontdesk") ||
+    nTypeLc.includes("waiting_room") ||
+    nTypeLc.includes("front_desk") ||
+    nTypeLc.includes("check_in") ||
+    nTypeLc.includes("checkin");
+
+  if (frontDeskIntent || pendingBooking) {
+    const params = new URLSearchParams();
+    const highlightId =
+      bookingIdFromPayload ||
+      getLinkParam(link, "pending_booking_id") ||
+      getLinkParam(link, "highlight");
+    if (highlightId) {
+      params.set("highlight", highlightId);
+      if (pendingBooking || dbStatus === "pending") {
+        params.set("pending_booking_id", highlightId);
+      } else {
+        params.set("booking_id", highlightId);
+      }
+    }
+    const q = params.toString();
+    router.push((q ? `/(app)/(tabs)/more/waiting-room?${q}` : "/(app)/(tabs)/more/waiting-room") as never);
+    return;
+  }
+
   if (data.booking_id) {
     router.push(`/(app)/(tabs)/bookings/${data.booking_id}` as never);
     return;
@@ -156,10 +203,6 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     return;
   }
 
-  if (nType.includes("waiting_room") || nType.includes("front_desk") || nType.includes("check_in") || nType.includes("checkin")) {
-    router.push("/(app)/(tabs)/more/waiting-room" as never);
-    return;
-  }
   if (nType.includes("booking") || nType.includes("appointment")) {
     // Prefer the bookings hub over calendar so pending/new-booking alerts are not
     // confused with a calendar-only "front desk" view.

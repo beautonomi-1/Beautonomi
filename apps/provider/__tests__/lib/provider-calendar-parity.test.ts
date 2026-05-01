@@ -1,5 +1,6 @@
 import {
   expandBookingsForCalendar,
+  normalizeCalendarWallClockLoose,
   parseCalendarTimeStrict,
   validateCalendarTimeRange,
 } from "@/lib/provider-calendar-parity";
@@ -10,6 +11,13 @@ describe("provider calendar parity helpers", () => {
     expect(parseCalendarTimeStrict("9:30")).toBeNull();
     expect(parseCalendarTimeStrict("24:00")).toBeNull();
     expect(parseCalendarTimeStrict("12:99")).toBeNull();
+  });
+
+  it("normalizeCalendarWallClockLoose pads times so strict parser accepts overlay API shapes", () => {
+    expect(normalizeCalendarWallClockLoose("9:30")).toBe("09:30");
+    expect(parseCalendarTimeStrict(normalizeCalendarWallClockLoose("9:30")!)).toBe(570);
+    expect(normalizeCalendarWallClockLoose("12:05")).toBe("12:05");
+    expect(parseCalendarTimeStrict(normalizeCalendarWallClockLoose("12:05")!)).toBe(725);
   });
 
   it("validates block ranges before creating time blocks", () => {
@@ -58,5 +66,33 @@ describe("provider calendar parity helpers", () => {
     expect(rows[1]?.calendar_item_id).toBe("booking-1__svc_1");
     expect(rows[1]?.calendar_staff_id).toBe("staff-b");
     expect(rows[1]?.scheduled_at).toBe("2026-04-29T09:30:00.000Z");
+  });
+
+  it("expandBookingsForCalendar uses booking-level time and synthetic service when services are empty", () => {
+    const rows = expandBookingsForCalendar([
+      {
+        id: "b-empty",
+        scheduled_at: "2026-05-01T10:00:00.000Z",
+        total_amount: 200,
+        services: [],
+      },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.scheduled_at).toBe("2026-05-01T10:00:00.000Z");
+    expect(rows[0]?.calendar_price).toBe(200);
+    expect(rows[0]?.services?.[0]?.name).toBe("Service");
+  });
+
+  it("expandBookingsForCalendar prefers per-service price when booking total is missing", () => {
+    const rows = expandBookingsForCalendar([
+      {
+        id: "b-price",
+        scheduled_at: "2026-05-01T10:00:00.000Z",
+        total_amount: null,
+        services: [{ name: "Cut", duration_minutes: 30, price: 450 }],
+      },
+    ]);
+    expect(rows[0]?.total_amount).toBe(450);
+    expect(rows[0]?.calendar_price).toBe(450);
   });
 });

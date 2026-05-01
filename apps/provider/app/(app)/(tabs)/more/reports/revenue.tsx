@@ -117,9 +117,9 @@ function HorizontalBar({ label, value, maxValue, color }: { label: string; value
 }
 
 export default function RevenueReport() {
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId, provider } = useProvider();
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
-  const { from, to } = getReportDateRange(dateRange);
+  const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
   const rangeCaption = formatReportRangeCaption(from, to);
   const revenueReportUrl = appendReportLocation(`/api/provider/reports/revenue?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, timedOut, refresh } = useApi<RevenueData>(

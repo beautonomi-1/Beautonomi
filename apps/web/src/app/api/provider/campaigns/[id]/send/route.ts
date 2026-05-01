@@ -3,6 +3,8 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { checkMarketingFeatureAccess, canUseMarketingChannel } from "@/lib/subscriptions/feature-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { subDays, startOfDay, startOfMonth } from "date-fns";
+import { fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 
 /**
  * Get recipient IDs matching segment criteria
@@ -10,6 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 async function getSegmentRecipients(
   supabase: SupabaseClient<any>,
   providerId: string,
+  tz: string,
   criteria: {
     min_bookings?: number;
     max_bookings?: number;
@@ -44,9 +47,11 @@ async function getSegmentRecipients(
     query = query.overlaps("tags", criteria.tags);
   }
   if (criteria.last_booking_days !== undefined) {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - criteria.last_booking_days);
-    query = query.gte("last_service_date", cutoffDate.toISOString());
+    const cutoffUtc = fromBusinessTime(
+      startOfDay(subDays(nowInTz(tz), criteria.last_booking_days)),
+      tz,
+    );
+    query = query.gte("last_service_date", cutoffUtc.toISOString());
   }
 
   const { data: clients, error } = await query;
@@ -103,19 +108,24 @@ export async function POST(
       );
     }
 
+    const { data: tzRow } = await supabase
+      .from("providers")
+      .select("timezone")
+      .eq("id", providerId)
+      .maybeSingle();
+    const providerTz = resolveTz((tzRow as { timezone?: string | null } | null)?.timezone);
+
     // Check campaign limits
     const marketingAccess = await checkMarketingFeatureAccess(providerId);
     if (marketingAccess.maxCampaignsPerMonth) {
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
+      const monthStartUtc = fromBusinessTime(startOfDay(startOfMonth(nowInTz(providerTz))), providerTz);
 
       const { data: campaignsThisMonth } = await supabase
         .from("marketing_campaigns")
         .select("id")
         .eq("provider_id", providerId)
         .eq("status", "sent")
-        .gte("sent_at", startOfMonth.toISOString());
+        .gte("sent_at", monthStartUtc.toISOString());
 
       if ((campaignsThisMonth?.length || 0) >= marketingAccess.maxCampaignsPerMonth) {
         return errorResponse(
@@ -149,7 +159,7 @@ export async function POST(
       if (!campaign.segment_criteria) {
         return errorResponse("Segment campaign requires segment_criteria", "VALIDATION_ERROR", 400);
       }
-      recipientIds = await getSegmentRecipients(supabase, providerId, campaign.segment_criteria);
+      recipientIds = await getSegmentRecipients(supabase, providerId, providerTz, campaign.segment_criteria);
     }
 
     if (recipientIds.length === 0) {

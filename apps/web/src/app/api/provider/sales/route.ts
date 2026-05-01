@@ -7,6 +7,8 @@ import {
   applyPosProductStockDecrements,
   validatePosProductStock,
 } from "@/lib/provider-sales/pos-product-stock";
+import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 /** Values allowed by `sales.payment_method` CHECK (see migration 129). */
 const DB_SALE_PAYMENT_METHODS = new Set([
@@ -61,6 +63,9 @@ export async function GET(request: NextRequest) {
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+
+    const { timezone: tz } = await getProviderReportContext(supabaseAdmin, providerId);
+    const ymdParam = /^\d{4}-\d{2}-\d{2}$/;
 
     const { searchParams } = new URL(request.url);
     
@@ -119,12 +124,14 @@ export async function GET(request: NextRequest) {
       salesQuery = salesQuery.eq('location_id', locationId);
     }
     
-    // Apply date filters
-    if (dateFrom) {
-      salesQuery = salesQuery.gte('sale_date', `${dateFrom}T00:00:00`);
+    // Apply date filters (YYYY-MM-DD = provider wall calendar day)
+    if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
+      const d0 = dateFrom.slice(0, 10);
+      salesQuery = salesQuery.gte("sale_date", dateRangeBoundsUtc(d0, d0, tz).fromIso);
     }
-    if (dateTo) {
-      salesQuery = salesQuery.lte('sale_date', `${dateTo}T23:59:59`);
+    if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
+      const d1 = dateTo.slice(0, 10);
+      salesQuery = salesQuery.lte("sale_date", dateRangeBoundsUtc(d1, d1, tz).toIso);
     }
 
     // Apply search at DB level so pagination/count/totals match the visible list.
@@ -159,8 +166,14 @@ export async function GET(request: NextRequest) {
         .select("total_amount")
         .eq("provider_id", providerId);
       if (locationId) totalsQuery = totalsQuery.eq("location_id", locationId);
-      if (dateFrom) totalsQuery = totalsQuery.gte("sale_date", `${dateFrom}T00:00:00`);
-      if (dateTo) totalsQuery = totalsQuery.lte("sale_date", `${dateTo}T23:59:59`);
+      if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
+        const d0 = dateFrom.slice(0, 10);
+        totalsQuery = totalsQuery.gte("sale_date", dateRangeBoundsUtc(d0, d0, tz).fromIso);
+      }
+      if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
+        const d1 = dateTo.slice(0, 10);
+        totalsQuery = totalsQuery.lte("sale_date", dateRangeBoundsUtc(d1, d1, tz).toIso);
+      }
       if (searchTerm) {
         const clauses = [
           `ref_number.ilike.%${searchTerm}%`,

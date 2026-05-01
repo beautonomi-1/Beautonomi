@@ -185,7 +185,7 @@ export default function SupportTicketsListScreen() {
         <View style={styles.empty}>
           <Ionicons name="chatbubbles-outline" size={48} color="#9ca3af" />
           <Text style={styles.emptyTitle}>No support tickets yet</Text>
-          <Text style={styles.emptySubtitle}>Submit a ticket from Help → Contact support, or tap below.</Text>
+          <Text style={styles.emptySubtitle}>Submit a ticket from Help → New ticket, or tap below.</Text>
           <TouchableOpacity
             onPress={() => router.push("/(app)/(tabs)/support-tickets/new" as never)}
             style={styles.emptyCta}

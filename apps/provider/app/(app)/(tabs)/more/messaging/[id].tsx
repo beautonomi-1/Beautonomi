@@ -166,6 +166,9 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!conversationId) return;
     markReadRef.current(`/api/provider/conversations/${conversationId}/mark-read`, {});
+    api
+      .post("/api/provider/notifications/mark-related-read", { conversation_id: conversationId })
+      .catch(() => {});
   }, [conversationId]);
 
   // Reset the "first scroll" flag whenever we switch threads so the

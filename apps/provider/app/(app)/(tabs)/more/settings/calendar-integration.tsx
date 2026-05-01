@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as WebBrowser from "expo-web-browser";
-import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
+import { useApi, useApiMutation } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -29,6 +31,26 @@ interface CalendarSync {
   last_sync_date: string | null;
   sync_errors: string[] | null;
   created_date: string;
+}
+
+/** Map `/api/provider/calendar/sync` rows to UI types (matches provider web portal mapping). */
+function normalizeCalendarSync(row: Record<string, unknown>): CalendarSync {
+  const rawProvider = String(row.provider ?? "");
+  const provider: CalendarProvider =
+    rawProvider === "ical" ? "apple" : (rawProvider as CalendarProvider);
+  const dir = String(row.sync_direction ?? "");
+  const sync_direction: SyncDirection = dir === "bidirectional" ? "two_way" : "one_way";
+  const err = row.sync_error;
+  return {
+    id: String(row.id),
+    provider,
+    calendar_id: (row.calendar_id as string | null) ?? (row.ical_url as string | null) ?? null,
+    is_active: Boolean(row.is_active ?? true),
+    sync_direction,
+    last_sync_date: (row.last_sync_at as string | null) ?? null,
+    sync_errors: err != null && String(err).trim() ? [String(err)] : null,
+    created_date: String(row.created_at ?? ""),
+  };
 }
 
 function providerConfig(provider: CalendarProvider) {
@@ -65,36 +87,58 @@ export default function CalendarIntegrationScreen() {
   const [selectedSync, setSelectedSync] = useState<CalendarSync | null>(null);
   const [syncing, setSyncing] = useState<string | null>(null);
 
-  const { data: syncs, loading, refresh } = useApi<CalendarSync[]>("/api/provider/calendar/syncs");
-  const { execute: getAuthUrl } = useApiPost<{ provider: CalendarProvider }, { url: string }>("/api/provider/calendar/auth-url");
+  const { data: rawSyncRows, loading, refresh } = useApi<Record<string, unknown>[]>(
+    "/api/provider/calendar/sync",
+  );
+  const syncs = useMemo(
+    () => (rawSyncRows ?? []).map(normalizeCalendarSync),
+    [rawSyncRows],
+  );
   const { execute: updateSync } = useApiMutation<CalendarSync>("patch");
   const { execute: deleteSync } = useApiMutation<void>("delete");
-  const { execute: triggerSync } = useApiPost<{ sync_id: string }, any>("/api/provider/calendar/sync");
 
   const connectedProviders = new Set((syncs ?? []).map((s) => s.provider));
 
   async function handleConnect(provider: CalendarProvider) {
     setConnecting(provider);
     try {
-      const { data, error } = await getAuthUrl({ provider });
-      if (error || !data?.url) {
-        Alert.alert("Error", error || "Could not get authorization URL");
+      const result = await api.get<{ url?: string; state?: string }>(
+        `/api/provider/calendar/auth/${provider}`,
+        { timeout: 45_000 },
+      );
+      if (result.error) {
+        const e = result.error as { message?: string; code?: string };
+        const msg = getApiErrorMessage(result.error, "Could not get authorization URL");
+        if (e.code === "ICAL_METHOD") {
+          Alert.alert(
+            "Apple Calendar",
+            "Apple Calendar uses an iCal subscription URL. Open Calendar integration on the provider website (beautonomi.com) to copy your feed link.",
+          );
+          return;
+        }
+        Alert.alert("Error", msg);
         return;
       }
-      const result = await WebBrowser.openAuthSessionAsync(data.url);
-      if (result.type === "success") {
+      const payload = result.data as { url?: string } | null;
+      const url = payload?.url?.trim();
+      if (!url) {
+        Alert.alert("Error", "Could not get authorization URL");
+        return;
+      }
+      const sessionResult = await WebBrowser.openAuthSessionAsync(url);
+      if (sessionResult.type === "success") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         refresh();
       }
-    } catch {
-      Alert.alert("Error", "Failed to connect calendar");
+    } catch (err) {
+      Alert.alert("Error", getApiErrorMessage(err, "Failed to connect calendar"));
     } finally {
       setConnecting(null);
     }
   }
 
   async function handleToggleSync(sync: CalendarSync) {
-    const { error } = await updateSync(`/api/provider/calendar/syncs/${sync.id}`, {
+    const { error } = await updateSync(`/api/provider/calendar/sync/${sync.id}`, {
       is_active: !sync.is_active,
     });
     if (error) {
@@ -107,8 +151,9 @@ export default function CalendarIntegrationScreen() {
 
   async function handleChangeSyncDirection(sync: CalendarSync) {
     const newDirection: SyncDirection = sync.sync_direction === "one_way" ? "two_way" : "one_way";
-    const { error } = await updateSync(`/api/provider/calendar/syncs/${sync.id}`, {
-      sync_direction: newDirection,
+    const apiDirection = newDirection === "two_way" ? "bidirectional" : "app_to_calendar";
+    const { error } = await updateSync(`/api/provider/calendar/sync/${sync.id}`, {
+      sync_direction: apiDirection,
     });
     if (error) {
       Alert.alert("Error", error);
@@ -121,17 +166,16 @@ export default function CalendarIntegrationScreen() {
     }
   }
 
-  async function handleManualSync(sync: CalendarSync) {
-    setSyncing(sync.id);
-    const { error } = await triggerSync({ sync_id: sync.id });
-    setSyncing(null);
-    if (error) {
-      Alert.alert("Sync Failed", error);
-      return;
+  async function handleManualSync(_sync: CalendarSync) {
+    setSyncing(_sync.id);
+    try {
+      Alert.alert(
+        "Calendar sync",
+        "Full manual sync is not yet available in the mobile app. Appointment changes still push to Google or Outlook when you manage bookings here. For iCal or advanced options, use Calendar integration on the provider website.",
+      );
+    } finally {
+      setSyncing(null);
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Success", "Calendar synced successfully");
-    refresh();
   }
 
   async function handleDisconnect(sync: CalendarSync) {
@@ -145,7 +189,7 @@ export default function CalendarIntegrationScreen() {
           text: "Disconnect",
           style: "destructive",
           onPress: async () => {
-            const { error } = await deleteSync(`/api/provider/calendar/syncs/${sync.id}`);
+            const { error } = await deleteSync(`/api/provider/calendar/sync/${sync.id}`);
             if (error) {
               Alert.alert("Error", error);
               return;

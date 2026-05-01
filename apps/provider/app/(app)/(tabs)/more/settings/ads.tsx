@@ -13,6 +13,7 @@ import {
   TextInput,
   AppState,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { pushInAppBrowser } from "@/lib/in-app-web";
@@ -25,6 +26,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { LinearGradient } from "expo-linear-gradient";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -140,6 +142,18 @@ const STATUS_COLOR: Record<string, string> = {
   ended: "#94a3b8",
 };
 
+const packCardShadow = Platform.select({
+  ios: {
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+  },
+  default: {},
+});
+
+const packCardElevation = Platform.OS === "android" ? { elevation: 5 } : {};
+
 function campaignModelLabel(campaign: Campaign): string {
   if (isTimeBasedCampaign(campaign)) return "time boost";
   if (isImpressionPackCampaign(campaign)) return "impression pack";
@@ -172,12 +186,42 @@ function campaignSummaryLine(c: Campaign, currency: string): string {
   return `Total budget ${formatMoney(Number(c.budget), currency)} · Spent ${formatMoney(Number(c.spent), currency)}${daily}${bid}`;
 }
 
-function campaignProgress(c: Campaign): number {
+function effectiveCampaignStatus(campaign: Campaign, nowMs: number, metrics?: CampaignPerformance): string {
+  const base = campaign.status;
+  if (base !== "active") return base;
+
+  if (campaign.billing_model === "time_based" && campaign.end_at && new Date(campaign.end_at).getTime() <= nowMs) {
+    return "ended";
+  }
+
+  if (
+    isImpressionPackCampaign(campaign) &&
+    campaign.pack_impressions != null &&
+    metrics &&
+    Number(metrics.impressions ?? 0) >= Number(campaign.pack_impressions)
+  ) {
+    return "ended";
+  }
+
+  const budget = Number(campaign.budget || 0);
+  if (campaign.billing_model === "cpc_budget" && budget > 0 && Number(campaign.spent ?? 0) >= budget) {
+    return "ended";
+  }
+
+  return base;
+}
+
+function campaignProgress(c: Campaign, nowMs: number, metrics?: CampaignPerformance): number {
+  if (isImpressionPackCampaign(c) && c.pack_impressions != null && metrics) {
+    const cap = Number(c.pack_impressions);
+    if (cap <= 0) return 0;
+    return Math.max(0, Math.min(1, Number(metrics.impressions ?? 0) / cap));
+  }
   if (c.billing_model === "time_based" && c.start_at && c.end_at) {
     const start = new Date(c.start_at).getTime();
     const end = new Date(c.end_at).getTime();
     if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
-      return Math.max(0, Math.min(1, (Date.now() - start) / (end - start)));
+      return Math.max(0, Math.min(1, (nowMs - start) / (end - start)));
     }
   }
   const budget = Number(c.budget || 0);
@@ -185,23 +229,31 @@ function campaignProgress(c: Campaign): number {
   return Math.max(0, Math.min(1, Number(c.spent || 0) / budget));
 }
 
-function remainingLine(c: Campaign, metrics: CampaignPerformance, currency: string): string {
+function remainingLine(c: Campaign, metrics: CampaignPerformance, currency: string, nowMs: number): string {
   if (c.billing_model === "time_based") {
     if (!c.end_at) return "Starts after payment";
-    const days = Math.max(0, Math.ceil((new Date(c.end_at).getTime() - Date.now()) / 86400000));
+    if (new Date(c.end_at).getTime() <= nowMs) return "Boost period ended";
+    const days = Math.max(0, Math.ceil((new Date(c.end_at).getTime() - nowMs) / 86400000));
     return days === 1 ? "1 day remaining" : `${days} days remaining`;
   }
-  if (c.pack_impressions != null) {
+  if (isImpressionPackCampaign(c) && c.pack_impressions != null) {
+    if (Number(metrics.impressions ?? 0) >= Number(c.pack_impressions)) {
+      return "All impressions delivered";
+    }
     const remaining = Math.max(0, Number(c.pack_impressions) - Number(metrics.impressions || 0));
     return `${formatCompactNumber(remaining)} impressions remaining`;
   }
-  return `${formatMoney(Math.max(0, Number(c.budget || 0) - Number(c.spent || 0)), currency)} budget remaining`;
+  const budget = Number(c.budget || 0);
+  if (budget > 0 && Number(c.spent ?? 0) >= budget) {
+    return "Budget fully used";
+  }
+  return `${formatMoney(Math.max(0, budget - Number(c.spent || 0)), currency)} budget remaining`;
 }
 
 export default function AdsSettingsScreen() {
   const router = useRouter();
   const tenantCurrency = getTenantDefaultCurrency();
-  const { screenPadding } = useResponsive();
+  const { screenPadding, width, contentMaxWidth } = useResponsive();
   const adsConfig = useModuleConfig("ads") as { enabled?: boolean } | undefined;
   const adsEnabled = useFeatureFlag("ads.enabled");
   const enabled = Boolean(adsConfig?.enabled) || adsEnabled;
@@ -221,7 +273,11 @@ export default function AdsSettingsScreen() {
   const [creating, setCreating] = useState(false);
   const [updating, setUpdating] = useState<string | null>(null);
   const [creatingPackId, setCreatingPackId] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const appStateRef = useRef(AppState.currentState);
+
+  const packCardWidth = Math.round(Math.min(182, Math.max(154, (Math.min(width, contentMaxWidth) - screenPadding * 2 - 40) / 2)));
+  const packSnapGap = 12;
 
   const [createForm, setCreateForm] = useState({
     budget: "",
@@ -276,6 +332,7 @@ export default function AdsSettingsScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setNowMs(Date.now());
     }
   }, [enabled]);
 
@@ -285,8 +342,15 @@ export default function AdsSettingsScreen() {
   }, [loadAll]);
 
   useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, [enabled]);
+
+  useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (appStateRef.current.match(/inactive|background/) && nextState === "active") {
+        setNowMs(Date.now());
         loadAll();
       }
       appStateRef.current = nextState;
@@ -602,23 +666,36 @@ export default function AdsSettingsScreen() {
 
           {/* Time-based boost packs */}
           {timePacks.length > 0 && availableModels.includes("time_based") && (
-            <View style={twStyle("mb-6")}>
+            <View style={twStyle("mb-7")}>
               <View style={twStyle("flex-row items-center gap-2 mb-1")}>
-                <Text style={twStyle("text-sm font-semibold text-gray-700")}>Boost for a set number of days</Text>
+                <Text style={twStyle("text-base font-semibold text-gray-900")}>Boost for a set number of days</Text>
                 {defaultModel === "time_based" ? (
-                  <Text style={twStyle("rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700")}>
+                  <Text style={twStyle("rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800")}>
                     Recommended
                   </Text>
                 ) : null}
               </View>
-              <Text style={twStyle("text-xs text-gray-500 mb-3")}>Flat rate, guaranteed sponsored placement for the full duration.</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("-mx-4")} contentContainerStyle={twStyle("px-4 gap-3 flex-row")}>
+              <Text style={twStyle("text-sm text-gray-500 mb-4 leading-5")}>
+                Flat fee — your profile stays in sponsored placement for the whole window.
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                decelerationRate="fast"
+                snapToInterval={packCardWidth + packSnapGap}
+                snapToAlignment="start"
+                contentContainerStyle={{
+                  paddingRight: screenPadding + 8,
+                  gap: packSnapGap,
+                  paddingVertical: 4,
+                }}
+              >
                 {timePacks.map((tp) => (
                   <TouchableOpacity
                     key={tp.id}
                     onPress={async () => {
                       setCreatingPackId(tp.id);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       try {
                         const targeting = createForm.global_category_ids.length > 0
                           ? { global_category_ids: createForm.global_category_ids }
@@ -651,19 +728,53 @@ export default function AdsSettingsScreen() {
                       }
                     }}
                     disabled={!!creatingPackId}
-                    style={twStyle("rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-4 w-36")}
-                    activeOpacity={0.7}
+                    activeOpacity={0.85}
+                    style={{ width: packCardWidth }}
                   >
-                    <Text style={twStyle("text-lg font-bold text-gray-900")}>{tp.duration_days}</Text>
-                    <Text style={twStyle("text-xs text-gray-500")}>{tp.label || (tp.duration_days === 1 ? "day" : "days")}</Text>
-                    <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>
-                      {formatMoney(Number(tp.price_zar), tenantCurrency)}
-                    </Text>
-                    {creatingPackId === tp.id ? (
-                      <ActivityIndicator size="small" color="#111" style={{ marginTop: 8 }} />
-                    ) : (
-                      <Text style={twStyle("text-xs text-emerald-600 mt-2")}>Boost →</Text>
-                    )}
+                    <LinearGradient
+                      colors={["#10b981", "#059669", "#047857"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{
+                        borderRadius: 20,
+                        padding: 1.5,
+                        ...packCardShadow,
+                        ...packCardElevation,
+                      }}
+                    >
+                      <View
+                        style={{
+                          borderRadius: 18,
+                          backgroundColor: "#ffffff",
+                          paddingHorizontal: 16,
+                          paddingVertical: 16,
+                          minHeight: 148,
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <View>
+                          <Text style={twStyle("text-[11px] font-semibold uppercase tracking-wider text-emerald-600")}>
+                            Time boost
+                          </Text>
+                          <Text style={[twStyle("text-3xl font-bold text-gray-900 mt-1"), { fontVariant: ["tabular-nums"] }]}>
+                            {tp.duration_days}
+                          </Text>
+                          <Text style={twStyle("text-sm text-gray-600 mt-0.5")} numberOfLines={2}>
+                            {tp.label?.trim() ? tp.label : tp.duration_days === 1 ? "day in sponsored slots" : "days in sponsored slots"}
+                          </Text>
+                        </View>
+                        <View style={twStyle("mt-3 pt-3 border-t border-gray-100")}>
+                          <Text style={twStyle("text-lg font-bold text-gray-900")}>
+                            {formatMoney(Number(tp.price_zar), tenantCurrency)}
+                          </Text>
+                          {creatingPackId === tp.id ? (
+                            <ActivityIndicator size="small" color="#047857" style={{ marginTop: 10 }} />
+                          ) : (
+                            <Text style={twStyle("text-xs font-semibold text-emerald-600 mt-2")}>Tap to purchase →</Text>
+                          )}
+                        </View>
+                      </View>
+                    </LinearGradient>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -672,37 +783,80 @@ export default function AdsSettingsScreen() {
 
           {/* Impression packs */}
           {packs.length > 0 && availableModels.includes("impression_pack") && (
-            <View style={twStyle("mb-6")}>
+            <View style={twStyle("mb-7")}>
               <View style={twStyle("flex-row items-center gap-2 mb-1")}>
-                <Text style={twStyle("text-sm font-semibold text-gray-700")}>Buy impressions</Text>
+                <Text style={twStyle("text-base font-semibold text-gray-900")}>Buy impressions</Text>
                 {defaultModel === "impression_pack" ? (
-                  <Text style={twStyle("rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700")}>
+                  <Text style={twStyle("rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-semibold text-violet-800")}>
                     Recommended
                   </Text>
                 ) : null}
               </View>
-              <Text style={twStyle("text-xs text-gray-500 mb-3")}>
-                Pay once for a fixed number of sponsored impressions. The pack activates after payment.
+              <Text style={twStyle("text-sm text-gray-500 mb-4 leading-5")}>
+                Prepaid reach — your sponsored placements deliver until the pack is fully shown.
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("-mx-4")} contentContainerStyle={twStyle("px-4 gap-3 flex-row")}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                decelerationRate="fast"
+                snapToInterval={packCardWidth + packSnapGap}
+                snapToAlignment="start"
+                contentContainerStyle={{
+                  paddingRight: screenPadding + 8,
+                  gap: packSnapGap,
+                  paddingVertical: 4,
+                }}
+              >
                 {packs.map((pack) => (
                   <TouchableOpacity
                     key={pack.id}
                     onPress={() => handleBuyPack(pack)}
                     disabled={!!creatingPackId}
-                    style={twStyle("rounded-2xl border-2 border-gray-200 bg-gray-50 p-4 w-36")}
-                    activeOpacity={0.7}
+                    activeOpacity={0.85}
+                    style={{ width: packCardWidth }}
                   >
-                    <Text style={twStyle("text-lg font-bold text-gray-900")}>{pack.impressions}</Text>
-                    <Text style={twStyle("text-xs text-gray-500")}>impressions</Text>
-                    <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>
-                      {formatMoney(Number(pack.price_zar), tenantCurrency)}
-                    </Text>
-                    {creatingPackId === pack.id ? (
-                      <ActivityIndicator size="small" color="#111" style={{ marginTop: 8 }} />
-                    ) : (
-                      <Text style={twStyle("text-xs text-indigo-600 mt-2")}>Buy →</Text>
-                    )}
+                    <LinearGradient
+                      colors={["#7c3aed", "#6366f1", "#4f46e5"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{
+                        borderRadius: 20,
+                        padding: 1.5,
+                        ...packCardShadow,
+                        ...packCardElevation,
+                      }}
+                    >
+                      <View
+                        style={{
+                          borderRadius: 18,
+                          backgroundColor: "#ffffff",
+                          paddingHorizontal: 16,
+                          paddingVertical: 16,
+                          minHeight: 148,
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <View>
+                          <Text style={twStyle("text-[11px] font-semibold uppercase tracking-wider text-violet-700")}>
+                            Impression pack
+                          </Text>
+                          <Text style={[twStyle("text-3xl font-bold text-gray-900 mt-1"), { fontVariant: ["tabular-nums"] }]}>
+                            {formatCompactNumber(pack.impressions)}
+                          </Text>
+                          <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>sponsored impressions</Text>
+                        </View>
+                        <View style={twStyle("mt-3 pt-3 border-t border-gray-100")}>
+                          <Text style={twStyle("text-lg font-bold text-gray-900")}>
+                            {formatMoney(Number(pack.price_zar), tenantCurrency)}
+                          </Text>
+                          {creatingPackId === pack.id ? (
+                            <ActivityIndicator size="small" color="#5b21b6" style={{ marginTop: 10 }} />
+                          ) : (
+                            <Text style={twStyle("text-xs font-semibold text-violet-600 mt-2")}>Tap to purchase →</Text>
+                          )}
+                        </View>
+                      </View>
+                    </LinearGradient>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -740,10 +894,6 @@ export default function AdsSettingsScreen() {
             ) : (
               <View style={twStyle("gap-3")}>
                 {campaigns.map((c) => {
-                  const hasBudgetLeft = Number(c.budget) > Number(c.spent ?? 0);
-                  const canActivate = (c.status === "draft" || c.status === "paused") && hasBudgetLeft;
-                  const showAwaitingPayment =
-                    (c.status === "draft" || c.status === "paused") && !hasBudgetLeft;
                   const metrics = campaignPerformance[c.id] ?? {
                     impressions: 0,
                     reach: 0,
@@ -751,7 +901,12 @@ export default function AdsSettingsScreen() {
                     books: 0,
                     spent: Number(c.spent ?? 0),
                   };
-                  const progress = campaignProgress(c);
+                  const displayStatus = effectiveCampaignStatus(c, nowMs, metrics);
+                  const hasBudgetLeft = Number(c.budget) > Number(c.spent ?? 0);
+                  const canActivate = (c.status === "draft" || c.status === "paused") && hasBudgetLeft;
+                  const showAwaitingPayment =
+                    (c.status === "draft" || c.status === "paused") && !hasBudgetLeft;
+                  const progress = campaignProgress(c, nowMs, metrics);
                   return (
                     <View key={c.id} style={twStyle("rounded-2xl border border-gray-200 bg-white p-4")}>
                       <View style={twStyle("flex-row items-start justify-between gap-2 flex-wrap")}>
@@ -759,10 +914,10 @@ export default function AdsSettingsScreen() {
                           <View style={twStyle("flex-row items-center gap-2 flex-wrap mb-1")}>
                             <Text style={twStyle("text-sm font-semibold text-gray-900")}>Campaign</Text>
                             <View
-                              style={[twStyle("rounded-md px-2 py-0.5"), { backgroundColor: `${STATUS_COLOR[c.status] ?? "#6b7280"}22` }]}
+                              style={[twStyle("rounded-md px-2 py-0.5"), { backgroundColor: `${STATUS_COLOR[displayStatus] ?? "#6b7280"}22` }]}
                             >
-                              <Text style={[twStyle("text-xs font-semibold"), { color: STATUS_COLOR[c.status] ?? "#6b7280" }]}>
-                                {c.status}
+                              <Text style={[twStyle("text-xs font-semibold"), { color: STATUS_COLOR[displayStatus] ?? "#6b7280" }]}>
+                                {displayStatus}
                               </Text>
                             </View>
                             <View style={twStyle("rounded-md border border-gray-200 px-2 py-0.5")}>
@@ -783,7 +938,7 @@ export default function AdsSettingsScreen() {
                               />
                             </View>
                             <Text style={twStyle("mt-1 text-xs font-medium text-gray-500")}>
-                              {remainingLine(c, metrics, tenantCurrency)}
+                              {remainingLine(c, metrics, tenantCurrency, nowMs)}
                             </Text>
                           </View>
                           <View style={twStyle("mt-3 flex-row flex-wrap gap-2")}>
@@ -829,7 +984,7 @@ export default function AdsSettingsScreen() {
                             <Text style={twStyle("text-white text-xs font-semibold")}>Activate</Text>
                           </TouchableOpacity>
                         ) : null}
-                        {c.status === "active" ? (
+                        {displayStatus === "active" ? (
                           <TouchableOpacity
                             onPress={() => handleSetStatus(c.id, "paused")}
                             disabled={updating === c.id}
@@ -838,7 +993,7 @@ export default function AdsSettingsScreen() {
                             <Text style={twStyle("text-amber-900 text-xs font-semibold")}>Pause</Text>
                           </TouchableOpacity>
                         ) : null}
-                        {c.status !== "ended" ? (
+                        {displayStatus !== "ended" ? (
                           <TouchableOpacity
                             onPress={() => handleSetStatus(c.id, "ended")}
                             disabled={updating === c.id}

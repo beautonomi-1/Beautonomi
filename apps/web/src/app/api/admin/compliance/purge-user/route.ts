@@ -58,12 +58,15 @@ export async function POST(request: NextRequest) {
     const { user_id, reason, target_email_confirmation } = parsed.data;
     const admin = getSupabaseAdmin();
 
-    const { data: existingUser, error: fetchError } = await admin
-      .from("users")
-      .select("id, role, email")
-      .eq("id", user_id)
-      .eq("preferred_home_tenant_id", tenantId)
-      .maybeSingle();
+    const { data: accessibleRows, error: fetchError } = await admin.rpc(
+      "get_user_if_admin_tenant_accessible",
+      {
+        p_user_id: user_id,
+        p_tenant_id: tenantId,
+      }
+    );
+
+    const existingUser = Array.isArray(accessibleRows) ? accessibleRows[0] : null;
 
     if (fetchError || !existingUser) {
       return notFoundResponse("User not found in this tenant scope");

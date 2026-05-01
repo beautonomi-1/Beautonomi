@@ -52,10 +52,10 @@ interface StaffData {
 }
 
 export default function StaffReport() {
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId, provider } = useProvider();
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
-  const { from, to } = getReportDateRange(dateRange);
+  const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
   const rangeCaption = formatReportRangeCaption(from, to);
   const staffReportUrl = appendReportLocation(`/api/provider/reports/staff?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, refresh } = useApi<StaffData>(staffReportUrl);

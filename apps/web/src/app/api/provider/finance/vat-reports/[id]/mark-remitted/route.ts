@@ -2,6 +2,18 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 
+function deadlineDateAfterPeriodEnd(periodEndYmd: string): string {
+  const ymd = periodEndYmd.slice(0, 10);
+  const [y, m] = ymd.split("-").map(Number);
+  let dm = m + 1;
+  let dy = y;
+  if (dm > 12) {
+    dm = 1;
+    dy += 1;
+  }
+  return `${dy}-${String(dm).padStart(2, "0")}-25`;
+}
+
 /**
  * PATCH /api/provider/finance/vat-reports/[id]/mark-remitted
  * 
@@ -48,7 +60,7 @@ export async function PATCH(
           provider_id: providerId,
           period_start,
           period_end,
-          deadline_date: new Date(new Date(period_end).setMonth(new Date(period_end).getMonth() + 1, 25)).toISOString().split('T')[0],
+          deadline_date: deadlineDateAfterPeriodEnd(period_end),
           days_before_deadline: 0, // Manual mark, not from reminder
           vat_amount: 0, // Will be calculated from transactions if needed
           remitted_to_sars: true,

@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 type BookingPaymentRow = {
   id: string;
@@ -67,6 +69,9 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
 
+    const { timezone: tz } = await getProviderReportContext(supabaseAdmin, providerId);
+    const ymdParam = /^\d{4}-\d{2}-\d{2}$/;
+
     const { searchParams } = new URL(request.url);
     
     // Parse query parameters
@@ -116,11 +121,13 @@ export async function GET(request: NextRequest) {
           .in("booking_id", chunk)
           .order("created_at", { ascending: false });
 
-        if (dateFrom) {
-          query = query.gte("created_at", `${dateFrom}T00:00:00`);
+        if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
+          const d0 = dateFrom.slice(0, 10);
+          query = query.gte("created_at", dateRangeBoundsUtc(d0, d0, tz).fromIso);
         }
-        if (dateTo) {
-          query = query.lte("created_at", `${dateTo}T23:59:59.999`);
+        if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
+          const d1 = dateTo.slice(0, 10);
+          query = query.lte("created_at", dateRangeBoundsUtc(d1, d1, tz).toIso);
         }
         if (paymentMethod) {
           query = query.eq("payment_method", paymentMethod);
@@ -182,11 +189,13 @@ export async function GET(request: NextRequest) {
       query = query.order('created_at', { ascending: false });
 
       // Apply filters
-      if (dateFrom) {
-        query = query.gte('created_at', `${dateFrom}T00:00:00`);
+      if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
+        const d0 = dateFrom.slice(0, 10);
+        query = query.gte("created_at", dateRangeBoundsUtc(d0, d0, tz).fromIso);
       }
-      if (dateTo) {
-        query = query.lte('created_at', `${dateTo}T23:59:59.999`);
+      if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
+        const d1 = dateTo.slice(0, 10);
+        query = query.lte("created_at", dateRangeBoundsUtc(d1, d1, tz).toIso);
       }
       if (paymentMethod) {
         query = query.eq('payment_method', paymentMethod);

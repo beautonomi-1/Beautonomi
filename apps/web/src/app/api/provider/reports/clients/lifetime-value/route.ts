@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { canAccessReportType } from "@/lib/subscriptions/report-gating";
 import { createClient } from "@supabase/supabase-js";
+import { differenceInCalendarDays } from "date-fns";
+import { formatDateYmd } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 type ClientSummary = {
   id: string;
@@ -31,6 +34,10 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
 
     if (!providerId) return notFoundResponse("Provider not found");
+
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const tz = reportContext.timezone;
+    const todayYmd = formatDateYmd(new Date(), tz);
 
     const locationId = request.nextUrl.searchParams.get("location_id") || undefined;
     // Get completed bookings only. CLV/spend should represent realized client value,
@@ -86,9 +93,10 @@ export async function GET(request: NextRequest) {
 
     // Calculate averages and enrich data
     const clientLTV = Array.from(clientMap.values()).map((client) => {
-      const daysSinceFirst = Math.floor(
-        (new Date().getTime() - client.firstVisit.getTime()) / (1000 * 60 * 60 * 24)
-      );
+      const firstYmd = formatDateYmd(client.firstVisit, tz);
+      const startAnchor = new Date(`${firstYmd}T12:00:00.000Z`);
+      const endAnchor = new Date(`${todayYmd}T12:00:00.000Z`);
+      const daysSinceFirst = Math.max(0, differenceInCalendarDays(endAnchor, startAnchor));
       return {
         ...client,
         averageBookingValue: client.totalBookings > 0 ? client.totalSpent / client.totalBookings : 0,

@@ -25,14 +25,13 @@ import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-
 const reportCategories = [
   {
     id: "sales",
-    title: "Sales Reports",
+    title: "Sales & revenue",
     description: "Track revenue, bookings, and service performance",
     icon: DollarSign,
     color: "text-green-600 bg-green-50",
     reports: [
       { id: "sales-summary", name: "Sales Summary", href: "/provider/reports/sales/summary" },
       { id: "service-performance", name: "Service Performance", href: "/provider/reports/sales/services" },
-      { id: "product-sales", name: "Product Sales", href: "/provider/reports/products/sales" },
       { id: "revenue-trends", name: "Revenue Trends", href: "/provider/reports/sales/trends" },
     ],
   },
@@ -77,8 +76,8 @@ const reportCategories = [
   },
   {
     id: "payments",
-    title: "Payment Reports",
-    description: "Track payments, refunds, and financial transactions",
+    title: "Payments",
+    description: "Payments, refunds, end-of-day cash-up, and ledger payout earnings",
     icon: CreditCard,
     color: "text-orange-600 bg-orange-50",
     reports: [
@@ -86,14 +85,14 @@ const reportCategories = [
       { id: "end-of-day", name: "End of day", href: "/provider/reports/end-of-day" },
       { id: "refunds", name: "Refunds", href: "/provider/reports/payments/refunds" },
       { id: "payment-methods", name: "Payment Methods", href: "/provider/reports/payments/methods" },
-      { id: "payouts", name: "Payouts", href: "/provider/reports/payments/payouts" },
+      { id: "payouts", name: "Payout earnings (ledger)", href: "/provider/reports/payments/payouts" },
       { id: "yoco-reconciliation", name: "Yoco reconciliation", href: "/provider/reports/payments/yoco-reconciliation" },
     ],
   },
   {
     id: "products",
-    title: "Product Reports",
-    description: "Monitor product sales and inventory",
+    title: "Product & inventory",
+    description: "Product sales, stock levels, and top sellers",
     icon: ShoppingBag,
     color: "text-indigo-600 bg-indigo-50",
     reports: [
@@ -115,8 +114,8 @@ const reportCategories = [
   },
   {
     id: "packages",
-    title: "Package Reports",
-    description: "Analyze package sales and usage",
+    title: "Packages & memberships",
+    description: "Package sales and redemption usage",
     icon: Package,
     color: "text-cyan-600 bg-cyan-50",
     reports: [
@@ -126,8 +125,8 @@ const reportCategories = [
   },
   {
     id: "business",
-    title: "Business Reports",
-    description: "Overall business performance and insights",
+    title: "Business overview",
+    description: "Dashboard metrics, performance snapshot, and period comparison",
     icon: BarChart3,
     color: "text-violet-600 bg-violet-50",
     reports: [

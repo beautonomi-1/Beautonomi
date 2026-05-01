@@ -36,7 +36,12 @@ export const REPORT_DETAIL_REGISTRY: Record<string, ReportDetailDefinition> = {
   "end-of-day": { title: "End of day", subtitle: "Daily cash-up style summary", apiPath: "end-of-day", query: "singleDate" },
   refunds: { title: "Refunds", subtitle: "Ledger refund volume and provider reversal impact", apiPath: "payments/refunds", query: "fromTo" },
   "payment-methods": { title: "Payment Methods", subtitle: "Card, cash, wallet split", apiPath: "payments/methods", query: "fromTo" },
-  payouts: { title: "Payout Earnings", subtitle: "Platform-held provider earnings, not bank payout history", apiPath: "payments/payouts", query: "fromTo" },
+  payouts: {
+    title: "Payout earnings (ledger)",
+    subtitle: "Platform-held provider earnings — not bank payout transfer history",
+    apiPath: "payments/payouts",
+    query: "fromTo",
+  },
   "yoco-reconciliation": { title: "Yoco reconciliation", subtitle: "Terminal sync debugging", apiPath: "payments/yoco-reconciliation", query: "fromTo" },
   inventory: { title: "Inventory", subtitle: "Stock levels by SKU", apiPath: "products/inventory", query: "none" },
   "top-products": {

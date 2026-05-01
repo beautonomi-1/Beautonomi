@@ -32,7 +32,11 @@ import {
   splitPhoneForNationalInput,
   validateNationalPhoneDigits,
 } from "@/lib/phone-country-codes";
-import { countryFilterIso2FromStorage } from "@beautonomi/utils";
+import {
+  appendFormDataFileNative,
+  countryFilterIso2FromStorage,
+  resolveGlobalCategoryIconUri,
+} from "@beautonomi/utils";
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
@@ -42,7 +46,6 @@ import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
-import { appendFormDataFileNative, resolveGlobalCategoryIconUri } from "@beautonomi/utils";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useOnboardingWizard } from "./OnboardingWizardContext";

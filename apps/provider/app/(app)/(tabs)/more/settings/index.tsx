@@ -146,7 +146,7 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
   {
     title: "App",
     items: [
-      { icon: "language-outline", label: "Language", subtitle: "English, isiZulu, isiXhosa, Afrikaans, Sesotho, and more", route: "/(app)/(tabs)/more/settings/language", color: "#0ea5e9" },
+      { icon: "language-outline", label: "Language & region", subtitle: "App language & market", route: "/(app)/(tabs)/more/settings/language", color: "#0ea5e9" },
     ],
   },
   {

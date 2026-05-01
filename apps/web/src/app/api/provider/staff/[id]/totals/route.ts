@@ -5,6 +5,10 @@ import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { STAFF_COMMISSION_REVENUE_TYPES } from "@/lib/reports/constants";
 import { calculateStaffCommission } from "@/lib/payroll/commission-calculator";
 import { getTipsByStaff } from "@/lib/payroll/tips-helper";
+import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { subDays } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 
 export interface StaffTotalsItem {
   team_member_id: string;
@@ -71,24 +75,29 @@ export async function GET(
     const endDateStr = searchParams.get("end_date");
     const locationId = searchParams.get("location_id") || null;
 
+    const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const tz = reportContext.timezone;
+
     let fromDate: Date;
     let toDate: Date;
 
     if (period === "daily" && dateStr) {
-      fromDate = new Date(dateStr);
-      fromDate.setHours(0, 0, 0, 0);
-      toDate = new Date(dateStr);
-      toDate.setHours(23, 59, 59, 999);
+      const ymd = dateStr.slice(0, 10);
+      const bounds = dateRangeBoundsUtc(ymd, ymd, tz);
+      fromDate = new Date(bounds.fromIso);
+      toDate = new Date(bounds.toIso);
     } else if (period === "weekly" && startDateStr && endDateStr) {
-      fromDate = new Date(startDateStr);
-      fromDate.setHours(0, 0, 0, 0);
-      toDate = new Date(endDateStr);
-      toDate.setHours(23, 59, 59, 999);
+      const fromYmd = startDateStr.slice(0, 10);
+      const toYmd = endDateStr.slice(0, 10);
+      const bounds = dateRangeBoundsUtc(fromYmd, toYmd, tz);
+      fromDate = new Date(bounds.fromIso);
+      toDate = new Date(bounds.toIso);
     } else {
-      const fallback = new Date();
-      fromDate = new Date(fallback);
-      fromDate.setDate(fallback.getDate() - 7);
-      toDate = new Date();
+      const todayYmd = formatDateYmd(new Date(), tz);
+      const fromYmd = formatDateYmd(subDays(toZonedTime(new Date(), tz), 7), tz);
+      const bounds = dateRangeBoundsUtc(fromYmd, todayYmd, tz);
+      fromDate = new Date(bounds.fromIso);
+      toDate = new Date(bounds.toIso);
     }
 
     const commission = await calculateStaffCommission(
@@ -106,7 +115,7 @@ export async function GET(
       fromDate,
       toDate,
       locationId,
-      { transactionTypes: STAFF_COMMISSION_REVENUE_TYPES }
+      { transactionTypes: STAFF_COMMISSION_REVENUE_TYPES, timezone: tz }
     );
 
     let bookingsQuery = supabaseAdmin

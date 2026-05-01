@@ -754,11 +754,11 @@ export default function ProfileScreen() {
               if (Platform.OS === "ios" || Platform.OS === "android") {
                 void openNativeStoreReview();
                 if (Platform.OS === "ios" && (!IOS_APP_STORE_ID || IOS_APP_STORE_ID === "0000000000")) {
-                  router.push("/(app)/contact-support");
+                  router.push("/(app)/(tabs)/support-tickets/new");
                 }
                 return;
               }
-              router.push("/(app)/contact-support");
+              router.push("/(app)/(tabs)/support-tickets/new");
             }}
           />
           <MenuItem

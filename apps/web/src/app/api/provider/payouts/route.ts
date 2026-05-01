@@ -11,6 +11,8 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { checkPayoutRequestRateLimit } from "@/lib/rate-limit/payout-request";
 import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
+import { dateRangeBoundsUtc, formatDateYmd, resolveTz } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 /**
  * GET /api/provider/payouts
@@ -29,6 +31,9 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
+    const { timezone: tz } = await getProviderReportContext(supabase, providerId);
+    const ymd = /^\d{4}-\d{2}-\d{2}$/;
+
     const status = searchParams.get("status");
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
@@ -43,12 +48,15 @@ export async function GET(request: NextRequest) {
       query = query.eq("status", status);
     }
 
-    if (startDate) {
-      query = query.gte("created_at", `${startDate}T00:00:00`);
+    if (startDate && ymd.test(startDate.slice(0, 10))) {
+      const fromIso = dateRangeBoundsUtc(startDate.slice(0, 10), startDate.slice(0, 10), tz).fromIso;
+      query = query.gte("created_at", fromIso);
     }
 
-    if (endDate) {
-      query = query.lte("created_at", `${endDate}T23:59:59`);
+    if (endDate && ymd.test(endDate.slice(0, 10))) {
+      const endYmd = endDate.slice(0, 10);
+      const toIso = dateRangeBoundsUtc(endYmd, endYmd, tz).toIso;
+      query = query.lte("created_at", toIso);
     }
 
     const { data: payouts, error } = await query;
@@ -112,7 +120,7 @@ export async function POST(request: NextRequest) {
 
     const { data: prow } = await supabase
       .from("providers")
-      .select("tenant_id, currency")
+      .select("tenant_id, currency, timezone")
       .eq("id", providerId)
       .maybeSingle();
     const effectiveTenantId =
@@ -247,9 +255,10 @@ export async function POST(request: NextRequest) {
       bank_account_id: payoutAccountId,
     };
 
-    // Generate a human-readable payout number: PAY-YYYYMMDD-XXXXX
+    // Generate a human-readable payout number: PAY-YYYYMMDD-XXXXX (business calendar date)
     const now = new Date();
-    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, "");
+    const payoutTz = resolveTz((prow as { timezone?: string | null } | null)?.timezone);
+    const dateStamp = formatDateYmd(now, payoutTz).replace(/-/g, "");
     const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
     const payoutNumber = `PAY-${dateStamp}-${randomSuffix}`;
 

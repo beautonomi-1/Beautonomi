@@ -1043,6 +1043,7 @@ const CRITICAL_TRANSACTIONAL_TEMPLATES = new Set<string>([
   "provider_booking_time_changed",
   "provider_booking_date_changed",
   // Reminders
+  "appointment_reminder",
   "booking_reminder_24h",
   "booking_reminder_2h",
   // Payments + refunds

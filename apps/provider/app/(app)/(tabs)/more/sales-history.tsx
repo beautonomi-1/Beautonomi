@@ -64,10 +64,10 @@ const DATE_FILTERS = [
   { label: "This Month", value: "month" },
 ];
 
-function getDateRange(filter: string): { from?: string; to?: string } {
+function getDateRange(filter: string, timezone?: string | null): { from?: string; to?: string } {
   if (filter === "all") return {};
   if (filter === "today" || filter === "week" || filter === "month") {
-    return getReportDateRange(filter as ReportDateRangeKey);
+    return getReportDateRange(filter as ReportDateRangeKey, { timezone });
   }
   return {};
 }
@@ -80,7 +80,7 @@ function paymentIcon(method: string): keyof typeof Ionicons.glyphMap {
 
 export default function SalesHistoryScreen() {
   useResponsive();
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId, provider } = useProvider();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
@@ -104,7 +104,7 @@ export default function SalesHistoryScreen() {
     setPage(1);
   }, [debouncedSearch, dateFilter, selectedLocationId]);
 
-  const dateRange = useMemo(() => getDateRange(dateFilter), [dateFilter]);
+  const dateRange = useMemo(() => getDateRange(dateFilter, provider?.timezone), [dateFilter, provider?.timezone]);
   const dateRangeCaption = useMemo(() => {
     if (!dateRange.from || !dateRange.to) return null;
     return formatReportRangeCaption(dateRange.from, dateRange.to);

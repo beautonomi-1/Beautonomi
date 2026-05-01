@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
-  const byUser = new Map<string, { providerId: string; items: number; firstProductId: string }>();
+  const byUser = new Map<string, { providerId: string; items: number; firstProductId: string; tenantId?: string | null }>();
   for (const row of abandoned ?? []) {
     const existing = byUser.get(row.user_id);
     if (existing) {
@@ -64,6 +64,23 @@ export async function GET(request: NextRequest) {
 
   if (byUser.size === 0) {
     return NextResponse.json({ ok: true, sent: 0, candidates: 0 });
+  }
+
+  const providerIds = [...new Set([...byUser.values()].map((info) => info.providerId).filter(Boolean))];
+  if (providerIds.length > 0) {
+    const { data: providerRows } = await admin
+      .from("providers")
+      .select("id, tenant_id")
+      .in("id", providerIds);
+    const tenantByProvider = new Map(
+      (providerRows ?? []).map((row: { id?: string | null; tenant_id?: string | null }) => [
+        row.id,
+        row.tenant_id ?? null,
+      ]),
+    );
+    for (const info of byUser.values()) {
+      info.tenantId = tenantByProvider.get(info.providerId) ?? null;
+    }
   }
 
   const userIds = Array.from(byUser.keys());
@@ -111,7 +128,7 @@ export async function GET(request: NextRequest) {
           message: body,
           url: "/cart",
           data: { type: "abandoned_cart_reminder" },
-        });
+        }, ["push"], { appType: "customer", tenantId: info.tenantId });
       }
       sent += 1;
     } catch (err) {

@@ -1,7 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { differenceInCalendarDays, subDays } from "date-fns";
+import { differenceInCalendarDays, subDays, subMonths } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 
-import { dateRangeBoundsUtc, formatDateYmd, resolveTz } from "@/lib/dates/provider-tz";
+import {
+  addDaysToYmd,
+  dateRangeBoundsUtc,
+  formatDateYmd,
+  nowInTz,
+  resolveTz,
+} from "@/lib/dates/provider-tz";
 
 export type ProviderReportContext = {
   providerId: string;
@@ -27,11 +34,13 @@ export async function getProviderReportContext(
 export function reportDateRangeFromParams(
   searchParams: URLSearchParams,
   timezone: string,
-  opts: { defaultDays?: number; maxDays?: number } = {},
+  opts: { defaultDays?: number; maxDays?: number; defaultMonthsBack?: number } = {},
 ): { fromDate: Date; toDate: Date; fromYmd: string; toYmd: string } {
-  const defaultDays = opts.defaultDays ?? 30;
   const todayYmd = formatDateYmd(new Date(), timezone);
-  const defaultFromYmd = formatDateYmd(subDays(new Date(), defaultDays - 1), timezone);
+  const defaultFromYmd =
+    opts.defaultMonthsBack != null
+      ? formatDateYmd(subMonths(toZonedTime(new Date(), timezone), opts.defaultMonthsBack), timezone)
+      : formatDateYmd(subDays(nowInTz(timezone), (opts.defaultDays ?? 30) - 1), timezone);
   const normalizeParamYmd = (value: string | null, fallback: string) => {
     if (!value) return fallback;
     const ymd = value.slice(0, 10);
@@ -46,7 +55,8 @@ export function reportDateRangeFromParams(
     if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())) {
       const dayCount = differenceInCalendarDays(end, start) + 1;
       if (dayCount > opts.maxDays) {
-        fromYmd = formatDateYmd(subDays(end, opts.maxDays - 1), timezone);
+        // Civil calendar: clamp `from` so inclusive days ≤ maxDays (same Y-M-D labels as bounds).
+        fromYmd = addDaysToYmd(toYmd, -(opts.maxDays - 1));
       }
     }
   }
@@ -64,15 +74,17 @@ export function reportDateKey(date: Date | string, timezone: string): string {
   return formatDateYmd(typeof date === "string" ? new Date(date) : date, timezone);
 }
 
+const YMD_PARAM = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Inclusive list of civil `YYYY-MM-DD` keys from `fromYmd` through `toYmd` (Gregorian; aligned with report bounds). */
 export function eachReportDateKey(fromYmd: string, toYmd: string): string[] {
-  const start = new Date(`${fromYmd}T12:00:00.000Z`);
-  const end = new Date(`${toYmd}T12:00:00.000Z`);
-  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start > end) {
+  if (!YMD_PARAM.test(fromYmd) || !YMD_PARAM.test(toYmd) || fromYmd > toYmd) {
     return [];
   }
   const keys: string[] = [];
-  for (const cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
-    keys.push(cursor.toISOString().slice(0, 10));
+  const maxKeys = 5000;
+  for (let ymd = fromYmd; ymd <= toYmd && keys.length < maxKeys; ymd = addDaysToYmd(ymd, 1)) {
+    keys.push(ymd);
   }
   return keys;
 }
@@ -81,6 +93,30 @@ export type LocationLinkedLedgerRow = {
   booking_id?: string | null;
   product_order_id?: string | null;
 };
+
+export type LedgerLocationAttributionSummary = {
+  scopedByLocation: boolean;
+  excludedUnattributedRows: number;
+  note: string;
+};
+
+export function summarizeLedgerLocationAttribution<T extends LocationLinkedLedgerRow>(
+  rows: T[],
+  locationId?: string | null,
+): LedgerLocationAttributionSummary {
+  const scopedByLocation = Boolean(locationId);
+  const excludedUnattributedRows = scopedByLocation
+    ? rows.filter((row) => !row.booking_id && !row.product_order_id).length
+    : 0;
+
+  return {
+    scopedByLocation,
+    excludedUnattributedRows,
+    note: scopedByLocation
+      ? "Location-filtered ledger totals include rows linked to bookings or product orders attributable to the selected location. Provider-level rows with no booking/order linkage are reported as unattributed and excluded from branch totals."
+      : "Provider-level ledger rows are included because no location filter is applied.",
+  };
+}
 
 export type LocationLinkedProductOrderRow = {
   id: string;

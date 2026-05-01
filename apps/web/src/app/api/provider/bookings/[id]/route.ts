@@ -1914,6 +1914,62 @@ export async function PATCH(
       version: bookingData.version || 0,
     } as unknown as Booking & { version: number };
 
+    try {
+      const { invalidateAvailabilityCache } = await import("@/lib/availability/cache-invalidation");
+      const { formatInTimeZone } = await import("date-fns-tz");
+      const { normalizeProviderTimezone } = await import("@/lib/availability/time-utils");
+
+      const { data: pTzRow } = await supabaseAdminPatch
+        .from("providers")
+        .select("timezone")
+        .eq("id", providerId)
+        .maybeSingle();
+      const tz =
+        normalizeProviderTimezone((pTzRow as { timezone?: string | null } | null)?.timezone) ??
+        "UTC";
+
+      const { data: svcStaff } = await supabaseAdminPatch
+        .from("booking_services")
+        .select("staff_id")
+        .eq("booking_id", id);
+
+      const staffIds = Array.from(
+        new Set(
+          (svcStaff ?? [])
+            .map((r: { staff_id?: string | null }) => r.staff_id)
+            .filter((sid: string | null | undefined): sid is string => Boolean(sid)),
+        ),
+      );
+
+      const prevScheduledAt = (currentBooking as BookingRow).scheduled_at;
+      const nextScheduledAt = bookingData.scheduled_at;
+
+      const didReschedule =
+        scheduled_at != null &&
+        typeof prevScheduledAt === "string" &&
+        typeof nextScheduledAt === "string" &&
+        prevScheduledAt !== nextScheduledAt;
+
+      const didCancel = requestedDbStatus === "cancelled";
+
+      if (staffIds.length && (didReschedule || didCancel)) {
+        const dates = new Set<string>();
+        if (prevScheduledAt) {
+          dates.add(formatInTimeZone(new Date(prevScheduledAt), tz, "yyyy-MM-dd"));
+        }
+        if (didReschedule && nextScheduledAt) {
+          dates.add(formatInTimeZone(new Date(nextScheduledAt), tz, "yyyy-MM-dd"));
+        }
+        for (const sid of staffIds) {
+          for (const d of dates) {
+            await invalidateAvailabilityCache(supabaseAdminPatch, sid, d);
+          }
+        }
+      }
+    } catch (availInvErr) {
+      console.warn("[provider PATCH] availability cache invalidation skipped:", availInvErr);
+    }
+
     invalidateProviderBookingsReadCache(providerId);
     return successResponse({ booking: transformedBooking });
   } catch (error) {

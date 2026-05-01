@@ -18,6 +18,11 @@ export function webCookiePolicyUrl(): string {
   return `${webOrigin()}/cookie-policy`;
 }
 
+/** Marketing-site guides & articles (parity with web Help → Learning Center). */
+export function webLearningCenterUrl(): string {
+  return `${webOrigin()}/learn`;
+}
+
 type LegalParams = { url: string; title: string };
 
 function privacyParams(): LegalParams {
@@ -38,6 +43,13 @@ function cookieParams(): LegalParams {
   return {
     url: encodeURIComponent(webCookiePolicyUrl()),
     title: encodeURIComponent("Cookie policy"),
+  };
+}
+
+function learningCenterParams(): LegalParams {
+  return {
+    url: encodeURIComponent(webLearningCenterUrl()),
+    title: encodeURIComponent("Learning Centre"),
   };
 }
 
@@ -65,5 +77,11 @@ export function replaceWebTermsOfService(router: Router): void {
 
 export function pushWebCookiePolicy(router: Router): void {
   const { url, title } = cookieParams();
+  router.push({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
+}
+
+/** In-app WebView: guides & help articles on the public site. */
+export function pushWebLearningCenter(router: Router): void {
+  const { url, title } = learningCenterParams();
   router.push({ pathname: "/(app)/in-app-browser", params: { url, title } } as never);
 }

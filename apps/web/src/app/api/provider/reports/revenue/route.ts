@@ -9,7 +9,13 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import { getProviderRevenue, getPreviousPeriodRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
-import { eachReportDateKey, getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import {
+  eachReportDateKey,
+  filterLedgerRowsForLocation,
+  getProviderReportContext,
+  reportDateRangeFromParams,
+  summarizeLedgerLocationAttribution,
+} from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,15 +41,19 @@ export async function GET(request: NextRequest) {
       getPreviousPeriodRevenue(supabaseAdmin, providerId, fromDate, toDate, locationId, dashOpts),
       supabaseAdmin
         .from("finance_transactions")
-        .select("net")
+        .select("net, booking_id, product_order_id")
         .eq("provider_id", providerId)
         .eq("transaction_type", "cancellation_fee")
         .gte("created_at", fromDate.toISOString())
         .lte("created_at", toDate.toISOString()),
     ]);
-    const cancellationFees = (cancelFeeResult.data ?? []).reduce(
-      (s, r) => s + Number((r as any).net ?? 0), 0
-    );
+    type CancelFeeRow = { net?: number | null; booking_id?: string | null; product_order_id?: string | null };
+    let cancelRows = (cancelFeeResult.data ?? []) as CancelFeeRow[];
+    const cancellationFeeLocationAttribution = summarizeLedgerLocationAttribution(cancelRows, locationId);
+    if (locationId) {
+      cancelRows = await filterLedgerRowsForLocation(supabaseAdmin, providerId, cancelRows, locationId);
+    }
+    const cancellationFees = cancelRows.reduce((s, r) => s + Number(r.net ?? 0), 0);
 
     let bkQuery = supabaseAdmin
       .from("bookings")
@@ -123,6 +133,7 @@ export async function GET(request: NextRequest) {
       transaction_count: bookingCountWithRevenue,
       time_basis: "ledger_created_at",
       time_basis_note: "Revenue from finance_transactions.created_at (payment date). Booking dates shown for service breakdown are scheduled_at.",
+      locationAttribution: cancellationFeeLocationAttribution,
     });
   } catch (error) {
     console.error("Error in revenue report:", error);

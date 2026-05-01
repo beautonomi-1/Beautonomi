@@ -131,6 +131,12 @@ export default function SupportTicketDetailScreen() {
     loadTicket();
   }, [loadTicket]);
 
+  useEffect(() => {
+    const tid = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
+    if (!tid) return;
+    void api.post("/api/me/notifications/mark-related-read", { ticket_id: tid }).catch(() => {});
+  }, [id]);
+
   useLayoutEffect(() => {
     if (ticket?.ticket_number) {
       navigation.setOptions({ title: ticket.ticket_number });
@@ -386,7 +392,7 @@ export default function SupportTicketDetailScreen() {
 
           {!canReply && (
             <Text style={styles.closedNote}>
-              This ticket is {ticket.status}. Open Help → Contact support to start a new ticket if you need further
+              This ticket is {ticket.status}. Open Help → New ticket if you need further
               help.
             </Text>
           )}

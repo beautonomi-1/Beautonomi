@@ -87,6 +87,12 @@ export default function SupportTicketDetailScreen() {
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const tid = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
+    if (!tid) return;
+    void api.post("/api/provider/notifications/mark-related-read", { ticket_id: tid }).catch(() => {});
+  }, [id]);
+
   const loadTicket = useCallback(async () => {
     if (!id) return;
     setLoadError(null);

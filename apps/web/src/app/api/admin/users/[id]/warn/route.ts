@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 
 /**
  * POST /api/admin/users/[id]/warn
@@ -34,17 +35,8 @@ export async function POST(
 
     const supabase = getSupabaseAdmin();
 
-    const { data: targetUser, error: userError } = await supabase
-      .from("users")
-      .select("id, full_name, email, role, preferred_home_tenant_id")
-      .eq("id", userId)
-      .single();
-
-    if (userError || !targetUser) {
-      return errorResponse("User not found", "NOT_FOUND", 404);
-    }
-
-    if ((targetUser as { preferred_home_tenant_id?: string }).preferred_home_tenant_id !== tenantId) {
+    const targetUser = await getUserRowIfAccessibleToAdminTenant(supabase, tenantId, userId);
+    if (!targetUser) {
       return errorResponse("User not found", "NOT_FOUND", 404);
     }
 

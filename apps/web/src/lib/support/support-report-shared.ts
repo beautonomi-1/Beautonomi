@@ -5,10 +5,8 @@
  * Support Performance and Support Workload & Drivers reports.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  collectTenantScopedUserIds,
-  fetchAllProviderIdsForTenant,
-} from "@/lib/tenant/admin-tenant-scope";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { fetchAllProviderIdsForTenant } from "@/lib/tenant/admin-tenant-scope";
 import { resolutionSlaHoursForPriority } from "@/lib/support/support-ticket-sla";
 
 export type SupportReportPeriod = "7d" | "30d" | "90d" | "1y";
@@ -76,10 +74,13 @@ export async function getTenantTicketScope(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<SupportTicketScope> {
-  const [userIds, providerIds] = await Promise.all([
-    collectTenantScopedUserIds(supabase, tenantId, { maxTotal: 5000 }),
+  const admin = getSupabaseAdmin();
+  const [{ data: idRows, error: uidErr }, providerIds] = await Promise.all([
+    admin.rpc("admin_user_ids_in_tenant_scope", { p_tenant_id: tenantId }),
     fetchAllProviderIdsForTenant(supabase, tenantId),
   ]);
+  if (uidErr) throw uidErr;
+  const userIds = (idRows ?? []).map((r: { id: string }) => r.id);
   return { userIds, providerIds };
 }
 

@@ -55,9 +55,9 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function BookingsReport() {
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId, provider } = useProvider();
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
-  const { from, to } = getReportDateRange(dateRange);
+  const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
   const rangeCaption = formatReportRangeCaption(from, to);
   const bookingsReportUrl = appendReportLocation(`/api/provider/reports/bookings?from=${from}&to=${to}`, selectedLocationId);
   const { data, loading, error: dataError, refresh } = useApi<BookingsData>(bookingsReportUrl);

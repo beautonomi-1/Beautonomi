@@ -39,6 +39,11 @@ const RECIPIENT_OPTIONS = [
   { value: "custom", label: "Specific recipients", icon: UserPlus },
 ] as const;
 
+const APP_TYPE_OPTIONS = [
+  { value: "customer", label: "Customer app" },
+  { value: "provider", label: "Provider app" },
+] as const;
+
 function parseUserIds(input: string): string[] {
   return input
     .split(/[\n,]+/)
@@ -75,17 +80,20 @@ export default function BroadcastPage() {
   const [emailMessage, setEmailMessage] = useState("");
   const [emailRecipientType, setEmailRecipientType] = useState<string>("all_users");
   const [emailSpecificIds, setEmailSpecificIds] = useState("");
+  const [emailCustomAppType, setEmailCustomAppType] = useState<"customer" | "provider">("customer");
 
   // SMS form
   const [smsMessage, setSmsMessage] = useState("");
   const [smsRecipientType, setSmsRecipientType] = useState<string>("all_users");
   const [smsSpecificIds, setSmsSpecificIds] = useState("");
+  const [smsCustomAppType, setSmsCustomAppType] = useState<"customer" | "provider">("customer");
 
   // Push form
   const [pushTitle, setPushTitle] = useState("");
   const [pushMessage, setPushMessage] = useState("");
   const [pushRecipientType, setPushRecipientType] = useState<string>("all_users");
   const [pushSpecificIds, setPushSpecificIds] = useState("");
+  const [pushCustomAppType, setPushCustomAppType] = useState<"customer" | "provider">("customer");
   const [pushUrl, setPushUrl] = useState("");
 
   useEffect(() => {
@@ -134,12 +142,15 @@ export default function BroadcastPage() {
 
     try {
       setIsSending(true);
-      const payload: { subject: string; message: string; recipient_type: string; user_ids?: string[] } = {
+      const payload: { subject: string; message: string; recipient_type: string; user_ids?: string[]; app_type?: "customer" | "provider" } = {
         subject: emailSubject,
         message: emailMessage,
         recipient_type: emailRecipientType,
       };
-      if (emailRecipientType === "custom") payload.user_ids = parseUserIds(emailSpecificIds);
+      if (emailRecipientType === "custom") {
+        payload.user_ids = parseUserIds(emailSpecificIds);
+        payload.app_type = emailCustomAppType;
+      }
       const response = await fetcher.post<{ success: boolean; recipients: number; notification_id: string }>(
         "/api/admin/broadcast/email",
         payload
@@ -173,11 +184,14 @@ export default function BroadcastPage() {
 
     try {
       setIsSending(true);
-      const payload: { message: string; recipient_type: string; user_ids?: string[] } = {
+      const payload: { message: string; recipient_type: string; user_ids?: string[]; app_type?: "customer" | "provider" } = {
         message: smsMessage,
         recipient_type: smsRecipientType,
       };
-      if (smsRecipientType === "custom") payload.user_ids = parseUserIds(smsSpecificIds);
+      if (smsRecipientType === "custom") {
+        payload.user_ids = parseUserIds(smsSpecificIds);
+        payload.app_type = smsCustomAppType;
+      }
       const response = await fetcher.post<{ success: boolean; recipients: number; notification_id: string }>(
         "/api/admin/broadcast/sms",
         payload
@@ -210,13 +224,16 @@ export default function BroadcastPage() {
 
     try {
       setIsSending(true);
-      const payload: { title: string; message: string; recipient_type: string; url?: string; user_ids?: string[] } = {
+      const payload: { title: string; message: string; recipient_type: string; url?: string; user_ids?: string[]; app_type?: "customer" | "provider" } = {
         title: pushTitle,
         message: pushMessage,
         recipient_type: pushRecipientType,
         url: pushUrl || undefined,
       };
-      if (pushRecipientType === "custom") payload.user_ids = parseUserIds(pushSpecificIds);
+      if (pushRecipientType === "custom") {
+        payload.user_ids = parseUserIds(pushSpecificIds);
+        payload.app_type = pushCustomAppType;
+      }
       const response = await fetcher.post<{ success: boolean; recipients: number; notification_id: string }>(
         "/api/admin/broadcast/push",
         payload
@@ -321,16 +338,31 @@ export default function BroadcastPage() {
                     </Select>
                   </div>
                   {emailRecipientType === "custom" && (
-                    <div>
-                      <Label htmlFor="email_specific_ids">User IDs (one per line or comma-separated)</Label>
-                      <Textarea
-                        id="email_specific_ids"
-                        value={emailSpecificIds}
-                        onChange={(e) => setEmailSpecificIds(e.target.value)}
-                        placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
-                        rows={3}
-                        className="font-mono text-sm"
-                      />
+                    <div className="space-y-3">
+                      <div>
+                        <Label htmlFor="email_app_type">Target app</Label>
+                        <Select value={emailCustomAppType} onValueChange={(value) => setEmailCustomAppType(value as "customer" | "provider")}>
+                          <SelectTrigger id="email_app_type">
+                            <SelectValue placeholder="Choose target app" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {APP_TYPE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="email_specific_ids">User IDs (one per line or comma-separated)</Label>
+                        <Textarea
+                          id="email_specific_ids"
+                          value={emailSpecificIds}
+                          onChange={(e) => setEmailSpecificIds(e.target.value)}
+                          placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
+                          rows={3}
+                          className="font-mono text-sm"
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -395,16 +427,31 @@ export default function BroadcastPage() {
                     </Select>
                   </div>
                   {smsRecipientType === "custom" && (
-                    <div>
-                      <Label htmlFor="sms_specific_ids">User IDs (one per line or comma-separated)</Label>
-                      <Textarea
-                        id="sms_specific_ids"
-                        value={smsSpecificIds}
-                        onChange={(e) => setSmsSpecificIds(e.target.value)}
-                        placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
-                        rows={3}
-                        className="font-mono text-sm"
-                      />
+                    <div className="space-y-3">
+                      <div>
+                        <Label htmlFor="sms_app_type">Target app</Label>
+                        <Select value={smsCustomAppType} onValueChange={(value) => setSmsCustomAppType(value as "customer" | "provider")}>
+                          <SelectTrigger id="sms_app_type">
+                            <SelectValue placeholder="Choose target app" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {APP_TYPE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="sms_specific_ids">User IDs (one per line or comma-separated)</Label>
+                        <Textarea
+                          id="sms_specific_ids"
+                          value={smsSpecificIds}
+                          onChange={(e) => setSmsSpecificIds(e.target.value)}
+                          placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
+                          rows={3}
+                          className="font-mono text-sm"
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -462,16 +509,31 @@ export default function BroadcastPage() {
                     </Select>
                   </div>
                   {pushRecipientType === "custom" && (
-                    <div>
-                      <Label htmlFor="push_specific_ids">User IDs (one per line or comma-separated)</Label>
-                      <Textarea
-                        id="push_specific_ids"
-                        value={pushSpecificIds}
-                        onChange={(e) => setPushSpecificIds(e.target.value)}
-                        placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
-                        rows={3}
-                        className="font-mono text-sm"
-                      />
+                    <div className="space-y-3">
+                      <div>
+                        <Label htmlFor="push_app_type">Target app</Label>
+                        <Select value={pushCustomAppType} onValueChange={(value) => setPushCustomAppType(value as "customer" | "provider")}>
+                          <SelectTrigger id="push_app_type">
+                            <SelectValue placeholder="Choose target app" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {APP_TYPE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="push_specific_ids">User IDs (one per line or comma-separated)</Label>
+                        <Textarea
+                          id="push_specific_ids"
+                          value={pushSpecificIds}
+                          onChange={(e) => setPushSpecificIds(e.target.value)}
+                          placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
+                          rows={3}
+                          className="font-mono text-sm"
+                        />
+                      </div>
                     </div>
                   )}
 

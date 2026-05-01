@@ -4,10 +4,30 @@
  * Subscribes to notifications table changes so the badge updates in real time.
  */
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
+
+/** Extra callbacks when `notifications` rows change — avoids a second postgres_changes channel (Supabase rejects duplicate bindings after subscribe). */
+const notificationsRealtimeListeners = new Set<() => void>();
+
+export function registerNotificationsRealtimeCallback(fn: () => void): () => void {
+  notificationsRealtimeListeners.add(fn);
+  return () => {
+    notificationsRealtimeListeners.delete(fn);
+  };
+}
+
+function notifyNotificationsRealtimeListeners() {
+  notificationsRealtimeListeners.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      // ignore listener errors
+    }
+  });
+}
 
 type NotificationsContextValue = {
   unreadCount: number;
@@ -55,6 +75,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     refetchUnreadCount();
   }, [refetchUnreadCount]);
 
+  // Refresh unread when app returns to foreground so badge matches server after marks elsewhere.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") void refetchUnreadCount();
+    });
+    return () => sub.remove();
+  }, [refetchUnreadCount]);
+
   // Home-screen icon badge (iOS / supported Android launchers) — stays in sync with in-app unread count.
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -82,7 +110,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
         () => {
-          refetchRef.current();
+          void refetchRef.current();
+          notifyNotificationsRealtimeListeners();
         }
       )
       .subscribe();

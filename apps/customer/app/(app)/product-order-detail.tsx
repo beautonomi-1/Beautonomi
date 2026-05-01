@@ -148,6 +148,11 @@ export default function ProductOrderDetailScreen() {
     void loadOrder();
   }, [loadOrder]);
 
+  useEffect(() => {
+    if (!id || typeof id !== "string") return;
+    void api.post("/api/me/notifications/mark-related-read", { order_id: id }).catch(() => {});
+  }, [id]);
+
   if (loading) {
     return (
       <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" }}>
@@ -893,7 +898,7 @@ export default function ProductOrderDetailScreen() {
         {["delivered", "ready_for_collection"].includes(order.status) && !isWithinReturnWindow(order) && (
           <View style={{ padding: contentPadding, marginTop: 12 }}>
             <Text style={{ fontSize: 13, color: "#6B7280", textAlign: "center" }}>
-              Return window ({RETURN_WINDOW_DAYS} days) has passed. For help, contact support.
+              Return window ({RETURN_WINDOW_DAYS} days) has passed. For help, open Profile → Help centre → New ticket.
             </Text>
           </View>
         )}

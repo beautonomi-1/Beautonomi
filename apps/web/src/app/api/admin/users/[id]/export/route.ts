@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 
 export async function GET(
   request: NextRequest,
@@ -10,32 +11,13 @@ export async function GET(
 ) {
   try {
     await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
-    const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
-
-    if (!supabase) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Supabase client not available",
-            code: "SERVER_ERROR",
-          },
-        },
-        { status: 500 }
-      );
-    }
+    const admin = getSupabaseAdmin();
 
     const { id } = await params;
 
-    // Fetch user data
-    const { data: user, error: userError } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (userError || !user) {
+    const user = await getUserRowIfAccessibleToAdminTenant(admin, tenantId, id);
+    if (!user) {
       return NextResponse.json(
         {
           data: null,
@@ -48,32 +30,30 @@ export async function GET(
       );
     }
 
-    // Fetch user bookings
-    const { data: bookings } = await supabase
+    const { data: bookings } = await admin
       .from("bookings")
       .select("*")
       .eq("tenant_id", tenantId)
-      .eq("user_id", id);
+      .or(`customer_id.eq.${id},user_id.eq.${id}`);
 
-    // Convert to CSV format
-    const csvRows = [];
+    const csvRows: string[] = [];
     csvRows.push("User Data");
     csvRows.push("Field,Value");
-    csvRows.push(`ID,${user.id}`);
-    csvRows.push(`Email,${user.email || ""}`);
-    csvRows.push(`Full Name,${user.full_name || ""}`);
-    csvRows.push(`Phone,${user.phone || ""}`);
-    csvRows.push(`Role,${user.role || ""}`);
-    csvRows.push(`Created At,${user.created_at || ""}`);
-    csvRows.push(`Updated At,${user.updated_at || ""}`);
+    csvRows.push(`ID,${String(user.id)}`);
+    csvRows.push(`Email,${String(user.email ?? "")}`);
+    csvRows.push(`Full Name,${String(user.full_name ?? "")}`);
+    csvRows.push(`Phone,${String(user.phone ?? "")}`);
+    csvRows.push(`Role,${String(user.role ?? "")}`);
+    csvRows.push(`Created At,${String(user.created_at ?? "")}`);
+    csvRows.push(`Updated At,${String(user.updated_at ?? "")}`);
     csvRows.push("");
 
     if (bookings && bookings.length > 0) {
       csvRows.push("Bookings");
       csvRows.push("ID,Status,Scheduled At,Total Amount,Created At");
-      bookings.forEach((booking) => {
+      bookings.forEach((booking: Record<string, unknown>) => {
         csvRows.push(
-          `${booking.id},${booking.status || ""},${booking.scheduled_at || ""},${booking.total_amount || 0},${booking.created_at || ""}`
+          `${String(booking.id)},${String(booking.status ?? "")},${String(booking.scheduled_at ?? "")},${Number(booking.total_amount ?? 0)},${String(booking.created_at ?? "")}`
         );
       });
     }

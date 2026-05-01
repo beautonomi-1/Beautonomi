@@ -5,6 +5,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
+import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 /**
  * List/detail queries use the service-role client so provider_staff and
@@ -37,6 +39,8 @@ export async function GET(request: NextRequest) {
     }
 
     const admin = getSupabaseAdmin();
+    const { timezone: tz } = await getProviderReportContext(admin, providerId);
+    const ymdParam = /^\d{4}-\d{2}-\d{2}$/;
 
     let groupBookings: any[] = [];
     let total = 0;
@@ -52,11 +56,13 @@ export async function GET(request: NextRequest) {
         query = query.eq('status', status);
       }
 
-      if (dateFrom) {
-        query = query.gte('scheduled_at', `${dateFrom}T00:00:00`);
+      if (dateFrom && ymdParam.test(dateFrom.slice(0, 10))) {
+        const d0 = dateFrom.slice(0, 10);
+        query = query.gte("scheduled_at", dateRangeBoundsUtc(d0, d0, tz).fromIso);
       }
-      if (dateTo) {
-        query = query.lte('scheduled_at', `${dateTo}T23:59:59`);
+      if (dateTo && ymdParam.test(dateTo.slice(0, 10))) {
+        const d1 = dateTo.slice(0, 10);
+        query = query.lte("scheduled_at", dateRangeBoundsUtc(d1, d1, tz).toIso);
       }
 
       if (search) {

@@ -86,6 +86,7 @@ type VariantRow = {
 };
 
 const UNCATEGORIZED_PRODUCT_LABEL = "Uncategorized";
+const EMPTY_PRODUCTS: Product[] = [];
 
 function productCategorySectionTitle(p: Product): string {
   const t = (p.category ?? "").trim();
@@ -432,7 +433,7 @@ export function ProductsContent() {
     );
   };
 
-  const displayProducts = productsData?.products ?? [];
+  const displayProducts = productsData?.products ?? EMPTY_PRODUCTS;
 
   const productSections = useMemo(() => {
     const map = new Map<string, Product[]>();

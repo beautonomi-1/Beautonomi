@@ -4,7 +4,7 @@
  * Subscribes to notifications table changes so the badge updates in real time.
  */
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
@@ -72,6 +72,13 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
   refreshRef.current = refresh;
   const refreshCount = useCallback(async () => {
     await refreshRef.current();
+  }, []);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") void refreshRef.current();
+    });
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {

@@ -4,6 +4,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import Constants from "expo-constants";
 import { useAuth } from "@/providers/AuthProvider";
 import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
@@ -148,7 +149,6 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
       { icon: "people-outline", label: "Group Bookings", subtitle: "Manage group appointments", route: "/(app)/(tabs)/more/group-bookings", color: "#8b5cf6", bg: "#ede9fe" },
       { icon: "construct-outline", label: "Resources & forms", subtitle: "Resources, intake & consent forms", route: "/(app)/(tabs)/more/resources-forms-hub", color: "#0d9488", bg: "#ccfbf1" },
       { icon: "chatbox-ellipses-outline", label: "Custom Requests", subtitle: "Client quotes & offers", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316", bg: "#fff7ed" },
-      { icon: "navigate-outline", label: "Routes", subtitle: "Optimize at-home trips", route: "/(app)/(tabs)/more/routes", color: "#64748b", bg: "#f8fafc" },
     ],
   },
   {
@@ -181,6 +181,8 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
   {
     title: "Settings",
     items: [
+      { icon: "language-outline", label: "Language & region", subtitle: "App language & market entry point", route: "/(app)/(tabs)/more/settings/language", color: "#0ea5e9", bg: "#e0f2fe" },
+      { icon: "storefront-outline", label: "Locations & operating hours", subtitle: "Branches, addresses & opening times", route: "/(app)/(tabs)/more/locations-operating-hub", color: "#059669", bg: "#ecfdf5" },
       { icon: "ribbon-outline", label: "Rewards & badges", subtitle: "Points, milestones & badge progress", route: "/(app)/(tabs)/more/rewards-hub", color: "#059669", bg: "#d1fae5" },
       { icon: "ticket-outline", label: "Support tickets", subtitle: "All tickets, replies & status", route: "/(app)/(tabs)/more/support-tickets", color: "#0ea5e9", bg: "#e0f2fe" },
       { icon: "settings-outline", label: "Settings & account", subtitle: "Business, team & account", route: "/(app)/(tabs)/more/settings-account-hub", color: "#6b7280", bg: Colors.gray[100] },
@@ -208,6 +210,7 @@ export default function MoreScreen() {
     "Grow your business": true,
     Operations: true,
     "E-Commerce & Products": true,
+    Settings: true,
   });
   const [refreshing, setRefreshing] = useState(false);
 
@@ -895,7 +898,7 @@ export default function MoreScreen() {
 
         {/* Sign Out - Revolut minimal style */}
         <TouchableOpacity
-          style={{ marginBottom: 32, minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
+          style={{ marginBottom: 8, minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
           onPress={handleSignOut}
           activeOpacity={0.6}
           accessibilityLabel="Sign out"
@@ -905,6 +908,12 @@ export default function MoreScreen() {
             {t("auth.logout")}
           </Text>
         </TouchableOpacity>
+
+        <View style={{ alignItems: "center", marginTop: 8, paddingBottom: 16 }}>
+          <Text style={{ fontSize: 12, color: Colors.gray[300] }}>
+            Beautonomi v{Constants.expoConfig?.version ?? "1.0.0"}
+          </Text>
+        </View>
     </ScreenContainer>
   );
 }

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, handleApiError, successResponse, badRequestResponse } from "@/lib/supabase/api-helpers";
+import { addOneDayYmd, dateRangeBoundsUtc, resolveTz } from "@/lib/dates/provider-tz";
 
 /**
  * POST /api/provider/routes/optimize
@@ -23,11 +24,27 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("date is required (YYYY-MM-DD format)");
     }
 
+    const ymdRe = /^\d{4}-\d{2}-\d{2}$/;
+    const dateYmd = String(date).slice(0, 10);
+    if (!ymdRe.test(dateYmd)) {
+      return badRequestResponse("date must be YYYY-MM-DD");
+    }
+
+    const { data: tzRow } = await supabase
+      .from("providers")
+      .select("timezone")
+      .eq("id", providerId)
+      .maybeSingle();
+    const tz = resolveTz((tzRow as { timezone?: string | null } | null)?.timezone);
+
+    const { fromIso: dayStartIso } = dateRangeBoundsUtc(dateYmd, dateYmd, tz);
+    const dayEndExclusiveIso = dateRangeBoundsUtc(addOneDayYmd(dateYmd), addOneDayYmd(dateYmd), tz).fromIso;
+
     // Get or create route
     const { data: routeIdRaw, error: routeError } = await supabase
       .rpc('get_or_create_route', {
         p_provider_id: providerId,
-        p_route_date: date,
+        p_route_date: dateYmd,
         p_staff_id: staff_id || null,
       });
 
@@ -47,11 +64,6 @@ export async function POST(request: NextRequest) {
       throw deleteSegError;
     }
 
-    const dayStart = `${date}T00:00:00.000Z`;
-    const dayEndExclusive = new Date(`${date}T12:00:00.000Z`);
-    dayEndExclusive.setUTCDate(dayEndExclusive.getUTCDate() + 1);
-    const dayEndIso = dayEndExclusive.toISOString();
-
     const { error: clearChainError } = await supabase
       .from("bookings")
       .update({
@@ -61,8 +73,8 @@ export async function POST(request: NextRequest) {
       })
       .eq("provider_id", providerId)
       .eq("location_type", "at_home")
-      .gte("scheduled_at", dayStart)
-      .lt("scheduled_at", dayEndIso);
+      .gte("scheduled_at", dayStartIso)
+      .lt("scheduled_at", dayEndExclusiveIso);
 
     if (clearChainError) {
       throw clearChainError;
@@ -89,8 +101,8 @@ export async function POST(request: NextRequest) {
       `)
       .eq("provider_id", providerId)
       .eq("location_type", "at_home")
-      .gte("scheduled_at", dayStart)
-      .lt("scheduled_at", dayEndIso)
+      .gte("scheduled_at", dayStartIso)
+      .lt("scheduled_at", dayEndExclusiveIso)
       .not("status", "in", '(cancelled,no_show)')
       .order("scheduled_at", { ascending: true });
 

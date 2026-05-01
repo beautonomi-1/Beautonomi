@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
 
 /**
  * GET /api/admin/search
@@ -35,19 +35,29 @@ export async function GET(request: NextRequest) {
 
     const searchTerm = query.trim().toLowerCase();
     const tenantId = await resolveAdminApiTenantId(request);
-    const scopedUserIds = await collectTenantScopedUserIds(supabase, tenantId);
-    const userScopeOr =
-      scopedUserIds.length > 0
-        ? `preferred_home_tenant_id.eq.${tenantId},id.in.(${scopedUserIds.join(",")})`
-        : `preferred_home_tenant_id.eq.${tenantId}`;
+    const admin = getSupabaseAdmin();
 
-    // Search users (by email, phone, or name) — scoped to tenant
-    const { data: users, error: usersError } = await supabase
-      .from("users")
-      .select("id, email, phone, full_name, role")
-      .or(`email.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,full_name.ilike.%${searchTerm}%`)
-      .or(userScopeOr)
-      .limit(5);
+    const { data: userSearchPayload, error: usersError } = await admin.rpc("admin_users_list_for_tenant", {
+      p_tenant_id: tenantId,
+      p_limit: 5,
+      p_offset: 0,
+      p_search: searchTerm,
+      p_role: null,
+      p_signup_source: null,
+    });
+
+    const userBox = userSearchPayload as { data?: unknown[] } | null;
+    const users =
+      (userBox?.data ?? []).map((raw) => {
+        const u = raw as Record<string, unknown>;
+        return {
+          id: String(u.id ?? ""),
+          email: u.email != null ? String(u.email) : null,
+          phone: u.phone != null ? String(u.phone) : null,
+          full_name: u.full_name != null ? String(u.full_name) : null,
+          role: u.role != null ? String(u.role) : null,
+        };
+      }) ?? [];
 
     // Search bookings — by booking number, then also try matching via customer/provider
     let bookingIds: string[] = [];

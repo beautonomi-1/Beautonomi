@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getUserRowIfAccessibleToAdminTenant } from "@/lib/tenant/admin-user-tenant-access";
 
 const STEP_NAMES: Record<number, string> = {
   1: "Team Size",
@@ -36,13 +37,12 @@ export async function GET(
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    const [userRes, draftRes, providerRes, trackingRes] = await Promise.all([
-      supabase
-        .from("users")
-        .select("id, email, full_name, phone, role, avatar_url, created_at")
-        .eq("id", userId)
-        .eq("tenant_id", tenantId)
-        .single(),
+    const accessibleUser = await getUserRowIfAccessibleToAdminTenant(supabase, tenantId, userId);
+    if (!accessibleUser) {
+      return notFoundResponse("User not found");
+    }
+
+    const [draftRes, providerRes, trackingRes] = await Promise.all([
       supabase
         .from("provider_onboarding_drafts")
         .select("*")
@@ -61,12 +61,19 @@ export async function GET(
         .maybeSingle(),
     ]);
 
-    if (userRes.error || !userRes.data) {
-      return notFoundResponse("User not found");
-    }
     if (draftRes.error) throw draftRes.error;
     if (providerRes.error) throw providerRes.error;
     if (trackingRes.error) throw trackingRes.error;
+
+    const userPayload = {
+      id: String(accessibleUser.id),
+      email: (accessibleUser.email as string | null | undefined) ?? null,
+      full_name: (accessibleUser.full_name as string | null | undefined) ?? null,
+      phone: (accessibleUser.phone as string | null | undefined) ?? null,
+      role: (accessibleUser.role as string | null | undefined) ?? null,
+      avatar_url: (accessibleUser.avatar_url as string | null | undefined) ?? null,
+      created_at: (accessibleUser.created_at as string | null | undefined) ?? null,
+    };
 
     const draft = draftRes.data;
     const provider = providerRes.data;
@@ -133,7 +140,7 @@ export async function GET(
     }
 
     return successResponse({
-      user: userRes.data,
+      user: userPayload,
       draft: draft
         ? {
             id: draft.id,

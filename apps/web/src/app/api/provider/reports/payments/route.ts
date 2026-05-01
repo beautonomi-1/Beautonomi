@@ -5,6 +5,7 @@ import {
   filterLedgerRowsForLocation,
   getProviderReportContext,
   reportDateRangeFromParams,
+  summarizeLedgerLocationAttribution,
 } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", endIso);
 
+    const locationAttribution = summarizeLedgerLocationAttribution(txns || [], locationId);
     const all = await filterLedgerRowsForLocation(supabaseAdmin, providerId, txns || [], locationId);
     const bookingIds = [...new Set((all || []).filter((t: any) => t.booking_id).map((t: any) => t.booking_id))];
     let paymentMethodByBooking = new Map<string, string>();
@@ -120,7 +122,8 @@ export async function GET(request: NextRequest) {
       tips_collected: tipsCollected,
       net_revenue: totalCollected + cancellationFeesTotal - totalRefunded - providerRefundImpact,
       basis_note:
-        "Provider earnings are positive provider_earnings ledger rows by payment/ledger date. Payment methods come from completed booking payments where available. Tips are reported separately; refunds and provider earning reversals reduce net service earnings.",
+        `Provider earnings are positive provider_earnings ledger rows by payment/ledger date. Payment methods come from completed booking payments where available. Tips are reported separately; refunds and provider earning reversals reduce net service earnings. ${locationAttribution.note}`,
+      locationAttribution,
       by_method: Array.from(methodMap.entries())
         .map(([method, data]) => ({ method, ...data }))
         .filter((row) => row.amount > 0 || row.count > 0)

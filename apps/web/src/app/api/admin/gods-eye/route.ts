@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireSuperadmin, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
 import {
   fetchFinanceLedgerExportRowsForTenant,
   fetchFinanceLedgerRowsForTenant,
@@ -42,8 +41,6 @@ export async function GET(request: NextRequest) {
       return handleApiError(new Error("Database connection failed"), 'Failed to load Gods Eye data');
     }
 
-    const scopedUserIds = await collectTenantScopedUserIds(supabase, tenantId);
-
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
     const startOfWeek = new Date(now);
@@ -61,18 +58,18 @@ export async function GET(request: NextRequest) {
       { count: houseCallBookings } = { count: 0 },
       { count: salonBookings } = { count: 0 },
     ] = await Promise.all([
-      (() => {
-        let q = supabase
-          .from("users")
-          .select("*", { count: "exact", head: true })
-          .eq("role", "customer");
-        if (scopedUserIds.length > 0) {
-          q = q.or(`preferred_home_tenant_id.eq.${tenantId},id.in.(${scopedUserIds.join(",")})`);
-        } else {
-          q = q.eq("preferred_home_tenant_id", tenantId);
+      supabase.rpc("admin_count_users_in_tenant_scope", {
+        p_tenant_id: tenantId,
+        p_role: "customer",
+      }).then((r) => {
+        if (r.error) {
+          console.error("admin_count_users_in_tenant_scope", r.error);
+          return { count: 0 };
         }
-        return q;
-      })(),
+        const n = r.data;
+        const count = typeof n === "bigint" ? Number(n) : typeof n === "number" ? n : Number(n ?? 0);
+        return { count: Number.isFinite(count) ? count : 0 };
+      }),
       supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active').eq('tenant_id', tenantId),
       supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
       supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['confirmed', 'pending', 'in_progress']),
@@ -202,21 +199,15 @@ export async function GET(request: NextRequest) {
 
     // Top customers: rank by actual spend across the full tenant ledger, not a 20-row user sample.
     // 1. Aggregate payment/additional_charge ledger rows by booking -> customer.
-    // 2. Keep only customers that are in tenant scope (preferred home OR activity sample).
+    // 2. Keep only customers in admin tenant scope (same rules as user directory).
     // 3. Pick top 5 by spend.
     type BookingRef = { id: string; customer_id?: string };
-    const tenantCustomerScope = new Set<string>(scopedUserIds);
-    // Also include customers whose `preferred_home_tenant_id` is this tenant.
-    {
-      const { data: preferredHomeUsers } = await supabase
-        .from("users")
-        .select("id")
-        .eq("role", "customer")
-        .eq("preferred_home_tenant_id", tenantId);
-      for (const u of ((preferredHomeUsers as { id: string }[] | null) ?? [])) {
-        tenantCustomerScope.add(u.id);
-      }
-    }
+    const { data: scopeIdRows } = await supabase.rpc("admin_user_ids_in_tenant_scope", {
+      p_tenant_id: tenantId,
+    });
+    const tenantCustomerScope = new Set<string>(
+      ((scopeIdRows ?? []) as { id: string }[]).map((r) => r.id),
+    );
 
     // Walk all tenant bookings with customer_id to build booking -> customer map.
     const bookingToCustomerAll: Record<string, string> = {};
@@ -228,7 +219,7 @@ export async function GET(request: NextRequest) {
         .eq("tenant_id", tenantId);
       for (const b of (allTenantBookings || []) as BookingRef[]) {
         if (!b.customer_id) continue;
-        if (tenantCustomerScope.size > 0 && !tenantCustomerScope.has(b.customer_id)) continue;
+        if (!tenantCustomerScope.has(b.customer_id)) continue;
         bookingToCustomerAll[b.id] = b.customer_id;
         customerBookingsCountsAll[b.customer_id] =
           (customerBookingsCountsAll[b.customer_id] || 0) + 1;
@@ -321,19 +312,21 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    let recentUsersQuery = supabase
-      .from("users")
-      .select("id, full_name, email, created_at");
-    if (scopedUserIds.length > 0) {
-      recentUsersQuery = recentUsersQuery.or(
-        `preferred_home_tenant_id.eq.${tenantId},id.in.(${scopedUserIds.join(",")})`
-      );
-    } else {
-      recentUsersQuery = recentUsersQuery.eq("preferred_home_tenant_id", tenantId);
-    }
-    const { data: recentUsers } = await recentUsersQuery
-      .order("created_at", { ascending: false })
-      .limit(10);
+    const { data: recentUsersPayload } = await supabase.rpc("admin_users_list_for_tenant", {
+      p_tenant_id: tenantId,
+      p_limit: 10,
+      p_offset: 0,
+      p_search: null,
+      p_role: null,
+      p_signup_source: null,
+    });
+    const recentUsersBox = recentUsersPayload as { data?: Record<string, unknown>[] } | null;
+    const recentUsers = (recentUsersBox?.data ?? []).map((u) => ({
+      id: String(u.id ?? ""),
+      full_name: u.full_name != null ? String(u.full_name) : undefined,
+      email: u.email != null ? String(u.email) : undefined,
+      created_at: u.created_at != null ? String(u.created_at) : undefined,
+    }));
 
     if (recentUsers) {
       type UserActivityRow = { id: string; full_name?: string; email?: string; created_at?: string };

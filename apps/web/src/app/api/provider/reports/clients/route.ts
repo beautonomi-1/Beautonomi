@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subMonths, format, startOfMonth } from "date-fns";
+import { subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
+import { dateRangeBoundsUtc, formatDateYmd, formatInTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
@@ -93,15 +95,18 @@ export async function GET(request: NextRequest) {
       }));
     }
 
+    const tz = reportContext.timezone;
+    const zNow = toZonedTime(new Date(), tz);
     const months: { month: string; count: number }[] = [];
     for (let i = 5; i >= 0; i--) {
-      const m = subMonths(new Date(), i);
-      const label = format(m, "MMM yyyy");
-      const mStart = startOfMonth(m);
-      const mEnd = startOfMonth(subMonths(new Date(), i - 1));
+      const mRef = subMonths(zNow, i);
+      const mStartYmd = formatDateYmd(startOfMonth(mRef), tz);
+      const mEndYmd = formatDateYmd(endOfMonth(mRef), tz);
+      const { fromIso, toIso } = dateRangeBoundsUtc(mStartYmd, mEndYmd, tz);
+      const label = formatInTz(new Date(fromIso), "MMM yyyy", tz);
       const count = all.filter((b: any) => {
         const d = new Date(b.created_at);
-        return d >= mStart && d < mEnd;
+        return d >= new Date(fromIso) && d <= new Date(toIso);
       }).length;
       months.push({ month: label, count });
     }

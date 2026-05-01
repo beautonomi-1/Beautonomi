@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
     const supabase = getSupabaseAdmin();
+    const nowIso = new Date().toISOString();
     const { data, error } = await supabase
       .from("ads_campaigns")
       .select("id, status, budget, spent, daily_budget, bid_cpc, start_at, end_at, targeting, bid_settings, pack_impressions, billing_model, duration_days, created_at, updated_at")
@@ -32,7 +33,38 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return successResponse(data ?? []);
+    const rows = data ?? [];
+    // Align list with reality without waiting for cron: end time-based campaigns whose window has passed.
+    const timeExpiredIds = rows
+      .filter(
+        (c: { billing_model?: string; status?: string; end_at?: string | null }) =>
+          c.billing_model === "time_based" &&
+          c.status === "active" &&
+          typeof c.end_at === "string" &&
+          c.end_at.length > 0 &&
+          c.end_at < nowIso,
+      )
+      .map((c: { id: string }) => c.id);
+    if (timeExpiredIds.length > 0) {
+      await supabase
+        .from("ads_campaigns")
+        .update({ status: "ended", updated_at: nowIso })
+        .in("id", timeExpiredIds)
+        .eq("provider_id", providerId);
+      const { data: refreshed, error: refreshErr } = await supabase
+        .from("ads_campaigns")
+        .select("id, status, budget, spent, daily_budget, bid_cpc, start_at, end_at, targeting, bid_settings, pack_impressions, billing_model, duration_days, created_at, updated_at")
+        .eq("provider_id", providerId)
+        .order("created_at", { ascending: false });
+      if (!refreshErr && refreshed?.length) {
+        return successResponse(refreshed);
+      }
+      const patched = rows.map((c: { id: string; status?: string }) =>
+        timeExpiredIds.includes(c.id) ? { ...c, status: "ended" as const } : c,
+      );
+      return successResponse(patched);
+    }
+    return successResponse(rows);
   } catch (error) {
     return handleApiError(error as Error, "Failed to list campaigns");
   }

@@ -11,6 +11,15 @@ import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import type { UserRole } from "@/types/beautonomi";
 
+function rpcBigint(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  return NaN;
+}
+
 const SIGNUP_SOURCE_LABELS: Record<string, string> = {
   google: "Google",
   social_instagram: "Instagram",
@@ -49,7 +58,7 @@ export async function GET(request: NextRequest) {
     const [
       resBook7,
       resBookPrior7,
-      resUsersHome,
+      rpcTenantUserCount,
       rpcSignup,
       rpcPrev,
       rpcCustAge,
@@ -68,10 +77,10 @@ export async function GET(request: NextRequest) {
         .eq("tenant_id", tenantId)
         .gte("created_at", start14.toISOString())
         .lt("created_at", start7.toISOString()),
-      supabase
-        .from("users")
-        .select("*", { count: "exact", head: true })
-        .eq("preferred_home_tenant_id", tenantId),
+      supabaseAdmin.rpc("admin_count_users_in_tenant_scope", {
+        p_tenant_id: tenantId,
+        p_role: null,
+      }),
       supabaseAdmin.rpc("admin_dashboard_signup_sources_by_tenant", { p_tenant_id: tenantId }),
       supabaseAdmin.rpc("admin_dashboard_previous_software_by_tenant", { p_tenant_id: tenantId }),
       supabaseAdmin.rpc("admin_dashboard_customer_age_brackets_by_tenant", { p_tenant_id: tenantId }),
@@ -82,7 +91,14 @@ export async function GET(request: NextRequest) {
 
     const bookingsLast7 = resBook7.error ? 0 : resBook7.count ?? 0;
     const bookingsPrior7Count = resBookPrior7.error ? 0 : resBookPrior7.count ?? 0;
-    const totalUsersPreferredHome = resUsersHome.error ? 0 : resUsersHome.count ?? 0;
+
+    let totalUsersInTenantScope = 0;
+    if (rpcTenantUserCount.error) {
+      console.warn("admin_count_users_in_tenant_scope (marketing insights):", rpcTenantUserCount.error.message);
+    } else {
+      const n = rpcBigint(rpcTenantUserCount.data);
+      totalUsersInTenantScope = Number.isFinite(n) ? n : 0;
+    }
 
     const bookingVelocityPct =
       bookingsPrior7Count > 0
@@ -157,7 +173,7 @@ export async function GET(request: NextRequest) {
 
     const withSource = signupSources.filter((s) => s.source && s.source.length > 0).reduce((a, b) => a + b.count, 0);
     const signupSourceAttributionRate =
-      totalUsersPreferredHome > 0 ? Math.round((withSource / totalUsersPreferredHome) * 1000) / 1000 : 0;
+      totalUsersInTenantScope > 0 ? Math.round((withSource / totalUsersInTenantScope) * 1000) / 1000 : 0;
 
     const previousBookingSystems = prevRows.map((r) => {
       const slug = r.previous_software ?? "";
@@ -198,7 +214,7 @@ export async function GET(request: NextRequest) {
         bookings_last_7d: bookingsLast7,
         bookings_prior_7d: bookingsPrior7Count,
         booking_velocity_pct_vs_prior_week: bookingVelocityPct,
-        users_with_preferred_home: totalUsersPreferredHome,
+        users_in_tenant_scope: totalUsersInTenantScope,
         signup_source_attribution_rate: signupSourceAttributionRate,
       },
       marketing_funnel_events: {
@@ -215,14 +231,14 @@ export async function GET(request: NextRequest) {
       },
       metrics_notes: {
         signup_source_basis:
-          "Counts per signup_source for users with preferred_home_tenant_id = tenant (all roles). Does not include bookers without preferred home.",
+          "Counts per signup_source for users in admin tenant scope (same as user directory; all roles).",
         previous_software_basis:
           "Provider rows in tenant; previous_software from onboarding (prior booking system).",
         booking_velocity_basis: "Bookings created in tenant: last 7 calendar days vs prior 7 days (UTC).",
         attribution_rate:
-          "Share of preferred-home users who set signup_source (non-empty).",
+          "Share of tenant-scoped users who set signup_source (non-empty).",
         customer_age_basis:
-          "Customers (role=customer, preferred home = tenant): age from users.date_of_birth at current date (UTC). Unknown = no DOB.",
+          "Customers (role=customer) in admin tenant scope: age from users.date_of_birth at current date (UTC). Unknown = no DOB.",
         customer_decade_basis:
           "Same customer scope; decade_born from user_profiles (social profile). Coarser than DOB. Unknown = missing or empty.",
         provider_years_in_business_basis:

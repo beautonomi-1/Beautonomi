@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { dateRangeBoundsUtc, getDayInTz, resolveTz } from "@/lib/dates/provider-tz";
 
 /**
  * GET /api/provider/staff/available
@@ -25,6 +26,13 @@ export async function GET(request: NextRequest) {
     if (!providerId) {
       return successResponse({ data: [] });
     }
+
+    const { data: tzRow } = await supabase
+      .from("providers")
+      .select("timezone")
+      .eq("id", providerId)
+      .maybeSingle();
+    const tz = resolveTz((tzRow as { timezone?: string | null } | null)?.timezone);
 
     // Get query params
     const date = searchParams.get('date');
@@ -89,7 +97,9 @@ export async function GET(request: NextRequest) {
 
       // 2. Check if working on this day/time (if date/time provided)
       if (date && startTime && endTime) {
-        const dayOfWeek = new Date(`${date}T12:00:00`).getDay(); // 0 = Sunday, 6 = Saturday
+        const dateYmd = date.slice(0, 10);
+        const dayStartUtc = new Date(dateRangeBoundsUtc(dateYmd, dateYmd, tz).fromIso);
+        const dayOfWeek = getDayInTz(dayStartUtc, tz);
         const schedule = (member as any).staff_schedules?.find(
           (s: any) => s.day_of_week === dayOfWeek
         );

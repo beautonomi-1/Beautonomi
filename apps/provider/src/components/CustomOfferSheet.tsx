@@ -38,6 +38,8 @@ interface GlobalCategory {
   slug?: string;
 }
 
+const EMPTY_GLOBAL_CATEGORIES: GlobalCategory[] = [];
+
 interface AvailableSlotRow {
   time: string;
   available?: boolean;
@@ -75,8 +77,17 @@ export function CustomOfferSheet({
   const { isTablet } = useResponsive();
   const { provider } = useProvider();
   const providerTz = provider?.timezone ?? null;
-  const { data: categoriesData } = useApi<{ global_categories?: GlobalCategory[] }>("/api/provider/categories", { enabled: visible });
-  const globalCategories = categoriesData?.global_categories ?? [];
+  const { data: categoriesData } = useApi<{ global_categories?: GlobalCategory[] }>(
+    "/api/provider/categories?for_offers=1",
+    { enabled: visible },
+  );
+  const globalCategories = categoriesData?.global_categories ?? EMPTY_GLOBAL_CATEGORIES;
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const filteredGlobalCategories = useMemo(() => {
+    const q = categoryQuery.trim().toLowerCase();
+    if (!q) return globalCategories;
+    return globalCategories.filter((c) => (c.name ?? "").toLowerCase().includes(q));
+  }, [globalCategories, categoryQuery]);
   const { data: locationsData } = useApi<{ id: string; name: string }[]>("/api/provider/locations", { enabled: visible });
   const { data: teamData } = useApi<{ id: string; name: string }[]>("/api/provider/team", { enabled: visible });
   const locations = locationsData ?? [];
@@ -159,6 +170,7 @@ export function CustomOfferSheet({
     setAddressPostalCode("");
     setAddressCountry("");
     setTravelFee("");
+    setCategoryQuery("");
   }, []);
 
   const handleClose = useCallback(() => {
@@ -268,6 +280,15 @@ export function CustomOfferSheet({
         {globalCategories.length > 0 && (
           <View style={twStyle("mb-3")}>
             <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Service category (optional)</Text>
+            {globalCategories.length > 12 ? (
+              <TextInput
+                style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900")}
+                value={categoryQuery}
+                onChangeText={setCategoryQuery}
+                placeholder="Search categories…"
+                placeholderTextColor="#9ca3af"
+              />
+            ) : null}
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={twStyle("flex-row")}>
                 <TouchableOpacity
@@ -276,7 +297,7 @@ export function CustomOfferSheet({
                 >
                   <Text style={twStyle(`text-xs font-semibold ${serviceCategoryId == null ? "text-primary" : "text-gray-600"}`)}>Any category</Text>
                 </TouchableOpacity>
-                {globalCategories.map((cat) => {
+                {filteredGlobalCategories.map((cat) => {
                   const active = serviceCategoryId === cat.id;
                   return (
                     <TouchableOpacity

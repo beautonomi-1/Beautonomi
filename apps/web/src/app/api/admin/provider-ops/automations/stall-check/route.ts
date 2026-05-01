@@ -8,6 +8,7 @@ import {
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { resolveTwilioCredentials, sendTwilioSMS } from "@/lib/integrations/twilio";
+import { chunkIds } from "@/lib/provider-ops/postgrest-unbounded";
 
 /**
  * On-demand stall detection. Scans all in-progress onboarding drafts,
@@ -48,17 +49,34 @@ export async function POST(request: NextRequest) {
       now.getTime() - dropoffThresholdHours * 60 * 60 * 1000
     ).toISOString();
 
-    const { data: tenantUsers } = await supabase
-      .from("users")
-      .select("id")
-      .eq("preferred_home_tenant_id", tenantId)
-      .eq("role", "provider_owner");
-    const tenantUserIds = (tenantUsers || []).map((u: { id: string }) => u.id);
+    const { data: ownerScopeRows, error: ownerScopeErr } = await supabase.rpc(
+      "admin_user_ids_in_tenant_scope_for_role",
+      {
+        p_tenant_id: tenantId,
+        p_role: "provider_owner",
+        p_limit: 50000,
+      }
+    );
+    if (ownerScopeErr) throw ownerScopeErr;
+    const tenantUserIds = ((ownerScopeRows ?? []) as { id: string }[])
+      .map((r) => r.id)
+      .filter(Boolean);
 
-    const { data: drafts } = await supabase
-      .from("provider_onboarding_drafts")
-      .select("user_id, current_step, updated_at, created_at")
-      .in("user_id", tenantUserIds.length > 0 ? tenantUserIds : ["__none__"]);
+    const draftAcc: {
+      user_id: string;
+      current_step: number;
+      updated_at: string;
+      created_at: string;
+    }[] = [];
+    for (const chunk of chunkIds(tenantUserIds, 400)) {
+      const { data: draftChunk, error: dErr } = await supabase
+        .from("provider_onboarding_drafts")
+        .select("user_id, current_step, updated_at, created_at")
+        .in("user_id", chunk);
+      if (dErr) throw dErr;
+      draftAcc.push(...((draftChunk ?? []) as typeof draftAcc));
+    }
+    const drafts = draftAcc;
 
     if (!drafts || drafts.length === 0) {
       return successResponse({ stalled: [], dropped_off: [], summary: { stalled: 0, dropped_off: 0 } });

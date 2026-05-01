@@ -21,6 +21,7 @@ import {
 } from "@/lib/supportTicketCategoryPresets";
 import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { trackSupportTicketCreated } from "@/lib/analytics";
 
 export default function NewSupportTicketScreen() {
   useScreenTracking("New support ticket");
@@ -38,7 +39,7 @@ export default function NewSupportTicketScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSubmitting(true);
     try {
-      const res = await api.post("/api/me/support-tickets", {
+      const res = await api.post<{ ticket?: { ticket_number?: string } }>("/api/me/support-tickets", {
         subject: subject.trim(),
         message: message.trim(),
         category,
@@ -48,6 +49,8 @@ export default function NewSupportTicketScreen() {
         Alert.alert("Could not submit", getApiErrorMessage(res.error, "Please try again"));
         return;
       }
+      const ticketNumber = res.data?.ticket?.ticket_number;
+      if (ticketNumber) trackSupportTicketCreated(ticketNumber);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
         "Ticket submitted",

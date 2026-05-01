@@ -2,11 +2,22 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse, createPaginatedResponse, getPaginationParams } from "@/lib/supabase/api-helpers";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { subDays, startOfDay } from "date-fns";
+import { fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
+
+/** Resolve provider IANA timezone for marketing segment date cutoffs. */
+export async function getProviderTimezoneForCampaigns(
+  supabase: SupabaseClient<any>,
+  providerId: string,
+): Promise<string> {
+  const { data } = await supabase.from("providers").select("timezone").eq("id", providerId).maybeSingle();
+  return resolveTz((data as { timezone?: string | null } | null)?.timezone);
+}
 
 /**
  * Calculate the number of recipients matching segment criteria
  */
-async function calculateSegmentCount(
+export async function calculateSegmentCount(
   supabase: SupabaseClient<any>,
   providerId: string,
   criteria: {
@@ -17,7 +28,8 @@ async function calculateSegmentCount(
     last_booking_days?: number;
     tags?: string[];
     is_favorite?: boolean;
-  }
+  },
+  tz: string,
 ): Promise<number> {
   let query = supabase
     .from("provider_clients")
@@ -43,9 +55,11 @@ async function calculateSegmentCount(
     query = query.overlaps("tags", criteria.tags);
   }
   if (criteria.last_booking_days !== undefined) {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - criteria.last_booking_days);
-    query = query.gte("last_service_date", cutoffDate.toISOString());
+    const cutoffUtc = fromBusinessTime(
+      startOfDay(subDays(nowInTz(tz), criteria.last_booking_days)),
+      tz,
+    );
+    query = query.gte("last_service_date", cutoffUtc.toISOString());
   }
 
   const { count, error } = await query;
@@ -181,8 +195,8 @@ export async function POST(request: NextRequest) {
       if (!segment_criteria || typeof segment_criteria !== "object") {
         return errorResponse("Segment campaigns require segment_criteria", "VALIDATION_ERROR", 400);
       }
-      // Calculate segment count using the same logic as send route
-      totalRecipients = await calculateSegmentCount(supabase, providerId, segment_criteria);
+      const tz = await getProviderTimezoneForCampaigns(supabase, providerId);
+      totalRecipients = await calculateSegmentCount(supabase, providerId, segment_criteria, tz);
     }
 
     const campaignData: any = {

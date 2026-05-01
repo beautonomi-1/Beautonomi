@@ -1,5 +1,4 @@
-import { differenceInHours } from "date-fns";
-import { parseISO } from "date-fns";
+import { differenceInHours, parseISO } from "date-fns";
 import type { Booking } from "@/components/calendar/calendar-booking-types";
 
 function parseCreatedAt(value: string | undefined): Date | null {

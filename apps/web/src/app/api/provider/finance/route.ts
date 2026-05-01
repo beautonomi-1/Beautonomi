@@ -9,7 +9,14 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { PROVIDER_LEDGER_VISIBLE_TYPES } from "@/lib/provider/provider-ledger-transaction-view";
-import { getProviderPrimaryReportLocationId, productOrderReportLocationId } from "@/lib/reports/provider-report-utils";
+import {
+  getProviderPrimaryReportLocationId,
+  getProviderReportContext,
+  productOrderReportLocationId,
+} from "@/lib/reports/provider-report-utils";
+import { subDays, subMonths, subYears, startOfMonth, endOfMonth } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
+import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
 
 const LEDGER_PAGE_SIZE = 1000;
 
@@ -27,8 +34,14 @@ async function fetchAllLedgerPages(query: any): Promise<any[]> {
 
 /**
  * GET /api/provider/finance
- * 
+ *
  * Get provider's financial data (earnings, transactions, etc.)
+ *
+ * Query params:
+ * - `location_id`: scope **aggregates** (earnings, breakdown cards) to that branch when set.
+ * - `transaction_feed=all`: when used **with** `location_id`, the returned `transactions` list is still
+ *   org-wide for the selected date range (payouts and non-booking rows remain visible). Aggregates stay
+ *   branch-scoped. Omit or use any other value to keep the transaction list aligned with the location filter.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -41,6 +54,8 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const locationId = searchParams.get("location_id");
+    const transactionFeed = searchParams.get("transaction_feed");
+    const transactionListAllLocations = transactionFeed === "all";
     const providerId = await getProviderIdForUser(user.id, supabase);
 
     /** Ledger + booking_payment enrichment bypass RLS so rows with null booking_id (payouts, gift cards, etc.) still load. */
@@ -79,30 +94,52 @@ export async function GET(request: NextRequest) {
     const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    // Get date range
+    // Get date range (provider timezone — aligns with reports and mobile finance)
     const range = searchParams.get("range") || "month";
     const now = new Date();
+    const reportContext = await getProviderReportContext(db, providerId);
+    const tz = reportContext.timezone;
+    const zNow = toZonedTime(now, tz);
+    const todayYmd = formatDateYmd(now, tz);
+
     let startDate: Date;
     let lastMonthStart: Date;
     let lastMonthEnd: Date;
 
     if (range === "all") {
       startDate = new Date("1970-01-01T00:00:00.000Z");
-      lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+      const prevM = subMonths(zNow, 1);
+      const lmStartYmd = formatDateYmd(startOfMonth(prevM), tz);
+      const lmEndYmd = formatDateYmd(endOfMonth(prevM), tz);
+      const lm = dateRangeBoundsUtc(lmStartYmd, lmEndYmd, tz);
+      lastMonthStart = new Date(lm.fromIso);
+      lastMonthEnd = new Date(lm.toIso);
     } else if (range === "week") {
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-      lastMonthStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-      lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+      const curFromYmd = formatDateYmd(subDays(zNow, 7), tz);
+      startDate = new Date(dateRangeBoundsUtc(curFromYmd, todayYmd, tz).fromIso);
+      const prevStartYmd = formatDateYmd(subDays(zNow, 14), tz);
+      const prevEndYmd = formatDateYmd(subDays(zNow, 8), tz);
+      const prev = dateRangeBoundsUtc(prevStartYmd, prevEndYmd, tz);
+      lastMonthStart = new Date(prev.fromIso);
+      lastMonthEnd = new Date(prev.toIso);
     } else if (range === "year") {
-      startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-      lastMonthStart = new Date(now.getFullYear() - 1, now.getMonth() - 1, 1);
-      lastMonthEnd = new Date(now.getFullYear() - 1, now.getMonth(), 0);
+      const yStartYmd = formatDateYmd(subYears(zNow, 1), tz);
+      startDate = new Date(dateRangeBoundsUtc(yStartYmd, yStartYmd, tz).fromIso);
+      const prevPeriodAnchor = subMonths(subYears(zNow, 1), 1);
+      const lmStartYmd = formatDateYmd(startOfMonth(prevPeriodAnchor), tz);
+      const lmEndYmd = formatDateYmd(endOfMonth(prevPeriodAnchor), tz);
+      const lm = dateRangeBoundsUtc(lmStartYmd, lmEndYmd, tz);
+      lastMonthStart = new Date(lm.fromIso);
+      lastMonthEnd = new Date(lm.toIso);
     } else {
-      // month (default)
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+      const monthStartYmd = formatDateYmd(startOfMonth(zNow), tz);
+      startDate = new Date(dateRangeBoundsUtc(monthStartYmd, monthStartYmd, tz).fromIso);
+      const prevM = subMonths(zNow, 1);
+      const lmStartYmd = formatDateYmd(startOfMonth(prevM), tz);
+      const lmEndYmd = formatDateYmd(endOfMonth(prevM), tz);
+      const lm = dateRangeBoundsUtc(lmStartYmd, lmEndYmd, tz);
+      lastMonthStart = new Date(lm.fromIso);
+      lastMonthEnd = new Date(lm.toIso);
     }
 
     // Provider earnings are ledger-driven.
@@ -208,7 +245,9 @@ export async function GET(request: NextRequest) {
         ? (productOrderMap[r.product_order_id]?.payment_method || null)
         : null,
     }));
-    
+
+    const enrichedBeforeLocationFilter = rows;
+
     // Filter by location if location_id is provided
     if (locationId && rows.length > 0) {
       rows = rows.filter((r: any) => {
@@ -365,7 +404,10 @@ export async function GET(request: NextRequest) {
     });
     const pendingPayouts = pendingPayoutsSum;
 
-    const transactions = rows
+    const rowsForTransactionList =
+      locationId && transactionListAllLocations ? enrichedBeforeLocationFilter : rows;
+
+    const transactions = rowsForTransactionList
       .filter((r: any) => PROVIDER_LEDGER_VISIBLE_TYPES.has(r.transaction_type))
       .slice(0, 50)
       .map((r: any) => ({
