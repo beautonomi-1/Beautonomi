@@ -103,7 +103,7 @@ export function PromotionsContent() {
     setPublicOnProfile(true);
     setPromoType("percentage");
     refresh();
-  }, [code, value, description, promoType, createPromo, refresh]);
+  }, [code, value, description, promoType, publicOnProfile, createPromo, refresh]);
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const toggleActive = useCallback(

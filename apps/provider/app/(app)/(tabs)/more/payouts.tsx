@@ -141,6 +141,7 @@ export function PayoutsContent() {
     postPayout,
     refresh,
     refreshFinance,
+    refreshAccounts,
     minimumPayout,
     availableBalance,
     defaultCurrency,

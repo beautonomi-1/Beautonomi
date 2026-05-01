@@ -39,7 +39,7 @@ interface TodayBookingRow {
   services?: { name?: string; offering_name?: string; duration_minutes?: number }[];
 }
 
-const METRIC_RANGES: Array<{ id: FrontDeskMetricRange; label: string }> = [
+const METRIC_RANGES: { id: FrontDeskMetricRange; label: string }[] = [
   { id: "all", label: "All" },
   { id: "today", label: "Today" },
   { id: "week", label: "Week" },

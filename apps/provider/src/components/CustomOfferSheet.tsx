@@ -38,6 +38,8 @@ interface GlobalCategory {
   slug?: string;
 }
 
+const EMPTY_GLOBAL_CATEGORIES: GlobalCategory[] = [];
+
 interface AvailableSlotRow {
   time: string;
   available?: boolean;
@@ -79,7 +81,7 @@ export function CustomOfferSheet({
     "/api/provider/categories?for_offers=1",
     { enabled: visible },
   );
-  const globalCategories = categoriesData?.global_categories ?? [];
+  const globalCategories = categoriesData?.global_categories ?? EMPTY_GLOBAL_CATEGORIES;
   const [categoryQuery, setCategoryQuery] = useState("");
   const filteredGlobalCategories = useMemo(() => {
     const q = categoryQuery.trim().toLowerCase();

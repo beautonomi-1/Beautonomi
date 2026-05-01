@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { errorResponse } from "@/lib/supabase/api-helpers";
+import { errorResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { forwardSameOrigin } from "@/app/api/provider/calendar/_forward-internal";
 
 /**
@@ -7,6 +7,7 @@ import { forwardSameOrigin } from "@/app/api/provider/calendar/_forward-internal
  * Proxies to the canonical route so clients receive JSON instead of a 404 HTML page.
  */
 export async function POST(request: NextRequest) {
+  await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
   let provider: string;
   try {
     const body = (await request.json()) as { provider?: string };
