@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **334** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **344** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -143,6 +143,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 59 | `/admin/webhooks` | W4 | integrations_dev | Y | `GET/POST/PATCH/DELETE /api/admin/webhooks` | |
 | 60 | `/admin/api-keys` | W4 | integrations_dev | Y | `GET/POST/DELETE /api/admin/api-keys` | |
 | 61 | `/admin/integrations/amplitude` | W4 | integrations_dev | Y | `GET/PUT /api/admin/integrations/amplitude` | |
+| 61a | `/admin/integrations/slack` | W4 | integrations_dev | Y | `GET/PUT /api/admin/integrations/slack`; `GET .../channels`; `GET .../logs`; `POST .../test`; browser `GET .../oauth/install` + Slack redirect `GET .../oauth/callback` | **SPA:** [`SlackIntegrationPage`](../../apps/admin-web/src/routes/integrations/SlackIntegrationPage.tsx). AuthZ `ADMIN_SECTION_INTEGRATIONS_DEV` (`requireAdminSection` on APIs). |
 | 62 | `/admin/mapbox` | W4 | integrations_dev | Y | `GET/PUT /api/admin/mapbox/config`, legacy zones tab | |
 | 63 | `/admin/iso-codes` | W4 | integrations_dev | Y | `GET/PUT/POST/DELETE /api/admin/iso-codes/*` | |
 | 64 | `/admin/settings/integrations/analytics` | W4 | integrations_dev | R | — | Client redirect → amplitude page |
@@ -261,6 +262,7 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-07 | **Users / staff / providers SPA parity:** [`UsersListPage`](../../apps/admin-web/src/routes/users/UsersListPage.tsx) — signup-source filter, full role filter, page size 50, row selection + bulk activate/deactivate/delete (`POST /api/admin/users/bulk`), suspend/reactivate, superadmin quick role + compliance purge modal + create user (`POST /api/admin/users`); fixed list links via `adminSpaTo`. [`StaffListPage`](../../apps/admin-web/src/routes/staff/StaffListPage.tsx) — API filters, stats cards, search, edit modal (`PATCH /api/admin/staff/:id`), activate/deactivate, password reset, provider deep links. [`ProvidersListPage`](../../apps/admin-web/src/routes/providers/ProvidersListPage.tsx) — correct provider detail `Link` under `/admin` basename. E-commerce nav adds **Add-ons** → `/admin/addons`. |
 | 2026-04-05 | **Waves 2–5 SPA batch:** `getRawJson` on `@beautonomi/admin-api-client` for top-level `{ data, meta }` envelopes. `apps/admin-web` adds read/list routes for finance, reports (`/reports/:reportKey`, API AuthZ **overview**), users trust, ecommerce (orders/returns; products via **public** API), marketing subset, integrations subset, operations JSON snapshots, platform settings subset, control-plane hub + redirects. **Known gaps:** report CSV export contract, platform-fees section vs nav, reports vs finance roles — see [`ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md`](./ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md). |
 | 2026-04-30 | **Taxonomy / CI:** Added `docs/admin-api-route-taxonomy.csv` rows for `GET /api/admin/reports/support-performance` and `GET /api/admin/reports/support-workload` (`ADMIN_SECTION_OVERVIEW`, `resolveAdminApiTenantId`). SPA: [`ReportDetailPage`](../../apps/admin-web/src/routes/reports/ReportDetailPage.tsx), [`ReportsHubPage`](../../apps/admin-web/src/routes/ReportsHubPage.tsx). §1.1 inventory **334**; §4 rows 35a–35b. |
+| 2026-05-02 | **Taxonomy / CI:** Added **6** rows for Slack workspace integration (`/api/admin/integrations/slack`, `.../channels`, `.../logs`, `.../test`, `.../oauth/install`, `.../oauth/callback`). SPA: [`SlackIntegrationPage`](../../apps/admin-web/src/routes/integrations/SlackIntegrationPage.tsx) at `/admin/integrations/slack`. §1.1 inventory **344**; §4 row **61a**. |
 
 ---
 
@@ -289,3 +291,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-15 | Taxonomy: `+1` route (`GET /api/admin/provider-client-ratings`); §4 row 15 reviews API note. §1.1 inventory **330**. |
 | 2026-04-16 | Taxonomy: `+2` routes (`GET /api/admin/analytics/fx-rate`, `POST /api/admin/compliance/reset-tenant`); §4 row 96.1 tenant-reset page. §1.1 inventory **332**. |
 | 2026-04-30 | Taxonomy: `+2` routes (`GET /api/admin/reports/support-performance`, `GET /api/admin/reports/support-workload`); §4 rows 35a–35b; SPA [`ReportDetailPage`](../../apps/admin-web/src/routes/reports/ReportDetailPage.tsx) + [`ReportsHubPage`](../../apps/admin-web/src/routes/ReportsHubPage.tsx). §1.1 inventory **334**. |
+| 2026-05-02 | Taxonomy: `+6` Slack integration routes under `/api/admin/integrations/slack/*`; §4 row 61a; §1.1 inventory **344**. |
