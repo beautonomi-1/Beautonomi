@@ -2,11 +2,22 @@
  * Server-side checks that a booking/hold window does not overlap provider calendar
  * blocks (time_blocks, availability_blocks, staff time off / days off).
  * Aligns with GET /api/public/providers/[slug]/availability busy-interval rules.
+ *
+ * §Fix 2026-05: wall-clock blocks (`time_blocks.date` + `start_time`/`end_time`) must be
+ * interpreted in the provider's IANA timezone (same as `combineDateAndTime` in the slot
+ * engine). Previously Node's local timezone was used for YMD keys and `Date` parsing,
+ * causing false positives/negatives vs the availability grid (incl. ~1h drift on UTC hosts).
  */
 
-import { addDays, format, startOfDay } from "date-fns";
+import { addDays, format, parse } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { expandRecurringPattern } from "@/lib/availability/time-utils";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import {
+  combineDateAndTime,
+  expandRecurringPattern,
+  normalizeProviderTimezone,
+} from "@/lib/availability/time-utils";
 
 export type ProviderCalendarBlockCheck = {
   providerId: string;
@@ -15,36 +26,67 @@ export type ProviderCalendarBlockCheck = {
   staffId: string | null;
   startAt: Date;
   endAt: Date;
+  /**
+   * Raw `providers.timezone` when already loaded by caller (avoids extra round-trip).
+   * When omitted, loaded from `providers`.
+   */
+  providerTimezoneRaw?: string | null;
 };
 
 function intervalsOverlap(a0: Date, a1: Date, b0: Date, b1: Date): boolean {
   return a0 < b1 && a1 > b0;
 }
 
-/** Local calendar YYYY-MM-DD (same basis as `new Date(\`\${date}T...\`)` in public availability). */
-function ymdLocal(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+/** Effective IANA zone for interpreting calendar dates and wall-clock blocks. */
+function effectiveIanaForProvider(rawTz: string | null | undefined): string | null {
+  return normalizeProviderTimezone(rawTz ?? undefined);
 }
 
-function localDaysBetweenInclusive(start: Date, end: Date): string[] {
-  const a = startOfDay(start);
-  const b = startOfDay(end);
+function ymdForInstantInZone(d: Date, ianaTz: string | null): string {
+  if (ianaTz) {
+    try {
+      return formatInTimeZone(d, ianaTz, "yyyy-MM-dd");
+    } catch {
+      /* fall through */
+    }
+  }
+  try {
+    return formatInTimeZone(d, DEFAULT_BOOKING_DISPLAY_TIMEZONE, "yyyy-MM-dd");
+  } catch {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+}
+
+/** Civil calendar days from startAt through endAt as labeled in the provider zone. */
+function bookingCalendarDaysInclusive(startAt: Date, endAt: Date, ianaTz: string | null): string[] {
+  const minYmd = ymdForInstantInZone(startAt, ianaTz);
+  const maxYmd = ymdForInstantInZone(endAt, ianaTz);
   const out: string[] = [];
-  for (let cur = a; cur <= b; cur = addDays(cur, 1)) {
+  let cur = parse(minYmd, "yyyy-MM-dd", new Date());
+  const end = parse(maxYmd, "yyyy-MM-dd", new Date());
+  while (cur <= end) {
     out.push(format(cur, "yyyy-MM-dd"));
+    cur = addDays(cur, 1);
   }
   return out;
 }
 
-function timeBlockLocalInterval(dateStr: string, startTime: string, endTime: string): { start: Date; end: Date } {
+function timeBlockIntervalInProviderZone(
+  dateStr: string,
+  startTime: string,
+  endTime: string,
+  ianaTz: string | null,
+): { start: Date; end: Date } {
   const startPart = String(startTime ?? "00:00").slice(0, 5);
   const endPart = String(endTime ?? "00:00").slice(0, 5);
+  const wallStart = `${startPart}:00`;
+  const wallEnd = `${endPart}:00`;
   return {
-    start: new Date(`${dateStr}T${startPart}:00`),
-    end: new Date(`${dateStr}T${endPart}:00`),
+    start: combineDateAndTime(dateStr, wallStart, ianaTz ?? undefined),
+    end: combineDateAndTime(dateStr, wallEnd, ianaTz ?? undefined),
   };
 }
 
@@ -57,6 +99,13 @@ export async function isProviderCalendarWindowBlocked(
 ): Promise<{ blocked: boolean; reason?: string }> {
   const { providerId, locationId, staffId, startAt, endAt } = opts;
   if (!(endAt > startAt)) return { blocked: false };
+
+  let rawTz = opts.providerTimezoneRaw;
+  if (rawTz === undefined) {
+    const { data: prow } = await supabase.from("providers").select("timezone").eq("id", providerId).maybeSingle();
+    rawTz = (prow as { timezone?: string | null } | null)?.timezone ?? null;
+  }
+  const ianaTz = effectiveIanaForProvider(rawTz ?? null);
 
   const startIso = startAt.toISOString();
   const endIso = endAt.toISOString();
@@ -97,9 +146,9 @@ export async function isProviderCalendarWindowBlocked(
     }
   }
 
-  // ── time_blocks (date + local time, same construction as public availability) ──
-  const minYmd = ymdLocal(startAt);
-  const maxYmd = ymdLocal(endAt);
+  // ── time_blocks (date + local time in provider zone) ─────────────────────
+  const minYmd = ymdForInstantInZone(startAt, ianaTz);
+  const maxYmd = ymdForInstantInZone(endAt, ianaTz);
   const { data: tbRows, error: tbErr } = await supabase
     .from("time_blocks")
     .select("id, staff_id, date, start_time, end_time")
@@ -116,22 +165,20 @@ export async function isProviderCalendarWindowBlocked(
   for (const tb of tbRows || []) {
     if (!appliesToStaff(tb.staff_id)) continue;
     const d = typeof tb.date === "string" ? tb.date : minYmd;
-    const { start: bs, end: be } = timeBlockLocalInterval(d, tb.start_time as string, tb.end_time as string);
+    const { start: bs, end: be } = timeBlockIntervalInProviderZone(d, tb.start_time as string, tb.end_time as string, ianaTz);
     if (intervalsOverlap(startAt, endAt, bs, be)) {
       return { blocked: true, reason: "Overlaps time block" };
     }
   }
 
   // ── Recurring time_blocks whose origin date predates the booking window ──
-  // Mirrors loadTimeBlocks in load-constraints.ts: blocks created on a past date with
-  // is_recurring=true must still block future slots (e.g. a weekly "Lunch Break").
   const { data: recurringTbRows, error: recurringTbErr } = await supabase
     .from("time_blocks")
     .select("id, staff_id, date, start_time, end_time, is_recurring, recurring_pattern")
     .eq("provider_id", providerId)
     .eq("is_active", true)
     .eq("is_recurring", true)
-    .lt("date", minYmd); // only blocks whose origin date is before the booking window
+    .lt("date", minYmd);
 
   if (recurringTbErr) {
     console.error("recurring time_blocks overlap check:", recurringTbErr);
@@ -139,29 +186,28 @@ export async function isProviderCalendarWindowBlocked(
   }
 
   if (recurringTbRows && recurringTbRows.length > 0) {
-    const bookingDays = localDaysBetweenInclusive(startAt, endAt);
+    const bookingDays = bookingCalendarDaysInclusive(startAt, endAt, ianaTz);
     for (const tb of recurringTbRows) {
       if (!appliesToStaff(tb.staff_id)) continue;
       const originDateStr = typeof tb.date === "string" ? tb.date : minYmd;
-      const originDate = new Date(`${originDateStr}T12:00:00`);
+      const originDate = parse(`${originDateStr}T12:00:00`, "yyyy-MM-dd'T'HH:mm:ss", new Date());
       const originDayOfWeek = originDate.getDay();
 
       for (const day of bookingDays) {
-        const targetDate = new Date(`${day}T12:00:00`);
+        const targetDate = parse(`${day}T12:00:00`, "yyyy-MM-dd'T'HH:mm:ss", new Date());
         let applies = false;
         if (tb.recurring_pattern) {
           applies = expandRecurringPattern(
             tb.recurring_pattern as Parameters<typeof expandRecurringPattern>[0],
             originDateStr,
-            day
+            day,
           );
         } else {
-          // Fallback: no explicit pattern → repeat weekly on same weekday (matches loadTimeBlocks).
           applies = targetDate.getDay() === originDayOfWeek && targetDate >= originDate;
         }
         if (!applies) continue;
 
-        const { start: bs, end: be } = timeBlockLocalInterval(day, tb.start_time as string, tb.end_time as string);
+        const { start: bs, end: be } = timeBlockIntervalInProviderZone(day, tb.start_time as string, tb.end_time as string, ianaTz);
         if (intervalsOverlap(startAt, endAt, bs, be)) {
           return { blocked: true, reason: "Overlaps recurring time block" };
         }
@@ -171,7 +217,7 @@ export async function isProviderCalendarWindowBlocked(
 
   // ── Staff full-day unavailability (staff_time_off, staff_days_off) ─────
   if (staffId) {
-    const days = localDaysBetweenInclusive(startAt, endAt);
+    const days = bookingCalendarDaysInclusive(startAt, endAt, ianaTz);
     if (days.length === 0) return { blocked: false };
 
     const minDay = days[0];

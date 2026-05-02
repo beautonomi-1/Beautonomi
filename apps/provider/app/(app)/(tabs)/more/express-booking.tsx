@@ -50,10 +50,27 @@ interface ExpressLinkRow {
   slug: string;
   is_active?: boolean;
   use_count?: number;
+  service_ids?: string[] | null;
+  staff_ids?: string[] | null;
   location_id?: string | null;
   location_type?: string | null;
+  expires_at?: string | null;
+  max_uses?: number | null;
   prefill?: ExpressPrefill | null;
 }
+
+type BookableItem = {
+  id: string;
+  title?: string | null;
+  name?: string | null;
+  variant_name?: string | null;
+  service_type?: string | null;
+  parent_service_id?: string | null;
+  duration_minutes?: number | null;
+};
+
+type StaffMember = { id: string; name?: string | null; is_active?: boolean | null };
+type ProviderLocation = { id: string; name?: string | null; location_type?: string | null; is_active?: boolean | null };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -105,11 +122,34 @@ function shareBookingPayload(url: string, opts?: { businessName?: string; shortL
     : { message: line };
 }
 
+function normalizeArray<T>(raw: unknown): T[] {
+  if (Array.isArray(raw)) return raw as T[];
+  if (raw && typeof raw === "object") {
+    const data = (raw as { data?: unknown }).data;
+    if (Array.isArray(data)) return data as T[];
+  }
+  return [];
+}
+
+function normalizeExpressSlug(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function formatDateInputFromIso(value?: string | null): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return "";
+  return d.toISOString().split("T")[0] ?? "";
+}
+
 export default function ExpressBookingScreen() {
   const router = useRouter();
   const { data: link, loading, error: bookingLinkError, timedOut, refresh } = useApi<BookingLink>(
     "/api/provider/booking-link"
   );
+  const { data: servicesRaw } = useApi<BookableItem[] | { data?: BookableItem[] }>("/api/provider/services?include_variants=true", { staleTimeMs: 60_000 });
+  const { data: staffRaw } = useApi<StaffMember[] | { data?: StaffMember[] }>("/api/provider/staff", { staleTimeMs: 60_000 });
+  const { data: locationsRaw } = useApi<ProviderLocation[] | { data?: ProviderLocation[] }>("/api/provider/locations", { staleTimeMs: 60_000 });
   const { execute: updateLink, loading: saving } = useApiMutation("patch");
   const { execute: patchExpressLink, loading: savingPrefill } = useApiMutation<ExpressLinkRow>("patch");
   const [copied, setCopied] = useState(false);
@@ -128,11 +168,25 @@ export default function ExpressBookingScreen() {
   const [prefillProductsJson, setPrefillProductsJson] = useState("[]");
 
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingExpressLink, setEditingExpressLink] = useState<ExpressLinkRow | null>(null);
   const [newLinkName, setNewLinkName] = useState("");
   const [newLinkSlug, setNewLinkSlug] = useState("");
+  const [newServiceIds, setNewServiceIds] = useState<string[]>([]);
+  const [newStaffId, setNewStaffId] = useState("");
+  const [newLocationType, setNewLocationType] = useState<"" | "at_salon" | "at_home">("");
+  const [newLocationId, setNewLocationId] = useState("");
+  const [newExpiresAt, setNewExpiresAt] = useState("");
+  const [newMaxUses, setNewMaxUses] = useState("");
+  const [newIsActive, setNewIsActive] = useState(true);
   const [creatingLink, setCreatingLink] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [subscriptionRequired, setSubscriptionRequired] = useState(false);
+
+  const bookableItems = normalizeArray<BookableItem>(servicesRaw).filter((item) => item.id);
+  const activeStaff = normalizeArray<StaffMember>(staffRaw).filter((member) => member.id && member.is_active !== false);
+  const salonLocations = normalizeArray<ProviderLocation>(locationsRaw).filter(
+    (loc) => loc.id && loc.is_active !== false && (loc.location_type == null || loc.location_type === "salon"),
+  );
 
   useEffect(() => {
     if (!prefillModalLink) return;
@@ -275,7 +329,51 @@ export default function ExpressBookingScreen() {
     void loadExpressLinks();
   }
 
-  async function handleCreateExpressLink() {
+  function resetExpressForm() {
+    setEditingExpressLink(null);
+    setNewLinkName("");
+    setNewLinkSlug("");
+    setNewServiceIds([]);
+    setNewStaffId("");
+    setNewLocationType("");
+    setNewLocationId("");
+    setNewExpiresAt("");
+    setNewMaxUses("");
+    setNewIsActive(true);
+    setCreateError(null);
+  }
+
+  function openCreateExpressLinkForm() {
+    resetExpressForm();
+    setShowCreateForm(true);
+  }
+
+  function openEditExpressLinkForm(linkRow: ExpressLinkRow) {
+    setEditingExpressLink(linkRow);
+    setNewLinkName(linkRow.name ?? "");
+    setNewLinkSlug(linkRow.slug ?? "");
+    setNewServiceIds(Array.isArray(linkRow.service_ids) ? linkRow.service_ids : []);
+    setNewStaffId(Array.isArray(linkRow.staff_ids) && linkRow.staff_ids[0] ? linkRow.staff_ids[0] : "");
+    setNewLocationType(
+      linkRow.location_type === "at_salon" || linkRow.location_type === "at_home"
+        ? linkRow.location_type
+        : "",
+    );
+    setNewLocationId(linkRow.location_id ?? "");
+    setNewExpiresAt(formatDateInputFromIso(linkRow.expires_at));
+    setNewMaxUses(linkRow.max_uses != null ? String(linkRow.max_uses) : "");
+    setNewIsActive(linkRow.is_active !== false);
+    setCreateError(null);
+    setShowCreateForm(true);
+  }
+
+  function toggleServiceSelection(id: string) {
+    setNewServiceIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  }
+
+  async function handleSaveExpressLink() {
     if (!newLinkName.trim() || !newLinkSlug.trim()) {
       setCreateError("Name and slug are required");
       return;
@@ -283,28 +381,64 @@ export default function ExpressBookingScreen() {
     setCreatingLink(true);
     setCreateError(null);
     try {
-      const res = await api.post<ExpressLinkRow>("/api/provider/express-booking", {
+      const slug = normalizeExpressSlug(newLinkSlug);
+      if (!slug) {
+        setCreateError("Short code must contain at least one letter or number");
+        setCreatingLink(false);
+        return;
+      }
+      const payload: Record<string, unknown> = {
         name: newLinkName.trim(),
-        slug: newLinkSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-"),
-        is_active: true,
-      });
+        slug,
+        service_ids: newServiceIds,
+        staff_ids: newStaffId ? [newStaffId] : [],
+        location_type: newLocationType || null,
+        location_id: newLocationType === "at_salon" ? (newLocationId || null) : null,
+        expires_at: newExpiresAt ? new Date(`${newExpiresAt}T23:59:59.999Z`).toISOString() : null,
+        is_active: newIsActive,
+      };
+      if (newMaxUses.trim()) {
+        payload.max_uses = Math.max(1, Number.parseInt(newMaxUses, 10) || 1);
+      } else if (editingExpressLink) {
+        payload.max_uses = null;
+      }
+      const res = editingExpressLink
+        ? await api.patch<ExpressLinkRow>(`/api/provider/express-booking/${editingExpressLink.id}`, payload)
+        : await api.post<ExpressLinkRow>("/api/provider/express-booking", payload);
       if (res.error) {
-        setCreateError(getApiErrorMessage(res.error, "Failed to create express link"));
+        setCreateError(getApiErrorMessage(res.error, editingExpressLink ? "Failed to update express link" : "Failed to create express link"));
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         if (res.data) {
-          setExpressLinks((current) => [res.data as ExpressLinkRow, ...current]);
+          setExpressLinks((current) =>
+            editingExpressLink
+              ? current.map((item) => (item.id === editingExpressLink.id ? (res.data as ExpressLinkRow) : item))
+              : [res.data as ExpressLinkRow, ...current],
+          );
         }
         setShowCreateForm(false);
-        setNewLinkName("");
-        setNewLinkSlug("");
-        setCreateError(null);
+        resetExpressForm();
         void loadExpressLinks();
       }
     } catch (e) {
-      setCreateError(getApiErrorMessage(e, "Failed to create express link"));
+      setCreateError(getApiErrorMessage(e, editingExpressLink ? "Failed to update express link" : "Failed to create express link"));
     }
     setCreatingLink(false);
+  }
+
+  async function handleToggleExpressLinkActive(linkRow: ExpressLinkRow) {
+    const nextActive = linkRow.is_active === false;
+    const res = await api.patch<ExpressLinkRow>(`/api/provider/express-booking/${linkRow.id}`, {
+      is_active: nextActive,
+    });
+    if (res.error) {
+      Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update link"));
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setExpressLinks((current) =>
+      current.map((item) => (item.id === linkRow.id ? { ...item, ...(res.data ?? {}), is_active: nextActive } : item)),
+    );
   }
 
   function handleClearPrefill() {
@@ -342,6 +476,12 @@ export default function ExpressBookingScreen() {
       ]
     );
   }
+
+  const locationOptions: { value: "" | "at_salon" | "at_home"; label: string }[] = [
+    { value: "", label: "Client chooses" },
+    { value: "at_salon", label: "At salon" },
+    { value: "at_home", label: "At home" },
+  ];
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
@@ -543,7 +683,7 @@ export default function ExpressBookingScreen() {
                 paddingHorizontal: 14,
                 paddingVertical: 8,
               }}
-              onPress={() => setShowCreateForm(true)}
+              onPress={openCreateExpressLinkForm}
               accessibilityLabel="Create new express link"
               accessibilityRole="button"
             >
@@ -554,7 +694,9 @@ export default function ExpressBookingScreen() {
 
           {showCreateForm && (
             <View style={{ borderRadius: 16, borderWidth: 1, borderColor: "#c7d2fe", backgroundColor: "#f5f3ff", padding: 16, marginBottom: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: "#4338ca", marginBottom: 12 }}>Create Express Link</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#4338ca", marginBottom: 12 }}>
+                {editingExpressLink ? "Edit Express Link" : "Create Express Link"}
+              </Text>
               <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Name</Text>
               <TextInput
                 style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, backgroundColor: Colors.white, marginBottom: 10 }}
@@ -563,8 +705,8 @@ export default function ExpressBookingScreen() {
                 value={newLinkName}
                 onChangeText={(t) => {
                   setNewLinkName(t);
-                  if (!newLinkSlug || newLinkSlug === newLinkName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")) {
-                    setNewLinkSlug(t.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
+                  if (!newLinkSlug || newLinkSlug === normalizeExpressSlug(newLinkName)) {
+                    setNewLinkSlug(normalizeExpressSlug(t));
                   }
                 }}
                 autoCapitalize="words"
@@ -575,10 +717,125 @@ export default function ExpressBookingScreen() {
                 placeholder="e.g. summer-promo"
                 placeholderTextColor="#9ca3af"
                 value={newLinkSlug}
-                onChangeText={setNewLinkSlug}
+                onChangeText={(value) => setNewLinkSlug(normalizeExpressSlug(value))}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>Pre-select services (optional)</Text>
+              <View style={{ maxHeight: 180, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, backgroundColor: Colors.white, marginBottom: 10, overflow: "hidden" }}>
+                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  {bookableItems.length === 0 ? (
+                    <Text style={{ padding: 12, fontSize: 13, color: Colors.gray[500] }}>No services found.</Text>
+                  ) : (
+                    bookableItems.map((svc) => {
+                      const selected = newServiceIds.includes(svc.id);
+                      const label = svc.variant_name || svc.title || svc.name || "Untitled service";
+                      return (
+                        <TouchableOpacity
+                          key={svc.id}
+                          style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
+                          onPress={() => toggleServiceSelection(svc.id)}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: selected }}
+                        >
+                          <Ionicons name={selected ? "checkbox" : "square-outline"} size={20} color={selected ? "#4f46e5" : Colors.gray[400]} />
+                          <Text style={{ marginLeft: 8, flex: 1, fontSize: 13, color: Colors.gray[800] }} numberOfLines={1}>
+                            {label}{svc.duration_minutes ? ` · ${svc.duration_minutes}min` : ""}
+                          </Text>
+                          {svc.service_type === "package" || svc.service_type === "addon" ? (
+                            <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{svc.service_type}</Text>
+                          ) : null}
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
+                </ScrollView>
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Staff member (optional)</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                <TouchableOpacity
+                  style={{ borderRadius: 999, borderWidth: 1, borderColor: !newStaffId ? "#4f46e5" : Colors.gray[200], backgroundColor: !newStaffId ? "#eef2ff" : Colors.white, paddingHorizontal: 12, paddingVertical: 8 }}
+                  onPress={() => setNewStaffId("")}
+                >
+                  <Text style={{ fontSize: 12, color: !newStaffId ? "#4338ca" : Colors.gray[600] }}>Any staff</Text>
+                </TouchableOpacity>
+                {activeStaff.map((member) => (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={{ borderRadius: 999, borderWidth: 1, borderColor: newStaffId === member.id ? "#4f46e5" : Colors.gray[200], backgroundColor: newStaffId === member.id ? "#eef2ff" : Colors.white, paddingHorizontal: 12, paddingVertical: 8 }}
+                    onPress={() => setNewStaffId(member.id)}
+                  >
+                    <Text style={{ fontSize: 12, color: newStaffId === member.id ? "#4338ca" : Colors.gray[600] }}>{member.name || "Staff member"}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Location choice</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                {locationOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.label}
+                    style={{ borderRadius: 999, borderWidth: 1, borderColor: newLocationType === option.value ? "#4f46e5" : Colors.gray[200], backgroundColor: newLocationType === option.value ? "#eef2ff" : Colors.white, paddingHorizontal: 12, paddingVertical: 8 }}
+                    onPress={() => {
+                      setNewLocationType(option.value);
+                      if (option.value !== "at_salon") setNewLocationId("");
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: newLocationType === option.value ? "#4338ca" : Colors.gray[600] }}>{option.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {newLocationType === "at_salon" && (
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                  <TouchableOpacity
+                    style={{ borderRadius: 999, borderWidth: 1, borderColor: !newLocationId ? "#4f46e5" : Colors.gray[200], backgroundColor: !newLocationId ? "#eef2ff" : Colors.white, paddingHorizontal: 12, paddingVertical: 8 }}
+                    onPress={() => setNewLocationId("")}
+                  >
+                    <Text style={{ fontSize: 12, color: !newLocationId ? "#4338ca" : Colors.gray[600] }}>Any branch</Text>
+                  </TouchableOpacity>
+                  {salonLocations.map((loc) => (
+                    <TouchableOpacity
+                      key={loc.id}
+                      style={{ borderRadius: 999, borderWidth: 1, borderColor: newLocationId === loc.id ? "#4f46e5" : Colors.gray[200], backgroundColor: newLocationId === loc.id ? "#eef2ff" : Colors.white, paddingHorizontal: 12, paddingVertical: 8 }}
+                      onPress={() => setNewLocationId(loc.id)}
+                    >
+                      <Text style={{ fontSize: 12, color: newLocationId === loc.id ? "#4338ca" : Colors.gray[600] }}>{loc.name || "Branch"}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Expiry date</Text>
+                  <TextInput
+                    style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, backgroundColor: Colors.white }}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#9ca3af"
+                    value={newExpiresAt}
+                    onChangeText={(value) => setNewExpiresAt(value.replace(/[^0-9-]/g, "").slice(0, 10))}
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Max uses</Text>
+                  <TextInput
+                    style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, backgroundColor: Colors.white }}
+                    placeholder="Unlimited"
+                    placeholderTextColor="#9ca3af"
+                    value={newMaxUses}
+                    onChangeText={(value) => setNewMaxUses(value.replace(/\D/g, ""))}
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </View>
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}
+                onPress={() => setNewIsActive((current) => !current)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: newIsActive }}
+              >
+                <Ionicons name={newIsActive ? "checkbox" : "square-outline"} size={20} color={newIsActive ? "#4f46e5" : Colors.gray[400]} />
+                <Text style={{ marginLeft: 8, fontSize: 13, color: Colors.gray[700] }}>Active link</Text>
+              </TouchableOpacity>
               {createError && (
                 <View style={{ borderRadius: 8, backgroundColor: "#fef2f2", padding: 10, marginBottom: 10 }}>
                   <Text style={{ fontSize: 13, color: "#991b1b" }}>{createError}</Text>
@@ -587,7 +844,7 @@ export default function ExpressBookingScreen() {
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <TouchableOpacity
                   style={{ flex: 1, alignItems: "center", borderRadius: 12, backgroundColor: "#4f46e5", paddingVertical: 12, opacity: creatingLink ? 0.6 : 1 }}
-                  onPress={() => void handleCreateExpressLink()}
+                  onPress={() => void handleSaveExpressLink()}
                   disabled={creatingLink}
                   accessibilityLabel="Create express link"
                   accessibilityRole="button"
@@ -595,12 +852,12 @@ export default function ExpressBookingScreen() {
                   {creatingLink ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={{ fontWeight: "600", color: Colors.white }}>Create</Text>
+                    <Text style={{ fontWeight: "600", color: Colors.white }}>{editingExpressLink ? "Save" : "Create"}</Text>
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={{ flex: 1, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], paddingVertical: 12 }}
-                  onPress={() => { setShowCreateForm(false); setCreateError(null); }}
+                  onPress={() => { setShowCreateForm(false); resetExpressForm(); }}
                   accessibilityLabel="Cancel"
                   accessibilityRole="button"
                 >
@@ -682,11 +939,19 @@ export default function ExpressBookingScreen() {
                       const fullUrl = `${(APP_URL || "").replace(/\/$/, "")}/book/l/${encodeURIComponent(el.slug)}`;
                       const embedUrl = `${fullUrl}?embed=1`;
                       const isCopied = copiedShortId === el.id;
+                      const expiresLabel = el.expires_at ? formatDateInputFromIso(el.expires_at) : null;
+                      const serviceCount = Array.isArray(el.service_ids) ? el.service_ids.length : 0;
+                      const staffCount = Array.isArray(el.staff_ids) ? el.staff_ids.length : 0;
                       return (
                         <View key={el.id} style={{ marginTop: idx === 0 ? 0 : 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
                           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                             <View style={{ flex: 1 }}>
-                              <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{el.name}</Text>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                <Text style={{ fontWeight: "500", color: Colors.gray[900], flexShrink: 1 }}>{el.name}</Text>
+                                <Text style={{ borderRadius: 999, overflow: "hidden", backgroundColor: el.is_active === false ? Colors.gray[100] : "#dcfce7", paddingHorizontal: 8, paddingVertical: 2, fontSize: 10, color: el.is_active === false ? Colors.gray[500] : "#166534" }}>
+                                  {el.is_active === false ? "Inactive" : "Active"}
+                                </Text>
+                              </View>
                               <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={1}>{fullUrl}</Text>
                               <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 8, flexWrap: "wrap" }}>
                                 {el.location_type === "at_home" ? (
@@ -699,9 +964,37 @@ export default function ExpressBookingScreen() {
                                 {el.use_count != null && (
                                   <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{el.use_count} click{el.use_count !== 1 ? "s" : ""}</Text>
                                 )}
+                                {serviceCount > 0 && (
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{serviceCount} service{serviceCount !== 1 ? "s" : ""}</Text>
+                                )}
+                                {staffCount > 0 && (
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Staff preselected</Text>
+                                )}
+                                {expiresLabel && (
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Expires {expiresLabel}</Text>
+                                )}
+                                {el.max_uses != null && (
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Max {el.max_uses}</Text>
+                                )}
                               </View>
                             </View>
                             <View style={{ flexDirection: "row" }}>
+                              <TouchableOpacity
+                                style={{ marginRight: 8, borderRadius: 8, backgroundColor: "#eef2ff", paddingHorizontal: 12, paddingVertical: 8 }}
+                                onPress={() => openEditExpressLinkForm(el)}
+                                accessibilityLabel="Edit express link"
+                                accessibilityRole="button"
+                              >
+                                <Ionicons name="create-outline" size={18} color="#4f46e5" />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={{ marginRight: 8, borderRadius: 8, backgroundColor: el.is_active === false ? "#dcfce7" : "#fee2e2", paddingHorizontal: 12, paddingVertical: 8 }}
+                                onPress={() => void handleToggleExpressLinkActive(el)}
+                                accessibilityLabel={el.is_active === false ? "Activate express link" : "Deactivate express link"}
+                                accessibilityRole="button"
+                              >
+                                <Ionicons name={el.is_active === false ? "play-outline" : "pause-outline"} size={18} color={el.is_active === false ? "#15803d" : "#b91c1c"} />
+                              </TouchableOpacity>
                               <TouchableOpacity
                                 style={{ marginRight: 8, borderRadius: 8, backgroundColor: "#ede9fe", paddingHorizontal: 12, paddingVertical: 8 }}
                                 onPress={() => setPrefillModalLink(el)}

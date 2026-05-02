@@ -37,7 +37,7 @@ export function CalendarOverlayTimeBlock({
   const startMin = parseCalendarTimeStrict(block.start_time);
   const endMin = parseCalendarTimeStrict(block.end_time);
   if (startMin == null || endMin == null || endMin <= startMin) return null;
-  const top = gridTopPadding + Math.max(0, (startMin / 60 - startHour) * slotHeight);
+  const top = gridTopPadding + (startMin / 60 - startHour) * slotHeight;
   const height = Math.max(((endMin - startMin) / 60) * slotHeight, quarterHeight);
   const interactive = !!block.calendar_overlay_kind;
   const isBookingHold = block.calendar_overlay_kind === "booking_hold";

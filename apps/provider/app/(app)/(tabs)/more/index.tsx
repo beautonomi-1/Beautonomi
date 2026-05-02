@@ -62,6 +62,7 @@ type ProviderNavCounts = {
   active_product_orders: number;
   unread_messages: number;
   waiting_room: number;
+  open_return_requests?: number;
   critical_total: number;
 };
 
@@ -146,6 +147,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
     title: "Operations",
     items: [
       { icon: "book-outline", label: "Bookings & calendar", subtitle: "Appointments, waitlist & schedule", route: "/(app)/(tabs)/more/bookings", color: "#6366f1", bg: "#eef2ff" },
+      { icon: "ban-outline", label: "Time blocks", subtitle: "Breaks, meetings & unavailable periods", route: "/(app)/(tabs)/more/time-blocks", color: "#d97706", bg: "#fffbeb" },
       { icon: "people-outline", label: "Group Bookings", subtitle: "Manage group appointments", route: "/(app)/(tabs)/more/group-bookings", color: "#8b5cf6", bg: "#ede9fe" },
       { icon: "construct-outline", label: "Resources & forms", subtitle: "Resources, intake & consent forms", route: "/(app)/(tabs)/more/resources-forms-hub", color: "#0d9488", bg: "#ccfbf1" },
       { icon: "chatbox-ellipses-outline", label: "Custom Requests", subtitle: "Client quotes & offers", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316", bg: "#fff7ed" },
@@ -194,6 +196,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
 /** Top shortcuts (customer app pattern: 2x2 quick actions above the fold) */
 const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; route: string; color: string }[] = [
   { icon: "book-outline", label: "Bookings", route: "/(app)/(tabs)/more/bookings", color: "#6366f1" },
+  { icon: "ban-outline", label: "Time blocks", route: "/(app)/(tabs)/more/time-blocks", color: "#d97706" },
   { icon: "layers-outline", label: "Catalogue", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899" },
   { icon: "megaphone-outline", label: "Buy ads", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
   { icon: "card-outline", label: "Memberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
@@ -297,7 +300,9 @@ export default function MoreScreen() {
         return Number(navCounts?.pending_bookings ?? 0) + Number(navCounts?.waiting_room ?? 0);
       }
       if (route.includes("products-ecommerce-hub") || route.includes("product-orders") || route.includes("orders-hub")) {
-        return Number(navCounts?.active_product_orders ?? 0);
+        return (
+          Number(navCounts?.active_product_orders ?? 0) + Number(navCounts?.open_return_requests ?? 0)
+        );
       }
       if (route.includes("engagement-hub") || route.includes("messaging")) {
         return Number(navCounts?.unread_messages ?? 0);

@@ -1,4 +1,4 @@
-import { useEffect, useCallback, type ComponentType, type PropsWithChildren } from "react";
+import { useEffect, useCallback, useState, type ComponentType, type PropsWithChildren } from "react";
 import {
   View,
   Text,
@@ -25,7 +25,7 @@ import {
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
 interface BottomSheetProps {
@@ -59,6 +59,8 @@ export function BottomSheet({
   snapHeight = "auto",
   showHandle = true,
 }: BottomSheetProps) {
+  const insets = useSafeAreaInsets();
+  const [keyboardInset, setKeyboardInset] = useState(0);
   const translateY = useSharedValue(SCREEN_HEIGHT);
   const backdropOpacity = useSharedValue(0);
   const sheetHeight = SNAP_HEIGHTS[snapHeight];
@@ -81,8 +83,24 @@ export function BottomSheet({
       backdropOpacity.value = 0;
       translateY.value = withSpring(0, { damping: 20, stiffness: 90 });
       backdropOpacity.value = withTiming(1, { duration: 250 });
+    } else {
+      setKeyboardInset(0);
     }
   }, [visible, translateY, backdropOpacity]);
+
+  useEffect(() => {
+    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const subShow = Keyboard.addListener(showEvt, (e) => {
+      const h = e.endCoordinates?.height;
+      setKeyboardInset(typeof h === "number" && Number.isFinite(h) ? h : 0);
+    });
+    const subHide = Keyboard.addListener(hideEvt, () => setKeyboardInset(0));
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, []);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -114,7 +132,7 @@ export function BottomSheet({
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={0}
+          keyboardVerticalOffset={Platform.OS === "ios" ? Math.max(insets.top, 12) + 8 : 0}
         >
           <Animated.View style={[{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }, backdropAnimatedStyle]}>
             <Pressable
@@ -173,10 +191,11 @@ export function BottomSheet({
               style={{ flex: 1, backgroundColor: "#ffffff" }}
               contentContainerStyle={{
                 padding: 20,
-                paddingBottom: 40,
+                paddingBottom: 40 + keyboardInset + (Platform.OS === "android" ? insets.bottom : 0),
                 backgroundColor: "#ffffff",
               }}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
               showsVerticalScrollIndicator={false}
               bounces={false}
             >

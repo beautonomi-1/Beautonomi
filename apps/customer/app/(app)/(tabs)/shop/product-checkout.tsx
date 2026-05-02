@@ -26,6 +26,8 @@ import { trackProductCheckoutStarted, trackProductOrderPlaced } from "@/lib/anal
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
+import { useSavedCards } from "@/hooks/useSavedCards";
+import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 
 const PRIMARY = Colors.primary;
 
@@ -134,6 +136,10 @@ export default function ProductCheckoutScreen() {
   }>({ type: "percentage", percentage: 5, fixed: 0, show: true });
   const [addressesLoadError, setAddressesLoadError] = useState<string | null>(null);
   const [refetchingAddresses, setRefetchingAddresses] = useState(false);
+  const { cards: savedCards, defaultCard, refresh: refreshSavedCards } = useSavedCards(!!user);
+  const { payWithSavedCard } = usePaystackPayment();
+  const [useNewCard, setUseNewCard] = useState(true);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   /**
    * §Customer-audit 2026-04 (C5 CRITICAL — checkout hang): `cart.groupedByProvider`
    * is recomputed from scratch every render inside `useCart`, so the derived
@@ -159,6 +165,17 @@ export default function ProductCheckoutScreen() {
       setPaymentMethod("paystack");
     }
   }, [cashEnabledOnPlatform, paymentMethod]);
+
+  useEffect(() => {
+    if (savedCards.length === 0) {
+      setUseNewCard(true);
+      return;
+    }
+    if (defaultCard?.id && !selectedCardId) {
+      setSelectedCardId(defaultCard.id);
+      setUseNewCard(false);
+    }
+  }, [savedCards.length, defaultCard?.id, selectedCardId]);
 
   const reloadAddressesOnly = useCallback(async () => {
     if (!user) return;
@@ -393,6 +410,34 @@ export default function ProductCheckoutScreen() {
       return;
     }
 
+    if (
+      paymentMethod === "paystack" &&
+      !useWallet &&
+      !useNewCard &&
+      selectedCardId &&
+      savedCards.some((c) => c.id === selectedCardId)
+    ) {
+      const cardCharge = await payWithSavedCard({
+        payment_method_id: selectedCardId,
+        amount: amountDue,
+        email: customerEmail,
+        metadata: {
+          product_order_id: order.id,
+          type: "product_order",
+        },
+      });
+      setPlacing(false);
+      void refreshSavedCards();
+      if (cardCharge.success) {
+        await fetchCart();
+        haptic.success();
+        Alert.alert(pc("paymentSuccessTitle"), pc("paymentSuccessConfirmedBody", { orderNumber: String(order.order_number) }), [
+          { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
+        ]);
+        return;
+      }
+    }
+
     // 2. Initialize Paystack payment for remaining amount (amount in kobo/cents)
     const paystackReturnPath =
       Platform.OS === "web" ? undefined : ExpoLinking.createURL("shop/paystack");
@@ -468,7 +513,7 @@ export default function ProductCheckoutScreen() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- orders/paymentMethod from context
-  }, [provider_id, fulfillment, selectedAddress, selectedLocation, providerItems.length, orders.createOrder, orders.fetchOrderDetail, router, user, total, useWallet, refreshSession, fetchCart, pc, errTitle, t]);
+  }, [provider_id, fulfillment, selectedAddress, selectedLocation, providerItems.length, orders.createOrder, orders.fetchOrderDetail, router, user, total, useWallet, useNewCard, selectedCardId, savedCards, payWithSavedCard, refreshSavedCards, refreshSession, fetchCart, pc, errTitle, t, paymentMethod]);
 
   if (loading) {
     return (
@@ -973,6 +1018,88 @@ export default function ProductCheckoutScreen() {
                   {paymentMethod === "card_on_delivery" && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: PRIMARY }} />}
                 </View>
               </TouchableOpacity>
+            )}
+
+            {paymentMethod === "paystack" && user && savedCards.length > 0 && !useWallet && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 }}>Card</Text>
+                <TouchableOpacity
+                  onPress={() => { setUseNewCard(false); }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    padding: 12,
+                    borderRadius: 10,
+                    borderWidth: 1.5,
+                    borderColor: !useNewCard ? PRIMARY : "#E5E7EB",
+                    marginBottom: 6,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      borderWidth: 2,
+                      borderColor: !useNewCard ? PRIMARY : "#D1D5DB",
+                      marginRight: 10,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {!useNewCard ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: PRIMARY }} /> : null}
+                  </View>
+                  <Text style={{ flex: 1, fontSize: 14, color: "#374151" }}>Use saved card</Text>
+                </TouchableOpacity>
+                {!useNewCard
+                  ? savedCards.map((c) => (
+                      <TouchableOpacity
+                        key={c.id}
+                        onPress={() => setSelectedCardId(c.id)}
+                        style={{ paddingVertical: 6, paddingLeft: 32 }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            color: selectedCardId === c.id ? PRIMARY : "#6B7280",
+                            fontWeight: selectedCardId === c.id ? "700" : "400",
+                          }}
+                        >
+                          •••• {c.last4 ?? "0000"}
+                          {c.is_default ? " · default" : ""}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  : null}
+                <TouchableOpacity
+                  onPress={() => setUseNewCard(true)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    padding: 12,
+                    borderRadius: 10,
+                    borderWidth: 1.5,
+                    borderColor: useNewCard ? PRIMARY : "#E5E7EB",
+                    marginTop: 4,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      borderWidth: 2,
+                      borderColor: useNewCard ? PRIMARY : "#D1D5DB",
+                      marginRight: 10,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {useNewCard ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: PRIMARY }} /> : null}
+                  </View>
+                  <Text style={{ flex: 1, fontSize: 14, color: "#374151" }}>Use a different card (secure browser)</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             {paymentMethod === "paystack" && user && walletBalance > 0 && (

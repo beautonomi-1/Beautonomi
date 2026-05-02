@@ -50,6 +50,7 @@ interface StaffMember {
 interface BlockedTimeType {
   id: string;
   name: string;
+  description?: string | null;
   color?: string | null;
   is_active?: boolean;
 }
@@ -79,7 +80,9 @@ function timeToMinutes(time: string): number {
 export function TimeBlocksContent() {
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<"blocks" | "types">("blocks");
   const [addOpen, setAddOpen] = useState(false);
+  const [editingBlock, setEditingBlock] = useState<TimeBlock | null>(null);
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
@@ -92,6 +95,12 @@ export function TimeBlocksContent() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [typeSheetOpen, setTypeSheetOpen] = useState(false);
+  const [editingType, setEditingType] = useState<BlockedTimeType | null>(null);
+  const [typeName, setTypeName] = useState("");
+  const [typeDescription, setTypeDescription] = useState("");
+  const [typeColor, setTypeColor] = useState("#FF0077");
+  const [typeActive, setTypeActive] = useState(true);
 
   const now = new Date();
   const dateFrom = format(startOfMonth(now), "yyyy-MM-dd");
@@ -102,8 +111,11 @@ export function TimeBlocksContent() {
   const { data: staffData } = useApi<StaffMember[]>("/api/provider/staff");
   const { data: typeData, refresh: refreshTypes } = useApi<BlockedTimeType[]>("/api/provider/blocked-time-types");
   const { execute: postBlock, loading: creating } = useApiMutation<TimeBlock>("post");
+  const { execute: patchBlock, loading: updatingBlock } = useApiMutation<TimeBlock>("patch");
   const { execute: postType, loading: creatingType } = useApiMutation<BlockedTimeType>("post");
+  const { execute: patchType, loading: updatingType } = useApiMutation<BlockedTimeType>("patch");
   const { execute: deleteBlock } = useApiMutation("delete");
+  const { execute: deleteType } = useApiMutation("delete");
 
   const rawStaff = Array.isArray(staffData)
     ? staffData
@@ -136,6 +148,7 @@ export function TimeBlocksContent() {
   const blocks: TimeBlock[] = Array.isArray(data) ? data : [];
 
   const openAdd = () => {
+    setEditingBlock(null);
     setName("");
     setNotes("");
     setSelectedTypeId(null);
@@ -148,7 +161,21 @@ export function TimeBlocksContent() {
     setAddOpen(true);
   };
 
-  const handleCreate = async () => {
+  const openEditBlock = (block: TimeBlock) => {
+    setEditingBlock(block);
+    setName(block.name ?? "");
+    setNotes(block.notes ?? "");
+    setSelectedTypeId(block.blocked_time_type_id ?? null);
+    setCustomTypeName("");
+    setBlockDate(new Date(`${block.date}T12:00:00`));
+    setStartTime(block.start_time?.slice(0, 5) || "12:00");
+    setEndTime(block.end_time?.slice(0, 5) || "13:00");
+    setIsRecurring(block.is_recurring === true);
+    setSelectedStaffId(block.team_member_id ?? null);
+    setAddOpen(true);
+  };
+
+  const handleSaveBlock = async () => {
     let typeId = selectedTypeId;
     const typedName = customTypeName.trim();
     if (!typeId && typedName) {
@@ -176,7 +203,7 @@ export function TimeBlocksContent() {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const { error: err } = await postBlock("/api/provider/time-blocks", {
+    const payload = {
       name: trimmed,
       staff_id: selectedStaffId || null,
       blocked_time_type_id: typeId,
@@ -187,15 +214,29 @@ export function TimeBlocksContent() {
       recurring_pattern: isRecurring
         ? { frequency: "weekly", days: [blockDate.getDay()] }
         : undefined,
+      is_active: editingBlock?.is_active ?? true,
       notes: notes.trim() || null,
-    });
+    };
+    const { error: err } = editingBlock
+      ? await patchBlock(`/api/provider/time-blocks/${editingBlock.id}`, payload)
+      : await postBlock("/api/provider/time-blocks", payload);
     if (err) {
       Alert.alert("Error", err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setAddOpen(false);
+    setEditingBlock(null);
     refresh();
+  };
+
+  const handleToggleBlockActive = async (block: TimeBlock) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { error: err } = await patchBlock(`/api/provider/time-blocks/${block.id}`, {
+      is_active: block.is_active === false,
+    });
+    if (err) Alert.alert("Error", err);
+    else refresh();
   };
 
   const handleDelete = (block: TimeBlock) => {
@@ -218,6 +259,79 @@ export function TimeBlocksContent() {
           },
         },
       ]
+    );
+  };
+
+  const openAddType = () => {
+    setEditingType(null);
+    setTypeName("");
+    setTypeDescription("");
+    setTypeColor("#FF0077");
+    setTypeActive(true);
+    setTypeSheetOpen(true);
+  };
+
+  const openEditType = (type: BlockedTimeType) => {
+    setEditingType(type);
+    setTypeName(type.name ?? "");
+    setTypeDescription(type.description ?? "");
+    setTypeColor(type.color || "#FF0077");
+    setTypeActive(type.is_active !== false);
+    setTypeSheetOpen(true);
+  };
+
+  const handleSaveType = async () => {
+    const trimmed = typeName.trim();
+    if (!trimmed) {
+      Alert.alert("Required", "Enter a type name.");
+      return;
+    }
+    const payload = {
+      name: trimmed,
+      description: typeDescription.trim() || undefined,
+      color: typeColor || "#FF0077",
+      is_active: typeActive,
+    };
+    const { error: err } = editingType
+      ? await patchType(`/api/provider/blocked-time-types/${editingType.id}`, payload)
+      : await postType("/api/provider/blocked-time-types", payload);
+    if (err) {
+      Alert.alert("Error", err);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setTypeSheetOpen(false);
+    setEditingType(null);
+    refreshTypes();
+  };
+
+  const handleToggleTypeActive = async (type: BlockedTimeType) => {
+    const { error: err } = await patchType(`/api/provider/blocked-time-types/${type.id}`, {
+      is_active: type.is_active === false,
+    });
+    if (err) Alert.alert("Error", err);
+    else refreshTypes();
+  };
+
+  const handleDeleteType = (type: BlockedTimeType) => {
+    Alert.alert(
+      "Delete blocked time type",
+      `Remove "${type.name}"? Existing blocks using this type may lose their category.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            const { error: err } = await deleteType(`/api/provider/blocked-time-types/${type.id}`, {});
+            if (err) Alert.alert("Error", err);
+            else {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              refreshTypes();
+            }
+          },
+        },
+      ],
     );
   };
 
@@ -246,80 +360,198 @@ export function TimeBlocksContent() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {blocks.length === 0 ? (
-          <EmptyState
-            icon="ban-outline"
-            title="No time blocks this month"
-            description="Block off slots (lunch, meetings, personal time) so clients can't book."
-            actionLabel="Add time block"
-            onAction={openAdd}
-          />
+        <View style={twStyle("mb-4 flex-row rounded-2xl bg-gray-100 p-1")}>
+          {[
+            { key: "blocks" as const, label: "Time blocks" },
+            { key: "types" as const, label: "Types" },
+          ].map((tab) => {
+            const selected = activeTab === tab.key;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                onPress={() => setActiveTab(tab.key)}
+                style={twStyle(`flex-1 rounded-xl py-2 ${selected ? "bg-white shadow-sm" : ""}`)}
+              >
+                <Text style={twStyle(`text-center text-sm font-semibold ${selected ? "text-gray-950" : "text-gray-500"}`)}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {activeTab === "blocks" ? (
+          blocks.length === 0 ? (
+            <EmptyState
+              icon="ban-outline"
+              title="No time blocks this month"
+              description="Block off slots (lunch, meetings, personal time) so clients can't book."
+              actionLabel="Add time block"
+              onAction={openAdd}
+            />
+          ) : (
+            <>
+              <TouchableOpacity
+                onPress={openAdd}
+                style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-100 py-3")}
+              >
+                <Ionicons name="add" size={18} color="#374151" />
+                <Text style={twStyle("ml-2 font-medium text-gray-700")}>Add time block</Text>
+              </TouchableOpacity>
+              {blocks.map((block) => (
+                <View
+                  key={block.id}
+                  style={twStyle("mb-3 rounded-2xl border border-gray-200 bg-white p-4")}
+                >
+                  <View style={twStyle("flex-row items-center")}>
+                    <View
+                      style={[twStyle("h-10 w-10 items-center justify-center rounded-xl"), {
+                        backgroundColor: block.blocked_time_type_color
+                          ? `${block.blocked_time_type_color}20`
+                          : "#f3f4f6",
+                      }]}
+                    >
+                      <Ionicons
+                        name="time-outline"
+                        size={20}
+                        color={block.blocked_time_type_color || "#6b7280"}
+                      />
+                    </View>
+                    <View style={twStyle("ml-3 flex-1")}>
+                      <View style={twStyle("flex-row items-center")}>
+                        <Text style={twStyle("flex-1 text-base font-semibold text-gray-900")} numberOfLines={1}>
+                          {block.name}
+                        </Text>
+                        {block.is_recurring && (
+                          <View style={twStyle("ml-2 rounded-full bg-blue-100 px-2 py-0.5")}>
+                            <Text style={twStyle("text-xs font-medium text-blue-700")}>Weekly</Text>
+                          </View>
+                        )}
+                        {block.is_active === false && (
+                          <View style={twStyle("ml-2 rounded-full bg-gray-100 px-2 py-0.5")}>
+                            <Text style={twStyle("text-xs font-medium text-gray-600")}>Inactive</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
+                        {block.is_recurring
+                          ? `Every ${format(new Date(`${block.date}T12:00:00`), "EEEE")} · ${block.start_time} – ${block.end_time}`
+                          : `${block.date} · ${block.start_time} – ${block.end_time}`}
+                      </Text>
+                      <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                        {block.team_member_name || "All team members"}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={twStyle("mt-3 flex-row")}>
+                    <TouchableOpacity
+                      onPress={() => openEditBlock(block)}
+                      style={twStyle("mr-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
+                    >
+                      <Ionicons name="create-outline" size={16} color="#374151" />
+                      <Text style={twStyle("ml-1 text-sm font-semibold text-gray-700")}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleToggleBlockActive(block)}
+                      style={twStyle("mr-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
+                    >
+                      <Ionicons name={block.is_active === false ? "play-outline" : "pause-outline"} size={16} color="#374151" />
+                      <Text style={twStyle("ml-1 text-sm font-semibold text-gray-700")}>
+                        {block.is_active === false ? "Activate" : "Pause"}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDelete(block)}
+                      style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-red-50")}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </>
+          )
         ) : (
           <>
             <TouchableOpacity
-              onPress={openAdd}
+              onPress={openAddType}
               style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-100 py-3")}
             >
               <Ionicons name="add" size={18} color="#374151" />
-              <Text style={twStyle("ml-2 font-medium text-gray-700")}>Add time block</Text>
+              <Text style={twStyle("ml-2 font-medium text-gray-700")}>Add blocked time type</Text>
             </TouchableOpacity>
-            {blocks.map((block) => (
-            <View
-              key={block.id}
-              style={twStyle("mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4")}
-            >
-              <View
-                style={[twStyle("h-10 w-10 items-center justify-center rounded-xl"), {
-                  backgroundColor: block.blocked_time_type_color
-                    ? `${block.blocked_time_type_color}20`
-                    : "#f3f4f6",
-                }]}
-              >
-                <Ionicons
-                  name="time-outline"
-                  size={20}
-                  color={block.blocked_time_type_color || "#6b7280"}
-                />
-              </View>
-              <View style={twStyle("ml-3 flex-1")}>
-                <View style={twStyle("flex-row items-center")}>
-                  <Text style={twStyle("flex-1 text-base font-semibold text-gray-900")} numberOfLines={1}>
-                    {block.name}
-                  </Text>
-                  {block.is_recurring && (
-                    <View style={twStyle("ml-2 rounded-full bg-blue-100 px-2 py-0.5")}>
-                      <Text style={twStyle("text-xs font-medium text-blue-700")}>Weekly</Text>
+            {rawTypes.length === 0 ? (
+              <EmptyState
+                icon="pricetag-outline"
+                title="No blocked time types"
+                description="Create types like Lunch Break, Training, or Meeting to categorize calendar blocks."
+                actionLabel="Add type"
+                onAction={openAddType}
+              />
+            ) : (
+              rawTypes.map((type) => (
+                <View key={type.id} style={twStyle("mb-3 rounded-2xl border border-gray-200 bg-white p-4")}>
+                  <View style={twStyle("flex-row items-center")}>
+                    <View
+                      style={[twStyle("h-9 w-9 rounded-xl border border-gray-200"), { backgroundColor: type.color || "#FF0077" }]}
+                    />
+                    <View style={twStyle("ml-3 flex-1")}>
+                      <View style={twStyle("flex-row items-center")}>
+                        <Text style={twStyle("flex-1 text-base font-semibold text-gray-900")} numberOfLines={1}>
+                          {type.name}
+                        </Text>
+                        {type.is_active === false && (
+                          <View style={twStyle("rounded-full bg-gray-100 px-2 py-0.5")}>
+                            <Text style={twStyle("text-xs font-medium text-gray-600")}>Inactive</Text>
+                          </View>
+                        )}
+                      </View>
+                      {!!type.description && (
+                        <Text style={twStyle("mt-0.5 text-sm text-gray-500")} numberOfLines={2}>
+                          {type.description}
+                        </Text>
+                      )}
                     </View>
-                  )}
+                  </View>
+                  <View style={twStyle("mt-3 flex-row")}>
+                    <TouchableOpacity
+                      onPress={() => openEditType(type)}
+                      style={twStyle("mr-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
+                    >
+                      <Ionicons name="create-outline" size={16} color="#374151" />
+                      <Text style={twStyle("ml-1 text-sm font-semibold text-gray-700")}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleToggleTypeActive(type)}
+                      style={twStyle("mr-2 flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
+                    >
+                      <Ionicons name={type.is_active === false ? "play-outline" : "pause-outline"} size={16} color="#374151" />
+                      <Text style={twStyle("ml-1 text-sm font-semibold text-gray-700")}>
+                        {type.is_active === false ? "Activate" : "Pause"}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteType(type)}
+                      style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-red-50")}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
-                  {block.is_recurring
-                    ? `Every ${format(new Date(`${block.date}T12:00:00`), "EEEE")} · ${block.start_time} – ${block.end_time}`
-                    : `${block.date} · ${block.start_time} – ${block.end_time}`}
-                </Text>
-                {block.team_member_name && (
-                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                    {block.team_member_name}
-                  </Text>
-                )}
-              </View>
-              <TouchableOpacity
-                onPress={() => handleDelete(block)}
-                style={twStyle("ml-2 h-9 w-9 items-center justify-center rounded-lg bg-red-50")}
-              >
-                <Ionicons name="trash-outline" size={18} color="#dc2626" />
-              </TouchableOpacity>
-            </View>
-          ))}
+              ))
+            )}
           </>
         )}
       </ScrollView>
 
       <BottomSheet
         visible={addOpen}
-        onClose={() => setAddOpen(false)}
-        title="Add time block"
-        subtitle="Block off a slot so clients can't book"
+        onClose={() => {
+          setAddOpen(false);
+          setEditingBlock(null);
+        }}
+        title={editingBlock ? "Edit time block" : "Add time block"}
+        subtitle={editingBlock ? "Update the blocked slot shown on your calendar" : "Block off a slot so clients can't book"}
       >
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Name *</Text>
         <Text style={twStyle("mb-2 text-xs text-gray-500")}>
@@ -601,9 +833,86 @@ export function TimeBlocksContent() {
           maxLength={200}
         />
         <ActionButton
-          label={creating || creatingType ? "Adding…" : "Add block"}
-          onPress={handleCreate}
-          loading={creating || creatingType}
+          label={creating || creatingType || updatingBlock ? "Saving…" : editingBlock ? "Save changes" : "Add block"}
+          onPress={handleSaveBlock}
+          loading={creating || creatingType || updatingBlock}
+          fullWidth
+        />
+      </BottomSheet>
+      <BottomSheet
+        visible={typeSheetOpen}
+        onClose={() => {
+          setTypeSheetOpen(false);
+          setEditingType(null);
+        }}
+        title={editingType ? "Edit blocked time type" : "Add blocked time type"}
+        subtitle="Use types to label lunch breaks, meetings, training, or admin time"
+      >
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Name *</Text>
+        <TextInput
+          style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+          placeholder="e.g. Lunch Break"
+          placeholderTextColor="#9ca3af"
+          value={typeName}
+          onChangeText={setTypeName}
+        />
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Description</Text>
+        <TextInput
+          style={[
+            twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"),
+            { minHeight: 70, textAlignVertical: "top" },
+          ]}
+          placeholder="Optional note for your team"
+          placeholderTextColor="#9ca3af"
+          value={typeDescription}
+          onChangeText={setTypeDescription}
+          multiline
+          maxLength={200}
+        />
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Color</Text>
+        <View style={twStyle("mb-4 flex-row flex-wrap")}>
+          {["#FF0077", "#F59E0B", "#6366F1", "#10B981", "#EC4899", "#64748B", "#EF4444", "#0EA5E9"].map((color) => (
+            <TouchableOpacity
+              key={color}
+              onPress={() => setTypeColor(color)}
+              style={[
+                twStyle("mb-2 mr-3 h-10 w-10 rounded-full border-2"),
+                {
+                  backgroundColor: color,
+                  borderColor: typeColor === color ? "#111827" : "#ffffff",
+                },
+              ]}
+              accessibilityLabel={`Use color ${color}`}
+            />
+          ))}
+        </View>
+        <TouchableOpacity
+          onPress={() => setTypeActive((v) => !v)}
+          style={twStyle("mb-5 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+          activeOpacity={0.7}
+        >
+          <View style={twStyle("flex-row items-center")}>
+            <Ionicons name="checkmark-circle-outline" size={20} color={typeActive ? "#16a34a" : "#6b7280"} />
+            <Text style={twStyle("ml-3 text-sm font-medium text-gray-900")}>Active</Text>
+          </View>
+          <View
+            style={[
+              twStyle("h-6 w-11 rounded-full"),
+              { backgroundColor: typeActive ? "#16a34a" : "#d1d5db" },
+            ]}
+          >
+            <View
+              style={[
+                twStyle("h-5 w-5 rounded-full bg-white"),
+                { marginTop: 2, marginLeft: typeActive ? 22 : 2 },
+              ]}
+            />
+          </View>
+        </TouchableOpacity>
+        <ActionButton
+          label={creatingType || updatingType ? "Saving…" : editingType ? "Save type" : "Add type"}
+          onPress={handleSaveType}
+          loading={creatingType || updatingType}
           fullWidth
         />
       </BottomSheet>

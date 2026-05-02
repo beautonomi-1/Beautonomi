@@ -4,6 +4,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { format } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { isUuidString } from "@beautonomi/utils";
 import {
@@ -120,22 +121,6 @@ export async function computeProviderBookingSlotGrid(
   const effectiveMaxAdvance =
     Number.isFinite(maxAdvanceDays) && maxAdvanceDays >= 1 ? maxAdvanceDays : 365;
 
-  const now = new Date();
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
-  const requestedDate = dateMatch
-    ? Date.UTC(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]))
-    : NaN;
-  const daysFromToday = Math.floor((requestedDate - today) / (24 * 60 * 60 * 1000));
-  if (Number.isFinite(daysFromToday) && daysFromToday > effectiveMaxAdvance) {
-    return {
-      providerTimeZone: null,
-      slotGrid: [],
-      publicSlots: [],
-      maxAdvanceExceeded: true,
-    };
-  }
-
   let providerTimeZone: string | null = null;
   try {
     const { data: providerRow } = await supabase
@@ -150,6 +135,29 @@ export async function computeProviderBookingSlotGrid(
     }
   } catch {
     // best-effort
+  }
+
+  const now = new Date();
+  const todayYmd = providerTimeZone
+    ? formatInTimeZone(now, providerTimeZone, "yyyy-MM-dd")
+    : format(now, "yyyy-MM-dd");
+
+  let daysFromToday = NaN;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [ty, tm, td] = todayYmd.split("-").map(Number);
+    const [ry, rm, rd] = dateStr.split("-").map(Number);
+    const tUtc = Date.UTC(ty, tm - 1, td);
+    const rUtc = Date.UTC(ry, rm - 1, rd);
+    daysFromToday = Math.round((rUtc - tUtc) / (24 * 60 * 60 * 1000));
+  }
+
+  if (Number.isFinite(daysFromToday) && daysFromToday > effectiveMaxAdvance) {
+    return {
+      providerTimeZone,
+      slotGrid: [],
+      publicSlots: [],
+      maxAdvanceExceeded: true,
+    };
   }
 
   const travelBufferMinutes = resolveTravelBufferMinutes(mode, travelBufferRaw);

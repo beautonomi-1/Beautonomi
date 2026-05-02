@@ -6,6 +6,10 @@ import {
   FlatList,
   Alert,
   Share,
+  TextInput,
+  ScrollView,
+  Linking,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -50,6 +54,25 @@ interface Invoice {
   created_at: string;
 }
 
+type InvoiceFormLineItem = {
+  description: string;
+  quantity: string;
+  unit_price: string;
+};
+
+type InvoiceForm = {
+  invoice_type: "platform_fee" | "commission" | "subscription" | "transaction_fee" | "other";
+  period_start: string;
+  period_end: string;
+  issue_date: string;
+  due_date: string;
+  status: string;
+  description: string;
+  notes: string;
+  tax_rate: string;
+  line_items: InvoiceFormLineItem[];
+};
+
 interface InvoicesResponse {
   invoices: Invoice[];
   total: number;
@@ -79,6 +102,7 @@ const PERIOD_FILTERS = [
 function statusColor(status: string) {
   if (status === "paid") return { bg: "bg-green-50", text: "text-green-700", icon: "checkmark-circle" as const, color: "#22c55e" };
   if (status === "overdue") return { bg: "bg-red-50", text: "text-red-700", icon: "alert-circle" as const, color: "#ef4444" };
+  if (status === "sent" || status === "partially_paid") return { bg: "bg-blue-50", text: "text-blue-700", icon: "mail-outline" as const, color: "#3b82f6" };
   if (status === "pending") return { bg: "bg-amber-50", text: "text-amber-700", icon: "hourglass" as const, color: "#f59e0b" };
   if (status === "draft") return { bg: "bg-gray-100", text: "text-gray-500", icon: "document-outline" as const, color: "#6b7280" };
   return { bg: "bg-gray-100", text: "text-gray-500", icon: "ellipse" as const, color: "#6b7280" };
@@ -106,6 +130,28 @@ function getInvoicePeriodRange(period: string): { from?: string; to?: string } {
   return {};
 }
 
+function addDaysInput(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return formatLocalDate(next);
+}
+
+function createDefaultInvoiceForm(): InvoiceForm {
+  const today = new Date();
+  return {
+    invoice_type: "other",
+    period_start: formatLocalDate(today),
+    period_end: formatLocalDate(today),
+    issue_date: formatLocalDate(today),
+    due_date: addDaysInput(today, 30),
+    status: "draft",
+    description: "",
+    notes: "",
+    tax_rate: "0",
+    line_items: [{ description: "", quantity: "1", unit_price: "" }],
+  };
+}
+
 export default function InvoicesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -113,6 +159,10 @@ export default function InvoicesScreen() {
   const [period, setPeriod] = useState("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Invoice | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [showEditor, setShowEditor] = useState(false);
+  const [invoiceForm, setInvoiceForm] = useState<InvoiceForm>(() => createDefaultInvoiceForm());
+  const [formError, setFormError] = useState<string | null>(null);
 
   const statusParam = filter !== "all" ? `&status=${filter}` : "";
   const periodRange = useMemo(() => getInvoicePeriodRange(period), [period]);
@@ -127,6 +177,9 @@ export default function InvoicesScreen() {
   const invoices = useMemo(() => invData?.invoices ?? [], [invData?.invoices]);
   const { execute: updateInvoice, loading: updatingStatus } = useApiMutation("patch");
   const { execute: sendInvoice, loading: sending } = useApiMutation("post");
+  const { execute: createInvoice, loading: creatingInvoice } = useApiMutation<Invoice>("post");
+  const { execute: saveInvoice, loading: savingInvoice } = useApiMutation<Invoice>("patch");
+  const { execute: getSignedDownloadUrl, loading: downloadingInvoice } = useApiMutation<{ url: string }>("post");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -174,6 +227,89 @@ export default function InvoicesScreen() {
       overdueCount: overdue.length,
     };
   }, [filtered, invoices.length, invData, search]);
+
+  function openCreateInvoice() {
+    setEditingInvoice(null);
+    setInvoiceForm(createDefaultInvoiceForm());
+    setFormError(null);
+    setShowEditor(true);
+  }
+
+  function openEditInvoice(inv: Invoice) {
+    setEditingInvoice(inv);
+    setInvoiceForm({
+      invoice_type: (["platform_fee", "commission", "subscription", "transaction_fee", "other"].includes(inv.invoice_type) ? inv.invoice_type : "other") as InvoiceForm["invoice_type"],
+      period_start: (inv as any).period_start || inv.issue_date,
+      period_end: (inv as any).period_end || inv.issue_date,
+      issue_date: inv.issue_date,
+      due_date: inv.due_date,
+      status: inv.status,
+      description: inv.description ?? "",
+      notes: (inv as any).notes ?? "",
+      tax_rate: String(inv.tax_rate ?? 0),
+      line_items: inv.line_items.length
+        ? inv.line_items.map((item) => ({
+            description: item.description,
+            quantity: String(item.quantity ?? 1),
+            unit_price: String(item.unit_price ?? 0),
+          }))
+        : [{ description: "", quantity: "1", unit_price: "" }],
+    });
+    setFormError(null);
+    setSelected(null);
+    setShowEditor(true);
+  }
+
+  async function handleSaveInvoiceForm() {
+    const lineItems = invoiceForm.line_items
+      .map((item) => ({
+        line_item_type: "other",
+        description: item.description.trim(),
+        quantity: Number(item.quantity || 0),
+        unit_price: Number(item.unit_price || 0),
+      }))
+      .filter((item) => item.description && item.quantity > 0);
+
+    if (!lineItems.length) {
+      setFormError("Add at least one line item with a description and quantity.");
+      return;
+    }
+
+    const payload = {
+      ...invoiceForm,
+      tax_rate: Number(invoiceForm.tax_rate || 0),
+      description: invoiceForm.description.trim() || null,
+      notes: invoiceForm.notes.trim() || null,
+      line_items: lineItems,
+    };
+
+    const { error } = editingInvoice
+      ? await saveInvoice(`/api/provider/invoices/${editingInvoice.id}`, payload)
+      : await createInvoice("/api/provider/invoices", payload);
+
+    if (error) {
+      setFormError(error);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setShowEditor(false);
+    setEditingInvoice(null);
+    refresh();
+  }
+
+  async function handleDownloadInvoice(inv: Invoice) {
+    const { data, error } = await getSignedDownloadUrl(`/api/provider/invoices/${inv.id}/signed-url`, {});
+    if (error || !data?.url) {
+      Alert.alert("Download unavailable", error || "Could not create invoice download link.");
+      return;
+    }
+    const canOpen = await Linking.canOpenURL(data.url);
+    if (!canOpen) {
+      Alert.alert("Download unavailable", "Your device could not open the invoice PDF link.");
+      return;
+    }
+    await Linking.openURL(data.url);
+  }
 
   async function handleMarkPaid(inv: Invoice) {
     Alert.alert("Mark as Paid", `Mark invoice ${inv.invoice_number} as paid?`, [
@@ -252,12 +388,20 @@ export default function InvoicesScreen() {
         showBack
         subtitle={`${stats.total} invoices`}
         rightAction={
-          <TouchableOpacity
-            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
-            onPress={handleExportAll}
-          >
-            <Ionicons name="download-outline" size={18} color="#374151" />
-          </TouchableOpacity>
+          <View style={twStyle("flex-row")}>
+            <TouchableOpacity
+              style={[twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100"), { marginRight: 8 }]}
+              onPress={handleExportAll}
+            >
+              <Ionicons name="download-outline" size={18} color="#374151" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-indigo-600")}
+              onPress={openCreateInvoice}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
         }
       />
 
@@ -458,10 +602,10 @@ export default function InvoicesScreen() {
             </View>
 
             {/* Actions */}
-            <View style={twStyle("flex-row")}>
-              {(selected.status === "pending" || selected.status === "overdue") && (
+            <View style={twStyle("flex-row flex-wrap")}>
+              {(["pending", "sent", "partially_paid", "overdue"].includes(selected.status)) && (
                 <TouchableOpacity
-                  style={[twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5"), { marginRight: 8 }]}
+                  style={[twStyle("items-center rounded-lg bg-green-50 px-3 py-2.5"), { marginRight: 8, marginBottom: 8 }]}
                   onPress={() => handleMarkPaid(selected)}
                   disabled={updatingStatus}
                 >
@@ -471,7 +615,7 @@ export default function InvoicesScreen() {
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={[twStyle("flex-1 items-center rounded-lg bg-indigo-50 py-2.5"), { marginRight: 8 }]}
+                style={[twStyle("items-center rounded-lg bg-indigo-50 px-3 py-2.5"), { marginRight: 8, marginBottom: 8 }]}
                 onPress={() => handleSendInvoice(selected)}
                 disabled={sending}
               >
@@ -480,14 +624,210 @@ export default function InvoicesScreen() {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[twStyle("flex-1 items-center rounded-lg bg-gray-100 py-2.5"), { marginRight: 8 }]}
+                style={[twStyle("items-center rounded-lg bg-blue-50 px-3 py-2.5"), { marginRight: 8, marginBottom: 8 }]}
+                onPress={() => openEditInvoice(selected)}
+              >
+                <Text style={twStyle("text-sm font-medium text-blue-700")}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[twStyle("items-center rounded-lg bg-gray-100 px-3 py-2.5"), { marginRight: 8, marginBottom: 8 }]}
+                onPress={() => handleDownloadInvoice(selected)}
+                disabled={downloadingInvoice}
+              >
+                {downloadingInvoice ? (
+                  <ActivityIndicator size="small" color="#374151" />
+                ) : (
+                  <Text style={twStyle("text-sm font-medium text-gray-700")}>Download</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[twStyle("items-center rounded-lg bg-gray-100 px-3 py-2.5"), { marginBottom: 8 }]}
                 onPress={handleExport}
               >
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>Export</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>Share summary</Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
+      </BottomSheet>
+
+      <BottomSheet
+        visible={showEditor}
+        onClose={() => {
+          setShowEditor(false);
+          setEditingInvoice(null);
+        }}
+        title={editingInvoice ? "Edit invoice" : "Create invoice"}
+      >
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 24 }}>
+          <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Description</Text>
+          <TextInput
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900")}
+            value={invoiceForm.description}
+            onChangeText={(description) => setInvoiceForm((current) => ({ ...current, description }))}
+            placeholder="Invoice description"
+          />
+          <View style={twStyle("mb-3 flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Period start</Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900")}
+                value={invoiceForm.period_start}
+                onChangeText={(period_start) => setInvoiceForm((current) => ({ ...current, period_start }))}
+                placeholder="YYYY-MM-DD"
+              />
+            </View>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Period end</Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900")}
+                value={invoiceForm.period_end}
+                onChangeText={(period_end) => setInvoiceForm((current) => ({ ...current, period_end }))}
+                placeholder="YYYY-MM-DD"
+              />
+            </View>
+          </View>
+          <View style={twStyle("mb-3 flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Issue date</Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900")}
+                value={invoiceForm.issue_date}
+                onChangeText={(issue_date) => setInvoiceForm((current) => ({ ...current, issue_date }))}
+                placeholder="YYYY-MM-DD"
+              />
+            </View>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Due date</Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900")}
+                value={invoiceForm.due_date}
+                onChangeText={(due_date) => setInvoiceForm((current) => ({ ...current, due_date }))}
+                placeholder="YYYY-MM-DD"
+              />
+            </View>
+          </View>
+          <View style={twStyle("mb-3 flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Tax rate %</Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900")}
+                value={invoiceForm.tax_rate}
+                onChangeText={(tax_rate) => setInvoiceForm((current) => ({ ...current, tax_rate: tax_rate.replace(/[^0-9.]/g, "") }))}
+                keyboardType="decimal-pad"
+                placeholder="0"
+              />
+            </View>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Status</Text>
+              <View style={twStyle("flex-row flex-wrap")}>
+                {["draft", "sent", "paid"].map((status) => (
+                  <TouchableOpacity
+                    key={status}
+                    style={[twStyle(`mr-2 mb-2 rounded-full border px-3 py-2 ${invoiceForm.status === status ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"}`)]}
+                    onPress={() => setInvoiceForm((current) => ({ ...current, status }))}
+                  >
+                    <Text style={twStyle(`text-xs capitalize ${invoiceForm.status === status ? "text-indigo-700" : "text-gray-600"}`)}>{status}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+
+          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Line items</Text>
+          {invoiceForm.line_items.map((item, index) => (
+            <View key={index} style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+              <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+                <Text style={twStyle("text-xs font-medium text-gray-500")}>Item {index + 1}</Text>
+                {invoiceForm.line_items.length > 1 && (
+                  <TouchableOpacity
+                    onPress={() =>
+                      setInvoiceForm((current) => ({
+                        ...current,
+                        line_items: current.line_items.filter((_, i) => i !== index),
+                      }))
+                    }
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TextInput
+                style={twStyle("mb-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900")}
+                value={item.description}
+                onChangeText={(description) =>
+                  setInvoiceForm((current) => ({
+                    ...current,
+                    line_items: current.line_items.map((li, i) => (i === index ? { ...li, description } : li)),
+                  }))
+                }
+                placeholder="Description"
+              />
+              <View style={twStyle("flex-row")}>
+                <TextInput
+                  style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900"), { marginRight: 8 }]}
+                  value={item.quantity}
+                  onChangeText={(quantity) =>
+                    setInvoiceForm((current) => ({
+                      ...current,
+                      line_items: current.line_items.map((li, i) => (i === index ? { ...li, quantity: quantity.replace(/[^0-9.]/g, "") } : li)),
+                    }))
+                  }
+                  keyboardType="decimal-pad"
+                  placeholder="Qty"
+                />
+                <TextInput
+                  style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900")}
+                  value={item.unit_price}
+                  onChangeText={(unit_price) =>
+                    setInvoiceForm((current) => ({
+                      ...current,
+                      line_items: current.line_items.map((li, i) => (i === index ? { ...li, unit_price: unit_price.replace(/[^0-9.]/g, "") } : li)),
+                    }))
+                  }
+                  keyboardType="decimal-pad"
+                  placeholder="Unit price"
+                />
+              </View>
+            </View>
+          ))}
+          <TouchableOpacity
+            style={twStyle("mb-3 items-center rounded-xl border border-dashed border-gray-300 bg-white py-3")}
+            onPress={() =>
+              setInvoiceForm((current) => ({
+                ...current,
+                line_items: [...current.line_items, { description: "", quantity: "1", unit_price: "" }],
+              }))
+            }
+          >
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>Add line item</Text>
+          </TouchableOpacity>
+
+          <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Notes</Text>
+          <TextInput
+            style={twStyle("mb-3 min-h-[80px] rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900")}
+            value={invoiceForm.notes}
+            onChangeText={(notes) => setInvoiceForm((current) => ({ ...current, notes }))}
+            placeholder="Optional notes"
+            multiline
+          />
+          {formError && (
+            <View style={twStyle("mb-3 rounded-xl bg-red-50 p-3")}>
+              <Text style={twStyle("text-sm text-red-700")}>{formError}</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={twStyle("items-center rounded-xl bg-indigo-600 py-3")}
+            onPress={handleSaveInvoiceForm}
+            disabled={creatingInvoice || savingInvoice}
+          >
+            {creatingInvoice || savingInvoice ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={twStyle("font-semibold text-white")}>{editingInvoice ? "Save invoice" : "Create invoice"}</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
       </BottomSheet>
     </ScreenContainer>
   );

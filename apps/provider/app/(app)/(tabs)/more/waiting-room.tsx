@@ -58,6 +58,11 @@ function isActiveScheduleBooking(b: TodayBookingRow): boolean {
   return !["cancelled", "no_show", "completed"].includes(b.status);
 }
 
+/** Bookings that still need provider confirmation or payment completion before service. */
+function needsConfirmation(dbStatus: string | undefined): boolean {
+  return dbStatus === "pending" || dbStatus === "pending_payment";
+}
+
 export default function WaitingRoomScreen() {
   const router = useRouter();
   const routeParams = useLocalSearchParams<{
@@ -107,13 +112,22 @@ export default function WaitingRoomScreen() {
   /** Same calendar window as web Front Desk metrics (bounded “All” = last 90 days). Lists below still filter to today. */
   const bookingsRangeUrl = useMemo(() => {
     const params = new URLSearchParams();
-    const dates = getMetricRangeParams(metricRange, new Date());
+    let dates = getMetricRangeParams(metricRange, new Date());
+    const tz = provider?.timezone?.trim();
+    if (tz && metricRange === "today") {
+      try {
+        const ymd = formatInTimeZone(new Date(), tz, "yyyy-MM-dd");
+        dates = { start: ymd, end: ymd };
+      } catch {
+        /* keep device-local range */
+      }
+    }
     if (dates.start) params.set("start_date", dates.start);
     if (dates.end) params.set("end_date", dates.end);
     params.set("limit", "1000");
     if (selectedLocationId != null) params.set("location_id", selectedLocationId);
     return `/api/provider/bookings?${params.toString()}`;
-  }, [metricRange, selectedLocationId]);
+  }, [metricRange, selectedLocationId, provider?.timezone]);
 
   const {
     data: rawBookings,
@@ -169,9 +183,11 @@ export default function WaitingRoomScreen() {
       }
       return isSameDay(d, today);
     });
-    const pending = onToday.filter((b) => b.db_status === "pending").sort((a, b) => parseISO(a.scheduled_at).getTime() - parseISO(b.scheduled_at).getTime());
+    const pending = onToday
+      .filter((b) => needsConfirmation(b.db_status))
+      .sort((a, b) => parseISO(a.scheduled_at).getTime() - parseISO(b.scheduled_at).getTime());
     const schedule = onToday
-      .filter((b) => b.db_status !== "pending" && isActiveScheduleBooking(b))
+      .filter((b) => !needsConfirmation(b.db_status) && isActiveScheduleBooking(b))
       .sort((a, b) => parseISO(a.scheduled_at).getTime() - parseISO(b.scheduled_at).getTime());
     return {
       pendingToday: pending,
@@ -183,8 +199,8 @@ export default function WaitingRoomScreen() {
   const metricSummary = useMemo(() => {
     const list = Array.isArray(rawBookings) ? rawBookings : [];
     return {
-      pendingCount: list.filter((b) => b.db_status === "pending").length,
-      bookedCount: list.filter(isActiveScheduleBooking).length,
+      pendingCount: list.filter((b) => needsConfirmation(b.db_status)).length,
+      bookedCount: list.filter((b) => !needsConfirmation(b.db_status) && isActiveScheduleBooking(b)).length,
       completedCount: list.filter((b) => b.status === "completed").length,
     };
   }, [rawBookings]);
@@ -336,7 +352,10 @@ export default function WaitingRoomScreen() {
             </View>
           ) : (
             pendingToday.map((b) => {
-              const t = format(parseISO(b.scheduled_at), "HH:mm");
+              const t =
+                provider?.timezone?.trim()
+                  ? formatInTimeZone(parseISO(b.scheduled_at), provider.timezone, "HH:mm")
+                  : format(parseISO(b.scheduled_at), "HH:mm");
               const name = b.customers?.full_name ?? "Guest";
               const svc = b.services?.[0];
               const isHighlight = highlightTarget.length > 0 && b.id === highlightTarget;
@@ -378,7 +397,10 @@ export default function WaitingRoomScreen() {
             </View>
           ) : (
             scheduleToday.map((b) => {
-              const t = format(parseISO(b.scheduled_at), "HH:mm");
+              const t =
+                provider?.timezone?.trim()
+                  ? formatInTimeZone(parseISO(b.scheduled_at), provider.timezone, "HH:mm")
+                  : format(parseISO(b.scheduled_at), "HH:mm");
               const name = b.customers?.full_name ?? "Guest";
               const svc = b.services?.[0];
               const isHighlight = highlightTarget.length > 0 && b.id === highlightTarget;

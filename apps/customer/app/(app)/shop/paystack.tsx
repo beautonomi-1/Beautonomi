@@ -11,7 +11,11 @@ function pickRef(params: Record<string, string | string[] | undefined>): string 
 }
 
 function extractProductOrderId(body: unknown): string | null {
-  let cur: unknown = body;
+  if (!body || typeof body !== "object") return null;
+  const top = body as Record<string, unknown>;
+  const direct = top.productOrderId ?? top.product_order_id;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  let cur: unknown = top.data;
   for (let depth = 0; depth < 4 && cur && typeof cur === "object"; depth++) {
     const o = cur as Record<string, unknown>;
     const id = o.productOrderId ?? o.product_order_id;
@@ -38,6 +42,10 @@ export default function ShopPaystackReturnScreen() {
       try {
         const res = await api.get<unknown>(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`);
         if (cancelled) return;
+        if (res.error) {
+          router.replace("/(app)/product-orders" as never);
+          return;
+        }
         const orderId = extractProductOrderId(res.data as unknown);
         if (orderId) {
           router.replace({ pathname: "/(app)/product-order-detail", params: { id: orderId } } as never);

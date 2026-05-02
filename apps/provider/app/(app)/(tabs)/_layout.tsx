@@ -22,6 +22,7 @@ type ProviderNavCounts = {
   active_product_orders: number;
   unread_messages: number;
   waiting_room: number;
+  open_return_requests?: number;
   critical_total: number;
 };
 

@@ -153,7 +153,15 @@ const STATUS_ACTION_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 /** Single recommended next step in the fulfillment pipeline */
-function getWorkflowPrimaryNext(current: string, fulfillmentType?: string | null): string | null {
+function getWorkflowPrimaryNext(
+  current: string,
+  fulfillmentType?: string | null,
+  paymentStatus?: string | null,
+): string | null {
+  const ps = (paymentStatus ?? "").toLowerCase();
+  if (ps === "pending" || ps === "unpaid" || ps === "failed" || ps === "requires_payment") {
+    return null;
+  }
   const ft = (fulfillmentType ?? "").toLowerCase();
   const isCollection = ft === "collection" || ft === "pickup";
   switch (current) {
@@ -1070,7 +1078,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 
               {/* Primary next step + destructive actions behind “More” */}
               {(() => {
-                const primary = getWorkflowPrimaryNext(activeOrder.status, activeOrder.fulfillment_type);
+                const primary = getWorkflowPrimaryNext(
+                  activeOrder.status,
+                  activeOrder.fulfillment_type,
+                  activeOrder.payment_status,
+                );
                 const destructive = getDestructiveNextStatuses(activeOrder.status);
                 if (!primary && destructive.length === 0) return null;
                 const primaryLabel =

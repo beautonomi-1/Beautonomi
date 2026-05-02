@@ -21,7 +21,6 @@ import {
   Eye,
   Users,
   Banknote,
-  ShoppingBag,
 } from "lucide-react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -141,7 +140,6 @@ type PerformanceSummary = {
   reach: number;
   clicks: number;
   spend: number;
-  sales: number;
 };
 
 type CampaignPerformance = {
@@ -423,7 +421,7 @@ export default function ProviderAdsPage() {
           <p className="text-sm text-muted-foreground mb-4">
             See how many people your ads reached, how often they were shown, and how many customers took action.
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="rounded-lg border p-4 flex items-center gap-3">
               <Eye className="h-8 w-8 text-muted-foreground" />
               <div>
@@ -452,21 +450,13 @@ export default function ProviderAdsPage() {
                 <p className="text-xs text-muted-foreground">Spend</p>
               </div>
             </div>
-            <div className="rounded-lg border p-4 flex items-center gap-3">
-              <ShoppingBag className="h-8 w-8 text-muted-foreground" />
-              <div>
-                <p className="text-2xl font-semibold">{formatCompactNumber(performance.sales)}</p>
-                <p className="text-xs text-muted-foreground">Sales (bookings)</p>
-              </div>
-            </div>
           </div>
           {campaigns.length > 0 && (
             <div className="mt-6 overflow-hidden rounded-lg border">
-              <div className="grid grid-cols-6 gap-3 bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground">
+              <div className="grid grid-cols-5 gap-3 bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground">
                 <span className="col-span-2">Campaign</span>
                 <span>Impr.</span>
                 <span>Clicks</span>
-                <span>Bookings</span>
                 <span>Spend</span>
               </div>
               {campaigns.map((campaign) => {
@@ -480,7 +470,7 @@ export default function ProviderAdsPage() {
                 return (
                   <div
                     key={campaign.id}
-                    className="grid grid-cols-6 gap-3 border-t px-4 py-3 text-sm"
+                    className="grid grid-cols-5 gap-3 border-t px-4 py-3 text-sm"
                   >
                     <div className="col-span-2 min-w-0">
                       <p className="truncate font-medium capitalize">
@@ -492,7 +482,6 @@ export default function ProviderAdsPage() {
                     </div>
                     <span>{formatCompactNumber(metrics.impressions)}</span>
                     <span>{formatCompactNumber(metrics.clicks)}</span>
-                    <span>{formatCompactNumber(metrics.books)}</span>
                     <span>{fmt(Number(metrics.spent ?? 0))}</span>
                   </div>
                 );
