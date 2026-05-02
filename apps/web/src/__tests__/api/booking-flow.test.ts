@@ -127,7 +127,7 @@ describe("bookingDraftSchema – validation", () => {
 
   it("rejects when provider_id is missing", () => {
     const draft = validBookingDraft();
-    delete (draft as Record<string, any>)["provider_id"];
+    delete (draft as Record<string, unknown>)["provider_id"];
 
     const result = bookingDraftSchema.safeParse(draft);
     expect(result.success).toBe(false);

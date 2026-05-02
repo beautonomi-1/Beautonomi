@@ -33,19 +33,19 @@ const mockRequireRoleInApi = vi.fn();
 vi.mock("@/lib/supabase/api-helpers", async () => {
   const { ALL_ADMIN_ROLES: ROLES } = await import("@/lib/admin-sections");
   return {
-    requireRoleInApi: (...args: any[]) => mockRequireRoleInApi(...args),
+    requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
     requireAdminSection: async (_section: unknown, request?: unknown) => {
       const result = await mockRequireRoleInApi(ROLES, request);
       return result;
     },
-    successResponse: (data: any, status = 200) => {
+    successResponse: (data: unknown, status = 200) => {
       return new Response(JSON.stringify({ data, error: null }), {
         status,
         headers: { "content-type": "application/json" },
       });
     },
     handleApiError: (
-      _err: any,
+      _err: unknown,
       message = "Error",
       code = "ERROR",
       status = 500
@@ -62,7 +62,7 @@ vi.mock("@/lib/supabase/api-helpers", async () => {
       );
     },
     getPaginationParams: () => ({ page: 1, limit: 20, offset: 0 }),
-    createPaginatedResponse: (data: any) =>
+    createPaginatedResponse: (data: unknown) =>
       new Response(JSON.stringify({ data, error: null }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -112,9 +112,9 @@ async function expectAuthError(response: Response) {
 // Helpers to parse JSON from a Response robustly
 // ---------------------------------------------------------------------------
 
-async function safeJson(res: Response): Promise<Record<string, any>> {
+async function safeJson(res: Response): Promise<Record<string, unknown>> {
   try {
-    return (await res.json()) as Record<string, any>;
+    return (await res.json()) as Record<string, unknown>;
   } catch {
     return { data: null, error: { message: "Non-JSON response" } };
   }
@@ -171,7 +171,8 @@ describe("Paystack routes – authentication", () => {
     const body = await safeJson(res);
     if (res.status >= 400) {
       // The error should be about Paystack config, not auth
-      const errMsg = (body.error as Record<string, any>)?.message as string ?? "";
+      const error = body.error as { message?: unknown } | undefined;
+      const errMsg = typeof error?.message === "string" ? error.message : "";
       expect(errMsg).not.toContain("Authentication required");
     }
   });

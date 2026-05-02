@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { slackOAuthV2Access } from "@/lib/integrations/slack/slack-api";
 import { verifySlackOAuthState } from "@/lib/integrations/slack/oauth-state";
 import { mergeSlackRouting } from "@/lib/integrations/slack/default-routing";
@@ -26,6 +28,11 @@ export async function GET(request: NextRequest) {
 
     const state = verifySlackOAuthState(stateRaw);
     if (!state) {
+      return NextResponse.redirect(`${adminReturn}?slack_error=invalid_state`);
+    }
+
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (user.id !== state.userId) {
       return NextResponse.redirect(`${adminReturn}?slack_error=invalid_state`);
     }
 
