@@ -4,6 +4,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { format, subDays, addDays } from "date-fns";
+import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { supabase } from "@/lib/supabase/client";
@@ -161,17 +162,15 @@ function getActivityIcon(type: string): {
   }
 }
 
-function WeeklyRevenueChart({ data }: { data: WeeklyRevenue[] }) {
+function WeeklyRevenueChart({ data, todayYmd }: { data: WeeklyRevenue[]; todayYmd?: string }) {
   const maxRevenue = Math.max(...data.map((d) => d.revenue), 1);
   const totalRevenue = data.reduce((s, d) => s + d.revenue, 0);
   const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  // §UX-audit 2026-04: `new Date().toISOString().slice(0, 10)` returns
-  // the UTC calendar date, which is wrong for any provider whose local
-  // date differs from UTC (ZA is +02:00 — so every night between 22:00
-  // and 00:00 local, "today" highlighted the wrong bar). Build the
-  // date string from the device's local Y/M/D instead.
+  // Prefer provider-business `today` from parent (dashboard passes it). Fallback: device local Y/M/D.
   const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const todayStr =
+    todayYmd ??
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   const dayLabels = data.map((d) => {
     if (!d.day) return "?";
@@ -317,9 +316,29 @@ export default function DashboardScreen() {
 
   const hasBundledInsights = Boolean(metrics?.insights);
   const hasBundledBookingEligibility = Boolean(metrics?.booking_eligibility);
-  const today = format(new Date(), "yyyy-MM-dd");
-  const weekStart = format(subDays(new Date(), 6), "yyyy-MM-dd");
-  const upcomingEnd = format(addDays(new Date(), 6), "yyyy-MM-dd");
+
+  /** Align dashboard date windows with provider business timezone (API expands civil dates in that zone). */
+  const { today, weekStart, upcomingEnd } = useMemo(() => {
+    const tz = provider?.timezone?.trim() || null;
+    if (tz) {
+      try {
+        const zNow = toZonedTime(new Date(), tz);
+        return {
+          today: formatInTimeZone(new Date(), tz, "yyyy-MM-dd"),
+          weekStart: formatInTimeZone(subDays(zNow, 6), tz, "yyyy-MM-dd"),
+          upcomingEnd: formatInTimeZone(addDays(zNow, 6), tz, "yyyy-MM-dd"),
+        };
+      } catch {
+        /* fall through */
+      }
+    }
+    const n = new Date();
+    return {
+      today: format(n, "yyyy-MM-dd"),
+      weekStart: format(subDays(n, 6), "yyyy-MM-dd"),
+      upcomingEnd: format(addDays(n, 6), "yyyy-MM-dd"),
+    };
+  }, [provider?.timezone]);
 
   const {
     data: fallbackTodayBookings,
@@ -829,7 +848,7 @@ export default function DashboardScreen() {
           </View>
         </Card>
       ) : (
-        <WeeklyRevenueChart data={chartData} />
+        <WeeklyRevenueChart data={chartData} todayYmd={today} />
       )}
 
       {/* Bookings Overview - schedule count is period-scoped; status counts are all-time */}

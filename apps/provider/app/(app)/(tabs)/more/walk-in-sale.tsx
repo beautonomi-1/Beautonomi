@@ -389,7 +389,13 @@ export default function WalkInSaleScreen() {
         Alert.alert("Error", err);
         return;
       }
-      const order = data?.order;
+      const rawPayload = data as { order?: WalkInSale } | WalkInSale | null | undefined;
+      const order =
+        rawPayload && typeof rawPayload === "object" && "order" in rawPayload && rawPayload.order
+          ? rawPayload.order
+          : rawPayload && typeof rawPayload === "object" && "order_number" in rawPayload
+            ? (rawPayload as WalkInSale)
+            : undefined;
       if (order?.id) {
         trackWalkInSaleCompleted(order.id, cartTotalDue, paymentMethod, cart.length);
       }

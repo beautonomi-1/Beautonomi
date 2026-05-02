@@ -1,11 +1,16 @@
 /**
- * GET /api/provider/ads/performance - Ad performance: impressions, clicks, spend, sales (bookings from ads)
+ * GET /api/provider/ads/performance - Ad performance: impressions, clicks, spend
  * Query: start_date, end_date, campaign_id (optional)
  */
 
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  effectiveLifetimeSpendRow,
+  filterRangeMsFromParams,
+  timeBasedAttributedSpend,
+} from "@/lib/ads/ad-performance-spend";
 
 async function getProviderId(userId: string, request: NextRequest): Promise<string | null> {
   const supabase = getSupabaseAdmin();
@@ -54,7 +59,6 @@ export async function GET(request: NextRequest) {
 
     const impressions = (events ?? []).filter((e: any) => e.event_type === "impression").length;
     const clicks = (events ?? []).filter((e: any) => e.event_type === "click").length;
-    const books = (events ?? []).filter((e: any) => e.event_type === "book").length;
     const reachKeys = new Set<string>();
     for (const event of events ?? []) {
       if ((event as any).event_type !== "impression") continue;
@@ -69,7 +73,7 @@ export async function GET(request: NextRequest) {
         "id, status, budget, spent, bid_cpc, billing_model, pack_impressions, duration_days, start_at, end_at, created_at",
       )
       .eq("provider_id", providerId);
-    const lifetimeSpent = (campaigns ?? []).reduce((s: number, c: any) => s + Number(c.spent ?? 0), 0);
+    const lifetimeSpent = (campaigns ?? []).reduce((s: number, c: any) => s + effectiveLifetimeSpendRow(c), 0);
 
     /**
      * §Release-audit 2026-04: previously computed period spend as
@@ -115,6 +119,7 @@ export async function GET(request: NextRequest) {
     };
 
     const hasDateFilter = !!(startDate || endDate);
+    const filterRange = hasDateFilter ? filterRangeMsFromParams(startDate, endDate) : null;
 
     const byCampaign: Record<string, { impressions: number; reach: number; clicks: number; books: number; spent: number }> = {};
     const reachByCampaign = new Map<string, Set<string>>();
@@ -137,14 +142,28 @@ export async function GET(request: NextRequest) {
       if (e.event_type === "click") byCampaign[cid].clicks += 1;
       if (e.event_type === "book") byCampaign[cid].books += 1;
     }
-    // Cap per-campaign period spend by total budget for parity with DB.
+
+    if (hasDateFilter && filterRange) {
+      for (const c of campaigns ?? []) {
+        if (String((c as any).billing_model ?? "") !== "time_based") continue;
+        const cid = (c as any).id as string;
+        if (campaignId && cid !== campaignId) continue;
+        const attributed = timeBasedAttributedSpend(c as any, filterRange);
+        if (attributed <= 0) continue;
+        if (!byCampaign[cid]) byCampaign[cid] = { impressions: 0, reach: 0, clicks: 0, books: 0, spent: 0 };
+        byCampaign[cid].spent += attributed;
+      }
+    }
+
+    // Cap per-campaign period spend by total budget for parity with DB (CPC / packs).
     for (const c of campaigns ?? []) {
       if (!byCampaign[c.id]) byCampaign[c.id] = { impressions: 0, reach: 0, clicks: 0, books: 0, spent: 0 };
       byCampaign[c.id].reach = reachByCampaign.get(c.id)?.size ?? 0;
       const budget = Number(c.budget ?? 0);
-      if (budget > 0 && byCampaign[c.id].spent > budget) byCampaign[c.id].spent = budget;
+      const bm = String((c as any).billing_model ?? "cpc_budget");
+      if (bm !== "time_based" && budget > 0 && byCampaign[c.id].spent > budget) byCampaign[c.id].spent = budget;
       if (!hasDateFilter) {
-        byCampaign[c.id].spent = Number(c.spent ?? 0);
+        byCampaign[c.id].spent = effectiveLifetimeSpendRow(c as any);
       }
     }
     if (!hasDateFilter) {
@@ -159,9 +178,10 @@ export async function GET(request: NextRequest) {
         reach,
         clicks,
         spend: periodSpent,
-        spend_label: hasDateFilter ? "spend in period (modeled from impressions)" : "lifetime",
+        spend_label: hasDateFilter
+          ? "spend in period (impressions + time-based overlap)"
+          : "lifetime",
         lifetime_spend: lifetimeSpent,
-        sales: books,
       },
       by_campaign: byCampaign,
       events: (events ?? []).slice(0, 100),

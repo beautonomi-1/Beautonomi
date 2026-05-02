@@ -1,6 +1,6 @@
 /**
  * Ads – native ad campaigns and performance (no WebView).
- * Create and manage campaigns, view impressions, clicks, spend, and sales.
+ * Create and manage campaigns; view impressions, clicks, and spend.
  */
 import { useCallback, useState, useEffect, useRef } from "react";
 import {
@@ -27,6 +27,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -101,7 +102,6 @@ type PerformanceSummary = {
   reach: number;
   clicks: number;
   spend: number;
-  sales: number;
 };
 
 type CampaignPerformance = {
@@ -252,6 +252,7 @@ function remainingLine(c: Campaign, metrics: CampaignPerformance, currency: stri
 
 export default function AdsSettingsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const tenantCurrency = getTenantDefaultCurrency();
   const { screenPadding, width, contentMaxWidth } = useResponsive();
   const adsConfig = useModuleConfig("ads") as { enabled?: boolean } | undefined;
@@ -563,7 +564,7 @@ export default function AdsSettingsScreen() {
     <ScreenContainer scrollable={false}>
       <ScreenHeader
         title="Paid ads"
-        subtitle="Boost discovery, target categories, track reach and bookings"
+        subtitle="Boost discovery, target categories, and track reach"
         onBack={() => router.back()}
       />
       <ScrollView
@@ -578,7 +579,7 @@ export default function AdsSettingsScreen() {
             <View style={twStyle("mb-6")}>
               <Text style={twStyle("text-sm font-semibold text-gray-700 mb-1")}>Ad performance</Text>
               <Text style={twStyle("text-xs text-gray-500 mb-3")}>
-                Impressions, unique reach, clicks, spend, and bookings from your ads.
+                Impressions, unique reach, clicks, and spend.
               </Text>
               <View style={twStyle("flex-row flex-wrap")}>
                 <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mr-2 mb-2"), { minWidth: "45%" }]}>
@@ -602,11 +603,6 @@ export default function AdsSettingsScreen() {
                     {formatMoney(Number(performance.spend), tenantCurrency)}
                   </Text>
                   <Text style={twStyle("text-xs text-gray-500")}>Spend</Text>
-                </View>
-                <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mr-2 mb-2"), { minWidth: "45%" }]}>
-                  <Ionicons name="cart-outline" size={20} color="#6b7280" />
-                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{formatCompactNumber(performance.sales)}</Text>
-                  <Text style={twStyle("text-xs text-gray-500")}>Sales (bookings)</Text>
                 </View>
               </View>
             </View>
@@ -946,7 +942,6 @@ export default function AdsSettingsScreen() {
                               ["Impr.", formatCompactNumber(metrics.impressions)],
                               ["Reach", formatCompactNumber(metrics.reach)],
                               ["Clicks", formatCompactNumber(metrics.clicks)],
-                              ["Bookings", formatCompactNumber(metrics.books)],
                               ["Spend", formatMoney(Number(metrics.spent ?? 0), tenantCurrency)],
                             ].map(([label, value]) => (
                               <View key={label} style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
@@ -1014,7 +1009,7 @@ export default function AdsSettingsScreen() {
 
       {/* Create campaign sheet */}
       <BottomSheet visible={createOpen} onClose={() => !creating && setCreateOpen(false)} title="Create campaign" subtitle={`Set a total budget (${tenantCurrency}). You can pay now or add budget later.`} snapHeight="full">
-        <View style={twStyle("gap-4 pb-6")}>
+        <View style={[twStyle("gap-4"), { paddingBottom: 28 + insets.bottom }]}>
           <View>
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Total budget ({tenantCurrency})</Text>
             <TextInput
@@ -1104,7 +1099,7 @@ export default function AdsSettingsScreen() {
         snapHeight="full"
       >
         {editCampaign && (
-          <View style={twStyle("gap-4 pb-6")}>
+          <View style={[twStyle("gap-4"), { paddingBottom: 28 + insets.bottom }]}>
             {canEditBudgetFields(editCampaign) ? (
               <>
                 <View>

@@ -5,6 +5,10 @@
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
+import {
+  effectiveStockQuantity,
+  type ProductInventoryRow,
+} from "@/lib/provider-portal/product-inventory-metrics";
 
 /**
  * Check for low stock products and send alerts
@@ -23,6 +27,9 @@ export async function checkLowStockAndAlert(providerId?: string) {
         low_stock_level,
         receive_low_stock_notifications,
         provider_id,
+        has_variants,
+        track_stock_quantity,
+        product_variants(quantity, retail_price),
         providers!inner(
           id,
           user_id,
@@ -48,10 +55,13 @@ export async function checkLowStockAndAlert(providerId?: string) {
       return { checked: 0, alerted: 0 };
     }
 
-    // Filter products that are at or below low stock level
-    const lowStockProducts = products.filter(
-      (product) => product.quantity <= (product.low_stock_level || 5)
-    );
+    // Filter products that are at or below low stock level (variant-aware, matches catalogue metrics)
+    const lowStockProducts = products.filter((product) => {
+      const row = product as unknown as ProductInventoryRow;
+      const eff = effectiveStockQuantity(row);
+      const threshold = Number(product.low_stock_level) || 5;
+      return eff > 0 && eff <= threshold;
+    });
 
     if (lowStockProducts.length === 0) {
       return { checked: products.length, alerted: 0 };
@@ -96,7 +106,10 @@ export async function checkLowStockAndAlert(providerId?: string) {
       try {
         const productNames = providerProducts.map((p) => p.name).join(", ");
         const productList = providerProducts
-          .map((p) => `${p.name} (${p.quantity} remaining, threshold: ${p.low_stock_level})`)
+          .map((p) => {
+            const eff = effectiveStockQuantity(p as unknown as ProductInventoryRow);
+            return `${p.name} (${eff} remaining, threshold: ${p.low_stock_level ?? "—"})`;
+          })
           .join("\n");
 
         const { insertNotification: insertStockNotif } = await import("@/lib/notifications/insert-notification");
@@ -111,7 +124,7 @@ export async function checkLowStockAndAlert(providerId?: string) {
             products: providerProducts.map((p) => ({
               id: p.id,
               name: p.name,
-              quantity: p.quantity,
+              quantity: effectiveStockQuantity(p as unknown as ProductInventoryRow),
               low_stock_level: p.low_stock_level,
             })),
           },

@@ -233,6 +233,13 @@ export function PayoutsContent() {
                 setAmount("");
                 setNotes("");
                 setBankAccountId(null);
+                if (!canRequestPayouts) {
+                  Alert.alert(
+                    "Permission required",
+                    'Payout requests need the "Process payments" permission. Ask your business owner to enable it under Staff permissions, or use the web provider portal.',
+                  );
+                  return;
+                }
                 if (accounts.length === 0) {
                   router.push("/(app)/(tabs)/more/settings/payout-accounts");
                 } else {
@@ -372,7 +379,7 @@ export function PayoutsContent() {
 export default function PayoutsScreen() {
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Payouts" showBack subtitle="Withdraw earnings" />
+      <ScreenHeader title="Payouts" showBack subtitle="Withdraw earnings · More → Finance hub" />
       <PayoutsContent />
     </ScreenContainer>
   );
