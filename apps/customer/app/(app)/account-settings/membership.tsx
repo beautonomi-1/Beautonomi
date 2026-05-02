@@ -7,6 +7,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { useTranslation } from "@beautonomi/i18n";
 
 type ProviderMembership = {
   id: string;
@@ -31,6 +32,15 @@ function formatDateSafe(value: unknown): string {
 }
 
 export default function MembershipScreen() {
+  const { t } = useTranslation();
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
+  const mem = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.membership.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const [data, setData] = useState<any>(null);
@@ -39,63 +49,59 @@ export default function MembershipScreen() {
   const [cancelling, setCancelling] = useState(false);
   const [cancellingSalonId, setCancellingSalonId] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await api.get<any>("/api/me/membership");
-      if (res.error) setError(getApiErrorMessage(res.error, "Failed to load"));
+      if (res.error) setError(getApiErrorMessage(res.error, mem("loadFailed")));
       else setData(res.data);
     } catch (e) {
-      setError(getApiErrorMessage(e as Error, "Failed to load"));
+      setError(getApiErrorMessage(e as Error, mem("loadFailed")));
     } finally {
       setLoading(false);
     }
-  };
+  }, [mem]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [])
+      void load();
+    }, [load]),
   );
 
   const cancelMembership = () => {
-    Alert.alert(
-      "Cancel membership",
-      "Your benefits will continue until your current period ends. You won't be charged again.",
-      [
-        { text: "Keep membership", style: "cancel" },
-        {
-          text: "Cancel",
-          style: "destructive",
-          onPress: async () => {
-            setCancelling(true);
-            try {
-              const res = await api.post("/api/me/membership/cancel", {});
-              if (res.error) {
-                Alert.alert("Error", getApiErrorMessage(res.error, "Failed to cancel"));
-              } else {
-                await load();
-              }
-            } catch (e) {
-              Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
-            } finally {
-              setCancelling(false);
+    Alert.alert(mem("cancelMembershipTitle"), mem("cancelMembershipBody"), [
+      { text: mem("keepMembershipCta"), style: "cancel" },
+      {
+        text: mem("endMembershipCta"),
+        style: "destructive",
+        onPress: async () => {
+          setCancelling(true);
+          try {
+            const res = await api.post("/api/me/membership/cancel", {});
+            if (res.error) {
+              Alert.alert(errTitle, getApiErrorMessage(res.error, mem("cancelFailed")));
+            } else {
+              await load();
             }
-          },
+          } catch (e) {
+            Alert.alert(errTitle, getApiErrorMessage(e as Error, mem("cancelFailed")));
+          } finally {
+            setCancelling(false);
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const cancelSalonMembership = (membership: ProviderMembership) => {
     Alert.alert(
-      "Cancel salon membership",
-      `Cancel your ${membership.plan_name} membership with ${membership.provider_name}? Your benefits will continue until the current expiry date.`,
+      mem("cancelSalonTitle"),
+      mem("cancelSalonBody", { planName: membership.plan_name, providerName: membership.provider_name }),
       [
-        { text: "Keep membership", style: "cancel" },
+        { text: mem("keepMembershipCta"), style: "cancel" },
         {
-          text: "Cancel",
+          text: mem("endMembershipCta"),
           style: "destructive",
           onPress: async () => {
             setCancellingSalonId(membership.id);
@@ -104,12 +110,12 @@ export default function MembershipScreen() {
                 provider_membership_id: membership.id,
               });
               if (res.error) {
-                Alert.alert("Error", getApiErrorMessage(res.error, "Failed to cancel"));
+                Alert.alert(errTitle, getApiErrorMessage(res.error, mem("cancelFailed")));
               } else {
                 await load();
               }
             } catch (e) {
-              Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
+              Alert.alert(errTitle, getApiErrorMessage(e as Error, mem("cancelFailed")));
             } finally {
               setCancellingSalonId(null);
             }

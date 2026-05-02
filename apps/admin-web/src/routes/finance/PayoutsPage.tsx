@@ -49,7 +49,7 @@ type PayoutsEnvelope = {
   };
 };
 
-type ModalState = { kind: "reject" | "mark_failed" | "approve"; id: string; providerName?: string } | null;
+type ModalState = { kind: "reject" | "mark_failed" | "approve" | "mark_paid" | "transfer"; id: string; providerName?: string } | null;
 
 export function PayoutsPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
@@ -157,6 +157,16 @@ export function PayoutsPage() {
       approveMut.mutate(modal.id);
       return;
     }
+    if (modal.kind === "mark_paid") {
+      markPaidMut.mutate(modal.id);
+      setModal(null);
+      return;
+    }
+    if (modal.kind === "transfer") {
+      transferMut.mutate(modal.id);
+      setModal(null);
+      return;
+    }
     const text = reason.trim();
     if (modal.kind === "reject") {
       if (!text) return;
@@ -190,6 +200,7 @@ export function PayoutsPage() {
         cell: (r) => {
           const id = String(r.id ?? "");
           const st = String(r.status ?? "");
+          const providerName = (r.provider as { business_name?: string } | null)?.business_name;
           const busyThis =
             approveMut.isPending ||
             markPaidMut.isPending ||
@@ -205,7 +216,7 @@ export function PayoutsPage() {
                     disabled={approveMut.isPending || busyThis}
                     onClick={() => {
                       setReason("");
-                      setModal({ kind: "approve", id, providerName: (r.provider as { business_name?: string } | null)?.business_name });
+                      setModal({ kind: "approve", id, providerName });
                     }}
                   >
                     Approve
@@ -229,7 +240,10 @@ export function PayoutsPage() {
                     type="button"
                     className="min-h-11 touch-manipulation text-left text-sm font-semibold text-gray-900 underline disabled:opacity-50"
                     disabled={markPaidMut.isPending || busyThis}
-                    onClick={() => markPaidMut.mutate(id)}
+                    onClick={() => {
+                      setReason("");
+                      setModal({ kind: "mark_paid", id, providerName: providerName || undefined });
+                    }}
                   >
                     Mark paid
                   </button>
@@ -237,7 +251,10 @@ export function PayoutsPage() {
                     type="button"
                     className="min-h-11 touch-manipulation text-left text-sm font-semibold text-gray-900 underline disabled:opacity-50"
                     disabled={transferMut.isPending || busyThis}
-                    onClick={() => transferMut.mutate(id)}
+                    onClick={() => {
+                      setReason("");
+                      setModal({ kind: "transfer", id, providerName: providerName || undefined });
+                    }}
                   >
                     Transfer
                   </button>
@@ -289,8 +306,11 @@ export function PayoutsPage() {
   }
 
   const tabs = ["all", "pending", "processing", "completed", "failed"] as const;
-  const modalBusy = approveMut.isPending || rejectMut.isPending || markFailedMut.isPending;
+  const modalBusy = approveMut.isPending || rejectMut.isPending || markFailedMut.isPending || markPaidMut.isPending || transferMut.isPending;
   const isApproveModal = modal?.kind === "approve";
+  const isMarkPaidModal = modal?.kind === "mark_paid";
+  const isTransferModal = modal?.kind === "transfer";
+  const isConfirmationOnlyModal = isApproveModal || isMarkPaidModal || isTransferModal;
 
   return (
     <div className="space-y-6">
@@ -364,13 +384,27 @@ export function PayoutsPage() {
       <AdminModal
         open={modal != null}
         onClose={closeModal}
-        title={isApproveModal ? "Confirm payout approval" : modal?.kind === "reject" ? "Reject payout" : "Mark payout failed"}
+        title={
+          isApproveModal
+            ? "Confirm payout approval"
+            : isMarkPaidModal
+              ? "Confirm payout paid"
+              : isTransferModal
+                ? "Confirm payout transfer"
+                : modal?.kind === "reject"
+                  ? "Reject payout"
+                  : "Mark payout failed"
+        }
         description={
           isApproveModal
             ? `Approve payout for ${modal?.providerName ?? "this provider"}? This cannot be undone.`
-            : modal?.kind === "reject"
-              ? "A reason is required."
-              : "A failure reason is required."
+            : isMarkPaidModal
+              ? `Mark payout for ${modal?.providerName ?? "this provider"} as paid? Use this only after settlement is confirmed.`
+              : isTransferModal
+                ? `Initiate transfer for ${modal?.providerName ?? "this provider"}? This may trigger a real provider payout.`
+                : modal?.kind === "reject"
+                  ? "A reason is required."
+                  : "A failure reason is required."
         }
         footer={
           <>
@@ -380,18 +414,21 @@ export function PayoutsPage() {
             <button
               type="button"
               className="inline-flex min-h-11 min-w-[5.5rem] items-center justify-center rounded-xl bg-gray-900 px-4 text-sm font-medium text-white disabled:opacity-50"
-              disabled={modalBusy || (!isApproveModal && !reason.trim())}
+              disabled={modalBusy || (!isConfirmationOnlyModal && !reason.trim())}
               onClick={() => submitModal()}
             >
-              {isApproveModal ? "Approve" : "Submit"}
+              {isApproveModal ? "Approve" : isMarkPaidModal ? "Mark paid" : isTransferModal ? "Transfer" : "Submit"}
             </button>
           </>
         }
       >
-        {isApproveModal ? (
+        {isConfirmationOnlyModal ? (
           <p className="text-sm text-gray-600">
-            Approving a payout moves it to <strong>processing</strong> and notifies the provider. Make sure the payout amount
-            and provider details are correct before proceeding.
+            {isApproveModal
+              ? "Approving a payout moves it to processing and notifies the provider. Make sure the payout amount and provider details are correct before proceeding."
+              : isMarkPaidModal
+                ? "This records the payout as paid in admin operations. Confirm the external payment has settled before continuing."
+                : "This starts the transfer flow for the payout. Confirm provider banking details and amount before continuing."}
           </p>
         ) : (
           <textarea

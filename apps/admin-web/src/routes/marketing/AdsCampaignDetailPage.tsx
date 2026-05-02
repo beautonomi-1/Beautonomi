@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { adminToast } from "@/lib/adminToast";
-import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -72,10 +71,7 @@ export function AdsCampaignDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { allowed, denied } = useAdminSectionPage(
-    ADMIN_SECTION_MARKETING_COMMS,
-    "Marketing & comms access is required."
-  );
+  const { allowed, denied } = useSuperadminPage("Ads & Campaigns is superadmin-only.");
 
   const [actionDialog, setActionDialog] = useState<"pause" | "resume" | "end" | null>(null);
   const [actionReason, setActionReason] = useState("");

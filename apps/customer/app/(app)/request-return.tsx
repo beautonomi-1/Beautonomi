@@ -16,6 +16,7 @@ import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { trackReturnRequested } from "@/lib/analytics";
+import { useTranslation } from "@beautonomi/i18n";
 
 const PRIMARY = Colors.primary;
 
@@ -30,6 +31,15 @@ const REASONS = [
 ] as const;
 
 export default function RequestReturnScreen() {
+  const { t } = useTranslation();
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
+  const rr = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.requestReturn.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const router = useRouter();
   const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
   const { order_id, order_item_id } = useLocalSearchParams<{
@@ -43,11 +53,11 @@ export default function RequestReturnScreen() {
 
   const handleSubmit = useCallback(async () => {
     if (!reason) {
-      Alert.alert("Select Reason", "Please select a reason for your return");
+      Alert.alert(rr("selectReasonTitle"), rr("selectReasonBody"));
       return;
     }
     if (!order_id) {
-      Alert.alert("Error", "Order information is missing. Please go back and try again.");
+      Alert.alert(errTitle, rr("orderMissingBody"));
       return;
     }
 
@@ -61,23 +71,19 @@ export default function RequestReturnScreen() {
       });
 
       if (res.error) {
-        Alert.alert("Error", res.error.message || "Failed to submit return request.");
+        Alert.alert(errTitle, res.error.message || rr("submitError"));
         return;
       }
 
       trackReturnRequested(order_id, reason, 0);
 
-      Alert.alert(
-        "Return Requested",
-        "Your return request has been submitted. The provider will review it shortly.",
-        [{ text: "OK", onPress: () => router.back() }],
-      );
+      Alert.alert(rr("submitSuccessTitle"), rr("submitSuccessBody"), [{ text: t("common.ok"), onPress: () => router.back() }]);
     } catch {
-      Alert.alert("Error", "Something went wrong. Please check your connection and try again.");
+      Alert.alert(errTitle, rr("networkError"));
     } finally {
       setSubmitting(false);
     }
-  }, [reason, description, order_id, order_item_id, router]);
+  }, [reason, description, order_id, order_item_id, router, rr, errTitle, t]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
@@ -96,7 +102,7 @@ export default function RequestReturnScreen() {
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>
-          Request Return
+          {t("customer.mobile.stackTitles.requestReturn")}
         </Text>
       </View>
 

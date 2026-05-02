@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -63,6 +64,14 @@ function normalizeSlots(raw: unknown): AvailabilitySlot[] {
 
 export default function CustomRequestCreateScreen() {
   useScreenTracking("Custom Request Create");
+  const { t } = useTranslation();
+  const cr = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.customRequestCreate.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const { provider_id } = useLocalSearchParams<{ provider_id: string }>();
   const { user } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
@@ -157,17 +166,17 @@ export default function CustomRequestCreateScreen() {
         body: formData,
       });
       if (res.error) {
-        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload image. Please try again."));
+        Alert.alert(cr("uploadFailedTitle"), getApiErrorMessage(res.error, cr("uploadFailedFallback")));
         return;
       }
       const urls = (res.data as { urls?: string[] } | null)?.urls ?? [];
       if (urls.length > 0) {
         setImageUrls((prev) => [...prev, ...urls].slice(0, 6));
       } else {
-        Alert.alert("Upload issue", "Image uploaded but could not be processed. Please try again.");
+        Alert.alert(cr("uploadProcessedTitle"), cr("uploadProcessedBody"));
       }
     } catch {
-      Alert.alert("Error", "Failed to upload image");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), cr("uploadImageFailedBody"));
     } finally {
       setUploading(false);
     }
@@ -179,13 +188,13 @@ export default function CustomRequestCreateScreen() {
 
   const submit = async () => {
     if (!provider_id) {
-      Alert.alert("Error", "Provider not specified. Please go back and try again.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), cr("providerMissingBody"));
       return;
     }
     if (!user) return;
     const desc = description.trim();
     if (desc.length < 10) {
-      Alert.alert("Description required", "Please describe your request (at least 10 characters)");
+      Alert.alert(cr("descriptionRequiredTitle"), cr("descriptionRequiredBody"));
       return;
     }
     setSubmitting(true);
@@ -202,17 +211,17 @@ export default function CustomRequestCreateScreen() {
         image_urls: imageUrls,
       });
       if (res.error) {
-        Alert.alert("Error", res.error.message || "Failed to submit");
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || cr("submitFailed"));
       } else {
         haptic.success();
         const result = res.data as { conversation_id?: string } | null;
         const conversationId = result?.conversation_id;
         Alert.alert(
-          "Submitted",
-          "Your custom request has been sent. The provider will respond soon.",
+          cr("submittedTitle"),
+          cr("submittedBody"),
           [
             {
-              text: conversationId ? "Go to Chat" : "OK",
+              text: conversationId ? cr("goToChat") : t("common.ok"),
               onPress: () => {
                 if (conversationId) {
                   router.replace({ pathname: "/(app)/chat", params: { id: conversationId } });
@@ -222,13 +231,13 @@ export default function CustomRequestCreateScreen() {
               },
             },
             ...(conversationId
-              ? [{ text: "Later", style: "cancel" as const, onPress: () => router.back() }]
+              ? [{ text: cr("later"), style: "cancel" as const, onPress: () => router.back() }]
               : []),
           ],
         );
       }
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Failed to submit");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), e instanceof Error ? e.message : cr("submitFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -237,20 +246,20 @@ export default function CustomRequestCreateScreen() {
   if (!user) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <Text style={{ color: Colors.gray[600] }}>Log in to make a custom request</Text>
+        <Text style={{ color: Colors.gray[600] }}>{cr("loginPrompt")}</Text>
       </View>
     );
   }
 
   return (
     <>
-      <Stack.Screen options={{ title: "Custom Request" }} />
+      <Stack.Screen options={{ title: t("customer.mobile.stackTitles.customRequest") }} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
       <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
-        <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Describe what you&apos;re looking for (min 10 characters)</Text>
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{cr("describeHint")}</Text>
         <TextInput
           style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 100, fontSize: 16 }}
-          placeholder="E.g. I need a bridal makeup look for my wedding in 2 weeks. I'd like a natural glow with soft pink tones..."
+          placeholder={cr("briefPlaceholder")}
           placeholderTextColor={Colors.gray[400]}
           value={description}
           onChangeText={setDescription}
@@ -259,7 +268,7 @@ export default function CustomRequestCreateScreen() {
         />
         {categories.length > 0 && (
           <>
-            <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Service category (optional)</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>{cr("serviceCategoryOptional")}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
               <View style={{ flexDirection: "row" }}>
                 <TouchableOpacity
@@ -274,7 +283,7 @@ export default function CustomRequestCreateScreen() {
                     marginRight: 8,
                   }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: serviceCategoryId == null ? Colors.primary : Colors.gray[600] }}>Any category</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: serviceCategoryId == null ? Colors.primary : Colors.gray[600] }}>{cr("anyCategory")}</Text>
                 </TouchableOpacity>
                 {categories.map((category) => {
                   const active = serviceCategoryId === category.id;
@@ -300,25 +309,25 @@ export default function CustomRequestCreateScreen() {
             </ScrollView>
           </>
         )}
-        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Budget (optional)</Text>
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>{cr("budgetOptionalLabel")}</Text>
         <View style={{ flexDirection: "row" }}>
-          <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginRight: 12 }} placeholder="Min" placeholderTextColor={Colors.gray[400]} value={budgetMin} onChangeText={setBudgetMin} keyboardType="numeric" />
-          <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder="Max" placeholderTextColor={Colors.gray[400]} value={budgetMax} onChangeText={setBudgetMax} keyboardType="numeric" />
+          <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginRight: 12 }} placeholder={cr("budgetMin")} placeholderTextColor={Colors.gray[400]} value={budgetMin} onChangeText={setBudgetMin} keyboardType="numeric" />
+          <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder={cr("budgetMax")} placeholderTextColor={Colors.gray[400]} value={budgetMax} onChangeText={setBudgetMax} keyboardType="numeric" />
         </View>
-        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Duration (minutes)</Text>
-        <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder="60" placeholderTextColor={Colors.gray[400]} value={duration} onChangeText={setDuration} keyboardType="numeric" />
-        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Where?</Text>
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>{cr("durationLabel")}</Text>
+        <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder={cr("durationPlaceholder")} placeholderTextColor={Colors.gray[400]} value={duration} onChangeText={setDuration} keyboardType="numeric" />
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>{cr("whereLabel")}</Text>
         <View style={{ flexDirection: "row" }}>
           <TouchableOpacity onPress={() => setLocationType("at_salon")} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: locationType === "at_salon" ? Colors.primary : Colors.gray[200], backgroundColor: locationType === "at_salon" ? Colors.primaryLight : "transparent", marginRight: 12 }}>
-            <Text style={{ textAlign: "center", fontWeight: "500", color: locationType === "at_salon" ? Colors.primary : Colors.gray[700] }}>At salon</Text>
+            <Text style={{ textAlign: "center", fontWeight: "500", color: locationType === "at_salon" ? Colors.primary : Colors.gray[700] }}>{cr("atSalon")}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setLocationType("at_home")} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: locationType === "at_home" ? Colors.primary : Colors.gray[200], backgroundColor: locationType === "at_home" ? Colors.primaryLight : "transparent" }}>
-            <Text style={{ textAlign: "center", fontWeight: "500", color: locationType === "at_home" ? Colors.primary : Colors.gray[700] }}>At home</Text>
+            <Text style={{ textAlign: "center", fontWeight: "500", color: locationType === "at_home" ? Colors.primary : Colors.gray[700] }}>{cr("atHome")}</Text>
           </TouchableOpacity>
         </View>
-        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Preferred date and time</Text>
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>{cr("preferredDateTimeLabel")}</Text>
         <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 8 }}>
-          Pick from this provider&apos;s available slots. They may still propose a different time in their offer.
+          {cr("slotsHint")}
         </Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
           <View style={{ flexDirection: "row" }}>
@@ -347,9 +356,9 @@ export default function CustomRequestCreateScreen() {
         </ScrollView>
         <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 4 }}>
           {loadingSlots ? (
-            <Text style={{ fontSize: 13, color: Colors.gray[500] }}>Loading available times...</Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[500] }}>{cr("loadingSlots")}</Text>
           ) : slots.length === 0 ? (
-            <Text style={{ fontSize: 13, color: "#B45309" }}>No available slots for this date. Try another day or duration.</Text>
+            <Text style={{ fontSize: 13, color: "#B45309" }}>{cr("noSlotsMessage")}</Text>
           ) : (
             slots.slice(0, 30).map((slot) => {
               const active = preferredStartAt === slot.start;
@@ -374,7 +383,7 @@ export default function CustomRequestCreateScreen() {
             })
           )}
         </View>
-        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Inspiration photos (optional, max 6)</Text>
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>{cr("inspirationPhotosLabel")}</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
           {imageUrls.map((url, i) => (
             <View key={i} style={{ position: "relative", marginRight: 8, marginBottom: 8 }}>
@@ -391,7 +400,7 @@ export default function CustomRequestCreateScreen() {
           )}
         </View>
         <TouchableOpacity onPress={submit} disabled={submitting} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginTop: 24 }}>
-          {submitting ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Submit request</Text>}
+          {submitting ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>{cr("submitCta")}</Text>}
         </TouchableOpacity>
       </ScrollView>
       </KeyboardAvoidingView>

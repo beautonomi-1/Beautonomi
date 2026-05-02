@@ -14,6 +14,7 @@ import {
   ScrollView,
 } from "react-native";
 import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface MaintenanceConfig {
   enabled: boolean;
@@ -72,6 +73,7 @@ export default function MaintenanceScreen({
   config: MaintenanceConfig;
   scope: "customer_app" | "provider_app";
 }) {
+  const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -95,12 +97,12 @@ export default function MaintenanceScreen({
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.error ?? "Something went wrong. Please try again.");
+        setError(data?.error ?? t("customer.mobile.screens.maintenance.genericError"));
         return;
       }
       setSubmitted(true);
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError(t("customer.mobile.screens.maintenance.genericError"));
     } finally {
       setSubmitting(false);
     }
@@ -129,7 +131,7 @@ export default function MaintenanceScreen({
               <>
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter your email"
+                  placeholder={t("customer.mobile.components.maintenance.emailPlaceholder")}
                   placeholderTextColor="#888"
                   value={email}
                   onChangeText={setEmail}

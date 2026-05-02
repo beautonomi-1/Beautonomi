@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -34,6 +35,14 @@ import {
 type PhoneStep = "enter_phone" | "enter_otp" | null;
 
 export default function LoginAndSecurityScreen() {
+  const { t } = useTranslation();
+  const ls = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.loginSecurity.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const { user, signOut } = useAuth();
   const canUseQuietRefresh = useRef(false);
   const [profile, setProfile] = useState<any>(null);
@@ -67,7 +76,7 @@ export default function LoginAndSecurityScreen() {
     try {
       const res = await api.get<any>("/api/me/profile");
       if (res.error) {
-        if (!quiet) setError(res.error.message || "Failed to load");
+        if (!quiet) setError(res.error.message || ls("loadFailed"));
       } else {
         setProfile(res.data);
         setEmailChangePending(!!(res.data as any)?.email_change_pending);
@@ -75,11 +84,11 @@ export default function LoginAndSecurityScreen() {
         canUseQuietRefresh.current = true;
       }
     } catch (e) {
-      if (!quiet) setError(getApiErrorMessage(e, "Failed to load"));
+      if (!quiet) setError(getApiErrorMessage(e, ls("loadFailed")));
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, []);
+  }, [ls]);
 
   useEffect(() => {
     canUseQuietRefresh.current = false;
@@ -93,15 +102,15 @@ export default function LoginAndSecurityScreen() {
 
   const updatePassword = async () => {
     if (!currentPassword?.trim()) {
-      Alert.alert("Error", "Enter your current password");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("enterCurrentPassword"));
       return;
     }
     if (!password || password.length < 8) {
-      Alert.alert("Error", "New password must be at least 8 characters");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("passwordMinLength"));
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert("Error", "New passwords do not match");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("passwordsMismatch"));
       return;
     }
     setUpdating(true);
@@ -111,15 +120,15 @@ export default function LoginAndSecurityScreen() {
         newPassword: password,
       });
       if (res.error) {
-        Alert.alert("Error", res.error.message ?? "Failed to update password");
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message ?? ls("updatePasswordFailed"));
       } else {
-        Alert.alert("Success", "Password updated.");
+        Alert.alert(ls("passwordUpdatedTitle"), ls("passwordUpdatedBody"));
         setCurrentPassword("");
         setPassword("");
         setConfirmPassword("");
       }
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to update"));
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, ls("updateFailed")));
     } finally {
       setUpdating(false);
     }
@@ -128,28 +137,25 @@ export default function LoginAndSecurityScreen() {
   const handleChangeEmail = async () => {
     const email = newEmail.trim().toLowerCase();
     if (!email) {
-      Alert.alert("Error", "Enter your new email address");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("enterNewEmail"));
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      Alert.alert("Error", "Please enter a valid email address");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("invalidEmail"));
       return;
     }
     setEmailSending(true);
     try {
       const res = await api.patch<any>("/api/me/profile", { email });
       if (res.error) {
-        Alert.alert("Error", res.error.message ?? "Failed to send verification");
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message ?? ls("sendVerificationFailed"));
       } else {
         setEmailChangePending(true);
         setNewEmail("");
-        Alert.alert(
-          "Check your email",
-          "We sent confirmation links to your current email and your new address. Open each to finish the change (both may be required).",
-        );
+        Alert.alert(ls("emailChangeSentTitle"), ls("emailChangeSentBody"));
       }
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to send verification"));
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, ls("sendVerificationFailed")));
     } finally {
       setEmailSending(false);
     }
@@ -160,7 +166,7 @@ export default function LoginAndSecurityScreen() {
     const raw = fullPhone.startsWith("+") ? fullPhone : `+${fullPhone}`;
     const e164 = normalizeSupabaseAuthPhone(raw);
     if (e164.replace(/\D/g, "").length < 10) {
-      Alert.alert("Error", "Enter a valid phone number");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("invalidPhone"));
       return;
     }
     setPhoneSending(true);
@@ -170,12 +176,18 @@ export default function LoginAndSecurityScreen() {
       setPendingPhoneE164(e164);
       setPhoneStep("enter_otp");
       setPhoneOtpCode("");
+      const mins = Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60));
+      const minuteUnit = mins === 1 ? ls("minuteSingular") : ls("minutePlural");
       Alert.alert(
-        "Code sent",
-        `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code sent to your phone (valid about ${Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} ${Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).`,
+        ls("codeSentTitle"),
+        ls("codeSentBody", {
+          digits: String(SUPABASE_AUTH_OTP_LENGTH),
+          minutes: String(mins),
+          minuteUnit,
+        }),
       );
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to send code. Please try again.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), e?.message ?? ls("sendCodeFailed"));
     } finally {
       setPhoneSending(false);
     }
@@ -184,7 +196,7 @@ export default function LoginAndSecurityScreen() {
   const handleVerifyPhoneOtp = async (otpOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(otpOverride ?? phoneOtpCode);
     if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) {
-      Alert.alert("Error", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS`);
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("enterOtp", { digits: String(SUPABASE_AUTH_OTP_LENGTH) }));
       return;
     }
     setPhoneVerifying(true);
@@ -198,14 +210,14 @@ export default function LoginAndSecurityScreen() {
       const res = await api.patch<any>("/api/me/profile", {
         phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
       });
-      if (res.error) throw new Error(res.error.message ?? "Failed to save phone");
+      if (res.error) throw new Error(res.error.message ?? ls("savePhoneFailed"));
       setPhoneStep(null);
       setPendingPhoneE164("");
       setPhoneOtpCode("");
-      Alert.alert("Saved", "Your phone number has been updated.");
+      Alert.alert(ls("phoneSavedTitle"), ls("phoneSavedBody"));
       load();
     } catch (e: any) {
-      Alert.alert("Verification failed", e?.message ?? "Invalid or expired code. Request a new one.");
+      Alert.alert(ls("verificationFailedTitle"), e?.message ?? ls("verificationFailedBody"));
     } finally {
       setPhoneVerifying(false);
     }
@@ -227,12 +239,12 @@ export default function LoginAndSecurityScreen() {
 
   const handleGlobalSignOut = () => {
     Alert.alert(
-      "Sign out from all devices?",
-      "This will sign you out everywhere — phone, tablet, browsers — and require you to log in again on each device. Use this if you suspect someone else may have accessed your account.",
+      ls("globalSignOutTitle"),
+      ls("globalSignOutBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Sign out everywhere",
+          text: ls("signOutEverywhereCta"),
           style: "destructive",
           onPress: async () => {
             setSigningOutGlobal(true);
@@ -242,13 +254,13 @@ export default function LoginAndSecurityScreen() {
                 {},
               );
               if (res.error) {
-                Alert.alert("Error", res.error.message ?? "Could not sign out everywhere. Please try again.");
+                Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message ?? ls("signOutEverywhereFailed"));
                 return;
               }
               await signOut();
               router.replace("/(auth)/login");
             } catch (e) {
-              Alert.alert("Error", getApiErrorMessage(e, "Could not sign out everywhere"));
+              Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, ls("signOutEverywhereError")));
             } finally {
               setSigningOutGlobal(false);
             }

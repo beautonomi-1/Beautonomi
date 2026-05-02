@@ -1450,7 +1450,7 @@ export default function BookCheckoutScreen() {
       const errs = payload.errors as string[] | undefined;
       const valid = payload.valid as boolean | undefined;
       if (errs?.length && !valid) {
-        Alert.alert("Loyalty", errs.join(" "));
+        Alert.alert(t("checkout.loyaltyAlertTitle"), errs.join(" "));
       }
     } catch (e) {
       setLoyaltyPointsApplied(0);
@@ -1459,7 +1459,7 @@ export default function BookCheckoutScreen() {
     } finally {
       setLoyaltyValidating(false);
     }
-  }, [user, loyaltyPointsInput, bookingSubtotalForLoyalty, minRedemptionPoints]);
+  }, [user, loyaltyPointsInput, bookingSubtotalForLoyalty, minRedemptionPoints, t]);
 
   const applyGiftCard = useCallback(async () => {
     const code = giftCardCode.trim().toUpperCase();
@@ -1546,12 +1546,16 @@ export default function BookCheckoutScreen() {
       }
       if (previousBookingId) {
         Alert.alert(
-          "Rescheduled",
-          "Would you like to cancel your previous appointment?",
+          t("checkout.rescheduledTitle"),
+          t("checkout.rescheduleCancelPreviousBody"),
           [
-            { text: "Keep both", style: "cancel", onPress: () => router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } }) },
             {
-              text: "Cancel previous",
+              text: t("checkout.keepBothAppointments"),
+              style: "cancel",
+              onPress: () => router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } }),
+            },
+            {
+              text: t("checkout.cancelPreviousAppointment"),
               style: "destructive",
               onPress: async () => {
                 try {
@@ -1559,17 +1563,17 @@ export default function BookCheckoutScreen() {
                     reason: "Reschedule - previous appointment replaced",
                   });
                   if (res.error) {
-                    Alert.alert("Note", "Could not cancel the previous booking. You can cancel it manually from your bookings.");
+                    Alert.alert(t("checkout.noteTitle"), t("checkout.cancelPreviousBookingNote"));
                   } else {
                     haptic.success();
                   }
                 } catch {
-                  Alert.alert("Note", "Could not cancel the previous booking. You can cancel it manually from your bookings.");
+                  Alert.alert(t("checkout.noteTitle"), t("checkout.cancelPreviousBookingNote"));
                 }
                 router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
               },
             },
-          ]
+          ],
         );
       } else {
         router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
@@ -1577,7 +1581,7 @@ export default function BookCheckoutScreen() {
     };
 
     navTimeoutRef.current = setTimeout(navigate, 2600);
-  }, [routeCampaignId, routeProviderId, hold_id, hold]);
+  }, [routeCampaignId, routeProviderId, hold_id, hold, t]);
 
   const handleRequestNow = useCallback(async () => {
     if (!hold_id || !hold || !user) return;
@@ -1862,14 +1866,14 @@ export default function BookCheckoutScreen() {
       const notifyRecurringSubscription = () => {
         if (!subscribeRecurring) return;
         if (recurringSub?.created) {
-          Alert.alert("Repeating schedule saved", "Manage it anytime under Account settings → Recurring bookings.");
+          Alert.alert(t("checkout.recurringScheduleSavedTitle"), t("checkout.recurringScheduleSavedBody"));
         } else if (recurringSub?.pending) {
           Alert.alert(
-            "Repeating schedule",
-            "After your payment succeeds, your repeating schedule will appear under Account settings → Recurring bookings.",
+            t("checkout.recurringScheduleAfterPaymentTitle"),
+            t("checkout.recurringScheduleAfterPaymentBody"),
           );
         } else if (recurringSub && recurringSub.created === false && recurringSub.message) {
-          Alert.alert("Repeating schedule", recurringSub.message);
+          Alert.alert(t("checkout.recurringScheduleGenericTitle"), recurringSub.message);
         }
       };
 
@@ -1954,11 +1958,11 @@ export default function BookCheckoutScreen() {
 
         if (!paymentConfirmed) {
           Alert.alert(
-            "Payment pending",
-            "We haven't confirmed your payment yet. If you completed the payment, it may take a moment to process. Check your bookings shortly.",
+            t("checkout.paymentPendingPollTitle"),
+            t("checkout.paymentPendingPollBody"),
             [
-              { text: "View bookings", onPress: () => router.replace("/(app)/(tabs)/bookings" as never) },
-              { text: "OK", style: "cancel" },
+              { text: t("checkout.viewBookingsCta"), onPress: () => router.replace("/(app)/(tabs)/bookings" as never) },
+              { text: t("common.ok"), style: "cancel" },
             ],
           );
           return;

@@ -27,6 +27,7 @@ import { getTenantLocaleTag } from "@/lib/locale";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import { useAuth } from "@/providers/AuthProvider";
+import { useTranslation } from "@beautonomi/i18n";
 
 const PRIMARY = Colors.primary;
 
@@ -89,19 +90,6 @@ function formatEstimatedDeliveryDate(date: string | null | undefined): string | 
   });
 }
 
-async function openTrackingUrl(raw: string) {
-  const t = raw.trim();
-  if (!t) return;
-  const url = /^https?:\/\//i.test(t) ? t : `https://${t}`;
-  try {
-    const ok = await Linking.canOpenURL(url);
-    if (ok) await Linking.openURL(url);
-    else Alert.alert("Could not open link", "This device cannot open that URL.");
-  } catch {
-    Alert.alert("Could not open link", "Please copy the tracking number manually.");
-  }
-}
-
 function getTimelineIndex(status: string, fulfillmentType?: string): number {
   if (status === "cancelled" || status === "refunded") return -1;
   const timeline = getStatusTimeline(fulfillmentType);
@@ -113,6 +101,14 @@ function getTimelineIndex(status: string, fulfillmentType?: string): number {
 export default function ProductOrderDetailScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { t } = useTranslation();
+  const pod = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.productOrderDetail.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const rawId = useLocalSearchParams<{ id?: string | string[] }>().id;
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
@@ -123,10 +119,26 @@ export default function ProductOrderDetailScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
 
+  const openTrackingUrl = useCallback(
+    async (raw: string) => {
+      const trimmed = raw.trim();
+      if (!trimmed) return;
+      const url = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+      try {
+        const ok = await Linking.canOpenURL(url);
+        if (ok) await Linking.openURL(url);
+        else Alert.alert(pod("openLinkTitle"), pod("couldNotOpenUrl"));
+      } catch {
+        Alert.alert(pod("openLinkTitle"), pod("copyTrackingHint"));
+      }
+    },
+    [pod],
+  );
+
   const loadOrder = useCallback(async () => {
     if (!id) {
       setLoading(false);
-      setErrorMsg("Order ID is missing");
+      setErrorMsg(pod("orderIdMissing"));
       return;
     }
     setLoading(true);
@@ -136,13 +148,13 @@ export default function ProductOrderDetailScreen() {
       if (result.data) {
         setOrder(result.data);
       } else {
-        setErrorMsg(result.error || "Order not found");
+        setErrorMsg(result.error || pod("orderNotFound"));
       }
     } catch {
-      setErrorMsg("Unable to load order. Please check your connection.");
+      setErrorMsg(pod("loadOrderError"));
     }
     setLoading(false);
-  }, [id, fetchOrderDetail]);
+  }, [id, fetchOrderDetail, pod]);
 
   useEffect(() => {
     void loadOrder();
@@ -164,9 +176,9 @@ export default function ProductOrderDetailScreen() {
   if (!order) {
     return (
       <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" }}>
-        <Text style={{ fontSize: 16, color: "#6B7280" }}>{errorMsg || "Order not found"}</Text>
+        <Text style={{ fontSize: 16, color: "#6B7280" }}>{errorMsg || pod("orderNotFound")}</Text>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
-          <Text style={{ color: PRIMARY, fontWeight: "600" }}>Go back</Text>
+          <Text style={{ color: PRIMARY, fontWeight: "600" }}>{t("common.back")}</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -202,10 +214,7 @@ export default function ProductOrderDetailScreen() {
     if (!canPayOnline || paying) return;
     const email = buyerEmail;
     if (!email) {
-      Alert.alert(
-        "Email required",
-        "Add an email address to your account before paying this order online.",
-      );
+      Alert.alert(pod("emailRequiredTitle"), pod("emailRequiredBody"));
       return;
     }
 
@@ -230,9 +239,8 @@ export default function ProductOrderDetailScreen() {
 
       if (paystackRes.error || !paystackRes.data?.authorization_url) {
         Alert.alert(
-          "Payment unavailable",
-          (paystackRes.error as { message?: string } | null)?.message ??
-            "We could not start payment for this order. Please try again.",
+          pod("paymentUnavailableTitle"),
+          (paystackRes.error as { message?: string } | null)?.message ?? pod("paymentUnavailableBody"),
         );
         return;
       }
@@ -265,15 +273,12 @@ export default function ProductOrderDetailScreen() {
       }
 
       if (paid) {
-        Alert.alert("Payment successful", `Your order ${order.order_number} has been paid.`);
+        Alert.alert(pod("paymentSuccessTitle"), pod("paymentSuccessBody", { orderNumber: order.order_number }));
       } else {
-        Alert.alert(
-          "Payment pending",
-          "If you completed payment, it may take a few moments to confirm. Refresh this order shortly.",
-        );
+        Alert.alert(pod("paymentPendingTitle"), pod("paymentPendingBody"));
       }
     } catch (e) {
-      Alert.alert("Payment failed", e instanceof Error ? e.message : "Could not complete payment.");
+      Alert.alert(pod("paymentFailedTitle"), e instanceof Error ? e.message : pod("paymentFailedBody"));
     } finally {
       setPaying(false);
     }
@@ -341,7 +346,7 @@ export default function ProductOrderDetailScreen() {
                 title: `Order ${order.order_number}`,
               });
             } catch (e) {
-              Alert.alert("Share", e instanceof Error ? e.message : "Couldn't share this receipt.");
+              Alert.alert(pod("shareErrorTitle"), e instanceof Error ? e.message : pod("shareErrorBody"));
             }
           }}
           style={{ padding: 8 }}
@@ -403,9 +408,8 @@ export default function ProductOrderDetailScreen() {
               const signedUrl = res.data?.url;
               if (res.error || !signedUrl) {
                 const msg =
-                  (res.error as { message?: string } | null)?.message ??
-                  "Could not generate this receipt. Please try again.";
-                Alert.alert("Download receipt", msg);
+                  (res.error as { message?: string } | null)?.message ?? pod("receiptGenerateFailed");
+                Alert.alert(pod("downloadReceiptTitle"), msg);
                 return;
               }
               if (Platform.OS === "web") {
@@ -419,7 +423,7 @@ export default function ProductOrderDetailScreen() {
                 return;
               }
               if (!FileSystem.cacheDirectory) {
-                Alert.alert("Download receipt", "File storage is not available on this device.");
+                Alert.alert(pod("downloadReceiptTitle"), pod("storageUnavailable"));
                 return;
               }
               const fileUri = `${FileSystem.cacheDirectory}${safeName}`;
@@ -429,7 +433,7 @@ export default function ProductOrderDetailScreen() {
                   dl.status === 401 || dl.status === 403
                     ? "Your session may have expired. Please try again after refreshing the screen."
                     : `The server returned status ${dl.status}.`;
-                Alert.alert("Download receipt", `Could not download the PDF. ${hint}`);
+                Alert.alert(pod("downloadReceiptTitle"), pod("downloadPdfFailed", { hint }));
                 return;
               }
               await Share.share({
@@ -437,10 +441,7 @@ export default function ProductOrderDetailScreen() {
                 message: `Order ${order.order_number}`,
               });
             } catch (e) {
-              Alert.alert(
-                "Download receipt",
-                e instanceof Error ? e.message : "Something went wrong.",
-              );
+              Alert.alert(pod("downloadReceiptTitle"), e instanceof Error ? e.message : pod("downloadUnknownError"));
             }
           }}
           style={{ padding: 8 }}

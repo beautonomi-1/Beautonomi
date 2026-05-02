@@ -28,7 +28,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 
 const TX_LIMIT = 50;
 
-type FinancePeriod = { start_date: string | null; end_date: string | null };
+type FinancePeriod = { start_date: string | null; end_date: string | null; defaulted?: boolean };
 
 type FinanceSummary = {
   service_collected_gross: number;
@@ -281,7 +281,7 @@ export function FinanceOverviewPage() {
     if (!summary) return [];
     return [
       { label: "Booking commission (net)", value: summary.platform_revenue?.booking_commission ?? summary.platform_take_net },
-      { label: "Customer service/platform fees", value: summary.platform_revenue?.customer_paid_platform_fees ?? summary.service_fee_revenue ?? 0 },
+      { label: "Customer-paid platform fees", value: summary.platform_revenue?.customer_paid_platform_fees ?? summary.service_fee_revenue ?? 0 },
       { label: "Subscriptions (net)", value: summary.platform_revenue?.subscriptions ?? summary.subscription_net ?? 0 },
       { label: "Ads (net)", value: summary.platform_revenue?.ads ?? summary.ads_net ?? 0 },
       { label: "Ecommerce fees detail", value: summary.platform_revenue?.ecommerce_fees_detail ?? 0 },
@@ -366,8 +366,8 @@ export function FinanceOverviewPage() {
 
   const periodLabel =
     summary?.period?.start_date && summary?.period?.end_date
-      ? `Custom range: ${summary.period.start_date} → ${summary.period.end_date}`
-      : "Rolling month (default) — set dates below for a fixed range";
+      ? `${summary.period.defaulted ? "Month to date" : "Custom range"}: ${summary.period.start_date} → ${summary.period.end_date}`
+      : "Month to date — set dates below for a fixed range";
 
   return (
     <div className="space-y-6">
@@ -446,7 +446,7 @@ export function FinanceOverviewPage() {
               <option value="payment">Payment</option>
               <option value="refund">Refund</option>
               <option value="payout">Payout</option>
-              <option value="fee">Fee</option>
+              <option value="fee">Platform fees</option>
             </select>
           </label>
           <button

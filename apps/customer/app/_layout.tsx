@@ -68,6 +68,11 @@ function ForceUpdateGate({ children }: { children: React.ReactNode }) {
 
 function ThemedApp() {
   const { isDark } = useTheme();
+  // §UI-audit 2026-05: route the resolved theme into the Stack content
+  // background so navigation transitions (and any screen that doesn't
+  // pick its own background colour) match the user's Light/Dark choice
+  // instead of always flashing white.
+  const stackBackground = isDark ? "#0B0B10" : "#FFFFFF";
 
   return (
     <>
@@ -81,6 +86,7 @@ function ThemedApp() {
               headerShown: false,
               contentStyle: {
                 flex: 1,
+                backgroundColor: stackBackground,
                 ...(Platform.OS === "web" ? { width: "100%", minHeight: "100%" } : {}),
               },
             }}

@@ -10,6 +10,7 @@ import {
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { slackNotifyLeadCreated } from "@/lib/integrations/slack/lead-triggers";
 
 const VALID_STAGES = [
   "new",
@@ -416,6 +417,12 @@ export async function POST(request: NextRequest) {
       retention_tier: "operational",
       metadata: { source, business_name: leadData.business_name },
       ...extractRequestMeta(request),
+    });
+
+    void slackNotifyLeadCreated(request, {
+      id: lead.id as string,
+      business_name: lead.business_name as string | null,
+      assigned_to: lead.assigned_to as string | null,
     });
 
     return successResponse(lead);

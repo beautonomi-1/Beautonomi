@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -65,6 +66,14 @@ interface SavedAddress {
 }
 
 export default function AddressesScreen() {
+  const { t } = useTranslation();
+  const ad = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.addresses.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const { user } = useAuth();
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,13 +104,13 @@ export default function AddressesScreen() {
   const [editPickerVisible, setEditPickerVisible] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await api.get<any>("/api/me/addresses");
       if (res.error) {
-        setError(getApiErrorMessage(res.error, "Failed to load"));
+        setError(getApiErrorMessage(res.error, ad("loadFailed")));
         setAddresses([]);
       } else {
         const raw = res.data;
@@ -109,16 +118,16 @@ export default function AddressesScreen() {
         setAddresses(Array.isArray(list) ? list : []);
       }
     } catch (e) {
-      setError(getApiErrorMessage(e, "Failed to load"));
+      setError(getApiErrorMessage(e, ad("loadFailed")));
       setAddresses([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [ad]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const handleAddAddressSelect = (selection: AddressPickerSelection) => {
     setPendingAddress(selection);
@@ -129,7 +138,7 @@ export default function AddressesScreen() {
     if (!user || !pendingAddress?.structured) return;
     const label = (addLabel || "Address").trim();
     if (!label) {
-      Alert.alert("Required", "Please enter a label (e.g. Home, Work)");
+      Alert.alert(ad("labelRequiredTitle"), ad("labelRequiredBody"));
       return;
     }
     setSaving(true);
@@ -155,7 +164,7 @@ export default function AddressesScreen() {
       if (addLocationLandmarks.trim()) payload.location_landmarks = addLocationLandmarks.trim();
       const res = await api.post<SavedAddress>("/api/me/addresses", payload);
       if (res.error) {
-        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to save address"));
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(res.error, ad("saveFailed")));
       } else {
         setAddModalVisible(false);
         setPendingAddress(null);
@@ -169,7 +178,7 @@ export default function AddressesScreen() {
         await load();
       }
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to save address"));
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, ad("saveFailed")));
     } finally {
       setSaving(false);
     }
@@ -182,12 +191,12 @@ export default function AddressesScreen() {
         is_default: true,
       });
       if (res.error) {
-        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to set default"));
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(res.error, ad("setDefaultFailed")));
       } else {
         await load();
       }
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to set default"));
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, ad("setDefaultFailed")));
     } finally {
       setSettingDefaultId(null);
     }
@@ -195,24 +204,24 @@ export default function AddressesScreen() {
 
   const handleDelete = (addr: SavedAddress) => {
     Alert.alert(
-      "Delete address",
-      `Remove "${addr.label}"?`,
+      ad("deleteConfirmTitle"),
+      ad("deleteConfirmBody", { label: addr.label }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: t("common.delete"),
           style: "destructive",
           onPress: async () => {
             setDeletingId(addr.id);
             try {
               const res = await api.delete(`/api/me/addresses/${addr.id}`);
               if (res.error) {
-                Alert.alert("Error", res.error.message ?? "Failed to delete");
+                Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message ?? ad("deleteFailed"));
               } else {
                 await load();
               }
             } catch (e) {
-              Alert.alert("Error", getApiErrorMessage(e, "Failed to delete"));
+              Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, ad("deleteFailed")));
             } finally {
               setDeletingId(null);
             }
@@ -244,7 +253,7 @@ export default function AddressesScreen() {
     if (!user || !editingAddress) return;
     const label = (editLabel || "Address").trim();
     if (!label) {
-      Alert.alert("Required", "Please enter a label (e.g. Home, Work)");
+      Alert.alert(ad("labelRequiredTitle"), ad("labelRequiredBody"));
       return;
     }
     setUpdatingId(editingAddress.id);
@@ -281,7 +290,7 @@ export default function AddressesScreen() {
       if (editLocationLandmarks.trim()) payload.location_landmarks = editLocationLandmarks.trim(); else payload.location_landmarks = null;
       const res = await api.put<SavedAddress>(`/api/me/addresses/${editingAddress.id}`, payload);
       if (res.error) {
-        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update address"));
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(res.error, ad("updateFailed")));
       } else {
         setEditModalVisible(false);
         setEditingAddress(null);
@@ -290,7 +299,7 @@ export default function AddressesScreen() {
         await load();
       }
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to update address"));
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, ad("updateFailed")));
     } finally {
       setUpdatingId(null);
     }
@@ -304,7 +313,7 @@ export default function AddressesScreen() {
     >
       {addresses.length === 0 && (
         <View style={{ marginBottom: 24, alignItems: "center", paddingVertical: 32 }}>
-          <Text style={{ textAlign: "center", color: Colors.gray[500] }}>No saved addresses</Text>
+          <Text style={{ textAlign: "center", color: Colors.gray[500] }}>{ad("emptyState")}</Text>
           <TouchableOpacity
             onPress={() => setAddModalVisible(true)}
             style={{ marginTop: 16, flexDirection: "row", alignItems: "center", borderRadius: RADIUS_BUTTON, backgroundColor: Colors.primary, paddingHorizontal: 20, paddingVertical: 14 }}

@@ -28,6 +28,36 @@ const packageSchema = z.object({
   items: z.array(packageItemSchema).min(1, "At least one service or product is required"),
 });
 
+async function validatePackageOfferingItems(
+  supabase: any,
+  providerId: string,
+  items: Array<{ offering_id?: string }>,
+) {
+  const offeringIds = [...new Set(items.map((item) => item.offering_id).filter(Boolean))] as string[];
+  if (offeringIds.length === 0) return null;
+
+  const { data, error } = await supabase
+    .from("offerings")
+    .select("id, title, service_type, provider_id")
+    .in("id", offeringIds);
+  if (error) throw error;
+
+  const rows = (data ?? []) as any[];
+  const byId = new Map(rows.map((row: any) => [row.id, row]));
+  const missing = offeringIds.find((id) => !byId.has(id));
+  if (missing) return "One or more package services could not be found.";
+
+  const wrongProvider = rows.find((row: any) => row.provider_id !== providerId);
+  if (wrongProvider) return "One or more package services do not belong to this provider.";
+
+  const addon = rows.find((row: any) => row.service_type === "addon");
+  if (addon) {
+    return `Add-ons are optional extras and cannot be included as package items. Remove "${addon.title || "add-on"}" from the package and offer it as an add-on at checkout.`;
+  }
+
+  return null;
+}
+
 /**
  * GET /api/provider/packages
  * 
@@ -203,6 +233,10 @@ export async function POST(request: NextRequest) {
       (await getTenantRegionConfig(effectiveTenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const validated = packageSchema.parse(body);
+    const offeringItemsError = await validatePackageOfferingItems(supabase, providerId, validated.items);
+    if (offeringItemsError) {
+      return errorResponse(offeringItemsError, "VALIDATION_ERROR", 400);
+    }
     const packageCurrency = validated.currency ?? lastResortCurrency;
 
     // Create package

@@ -29,7 +29,8 @@ interface PackageReport {
   total_sold: number;
   total_revenue: number;
   active_count: number;
-  usage_rate: number;
+  /** null = not computed by the server (avoid fake utilization). */
+  usage_rate: number | null;
   avg_completion_days: number | null;
   services_included: number;
 }
@@ -38,8 +39,8 @@ interface PackageStats {
   total_packages: number;
   total_sold: number;
   total_revenue: number;
-  active_subscriptions: number;
-  avg_usage_rate: number;
+  active_subscriptions: number | null;
+  avg_usage_rate: number | null;
 }
 
 const PERIOD_FILTERS = [
@@ -75,7 +76,10 @@ export default function PackageReportScreen() {
   async function handleExport() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const rows = packages.map(
-      (p) => `${p.name},${p.total_sold},${formatCurrency(p.total_revenue)},${p.active_count},${(p.usage_rate * 100).toFixed(0)}%`
+      (p) =>
+        `${p.name},${p.total_sold},${formatCurrency(p.total_revenue)},${p.active_count},${
+          p.usage_rate == null ? "" : `${(p.usage_rate * 100).toFixed(0)}%`
+        }`
     );
     const csv = `Package,Sold,Revenue,Active,Usage Rate\n${rows.join("\n")}`;
     try {
@@ -103,7 +107,14 @@ export default function PackageReportScreen() {
         <ReportResponsiveStatRow>
           <StatCard title="Total Sold" value={String(stats?.total_sold ?? 0)} icon="layers-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
           <StatCard title="Revenue" value={formatCurrency(stats?.total_revenue ?? 0)} icon="cash-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-          <StatCard title="Active" value={String(stats?.active_subscriptions ?? 0)} icon="radio-button-on" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+          <StatCard
+            title="Active"
+            value={stats?.active_subscriptions == null ? "—" : String(stats.active_subscriptions)}
+            icon="radio-button-on"
+            iconColor="#f59e0b"
+            iconBg="bg-amber-50"
+            compact
+          />
         </ReportResponsiveStatRow>
       </View>
 
@@ -152,18 +163,42 @@ export default function PackageReportScreen() {
                   </Text>
                   <View style={twStyle("mt-1 flex-row items-center")}>
                     <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 4 }]}>Usage:</Text>
-                    <Text style={twStyle(`text-xs font-semibold ${
-                      pkg.usage_rate >= 0.7 ? "text-green-600" : pkg.usage_rate >= 0.4 ? "text-amber-600" : "text-red-600"
-                    }`)}>
-                      {(pkg.usage_rate * 100).toFixed(0)}%
+                    <Text
+                      style={twStyle(
+                        `text-xs font-semibold ${
+                          pkg.usage_rate == null
+                            ? "text-gray-400"
+                            : pkg.usage_rate >= 0.7
+                              ? "text-green-600"
+                              : pkg.usage_rate >= 0.4
+                                ? "text-amber-600"
+                                : "text-red-600"
+                        }`
+                      )}
+                    >
+                      {pkg.usage_rate == null ? "—" : `${(pkg.usage_rate * 100).toFixed(0)}%`}
                     </Text>
                   </View>
                   {/* Usage bar */}
                   <View style={twStyle("mt-1 h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden")}>
                     <View
-                      style={[twStyle(`h-full rounded-full ${
-                        pkg.usage_rate >= 0.7 ? "bg-green-500" : pkg.usage_rate >= 0.4 ? "bg-amber-500" : "bg-red-500"
-                      }`), { width: `${Math.min(pkg.usage_rate * 100, 100)}%` }]}
+                      style={[
+                        twStyle(
+                          `h-full rounded-full ${
+                            pkg.usage_rate == null
+                              ? "bg-gray-300"
+                              : pkg.usage_rate >= 0.7
+                                ? "bg-green-500"
+                                : pkg.usage_rate >= 0.4
+                                  ? "bg-amber-500"
+                                  : "bg-red-500"
+                          }`
+                        ),
+                        {
+                          width:
+                            pkg.usage_rate == null ? 0 : `${Math.min(pkg.usage_rate * 100, 100)}%`,
+                        },
+                      ]}
                     />
                   </View>
                 </View>

@@ -16,6 +16,7 @@ import {
 import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as DocumentPicker from "expo-document-picker";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -27,6 +28,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { chatFlatListPerf } from "@/lib/flatListPerformance";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Message {
   id: string;
@@ -121,6 +123,13 @@ type ConversationSummary = {
   provider_id?: string | null;
   provider_slug?: string | null;
   provider_name?: string | null;
+  /**
+   * §UI-audit 2026-05: include the nested provider record so the chat
+   * header can display the provider's avatar — `/api/me/conversations`
+   * returns `provider.thumbnail_url`/`provider.business_name` (see
+   * `apps/customer/app/(app)/(tabs)/chats.tsx`), so reuse that shape.
+   */
+  provider?: { business_name?: string | null; thumbnail_url?: string | null } | null;
 };
 
 function normalizeAttachmentForPreview(a: string | Record<string, unknown>): NormalizedAttachment {
@@ -152,12 +161,6 @@ function attachmentDisplaysAsInlineImage(att: NormalizedAttachment): boolean {
   if (isVideoMime(att.type)) return false;
   if (isImageMime(att.type)) return true;
   return !att.type && urlLooksLikeImageUrl(att.url);
-}
-
-function openAttachmentUrl(url: string) {
-  Linking.openURL(url).catch(() => {
-    Alert.alert("Could not open", "This link could not be opened on your device.");
-  });
 }
 
 const PAGE_SIZE = 50;
@@ -194,6 +197,16 @@ export default function ChatScreen() {
   const initialScrollDone = useRef(false);
   const flatListRef = useRef<FlatList>(null);
   const { pickFromLibrary, pickFromCamera } = useImagePicker();
+  const { t } = useTranslation();
+
+  const openUrlOrAlert = useCallback(
+    (url: string) => {
+      Linking.openURL(url).catch(() => {
+        Alert.alert(t("customer.chatScreen.couldNotOpenTitle"), t("customer.chatScreen.couldNotOpenBody"));
+      });
+    },
+    [t],
+  );
 
   const loadMessages = useCallback(
     async (cursor?: string) => {
@@ -449,14 +462,60 @@ export default function ChatScreen() {
       } else {
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
         setInput(text);
-        Alert.alert("Send failed", getApiErrorMessage(res.error, "Your message could not be sent. Please try again."));
+        Alert.alert(
+          t("customer.chatScreen.sendFailedTitle"),
+          getApiErrorMessage(res.error, t("customer.chatScreen.sendFailedBody")),
+        );
       }
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       setInput(text);
-      Alert.alert("Send failed", "Your message could not be sent. Please try again.");
+      Alert.alert(
+        t("customer.chatScreen.sendFailedTitle"),
+        t("customer.chatScreen.sendFailedBody"),
+      );
     } finally {
       setSending(false);
+    }
+  };
+
+  // §UI-audit 2026-05: extracted the upload pipeline so both image
+  // picking and document picking share the same FormData + retry path.
+  const uploadAndSendFile = async (file: { uri: string; name: string; type: string }) => {
+    if (!id) return;
+    const formData = new FormData();
+    formData.append("conversation_id", id);
+    appendFormDataFileNative(formData, "files", {
+      uri: file.uri,
+      name: file.name,
+      type: file.type || "application/octet-stream",
+    });
+    const res = await api.fetch<{ attachments?: Message["attachments"] }>("/api/me/messages/upload", {
+      method: "POST",
+      body: formData,
+    });
+    if (res.error) {
+      const isImage = file.type?.startsWith("image/");
+      Alert.alert(
+        t("customer.chatScreen.uploadFailedTitle"),
+        getApiErrorMessage(
+          res.error,
+          isImage
+            ? t("customer.chatScreen.uploadFailedBody")
+            : t("customer.chatScreen.documentUploadFailedBody"),
+        ),
+      );
+      return;
+    }
+    const payload = res.data as { attachments?: Message["attachments"] } | null;
+    const atts = (payload?.attachments ?? []) as NonNullable<Parameters<typeof send>[0]>;
+    if (atts.length > 0) {
+      await send(atts);
+    } else {
+      Alert.alert(
+        t("customer.chatScreen.uploadFailedTitle"),
+        t("customer.chatScreen.uploadFailedAttach"),
+      );
     }
   };
 
@@ -469,28 +528,47 @@ export default function ChatScreen() {
         setUploading(false);
         return;
       }
-      const formData = new FormData();
-      formData.append("conversation_id", id);
-      appendFormDataFileNative(formData, "files", {
+      await uploadAndSendFile({
         uri: result.uri,
         name: result.fileName || "image.jpg",
         type: result.mimeType || "image/jpeg",
       });
-      const res = await api.fetch<{ attachments?: Message["attachments"] }>("/api/me/messages/upload", {
-        method: "POST",
-        body: formData,
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const sendDocument = async () => {
+    if (!id || sending || uploading) return;
+    setUploading(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        copyToCacheDirectory: true,
+        type: [
+          "application/pdf",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/vnd.ms-excel",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "text/plain",
+          "image/*",
+        ],
       });
-      if (res.error) {
-        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload the image. Please try again."));
+      if (result.canceled) {
+        setUploading(false);
         return;
       }
-      const payload = res.data as { attachments?: Message["attachments"] } | null;
-      const atts = (payload?.attachments ?? []) as NonNullable<Parameters<typeof send>[0]>;
-      if (atts.length > 0) {
-        await send(atts);
-      } else {
-        Alert.alert("Upload failed", "Image uploaded but could not be attached. Please try again.");
+      const asset = result.assets?.[0];
+      if (!asset?.uri) {
+        setUploading(false);
+        return;
       }
+      await uploadAndSendFile({
+        uri: asset.uri,
+        name: asset.name || "document",
+        type: asset.mimeType || "application/octet-stream",
+      });
     } finally {
       setUploading(false);
     }
@@ -498,14 +576,19 @@ export default function ChatScreen() {
 
   const chooseAttachmentSource = () => {
     if (Platform.OS === "web") {
-      void sendImage("library");
+      void sendDocument();
       return;
     }
-    Alert.alert("Send photo", "Choose how you want to attach an image.", [
-      { text: "Camera", onPress: () => void sendImage("camera") },
-      { text: "Photo Library", onPress: () => void sendImage("library") },
-      { text: "Cancel", style: "cancel" },
-    ]);
+    Alert.alert(
+      t("customer.chatScreen.attachmentSheetTitle"),
+      t("customer.chatScreen.attachmentSheetBody"),
+      [
+        { text: t("customer.chatScreen.attachmentCamera"), onPress: () => void sendImage("camera") },
+        { text: t("customer.chatScreen.attachmentLibrary"), onPress: () => void sendImage("library") },
+        { text: t("customer.chatScreen.attachmentDocument"), onPress: () => void sendDocument() },
+        { text: t("common.cancel"), style: "cancel" },
+      ],
+    );
   };
 
   const acceptCustomOffer = useCallback(
@@ -517,36 +600,45 @@ export default function ChatScreen() {
           { payment_option: paymentOption }
         );
         if (res.error) {
-          Alert.alert("Offer action failed", getApiErrorMessage(res.error, "Could not start payment."));
+          Alert.alert(
+            t("customer.chatScreen.offerActionFailedTitle"),
+            getApiErrorMessage(res.error, t("customer.chatScreen.offerActionPaymentFailed")),
+          );
           return;
         }
         const url = res.data?.paymentUrl || res.data?.payment_url;
         if (!url) {
-          Alert.alert("Offer action failed", "No payment link was returned.");
+          Alert.alert(t("customer.chatScreen.offerActionFailedTitle"), t("customer.chatScreen.offerActionNoLink"));
           return;
         }
         router.push({
           pathname: "/(app)/in-app-browser",
-          params: { url: encodeURIComponent(url), title: "Complete payment" },
+          params: {
+            url: encodeURIComponent(url),
+            title: t("customer.chatScreen.inAppBrowserPaymentTitle"),
+          },
         });
       } catch (e) {
-        Alert.alert("Offer action failed", e instanceof Error ? e.message : "Could not start payment.");
+        Alert.alert(
+          t("customer.chatScreen.offerActionFailedTitle"),
+          e instanceof Error ? e.message : t("customer.chatScreen.offerActionPaymentFailed"),
+        );
       } finally {
         setAcceptingOfferId(null);
       }
     },
-    []
+    [t],
   );
 
   const openAcceptOfferOptions = useCallback(
     (offerId: string) => {
-      Alert.alert("Accept offer", "How would you like to pay?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Pay Deposit", onPress: () => void acceptCustomOffer(offerId, "deposit") },
-        { text: "Pay in Full", onPress: () => void acceptCustomOffer(offerId, "full") },
+      Alert.alert(t("customer.chatScreen.acceptOfferTitle"), t("customer.chatScreen.acceptOfferBody"), [
+        { text: t("common.cancel"), style: "cancel" },
+        { text: t("customer.chatScreen.payDeposit"), onPress: () => void acceptCustomOffer(offerId, "deposit") },
+        { text: t("customer.chatScreen.payInFull"), onPress: () => void acceptCustomOffer(offerId, "full") },
       ]);
     },
-    [acceptCustomOffer]
+    [acceptCustomOffer, t]
   );
 
   const formatTime = (iso: string) =>
@@ -598,6 +690,76 @@ export default function ChatScreen() {
     return out;
   }, [currentUserId, messages]);
 
+  // §UI-audit 2026-04: previously the header title was hardcoded to
+  // "Chat" whenever an `id` was present, which meant after a deep-link
+  // (or an `/api/me/conversations/create` redirect that drops
+  // `provider_name`) the customer lost the partner name. Fall back to
+  // the first non-self sender's `sender_name` as a reasonable proxy.
+  // §Hooks-rule: derived values + the header `useCallback` MUST run on
+  // every render, so they live above the early returns below.
+  const partnerFromMessages =
+    messages.find((m) => m.sender_id && user?.id && m.sender_id !== user.id)?.sender_name ?? null;
+  const resolvedProviderId = providerId || conversationMeta?.provider_id || null;
+  const resolvedProviderSlug = conversationMeta?.provider_slug || null;
+  const chatTitle =
+    providerName ||
+    conversationMeta?.provider_name ||
+    conversationMeta?.provider?.business_name ||
+    partnerFromMessages ||
+    t("customer.chatScreen.fallbackTitle");
+  const providerThumbnail = conversationMeta?.provider?.thumbnail_url ?? null;
+
+  // §UI-audit 2026-05: render the provider's avatar next to the title
+  // in the chat header so the customer can confirm they're chatting with
+  // the right business — the chats list shows the avatar but, until
+  // now, the in-thread header was a plain title only. Falls back to an
+  // initial chip when no thumbnail is available.
+  const renderHeaderTitle = useCallback(() => {
+    const initial = chatTitle.charAt(0).toUpperCase();
+    return (
+      <TouchableOpacity
+        onPress={() => {
+          if (resolvedProviderSlug) {
+            router.push({
+              pathname: "/(app)/partner-profile",
+              params: { slug: resolvedProviderSlug, provider_id: resolvedProviderId || undefined },
+            });
+          }
+        }}
+        disabled={!resolvedProviderSlug}
+        style={{ flexDirection: "row", alignItems: "center", maxWidth: 220 }}
+        accessibilityRole="button"
+        accessibilityLabel={chatTitle}
+      >
+        {providerThumbnail ? (
+          <Image
+            source={{ uri: providerThumbnail }}
+            style={{ width: 32, height: 32, borderRadius: 16, marginRight: 8, backgroundColor: Colors.gray[100] }}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <View
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              marginRight: 8,
+              backgroundColor: Colors.gray[200],
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: Colors.gray[600], fontWeight: "600", fontSize: 13 }}>{initial}</Text>
+          </View>
+        )}
+        <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
+          {chatTitle}
+        </Text>
+      </TouchableOpacity>
+    );
+  }, [chatTitle, providerThumbnail, resolvedProviderSlug, resolvedProviderId]);
+
   if (authLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
@@ -609,27 +771,17 @@ export default function ChatScreen() {
   if (!user) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ color: Colors.gray[600] }}>Log in to view this conversation</Text>
+        <Text style={{ color: Colors.gray[600] }}>{t("customer.chatScreen.loginToView")}</Text>
       </View>
     );
   }
 
-  // §UI-audit 2026-04: previously the header title was hardcoded to
-  // "Chat" whenever an `id` was present, which meant after a deep-link
-  // (or an `/api/me/conversations/create` redirect that drops
-  // `provider_name`) the customer lost the partner name. Fall back to
-  // the first non-self sender's `sender_name` as a reasonable proxy.
-  const partnerFromMessages =
-    messages.find((m) => m.sender_id && m.sender_id !== user.id)?.sender_name ?? null;
-  const resolvedProviderId = providerId || conversationMeta?.provider_id || null;
-  const resolvedProviderSlug = conversationMeta?.provider_slug || null;
-  const chatTitle =
-    providerName || conversationMeta?.provider_name || partnerFromMessages || "Chat";
-
   if (resolveError && messages.length === 0) {
     return (
       <>
-        <Stack.Screen options={{ title: chatTitle, headerBackTitle: "Back" }} />
+        <Stack.Screen
+          options={{ title: chatTitle, headerTitle: renderHeaderTitle, headerBackTitle: "Back" }}
+        />
         <View style={{ flex: 1, backgroundColor: Colors.white, justifyContent: "center", alignItems: "center", padding: 24 }}>
           <Ionicons name="chatbubble-ellipses-outline" size={48} color={Colors.gray[300]} />
           <Text style={{ color: Colors.gray[600], marginTop: 12, textAlign: "center" }}>{resolveError}</Text>
@@ -637,7 +789,7 @@ export default function ChatScreen() {
             onPress={() => router.back()}
             style={{ marginTop: 24, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: Colors.primary, borderRadius: 12 }}
           >
-            <Text style={{ color: Colors.white, fontWeight: "600" }}>Go back</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>{t("common.back")}</Text>
           </TouchableOpacity>
         </View>
       </>
@@ -646,7 +798,9 @@ export default function ChatScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: chatTitle, headerBackTitle: "Back" }} />
+      <Stack.Screen
+        options={{ title: chatTitle, headerTitle: renderHeaderTitle, headerBackTitle: "Back" }}
+      />
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: Colors.white }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -849,7 +1003,7 @@ export default function ChatScreen() {
                               return (
                                 <TouchableOpacity
                                   key={key}
-                                  onPress={() => openAttachmentUrl(att.url)}
+                                  onPress={() => openUrlOrAlert(att.url)}
                                   accessibilityRole="button"
                                   accessibilityLabel="Open video"
                                   style={{
@@ -887,7 +1041,7 @@ export default function ChatScreen() {
                             return (
                               <TouchableOpacity
                                 key={key}
-                                onPress={() => openAttachmentUrl(att.url)}
+                                onPress={() => openUrlOrAlert(att.url)}
                                 accessibilityRole="button"
                                 accessibilityLabel="Open attachment"
                                 style={{
@@ -1032,16 +1186,18 @@ export default function ChatScreen() {
                 onPress={chooseAttachmentSource}
                 disabled={sending || uploading}
                 style={{ marginRight: 8, width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center" }}
+                accessibilityRole="button"
+                accessibilityLabel={t("customer.chatScreen.attachmentSheetTitle")}
               >
                 {uploading ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
                 ) : (
-                  <Ionicons name="camera-outline" size={20} color={Colors.primary} />
+                  <Ionicons name="attach" size={22} color={Colors.primary} />
                 )}
               </TouchableOpacity>
               <TextInput
                 style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 16, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, maxHeight: 96 }}
-                placeholder="Message..."
+                placeholder={t("customer.chatScreen.messagePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={input}
                 onChangeText={setInput}

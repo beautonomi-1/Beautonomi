@@ -3,9 +3,11 @@ import { TouchableOpacity, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useTranslation } from "@beautonomi/i18n";
+import { useThemedColors } from "@/hooks/useThemedColors";
 
 export default function AccountSettingsLayout() {
   const { t } = useTranslation();
+  const themed = useThemedColors();
 
   return (
     <Stack
@@ -13,7 +15,9 @@ export default function AccountSettingsLayout() {
         headerShown: true,
         headerBackTitle: t("common.back"),
         headerTintColor: Colors.primary,
-        headerTitleStyle: { fontWeight: "600" },
+        headerTitleStyle: { fontWeight: "600", color: themed.textPrimary },
+        headerStyle: { backgroundColor: themed.surface },
+        contentStyle: { backgroundColor: themed.surface },
         headerLeft: () => (
           <TouchableOpacity
             onPress={() => {

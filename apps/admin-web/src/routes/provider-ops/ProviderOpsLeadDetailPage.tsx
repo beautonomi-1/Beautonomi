@@ -15,6 +15,8 @@ import { AdminModal } from "@/components/admin/AdminModal";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
+import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
 import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Tag, User,
   Trash2, UserPlus, ExternalLink, StickyNote, TrendingUp,
@@ -22,6 +24,7 @@ import {
   ChevronRight, ArrowRightCircle, Send, Link2, Copy, Check, MessageCircle,
 } from "lucide-react";
 import { LeadWhatsAppPanel } from "@/components/whatsapp/LeadWhatsAppPanel";
+import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
 
 const STAGES = ["new", "contacted", "qualified", "proposal_sent", "negotiating", "won", "lost", "nurture", "matched"] as const;
 const STAGE_LABELS: Record<string, string> = {
@@ -47,12 +50,20 @@ const STAGE_DOT: Record<string, string> = {
 };
 
 const ACTIVITY_ICON_MAP: Record<string, typeof MessageSquare> = {
-  note: StickyNote, stage_change: TrendingUp, call: Phone,
-  email: Mail, meeting: Calendar, default: MessageSquare,
+  note: StickyNote,
+  stage_change: TrendingUp,
+  stage_changed: TrendingUp,
+  call: Phone,
+  email: Mail,
+  meeting: Calendar,
+  default: MessageSquare,
 };
+const OPS_DETAIL_REFETCH_MS = 45_000;
+
 const ACTIVITY_COLOR_MAP: Record<string, { bg: string; text: string }> = {
   note: { bg: "bg-blue-100", text: "text-blue-600" },
   stage_change: { bg: "bg-purple-100", text: "text-purple-600" },
+  stage_changed: { bg: "bg-purple-100", text: "text-purple-600" },
   call: { bg: "bg-green-100", text: "text-green-600" },
   email: { bg: "bg-amber-100", text: "text-amber-600" },
   meeting: { bg: "bg-pink-100", text: "text-pink-600" },
@@ -82,6 +93,8 @@ export function ProviderOpsLeadDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_PROVIDER_OPS, "Provider Ops access is required.");
+  const { bootstrap } = useAdminSession();
+  const myUserId = bootstrap?.userId ?? "";
   const [noteText, setNoteText] = useState("");
   const [assignInput, setAssignInput] = useState("");
   const [showAssignForm, setShowAssignForm] = useState(false);
@@ -100,22 +113,41 @@ export function ProviderOpsLeadDetailPage() {
     queryKey: adminQueryKeys.providerOps.leadDetail(id!),
     queryFn: () => adminApi.getJson<Record<string, unknown>>(`/api/admin/provider-ops/leads/${id}`, { timeoutMs: 60_000 }),
     enabled: allowed && !!id,
+    refetchInterval: OPS_DETAIL_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 
   const activitiesQ = useQuery({
     queryKey: adminQueryKeys.providerOps.leadActivities(id!),
     queryFn: () => adminApi.getJson<{ data: Activity[] }>(`/api/admin/provider-ops/leads/${id}/activities`, { timeoutMs: 30_000 }),
     enabled: allowed && !!id,
+    refetchInterval: OPS_DETAIL_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 
   const stageChange = useMutation({
-    mutationFn: (stage: string) => adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/stage`, { stage }),
+    mutationFn: (stage: string) => {
+      const d = q.data as Record<string, unknown> | undefined;
+      const token = typeof d?.updated_at === "string" ? d.updated_at : undefined;
+      return adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/stage`, {
+        stage,
+        ...(token ? { expected_updated_at: token } : {}),
+      });
+    },
     onSuccess: (_data, stage) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
       adminToast.success(`Stage updated to "${stage.replace(/_/g, " ")}"`);
     },
-    onError: (e: Error) => adminToast.error(`Stage update failed: ${e.message}`),
+    onError: (e: Error) => {
+      if (handleLeadConcurrent409(e)) {
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+        return;
+      }
+      adminToast.error(`Stage update failed: ${e.message}`);
+    },
   });
 
   const addNote = useMutation({
@@ -129,14 +161,29 @@ export function ProviderOpsLeadDetailPage() {
   });
 
   const assignMut = useMutation({
-    mutationFn: (assignTo: string) => adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/assign`, { assigned_to: assignTo }),
+    mutationFn: (assignTo: string) => {
+      const d = q.data as Record<string, unknown> | undefined;
+      const token = typeof d?.updated_at === "string" ? d.updated_at : undefined;
+      return adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/assign`, {
+        assigned_to: assignTo,
+        ...(token ? { expected_updated_at: token } : {}),
+      });
+    },
     onSuccess: () => {
       setAssignInput("");
       setShowAssignForm(false);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
       adminToast.success("Lead assigned");
     },
-    onError: (e: Error) => adminToast.error(`Assign failed: ${e.message}`),
+    onError: (e: Error) => {
+      if (handleLeadConcurrent409(e)) {
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+        return;
+      }
+      adminToast.error(`Assign failed: ${e.message}`);
+    },
   });
 
   const deleteLead = useMutation({
@@ -197,15 +244,28 @@ export function ProviderOpsLeadDetailPage() {
   });
 
   const updateLeadMut = useMutation({
-    mutationFn: (fields: Record<string, unknown>) =>
-      adminApi.patchJson(`/api/admin/provider-ops/leads/${id}`, fields),
+    mutationFn: (fields: Record<string, unknown>) => {
+      const d = q.data as Record<string, unknown> | undefined;
+      const token = typeof d?.updated_at === "string" ? d.updated_at : undefined;
+      return adminApi.patchJson(`/api/admin/provider-ops/leads/${id}`, {
+        ...fields,
+        ...(token ? { expected_updated_at: token } : {}),
+      });
+    },
     onSuccess: () => {
       setIsEditing(false);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
       adminToast.success("Lead updated");
     },
-    onError: (e: Error) => adminToast.error(`Update failed: ${e.message}`),
+    onError: (e: Error) => {
+      if (handleLeadConcurrent409(e)) {
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+        return;
+      }
+      adminToast.error(`Update failed: ${e.message}`);
+    },
   });
 
   function startEditing() {
@@ -286,6 +346,9 @@ export function ProviderOpsLeadDetailPage() {
   const hasOnboardingData = onboardingData && Object.keys(onboardingData).filter((k) => k !== "invite_token").length > 0;
   const canConvert = !lead.matched_provider_id && (stage === "won" || stage === "qualified");
   const hasEmail = !!lead.email;
+  const assignedToId = lead.assigned_to != null ? String(lead.assigned_to) : "";
+  const iOwnLead = Boolean(myUserId && assignedToId === myUserId);
+  const updatedAtRaw = lead.updated_at != null ? String(lead.updated_at) : "";
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-3 pb-[max(3rem,env(safe-area-inset-bottom,0px))] pt-1 sm:px-4 lg:px-0">
@@ -293,6 +356,62 @@ export function ProviderOpsLeadDetailPage() {
       <Link to={adminSpaTo("/admin/provider-ops/leads")} className="inline-flex min-h-11 items-center gap-1.5 text-sm text-gray-500 touch-manipulation hover:text-gray-700 transition-colors">
         <ArrowLeft className="h-4 w-4" />Back to Lead Inbox
       </Link>
+
+      <div className="rounded-xl border border-gray-200 bg-gray-50/90 px-4 py-3 text-sm text-gray-800">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span>
+            <span className="text-gray-500">Owner </span>
+            <span className="font-medium text-gray-900">
+              {assignedToId ? (iOwnLead ? "You" : `Staff ${assignedToId.slice(0, 8)}…`) : "Unassigned"}
+            </span>
+            {iOwnLead ? (
+              <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Assigned to you</span>
+            ) : null}
+          </span>
+          <span className="hidden sm:inline text-gray-300" aria-hidden>
+            |
+          </span>
+          <span className="text-gray-600">
+            Last updated{" "}
+            <time dateTime={updatedAtRaw || undefined}>{updatedAtRaw ? new Date(updatedAtRaw).toLocaleString() : "—"}</time>
+          </span>
+          <span className="text-xs text-gray-500 sm:ml-auto">
+            Detail refreshes about every {Math.round(OPS_DETAIL_REFETCH_MS / 1000)}s while this tab is open — safe for multiple admins.
+          </span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={adminToolbarButtonClass(q.isFetching)}
+            disabled={q.isFetching}
+            onClick={() => void q.refetch()}
+          >
+            {q.isFetching ? "Refreshing…" : "Refresh"}
+          </button>
+          {myUserId ? (
+            <>
+              <button
+                type="button"
+                className={adminToolbarButtonClass(assignMut.isPending || iOwnLead)}
+                disabled={assignMut.isPending || iOwnLead}
+                onClick={() => assignMut.mutate(myUserId)}
+              >
+                Assign to me
+              </button>
+              {assignedToId ? (
+                <button
+                  type="button"
+                  className={adminToolbarButtonClass(assignMut.isPending)}
+                  disabled={assignMut.isPending}
+                  onClick={() => assignMut.mutate("")}
+                >
+                  Unassign
+                </button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      </div>
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

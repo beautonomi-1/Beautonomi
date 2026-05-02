@@ -51,6 +51,7 @@ import { resolvePostLoginHref } from "@/lib/post-login-href";
 import { consumePostOnboardingHref } from "@/lib/post-onboarding-redirect";
 import { AddressPicker, type AddressPickerSelection } from "@/components/AddressPicker";
 import { StaticMapImage } from "@/components/StaticMapImage";
+import { useTranslation } from "@beautonomi/i18n";
 
 /* ── Constants ── */
 export const ONBOARDING_DONE_KEY = "customer_onboarding_done_v1";
@@ -141,6 +142,14 @@ export default function CustomerOnboarding() {
   const smsOtpLen = authPolicy.sms_otp_length;
   const smsOtpExpirySec = authPolicy.sms_otp_expiration_seconds;
   const { pickWithOptions, loading: pickLoading } = useImagePicker();
+  const { t } = useTranslation();
+  const ob = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.onboarding.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
 
   const [step, setStep] = useState(1);
   const [initializing, setInitializing] = useState(true);
@@ -268,19 +277,19 @@ export default function CustomerOnboarding() {
 
   /* ── Step validation ── */
   const validateStep = useCallback((): string | null => {
-    if (step === 1 && !preferredName.trim()) return "Please enter your preferred name to continue.";
+    if (step === 1 && !preferredName.trim()) return ob("validationPreferredName");
     if (step === 4) {
-      if (!phoneVerified) return "You must verify your phone number to continue.";
+      if (!phoneVerified) return ob("validationPhoneVerify");
     }
     if (step === 5) {
       if (!alreadyHasAddress) {
-        if (!addressLine1.trim()) return "Street address is required.";
-        if (!city.trim()) return "City is required.";
-        if (!country.trim()) return "Country is required.";
+        if (!addressLine1.trim()) return ob("validationStreet");
+        if (!city.trim()) return ob("validationCity");
+        if (!country.trim()) return ob("validationCountry");
       }
     }
     return null;
-  }, [step, preferredName, phoneVerified, alreadyHasAddress, addressLine1, city, country]);
+  }, [step, preferredName, phoneVerified, alreadyHasAddress, addressLine1, city, country, ob]);
 
   /* ── Phone OTP ── */
   const handleSendOtp = async () => {
@@ -288,7 +297,7 @@ export default function CustomerOnboarding() {
     const e164Raw = `${phoneCountryCode}${digits}`;
     const e164 = normalizeSupabaseAuthPhone(e164Raw.startsWith("+") ? e164Raw : `+${e164Raw}`);
     if (e164.replace(/\D/g, "").length < 10) {
-      Alert.alert("Invalid number", "Please enter a valid phone number.");
+      Alert.alert(ob("invalidPhoneTitle"), ob("invalidPhoneBody"));
       return;
     }
     setOtpSending(true);
@@ -300,11 +309,14 @@ export default function CustomerOnboarding() {
       setOtpSent(true);
       setCountdown(smsOtpExpirySec);
       Alert.alert(
-        "Code sent",
-        `Enter the ${smsOtpLen}-digit code we sent to your phone. Valid for ~${Math.max(1, Math.round(smsOtpExpirySec / 60))} min.`
+        ob("codeSentTitle"),
+        ob("codeSentBody", {
+          digits: smsOtpLen,
+          minutes: Math.max(1, Math.round(smsOtpExpirySec / 60)),
+        }),
       );
     } catch (e: unknown) {
-      Alert.alert("Failed", (e as { message?: string })?.message ?? "Could not send code. Try again.");
+      Alert.alert(ob("sendCodeFailedTitle"), (e as { message?: string })?.message ?? ob("sendCodeFailedBody"));
     } finally {
       setOtpSending(false);
     }
@@ -313,7 +325,7 @@ export default function CustomerOnboarding() {
   const handleVerifyOtp = async (codeOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(codeOverride ?? otpCode);
     if (!pendingPhoneE164 || !isCompleteOtpForLength(token, smsOtpLen)) {
-      Alert.alert("Invalid code", `Enter the ${smsOtpLen}-digit code from your SMS.`);
+      Alert.alert(ob("invalidCodeTitle"), ob("invalidCodeBody", { digits: smsOtpLen }));
       return;
     }
     setOtpVerifying(true);
@@ -333,7 +345,7 @@ export default function CustomerOnboarding() {
       }
       setPhoneVerified(true);
     } catch (e: unknown) {
-      Alert.alert("Verification failed", (e as { message?: string })?.message ?? "Invalid or expired code.");
+      Alert.alert(ob("verificationFailedTitle"), (e as { message?: string })?.message ?? ob("verificationFailedBody"));
     } finally {
       setOtpVerifying(false);
     }
@@ -433,14 +445,14 @@ export default function CustomerOnboarding() {
       }
       return true;
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to save. Please try again."));
+      Alert.alert(ob("saveFailedTitle"), getApiErrorMessage(e, ob("saveFailedBody")));
       return false;
     }
   };
 
   const handleContinue = async () => {
     const err = validateStep();
-    if (err) { Alert.alert("Required", err); return; }
+    if (err) { Alert.alert(ob("requiredTitle"), err); return; }
     setSaving(true);
     const ok = await saveStep();
     setSaving(false);
@@ -465,14 +477,14 @@ export default function CustomerOnboarding() {
     try {
       const res = await api.post("/api/me/onboarding/complete");
       if (res.error) {
-        Alert.alert("Couldn't complete setup", res.error.message || "Please try again.");
+        Alert.alert(ob("completeSetupFailedTitle"), res.error.message || ob("completeSetupFailedBody"));
         return;
       }
       await AsyncStorage.setItem(onboardingDoneKey(user?.id), "1");
       await refreshSession();
       api.post("/api/me/analytics/identify").catch(() => {});
     } catch {
-      Alert.alert("Network error", "Could not complete setup. Please check your connection and try again.");
+      Alert.alert(ob("networkErrorTitle"), ob("networkErrorBody"));
       return;
     } finally {
       setSaving(false);

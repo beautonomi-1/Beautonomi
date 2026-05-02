@@ -1,19 +1,25 @@
 import { Link, useLocation } from "react-router-dom";
-import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
+import {
+  ADMIN_SECTION_FINANCE,
+  ADMIN_SECTION_OVERVIEW,
+  ADMIN_SECTION_PLATFORM_CONFIG,
+  type AdminSection,
+} from "@beautonomi/admin-access";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { NAV_GROUPS } from "@/config/nav";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
 
-const QUICK_LINKS: { to: string; label: string }[] = [
-  { to: adminSpaTo("/admin/dashboard"), label: "Dashboard" },
-  { to: adminSpaTo("/admin/gods-eye"), label: "Gods Eye" },
-  { to: adminSpaTo("/admin/analytics"), label: "Analytics" },
-  { to: adminSpaTo("/admin/control-plane/overview"), label: "Control plane" },
-  { to: adminSpaTo("/admin/finance"), label: "Finance" },
-  { to: adminSpaTo("/admin/reports"), label: "Reports" },
-  { to: adminSpaTo("/admin/settings"), label: "Settings" },
+const QUICK_LINKS: { to: string; label: string; section?: AdminSection; superadminOnly?: boolean }[] = [
+  { to: adminSpaTo("/admin/dashboard"), label: "Dashboard", section: ADMIN_SECTION_OVERVIEW },
+  { to: adminSpaTo("/admin/gods-eye"), label: "Gods Eye", superadminOnly: true },
+  { to: adminSpaTo("/admin/analytics"), label: "Analytics", superadminOnly: true },
+  { to: adminSpaTo("/admin/control-plane/overview"), label: "Control plane", superadminOnly: true },
+  { to: adminSpaTo("/admin/finance"), label: "Finance", section: ADMIN_SECTION_FINANCE },
+  { to: adminSpaTo("/admin/reports"), label: "Reports", section: ADMIN_SECTION_OVERVIEW },
+  { to: adminSpaTo("/admin/settings"), label: "Settings", section: ADMIN_SECTION_PLATFORM_CONFIG },
 ];
 
 function sidebarSpaPaths(): string[] {
@@ -28,8 +34,13 @@ function sidebarSpaPaths(): string[] {
 
 export function AdminNotFoundPage() {
   const { denied } = useAdminSectionPage(ADMIN_SECTION_OVERVIEW, "Overview access is required.");
+  const { bootstrap, canAccess } = useAdminSession();
   const location = useLocation();
   const registered = sidebarSpaPaths();
+  const quickLinks = QUICK_LINKS.filter((link) => {
+    if (link.superadminOnly) return bootstrap?.isSuperadmin === true;
+    return !link.section || canAccess(link.section);
+  });
 
   if (denied) return denied;
 
@@ -48,7 +59,7 @@ export function AdminNotFoundPage() {
           <code className="rounded bg-gray-50 px-1">App.tsx</code>).
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          {QUICK_LINKS.map((l) => (
+          {quickLinks.map((l) => (
             <Link
               key={l.label}
               to={l.to}

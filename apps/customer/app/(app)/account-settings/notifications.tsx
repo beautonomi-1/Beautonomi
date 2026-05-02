@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { View, Text, Switch, ScrollView, RefreshControl, ActivityIndicator, Alert, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
@@ -103,6 +104,8 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
 }
 
 export default function NotificationsScreen() {
+  const { t } = useTranslation();
+  const np = useCallback((key: string) => t(`customer.mobile.screens.notificationPreferences.${key}`), [t]);
   const insets = useSafeAreaInsets();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const scrollConstraint =
@@ -125,17 +128,17 @@ export default function NotificationsScreen() {
     try {
       const res = await api.get<NotificationPrefs>("/api/me/notification-preferences");
       if (res.error) {
-        setError(getApiErrorMessage(res.error, "Failed to load"));
+        setError(getApiErrorMessage(res.error, np("loadFailed")));
       } else {
         setPrefs({ ...DEFAULT_PREFS, ...(res.data ?? {}) });
       }
     } catch (e) {
-      setError(getApiErrorMessage(e, "Failed to load"));
+      setError(getApiErrorMessage(e, np("loadFailed")));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [np]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -148,15 +151,15 @@ export default function NotificationsScreen() {
       const res = await api.patch<NotificationPrefs>("/api/me/notification-preferences", { [key]: value });
       if (res.error) {
         setPrefs(previous);
-        Alert.alert("Error", res.error.message || "Could not update preference. Please try again.");
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || np("updateError"));
       }
     } catch {
       setPrefs(previous);
-      Alert.alert("Error", "Could not update preference. Please try again.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), np("updateError"));
     } finally {
       setSavingKey(null);
     }
-  }, []);
+  }, [np, t]);
 
   const toggleNested = useCallback(async (category: keyof NotificationPrefs, channel: "email" | "sms" | "push", value: boolean) => {
     const previous = prefsRef.current;
@@ -169,15 +172,15 @@ export default function NotificationsScreen() {
       const res = await api.patch<NotificationPrefs>("/api/me/notification-preferences", { [category]: updated });
       if (res.error) {
         setPrefs(previous);
-        Alert.alert("Error", res.error.message || "Could not update preference. Please try again.");
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || np("updateError"));
       }
     } catch {
       setPrefs(previous);
-      Alert.alert("Error", "Could not update preference. Please try again.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), np("updateError"));
     } finally {
       setSavingKey(null);
     }
-  }, []);
+  }, [np, t]);
 
   const isSaving = (key: string) => savingKey === key;
 

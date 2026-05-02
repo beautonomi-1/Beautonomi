@@ -20,6 +20,7 @@ import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Suggestion {
   type: "service" | "provider" | "category";
@@ -48,6 +49,7 @@ const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 export function InlineSearch({ onSearch, contextCategorySlug, fillParent }: InlineSearchProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -220,7 +222,7 @@ export function InlineSearch({ onSearch, contextCategorySlug, fillParent }: Inli
                   fontSize: 15,
                   color: "#111827",
                 }}
-                placeholder="Search providers, services..."
+                placeholder={t("customer.mobile.components.inlineSearch.placeholder")}
                 placeholderTextColor="#9CA3AF"
                 value={query}
                 onChangeText={handleTextChange}

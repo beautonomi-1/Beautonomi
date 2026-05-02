@@ -62,6 +62,7 @@ export async function PATCH(
     const { id } = await params;
     const supabase = getSupabaseAdmin();
     const body = await request.json();
+    const { expected_updated_at } = body;
 
     const allowedFields = [
       "lead_name",
@@ -98,6 +99,27 @@ export async function PATCH(
     }
 
     const tenantId = await resolveAdminApiTenantId(request);
+
+    const { data: beforeRow } = await supabase
+      .from("provider_leads")
+      .select("updated_at")
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (
+      expected_updated_at != null &&
+      typeof expected_updated_at === "string" &&
+      beforeRow &&
+      typeof beforeRow.updated_at === "string" &&
+      beforeRow.updated_at !== expected_updated_at
+    ) {
+      return errorResponse(
+        "This lead was updated by another teammate. Refresh and try again.",
+        "CONCURRENT_UPDATE",
+        409
+      );
+    }
 
     if (Object.keys(updates).length > 0) {
       const { error } = await supabase

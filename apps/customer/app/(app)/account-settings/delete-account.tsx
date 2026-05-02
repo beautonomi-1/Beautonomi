@@ -21,6 +21,7 @@ import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { useTranslation } from "@beautonomi/i18n";
 
 const DELETE_PHRASE = "DELETE";
 
@@ -34,6 +35,14 @@ interface AccountStatus {
 
 export default function DeleteAccountScreen() {
   useScreenTracking("Delete account");
+  const { t } = useTranslation();
+  const da = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.deleteAccount.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const router = useRouter();
   const { signOut } = useAuth();
   const [status, setStatus] = useState<AccountStatus | null>(null);
@@ -63,11 +72,11 @@ export default function DeleteAccountScreen() {
 
   const handleDelete = useCallback(async () => {
     if (!password.trim()) {
-      Alert.alert("Password required", "Enter your password to delete your account.");
+      Alert.alert(da("passwordRequiredTitle"), da("passwordRequiredBody"));
       return;
     }
     if (!confirmOk) {
-      Alert.alert("Confirmation required", `Type ${DELETE_PHRASE} in the confirmation field.`);
+      Alert.alert(da("confirmationRequiredTitle"), da("confirmationRequiredBody", { phrase: DELETE_PHRASE }));
       return;
     }
 
@@ -75,42 +84,39 @@ export default function DeleteAccountScreen() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
 
-    Alert.alert(
-      "Delete account permanently?",
-      "This cannot be undone. Your profile and personal data will be removed or anonymised per our policy.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete permanently",
-          style: "destructive",
-          onPress: async () => {
-            setLoading(true);
-            try {
-              const res = (await api.post<unknown>("/api/me/delete-account", {
-                password: password.trim(),
-                reason: reason.trim() || null,
-              })) as { error?: { message?: string } };
-              if (res.error) {
-                Alert.alert("Error", res.error.message ?? "Could not delete account.");
-                return;
-              }
-              await signOut();
-              Alert.alert("Account deleted", "You have been signed out. Thank you for using Beautonomi.", [
-                {
-                  text: "OK",
-                  onPress: () => router.replace("/(auth)/login" as never),
-                },
-              ]);
-            } catch (e) {
-              Alert.alert("Error", getApiErrorMessage(e, "Could not delete account. Please try again."));
-            } finally {
+    Alert.alert(da("deleteConfirmTitle"), da("deleteConfirmBody"), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: da("deletePermanentlyCta"),
+        style: "destructive",
+        onPress: async () => {
+          setLoading(true);
+          try {
+            const res = (await api.post<unknown>("/api/me/delete-account", {
+              password: password.trim(),
+              reason: reason.trim() || null,
+            })) as { error?: { message?: string } };
+            if (res.error) {
+              Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message ?? da("deleteError"));
+              return;
+            }
+            await signOut();
+            Alert.alert(da("deletedTitle"), da("deletedBody"), [
+              {
+                text: t("common.ok"),
+                onPress: () => router.replace("/(auth)/login" as never),
+              },
+            ]);
+          } catch (e) {
+            Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, da("deleteFailed")));
+          } finally {
               setLoading(false);
             }
           },
         },
       ],
     );
-  }, [password, reason, confirmOk, signOut, router]);
+  }, [password, reason, confirmOk, signOut, router, da, t]);
 
   return (
     <KeyboardAvoidingView

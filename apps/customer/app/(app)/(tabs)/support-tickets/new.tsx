@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -25,6 +26,8 @@ import { trackSupportTicketCreated } from "@/lib/analytics";
 
 export default function NewSupportTicketScreen() {
   useScreenTracking("New support ticket");
+  const { t } = useTranslation();
+  const sn = useCallback((key: string) => t(`customer.mobile.screens.supportTicketsNew.${key}`), [t]);
   const router = useRouter();
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
@@ -46,19 +49,18 @@ export default function NewSupportTicketScreen() {
         priority,
       });
       if (res.error) {
-        Alert.alert("Could not submit", getApiErrorMessage(res.error, "Please try again"));
+        Alert.alert(sn("submitFailedTitle"), getApiErrorMessage(res.error, sn("submitFailedFallback")));
         return;
       }
       const ticketNumber = res.data?.ticket?.ticket_number;
       if (ticketNumber) trackSupportTicketCreated(ticketNumber);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        "Ticket submitted",
-        "We'll get back to you as soon as possible. You can track replies in your support tickets.",
-        [{ text: "OK", onPress: () => router.back() }],
-      );
+      Alert.alert(sn("submittedTitle"), sn("submittedBody"), [{ text: t("common.ok"), onPress: () => router.back() }]);
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Could not submit ticket");
+      Alert.alert(
+        t("customer.mobile.screens.authLogin.errorTitle"),
+        e instanceof Error ? e.message : sn("submitGenericError"),
+      );
     } finally {
       setSubmitting(false);
     }

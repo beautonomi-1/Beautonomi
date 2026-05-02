@@ -88,7 +88,7 @@ export default function PayrollScreen() {
             text: "Approve",
             onPress: async () => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              const { error: err } = await approveRun(`/api/provider/pay-runs/${run.id}/approve`);
+              const { error: err } = await approveRun(`/api/provider/pay-runs/${run.id}/approve`, {});
               if (err) {
                 Alert.alert("Error", err);
                 return;
@@ -115,7 +115,7 @@ export default function PayrollScreen() {
             text: "Mark paid",
             onPress: async () => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              const { error: err } = await markPaidRun(`/api/provider/pay-runs/${run.id}/mark-paid`);
+              const { error: err } = await markPaidRun(`/api/provider/pay-runs/${run.id}/mark-paid`, {});
               if (err) {
                 Alert.alert("Error", err);
                 return;

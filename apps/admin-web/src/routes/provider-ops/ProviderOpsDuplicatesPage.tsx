@@ -32,6 +32,7 @@ interface DupLead {
   source: string;
   created_at: string;
   matched_provider_id: string | null;
+  updated_at?: string;
 }
 
 interface ExistingProvider {
@@ -209,7 +210,15 @@ export function ProviderOpsDuplicatesPage() {
   });
 
   const confirmMatchMut = useMutation({
-    mutationFn: async ({ leadId, providerId }: { leadId: string; providerId: string }) => {
+    mutationFn: async ({
+      leadId,
+      providerId,
+      expected_updated_at,
+    }: {
+      leadId: string;
+      providerId: string;
+      expected_updated_at?: string;
+    }) => {
       await adminApi.postJson(`/api/admin/provider-ops/leads/${leadId}/activities`, {
         activity_type: "match_confirmed",
         description: `Confirmed match to provider ${providerId}`,
@@ -219,6 +228,7 @@ export function ProviderOpsDuplicatesPage() {
         stage: "matched",
         matched_provider_id: providerId,
         match_confidence: 0.95,
+        ...(expected_updated_at ? { expected_updated_at } : {}),
       });
     },
     onSuccess: () => {
@@ -396,8 +406,8 @@ export function ProviderOpsDuplicatesPage() {
               selectedIds={selectedLeadIds}
               onToggleLead={toggleLeadSelected}
               onToggleGroup={toggleGroupSelected}
-              onConfirmMatch={(leadId, providerId) =>
-                confirmMatchMut.mutate({ leadId, providerId })
+              onConfirmMatch={(leadId, providerId, expectedUpdatedAt) =>
+                confirmMatchMut.mutate({ leadId, providerId, expected_updated_at: expectedUpdatedAt })
               }
               confirming={confirmMatchMut.isPending}
             />
@@ -460,7 +470,7 @@ function GroupCard({
   selectedIds: Set<string>;
   onToggleLead: (id: string) => void;
   onToggleGroup: (g: DuplicateGroup, mode: "all" | "recommended" | "none") => void;
-  onConfirmMatch: (leadId: string, providerId: string) => void;
+  onConfirmMatch: (leadId: string, providerId: string, expectedUpdatedAt?: string) => void;
   confirming: boolean;
 }) {
   const reason = REASON_META[group.reason];
@@ -616,7 +626,7 @@ function GroupCard({
                     type="button"
                     disabled={confirming}
                     onClick={() =>
-                      onConfirmMatch(lead.id, group.existing_provider!.id)
+                      onConfirmMatch(lead.id, group.existing_provider!.id, lead.updated_at)
                     }
                     className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
                     title="Link this lead to the existing provider (keeps attribution)"

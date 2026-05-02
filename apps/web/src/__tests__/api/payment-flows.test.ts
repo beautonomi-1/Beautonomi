@@ -85,7 +85,10 @@ describe("Payment initialization validation", () => {
   });
 
   it("handles save_card as boolean in metadata", () => {
-    const metadata = { saveCard: true, setAsDefault: false } as Record<string, any>;
+    const metadata: { saveCard: boolean | string; setAsDefault: boolean | string } = {
+      saveCard: true,
+      setAsDefault: false,
+    };
     const saveCard = metadata.saveCard === "true" || metadata.saveCard === true;
     const setAsDefault = metadata.setAsDefault === "true" || metadata.setAsDefault === true;
 
@@ -118,8 +121,12 @@ describe("Charge saved card flow", () => {
   });
 
   it("defaults currency to last-resort when not provided", () => {
-    const params = { payment_method_id: "pm-123", amount: 100, email: "a@b.com" };
-    const currency = (params as Record<string, any>).currency || LAST_RESORT_CURRENCY;
+    const params: { payment_method_id: string; amount: number; email: string; currency?: string } = {
+      payment_method_id: "pm-123",
+      amount: 100,
+      email: "a@b.com",
+    };
+    const currency = params.currency ?? LAST_RESORT_CURRENCY;
     expect(currency).toBe(LAST_RESORT_CURRENCY);
   });
 });
@@ -184,7 +191,7 @@ describe("Webhook charge.success card saving", () => {
   });
 
   it("does NOT save card when customer_id is missing from metadata", () => {
-    const metadata = { save_card: true } as Record<string, any>;
+    const metadata: { save_card: boolean; customer_id?: string } = { save_card: true };
     const authorization = { authorization_code: "AUTH_abc", reusable: true };
     const customer = { email: "a@b.com" };
 

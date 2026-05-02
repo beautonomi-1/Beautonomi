@@ -86,6 +86,7 @@ export async function GET(
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
         locations:provider_locations(id, name, address_line1, address_line2, city, state, postal_code),
         providers:providers!bookings_provider_id_fkey(id, business_name, user_id, phone, receipt_prefix, receipt_next_number, receipt_header, receipt_footer),
+        service_packages:package_id(id, name),
         group_bookings!bookings_group_booking_id_fkey(ref_number),
         booking_services(
           id,
@@ -240,7 +241,10 @@ export async function GET(
     const membershipDiscountAmount = Number(b.membership_discount_amount || 0);
     const loyaltyDiscountAmount = Number(b.loyalty_discount_amount || 0);
     const loyaltyPointsUsed = Number(b.loyalty_points_used || b.loyalty_points_redeemed || 0);
-    const packageDiscountAmount = Math.max(0, discountAmount - promotionDiscountAmount);
+    const packageId = typeof b.package_id === "string" && b.package_id.length > 0 ? b.package_id : null;
+    const spJoin = b.service_packages as { id?: string | null; name?: string | null } | Array<{ id?: string | null; name?: string | null }> | null | undefined;
+    const pkgJoined = Array.isArray(spJoin) ? spJoin[0] : spJoin;
+    const packageDiscountAmount = packageId ? Math.max(0, discountAmount - promotionDiscountAmount) : 0;
     const discountTotalAmount = discountAmount + membershipDiscountAmount + loyaltyDiscountAmount;
     const cancellationFee = Number(b.cancellation_fee || 0);
     const totalAmount =
@@ -289,6 +293,8 @@ export async function GET(
 
     const receiptData = {
       invoice_number: b.booking_number || `${receiptPrefix}-${String(receiptNextNumber).padStart(4, "0")}`,
+      package_id: packageId,
+      package_name: packageId ? (pkgJoined?.name ?? null) : null,
       group_booking_ref: (b as any).group_bookings?.ref_number || null,
       invoice_date: new Date(b.created_at || Date.now()).toLocaleDateString(),
       booking_date: b.scheduled_at

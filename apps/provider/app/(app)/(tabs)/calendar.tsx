@@ -1025,6 +1025,9 @@ function CalendarScreenBody() {
   const { preferences, updatePreference, resetToDefaults } = useCalendarPreferences();
 
   const [selectedDate, setSelectedDate] = useState<Date>(() => deepLinkDate ?? new Date());
+  const [highlightedBookingId, setHighlightedBookingId] = useState<string | null>(() =>
+    typeof searchParams.booking_id === "string" && searchParams.booking_id ? searchParams.booking_id : null,
+  );
   useEffect(() => {
     if (deepLinkDate) {
       setSelectedDate((prev) => (isSameDay(prev, deepLinkDate) ? prev : deepLinkDate));
@@ -1034,9 +1037,9 @@ function CalendarScreenBody() {
     const bookingId = typeof searchParams.booking_id === "string" ? searchParams.booking_id : "";
     if (bookingId && handledBookingDeepLinkRef.current !== bookingId) {
       handledBookingDeepLinkRef.current = bookingId;
-      router.push(`/(app)/(tabs)/bookings/${bookingId}` as never);
+      setHighlightedBookingId(bookingId);
     }
-  }, [searchParams.booking_id, router]);
+  }, [searchParams.booking_id]);
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("columns");
   const [selectedStaffIndex, setSelectedStaffIndex] = useState(0);
@@ -2451,6 +2454,11 @@ function CalendarScreenBody() {
         paymentLabel={paymentLabel}
         paymentNeedsAction={paymentNeedsAction}
         isNew={isNew}
+        isHighlighted={
+          highlightedBookingId === booking.id ||
+          highlightedBookingId === booking.calendar_parent_booking_id ||
+          highlightedBookingId === booking.group_booking_id
+        }
         onTap={() => handleTapBooking(booking)}
         onLongPress={() => handleLongPressBooking(booking)}
         onDrop={(ax, ay) =>

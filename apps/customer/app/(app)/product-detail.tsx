@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -98,6 +99,8 @@ function formatVariantLabel(optionValues?: Record<string, string>): string {
 }
 
 export default function ProductDetailScreen() {
+  const { t } = useTranslation();
+  const pd = useCallback((key: string) => t(`customer.mobile.screens.productDetail.${key}`), [t]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const cart = useCart();
@@ -220,15 +223,15 @@ export default function ProductDetailScreen() {
   const handleAddToCart = useCallback(async () => {
     if (!product) return;
     if (!product.provider?.id) {
-      Alert.alert("Unavailable", "This product cannot be added to your cart right now.");
+      Alert.alert(pd("unavailableTitle"), pd("unavailableBody"));
       return;
     }
     if (hasVariants && !selectedVariantId) {
-      Alert.alert("Choose an option", "Please select a variant before adding to cart.");
+      Alert.alert(pd("chooseVariantTitle"), pd("chooseVariantBody"));
       return;
     }
     if (!inStock) {
-      Alert.alert("Out of stock", "This item is currently unavailable.");
+      Alert.alert(pd("outOfStockTitle"), pd("outOfStockBody"));
       return;
     }
     setAddingToCart(true);
@@ -253,20 +256,20 @@ export default function ProductDetailScreen() {
       addErr = result.error ?? undefined;
     } catch (e: any) {
       haptic.error();
-      Alert.alert("Could not add to cart", e?.message ?? "An unexpected error occurred.");
+      Alert.alert(pd("addToCartErrorTitle"), e?.message ?? pd("addToCartErrorGeneric"));
       return;
     } finally {
       setAddingToCart(false);
     }
     if (addErr) {
       haptic.error();
-      Alert.alert("Could not add to cart", addErr);
+      Alert.alert(pd("addToCartErrorTitle"), addErr);
       return;
     }
     haptic.success();
-    Alert.alert("Added to cart", "Item added. View your cart or continue shopping.", [
+    Alert.alert(pd("addedToCartTitle"), pd("addedToCartBody"), [
       {
-        text: "Checkout",
+        text: pd("checkoutShort"),
         onPress: () =>
           product.provider?.id
             ? user
@@ -279,18 +282,18 @@ export default function ProductDetailScreen() {
                 } as any)
             : router.push("/(app)/(tabs)/cart" as any),
       },
-      { text: "View cart", onPress: () => router.push("/(app)/(tabs)/cart" as any) },
-      { text: "Continue", style: "cancel" },
+      { text: pd("viewCart"), onPress: () => router.push("/(app)/(tabs)/cart" as any) },
+      { text: pd("dismissContinue"), style: "cancel" },
     ]);
-  }, [product, user, hasVariants, selectedVariantId, inStock, displayPrice, selectedVariant, addToCart]);
+  }, [product, user, hasVariants, selectedVariantId, inStock, displayPrice, selectedVariant, addToCart, pd]);
 
   const toggleWishlist = useCallback(async () => {
     if (!id) return;
     if (!user) {
-      Alert.alert("Sign in to save", "Create an account or sign in to save this product to your wishlist.", [
-        { text: "Not now", style: "cancel" },
+      Alert.alert(pd("signInToSaveTitle"), pd("signInToSaveBody"), [
+        { text: pd("notNow"), style: "cancel" },
         {
-          text: "Sign in",
+          text: t("auth.login"),
           onPress: () =>
             router.push({
               pathname: "/(auth)/login",
@@ -309,7 +312,7 @@ export default function ProductDetailScreen() {
       );
       if (res.error) {
         haptic.error();
-        Alert.alert("Error", res.error.message || "Could not update wishlist");
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || pd("wishlistError"));
         return;
       }
       const action = (res.data as any)?.action ?? (res.data as any)?.data?.action;
@@ -322,11 +325,11 @@ export default function ProductDetailScreen() {
       }
     } catch {
       haptic.error();
-      Alert.alert("Error", "Could not update wishlist. Please try again.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), pd("wishlistRetry"));
     } finally {
       setWishlistLoading(false);
     }
-  }, [id, user, wishlistLoading]);
+  }, [id, user, wishlistLoading, pd, t]);
 
   const shareProduct = useCallback(() => {
     if (!product?.id) return;

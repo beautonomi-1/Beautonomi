@@ -16,6 +16,7 @@ import { api } from "@/lib/api-client";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ReturnItem {
   id: string;
@@ -62,6 +63,12 @@ function statusStyle(s: string) {
 }
 
 export default function MyReturnsScreen() {
+  const { t } = useTranslation();
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
+  const mr = useCallback(
+    (key: string) => t(`customer.mobile.screens.myReturns.${key}`) as string,
+    [t],
+  );
   const { contentPadding } = useResponsive();
   const [returns, setReturns] = useState<ReturnItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,19 +106,20 @@ export default function MyReturnsScreen() {
 
   const handleCancel = useCallback(
     (id: string) => {
-      Alert.alert("Cancel return", "Are you sure you want to cancel this return request?", [
-        { text: "Keep", style: "cancel" },
+      Alert.alert(mr("cancelReturnTitle"), mr("cancelReturnBody"), [
+        { text: mr("keepCta"), style: "cancel" },
         {
-          text: "Cancel request",
+          text: mr("cancelRequestCta"),
           style: "destructive",
           onPress: async () => {
             setActionId(id);
             try {
               const res = await api.patch(`/api/me/returns/${id}`, { action: "cancel" });
-              if (res.error) Alert.alert("Error", (res.error as { message?: string })?.message ?? "Failed to cancel");
-              else await load();
+              if (res.error) {
+                Alert.alert(errTitle, (res.error as { message?: string })?.message ?? mr("cancelFailed"));
+              } else await load();
             } catch {
-              Alert.alert("Error", "Failed to cancel return");
+              Alert.alert(errTitle, mr("cancelReturnFailed"));
             } finally {
               setActionId(null);
             }
@@ -119,28 +127,26 @@ export default function MyReturnsScreen() {
         },
       ]);
     },
-    [load]
+    [load, mr, errTitle]
   );
 
   const handleEscalate = useCallback(
     (id: string) => {
-      Alert.alert(
-        "Escalate return",
-        "Are you sure you want to escalate this return? Our support team will review it.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Escalate",
-            style: "destructive",
-            onPress: async () => {
-              setActionId(id);
-              try {
-                const res = await api.patch(`/api/me/returns/${id}`, { action: "escalate" });
-                if (res.error) Alert.alert("Error", (res.error as { message?: string })?.message ?? "Failed to escalate");
-                else await load();
-              } catch {
-                Alert.alert("Error", "Failed to escalate");
-              } finally {
+      Alert.alert(mr("escalateTitle"), mr("escalateBody"), [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: mr("escalateConfirmCta"),
+          style: "destructive",
+          onPress: async () => {
+            setActionId(id);
+            try {
+              const res = await api.patch(`/api/me/returns/${id}`, { action: "escalate" });
+              if (res.error) {
+                Alert.alert(errTitle, (res.error as { message?: string })?.message ?? mr("escalateFailed"));
+              } else await load();
+            } catch {
+              Alert.alert(errTitle, mr("escalateFailed"));
+            } finally {
                 setActionId(null);
               }
             },
@@ -148,7 +154,7 @@ export default function MyReturnsScreen() {
         ],
       );
     },
-    [load]
+    [load, mr, errTitle, t]
   );
 
   if (loading && returns.length === 0) {

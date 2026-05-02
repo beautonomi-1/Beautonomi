@@ -22,6 +22,7 @@ import { Colors } from "@/constants/colors";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { ConversationSkeleton } from "@/components/Skeleton";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Conversation {
   id: string;
@@ -44,6 +45,11 @@ function formatTime(iso: string | null | undefined) {
 }
 
 export default function ChatsScreen() {
+  const { t } = useTranslation();
+  const tc = useCallback(
+    (key: string) => t(`customer.mobile.tabs.chats.${key}`),
+    [t],
+  );
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
   useScreenTracking("Chats");
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
@@ -165,7 +171,7 @@ export default function ChatsScreen() {
             c.id === item.id ? { ...c, unread_count_customer: 0 } : c
           )
         );
-        const name = item.provider?.business_name || "Provider";
+        const name = item.provider?.business_name || tc("providerFallback");
         // Prefer navigating by conversation id — avoids a redundant get-or-create round-trip.
         // Fall back to provider_id (triggers get-or-create) only when id is missing.
         if (item.id) {
@@ -176,24 +182,20 @@ export default function ChatsScreen() {
       };
       const openActions = () => {
         const unread = item.unread_count_customer || 0;
-        Alert.alert("Conversation actions", "Choose an action", [
+        Alert.alert(tc("conversationActionsTitle"), tc("conversationActionsMessage"), [
           ...(unread > 0
-            ? [{ text: "Mark as read", onPress: () => void markConversationRead(item.id) }]
+            ? [{ text: tc("markAsRead"), onPress: () => void markConversationRead(item.id) }]
             : []),
           {
-            text: "Delete conversation",
+            text: tc("deleteConversation"),
             style: "destructive",
             onPress: () =>
-              Alert.alert(
-                "Delete conversation?",
-                "This will remove the conversation from your list.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Delete", style: "destructive", onPress: () => void deleteConversation(item.id) },
-                ]
-              ),
+              Alert.alert(tc("deleteConfirmTitle"), tc("deleteConfirmBody"), [
+                { text: tc("cancel"), style: "cancel" },
+                { text: tc("delete"), style: "destructive", onPress: () => void deleteConversation(item.id) },
+              ]),
           },
-          { text: "Cancel", style: "cancel" },
+          { text: tc("cancel"), style: "cancel" },
         ]);
       };
       return (
@@ -202,8 +204,8 @@ export default function ChatsScreen() {
         onLongPress={openActions}
         style={{ flexDirection: "row", alignItems: "center", paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
         accessibilityRole="button"
-        accessibilityLabel={`Chat with ${item.provider?.business_name || "Provider"}${item.last_message_preview ? `, last message: ${item.last_message_preview}` : ""}`}
-        accessibilityHint="Open conversation. Long press for more actions."
+        accessibilityLabel={`Chat with ${item.provider?.business_name || tc("providerFallback")}${item.last_message_preview ? `, last message: ${item.last_message_preview}` : ""}`}
+        accessibilityHint={tc("openConversationHint")}
       >
         <TouchableOpacity
           onPress={() => {
@@ -233,8 +235,12 @@ export default function ChatsScreen() {
           )}
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.provider?.business_name || "Provider"}</Text>
-          <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }} numberOfLines={1}>{item.last_message_preview || "No messages"}</Text>
+          <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>
+            {item.provider?.business_name || tc("providerFallback")}
+          </Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }} numberOfLines={1}>
+            {item.last_message_preview || tc("noMessages")}
+          </Text>
         </View>
         <View style={{ alignItems: "flex-end" }}>
           <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{formatTime(item.last_message_at)}</Text>
@@ -247,7 +253,7 @@ export default function ChatsScreen() {
         <TouchableOpacity
           onPress={openActions}
           accessibilityRole="button"
-          accessibilityLabel="Conversation actions"
+          accessibilityLabel={tc("conversationActionsA11y")}
           style={{ marginLeft: 10, width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100] }}
         >
           <Ionicons name="ellipsis-vertical" size={16} color={Colors.gray[600]} />
@@ -255,30 +261,32 @@ export default function ChatsScreen() {
       </Pressable>
       );
     },
-    [deleteConversation, markConversationRead]
+    [deleteConversation, markConversationRead, tc]
   );
 
   if (authLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 32 }}>
         <ConversationSkeleton />
-        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading…</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>{tc("loading")}</Text>
       </View>
     );
   }
   if (!user) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 32 }}>
-        <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginBottom: 8, textAlign: "center" }}>Messages</Text>
-        <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>Log in to view your conversations</Text>
+        <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginBottom: 8, textAlign: "center" }}>
+          {tc("messagesTitle")}
+        </Text>
+        <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>{tc("loginToViewConversations")}</Text>
         <TouchableOpacity
           onPress={() => router.replace("/(auth)/login")}
           style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
           accessibilityRole="button"
-          accessibilityLabel="Log in"
-          accessibilityHint="Navigate to the login screen to view your messages"
+          accessibilityLabel={tc("logInA11y")}
+          accessibilityHint={tc("logInHint")}
         >
-          <Text style={{ color: Colors.white, fontWeight: "600" }}>Log in</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>{tc("logIn")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -289,7 +297,7 @@ export default function ChatsScreen() {
       <View style={{ flex: 1, backgroundColor: Colors.white }}>
         <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.white }} />
         <View style={[contentContainerStyle, { paddingHorizontal: contentPadding, paddingTop: contentPadding, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }]}>
-          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Messages</Text>
+          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{tc("messagesTitle")}</Text>
         </View>
         <View style={{ flex: 1, ...contentContainerStyle }}>
           <ConversationSkeleton />
@@ -312,10 +320,10 @@ export default function ChatsScreen() {
           onPress={() => load(true)}
           style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
           accessibilityRole="button"
-          accessibilityLabel="Retry loading conversations"
-          accessibilityHint="Attempts to reload your conversations"
+          accessibilityLabel={tc("retryLoadingA11y")}
+          accessibilityHint={tc("retryLoadingHint")}
         >
-          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>{tc("retryLabel")}</Text>
         </TouchableOpacity>
         </View>
       </View>
@@ -326,7 +334,7 @@ export default function ChatsScreen() {
     <View style={{ flex: 1, backgroundColor: Colors.white }}>
       <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.white }} />
       <View style={[contentContainerStyle, { paddingHorizontal: contentPadding, paddingTop: contentPadding, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }]}>
-        <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Messages</Text>
+        <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{tc("messagesTitle")}</Text>
         <View
           style={{
             marginTop: 10,
@@ -344,7 +352,7 @@ export default function ChatsScreen() {
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search providers or messages"
+            placeholder={tc("searchPlaceholder")}
             placeholderTextColor={Colors.gray[400]}
             style={{ flex: 1, fontSize: 14, color: Colors.gray[900] }}
             autoCapitalize="none"
@@ -352,7 +360,7 @@ export default function ChatsScreen() {
             returnKeyType="search"
           />
           {search.length > 0 ? (
-            <TouchableOpacity onPress={() => setSearch("")} accessibilityRole="button" accessibilityLabel="Clear search">
+            <TouchableOpacity onPress={() => setSearch("")} accessibilityRole="button" accessibilityLabel={tc("clearSearchA11y")}>
               <Text style={{ color: Colors.gray[500], fontSize: 14 }}>✕</Text>
             </TouchableOpacity>
           ) : null}
@@ -373,14 +381,14 @@ export default function ChatsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />
         }
         accessibilityRole="list"
-        accessibilityLabel="Conversations list"
+        accessibilityLabel={tc("conversationsListA11y")}
         ListEmptyComponent={
           <View style={{ paddingVertical: 64, alignItems: "center" }}>
             <Text style={{ color: Colors.gray[500], textAlign: "center" }}>
-              {search.trim() ? "No matching conversations" : "No conversations yet"}
+              {search.trim() ? tc("noMatchingConversations") : tc("noConversations")}
             </Text>
             <Text style={{ color: Colors.gray[400], fontSize: 14, textAlign: "center", marginTop: 8 }}>
-              Start a chat from a provider profile or booking
+              {tc("emptyConversationsHint")}
             </Text>
           </View>
         }

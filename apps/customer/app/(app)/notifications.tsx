@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo, type ComponentProps } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -49,6 +50,8 @@ function extractTotalUnread(payload: unknown): number | undefined {
 
 export default function NotificationsScreen() {
   useScreenTracking("Notifications");
+  const { t } = useTranslation();
+  const nc = useCallback((key: string) => t(`customer.mobile.screens.notificationsCenter.${key}`), [t]);
   const { user } = useAuth();
   const { refetchUnreadCount, adjustUnreadCount, replaceUnreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
@@ -167,17 +170,20 @@ export default function NotificationsScreen() {
         const res = await api.post(`/api/me/notifications/${id}/read`);
         if (res.error) {
           if (wasUnread) adjustUnreadCount(1);
-          Alert.alert("Error", res.error.message || "Could not mark as read.");
+          Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || nc("markReadError"));
           return;
         }
         setList((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
         await refetchUnreadCount();
       } catch (e) {
         if (wasUnread) adjustUnreadCount(1);
-        Alert.alert("Error", e instanceof Error ? e.message : "Could not mark as read.");
+        Alert.alert(
+          t("customer.mobile.screens.authLogin.errorTitle"),
+          e instanceof Error ? e.message : nc("markReadError"),
+        );
       }
     },
-    [refetchUnreadCount, adjustUnreadCount],
+    [refetchUnreadCount, adjustUnreadCount, t, nc],
   );
 
   const markAllRead = useCallback(async () => {
@@ -186,7 +192,7 @@ export default function NotificationsScreen() {
       const res = await api.post("/api/me/notifications/mark-all-read");
       if (res.error) {
         await refetchUnreadCount();
-        Alert.alert("Error", res.error.message || "Could not mark all as read.");
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || nc("markAllReadError"));
         return;
       }
       setList((prev) => prev.map((n) => ({ ...n, is_read: true })));
@@ -194,9 +200,12 @@ export default function NotificationsScreen() {
       await refetchUnreadCount();
     } catch (e) {
       await refetchUnreadCount();
-      Alert.alert("Error", e instanceof Error ? e.message : "Could not mark all as read.");
+      Alert.alert(
+        t("customer.mobile.screens.authLogin.errorTitle"),
+        e instanceof Error ? e.message : nc("markAllReadError"),
+      );
     }
-  }, [refetchUnreadCount, replaceUnreadCount]);
+  }, [refetchUnreadCount, replaceUnreadCount, t, nc]);
 
   const deleteNotification = useCallback(async (notificationId: string, wasUnread: boolean) => {
     if (wasUnread) adjustUnreadCount(-1);
@@ -209,24 +218,24 @@ export default function NotificationsScreen() {
     if (res.error) {
       setList(snapshot);
       if (wasUnread) adjustUnreadCount(1);
-      Alert.alert("Error", res.error.message || "Could not delete notification.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || nc("deleteError"));
       return;
     }
     await refetchUnreadCount();
-  }, [refetchUnreadCount, adjustUnreadCount]);
+  }, [refetchUnreadCount, adjustUnreadCount, t, nc]);
 
   const confirmDelete = useCallback(
     (n: Notification) => {
-      Alert.alert("Delete notification?", "This removes it from your list.", [
-        { text: "Cancel", style: "cancel" },
+      Alert.alert(nc("deleteConfirmTitle"), nc("deleteConfirmBody"), [
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: t("common.delete"),
           style: "destructive",
           onPress: () => void deleteNotification(n.id, !n.is_read),
         },
       ]);
     },
-    [deleteNotification],
+    [deleteNotification, nc, t],
   );
 
   const onPress = useCallback(
@@ -266,12 +275,12 @@ export default function NotificationsScreen() {
             >
               <TouchableOpacity
                 onPress={() => confirmDelete(item)}
-                accessibilityLabel="Delete notification"
+                accessibilityLabel={nc("deleteSwipeA11y")}
                 accessibilityRole="button"
                 style={{ padding: 16, alignItems: "center" }}
               >
                 <Ionicons name="trash-outline" size={22} color="#fff" />
-                <Text style={{ marginTop: 4, fontSize: 12, fontWeight: "600", color: "#fff" }}>Delete</Text>
+                <Text style={{ marginTop: 4, fontSize: 12, fontWeight: "600", color: "#fff" }}>{nc("deleteSwipeLabel")}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -285,7 +294,7 @@ export default function NotificationsScreen() {
             ]}
             accessibilityRole="button"
             accessibilityLabel={`${item.title}. ${item.message}`}
-            accessibilityHint={unread ? "Unread. Swipe left to delete. Opens related screen." : "Swipe left to delete. Opens related screen."}
+            accessibilityHint={unread ? nc("itemUnreadHint") : nc("itemReadHint")}
           >
             <View style={[styles.iconWrap, unread && styles.iconWrapUnread]}>
               <Ionicons name={icon} size={22} color={unread ? Colors.primary : Colors.gray[500]} />
@@ -309,7 +318,7 @@ export default function NotificationsScreen() {
         </ReanimatedSwipeable>
       );
     },
-    [onPress, confirmDelete],
+    [onPress, confirmDelete, nc],
   );
 
   const bottomPad = STACK_CONTENT_PADDING_BOTTOM + Math.max(insets.bottom, 8);
@@ -318,7 +327,7 @@ export default function NotificationsScreen() {
     return (
       <View style={styles.centered}>
         <Ionicons name="notifications-off-outline" size={48} color={Colors.gray[300]} />
-        <Text style={styles.muted}>Log in to view notifications</Text>
+        <Text style={styles.muted}>{nc("logInPrompt")}</Text>
       </View>
     );
   }
@@ -327,20 +336,20 @@ export default function NotificationsScreen() {
     <>
       <Stack.Screen
         options={{
-          title: "Notifications",
+          title: nc("screenTitle"),
           headerRight: () => (
             <View style={styles.headerRight}>
               <TouchableOpacity
                 onPress={() => router.push("/(app)/account-settings/notifications")}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"
-                accessibilityLabel="Notification settings"
+                accessibilityLabel={nc("settingsA11y")}
               >
                 <Ionicons name="settings-outline" size={22} color={Colors.primary} />
               </TouchableOpacity>
               {hasUnread ? (
-                <TouchableOpacity onPress={markAllRead} accessibilityRole="button" accessibilityLabel="Mark all as read">
-                  <Text style={styles.markAllText}>Read all</Text>
+                <TouchableOpacity onPress={markAllRead} accessibilityRole="button" accessibilityLabel={nc("markAllReadA11y")}>
+                  <Text style={styles.markAllText}>{nc("readAll")}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -356,7 +365,7 @@ export default function NotificationsScreen() {
               accessibilityRole="button"
               accessibilityState={{ selected: filter === "all" }}
             >
-              <Text style={[styles.filterTabText, filter === "all" && styles.filterTabTextActive]}>All</Text>
+              <Text style={[styles.filterTabText, filter === "all" && styles.filterTabTextActive]}>{nc("filterAll")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setFilter("unread")}
@@ -364,7 +373,7 @@ export default function NotificationsScreen() {
               accessibilityRole="button"
               accessibilityState={{ selected: filter === "unread" }}
             >
-              <Text style={[styles.filterTabText, filter === "unread" && styles.filterTabTextActive]}>Unread</Text>
+              <Text style={[styles.filterTabText, filter === "unread" && styles.filterTabTextActive]}>{nc("filterUnread")}</Text>
               {typeof totalUnreadHint === "number" && totalUnreadHint > 0 ? (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>{totalUnreadHint > 99 ? "99+" : totalUnreadHint}</Text>
@@ -376,19 +385,19 @@ export default function NotificationsScreen() {
             onPress={() => router.push("/(app)/account-settings/notifications")}
             style={styles.prefsLink}
             accessibilityRole="button"
-            accessibilityLabel="Email, SMS and push preferences"
+            accessibilityLabel={nc("prefsA11y")}
           >
             <Ionicons name="mail-outline" size={16} color={Colors.primary} />
-            <Text style={styles.prefsLinkText}>Email, SMS & push</Text>
+            <Text style={styles.prefsLinkText}>{nc("prefsLink")}</Text>
             <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
           </TouchableOpacity>
-          <Text style={styles.gestureHint}>Swipe left on a row to delete</Text>
+          <Text style={styles.gestureHint}>{nc("swipeHint")}</Text>
         </View>
 
         {loading && list.length === 0 ? (
           <View style={styles.loaderWrap}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loaderLabel}>Loading notifications…</Text>
+            <Text style={styles.loaderLabel}>{nc("loadingLabel")}</Text>
           </View>
         ) : (
           <FlashList
@@ -422,17 +431,19 @@ export default function NotificationsScreen() {
             ListEmptyComponent={
               <View style={styles.emptyWrap}>
                 <Ionicons name="notifications-off-outline" size={56} color={Colors.gray[200]} />
-                <Text style={styles.emptyTitle}>{loadError ? "Something went wrong" : filter === "unread" ? "You're all caught up" : "No notifications yet"}</Text>
+                <Text style={styles.emptyTitle}>
+                  {loadError ? nc("emptyErrorTitle") : filter === "unread" ? nc("emptyCaughtUp") : nc("emptyNone")}
+                </Text>
                 <Text style={styles.emptySub}>
                   {loadError
-                    ? "Check your connection and try again."
+                    ? nc("emptyErrorSub")
                     : filter === "unread"
-                      ? "Unread messages and alerts will show here."
-                      : "Booking updates, messages, and offers will appear here."}
+                      ? nc("emptyUnreadSub")
+                      : nc("emptyAllSub")}
                 </Text>
                 {loadError ? (
-                  <TouchableOpacity onPress={() => void load()} style={styles.retryBtn} accessibilityRole="button" accessibilityLabel="Retry">
-                    <Text style={styles.retryBtnText}>Retry</Text>
+                  <TouchableOpacity onPress={() => void load()} style={styles.retryBtn} accessibilityRole="button" accessibilityLabel={nc("retryA11y")}>
+                    <Text style={styles.retryBtnText}>{nc("retry")}</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>

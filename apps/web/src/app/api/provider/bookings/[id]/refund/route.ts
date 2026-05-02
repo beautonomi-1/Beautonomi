@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
@@ -34,12 +34,14 @@ export async function POST(
     const { id: bookingId } = await params;
     const body = await request.json();
 
-    // Proxy group:UUID ids — refund maps to the group-bookings endpoint
+    // Group payments/refunds are settled through participant bookings so wallet,
+    // gift-card, and audit ledgers stay tied to the charged customer.
     if (bookingId.startsWith("group:")) {
-      const groupId = bookingId.slice("group:".length);
-      const groupUrl = new URL(`/api/provider/group-bookings/${groupId}`, request.url);
-      groupUrl.searchParams.set("action", "refund");
-      return NextResponse.redirect(groupUrl, 307);
+      return errorResponse(
+        "Group booking refunds must be issued from the individual participant bookings so wallet credits and audit trails stay accurate.",
+        "GROUP_REFUND_UNSUPPORTED",
+        400,
+      );
     }
 
     // Get provider ID

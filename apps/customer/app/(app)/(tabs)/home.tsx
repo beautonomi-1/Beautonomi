@@ -33,6 +33,7 @@ import { SaveAddressModal, type SaveAddressPayload } from "@/components/SaveAddr
 import type { AddressPickerSelection } from "@/components/AddressPicker";
 import { api } from "@/lib/api-client";
 import { FadeIn } from "@/components/FadeIn";
+import { useTranslation } from "@beautonomi/i18n";
 import type { PublicProviderCard } from "@/types/api";
 import {
   HOME_SECTION_MARGIN_BOTTOM,
@@ -399,6 +400,7 @@ const CategoryPill = memo(function CategoryPill({
 
 export default function HomeScreen() {
   useScreenTracking("Home");
+  const { t } = useTranslation();
   useEffect(() => {
     trackHomeView();
   }, []);
@@ -506,11 +508,14 @@ export default function HomeScreen() {
       try {
         await handleSaveAndUse(payload);
       } catch (e) {
-        Alert.alert("Couldn't save address", e instanceof Error ? e.message : "Please try again.");
+        Alert.alert(
+          t("customer.mobile.tabs.home.saveAddressFailed"),
+          e instanceof Error ? e.message : t("customer.mobile.tabs.home.saveAddressTryAgain"),
+        );
         throw e;
       }
     },
-    [handleSaveAndUse],
+    [handleSaveAndUse, t],
   );
 
   const handleJustUse = useCallback(() => {

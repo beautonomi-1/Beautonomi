@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("bookings")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("tenant_id", tenantId);
 
     const status = searchParams.get("status");
@@ -89,16 +89,18 @@ export async function GET(request: NextRequest) {
         if (searchProviderIds.length > 0) orClauses.push(`provider_id.in.(${searchProviderIds.join(",")})`);
         query = query.or(orClauses.join(","));
       } else {
-        return successResponse([]);
+        return successResponse({ bookings: [], total: 0, page: 0, limit: 0 });
       }
     }
 
     const limitParam = searchParams.get("limit");
     const limit = limitParam ? Math.min(500, Math.max(1, parseInt(limitParam, 10) || 200)) : 200;
+    const rawPage = Math.max(0, parseInt(searchParams.get("page") || "0", 10) || 0);
+    const offset = rawPage * limit;
 
-    const { data: bookings, error } = await query
+    const { data: bookings, error, count } = await query
       .order("scheduled_at", { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error("Error fetching bookings:", error);
@@ -110,7 +112,7 @@ export async function GET(request: NextRequest) {
         errorDetails: error.details
       });
       // Return empty array instead of throwing to avoid 500 error
-      return successResponse([]);
+      return successResponse({ bookings: [], total: count ?? 0, page: rawPage, limit });
     }
 
     // Handle case where no bookings are found
@@ -228,8 +230,12 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Return array directly to match frontend expectations (same as providers)
-    return successResponse(transformedBookings);
+    return successResponse({
+      bookings: transformedBookings,
+      total: count ?? transformedBookings.length,
+      page: rawPage,
+      limit,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to fetch bookings");
   }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -7,6 +8,7 @@ import { AdminModal } from "@/components/admin/AdminModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminToast } from "@/lib/adminToast";
+import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { Loader2, Plus, Pencil, Trash2, Eye } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -53,6 +55,10 @@ function resolvePreview(body: string): string {
 }
 
 export function WhatsAppTemplatesPage() {
+  const { allowed, denied } = useAdminSectionPage(
+    ADMIN_SECTION_INTEGRATIONS_DEV,
+    "Integrations & dev access is required for WhatsApp templates."
+  );
   const qc = useQueryClient();
   const [showEditor, setShowEditor] = useState(false);
   const [editing, setEditing] = useState<Template | null>(null);
@@ -62,6 +68,7 @@ export function WhatsAppTemplatesPage() {
   const templatesQuery = useQuery({
     queryKey: adminQueryKeys.whatsapp.templates(),
     queryFn: () => adminApi.getJson<Template[]>("/api/admin/whatsapp/templates"),
+    enabled: allowed,
   });
 
   const saveMutation = useMutation({
@@ -111,6 +118,8 @@ export function WhatsAppTemplatesPage() {
   };
 
   const templates = templatesQuery.data || [];
+
+  if (denied) return denied;
 
   return (
     <div className="space-y-6">

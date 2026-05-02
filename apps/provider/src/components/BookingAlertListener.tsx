@@ -16,6 +16,7 @@ import type { OnDemandModuleConfig } from "@/lib/config-bundle";
 interface BookingRow {
   id: string;
   status: string;
+  db_status?: string | null;
   booking_number?: string;
   customer_id?: string;
   scheduled_at?: string;
@@ -46,6 +47,11 @@ async function playBookingAlert(): Promise<{ stop: () => void }> {
   } catch {
     return { stop: () => {} };
   }
+}
+
+function shouldAlertForBooking(row: BookingRow): boolean {
+  const status = String(row.db_status || row.status || "").toLowerCase();
+  return ["pending", "booked", "confirmed"].includes(status);
 }
 
 export function BookingAlertListener() {
@@ -138,6 +144,7 @@ export function BookingAlertListener() {
         },
         (payload) => {
           const row = payload.new as BookingRow;
+          if (!shouldAlertForBooking(row)) return;
           if (seenBookingIds.current.has(row.id)) return;
           seenBookingIds.current.add(row.id);
 

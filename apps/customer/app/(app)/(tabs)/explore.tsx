@@ -28,22 +28,23 @@ import type { ExplorePost } from "@/types/api";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { Colors, Shadows } from "@/constants/colors";
 import { Skeleton } from "@/components/Skeleton";
+import { useTranslation } from "@beautonomi/i18n";
 
 const GAP = 10;
 
-const BEAUTY_CATEGORIES = [
-  { key: "all", label: "For You", icon: "sparkles" as const },
-  { key: "trending", label: "Trending", icon: "trending-up" as const },
-  { key: "nearby", label: "Near me", icon: "location-outline" as const },
-  { key: "hair", label: "Hair", icon: "cut-outline" as const },
-  { key: "nails", label: "Nails", icon: "color-palette-outline" as const },
-  { key: "makeup", label: "Makeup", icon: "brush-outline" as const },
-  { key: "skincare", label: "Skincare", icon: "leaf-outline" as const },
-  { key: "lashes", label: "Lashes", icon: "eye-outline" as const },
-  { key: "barber", label: "Barber", icon: "cut-outline" as const },
-  { key: "spa", label: "Spa", icon: "water-outline" as const },
-  { key: "body", label: "Body", icon: "body-outline" as const },
-];
+const BEAUTY_CATEGORY_DEFS = [
+  { key: "all", labelKey: "categoryForYou", icon: "sparkles" as const },
+  { key: "trending", labelKey: "categoryTrending", icon: "trending-up" as const },
+  { key: "nearby", labelKey: "categoryNearMe", icon: "location-outline" as const },
+  { key: "hair", labelKey: "categoryHair", icon: "cut-outline" as const },
+  { key: "nails", labelKey: "categoryNails", icon: "color-palette-outline" as const },
+  { key: "makeup", labelKey: "categoryMakeup", icon: "brush-outline" as const },
+  { key: "skincare", labelKey: "categorySkincare", icon: "leaf-outline" as const },
+  { key: "lashes", labelKey: "categoryLashes", icon: "eye-outline" as const },
+  { key: "barber", labelKey: "categoryBarber", icon: "cut-outline" as const },
+  { key: "spa", labelKey: "categorySpa", icon: "water-outline" as const },
+  { key: "body", labelKey: "categoryBody", icon: "body-outline" as const },
+] as const;
 
 function hashCode(str: string): number {
   let h = 0;
@@ -350,6 +351,7 @@ function ExploreSearchBar({
   onSubmit: () => void;
   onClear: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View
       style={{
@@ -370,13 +372,13 @@ function ExploreSearchBar({
           fontSize: 15,
           color: "#111827",
         }}
-        placeholder="Search looks, styles, treatments..."
+        placeholder={t("customer.mobile.tabs.explore.searchPlaceholder")}
         placeholderTextColor="#9CA3AF"
         value={query}
         onChangeText={onChangeQuery}
         onSubmitEditing={onSubmit}
         returnKeyType="search"
-        accessibilityLabel="Search looks, styles and treatments"
+        accessibilityLabel={t("customer.mobile.tabs.explore.searchAccessibilityLabel")}
         accessibilityRole="search"
       />
       {query.length > 0 ? (
@@ -427,6 +429,7 @@ function MasonrySkeleton({
 
 /* ─── Empty State ─── */
 function EmptyState({ category }: { category: string }) {
+  const { t } = useTranslation();
   const isFiltered = category !== "all";
   return (
     <View style={{ paddingVertical: 60, alignItems: "center", paddingHorizontal: 32 }}>
@@ -448,12 +451,14 @@ function EmptyState({ category }: { category: string }) {
         />
       </View>
       <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 8, textAlign: "center" }}>
-        {isFiltered ? "No posts yet" : "Explore beauty inspiration"}
+        {isFiltered
+          ? t("customer.mobile.tabs.explore.emptyFilteredTitle")
+          : t("customer.mobile.tabs.explore.emptyDefaultTitle")}
       </Text>
       <Text style={{ fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 22 }}>
         {isFiltered
-          ? `No posts found for this category yet. Try another or check back soon.`
-          : `Discover looks, styles, and treatments from beauty professionals near you.`}
+          ? t("customer.mobile.tabs.explore.emptyFilteredBody")
+          : t("customer.mobile.tabs.explore.emptyDefaultBody")}
       </Text>
     </View>
   );
@@ -464,6 +469,8 @@ function EmptyState({ category }: { category: string }) {
    ═══════════════════════════════════════════ */
 export default function ExploreScreen() {
   useScreenTracking("Explore");
+  const { t } = useTranslation();
+  const tx = useCallback((key: string) => t(`customer.mobile.tabs.explore.${key}`), [t]);
   const { user } = useAuth();
   const { width, columns, contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
@@ -590,7 +597,7 @@ export default function ExploreScreen() {
           if (status !== "granted") {
             const res = await api.get<{ data?: { latitude?: number; longitude?: number } }>("/api/public/ip-geolocation");
             if (res.error) {
-              Alert.alert("Location unavailable", "Could not determine your location. Please enable location services or try again.");
+              Alert.alert(tx("locationUnavailableTitle"), tx("locationUnavailableBody"));
               return;
             }
             const d = (res as any)?.data ?? res?.data;
@@ -598,7 +605,7 @@ export default function ExploreScreen() {
               setActiveCategory("nearby");
               triggerFilterUpdate("nearby", searchQuery, { lat: Number(d.latitude), lng: Number(d.longitude) });
             } else {
-              Alert.alert("Location unavailable", "Could not determine your location. Please enable location services in your device settings.");
+              Alert.alert(tx("locationUnavailableTitle"), tx("locationUnavailableBodySettings"));
             }
           } else {
             const loc = await getCurrentPositionAsync({});
@@ -618,7 +625,7 @@ export default function ExploreScreen() {
       setActiveCategory(key);
       triggerFilterUpdate(key, searchQuery);
     },
-    [searchQuery, triggerFilterUpdate],
+    [searchQuery, triggerFilterUpdate, tx],
   );
 
   const handleSearchChange = useCallback(
@@ -675,11 +682,14 @@ export default function ExploreScreen() {
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
       {showInitialSkeleton ? (
         <>
-          <SafeAreaView edges={["top"]} style={[contentContainerStyle, { backgroundColor: "#fff" }]} accessibilityLabel="Explore feed" accessibilityRole="none">
+          <SafeAreaView
+            edges={["top"]}
+            style={[contentContainerStyle, { backgroundColor: "#fff" }]}
+            accessibilityLabel={tx("feedA11y")}
+            accessibilityRole="none"
+          >
             <View style={{ paddingHorizontal: contentPadding, paddingTop: 8 }}>
-              <Text style={{ fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 16 }}>
-                Explore
-              </Text>
+              <Text style={{ fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 16 }}>{tx("screenTitle")}</Text>
               <View
                 style={{
                   backgroundColor: "#F3F4F6",
@@ -728,13 +738,13 @@ export default function ExploreScreen() {
                 <View style={{ paddingTop: 4, paddingBottom: 4 }}>
                   {/* Title row */}
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                    <Text style={{ fontSize: 28, fontWeight: "800", color: "#111827" }}>Explore</Text>
+                    <Text style={{ fontSize: 28, fontWeight: "800", color: "#111827" }}>{tx("screenTitle")}</Text>
                     <View style={{ flexDirection: "row" }}>
                       {user ? (
                         <TouchableOpacity
                           onPress={() => router.push({ pathname: "/(app)/account-settings/wishlists" as any, params: { tab: "posts" } })}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          accessibilityLabel="Saved posts"
+                          accessibilityLabel={tx("savedPostsA11y")}
                         >
                           <Ionicons name="bookmark-outline" size={24} color="#374151" />
                         </TouchableOpacity>
@@ -753,10 +763,10 @@ export default function ExploreScreen() {
                   {/* Category chips */}
                   <View style={{ marginBottom: 14 }}>
                     <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                      {BEAUTY_CATEGORIES.map((cat) => (
+                      {BEAUTY_CATEGORY_DEFS.map((cat) => (
                         <CategoryChip
                           key={cat.key}
-                          label={cat.key === "nearby" && nearbyLoading ? "…" : cat.label}
+                          label={cat.key === "nearby" && nearbyLoading ? "…" : tx(cat.labelKey)}
                           icon={cat.icon}
                           active={activeCategory === cat.key}
                           onPress={() => handleCategoryPress(cat.key)}
@@ -789,7 +799,7 @@ export default function ExploreScreen() {
                           alignItems: "center",
                         }}
                       >
-                        <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+                        <Text style={{ color: "#fff", fontWeight: "600" }}>{tx("retry")}</Text>
                       </TouchableOpacity>
                     </View>
                   ) : null}
@@ -799,11 +809,11 @@ export default function ExploreScreen() {
                 loadingMore ? (
                   <View style={{ paddingVertical: 24, alignItems: "center" }}>
                     <ActivityIndicator size="small" color={Colors.primary} />
-                    <Text style={{ fontSize: 12, color: "#9CA3AF", marginTop: 6 }}>Loading more inspiration...</Text>
+                    <Text style={{ fontSize: 12, color: "#9CA3AF", marginTop: 6 }}>{tx("loadingMore")}</Text>
                   </View>
                 ) : !hasMore && posts.length > 0 ? (
                   <View style={{ paddingVertical: 24, alignItems: "center" }}>
-                    <Text style={{ fontSize: 13, color: "#9CA3AF" }}>You&apos;ve seen it all! Pull down to refresh.</Text>
+                    <Text style={{ fontSize: 13, color: "#9CA3AF" }}>{tx("endOfFeed")}</Text>
                   </View>
                 ) : null
               }

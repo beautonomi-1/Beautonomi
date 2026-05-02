@@ -26,8 +26,11 @@ import {
 } from "lucide-react";
 import { WhatsAppSendModal } from "@/components/whatsapp/WhatsAppSendModal";
 import { BulkWhatsAppModal } from "@/components/whatsapp/BulkWhatsAppModal";
+import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
 
 const PAGE_SIZE = 50;
+/** Keeps inbox + embedded detail panel aligned when multiple admins work the same queue. */
+const OPS_LEADS_REFETCH_MS = 45_000;
 const STAGES = ["all", "new", "contacted", "qualified", "proposal_sent", "negotiating", "won", "lost", "nurture", "matched"] as const;
 const STAGE_LABELS: Record<string, string> = {
   all: "All", new: "New", contacted: "Contacted", qualified: "Qualified",
@@ -78,18 +81,13 @@ interface Lead {
   assigned_to?: string | null;
   matched_provider_id?: string | null;
   provider_lead_categories?: LeadCategory[] | unknown;
-  /** §Release-audit 2026-04: Wasender check status, surfaced as a badge. */
+  /** Wasender reachability check — surfaced as a badge in the inbox. */
   whatsapp_status?: "unknown" | "verified" | "not_found" | "check_failed" | null;
   whatsapp_checked_at?: string | null;
+  updated_at?: string;
 }
 
-/**
- * §Release-audit 2026-04: tiny self-contained chip so the operator can see at
- * a glance whether the lead's phone number has been verified to be on
- * WhatsApp (Wasender reachability check). Previously this signal existed in
- * the DB column `provider_leads.whatsapp_status` and the API already returned
- * it, but the inbox UI never surfaced it.
- */
+/** Shows whether the lead phone was verified on WhatsApp (Wasender check). */
 function WhatsAppStatusChip({ status, compact = false }: { status?: Lead["whatsapp_status"]; compact?: boolean }) {
   const s = status || "unknown";
   const config: Record<string, { label: string; bg: string; fg: string; dot: string; title: string }> = {
@@ -240,6 +238,8 @@ export function ProviderOpsLeadsPage() {
       return adminApi.getJson<LeadsPayload>(`/api/admin/provider-ops/leads?${p}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
+    refetchInterval: OPS_LEADS_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 
   const rows = q.data?.data ?? [];
@@ -263,12 +263,16 @@ export function ProviderOpsLeadsPage() {
     queryKey: adminQueryKeys.providerOps.leadDetail(selectedLeadId!),
     queryFn: () => adminApi.getJson<Record<string, unknown>>(`/api/admin/provider-ops/leads/${selectedLeadId}`, { timeoutMs: 60_000 }),
     enabled: allowed && !!selectedLeadId,
+    refetchInterval: selectedLeadId ? OPS_LEADS_REFETCH_MS : false,
+    refetchOnWindowFocus: true,
   });
 
   const activitiesQ = useQuery({
     queryKey: adminQueryKeys.providerOps.leadActivities(selectedLeadId!),
     queryFn: () => adminApi.getJson<{ data: Activity[] }>(`/api/admin/provider-ops/leads/${selectedLeadId}/activities`, { timeoutMs: 30_000 }),
     enabled: allowed && !!selectedLeadId,
+    refetchInterval: selectedLeadId ? OPS_LEADS_REFETCH_MS : false,
+    refetchOnWindowFocus: true,
   });
 
   /**
@@ -293,13 +297,30 @@ export function ProviderOpsLeadsPage() {
 
   // ── Mutations ──
   const stageChangeMut = useMutation({
-    mutationFn: ({ id, newStage }: { id: string; newStage: string }) =>
-      adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/stage`, { stage: newStage }),
+    mutationFn: ({
+      id,
+      newStage,
+      expected_updated_at,
+    }: {
+      id: string;
+      newStage: string;
+      expected_updated_at?: string;
+    }) =>
+      adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/stage`, {
+        stage: newStage,
+        ...(expected_updated_at ? { expected_updated_at } : {}),
+      }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
       adminToast.success("Stage updated");
     },
-    onError: (e: Error) => adminToast.error(`Stage update failed: ${e.message}`),
+    onError: (e: Error) => {
+      if (handleLeadConcurrent409(e)) {
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+        return;
+      }
+      adminToast.error(`Stage update failed: ${e.message}`);
+    },
   });
 
   const deleteMut = useMutation({
@@ -358,14 +379,30 @@ export function ProviderOpsLeadsPage() {
   });
 
   const updateLeadMut = useMutation({
-    mutationFn: (fields: Record<string, unknown>) =>
-      adminApi.patchJson(`/api/admin/provider-ops/leads/${selectedLeadId}`, fields),
+    mutationFn: (fields: Record<string, unknown>) => {
+      const sid = selectedLeadId;
+      if (!sid) throw new Error("No lead selected");
+      const fromDetail = qc.getQueryData(adminQueryKeys.providerOps.leadDetail(sid)) as Lead | undefined;
+      const fromList = rows.find((r) => r.id === sid);
+      const tokenRaw = fromDetail?.updated_at ?? fromList?.updated_at;
+      const token = typeof tokenRaw === "string" ? tokenRaw : undefined;
+      return adminApi.patchJson(`/api/admin/provider-ops/leads/${sid}`, {
+        ...fields,
+        ...(token ? { expected_updated_at: token } : {}),
+      });
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(selectedLeadId!) });
       adminToast.success("Lead updated");
     },
-    onError: (e: Error) => adminToast.error(`Update failed: ${e.message}`),
+    onError: (e: Error) => {
+      if (handleLeadConcurrent409(e)) {
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+        return;
+      }
+      adminToast.error(`Update failed: ${e.message}`);
+    },
   });
 
   // ── Helpers ──
@@ -645,7 +682,11 @@ export function ProviderOpsLeadsPage() {
                   defaultValue=""
                   onChange={(e) => {
                     if (!e.target.value) return;
-                    selectedIds.forEach((id) => stageChangeMut.mutate({ id, newStage: e.target.value }));
+                    const nextStage = e.target.value;
+                    selectedIds.forEach((id) => {
+                      const row = rows.find((r) => r.id === id);
+                      stageChangeMut.mutate({ id, newStage: nextStage, expected_updated_at: row?.updated_at });
+                    });
                     setSelectedIds(new Set());
                     e.target.value = "";
                   }}
@@ -763,7 +804,7 @@ export function ProviderOpsLeadsPage() {
               onToggleSelect={toggleSelect}
               onToggleSelectAll={toggleSelectAll}
               onSort={toggleSort}
-              onStageChange={(id, s) => stageChangeMut.mutate({ id, newStage: s })}
+              onStageChange={(id, s, expectedAt) => stageChangeMut.mutate({ id, newStage: s, expected_updated_at: expectedAt })}
               onWhatsAppClick={(lead) => setWhatsAppLead(lead)}
             />
           ) : (
@@ -809,7 +850,13 @@ export function ProviderOpsLeadsPage() {
               setNoteText={setNoteText}
               onAddNote={() => addNoteMut.mutate(selectedLeadId)}
               addingNote={addNoteMut.isPending}
-              onStageChange={(s) => stageChangeMut.mutate({ id: selectedLeadId, newStage: s })}
+              onStageChange={(s) =>
+                stageChangeMut.mutate({
+                  id: selectedLeadId!,
+                  newStage: s,
+                  expected_updated_at: detail?.updated_at,
+                })
+              }
               onDelete={() => { if (confirm("Delete this lead?")) deleteMut.mutate(selectedLeadId); }}
               onClose={() => setSelectedLeadId(null)}
               isDeleting={deleteMut.isPending}
@@ -847,7 +894,7 @@ export function ProviderOpsLeadsPage() {
                 setNoteText={setNoteText}
                 onAddNote={() => addNoteMut.mutate(selectedLeadId)}
                 addingNote={addNoteMut.isPending}
-                onStageChange={(s) => stageMutateSafe(stageChangeMut, selectedLeadId, s)}
+                onStageChange={(s) => stageMutateSafe(stageChangeMut, selectedLeadId, s, detail?.updated_at)}
                 onDelete={() => {
                   if (confirm("Delete this lead?")) deleteMut.mutate(selectedLeadId);
                 }}
@@ -909,11 +956,14 @@ export function ProviderOpsLeadsPage() {
 }
 
 function stageMutateSafe(
-  stageMut: { mutate: (args: { id: string; newStage: string }) => void },
+  stageMut: {
+    mutate: (args: { id: string; newStage: string; expected_updated_at?: string }) => void;
+  },
   id: string,
-  newStage: string
+  newStage: string,
+  expectedUpdatedAt?: string,
 ) {
-  stageMut.mutate({ id, newStage });
+  stageMut.mutate({ id, newStage, expected_updated_at: expectedUpdatedAt });
 }
 
 // ─── Table view ───────────────────────────────────────────────────────────────
@@ -939,7 +989,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
   onSort: (col: string) => void;
-  onStageChange: (id: string, stage: string) => void;
+  onStageChange: (id: string, stage: string, expectedUpdatedAt?: string) => void;
   onWhatsAppClick?: (lead: Lead) => void;
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -1012,7 +1062,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                     <select
                       value={lead.commercial_stage}
                       onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => { e.stopPropagation(); onStageChange(lead.id, e.target.value); }}
+                      onChange={(e) => { e.stopPropagation(); onStageChange(lead.id, e.target.value, lead.updated_at); }}
                       className="max-w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 touch-manipulation"
                     >
                       {STAGES.filter((s) => s !== "all").map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
@@ -1023,7 +1073,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                       <select
                         value={lead.commercial_stage}
                         onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => { e.stopPropagation(); onStageChange(lead.id, e.target.value); }}
+                        onChange={(e) => { e.stopPropagation(); onStageChange(lead.id, e.target.value, lead.updated_at); }}
                         className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700"
                       >
                         {STAGES.filter((s) => s !== "all").map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}

@@ -43,11 +43,11 @@ import {
   ARRIVAL_PIN_FALLBACK_LABEL,
   ARRIVAL_PIN_LENGTH_HINT,
   ARRIVAL_PIN_PLACEHOLDER,
-  ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE,
   getCustomerEtaUiParts,
   normalizeProviderTimezone,
 } from "@beautonomi/utils";
 import QRCode from "react-native-qrcode-svg";
+import { useTranslation } from "@beautonomi/i18n";
 
 const DEFAULT_TZ = "Africa/Johannesburg";
 
@@ -140,6 +140,15 @@ export default function BookingDetailScreen() {
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const { user } = useAuth();
+  const { t } = useTranslation();
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
+  const bd = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.bookingDetail.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const onDemandConfig = useModuleConfig("on_demand");
   const { pay, loading: payLoading, error: payError } = usePaystackPayment();
   const [booking, setBooking] = useState<any>(null);
@@ -168,7 +177,7 @@ export default function BookingDetailScreen() {
     if (!id) {
       if (!opts?.silent) {
         setLoading(false);
-        setError("Booking not found. Please go back and try again.");
+        setError(bd("loadBookingNotFound"));
         setBooking(null);
       }
       return;
@@ -181,7 +190,7 @@ export default function BookingDetailScreen() {
       const res = await api.get<any>(`/api/me/bookings/${id}`);
       if (res.error) {
         if (!opts?.silent) {
-          setError(getApiErrorMessage(res.error, "Failed to load"));
+          setError(getApiErrorMessage(res.error, bd("loadFailed")));
           setBooking(null);
         }
       } else {
@@ -197,19 +206,19 @@ export default function BookingDetailScreen() {
           setError(null);
         } else if (!opts?.silent) {
           setBooking(null);
-          setError("Booking not found. Please go back and try again.");
+          setError(bd("loadBookingNotFound"));
         }
         hasLoadedOnce.current = true;
       }
     } catch (e) {
       if (!opts?.silent) {
-        setError(getApiErrorMessage(e as Error, "Failed to load"));
+        setError(getApiErrorMessage(e as Error, bd("loadFailed")));
         setBooking(null);
       }
     } finally {
       if (!opts?.silent) setLoading(false);
     }
-  }, [id]);
+  }, [id, bd]);
 
   useEffect(() => {
     load();
@@ -416,8 +425,7 @@ export default function BookingDetailScreen() {
 
   const handleCancel = useCallback(async () => {
     if (!booking) return;
-    let message =
-      "Are you sure you want to cancel this booking? This action cannot be undone.";
+    let message = bd("cancelDefaultConfirm");
     try {
       const preview = await api.get<{
         allowed?: boolean;
@@ -430,33 +438,30 @@ export default function BookingDetailScreen() {
       }>(`/api/me/bookings/${id}/cancel-preview`);
       const p = preview.data;
       if (preview.error || !p?.allowed) {
-        Alert.alert("Cannot cancel", preview.error?.message || p?.reason || "Cancellation is not allowed.");
+        Alert.alert(bd("cannotCancelTitle"), preview.error?.message || p?.reason || bd("cancellationNotAllowed"));
         return;
       }
       const cur = p.currency || booking.currency || getTenantDefaultCurrency();
       const fee = Number(p.expected_cancellation_fee ?? 0);
       const refund = Number(p.expected_wallet_refund ?? 0);
-      const capNote =
-        p.refund_capped_by_paid_amount === true
-          ? "\n\nYour wallet refund is capped by the amount you have already paid."
-          : "";
-      message =
-        `Cancel this booking now?\n\n` +
-        `Estimated cancellation fee: ${cur} ${fee.toFixed(2)}\n` +
-        `Estimated wallet refund: ${cur} ${refund.toFixed(2)}` +
-        capNote +
-        `\n\n` +
-        (p.is_late_cancellation
-          ? "You are inside the late-cancellation window."
-          : "You are within the normal cancellation window.");
+      const capBlock =
+        p.refund_capped_by_paid_amount === true ? "\n\n" + bd("cancelPreviewCapNote") : "";
+      const windowLine = p.is_late_cancellation ? bd("cancelPreviewLate") : bd("cancelPreviewNormal");
+      message = bd("cancelPreviewMessage", {
+        currency: cur,
+        fee: fee.toFixed(2),
+        refund: refund.toFixed(2),
+        capBlock,
+        windowLine,
+      });
     } catch {
-      message += "\n\n(Could not load refund estimate. You can still cancel.)";
+      message += bd("cancelPreviewEstimateSuffix");
     }
 
-    Alert.alert("Cancel Booking", message, [
-      { text: "Keep Booking", style: "cancel" },
+    Alert.alert(bd("cancelBookingTitle"), message, [
+      { text: bd("keepBookingCta"), style: "cancel" },
       {
-        text: "Cancel Booking",
+        text: bd("cancelBookingCta"),
         style: "destructive",
         onPress: () => {
           const version = typeof booking.version === "number" ? booking.version : undefined;
@@ -467,7 +472,7 @@ export default function BookingDetailScreen() {
       },
     ]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [booking, id, load]);
+  }, [booking, id, load, bd]);
 
   const submitCancellation = useCallback(async (reason: string) => {
     setCancelReasonModalOpen(false);
@@ -476,7 +481,7 @@ export default function BookingDetailScreen() {
     try {
       const cancelBookingId = String(booking?.id ?? id).trim();
       if (!cancelBookingId) {
-        Alert.alert("Error", "Missing booking reference. Please go back and open the booking again.");
+        Alert.alert(errTitle, bd("missingBookingRefBody"));
         setCancelling(false);
         return;
       }
@@ -491,25 +496,22 @@ export default function BookingDetailScreen() {
       if (res.error) {
         const st = (res.error as { status?: number }).status;
         if (st === 409) {
-          Alert.alert(
-            "Could not cancel",
-            "This booking was modified. We refreshed your details — please try again if you still want to cancel.",
-          );
+          Alert.alert(bd("cancelConflictTitle"), bd("cancelConflictBody"));
           load();
         } else {
-          Alert.alert("Error", res.error.message || "Failed to cancel");
+          Alert.alert(errTitle, res.error.message || bd("failedToCancel"));
         }
       } else {
         haptic.success();
         load();
       }
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, bd("failedToCancel")));
     } finally {
       setCancelling(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- load is stable
-  }, [booking, id]);
+  }, [booking, id, bd, errTitle]);
 
   const handleReschedule = useCallback(() => {
     if (!booking) return;
@@ -551,7 +553,7 @@ export default function BookingDetailScreen() {
   const handlePay = async () => {
     if (!booking) return;
     if (!user?.email) {
-      Alert.alert("Email required", "Please add an email to your account before making a payment.");
+      Alert.alert(bd("emailRequiredTitle"), bd("emailRequiredBody"));
       return;
     }
     const result = await pay({
@@ -583,7 +585,10 @@ export default function BookingDetailScreen() {
       );
       const url = res.data?.authorization_url;
       if (res.error || !url) {
-        Alert.alert("Error", getApiErrorMessage(res.error || { message: "Could not start payment" }, "Pay remaining balance"));
+        Alert.alert(
+          errTitle,
+          getApiErrorMessage(res.error || { message: bd("couldNotStartPayment") }, bd("payRemainingBalanceFallback")),
+        );
         return;
       }
 
@@ -642,13 +647,10 @@ export default function BookingDetailScreen() {
         haptic.success();
         await load();
       } else {
-        Alert.alert(
-          "Payment pending",
-          "We haven't confirmed your payment yet. If you completed the payment, it may take a moment to process.",
-        );
+        Alert.alert(bd("paymentPendingTitle"), bd("paymentPendingBody"));
       }
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e as Error, "Pay remaining balance"));
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, bd("payRemainingBalanceFallback")));
     } finally {
       setPayRemainingLoading(false);
     }
@@ -722,8 +724,8 @@ export default function BookingDetailScreen() {
       const url = res.data?.url;
       if (res.error || !url) {
         Alert.alert(
-          "Download receipt",
-          (res.error as { message?: string })?.message ?? "Could not generate receipt. Please try again.",
+          bd("downloadReceiptTitle"),
+          (res.error as { message?: string })?.message ?? bd("receiptGenerateFailed"),
         );
         return;
       }
@@ -732,7 +734,7 @@ export default function BookingDetailScreen() {
         return;
       }
       if (!FileSystem.cacheDirectory) {
-        Alert.alert("Download receipt", "File storage is not available on this device.");
+        Alert.alert(bd("downloadReceiptTitle"), bd("storageUnavailable"));
         return;
       }
       const fileUri = `${FileSystem.cacheDirectory}${filename}`;
@@ -742,7 +744,7 @@ export default function BookingDetailScreen() {
           dl.status === 401 || dl.status === 403
             ? "Your session may have expired. Please try again after refreshing the screen."
             : `The server returned status ${dl.status}.`;
-        Alert.alert("Download receipt", `Could not download the PDF. ${hint}`);
+        Alert.alert(bd("downloadReceiptTitle"), bd("downloadPdfFailed", { hint }));
         return;
       }
       await Share.share({
@@ -751,12 +753,9 @@ export default function BookingDetailScreen() {
         message: `Booking ${booking.booking_number ?? bid}`,
       });
     } catch (e) {
-      Alert.alert(
-        "Download receipt",
-        e instanceof Error ? e.message : "Something went wrong while preparing the receipt.",
-      );
+      Alert.alert(bd("downloadReceiptTitle"), e instanceof Error ? e.message : bd("downloadReceiptGenericError"));
     }
-  }, [booking]);
+  }, [booking, bd]);
 
   const handleAddToCalendarIcs = useCallback(async () => {
     if (!id) return;
@@ -766,7 +765,7 @@ export default function BookingDetailScreen() {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) {
-        Alert.alert("Sign in required", "Please sign in to download the calendar file.");
+        Alert.alert(bd("signInForCalendarTitle"), bd("signInForCalendarBody"));
         return;
       }
       const icsBookingId = encodeURIComponent(String(booking?.id ?? id).trim());
@@ -781,12 +780,18 @@ export default function BookingDetailScreen() {
       );
       if (!response.ok) {
         const text = await response.text().catch(() => "");
-        const msg = text ? getApiErrorMessage({ message: text, status: response.status }, "Failed to load calendar file") : "Failed to load calendar file";
-        Alert.alert("Error", msg);
+        const msg = text
+          ? getApiErrorMessage({ message: text, status: response.status }, bd("failedToLoadCalendarFile"))
+          : bd("failedToLoadCalendarFile");
+        Alert.alert(errTitle, msg);
         return;
       }
       const icsText = await response.text();
       const filename = `booking-${booking?.booking_number ?? id}.ics`;
+      if (!FileSystem.cacheDirectory) {
+        Alert.alert(errTitle, bd("failedToLoadCalendarFile"));
+        return;
+      }
       const fileUri = `${FileSystem.cacheDirectory}${filename}`;
       await FileSystem.writeAsStringAsync(fileUri, icsText, { encoding: FileSystem.EncodingType.UTF8 });
       await Share.share({
@@ -795,16 +800,16 @@ export default function BookingDetailScreen() {
         message: Platform.OS === "android" ? icsText : undefined,
       });
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Failed to download calendar file");
+      Alert.alert(errTitle, e instanceof Error ? e.message : bd("failedToLoadCalendarFile"));
     } finally {
       setIcsLoading(false);
     }
-  }, [id, booking?.id, booking?.booking_number]);
+  }, [id, booking?.id, booking?.booking_number, bd, errTitle]);
 
   const handleSaveToDeviceCalendar = useCallback(
     async (params: { title: string; description: string; location: string; start: Date; end: Date }) => {
       if (Platform.OS === "web") {
-        Alert.alert("Not available on web", "Use Google Calendar or download the .ics file from this screen.");
+        Alert.alert(bd("notAvailableOnWebTitle"), bd("notAvailableOnWebBody"));
         return;
       }
       haptic.light();
@@ -812,10 +817,7 @@ export default function BookingDetailScreen() {
       try {
         const { status } = await Calendar.requestCalendarPermissionsAsync();
         if (status !== "granted") {
-          Alert.alert(
-            "Calendar access",
-            "Calendar permission is off. You can enable it in Settings, or use “Share calendar file” to add the booking another way.",
-          );
+          Alert.alert(bd("calendarAccessTitle"), bd("calendarAccessBody"));
           return;
         }
         let calendarId: string | null = null;
@@ -828,7 +830,7 @@ export default function BookingDetailScreen() {
           calendarId = writable?.id ?? null;
         }
         if (!calendarId) {
-          Alert.alert("No calendar found", "Add a calendar in your device settings, then try again.");
+          Alert.alert(bd("noCalendarTitle"), bd("noCalendarBody"));
           return;
         }
         const tz = resolveBookingTimezone((booking as { display_time_zone?: string | null })?.display_time_zone);
@@ -841,14 +843,14 @@ export default function BookingDetailScreen() {
           timeZone: tz,
         });
         haptic.success();
-        Alert.alert("Saved", "This booking was added to your calendar.");
+        Alert.alert(bd("savedToCalendarTitle"), bd("savedToCalendarBody"));
       } catch (e) {
-        Alert.alert("Could not save", getApiErrorMessage(e as Error, "Calendar could not be updated."));
+        Alert.alert(bd("couldNotSaveCalendarTitle"), getApiErrorMessage(e as Error, bd("couldNotSaveCalendarBody")));
       } finally {
         setNativeCalLoading(false);
       }
     },
-    [booking],
+    [booking, bd],
   );
 
   const handleRefreshArrivalVerification = async () => {
@@ -860,9 +862,9 @@ export default function BookingDetailScreen() {
         {}
       );
       if (res.error) {
-        const msg = res.error.message || "Failed to resend";
-        const retryAfter = res.error.code === "RATE_LIMITED" ? " Please wait before trying again." : "";
-        Alert.alert("Error", msg + retryAfter);
+        const msg = res.error.message || bd("resendFailed");
+        const retryAfter = res.error.code === "RATE_LIMITED" ? bd("rateLimitPleaseWait") : "";
+        Alert.alert(errTitle, msg + retryAfter);
         if (res.error.code === "RATE_LIMITED") setResendCooldownUntil(Date.now() + 90000);
       } else {
         haptic.success();
@@ -870,7 +872,7 @@ export default function BookingDetailScreen() {
         await load();
       }
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to resend code"));
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, bd("failedToResendCode")));
     } finally {
       setIsResending(false);
     }
@@ -880,7 +882,7 @@ export default function BookingDetailScreen() {
     const code = fallbackOtp.replace(/\D/g, "");
     if (!id || isVerifying) return;
     if (code.length !== 4 && code.length !== 6) {
-      Alert.alert("Required", ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE);
+      Alert.alert(t("common.required"), bd("arrivalPinIncompleteBody"));
       return;
     }
     setIsVerifying(true);
@@ -890,14 +892,14 @@ export default function BookingDetailScreen() {
         { otp: code }
       );
       if (res.error) {
-        Alert.alert("Error", res.error.message || "Verification failed");
+        Alert.alert(errTitle, res.error.message || bd("verificationFailed"));
       } else {
         setFallbackOtp("");
         setShowFallbackInput(false);
         await load();
       }
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to verify"));
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, bd("failedToVerify")));
     } finally {
       setIsVerifying(false);
     }
@@ -950,10 +952,31 @@ export default function BookingDetailScreen() {
     : Array.isArray((booking as any).booking_addons)
       ? ((booking as any).booking_addons as Record<string, unknown>[])
       : [];
+  const platformFeeAmount = Number((booking as any).platform_fee_amount ?? (booking as any).service_fee_amount ?? 0);
+  const rawPlatformFeePercentage = Number(
+    (booking as any).platform_fee_percentage ?? (booking as any).service_fee_percentage ?? 0,
+  );
+  const platformFeePercentage =
+    Number.isFinite(rawPlatformFeePercentage) && rawPlatformFeePercentage > 0
+      ? rawPlatformFeePercentage <= 1
+        ? rawPlatformFeePercentage * 100
+        : rawPlatformFeePercentage
+      : 0;
 
   /** Subtotal / tax / fees / total — same figures as Receipt (Details tab parity). */
   const renderPaymentBreakdownCore = () => (
     <>
+      {(booking as { package_name?: string | null }).package_name ? (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Package</Text>
+          <Text
+            style={{ fontSize: 14, color: Colors.gray[700], flex: 1, textAlign: "right", marginLeft: 12 }}
+            numberOfLines={2}
+          >
+            {(booking as { package_name?: string | null }).package_name}
+          </Text>
+        </View>
+      ) : null}
       {booking.subtotal != null && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Subtotal</Text>
@@ -1006,10 +1029,12 @@ export default function BookingDetailScreen() {
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).travel_fee).toFixed(2)}</Text>
         </View>
       )}
-      {Number((booking as any).service_fee_amount) > 0 && (
+      {platformFeeAmount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Platform fee</Text>
-          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).service_fee_amount).toFixed(2)}</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+            Platform fee{platformFeePercentage > 0 ? ` (${platformFeePercentage.toFixed(platformFeePercentage % 1 === 0 ? 0 : 1)}%)` : ""}
+          </Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {platformFeeAmount.toFixed(2)}</Text>
         </View>
       )}
       {Number((booking as any).tip_amount) > 0 && (
@@ -1472,7 +1497,7 @@ export default function BookingDetailScreen() {
                     onPress={async () => {
                       haptic.light();
                       await Clipboard.setStringAsync(qrVerificationCode);
-                      Alert.alert("Copied", "Verification code copied. You can paste it in a message if scanning isn’t possible.");
+                      Alert.alert(bd("copyCodeTitle"), bd("copyCodeBody"));
                     }}
                     style={{
                       marginTop: 14,
@@ -1581,6 +1606,12 @@ export default function BookingDetailScreen() {
                   }
                   if (Number(booking.tax_amount) > 0) {
                     paymentExtras.push(`Tax: ${cur} ${Number(booking.tax_amount).toFixed(2)}`);
+                  }
+                  if (platformFeeAmount > 0) {
+                    const pct = platformFeePercentage > 0
+                      ? ` (${platformFeePercentage.toFixed(platformFeePercentage % 1 === 0 ? 0 : 1)}%)`
+                      : "";
+                    paymentExtras.push(`Platform fee${pct}: ${cur} ${platformFeeAmount.toFixed(2)}`);
                   }
                   if (Number((booking as any).tip_amount) > 0) {
                     paymentExtras.push(`Tip: ${cur} ${Number((booking as any).tip_amount).toFixed(2)}`);

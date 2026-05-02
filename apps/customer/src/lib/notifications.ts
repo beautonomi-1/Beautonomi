@@ -201,7 +201,8 @@ export function navigateFromNotification(n: Notification): void {
     (data.order_id != null ? String(data.order_id).trim() : "") ||
     getLinkParam(link, "product_order_id") ||
     getLinkParam(link, "order_id") ||
-    getLinkParam(link, "order");
+    getLinkParam(link, "order") ||
+    getUuidAfterSegment(link, "orders");
   if (productOrderId) {
     router.push({ pathname: "/(app)/product-order-detail", params: { id: productOrderId } });
     return;
@@ -283,6 +284,11 @@ export function navigateFromNotification(n: Notification): void {
         router.push({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
         return;
       }
+    }
+    const orderIdFromPath = getUuidAfterSegment(link, "orders");
+    if (orderIdFromPath) {
+      router.push({ pathname: "/(app)/product-order-detail", params: { id: orderIdFromPath } });
+      return;
     }
     if (link.includes("waitlist")) { router.push("/(app)/account-settings/waitlist"); return; }
     if (link.includes("my-returns") || link.includes("returns")) { router.push("/(app)/my-returns"); return; }

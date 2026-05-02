@@ -597,35 +597,37 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── Quick actions ── */}
+      {/* ── Quick actions ──
+          §UI-audit 2026-05: Bookings and Orders previously sat in fixed
+          (non-flex) wrappers while Wallet and Saved had no wrapper at all,
+          so the QuickAction's `flex: 1` only stretched on the latter two.
+          That made Bookings + Orders look squashed against larger Wallet
+          and Saved tiles. Use a uniform flex row with `gap` so all four
+          tiles share the available width equally. */}
       <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
-        <View style={{ flexDirection: "row" }}>
-          <View style={{ marginRight: 12 }}>
-            <QuickAction
-              icon="calendar-outline"
-              label="Bookings"
-              onPress={() =>
-                router.push("/(app)/account-settings/bookings")
-              }
-            />
-          </View>
-          <View style={{ marginRight: 12 }}>
-            <QuickAction
-              icon="bag-outline"
-              label="Orders"
-              onPress={() => router.push("/(app)/product-orders" as any)}
-            />
-          </View>
+        <View style={{ flexDirection: "row", alignItems: "stretch", gap: 8 }}>
+          <QuickAction
+            icon="calendar-outline"
+            label={t("customer.profileTab.quickActions.bookings")}
+            onPress={() =>
+              router.push("/(app)/account-settings/bookings")
+            }
+          />
+          <QuickAction
+            icon="bag-outline"
+            label={t("customer.profileTab.quickActions.orders")}
+            onPress={() => router.push("/(app)/product-orders" as any)}
+          />
           <QuickAction
             icon="wallet-outline"
-            label="Wallet"
+            label={t("customer.profileTab.quickActions.wallet")}
             onPress={() =>
               router.push("/(app)/account-settings/wallet")
             }
           />
           <QuickAction
             icon="heart-outline"
-            label="Saved"
+            label={t("customer.profileTab.quickActions.saved")}
             onPress={() => router.push("/(app)/(tabs)/saved" as any)}
           />
         </View>
@@ -808,10 +810,14 @@ export default function ProfileScreen() {
       <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
         <TouchableOpacity
           onPress={() =>
-            Alert.alert("Log out", "Are you sure you want to log out?", [
-              { text: "Cancel", style: "cancel" },
-              { text: "Log out", style: "destructive", onPress: () => void signOut() },
-            ])
+            Alert.alert(
+              t("customer.mobile.tabs.profile.logOutTitle"),
+              t("customer.accountSettings.logOutConfirm"),
+              [
+                { text: t("common.cancel"), style: "cancel" },
+                { text: t("customer.mobile.tabs.profile.logOutTitle"), style: "destructive", onPress: () => void signOut() },
+              ],
+            )
           }
           style={{ paddingVertical: 16, alignItems: "center" }}
           accessibilityRole="button"
@@ -935,7 +941,11 @@ function VerificationBadge({
   );
 }
 
-/* ─── Quick action tile ─── */
+/* ─── Quick action tile ───
+    §UI-audit 2026-05: tile keeps `flex: 1` so the parent flex row can
+    distribute width equally; horizontal padding is intentionally 4dp so
+    long labels (e.g. translated "Bookings" → "Tlhokomelo") don't truncate
+    on iPhone SE-class widths. */
 function QuickAction({
   icon,
   label,
@@ -949,7 +959,21 @@ function QuickAction({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
-      style={{ flex: 1, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], alignItems: "center", paddingVertical: 16 }}
+      style={{
+        flex: 1,
+        flexBasis: 0,
+        backgroundColor: Colors.white,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: Colors.gray[100],
+        alignItems: "center",
+        paddingVertical: 14,
+        paddingHorizontal: 4,
+        minHeight: 84,
+        justifyContent: "center",
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
     >
       <View
         style={{
@@ -964,7 +988,13 @@ function QuickAction({
       >
         <Ionicons name={icon} size={20} color={Colors.primary} />
       </View>
-      <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700] }}>{label}</Text>
+      <Text
+        style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700], textAlign: "center" }}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }

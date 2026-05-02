@@ -20,6 +20,22 @@ export function generateInvoiceHTMLFromData(
   const formatCurrency = (amount: number) => {
     return `${displayCurrency} ${amount.toFixed(2)}`;
   };
+  const platformFeeAmount = Number(
+    (invoiceData as any).platform_fee_amount ?? (invoiceData as any).service_fee_amount ?? 0,
+  );
+  const rawPlatformFeePercentage = Number(
+    (invoiceData as any).platform_fee_percentage ?? (invoiceData as any).service_fee_percentage ?? 0,
+  );
+  const platformFeePercentage =
+    Number.isFinite(rawPlatformFeePercentage) && rawPlatformFeePercentage > 0
+      ? rawPlatformFeePercentage <= 1
+        ? rawPlatformFeePercentage * 100
+        : rawPlatformFeePercentage
+      : 0;
+  const platformFeePercentageLabel =
+    platformFeePercentage > 0
+      ? ` (${platformFeePercentage.toFixed(platformFeePercentage % 1 === 0 ? 0 : 1)}%)`
+      : "";
 
   return `
     <!DOCTYPE html>
@@ -123,10 +139,10 @@ export function generateInvoiceHTMLFromData(
               <span>${formatCurrency(invoiceData.tax_amount)}</span>
             </div>
           ` : ''}
-          ${((invoiceData as any).platform_fee_amount ?? (invoiceData as any).service_fee_amount) > 0 ? `
+          ${platformFeeAmount > 0 ? `
             <div class="summary-row">
-              <span>Platform Fee${((invoiceData as any).platform_fee_percentage ?? (invoiceData as any).service_fee_percentage) > 0 ? ` (${(((invoiceData as any).platform_fee_percentage ?? (invoiceData as any).service_fee_percentage) * 100).toFixed(1)}%)` : ''}:</span>
-              <span>${formatCurrency((invoiceData as any).platform_fee_amount ?? (invoiceData as any).service_fee_amount)}</span>
+              <span>Platform Fee${platformFeePercentageLabel}:</span>
+              <span>${formatCurrency(platformFeeAmount)}</span>
             </div>
           ` : ''}
           ${invoiceData.tip_amount > 0 ? `

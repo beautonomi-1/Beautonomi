@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         max_service_distance_km,
         is_distance_filter_enabled,
         provider_locations (city, country)
-      `)
+      `, { count: "exact" })
       .eq("tenant_id", tenantId)
       .order("business_name", { ascending: true })
       .range(offset, offset + limit - 1);
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     }
     // limit is already applied via .range() above; no additional .limit() needed.
 
-    const { data: providers, error } = await query;
+    const { data: providers, error, count } = await query;
 
     if (error) {
       throw error;
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       data: transformed,
-      meta: { page, limit, total: transformed.length, has_more: transformed.length === limit },
+      meta: { page, limit, total: count ?? transformed.length, has_more: offset + transformed.length < (count ?? transformed.length) },
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch providers");

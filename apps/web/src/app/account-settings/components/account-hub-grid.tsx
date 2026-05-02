@@ -57,7 +57,7 @@ export const ACCOUNT_HUB_CARDS: AccountHubCard[] = [
   { icon: Gift, title: "Referral credit & coupon", description: "You have $0 referral credits and coupon. Learn more.", link: "/account-settings/referrals" },
   { icon: Star, title: "My Reviews", description: "View and edit your reviews for completed bookings", link: "/account-settings/reviews" },
   { icon: Heart, title: "Wishlists & Recently Viewed", description: "Manage your saved wishlists and view recently viewed items", link: "/account-settings/wishlists" },
-  { icon: MessageCircle, title: "Messages", description: "View and manage your messages with beauty partners and clients", link: "/account-settings/messages" },
+  { icon: MessageCircle, title: "Messages", description: "View and manage your messages with beauty partners", link: "/account-settings/messages" },
   { icon: Briefcase, title: "Custom Requests", description: "Request custom services and manage offers from providers", link: "/account-settings/custom-requests" },
   { icon: ShieldCheck, title: "Identity Verification", description: "Verify your identity for a trusted experience", link: "/account-settings/verification/embed" },
   { icon: Info, title: "About Us", description: "Learn more about Beautonomi and our mission", link: "#about-us", isAction: true },

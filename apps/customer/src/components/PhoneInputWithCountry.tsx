@@ -13,6 +13,7 @@ import { Colors } from "@/constants/colors";
 import { RADIUS_INPUT } from "@/constants/layout";
 import { COUNTRY_CODES, type CountryCodeEntry } from "@/constants/phone";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 type Props = {
   label?: string;
@@ -30,9 +31,13 @@ export function PhoneInputWithCountry({
   onCountryCodeChange,
   nationalValue,
   onNationalChange,
-  placeholder = "Phone number",
-  accessibilityLabel = "Phone number",
+  placeholder,
+  accessibilityLabel,
 }: Props) {
+  const { t } = useTranslation();
+  const resolvedPlaceholder =
+    placeholder ?? t("customer.mobile.components.phoneInput.phonePlaceholder");
+  const resolvedA11y = accessibilityLabel ?? resolvedPlaceholder;
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -122,12 +127,12 @@ export function PhoneInputWithCountry({
               fontSize: 16,
               color: Colors.gray[900],
             }}
-            placeholder={placeholder}
+            placeholder={resolvedPlaceholder}
             placeholderTextColor={Colors.gray[400]}
             value={nationalValue}
             onChangeText={handleNationalChange}
             keyboardType="phone-pad"
-            accessibilityLabel={accessibilityLabel}
+            accessibilityLabel={resolvedA11y}
             accessibilityRole="none"
           />
         </View>
@@ -139,7 +144,7 @@ export function PhoneInputWithCountry({
             lineHeight: 18,
           }}
         >
-          Enter your national number without repeating the country code. Leading 0 is optional.
+          {t("customer.mobile.components.phoneInput.nationalNumberHint")}
         </Text>
       </View>
 
@@ -199,7 +204,7 @@ export function PhoneInputWithCountry({
                   marginBottom: 12,
                 }}
               >
-                Select country
+                {t("customer.mobile.components.phoneInput.selectCountryTitle")}
               </Text>
               <View
                 style={{
@@ -219,7 +224,7 @@ export function PhoneInputWithCountry({
                     fontSize: 15,
                     color: Colors.gray[900],
                   }}
-                  placeholder="Search country..."
+                  placeholder={t("customer.mobile.components.phoneInput.searchCountry")}
                   placeholderTextColor={Colors.gray[400]}
                   value={search}
                   onChangeText={setSearch}

@@ -25,6 +25,7 @@ import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { useTheme } from "@/providers/ThemeProvider";
+import { useThemedColors } from "@/hooks/useThemedColors";
 import {
   DEFAULT_MARKET_HOST,
   GLOBAL_ENTRY_HOST,
@@ -37,7 +38,11 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { changeLanguage } from "@/lib/i18n";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { currencySelectLabel, LAST_RESORT_CURRENCY } from "@beautonomi/utils";
-import { mergeLanguagePickerOptions, supportedLanguages } from "@beautonomi/i18n";
+import {
+  mergeLanguagePickerOptions,
+  supportedLanguages,
+  useTranslation,
+} from "@beautonomi/i18n";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -84,16 +89,36 @@ function buildI18nAlignedLanguageOptions(apiRows: PickerOption[]): PickerOption[
   return merged.map((m) => ({ value: m.code, label: m.name }));
 }
 
-const FALLBACK_CURRENCY_OPTIONS: PickerOption[] = [
+/**
+ * §UI-audit 2026-05: previously this fallback list invented African currency
+ * options (KES / NGN / GHS / EGP) regardless of the tenant's region — so users
+ * on the South African market saw currencies they couldn't actually transact
+ * in. The new fallback only lists widely-recognised global currencies; the
+ * tenant default currency is added back in `buildCurrencyFallbackOptions`
+ * once the config bundle has resolved.
+ */
+const GLOBAL_CURRENCY_FALLBACK: PickerOption[] = [
   { value: LAST_RESORT_CURRENCY, label: currencySelectLabel(LAST_RESORT_CURRENCY) },
   { value: "USD", label: currencySelectLabel("USD") },
-  { value: "GBP", label: currencySelectLabel("GBP") },
   { value: "EUR", label: currencySelectLabel("EUR") },
-  { value: "KES", label: currencySelectLabel("KES") },
-  { value: "NGN", label: currencySelectLabel("NGN") },
-  { value: "GHS", label: currencySelectLabel("GHS") },
-  { value: "EGP", label: currencySelectLabel("EGP") },
+  { value: "GBP", label: currencySelectLabel("GBP") },
 ];
+
+function buildCurrencyFallbackOptions(tenantDefault: string | null | undefined): PickerOption[] {
+  const out: PickerOption[] = [];
+  const seen = new Set<string>();
+  const td = tenantDefault?.trim().toUpperCase();
+  if (td) {
+    out.push({ value: td, label: currencySelectLabel(td) });
+    seen.add(td);
+  }
+  for (const opt of GLOBAL_CURRENCY_FALLBACK) {
+    if (seen.has(opt.value)) continue;
+    seen.add(opt.value);
+    out.push(opt);
+  }
+  return out;
+}
 
 const TIMEZONE_OPTIONS: PickerOption[] = [
   { value: "Africa/Johannesburg", label: "Africa/Johannesburg (SAST)" },
@@ -185,41 +210,67 @@ function buildMarketOptions(): MarketOption[] {
 /* ------------------------------------------------------------------ */
 
 function AppearanceSection() {
-  const { themeMode, setThemeMode } = useTheme();
+  const { themeMode, setThemeMode, isDark } = useTheme();
+  const themed = useThemedColors();
+  const { t } = useTranslation();
   const modes = [
-    { key: "light" as const, label: "Light", icon: "sunny-outline" as const },
-    { key: "dark" as const, label: "Dark", icon: "moon-outline" as const },
-    { key: "system" as const, label: "System", icon: "phone-portrait-outline" as const },
+    { key: "light" as const, label: t("customer.preferencesScreen.appearanceLight"), icon: "sunny-outline" as const },
+    { key: "dark" as const, label: t("customer.preferencesScreen.appearanceDark"), icon: "moon-outline" as const },
+    { key: "system" as const, label: t("customer.preferencesScreen.appearanceSystem"), icon: "phone-portrait-outline" as const },
   ];
 
   return (
     <View>
-      <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>Appearance</Text>
-      <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 12 }}>Choose your preferred theme</Text>
+      <Text style={{ fontSize: 18, fontWeight: "700", color: themed.textPrimary, marginBottom: 4 }}>
+        {t("customer.preferencesScreen.appearanceTitle")}
+      </Text>
+      <Text style={{ fontSize: 14, color: themed.textSecondary, marginBottom: 12 }}>
+        {t("customer.preferencesScreen.appearanceSubtitle")}
+      </Text>
       <View>
-        {modes.map((m, index) => (
-          <TouchableOpacity
-            key={m.key}
-            onPress={() => setThemeMode(m.key)}
-            style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: "row", alignItems: "center", marginTop: index === 0 ? 0 : 8 }}
-            activeOpacity={0.7}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: themeMode === m.key }}
-          >
-            <Ionicons name={m.icon} size={20} color={themeMode === m.key ? Colors.primary : Colors.gray[400]} />
-            <Text style={{ marginLeft: 12, flex: 1, fontWeight: "500", color: Colors.gray[900] }}>{m.label}</Text>
-            {themeMode === m.key && (
-              <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
-            )}
-          </TouchableOpacity>
-        ))}
+        {modes.map((m, index) => {
+          const selected = themeMode === m.key;
+          return (
+            <TouchableOpacity
+              key={m.key}
+              onPress={() => setThemeMode(m.key)}
+              style={{
+                backgroundColor: selected ? themed.primarySoft : themed.surface,
+                borderRadius: 12,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: selected ? Colors.primary : themed.border,
+                flexDirection: "row",
+                alignItems: "center",
+                marginTop: index === 0 ? 0 : 8,
+              }}
+              activeOpacity={0.7}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+            >
+              <Ionicons name={m.icon} size={20} color={selected ? Colors.primary : themed.textMuted} />
+              <Text style={{ marginLeft: 12, flex: 1, fontWeight: "500", color: themed.textPrimary }}>{m.label}</Text>
+              {selected && (
+                <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
+              )}
+            </TouchableOpacity>
+          );
+        })}
       </View>
+      <Text style={{ fontSize: 12, color: themed.textMuted, marginTop: 8 }}>
+        {isDark
+          ? t("customer.preferencesScreen.appearanceHintDark")
+          : themeMode === "system"
+            ? t("customer.preferencesScreen.appearanceHintSystem")
+            : t("customer.preferencesScreen.appearanceHintLight")}
+      </Text>
     </View>
   );
 }
 
 export default function PreferencesScreen() {
   const { bundle, refresh: refreshConfigBundle } = useConfigBundle();
+  const { t } = useTranslation();
 
   const [languageOptions, setLanguageOptions] = useState<PickerOption[]>(() =>
     supportedLanguages.map(({ code, nativeName, name }) => ({
@@ -227,7 +278,9 @@ export default function PreferencesScreen() {
       label: `${nativeName} (${name})`,
     })),
   );
-  const [currencyOptions, setCurrencyOptions] = useState<PickerOption[]>(FALLBACK_CURRENCY_OPTIONS);
+  const [currencyOptions, setCurrencyOptions] = useState<PickerOption[]>(() =>
+    buildCurrencyFallbackOptions(getTenantDefaultCurrency()),
+  );
   const [timezoneOptions, setTimezoneOptions] = useState<PickerOption[]>(TIMEZONE_OPTIONS);
 
   const fieldConfig = useMemo(() => {
@@ -238,24 +291,24 @@ export default function PreferencesScreen() {
     return [
       {
         field: "preferred_language" as const,
-        label: "Language",
+        label: t("customer.preferencesScreen.languageLabel"),
         options: languageOptions,
         defaultValue: "en",
-        modalTitle: "Select language",
+        modalTitle: t("customer.preferencesScreen.languageModal"),
       },
       {
         field: "preferred_currency" as const,
-        label: "Currency",
+        label: t("customer.preferencesScreen.currencyLabel"),
         options: currencyOptions,
         defaultValue: tenantCur,
-        modalTitle: "Select currency",
+        modalTitle: t("customer.preferencesScreen.currencyModal"),
       },
       {
         field: "timezone" as const,
-        label: "Timezone",
+        label: t("customer.preferencesScreen.timezoneLabel"),
         options: timezoneOptions,
         defaultValue: defaultTz,
-        modalTitle: "Select timezone",
+        modalTitle: t("customer.preferencesScreen.timezoneModal"),
       },
     ];
   }, [
@@ -264,6 +317,7 @@ export default function PreferencesScreen() {
     languageOptions,
     currencyOptions,
     timezoneOptions,
+    t,
   ]);
 
   const [profile, setProfile] = useState<UserProfile>({
@@ -297,13 +351,15 @@ export default function PreferencesScreen() {
       setLanguageOptions(buildI18nAlignedLanguageOptions(langsFromApi));
 
       const curFromApi = mapPreferenceRowsToPicker(coercePreferenceOptionRows(curRes.data));
+      const tenantDefault =
+        bundle?.meta?.tenant_region?.default_currency ?? getTenantDefaultCurrency();
       setCurrencyOptions(
         preferApiOrFallback(
           curFromApi.map((o) => ({
             value: o.value,
             label: o.label || currencySelectLabel(o.value),
           })),
-          FALLBACK_CURRENCY_OPTIONS,
+          buildCurrencyFallbackOptions(tenantDefault),
         ),
       );
 
@@ -332,7 +388,7 @@ export default function PreferencesScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [bundle?.meta?.tenant_region?.default_currency]);
 
   useEffect(() => {
     void load();
@@ -368,19 +424,22 @@ export default function PreferencesScreen() {
         });
         if (res.error) {
           setProfile(previous);
-          Alert.alert("Error", getApiErrorMessage(res.error, "Failed to save preference"));
+          Alert.alert(
+            t("common.error"),
+            getApiErrorMessage(res.error, t("customer.preferencesScreen.savePrefError")),
+          );
         } else if (field === "preferred_language") {
           const code = value.split(/[-_]/)[0];
           await changeLanguage(code);
         }
       } catch {
         setProfile(previous);
-        Alert.alert("Error", "Failed to save preference. Please try again.");
+        Alert.alert(t("common.error"), t("customer.preferencesScreen.savePrefRetry"));
       } finally {
         setSaving(false);
       }
     },
-    [profile],
+    [profile, t],
   );
 
   const selectMarketHost = useCallback(async (host: string) => {
@@ -393,17 +452,24 @@ export default function PreferencesScreen() {
     } catch {
       // Non-fatal: tenant metadata may refresh on next app launch.
     }
-    Alert.alert("Market updated", `Your active market is now ${normalized}.`);
-  }, [currentMarketHost, refreshConfigBundle]);
+    Alert.alert(
+      t("customer.preferencesScreen.marketUpdatedTitle"),
+      t("customer.preferencesScreen.marketUpdatedBody", { host: normalized }),
+    );
+  }, [currentMarketHost, refreshConfigBundle, t]);
+
+  const themed = useThemedColors();
 
   return (
     <>
       <ScreenFrame loading={loading} error={error} onRetry={load}>
         <View>
           <View>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>App Preferences</Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
-              Customise your language, currency, and timezone
+            <Text style={{ fontSize: 18, fontWeight: "700", color: themed.textPrimary }}>
+              {t("customer.preferencesScreen.title")}
+            </Text>
+            <Text style={{ fontSize: 14, color: themed.textSecondary, marginTop: 4 }}>
+              {t("customer.preferencesScreen.subtitle")}
             </Text>
           </View>
 
@@ -413,12 +479,12 @@ export default function PreferencesScreen() {
                 key={config.field}
                 onPress={() => setPickerField(config.field)}
                 disabled={saving}
-                style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: Colors.gray[100], marginTop: index === 0 ? 0 : 12 }}
+                style={{ backgroundColor: themed.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: themed.border, marginTop: index === 0 ? 0 : 12 }}
                 activeOpacity={0.7}
               >
-                <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 4 }}>{config.label}</Text>
+                <Text style={{ fontSize: 14, color: themed.textSecondary, marginBottom: 4 }}>{config.label}</Text>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
+                  <Text style={{ fontWeight: "500", color: themed.textPrimary }}>
                     {displayLabel(
                       config.options,
                       profile[config.field],
@@ -426,7 +492,7 @@ export default function PreferencesScreen() {
                         config.defaultValue,
                     )}
                   </Text>
-                  <Text style={{ color: Colors.gray[400], fontSize: 18 }}>›</Text>
+                  <Text style={{ color: themed.textMuted, fontSize: 18 }}>›</Text>
                 </View>
               </TouchableOpacity>
             ))}
@@ -435,7 +501,9 @@ export default function PreferencesScreen() {
           {saving && (
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 8, marginTop: 24 }}>
               <ActivityIndicator size="small" color={Colors.primary} />
-              <Text style={{ fontSize: 14, color: Colors.gray[500], marginLeft: 8 }}>Saving...</Text>
+              <Text style={{ fontSize: 14, color: themed.textSecondary, marginLeft: 8 }}>
+                {t("customer.preferencesScreen.saving")}
+              </Text>
             </View>
           )}
 
@@ -444,11 +512,11 @@ export default function PreferencesScreen() {
           </View>
 
           <View style={{ marginTop: 24 }}>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>
-              Market
+            <Text style={{ fontSize: 18, fontWeight: "700", color: themed.textPrimary, marginBottom: 4 }}>
+              {t("customer.preferencesScreen.marketTitle")}
             </Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 12 }}>
-              Choose which market host the app uses for tenant routing
+            <Text style={{ fontSize: 14, color: themed.textSecondary, marginBottom: 12 }}>
+              {t("customer.preferencesScreen.marketSubtitle")}
             </Text>
             {marketOptions.map((option, index) => {
               const selected = currentMarketHost === option.host;
@@ -457,11 +525,11 @@ export default function PreferencesScreen() {
                   key={option.host}
                   onPress={() => selectMarketHost(option.host)}
                   style={{
-                    backgroundColor: Colors.white,
+                    backgroundColor: themed.surface,
                     borderRadius: 12,
                     padding: 16,
                     borderWidth: 1,
-                    borderColor: selected ? Colors.primary : Colors.gray[100],
+                    borderColor: selected ? Colors.primary : themed.border,
                     marginTop: index === 0 ? 0 : 8,
                     flexDirection: "row",
                     alignItems: "center",
@@ -472,8 +540,8 @@ export default function PreferencesScreen() {
                   accessibilityState={{ selected }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{option.label}</Text>
-                    <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{option.host}</Text>
+                    <Text style={{ fontWeight: "500", color: themed.textPrimary }}>{option.label}</Text>
+                    <Text style={{ marginTop: 2, fontSize: 12, color: themed.textSecondary }}>{option.host}</Text>
                   </View>
                   {selected ? <Ionicons name="checkmark-circle" size={22} color={Colors.primary} /> : null}
                 </TouchableOpacity>
@@ -490,9 +558,9 @@ export default function PreferencesScreen() {
         onRequestClose={() => setPickerField(null)}
       >
         <Pressable style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }} onPress={() => setPickerField(null)}>
-          <Pressable style={{ backgroundColor: Colors.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "60%" }} onPress={(e) => e.stopPropagation()}>
-            <View style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.gray[200] }}>
-              <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900] }}>
+          <Pressable style={{ backgroundColor: themed.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "60%" }} onPress={(e) => e.stopPropagation()}>
+            <View style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: themed.border }}>
+              <Text style={{ textAlign: "center", fontWeight: "600", color: themed.textPrimary }}>
                 {pickerConfig?.modalTitle ?? "Select"}
               </Text>
             </View>
@@ -505,12 +573,12 @@ export default function PreferencesScreen() {
                 return (
                   <TouchableOpacity
                     key={option.value}
-                    style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
+                    style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: themed.border }}
                     onPress={() => {
                       if (pickerField) selectOption(pickerField, option.value);
                     }}
                   >
-                    <Text style={{ fontSize: 16, fontWeight: isSelected ? "600" : "400", color: isSelected ? Colors.primary : Colors.gray[900] }}>
+                    <Text style={{ fontSize: 16, fontWeight: isSelected ? "600" : "400", color: isSelected ? Colors.primary : themed.textPrimary }}>
                       {option.label}
                     </Text>
                   </TouchableOpacity>

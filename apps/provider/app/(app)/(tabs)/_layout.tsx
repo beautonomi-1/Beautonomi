@@ -89,7 +89,14 @@ export default function TabsLayout() {
     Number(navCounts?.pending_bookings ?? 0) + Number(navCounts?.waiting_room ?? 0),
   );
   const chatsBadge = formatTabBadge(Number(navCounts?.unread_messages ?? 0));
-  const moreBadge = formatTabBadge(Number(navCounts?.active_product_orders ?? 0));
+  const moreCriticalCount = Math.max(
+    Number(navCounts?.active_product_orders ?? 0),
+    Number(navCounts?.critical_total ?? 0) -
+      Number(navCounts?.pending_bookings ?? 0) -
+      Number(navCounts?.waiting_room ?? 0) -
+      Number(navCounts?.unread_messages ?? 0),
+  );
+  const moreBadge = formatTabBadge(moreCriticalCount);
 
   useEffect(() => {
     if (!isSentryEnabled()) return;

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -27,6 +28,15 @@ interface OnDemandRequest {
 }
 
 export default function OnDemandWaitingScreen() {
+  const { t } = useTranslation();
+  const ow = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.onDemandWaiting.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const router = useRouter();
   const params = useLocalSearchParams<{ requestId?: string }>();
   const requestId = params.requestId ?? "";
@@ -44,14 +54,14 @@ export default function OnDemandWaitingScreen() {
     try {
       const res = await api.get<OnDemandRequest>(`/api/me/on-demand/requests/${requestId}`);
       if (res.error) {
-        setError(getApiErrorMessage(res.error, "Failed to load"));
+        setError(getApiErrorMessage(res.error, ow("loadFailed")));
         setRequest(null);
       } else {
         setError(null);
         setRequest(res.data ?? null);
       }
     } catch (e) {
-      setError(getApiErrorMessage(e, "Failed to load"));
+      setError(getApiErrorMessage(e, ow("loadFailed")));
       setRequest(null);
     } finally {
       setLoading(false);
@@ -61,12 +71,12 @@ export default function OnDemandWaitingScreen() {
   useEffect(() => {
     if (!requestId) {
       setLoading(false);
-      setError("No request ID");
+      setError(ow("noRequestId"));
       return;
     }
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- load when requestId changes
-  }, [requestId]);
+  }, [requestId, ow]);
 
   useEffect(() => {
     if (!requestId) return;
@@ -149,19 +159,19 @@ export default function OnDemandWaitingScreen() {
   const handleCancel = async () => {
     if (!requestId || request?.status !== "requested") return;
     Alert.alert(
-      "Cancel request",
-      "Are you sure you want to cancel this request?",
+      ow("cancelRequestTitle"),
+      ow("cancelRequestBody"),
       [
-        { text: "Keep waiting", style: "cancel" },
+        { text: ow("keepWaiting"), style: "cancel" },
         {
-          text: "Cancel",
+          text: ow("cancelRequestCta"),
           style: "destructive",
           onPress: async () => {
             setCancelling(true);
             try {
               const res = await api.post<OnDemandRequest>(`/api/me/on-demand/requests/${requestId}/cancel`, {});
               if (res.error) {
-                Alert.alert("Error", getApiErrorMessage(res.error, "Failed to cancel"));
+                Alert.alert(errTitle, getApiErrorMessage(res.error, ow("cancelFailed")));
                 return;
               }
               // §Customer-audit 2026-04: previously `setRequest(updated)` left
@@ -183,7 +193,7 @@ export default function OnDemandWaitingScreen() {
                 router.replace("/(app)/(tabs)/bookings" as never);
               }
             } catch {
-              Alert.alert("Error", "Something went wrong. Please check your connection and try again.");
+              Alert.alert(errTitle, ow("genericError"));
             } finally {
               setCancelling(false);
             }

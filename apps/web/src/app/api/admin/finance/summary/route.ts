@@ -34,15 +34,19 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
-    const normalizedRange = normalizeAdminLedgerRange({ start: startDate, end: endDate });
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const rangeStart = startDate || monthStart.toISOString();
+    const rangeEnd = endDate || now.toISOString();
+    const normalizedRange = normalizeAdminLedgerRange({ start: rangeStart, end: rangeEnd });
     const providerIdFilter = searchParams.get("provider_id");
 
     const supabaseAdmin = getSupabaseAdmin();
 
     const [tx, negativeBalanceProviders] = await Promise.all([
       fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
-        start: startDate,
-        end: endDate,
+        start: rangeStart,
+        end: rangeEnd,
       }, providerIdFilter ? { restrictProviderIds: [providerIdFilter] } : undefined),
       getNegativeBalanceProvidersForTenant(supabaseAdmin, tenantId).catch((e) => {
         console.warn("Negative payout balance scan failed:", e);
@@ -318,8 +322,9 @@ export async function GET(request: Request) {
 
         gmv_growth: gmvGrowth,
         period: {
-          start_date: startDate || null,
-          end_date: endDate || null,
+          start_date: normalizedRange.start || null,
+          end_date: normalizedRange.end || null,
+          defaulted: !(startDate && endDate),
         },
 
         negative_balance_providers: negativeBalanceProviders,

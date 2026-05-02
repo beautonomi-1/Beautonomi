@@ -36,6 +36,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { RADIUS_INPUT, RADIUS_CARD } from "@/constants/layout";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { AddressMapPinModal } from "./AddressMapPinModal";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface AddressPickerSelection {
   label: string;
@@ -73,6 +74,7 @@ export function AddressPicker({
   onUseCurrentLocation,
   initialQuery,
 }: AddressPickerProps) {
+  const { t } = useTranslation();
   const { contentPadding } = useResponsive();
   const { bundle } = useConfigBundle();
   const defaultCountryLabel = bundle?.meta?.tenant_region?.name?.trim() || "—";
@@ -209,8 +211,8 @@ export function AddressPicker({
         const feature = await reverseGeocode(lat, lng);
         if (!feature?.place_name) {
           Alert.alert(
-            "Could not resolve address",
-            "Try moving the pin closer to a street or building, or use search.",
+            t("customer.mobile.components.addressPicker.resolveFailedTitle"),
+            t("customer.mobile.components.addressPicker.mapPinResolveBody"),
           );
           return;
         }
@@ -218,10 +220,13 @@ export function AddressPicker({
         Keyboard.dismiss();
         applyGeocodeFeature(feature);
       } catch {
-        Alert.alert("Could not resolve address", "Check your connection and try again.");
+        Alert.alert(
+          t("customer.mobile.components.addressPicker.resolveFailedTitle"),
+          t("customer.mobile.components.addressPicker.resolveFailedBody"),
+        );
       }
     },
-    [applyGeocodeFeature],
+    [applyGeocodeFeature, t],
   );
 
   const resolveTypedAddress = useCallback(async () => {
@@ -237,11 +242,14 @@ export function AddressPicker({
         handleSuggestionSelect(results[0]);
         return;
       }
-      Alert.alert("No address found", "Try a more specific street, suburb, or city.");
+      Alert.alert(
+        t("customer.mobile.components.addressPicker.noResultsTitle"),
+        t("customer.mobile.components.addressPicker.noResultsBody"),
+      );
     } finally {
       setSearching(false);
     }
-  }, [query, handleSuggestionSelect]);
+  }, [query, handleSuggestionSelect, t]);
 
   const handleUseCurrentLocation = useCallback(async () => {
     if (gettingLocation) return;
@@ -251,7 +259,10 @@ export function AddressPicker({
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Location access", "Allow location access to use your current position.");
+        Alert.alert(
+          t("customer.mobile.components.addressPicker.locationAccessTitle"),
+          t("customer.mobile.components.addressPicker.locationAccessBody"),
+        );
         return;
       }
       const loc = await Location.getCurrentPositionAsync({
@@ -295,11 +306,14 @@ export function AddressPicker({
       onUseCurrentLocation();
       onClose();
     } catch (e) {
-      Alert.alert("Location error", e instanceof Error ? e.message : "Could not get your location.");
+      Alert.alert(
+        t("customer.mobile.components.addressPicker.locationErrorTitle"),
+        e instanceof Error ? e.message : t("customer.mobile.components.addressPicker.locationErrorBody"),
+      );
     } finally {
       setGettingLocation(false);
     }
-  }, [onSelect, onUseCurrentLocation, onClose, gettingLocation, defaultCountryLabel]);
+  }, [onSelect, onUseCurrentLocation, onClose, gettingLocation, defaultCountryLabel, t]);
 
   const searchActive = query.trim().length >= 2;
   const showSuggestionPanel = searchActive && (searching || suggestions.length > 0);
@@ -355,7 +369,7 @@ export function AddressPicker({
 
             <View style={{ paddingHorizontal: contentPadding, flexShrink: 0 }}>
               <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], marginBottom: 12 }}>
-                Select address
+                {t("customer.mobile.components.addressPicker.selectTitle")}
               </Text>
 
               <View
@@ -372,7 +386,7 @@ export function AddressPicker({
                 <Ionicons name="search-outline" size={18} color={Colors.gray[400]} />
                 <TextInput
                   style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 10, fontSize: 15, color: Colors.gray[900] }}
-                  placeholder="Search street, suburb, city…"
+                  placeholder={t("customer.mobile.components.addressPicker.searchPlaceholder")}
                   placeholderTextColor={Colors.gray[400]}
                   value={query}
                   onChangeText={handleSearch}
@@ -387,7 +401,7 @@ export function AddressPicker({
 
               {searchActive ? (
                 <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 8 }}>
-                  Matches appear below as you type
+                  {t("customer.mobile.components.addressPicker.matchesHint")}
                 </Text>
               ) : null}
 

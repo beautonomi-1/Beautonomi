@@ -290,6 +290,13 @@ export default function BookingFlow() {
   const [formsStepComplete, setFormsStepComplete] = useState<boolean>(true);
   /** Dedupe `?package=` deep-link prefill (per flow key + package id). */
   const packagePrefillDoneKeyRef = useRef<string | null>(null);
+  const selectedPackageCatalogRef = useRef<{
+    id: string;
+    shape: {
+      items?: Array<{ type?: string; id?: string; quantity?: number; product_variant_id?: string | null }>;
+      services?: Array<{ id: string }>;
+    };
+  } | null>(null);
 
   const [currentStepIndex, setCurrentStepIndex] = useState(() => {
     if (typeof window === "undefined") return 0;
@@ -799,6 +806,17 @@ export default function BookingFlow() {
         bookingState.selectedSlotStart && bookingState.selectedSlotEnd
           ? new Date(bookingState.selectedSlotEnd)
           : new Date(bookingDateTime.getTime() + totalMs);
+      const cachedPackage = selectedPackageCatalogRef.current;
+      const packageIdForHold =
+        bookingState.selectedPackage?.id &&
+        cachedPackage?.id === bookingState.selectedPackage.id &&
+        cartMatchesPublicCatalogPackage(
+          bookingState.selectedServices.map((s) => s.id),
+          bookingState.selectedProducts,
+          cachedPackage.shape
+        )
+          ? bookingState.selectedPackage.id
+          : null;
 
       // Wave 2.1 (audit 2026-04 final 100/100): UUIDv4 idempotency key
       // per slot-select. Internal retries inside fetcher use the same
@@ -836,6 +854,12 @@ export default function BookingFlow() {
           // union, forward the engine's list of free staff so the hold
           // resolver prefers the exact staff the calendar surfaced.
           preferred_staff_ids: bookingState.selectedSlotAvailableStaffIds ?? null,
+          ...(packageIdForHold
+            ? {
+                package_id: packageIdForHold,
+                primary_package_id: packageIdForHold,
+              }
+            : {}),
           ...(bookingState.mode === "mobile" && bookingState.address?.structuredAddress
             ? {
                 address: {
@@ -932,6 +956,7 @@ export default function BookingFlow() {
 
   useEffect(() => {
     packagePrefillDoneKeyRef.current = null;
+    selectedPackageCatalogRef.current = null;
   }, [packageFlowKey]);
 
   /** `?package=` / `?package_id=` deep link: prefill cart from `service_package_items` (staff defaults to `any`). */
@@ -966,7 +991,7 @@ export default function BookingFlow() {
           price?: number;
           discount_percentage?: number;
           services?: Array<{ id: string; type?: string }>;
-          items?: Array<{ id: string; type?: string }>;
+          items?: Array<{ id: string; type?: string; quantity?: number; product_variant_id?: string | null }>;
         };
         const pkg = (list as Pkg[]).find((p) => p.id === pkgId);
         if (!pkg) return;
@@ -1016,6 +1041,10 @@ export default function BookingFlow() {
         );
 
         packagePrefillDoneKeyRef.current = dedupeKey;
+        selectedPackageCatalogRef.current = {
+          id: pkg.id,
+          shape: { items: pkg.items, services: pkg.services },
+        };
         updateBookingState({
           selectedServices: built,
           selectedProducts,
@@ -1038,7 +1067,7 @@ export default function BookingFlow() {
 
   /** Apply `?package=` bundle metadata when selected services match the package definition (legacy `/booking` flow). */
   useEffect(() => {
-    const pkgId = searchParams.get("package")?.trim();
+    const pkgId = searchParams.get("package")?.trim() || searchParams.get("package_id")?.trim();
     const slug = searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id");
     if (!pkgId || !slug || bookingState.selectedServices.length === 0) return;
     if (bookingState.selectedPackage?.id === pkgId) return;
@@ -1058,7 +1087,7 @@ export default function BookingFlow() {
           price?: number;
           discount_percentage?: number;
           services?: Array<{ id: string }>;
-          items?: Array<{ id?: string; type?: string }>;
+          items?: Array<{ id?: string; type?: string; quantity?: number; product_variant_id?: string | null }>;
         };
         const pkg = (list as Pkg[]).find((p) => p.id === pkgId);
         if (!pkg || cancelled) return;
@@ -1078,6 +1107,10 @@ export default function BookingFlow() {
             : pkg.discount_percentage
               ? (servicesTotal * pkg.discount_percentage) / 100
               : 0;
+        selectedPackageCatalogRef.current = {
+          id: pkg.id,
+          shape: { items: pkg.items, services: pkg.services },
+        };
         updateBookingState({
           selectedPackage: {
             id: pkg.id,
@@ -1095,10 +1128,73 @@ export default function BookingFlow() {
     };
   }, [searchParams, bookingState.selectedServices, bookingState.selectedProducts, bookingState.selectedPackage?.id]);
 
+  /** Drop stale package context when the customer changes services/products after package prefill. */
+  useEffect(() => {
+    const pkg = bookingState.selectedPackage;
+    if (!pkg?.id) return;
+
+    const cached = selectedPackageCatalogRef.current;
+    if (cached?.id === pkg.id) {
+      const stillMatches = cartMatchesPublicCatalogPackage(
+        bookingState.selectedServices.map((s) => s.id),
+        bookingState.selectedProducts,
+        cached.shape
+      );
+      if (!stillMatches) {
+        selectedPackageCatalogRef.current = null;
+        updateBookingState({ selectedPackage: undefined, customerPackageEntitlementId: null });
+      }
+      return;
+    }
+
+    const slug = searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id");
+    if (!slug) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetcher.get<{ data?: unknown } | unknown[]>(
+          `/api/public/providers/${encodeURIComponent(slug)}/packages`
+        );
+        if (cancelled) return;
+        const raw = (res as { data?: unknown }).data ?? res;
+        const list = Array.isArray(raw) ? raw : [];
+        type Pkg = {
+          id: string;
+          services?: Array<{ id: string }>;
+          items?: Array<{ id?: string; type?: string; quantity?: number; product_variant_id?: string | null }>;
+        };
+        const live = (list as Pkg[]).find((p) => p.id === pkg.id);
+        if (!live) {
+          selectedPackageCatalogRef.current = null;
+          updateBookingState({ selectedPackage: undefined, customerPackageEntitlementId: null });
+          return;
+        }
+        const shape = { items: live.items, services: live.services };
+        selectedPackageCatalogRef.current = { id: live.id, shape };
+        if (
+          !cartMatchesPublicCatalogPackage(
+            bookingState.selectedServices.map((s) => s.id),
+            bookingState.selectedProducts,
+            shape
+          )
+        ) {
+          selectedPackageCatalogRef.current = null;
+          updateBookingState({ selectedPackage: undefined, customerPackageEntitlementId: null });
+        }
+      } catch {
+        // Keep the last known state; server validation remains authoritative.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bookingState.selectedPackage?.id, bookingState.selectedServices, bookingState.selectedProducts, searchParams]);
+
   /** Skip the packages step when the URL package is already applied (same UX as empty packages list). */
   useEffect(() => {
     if (currentStep !== "packages") return;
-    const pkgId = searchParams.get("package")?.trim();
+    const pkgId = searchParams.get("package")?.trim() || searchParams.get("package_id")?.trim();
     if (!pkgId || bookingState.selectedPackage?.id !== pkgId) return;
     const t = setTimeout(() => {
       handleNextRef.current();

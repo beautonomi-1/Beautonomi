@@ -7,6 +7,12 @@ import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import {
+  groupPackageTotal,
+  groupProductLineTotal,
+  validateAndPriceGroupPackage,
+} from "@/lib/bookings/group-booking-package-pricing";
+import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 
 /**
  * List/detail queries use the service-role client so provider_staff and
@@ -48,7 +54,7 @@ export async function GET(request: NextRequest) {
     try {
       let query = admin
         .from('group_bookings')
-        .select('*, booking_participants(id, booking_id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, checked_in_at, checked_out_at)', { count: 'exact' })
+        .select('*, service_packages:package_id(id, name, price, discount_percentage), booking_participants(id, booking_id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, checked_in_at, checked_out_at)', { count: 'exact' })
         .eq('provider_id', providerId)
         .order('scheduled_at', { ascending: false });
 
@@ -121,11 +127,18 @@ export async function GET(request: NextRequest) {
         }));
         const participantTotal = participants.reduce((sum: number, p: any) => sum + (Number(p.price) || 0), 0);
         const productTotal = Array.isArray(row.products)
-          ? row.products.reduce((sum: number, p: any) => sum + (Number(p.total_price ?? p.totalPrice) || 0), 0)
+          ? row.products.reduce((sum: number, p: any) => sum + groupProductLineTotal(p), 0)
           : 0;
+        const pkg = Array.isArray(row.service_packages) ? row.service_packages[0] : row.service_packages;
+        const packageDiscount = pkg ? computeCatalogPackageServiceDiscount(pkg, participantTotal) : 0;
         const totalPrice = row.total_price != null
           ? Number(row.total_price) || 0
-          : participantTotal + productTotal + (Number(row.travel_fee) || 0);
+          : groupPackageTotal({
+              participantTotal,
+              productTotal,
+              travelFee: Number(row.travel_fee) || 0,
+              packageDiscount,
+            });
         const sid = row.service_id as string | null | undefined;
         const tid = row.staff_id as string | null | undefined;
         return {
@@ -135,6 +148,8 @@ export async function GET(request: NextRequest) {
           team_member_name: tid ? staffName.get(tid) ?? null : null,
           current_participants: participants.length,
           total_price: totalPrice,
+          package_name: pkg?.name ?? null,
+          package_discount_amount: packageDiscount,
           scheduled_date: at ? at.toISOString().split('T')[0] : '',
           scheduled_time: at ? at.toTimeString().slice(0, 5) : '',
           participants,
@@ -236,10 +251,29 @@ export async function POST(request: NextRequest) {
       0,
     );
     const productTotal = normalizedProducts.reduce(
-      (sum: number, p: any) => sum + Math.max(0, Number(p.total_price ?? p.totalPrice ?? (Number(p.unit_price ?? p.unitPrice ?? 0) * Number(p.quantity ?? 1)))),
+      (sum: number, p: any) => sum + groupProductLineTotal(p),
       0,
     );
-    const serverTotalPrice = participantTotal + productTotal + serverTravelFee;
+    const groupPackagePricing = await validateAndPriceGroupPackage({
+      supabaseAdmin: admin,
+      providerId,
+      packageId: package_id || null,
+      locationType: location_type === "at_home" ? "at_home" : "at_salon",
+      locationId: location_type === "at_home" ? null : location_id || null,
+      participantRows: normalizedParticipants,
+      fallbackServiceId: service_id || null,
+      productRows: normalizedProducts,
+      participantTotal,
+    });
+    if (groupPackagePricing.ok === false) {
+      return errorResponse(groupPackagePricing.message, groupPackagePricing.code, 400);
+    }
+    const serverTotalPrice = groupPackageTotal({
+      participantTotal,
+      productTotal,
+      travelFee: serverTravelFee,
+      packageDiscount: groupPackagePricing.packageDiscount,
+    });
 
     if (!allowOverride) {
       const holdEnd = addMinutes(
@@ -363,7 +397,7 @@ export async function POST(request: NextRequest) {
     // Refetch with participants joined (include new service/pricing columns)
     const { data: fullBooking } = await admin
       .from('group_bookings')
-      .select('*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, checked_in_at, checked_out_at)')
+      .select('*, service_packages:package_id(id, name), booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, checked_in_at, checked_out_at)')
       .eq('id', groupBooking.id)
       .single();
 
@@ -372,6 +406,10 @@ export async function POST(request: NextRequest) {
 
     return successResponse({
       ...result,
+      package_discount_amount: groupPackagePricing.packageDiscount,
+      package_name: (Array.isArray((result as any).service_packages)
+        ? (result as any).service_packages[0]?.name
+        : (result as any).service_packages?.name) ?? null,
       scheduled_date: at ? at.toISOString().split('T')[0] : '',
       scheduled_time: at ? at.toTimeString().slice(0, 5) : '',
       participants: (result.booking_participants || []).map((p: any) => ({

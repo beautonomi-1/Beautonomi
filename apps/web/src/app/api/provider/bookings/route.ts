@@ -24,6 +24,8 @@ import {
   invalidateProviderBookingsReadCache,
   setCachedProviderBookingsList,
 } from "@/lib/bookings/provider-bookings-read-cache";
+import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import { validateProviderCatalogPackageMatch } from "@/lib/bookings/validate-provider-package-booking";
 
 // Map frontend status to database enum values
 // Frontend: booked, started, completed, cancelled, no_show
@@ -390,8 +392,12 @@ async function handleGetProviderBookings(request: NextRequest) {
         discount_reason: booking.discount_reason || null,
         tax_amount: booking.tax_amount || 0,
         tax_rate: booking.tax_rate || 0,
-        service_fee_percentage: booking.service_fee_percentage || 0,
-        service_fee_amount: booking.service_fee_amount || 0,
+        platform_fee_percentage: Number(booking.platform_fee_percentage ?? booking.service_fee_percentage ?? 0),
+        platform_fee_amount: Number(booking.platform_fee_amount ?? booking.service_fee_amount ?? 0),
+        service_fee_percentage: Number(booking.service_fee_percentage ?? booking.platform_fee_percentage ?? 0),
+        service_fee_amount: Number(booking.service_fee_amount ?? booking.platform_fee_amount ?? 0),
+        platform_fee_paid_by: booking.platform_fee_paid_by ?? booking.service_fee_paid_by ?? null,
+        service_fee_paid_by: booking.service_fee_paid_by ?? booking.platform_fee_paid_by ?? null,
         tip_amount: booking.tip_amount || 0,
         travel_fee: booking.travel_fee || 0,
         travel_fee_amount: booking.travel_fee || 0,
@@ -937,23 +943,47 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const serverSubtotal = computedLineSubtotal > 0 ? computedLineSubtotal : Number(body.subtotal) || 0;
     let serverDiscountAmount = Number(body.discount_amount) || 0;
 
-    // When a package is linked, compute the package discount from SERVICES-ONLY subtotal
-    // (excludes products/addons). This matches the customer flow in validate-booking.ts
-    // which uses servicesSubtotal for package discount computation.
+    // Catalog package: validate lines against `service_package_items`, then discount SERVICES-only
+    // subtotal (matches public `validate-booking.ts`).
+    const bookingLocationTypeForPkg = body.location_type || "at_salon";
     if (body.package_id) {
-      const { data: pkgRow } = await supabaseAdmin
-        .from("service_packages")
-        .select("price")
-        .eq("id", body.package_id)
-        .eq("provider_id", providerId)
-        .maybeSingle();
-      if (pkgRow?.price != null) {
-        const servicesOnlySubtotal = servicesSubtotal || serverSubtotal;
-        if (pkgRow.price < servicesOnlySubtotal) {
-          const packageDiscount = servicesOnlySubtotal - pkgRow.price;
-          serverDiscountAmount = Math.max(serverDiscountAmount, packageDiscount);
-        }
+      const svcForPkg = Array.isArray(body.services)
+        ? (
+            body.services as Array<{
+              offering_id?: string;
+              service_id?: string;
+              serviceId?: string;
+            }>
+          )
+            .map((s) => ({
+              offering_id: s.offering_id ?? s.service_id ?? s.serviceId ?? "",
+            }))
+            .filter((s) => s.offering_id.length > 0)
+        : [];
+      const prodForPkg = Array.isArray(body.products)
+        ? (body.products as Array<Record<string, unknown>>)
+            .map((p) => ({
+              product_id: String(p.product_id ?? p.productId ?? ""),
+              product_variant_id: (p.product_variant_id ?? p.productVariantId ?? null) as string | null,
+              quantity: Math.max(1, Math.floor(Number(p.quantity) || 1)),
+            }))
+            .filter((p) => p.product_id.length > 0)
+        : [];
+
+      const pv = await validateProviderCatalogPackageMatch({
+        supabaseAdmin,
+        providerId,
+        packageId: body.package_id as string,
+        locationType: bookingLocationTypeForPkg,
+        locationId,
+        services: svcForPkg,
+        products: prodForPkg,
+      });
+      if (pv.ok === false) {
+        return errorResponse(pv.message, pv.code, 400);
       }
+      const packageDiscount = computeCatalogPackageServiceDiscount(pv.pkg, servicesSubtotal);
+      serverDiscountAmount = Math.max(serverDiscountAmount, packageDiscount);
     }
     const serverTipAmount = Number(body.tip_amount) || 0;
     const bookingLocationType = body.location_type || "at_salon";

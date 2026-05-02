@@ -1039,6 +1039,24 @@ const PROFILE_MANY_CAT_PILLS = 10;
 export default function PartnerProfileScreen() {
   useScreenTracking("Partner Profile");
   const { t } = useTranslation();
+  const pp = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.partnerProfile.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
+  const reportReasons = useMemo(
+    () => [
+      pp("reportReasonInappropriate"),
+      pp("reportReasonMisleading"),
+      pp("reportReasonUnprofessional"),
+      pp("reportReasonHarassment"),
+      pp("reportReasonSpam"),
+      pp("reportReasonOther"),
+    ],
+    [pp],
+  );
   const { slug, campaign_id: paramCampaignId, provider_id: paramProviderId, lat: paramLat, lng: paramLng } =
     useLocalSearchParams<{
       slug: string;
@@ -1345,15 +1363,21 @@ export default function PartnerProfileScreen() {
     try {
       const r = await api.post<{ action: "added" | "removed" }>("/api/me/wishlists/toggle", { item_type: "provider", item_id: provider.id });
       if (r.error) {
-        Alert.alert("Error", r.error.message || "Could not update wishlist");
+        Alert.alert(
+          t("customer.mobile.screens.authLogin.errorTitle"),
+          r.error.message || t("customer.mobile.screens.productDetail.wishlistError"),
+        );
         return;
       }
       const d = (r.data ?? {}) as Record<string, unknown>;
       setIsSaved((d.action ?? (d.data as Record<string, unknown>)?.action) === "added");
     } catch {
-      Alert.alert("Error", "Could not update wishlist. Please try again.");
+      Alert.alert(
+        t("customer.mobile.screens.authLogin.errorTitle"),
+        t("customer.mobile.screens.productDetail.wishlistRetry"),
+      );
     } finally { setToggling(false); }
-  }, [provider, user, toggling]);
+  }, [provider, user, toggling, t]);
 
   /* ── Share ── */
   const handleShare = useCallback(() => {
@@ -1372,25 +1396,25 @@ export default function PartnerProfileScreen() {
 
   /* ── Message ── */
   const handleMessage = useCallback(() => {
-    if (!user) { Alert.alert("Sign in required", "Please sign in to message this provider."); return; }
+    if (!user) {
+      Alert.alert(pp("signInTitle"), pp("signInToMessageBody"));
+      return;
+    }
     if (!provider) return;
     router.push({ pathname: "/(app)/chat", params: { provider_id: provider.id, provider_name: provider.business_name } });
-  }, [user, provider]);
+  }, [user, provider, pp]);
 
   /* ── Report Provider ── */
-  const REPORT_REASONS = [
-    "Inappropriate content",
-    "Misleading information",
-    "Unprofessional behavior",
-    "Harassment or abuse",
-    "Spam or scam",
-    "Other",
-  ];
-
   const handleSubmitReport = useCallback(async () => {
     if (!provider || !user) return;
-    if (!reportReason) { Alert.alert("Select a reason", "Please select a reason for your report."); return; }
-    if (!reportDescription.trim()) { Alert.alert("Add details", "Please describe what happened."); return; }
+    if (!reportReason) {
+      Alert.alert(pp("selectReportReasonTitle"), pp("selectReportReasonBody"));
+      return;
+    }
+    if (!reportDescription.trim()) {
+      Alert.alert(pp("addReportDetailsTitle"), pp("addReportDetailsBody"));
+      return;
+    }
 
     setReportSubmitting(true);
     try {
@@ -1402,35 +1426,39 @@ export default function PartnerProfileScreen() {
 
       if (res.error) {
         haptic.error();
-        Alert.alert("Error", res.error.message || "Failed to submit report.");
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || pp("submitReportError"));
       } else {
         haptic.success();
         setReportModalVisible(false);
         setReportReason("");
         setReportDescription("");
-        Alert.alert("Report Submitted", "Thank you. Our team will review your report within 24-48 hours.");
+        Alert.alert(pp("reportSubmittedTitle"), pp("reportSubmittedBody"));
       }
     } catch {
-      Alert.alert("Error", "Something went wrong. Please try again.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), t("customer.mobile.screens.maintenance.genericError"));
     } finally {
       setReportSubmitting(false);
     }
-  }, [provider, user, reportReason, reportDescription]);
+  }, [provider, user, reportReason, reportDescription, pp, t]);
 
   /* ── Join Membership ── */
   const handleJoinMembership = useCallback(async (plan: MembershipPlan) => {
-    if (!user) { Alert.alert("Sign in required", "Please sign in to join a membership."); return; }
+    if (!user) {
+      Alert.alert(pp("signInTitle"), pp("signInToMembershipBody"));
+      return;
+    }
     if (!provider) return;
 
     const unit = Number.isFinite(plan.price) ? plan.price : 0;
+    const price = `${plan.currency} ${unit.toFixed(0)}`;
 
     Alert.alert(
-      `Join ${plan.name}`,
-      `Subscribe for ${plan.currency} ${unit.toFixed(0)}/${plan.interval}?\n\nYou'll be redirected to complete payment.`,
+      pp("joinMembershipTitle", { planName: plan.name }),
+      pp("joinMembershipBody", { price, interval: plan.interval }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Subscribe",
+          text: pp("subscribeCta"),
           onPress: async () => {
             try {
               const res = await api.post<{ payment?: { authorization_url: string } }>("/api/me/membership/subscribe", {
@@ -1442,7 +1470,7 @@ export default function PartnerProfileScreen() {
 
               if (res.error) {
                 haptic.error();
-                Alert.alert("Error", res.error.message || "Failed to subscribe.");
+                Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || pp("subscribeError"));
                 return;
               }
 
@@ -1456,22 +1484,19 @@ export default function PartnerProfileScreen() {
                   presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
                 });
                 haptic.success();
-                Alert.alert(
-                  "Complete payment",
-                  "Finish payment in the browser. Once done, go to Account → Membership to see your new plan."
-                );
+                Alert.alert(pp("completePaymentTitle"), pp("completePaymentBody"));
               } else {
                 haptic.error();
-                Alert.alert("Error", "Payment link could not be created. Please try again.");
+                Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), pp("paymentLinkError"));
               }
             } catch {
-              Alert.alert("Error", "Something went wrong. Please try again.");
+              Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), t("customer.mobile.screens.maintenance.genericError"));
             }
           },
         },
       ]
     );
-  }, [user, provider, paramCampaignId]);
+  }, [user, provider, paramCampaignId, pp, t]);
 
   /* ── Book (pass ad attribution when user came from sponsored result) ── */
   const bookParams = useCallback(
@@ -1735,7 +1760,10 @@ export default function PartnerProfileScreen() {
               <View style={{ marginRight: 8 }}><FloatingIcon name="share-social-outline" onPress={handleShare} /></View>
               <View style={{ marginRight: 8 }}><FloatingIcon name="chatbubble-ellipses-outline" onPress={handleMessage} /></View>
               <FloatingIcon name="flag-outline" onPress={() => {
-                if (!user) { Alert.alert("Sign in required", "Please sign in to report a provider."); return; }
+                if (!user) {
+                  Alert.alert(pp("signInTitle"), pp("signInToReportBody"));
+                  return;
+                }
                 setReportModalVisible(true);
               }} />
             </View>
@@ -1881,9 +1909,9 @@ export default function PartnerProfileScreen() {
                           try {
                             await Clipboard.setStringAsync(p.code);
                             haptic.success();
-                            Alert.alert("Copied", `Use code ${p.code} at checkout when you book with this provider.`);
+                            Alert.alert(pp("promoCopiedTitle"), pp("promoCopiedBody", { code: p.code }));
                           } catch {
-                            Alert.alert("Copy failed", "Select the code above to copy it manually.");
+                            Alert.alert(pp("copyFailedTitle"), pp("copyFailedBody"));
                           }
                         }}
                         style={{
@@ -2847,19 +2875,17 @@ export default function PartnerProfileScreen() {
             </View>
             <View style={{ paddingHorizontal: contentPadding, paddingBottom: 16 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827" }}>Report Provider</Text>
+                <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827" }}>{pp("reportModalTitle")}</Text>
                 <TouchableOpacity onPress={() => setReportModalVisible(false)} hitSlop={12}>
                   <Ionicons name="close" size={24} color="#6B7280" />
                 </TouchableOpacity>
               </View>
 
-              <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>
-                Select a reason and provide details so our team can review.
-              </Text>
+              <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>{pp("reportModalLead")}</Text>
 
               {/* Reason chips */}
               <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>
-                {REPORT_REASONS.map((reason) => {
+                {reportReasons.map((reason) => {
                   const active = reportReason === reason;
                   return (
                     <TouchableOpacity
@@ -2884,7 +2910,7 @@ export default function PartnerProfileScreen() {
 
               {/* Description */}
               <TextInput
-                placeholder="Please describe what happened..."
+                placeholder={t("customer.mobile.screens.partnerProfileReportPlaceholder")}
                 placeholderTextColor="#9CA3AF"
                 value={reportDescription}
                 onChangeText={setReportDescription}
@@ -2917,7 +2943,7 @@ export default function PartnerProfileScreen() {
                 ) : (
                   <>
                     <Ionicons name="flag" size={18} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Submit Report</Text>
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>{pp("submitReportCta")}</Text>
                   </>
                 )}
               </TouchableOpacity>

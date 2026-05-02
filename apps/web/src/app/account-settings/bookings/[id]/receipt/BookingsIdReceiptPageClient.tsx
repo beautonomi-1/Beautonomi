@@ -32,6 +32,8 @@ function unwrapReceiptResponse(body: unknown): Receipt | null {
 }
 
 interface Receipt {
+  package_id?: string | null;
+  package_name?: string | null;
   booking_number: string;
   booking_date: string;
   service_date: string;
@@ -67,15 +69,22 @@ interface Receipt {
   tax_rate?: number;
   /** Customer-paid Platform Fee */
   fees: number;
+  platform_fee_percentage?: number;
+  service_fee_percentage?: number;
   travel_fee?: number;
   tip_amount?: number;
   cancellation_fee?: number;
   discount: number;
+  package_discount_amount?: number;
+  promotion_discount_amount?: number;
+  membership_discount_amount?: number;
+  loyalty_discount_amount?: number;
   discount_reason?: string | null;
   total: number;
   currency?: string;
   payment_status: string;
   amount_paid?: number;
+  total_refunded?: number;
   balance_due?: number;
   deposit_required?: boolean;
   deposit_amount?: number;
@@ -176,12 +185,22 @@ export default function ReceiptPage() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+    return new Date(dateString).toLocaleDateString(locale, {
       year: "numeric",
       month: "long",
       day: "numeric",
     });
   };
+
+  const formatPercent = (value?: number) => {
+    const n = Number(value || 0);
+    if (!Number.isFinite(n) || n <= 0) return "";
+    const display = n <= 1 ? n * 100 : n;
+    return Number.isInteger(display) ? String(display) : display.toFixed(1);
+  };
+
+  const platformFeePercent = formatPercent(receipt?.platform_fee_percentage ?? receipt?.service_fee_percentage);
+  const platformFeeLabel = platformFeePercent ? `Platform fee (${platformFeePercent}%)` : "Platform fee";
 
   if (isLoading) {
     return (
@@ -272,6 +291,9 @@ export default function ReceiptPage() {
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Dates</h3>
                 <p className="text-sm text-slate-600">Booked <span className="font-semibold text-slate-950">{formatDate(receipt.booking_date)}</span></p>
                 <p className="text-sm text-slate-600">Service <span className="font-semibold text-slate-950">{formatDate(receipt.service_date)}</span></p>
+                {receipt.package_name && (
+                  <p className="text-sm text-slate-600">Package <span className="font-semibold text-slate-950">{receipt.package_name}</span></p>
+                )}
               </div>
             </div>
 
@@ -337,7 +359,7 @@ export default function ReceiptPage() {
               )}
               {(receipt.fees ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Service / platform fee</span>
+                  <span className="text-slate-600">{platformFeeLabel}</span>
                   <span>{formatCurrency(receipt.fees)}</span>
                 </div>
               )}
@@ -353,10 +375,38 @@ export default function ReceiptPage() {
                   <span>{formatCurrency(receipt.cancellation_fee!)}</span>
                 </div>
               )}
-              {receipt.discount > 0 && (
+              {receipt.discount > 0 &&
+                Number(receipt.package_discount_amount || 0) +
+                  Number(receipt.promotion_discount_amount || 0) +
+                  Number(receipt.membership_discount_amount || 0) +
+                  Number(receipt.loyalty_discount_amount || 0) === 0 && (
                 <div className="flex justify-between text-sm text-green-600">
                   <span>Discount{receipt.discount_reason ? ` (${receipt.discount_reason})` : ""}</span>
                   <span>-{formatCurrency(receipt.discount)}</span>
+                </div>
+              )}
+              {(receipt.package_discount_amount ?? 0) > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Package discount</span>
+                  <span>-{formatCurrency(receipt.package_discount_amount!)}</span>
+                </div>
+              )}
+              {(receipt.promotion_discount_amount ?? 0) > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Promotion discount</span>
+                  <span>-{formatCurrency(receipt.promotion_discount_amount!)}</span>
+                </div>
+              )}
+              {(receipt.membership_discount_amount ?? 0) > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Membership discount</span>
+                  <span>-{formatCurrency(receipt.membership_discount_amount!)}</span>
+                </div>
+              )}
+              {(receipt.loyalty_discount_amount ?? 0) > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Loyalty discount</span>
+                  <span>-{formatCurrency(receipt.loyalty_discount_amount!)}</span>
                 </div>
               )}
               <div className="mt-3 flex justify-between border-t pt-3 text-lg font-bold text-slate-950">
@@ -375,6 +425,12 @@ export default function ReceiptPage() {
                 <div className="flex justify-between text-sm">
                   <span>Amount Paid</span>
                   <span>{formatCurrency(receipt.amount_paid!)}</span>
+                </div>
+              )}
+              {(receipt.total_refunded ?? 0) > 0 && (
+                <div className="flex justify-between text-sm text-amber-700">
+                  <span>Refunded</span>
+                  <span>-{formatCurrency(receipt.total_refunded!)}</span>
                 </div>
               )}
               {(receipt.balance_due ?? 0) > 0 && (

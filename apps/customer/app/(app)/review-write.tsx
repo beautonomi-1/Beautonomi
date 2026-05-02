@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -24,6 +25,16 @@ import { appendFormDataFileNative } from "@beautonomi/utils";
 
 export default function ReviewWriteScreen() {
   useScreenTracking("Review Write");
+  const { t } = useTranslation();
+  const rw = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.reviewWrite.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
+  const writeReviewStackTitle = t("customer.mobile.stackTitles.writeReview");
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const { bookingId, reviewId, rating: initRating, comment: initComment, provider_slug: providerSlugParam } =
@@ -55,10 +66,10 @@ export default function ReviewWriteScreen() {
   const uniqueStaff = useMemo(() => {
     const map = new Map<string, string>();
     for (const s of services) {
-      if (s.staff_id) map.set(s.staff_id, s.staff_name || "Staff");
+      if (s.staff_id) map.set(s.staff_id, s.staff_name || rw("staffFallback"));
     }
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [services]);
+  }, [services, rw]);
 
   useEffect(() => {
     if (!bookingId) return;
@@ -74,7 +85,7 @@ export default function ReviewWriteScreen() {
         if (cancelled) return;
 
         if (bookingRes.error) {
-          Alert.alert("Error", "Could not load booking details for review.");
+          Alert.alert(errTitle, rw("loadBookingError"));
           setLoadingContext(false);
           return;
         }
@@ -90,7 +101,7 @@ export default function ReviewWriteScreen() {
         const mappedServices = bookingServicesRaw
           .map((svc) => ({
             offering_id: String(svc.offering_id ?? ""),
-            offering_name: String(svc.offering_name ?? svc.service_name ?? "Service"),
+            offering_name: String(svc.offering_name ?? svc.service_name ?? rw("serviceFallback")),
             staff_id: svc.staff_id ? String(svc.staff_id) : null,
             staff_name: svc.staff_name ? String(svc.staff_name) : null,
           }))
@@ -139,15 +150,15 @@ export default function ReviewWriteScreen() {
     return () => {
       cancelled = true;
     };
-  }, [bookingId]);
+  }, [bookingId, errTitle, rw]);
 
   const submit = async () => {
     if (!bookingId) {
-      Alert.alert("Booking required", "Open this screen from a completed booking to leave a review.");
+      Alert.alert(rw("bookingRequiredTitle"), rw("bookingRequiredBody"));
       return;
     }
     if (rating < 1 || rating > 5) {
-      Alert.alert("Rating required", "Please select a star rating before submitting.");
+      Alert.alert(rw("ratingRequiredTitle"), rw("ratingRequiredBody"));
       return;
     }
     setLoading(true);
@@ -176,7 +187,7 @@ export default function ReviewWriteScreen() {
           service_ratings: normalizedServiceRatings,
           staff_rating: normalizedStaffRating,
         });
-        if (res.error) Alert.alert("Error", res.error.message || "Failed to update review");
+        if (res.error) Alert.alert(errTitle, res.error.message || rw("updateReviewError"));
         else router.back();
       } else {
         const res = await api.post(path, {
@@ -186,11 +197,11 @@ export default function ReviewWriteScreen() {
           service_ratings: normalizedServiceRatings,
           staff_rating: normalizedStaffRating,
         });
-        if (res.error) Alert.alert("Error", res.error.message || "Failed to submit review");
+        if (res.error) Alert.alert(errTitle, res.error.message || rw("submitReviewError"));
         else router.back();
       }
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Failed to submit");
+      Alert.alert(errTitle, e instanceof Error ? e.message : rw("submitFailed"));
     } finally {
       setLoading(false);
     }
@@ -213,7 +224,7 @@ export default function ReviewWriteScreen() {
       });
       const res = await api.post<{ urls?: string[] }>("/api/me/custom-requests/upload", formData);
       if (res.error) {
-        Alert.alert("Error", "Failed to upload photo");
+        Alert.alert(errTitle, rw("uploadPhotoError"));
         return;
       }
       const urls = res.data?.urls ?? [];
@@ -221,7 +232,7 @@ export default function ReviewWriteScreen() {
         setPhotos((p) => [...p, ...urls].slice(0, 4));
       }
     } catch {
-      Alert.alert("Error", "Failed to upload photo");
+      Alert.alert(errTitle, rw("uploadPhotoError"));
     } finally {
       setUploading(false);
     }
@@ -230,31 +241,28 @@ export default function ReviewWriteScreen() {
   if (!bookingId) {
     return (
       <>
-        <Stack.Screen options={{ title: "Write Review" }} />
+        <Stack.Screen options={{ title: writeReviewStackTitle }} />
         <ScrollView
           style={{ flex: 1, backgroundColor: Colors.white }}
           contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint, flexGrow: 1, justifyContent: "center" }}
         >
-          <Text style={{ fontSize: 16, color: Colors.gray[800], marginBottom: 12, lineHeight: 22 }}>
-            Reviews are linked to a completed appointment. Book a service first, then rate your experience from{" "}
-            <Text style={{ fontWeight: "600" }}>Account → Bookings</Text> or the booking detail screen.
-          </Text>
+          <Text style={{ fontSize: 16, color: Colors.gray[800], marginBottom: 12, lineHeight: 22 }}>{rw("noBookingContext")}</Text>
           {providerSlugParam ? (
             <TouchableOpacity
               onPress={() => router.replace({ pathname: "/(app)/book", params: { slug: providerSlugParam } } as never)}
               style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: "center", marginBottom: 12 }}
             >
-              <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>Book this provider</Text>
+              <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>{rw("bookThisProvider")}</Text>
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity
             onPress={() => router.replace("/(app)/account-settings/bookings" as never)}
             style={{ borderWidth: 1, borderColor: Colors.gray[300], paddingVertical: 14, borderRadius: 12, alignItems: "center", marginBottom: 12 }}
           >
-            <Text style={{ color: Colors.gray[900], fontWeight: "600", fontSize: 16 }}>My bookings</Text>
+            <Text style={{ color: Colors.gray[900], fontWeight: "600", fontSize: 16 }}>{rw("myBookingsCta")}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.back()} style={{ paddingVertical: 12, alignItems: "center" }}>
-            <Text style={{ color: Colors.primary, fontWeight: "600" }}>Go back</Text>
+            <Text style={{ color: Colors.primary, fontWeight: "600" }}>{rw("goBackCta")}</Text>
           </TouchableOpacity>
         </ScrollView>
       </>
@@ -263,10 +271,10 @@ export default function ReviewWriteScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: isEdit ? "Edit Review" : "Write Review" }} />
+      <Stack.Screen options={{ title: isEdit ? rw("editReviewTitle") : writeReviewStackTitle }} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
       <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
-        <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Rating</Text>
+        <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{rw("ratingLabel")}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 8 }}>
           {[1, 2, 3, 4, 5].map((r) => (
             <TouchableOpacity
@@ -284,17 +292,17 @@ export default function ReviewWriteScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Your review</Text>
+        <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{rw("yourReviewLabel")}</Text>
         <TextInput
           style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 16, minHeight: 100 }}
-          placeholder="Share your experience..."
+          placeholder={rw("shareExperiencePlaceholder")}
           placeholderTextColor={Colors.gray[400]}
           value={comment}
           onChangeText={setComment}
           multiline
           numberOfLines={4}
         />
-        <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Photos (optional, max 4)</Text>
+        <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{rw("photosSectionLabel")}</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>
           {photos.map((url, i) => (
             <View key={i} style={{ position: "relative", marginRight: 8, marginBottom: 8 }}>
@@ -313,7 +321,7 @@ export default function ReviewWriteScreen() {
         {loadingContext ? <ActivityIndicator style={{ marginBottom: 12 }} /> : null}
         {services.length > 0 && (
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Rate each service</Text>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{rw("rateEachService")}</Text>
             {services.map((svc) => {
               const selected = serviceRatings[svc.offering_id] ?? rating;
               return (
@@ -337,7 +345,7 @@ export default function ReviewWriteScreen() {
         )}
         {uniqueStaff.length > 0 && (
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Rate staff</Text>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{rw("rateStaff")}</Text>
             {uniqueStaff.map((staff) => {
               const selected = staffRatings[staff.id] ?? rating;
               return (
@@ -364,7 +372,7 @@ export default function ReviewWriteScreen() {
           disabled={loading || loadingContext || rating < 1}
           style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: loading || loadingContext || rating < 1 ? 0.5 : 1 }}
         >
-          {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Submit</Text>}
+          {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>{rw("submitCta")}</Text>}
         </TouchableOpacity>
       </ScrollView>
       </KeyboardAvoidingView>

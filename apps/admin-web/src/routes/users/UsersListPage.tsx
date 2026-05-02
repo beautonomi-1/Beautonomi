@@ -131,9 +131,17 @@ export function UsersListPage() {
       adminApi.postJson("/api/admin/users/bulk", body),
     onSuccess: (_data, vars) => {
       const count = vars.user_ids.length;
+      const actionLabel =
+        vars.action === "activate"
+          ? "activated"
+          : vars.action === "deactivate"
+            ? "deactivated"
+            : vars.action === "delete"
+              ? "deleted"
+              : `${vars.action} completed`;
       setSelectedIds(new Set());
       invalidateUsers();
-      adminToast.success(`${count} user${count !== 1 ? "s" : ""} ${vars.action === "suspend" ? "suspended" : vars.action}d`);
+      adminToast.success(`${count} user${count !== 1 ? "s" : ""} ${actionLabel}`);
     },
     onError: (e: Error) => adminToast.error(`Bulk action failed: ${e.message}`),
   });

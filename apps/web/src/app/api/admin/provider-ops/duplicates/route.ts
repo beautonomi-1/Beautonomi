@@ -49,6 +49,7 @@ interface DupLead {
   source: string;
   created_at: string;
   matched_provider_id: string | null;
+  updated_at: string;
 }
 
 interface ExistingProvider {
@@ -132,7 +133,7 @@ export async function GET(request: NextRequest) {
     const { data: leadsData, error: leadsErr } = await supabase
       .from("provider_leads")
       .select(
-        "id, business_name, contact_person_name, email, phone_e164, commercial_stage, source, created_at, matched_provider_id",
+        "id, business_name, contact_person_name, email, phone_e164, commercial_stage, source, created_at, matched_provider_id, updated_at",
       )
       .eq("tenant_id", tenantId)
       .is("matched_provider_id", null)

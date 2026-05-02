@@ -303,12 +303,6 @@ export default function OnlineBookingFlowNew({
   queryParams = {},
   embed = false,
 }: OnlineBookingFlowNewProps) {
-  // #region agent log (only when NEXT_PUBLIC_DEBUG_INGEST_URL is set)
-  const debugIngestUrl = typeof process !== "undefined" ? process.env?.NEXT_PUBLIC_DEBUG_INGEST_URL : undefined;
-  if (debugIngestUrl) {
-    fetch(debugIngestUrl, { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "9fda2d" }, body: JSON.stringify({ sessionId: "9fda2d", location: "OnlineBookingFlowNew.tsx:component-entry", message: "render start", data: { slug: provider?.slug }, timestamp: Date.now(), hypothesisId: "H1" }) }).catch(() => {});
-  }
-  // #endregion
   const router = useRouter();
   const { user } = useAuth();
   const { track, isReady } = useAmplitude();
@@ -318,6 +312,7 @@ export default function OnlineBookingFlowNew({
   const checkoutTrackedRef = useRef(false);
   const appliedQueryAddonsRef = useRef(false);
   const prevStepRef = useRef<BookingStep | null>(null);
+  const packageProductLineIdsRef = useRef<Set<string>>(new Set());
 
   const [step, setStep] = useState<BookingStep>("venue");
   const [bookingData, setBookingData] = useState<BookingData>(() => ({
@@ -327,11 +322,6 @@ export default function OnlineBookingFlowNew({
     atHomeAddress: { ...defaultBookingData.atHomeAddress, country: tenantRegionCode },
   }));
 
-  // #region agent log
-  if (debugIngestUrl) {
-    fetch(debugIngestUrl, { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "9fda2d" }, body: JSON.stringify({ sessionId: "9fda2d", location: "OnlineBookingFlowNew.tsx:before-useCallback", message: "about to define updateData", data: {}, timestamp: Date.now(), hypothesisId: "H2" }) }).catch(() => {});
-  }
-  // #endregion
   const updateDataRef = useRef<(patch: Partial<BookingData>) => void>(() => {});
   const updateDataImpl = useCallback((patch: Partial<BookingData>) => {
     setBookingData((prev) => {
@@ -391,20 +381,22 @@ export default function OnlineBookingFlowNew({
       if (!pkg) return prev;
       if (cartMatchesCatalogPackage(prev.selectedServices, prev.selectedProducts ?? [], pkg)) return prev;
       const servicesSubtotal = prev.selectedServices.reduce((s, e) => s + e.price, 0);
+      const packageProductLineIds = packageProductLineIdsRef.current;
+      const selectedProducts =
+        packageProductLineIds.size > 0
+          ? (prev.selectedProducts ?? []).filter((p) => !packageProductLineIds.has(p.id))
+          : (prev.selectedProducts ?? []);
+      packageProductLineIdsRef.current = new Set();
       return {
         ...prev,
         selectedPackage: null,
+        selectedProducts,
         servicesSubtotal,
         totalDurationMinutes: prev.selectedServices.reduce((s, e) => s + e.duration_minutes, 0),
       };
     });
   }, [bookingData.selectedServices, bookingData.selectedProducts, bookingData.selectedPackage]);
 
-  // #region agent log
-  if (debugIngestUrl) {
-    fetch(debugIngestUrl, { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "9fda2d" }, body: JSON.stringify({ sessionId: "9fda2d", location: "OnlineBookingFlowNew.tsx:after-updateData", message: "updateData defined", data: {}, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => {});
-  }
-  // #endregion
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [offerings, setOfferings] = useState<ServiceOption[]>([]);
   const [packages, setPackages] = useState<PackageOption[]>([]);
@@ -816,6 +808,7 @@ export default function OnlineBookingFlowNew({
                   /* ignore — customer can still complete checkout without prefilled retail */
                 }
               }
+              packageProductLineIdsRef.current = new Set(selectedProducts.map((p) => p.id));
               setBookingData((prev) => ({
                 ...prev,
                 selectedPackage: pkg as unknown as BookingData["selectedPackage"],
@@ -1444,6 +1437,7 @@ export default function OnlineBookingFlowNew({
             variantsByServiceId={variantsByServiceId}
             onSelectPackage={async (pkg) => {
               if (!pkg) {
+                packageProductLineIdsRef.current = new Set();
                 setBookingData((prev) => ({ ...prev, selectedPackage: null, selectedServices: [], selectedProducts: [] }));
                 return;
               }
@@ -1469,6 +1463,7 @@ export default function OnlineBookingFlowNew({
                   /* ignore */
                 }
               }
+              packageProductLineIdsRef.current = new Set(selectedProducts.map((p) => p.id));
               setBookingData((prev) => ({
                 ...prev,
                 selectedPackage: pkg,
@@ -1479,6 +1474,7 @@ export default function OnlineBookingFlowNew({
               }));
             }}
             onSelectService={(entries) => {
+              packageProductLineIdsRef.current = new Set();
               setBookingData((prev) => ({
                 ...prev,
                 selectedPackage: null,
