@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -38,6 +38,7 @@ import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { api } from "@/lib/api-client";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { AddressMapPinModal } from "@/components/AddressMapPinModal";
+import { pushInAppBrowser } from "@/lib/in-app-web";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { reverseGeocodeCoordinates } from "@/lib/reverse-geocode-address";
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
@@ -172,6 +173,8 @@ const STATUS_FILTERS = [
   { label: "Completed", value: "completed" },
   { label: "Cancelled", value: "cancelled" },
 ];
+
+const GROUP_PAGE_LIMIT = 50;
 
 type ServiceRow = {
   id: string;
@@ -465,6 +468,10 @@ export default function GroupBookingsScreen() {
   const [validatingCreateAddress, setValidatingCreateAddress] = useState(false);
   const [createMapPinOpen, setCreateMapPinOpen] = useState(false);
   const [createLocatingHome, setCreateLocatingHome] = useState(false);
+  const [extraGroups, setExtraGroups] = useState<GroupBooking[]>([]);
+  const [loadedGroupPage, setLoadedGroupPage] = useState(1);
+  const [loadingMoreGroups, setLoadingMoreGroups] = useState(false);
+  const openGroupFetchRef = useRef<string | null>(null);
 
   const createDateOptions = useMemo(
     () => Array.from({ length: 21 }, (_, i) => addDays(startOfDay(new Date()), i)),
@@ -477,7 +484,7 @@ export default function GroupBookingsScreen() {
 
   const statusParam = filter !== "all" ? `&status=${filter}` : "";
   const { data: groupData, loading, error: groupError, refresh } = useApi<GroupBookingsResponse>(
-    `/api/provider/group-bookings?limit=50${statusParam}`
+    `/api/provider/group-bookings?limit=${GROUP_PAGE_LIMIT}&page=1${statusParam}`
   );
   const { execute: updateGroup, loading: updatingGroup } = useApiMutation("patch");
   const { execute: createGroup, loading: creatingGroup } = useApiMutation<{
@@ -500,7 +507,21 @@ export default function GroupBookingsScreen() {
   const { execute: checkInParticipant } = useApiMutation("post");
   const { execute: checkOutParticipant } = useApiMutation("post");
 
-  const groups = useMemo(() => groupData?.data ?? [], [groupData?.data]);
+  useEffect(() => {
+    setExtraGroups([]);
+    setLoadedGroupPage(1);
+  }, [filter]);
+
+  useEffect(() => {
+    setLoadedGroupPage(groupData?.page ?? 1);
+  }, [groupData?.page]);
+
+  const groups = useMemo(() => {
+    const byId = new Map<string, GroupBooking>();
+    for (const group of groupData?.data ?? []) byId.set(group.id, group);
+    for (const group of extraGroups) byId.set(group.id, group);
+    return Array.from(byId.values());
+  }, [groupData?.data, extraGroups]);
 
   const createSlotParams = useMemo(() => {
     const serviceIds = Array.from(
@@ -611,17 +632,62 @@ export default function GroupBookingsScreen() {
     const group = groups.find((g) => g.id === openId);
     if (group) {
       setSelectedGroup(group);
+      openGroupFetchRef.current = null;
+      return;
     }
+    if (openGroupFetchRef.current === openId) return;
+    openGroupFetchRef.current = openId;
+    (async () => {
+      const res = await api.get<any>(`/api/provider/group-bookings/${encodeURIComponent(openId)}`);
+      const payload = res.data?.data ?? res.data?.group ?? res.data;
+      const fetched = Array.isArray(payload) ? null : payload;
+      if (res.error || !fetched?.id) {
+        Alert.alert("Group booking not found", "This group booking could not be opened. It may be archived, filtered out, or unavailable.");
+        openGroupFetchRef.current = null;
+        return;
+      }
+      setExtraGroups((prev) => (prev.some((g) => g.id === fetched.id) ? prev : [...prev, fetched as GroupBooking]));
+      setSelectedGroup(fetched as GroupBooking);
+      openGroupFetchRef.current = null;
+    })();
   }, [groups, params.open_group_id]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      setExtraGroups([]);
+      setLoadedGroupPage(1);
       await refresh();
     } finally {
       setRefreshing(false);
     }
   }, [refresh]);
+
+  const loadMoreGroups = useCallback(async () => {
+    if (loadingMoreGroups) return;
+    const totalPages = groupData?.total_pages ?? 1;
+    if (loadedGroupPage >= totalPages) return;
+    setLoadingMoreGroups(true);
+    try {
+      const nextPage = loadedGroupPage + 1;
+      const res = await api.get<GroupBookingsResponse>(
+        `/api/provider/group-bookings?limit=${GROUP_PAGE_LIMIT}&page=${nextPage}${statusParam}`,
+      );
+      if (res.error) {
+        Alert.alert("Could not load more groups", res.error.message || "Please try again.");
+        return;
+      }
+      const rows = res.data?.data ?? [];
+      setExtraGroups((prev) => {
+        const byId = new Map(prev.map((g) => [g.id, g] as const));
+        for (const group of rows) byId.set(group.id, group);
+        return Array.from(byId.values());
+      });
+      setLoadedGroupPage(res.data?.page ?? nextPage);
+    } finally {
+      setLoadingMoreGroups(false);
+    }
+  }, [groupData?.total_pages, loadedGroupPage, loadingMoreGroups, statusParam]);
 
   useEffect(() => {
     if (!createForm.date || !YMD_RE.test(createForm.date)) return;
@@ -1507,6 +1573,25 @@ export default function GroupBookingsScreen() {
     refresh();
   }
 
+  async function openGroupReceipt(group: GroupBooking) {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const res = await api.post<{ url: string; expires_at: string }>(
+        `/api/provider/group-bookings/${encodeURIComponent(group.id)}/receipt/signed-url`,
+        {},
+      );
+      if (res.error || !res.data?.url) {
+        Alert.alert("Group receipt", "Could not open the group receipt right now. Please try again.");
+        return;
+      }
+      pushInAppBrowser(router, res.data.url, "Group receipt");
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Something went wrong while opening the group receipt.";
+      Alert.alert("Group receipt", msg);
+    }
+  }
+
   async function handleRemoveParticipant(participant: Participant) {
     if (!selectedGroup) return;
     const displayName =
@@ -1621,6 +1706,15 @@ export default function GroupBookingsScreen() {
           showsVerticalScrollIndicator={true}
           refreshing={refreshing}
           onRefresh={handleRefresh}
+          onEndReached={search.trim() ? undefined : loadMoreGroups}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={
+            loadingMoreGroups ? (
+              <View style={twStyle("py-4")}>
+                <ActivityIndicator color="#7C3AED" />
+              </View>
+            ) : null
+          }
           contentContainerStyle={{ paddingBottom: 120 }}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           renderItem={({ item: group }: { item: GroupBooking }) => {
@@ -1917,6 +2011,18 @@ export default function GroupBookingsScreen() {
                 </Text>
               </TouchableOpacity>
             ) : null}
+
+            <TouchableOpacity
+              style={twStyle("mb-3 flex-row items-center justify-center rounded-lg bg-indigo-50 py-2.5")}
+              onPress={() => openGroupReceipt(selectedGroup)}
+              accessibilityRole="button"
+              accessibilityLabel="Open group receipt"
+            >
+              <Ionicons name="document-text-outline" size={16} color="#4f46e5" />
+              <Text style={[twStyle("text-sm font-medium text-indigo-700"), { marginLeft: 6 }]}>
+                Open group receipt
+              </Text>
+            </TouchableOpacity>
 
             {/* Actions */}
             {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (

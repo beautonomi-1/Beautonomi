@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
-import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -56,7 +55,7 @@ function MiniBarChart({ value, max }: { value: number; max: number }) {
 
 export function AnalyticsGeoPage() {
   useAdminDocumentTitle("Geo & Device Analytics");
-  const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_OVERVIEW, "Overview access is required.");
+  const { allowed, denied } = useSuperadminPage("Geo & Device Analytics is superadmin-only.");
   const [tab, setTab] = useState<"geography" | "devices" | "bookings">("geography");
   const [providerSearch, setProviderSearch] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");

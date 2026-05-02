@@ -25,6 +25,7 @@ import {
   navigateFromNotification,
 } from "@/lib/notifications";
 import { haptic } from "@/lib/haptics";
+import { useTranslation } from "@beautonomi/i18n";
 
 const RECENT_LIMIT = 10;
 
@@ -34,6 +35,7 @@ interface NotificationsDropdownProps {
 }
 
 export function NotificationsDropdown({ visible, onClose }: NotificationsDropdownProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { refetchUnreadCount, adjustUnreadCount, replaceUnreadCount } = useNotifications();
@@ -93,21 +95,25 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
     if (res.error) {
       setList(snapshot);
       if (wasUnread) adjustUnreadCount(1);
-      Alert.alert("Error", res.error.message || "Could not delete notification.");
+      Alert.alert(t("common.error"), res.error.message || t("customer.mobile.components.notificationsDropdown.deleteError"));
       return;
     }
     await refetchUnreadCount();
   };
 
   const confirmDelete = (n: Notification) => {
-    Alert.alert("Delete notification?", "This removes it from your list.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => void deleteNotification(n),
-      },
-    ]);
+    Alert.alert(
+      t("customer.mobile.components.notificationsDropdown.deleteConfirmTitle"),
+      t("customer.mobile.components.notificationsDropdown.deleteConfirmBody"),
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("common.delete"),
+          style: "destructive",
+          onPress: () => void deleteNotification(n),
+        },
+      ],
+    );
   };
 
   const handleItemPress = (n: Notification) => {

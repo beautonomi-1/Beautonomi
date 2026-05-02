@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, Image, TextInput, Alert } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -6,8 +6,11 @@ import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function MessagesScreen() {
+  const { t } = useTranslation();
+  const ch = useCallback((key: string) => t(`customer.mobile.tabs.chats.${key}`) as string, [t]);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,13 +95,13 @@ export default function MessagesScreen() {
   });
 
   return (
-    <ScreenFrame loading={loading} error={error} onRetry={load} empty={{ title: "No messages" }} isEmpty={filteredConvos.length === 0}>
+    <ScreenFrame loading={loading} error={error} onRetry={load} empty={{ title: ch("noMessages") }} isEmpty={filteredConvos.length === 0}>
       <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 }}>
         <Text style={{ color: Colors.gray[400], marginRight: 6 }}>🔎</Text>
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Search providers or messages"
+          placeholder={t("customer.mobile.screens.accountMessages.searchPlaceholder")}
           placeholderTextColor={Colors.gray[400]}
           style={{ flex: 1, fontSize: 14, color: Colors.gray[900] }}
           autoCapitalize="none"
@@ -118,22 +121,18 @@ export default function MessagesScreen() {
               key={c.id}
               onLongPress={() => {
                 const unread = c.unread_count ?? c.unread_count_customer ?? 0;
-                Alert.alert("Conversation actions", "Choose an action", [
-                  ...(unread > 0 ? [{ text: "Mark as read", onPress: () => void markConversationRead(c.id) }] : []),
+                Alert.alert(ch("conversationActionsTitle"), ch("conversationActionsMessage"), [
+                  ...(unread > 0 ? [{ text: ch("markAsRead"), onPress: () => void markConversationRead(c.id) }] : []),
                   {
-                    text: "Delete conversation",
+                    text: ch("deleteConversation"),
                     style: "destructive",
                     onPress: () =>
-                      Alert.alert(
-                        "Delete conversation?",
-                        "This will remove the conversation from your list.",
-                        [
-                          { text: "Cancel", style: "cancel" },
-                          { text: "Delete", style: "destructive", onPress: () => void deleteConversation(c.id) },
-                        ]
-                      ),
+                      Alert.alert(ch("deleteConfirmTitle"), ch("deleteConfirmBody"), [
+                        { text: t("common.cancel"), style: "cancel" },
+                        { text: ch("delete"), style: "destructive", onPress: () => void deleteConversation(c.id) },
+                      ]),
                   },
-                  { text: "Cancel", style: "cancel" },
+                  { text: t("common.cancel"), style: "cancel" },
                 ]);
               }}
               onPress={() => {
@@ -197,26 +196,22 @@ export default function MessagesScreen() {
               <TouchableOpacity
                 onPress={() => {
                   const unread = c.unread_count ?? c.unread_count_customer ?? 0;
-                  Alert.alert("Conversation actions", "Choose an action", [
-                    ...(unread > 0 ? [{ text: "Mark as read", onPress: () => void markConversationRead(c.id) }] : []),
+                  Alert.alert(ch("conversationActionsTitle"), ch("conversationActionsMessage"), [
+                    ...(unread > 0 ? [{ text: ch("markAsRead"), onPress: () => void markConversationRead(c.id) }] : []),
                     {
-                      text: "Delete conversation",
+                      text: ch("deleteConversation"),
                       style: "destructive",
                       onPress: () =>
-                        Alert.alert(
-                          "Delete conversation?",
-                          "This will remove the conversation from your list.",
-                          [
-                            { text: "Cancel", style: "cancel" },
-                            { text: "Delete", style: "destructive", onPress: () => void deleteConversation(c.id) },
-                          ]
-                        ),
+                        Alert.alert(ch("deleteConfirmTitle"), ch("deleteConfirmBody"), [
+                          { text: t("common.cancel"), style: "cancel" },
+                          { text: ch("delete"), style: "destructive", onPress: () => void deleteConversation(c.id) },
+                        ]),
                     },
-                    { text: "Cancel", style: "cancel" },
+                    { text: t("common.cancel"), style: "cancel" },
                   ]);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Conversation actions"
+                accessibilityLabel={ch("conversationActionsA11y")}
                 style={{ marginLeft: 8, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[100] }}
               >
                 <Ionicons name="ellipsis-vertical" size={16} color={Colors.gray[600]} />

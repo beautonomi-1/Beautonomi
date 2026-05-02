@@ -74,4 +74,29 @@ describe("navigateFromProviderNotification", () => {
       "/(app)/(tabs)/calendar?date=2026-05-02&booking_id=booking-456",
     );
   });
+
+  it("routes provider group booking links to the group booking sheet", () => {
+    const router = { push: jest.fn() };
+    const id = "00000000-0000-4000-8000-000000000321";
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-group",
+      link: `/provider/group-bookings/${id}`,
+    });
+
+    expect(router.push).toHaveBeenCalledWith(
+      `/(app)/(tabs)/more/group-bookings?open_group_id=${id}`,
+    );
+  });
+
+  it("routes provider report links to the native reports section", () => {
+    const router = { push: jest.fn() };
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-report",
+      link: "/provider/reports/packages",
+    });
+
+    expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/more/reports/packages");
+  });
 });

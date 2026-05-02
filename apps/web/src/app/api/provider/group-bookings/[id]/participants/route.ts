@@ -173,6 +173,7 @@ export async function POST(
         .from("bookings")
         .update({
           group_booking_id: groupId,
+          is_group_booking: true,
           updated_at: new Date().toISOString(),
         })
         .eq("id", body.booking_id)

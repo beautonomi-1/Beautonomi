@@ -6,6 +6,21 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerExportRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 
+function financeTransactionTypesForFilter(type: string | null): string[] | null {
+  switch (type) {
+    case "payment":
+      return ["payment", "wallet_payment", "gift_card_payment", "charge", "additional_charge_payment"];
+    case "fee":
+      return ["platform_fee", "service_fee"];
+    case "refund":
+      return ["refund"];
+    case "payout":
+      return ["payout"];
+    default:
+      return null;
+  }
+}
+
 /**
  * GET /api/admin/export/finance
  * 
@@ -33,17 +48,26 @@ export async function GET(request: NextRequest) {
     const transactionType = searchParams.get("transaction_type");
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
+    const now = new Date();
+    const defaultStart = new Date();
+    defaultStart.setUTCDate(1);
+    defaultStart.setUTCHours(0, 0, 0, 0);
+    const rangeStart = startDate || defaultStart.toISOString();
+    const rangeEnd = endDate || now.toISOString();
+    const transactionTypes = financeTransactionTypesForFilter(transactionType);
 
     let transactions: Awaited<ReturnType<typeof fetchFinanceLedgerExportRowsForTenant>>;
     try {
       transactions = await fetchFinanceLedgerExportRowsForTenant(
         supabase,
         tenantId,
-        { start: startDate, end: endDate },
-        {
-          transactionType:
-            transactionType && transactionType !== "all" ? transactionType : null,
-        }
+        { start: rangeStart, end: rangeEnd },
+        transactionTypes
+          ? { transactionTypes }
+          : {
+              transactionType:
+                transactionType && transactionType !== "all" ? transactionType : null,
+            }
       );
     } catch (err) {
       return handleApiError(err, "Failed to fetch financial data");

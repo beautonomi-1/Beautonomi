@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const { data: bookings, error: bErr } = await admin
       .from("bookings")
       .select(
-        "id, customer_id, provider_id, scheduled_at, booking_number, customer_name, customer_email, customer_phone, service_id, service_name, group_booking_id"
+        "id, customer_id, provider_id, scheduled_at, booking_number, customer_name, customer_email, customer_phone, service_id, service_name, group_booking_id, package_id"
       )
       .in("id", booking_ids)
       .eq("provider_id", providerId);
@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
     }
 
     const scheduledAt = bookings[0]?.scheduled_at || new Date().toISOString();
+    const packageIds = [...new Set(bookings.map((b) => b.package_id).filter(Boolean))];
+    const sharedPackageId = packageIds.length === 1 ? packageIds[0] : null;
 
     const { data: group, error: gErr } = await admin
       .from("group_bookings")
@@ -61,6 +63,7 @@ export async function POST(request: NextRequest) {
         primary_contact_booking_id: bookings[0]!.id,
         scheduled_at: scheduledAt,
         status: "confirmed",
+        package_id: sharedPackageId,
       })
       .select("*")
       .single();

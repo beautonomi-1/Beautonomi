@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       // Get all completed bookings in the period
       const { data: bookings, error: bookingsError } = await supabase
         .from("bookings")
-        .select("id, total_amount, service_fee_amount, service_fee_percentage, completed_at, ref_number")
+        .select("id, total_amount, platform_fee_amount, platform_fee_percentage, service_fee_amount, service_fee_percentage, completed_at, ref_number")
         .eq("provider_id", providerId)
         .eq("status", "completed")
         .gte("completed_at", periodStart)
@@ -92,21 +92,29 @@ export async function POST(request: NextRequest) {
       }
       
       for (const booking of bookings || []) {
-        // Calculate commission based on booking total
-        const commissionAmount = booking.total_amount * commissionRate;
-        subtotal += commissionAmount;
+        const storedPlatformFee = Number(booking.platform_fee_amount ?? booking.service_fee_amount ?? 0);
+        const storedFeePercentage = Number(booking.platform_fee_percentage ?? booking.service_fee_percentage ?? 0);
+        // Platform-fee invoices should reconcile to the fee stamped on the booking.
+        // Commission invoices remain rate-based because they are an operator charge model.
+        const invoiceAmount =
+          invoiceType === "platform_fee" && storedPlatformFee > 0
+            ? storedPlatformFee
+            : percentOf(Number(booking.total_amount || 0), commissionRate * 100);
+        subtotal += invoiceAmount;
 
         lineItems.push({
           line_item_type: invoiceType === "commission" ? "commission" : "platform_fee",
           description: `${invoiceType === "commission" ? "Commission" : "Platform fee"} for booking ${booking.ref_number || booking.id.substring(0, 8)}`,
           quantity: 1,
-          unit_price: commissionAmount,
-          total_price: commissionAmount,
+          unit_price: invoiceAmount,
+          total_price: invoiceAmount,
           reference_type: "booking",
           reference_id: booking.id,
           metadata: {
             booking_total: booking.total_amount,
             commission_rate: commissionRate,
+            stored_platform_fee: storedPlatformFee,
+            stored_platform_fee_percentage: storedFeePercentage,
             completed_at: booking.completed_at,
             booking_ref: booking.ref_number,
           },

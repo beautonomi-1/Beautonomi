@@ -42,6 +42,7 @@ export async function GET(request: Request) {
 
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
+    const scheduledDate = searchParams.get("scheduled_date") || searchParams.get("date");
     const status = searchParams.get("status");
 
     let query = supabase
@@ -65,6 +66,13 @@ export async function GET(request: Request) {
     }
     if (endDate) {
       query = query.lte("created_at", endDate);
+    }
+    if (scheduledDate) {
+      const start = new Date(scheduledDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      query = query.gte("scheduled_at", start.toISOString()).lt("scheduled_at", end.toISOString());
     }
     if (status) {
       query = query.eq("status", status);

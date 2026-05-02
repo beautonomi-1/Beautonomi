@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -173,6 +174,11 @@ export function SavedTabContent({
   layoutVariant = "tabs",
 }: SavedTabContentProps) {
   useScreenTracking(screenName);
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string) => t(`customer.mobile.components.savedTab.${key}`),
+    [t]
+  );
   const { user } = useAuth();
   const params = useLocalSearchParams<{ tab?: string }>();
   const { width, contentPadding, contentMaxWidth, isTablet, columns: gridColumns } = useResponsive();
@@ -231,7 +237,7 @@ export function SavedTabContent({
         }
         const results = await Promise.all(requests);
         const savedRes = results[0];
-        if (savedRes.error) setError(savedRes.error.message || "Failed to load");
+        if (savedRes.error) setError(savedRes.error.message || tr("loadFailed"));
         else {
           const s = savedRes.data;
           setSaved(Array.isArray(s) ? s : s?.data ?? []);
@@ -243,13 +249,13 @@ export function SavedTabContent({
           setRecentlyViewed([]);
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load");
+        setError(e instanceof Error ? e.message : tr("loadFailed"));
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [showRecentlyViewed]
+    [showRecentlyViewed, tr]
   );
 
   const loadProducts = useCallback(
@@ -260,21 +266,21 @@ export function SavedTabContent({
       try {
         const res = await api.get<any>("/api/me/wishlists/products");
         if (res.error) {
-          setError(res.error.message || "Failed to load");
+          setError(res.error.message || tr("loadFailed"));
           setSavedProducts([]);
         } else {
           const d = res.data;
           setSavedProducts(Array.isArray(d) ? d : d?.data ?? []);
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load");
+        setError(e instanceof Error ? e.message : tr("loadFailed"));
         setSavedProducts([]);
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    []
+    [tr]
   );
 
   const loadCollections = useCallback(async () => {
@@ -315,8 +321,8 @@ export function SavedTabContent({
         has_more?: boolean;
       }>(`/api/explore/saved?${params}`);
       if (res.error) {
-        const msg = res.error.message || "Failed to load saved posts";
-        setError(isAuthError(res) ? "Please sign in again to view saved posts." : msg);
+        const msg = res.error.message || tr("loadSavedPostsFailed");
+        setError(isAuthError(res) ? tr("signInAgainSavedPosts") : msg);
       } else {
         const d = res.data as Record<string, unknown> | null | undefined;
         const raw = d?.data;
@@ -330,12 +336,12 @@ export function SavedTabContent({
         setHasMore(Boolean(d?.has_more));
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : tr("loadFailed"));
     } finally {
       setPostsLoading(false);
       setRefreshing(false);
     }
-  }, [loadCollections, user?.id]);
+  }, [loadCollections, user?.id, tr]);
 
   useEffect(() => {
     if (activeTab === "providers") {
@@ -442,32 +448,29 @@ export function SavedTabContent({
         setNewBoardName("");
       }
     } catch {
-      Alert.alert("Error", "Could not create board. Please try again.");
+      Alert.alert(tr("createBoardErrorTitle"), tr("createBoardErrorBody"));
     } finally {
       setCreatingBoard(false);
     }
-  }, [newBoardName]);
+  }, [newBoardName, tr]);
 
-  const emptyTitle =
-    activeTab === "providers"
-      ? showRecentlyViewed
-        ? "No saved or recently viewed providers"
-        : "No saved providers yet"
-      : activeTab === "products"
-        ? "No saved products yet"
-        : activeTab === "posts" && !user
-          ? "Sign in to see saved posts"
-          : "No saved posts yet";
-  const emptySubtitle =
-    activeTab === "posts"
-      ? !user
-        ? "Your session may have expired — sign in again to load saved explore posts."
-        : "Bookmark posts from Explore to see them here"
-      : activeTab === "products"
-        ? "Save products from the shop with the heart icon to see them here."
-        : activeTab === "providers"
-          ? "Tap the heart on a provider profile to save them here."
-          : undefined;
+  const emptyTitle = useMemo(() => {
+    if (activeTab === "providers") {
+      return showRecentlyViewed ? tr("emptyProvidersBoth") : tr("emptyProviders");
+    }
+    if (activeTab === "products") return tr("emptyProducts");
+    if (activeTab === "posts" && !user) return tr("emptyPostsSignIn");
+    return tr("emptyPosts");
+  }, [activeTab, showRecentlyViewed, user, tr]);
+
+  const emptySubtitle = useMemo(() => {
+    if (activeTab === "posts") {
+      return !user ? tr("emptyHintPostsAuth") : tr("emptyHintPosts");
+    }
+    if (activeTab === "products") return tr("emptyHintProducts");
+    if (activeTab === "providers") return tr("emptyHintProviders");
+    return undefined;
+  }, [activeTab, user, tr]);
 
   const showLoadingContent =
     !refreshing &&
@@ -490,8 +493,8 @@ export function SavedTabContent({
         <View style={styles.headerBlock}>
           {showHeroHeader ? (
             <View style={{ paddingHorizontal: contentPadding, paddingTop: contentPadding, paddingBottom: 4 }}>
-              <Text style={styles.screenTitle}>Saved</Text>
-              <Text style={styles.screenSubtitle}>Providers, posts, and products you love</Text>
+              <Text style={styles.screenTitle}>{tr("screenTitle")}</Text>
+              <Text style={styles.screenSubtitle}>{tr("screenSubtitle")}</Text>
             </View>
           ) : null}
           <View
@@ -505,19 +508,19 @@ export function SavedTabContent({
             ]}
           >
             <TabButton
-              label="Providers"
+              label={tr("tabProviders")}
               icon="heart-outline"
               active={activeTab === "providers"}
               onPress={() => setActiveTab("providers")}
             />
             <TabButton
-              label={compactTabs ? "Posts" : "Saved posts"}
+              label={compactTabs ? tr("tabPosts") : tr("tabSavedPosts")}
               icon="bookmark-outline"
               active={activeTab === "posts"}
               onPress={() => setActiveTab("posts")}
             />
             <TabButton
-              label="Products"
+              label={tr("tabProducts")}
               icon="bag-outline"
               active={activeTab === "products"}
               onPress={() => setActiveTab("products")}
@@ -528,8 +531,13 @@ export function SavedTabContent({
       {error ? (
         <View style={[styles.errorBanner, { paddingHorizontal: contentPadding }]}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={handleRefresh} style={styles.retryBtn} accessibilityRole="button" accessibilityLabel="Retry">
-            <Text style={styles.retryBtnText}>Retry</Text>
+          <TouchableOpacity
+            onPress={handleRefresh}
+            style={styles.retryBtn}
+            accessibilityRole="button"
+            accessibilityLabel={tr("retryA11y")}
+          >
+            <Text style={styles.retryBtnText}>{tr("retryLabel")}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -537,7 +545,7 @@ export function SavedTabContent({
       {showLoadingContent ? (
         <View style={[styles.loadingPane, { backgroundColor: Colors.gray[50] }]}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingLabel}>Loading…</Text>
+          <Text style={styles.loadingLabel}>{tr("loading")}</Text>
         </View>
       ) : activeTab === "providers" ? (
         <ScrollView
@@ -567,9 +575,9 @@ export function SavedTabContent({
                 onPress={() => router.push("/(app)/(tabs)/home" as any)}
                 style={styles.emptyCta}
                 accessibilityRole="button"
-                accessibilityLabel="Discover providers"
+                accessibilityLabel={tr("discoverProvidersA11y")}
               >
-                <Text style={styles.emptyCtaText}>Discover providers</Text>
+                <Text style={styles.emptyCtaText}>{tr("discoverProviders")}</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -583,7 +591,7 @@ export function SavedTabContent({
                   marginBottom: 12,
                 }}
               >
-                Saved providers
+                {tr("savedProvidersSection")}
               </Text>
               <View
                 style={{
@@ -657,7 +665,7 @@ export function SavedTabContent({
                   marginBottom: 12,
                 }}
               >
-                Recently viewed
+                {tr("recentlyViewedSection")}
               </Text>
               <View
                 style={{
@@ -754,9 +762,9 @@ export function SavedTabContent({
                 onPress={() => router.push("/(app)/(tabs)/shop" as any)}
                 style={styles.emptyCta}
                 accessibilityRole="button"
-                accessibilityLabel="Browse the shop"
+                accessibilityLabel={tr("browseShopA11y")}
               >
-                <Text style={styles.emptyCtaText}>Browse shop</Text>
+                <Text style={styles.emptyCtaText}>{tr("browseShop")}</Text>
               </TouchableOpacity>
             </View>
           }
@@ -799,7 +807,7 @@ export function SavedTabContent({
                     color: Colors.gray[900],
                   }}
                 >
-                  Boards
+                  {tr("boardsSection")}
                 </Text>
                 <TouchableOpacity
                   onPress={() => setCreateBoardVisible(true)}
@@ -812,7 +820,7 @@ export function SavedTabContent({
                 >
                   <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
                   <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, marginLeft: 6 }}>
-                    New board
+                    {tr("newBoard")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -881,9 +889,9 @@ export function SavedTabContent({
                 onPress={() => router.push("/(app)/(tabs)/explore" as any)}
                 style={styles.emptyCta}
                 accessibilityRole="button"
-                accessibilityLabel="Open Explore"
+                accessibilityLabel={tr("exploreInspirationA11y")}
               >
-                <Text style={styles.emptyCtaText}>Explore inspiration</Text>
+                <Text style={styles.emptyCtaText}>{tr("exploreInspiration")}</Text>
               </TouchableOpacity>
             </View>
           }
@@ -931,8 +939,8 @@ export function SavedTabContent({
             }}
           >
             <View style={{ paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#e5e7eb" }}>
-              <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>Add to board</Text>
-              <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 4 }}>Choose a board</Text>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{tr("addToBoardTitle")}</Text>
+              <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 4 }}>{tr("chooseBoardSubtitle")}</Text>
             </View>
             <ScrollView style={{ maxHeight: 320 }}>
               {collections.map((c) => {
@@ -956,7 +964,7 @@ export function SavedTabContent({
                     {inBoard ? (
                       <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
                     ) : (
-                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Add</Text>
+                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{tr("addToBoardRow")}</Text>
                     )}
                   </TouchableOpacity>
                 );
@@ -966,7 +974,9 @@ export function SavedTabContent({
               onPress={() => setBoardPickerPost(null)}
               style={{ paddingVertical: 14, alignItems: "center", borderTopWidth: 1, borderTopColor: "#e5e7eb" }}
             >
-              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[600] }}>Done</Text>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[600] }}>
+                {t("common.done")}
+              </Text>
             </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -995,12 +1005,12 @@ export function SavedTabContent({
             style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20 }}
           >
             <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>
-              New board
+              {tr("newBoardModalTitle")}
             </Text>
             <TextInput
               value={newBoardName}
               onChangeText={setNewBoardName}
-              placeholder="e.g. Summer looks"
+              placeholder={tr("wishlistNamePlaceholder")}
               placeholderTextColor={Colors.gray[400]}
               style={{
                 borderWidth: 1,
@@ -1025,7 +1035,7 @@ export function SavedTabContent({
                   alignItems: "center",
                 }}
               >
-                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[700] }}>Cancel</Text>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[700] }}>{t("common.cancel")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleCreateBoard}
@@ -1041,7 +1051,7 @@ export function SavedTabContent({
                 {creatingBoard ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={{ fontSize: 16, fontWeight: "600", color: "#fff" }}>Create</Text>
+                  <Text style={{ fontSize: 16, fontWeight: "600", color: "#fff" }}>{tr("createBoard")}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1060,6 +1070,7 @@ function SavedProductTile({
   product: any;
   tileWidth: number;
 }) {
+  const { t } = useTranslation();
   const imageUrl = product?.image_urls?.[0];
   const providerSlug = product?.provider?.slug;
 
@@ -1101,7 +1112,9 @@ function SavedProductTile({
               paddingVertical: 4,
             }}
           >
-            <Text style={{ fontSize: 10, color: "#B91C1C", fontWeight: "700" }}>Out of stock</Text>
+            <Text style={{ fontSize: 10, color: "#B91C1C", fontWeight: "700" }}>
+              {t("customer.mobile.components.savedTab.outOfStock")}
+            </Text>
           </View>
         )}
       </View>
@@ -1110,7 +1123,7 @@ function SavedProductTile({
           {product?.provider?.business_name || ""}
         </Text>
         <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.gray[900], marginTop: 2 }} numberOfLines={2}>
-          {product?.name || "Product"}
+          {product?.name || t("customer.mobile.components.savedTab.productFallback")}
         </Text>
         {product?.brand ? (
           <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }} numberOfLines={1}>
@@ -1192,6 +1205,9 @@ function SavedPostTile({
   collections: { id: string; name: string; slug: string; post_count: number }[];
   onOpenBoardPicker: () => void;
 }) {
+  const { t } = useTranslation();
+  const st = "customer.mobile.components.savedTab." as const;
+  const tr = useCallback((key: string) => t(`${st}${key}`), [t]);
   const [providerSaved, setProviderSaved] = useState(isProviderInWishlist);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
@@ -1340,7 +1356,9 @@ function SavedPostTile({
               <Text
                 style={{ fontSize: 12, fontWeight: "600", color: Colors.primary }}
               >
-                Book with {providerName || "provider"}
+                {t(`${st}bookWith`, {
+                  name: providerName || t(`${st}providerNameFallback`),
+                })}
               </Text>
             </TouchableOpacity>
           ) : null}
@@ -1367,7 +1385,7 @@ function SavedPostTile({
                   color: providerSaved ? Colors.primary : "#374151",
                 }}
               >
-                {providerSaved ? "Saved" : "Save provider"}
+                {providerSaved ? tr("savedLabel") : tr("saveProvider")}
               </Text>
             </TouchableOpacity>
           ) : null}

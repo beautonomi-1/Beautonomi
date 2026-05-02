@@ -111,4 +111,22 @@ describe("navigateFromNotification", () => {
       params: { id: "order-3" },
     });
   });
+
+  it("opens product order detail when action_url uses account order path", () => {
+    const id = "00000000-0000-4000-8000-000000000123";
+    navigateFromNotification({
+      id: "n7",
+      type: "product_order_update",
+      title: "Order update",
+      message: "Your order was paid",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      action_url: `/account-settings/orders/${id}`,
+    });
+
+    expect(pushMock).toHaveBeenCalledWith({
+      pathname: "/(app)/product-order-detail",
+      params: { id },
+    });
+  });
 });

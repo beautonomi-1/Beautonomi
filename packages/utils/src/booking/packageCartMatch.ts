@@ -3,6 +3,8 @@
  * (offerings + optional retail products). Used by API validation and customer UIs.
  */
 
+import { percentOf } from "../money";
+
 export type PackageItemRow = {
   offering_id?: string | null;
   product_id?: string | null;
@@ -10,9 +12,41 @@ export type PackageItemRow = {
   quantity?: unknown;
 };
 
-/** Aggregate per-offering and per-product caps from `service_package_items` rows. */
+/**
+ * Composite key for a package product line: `productId` or `productId:variantId` (empty suffix = base / no variant).
+ * Must match `bookedProductCounts` and customer cart `id` format (`productId:variantId`).
+ */
+export function productPackageLineKey(
+  productId: string,
+  productVariantId?: string | null
+): string {
+  const v = (productVariantId && String(productVariantId).trim()) || "";
+  return `${String(productId).trim()}:${v}`;
+}
+
+/**
+ * Services-only package discount from catalog: fixed bundle price on services, or % off services.
+ * Does not discount add-ons, products, or travel (same as public `validate-booking`).
+ * Non-positive fixed prices are treated as unset/misconfigured because provider package
+ * creation requires a positive `price`; `0` should not silently make a package free.
+ */
+export function computeCatalogPackageServiceDiscount(
+  pkg: { price?: number | null; discount_percentage?: number | null },
+  servicesSubtotal: number
+): number {
+  if (pkg.price != null && pkg.price !== undefined && Number(pkg.price) > 0) {
+    return Math.max(0, servicesSubtotal - Number(pkg.price));
+  }
+  if (pkg.discount_percentage != null && Number(pkg.discount_percentage) > 0) {
+    return Math.max(0, percentOf(servicesSubtotal, Number(pkg.discount_percentage)));
+  }
+  return 0;
+}
+
+/** Aggregate per-offering and per-product line caps from `service_package_items` rows. */
 export function aggregatePackageEntitlements(rows: PackageItemRow[] | null | undefined): {
   entitlementByOffering: Map<string, number>;
+  /** Keys from `productPackageLineKey` (product + optional variant). */
   entitlementByProduct: Map<string, number>;
 } {
   const entitlementByOffering = new Map<string, number>();
@@ -25,7 +59,8 @@ export function aggregatePackageEntitlements(rows: PackageItemRow[] | null | und
     }
     const pid = row.product_id?.trim();
     if (pid) {
-      entitlementByProduct.set(pid, (entitlementByProduct.get(pid) ?? 0) + q);
+      const key = productPackageLineKey(pid, row.product_variant_id);
+      entitlementByProduct.set(key, (entitlementByProduct.get(key) ?? 0) + q);
     }
   }
   return { entitlementByOffering, entitlementByProduct };
@@ -51,16 +86,24 @@ export function bookedOfferingCounts(
   return booked;
 }
 
-/** Sum quantities per product id from booking draft product lines. */
+/** Sum quantities per package product line (product + optional variant) from draft product lines. */
 export function bookedProductCounts(
-  products: Array<{ product_id?: string; productId?: string; quantity?: unknown }>
+  products: Array<{
+    product_id?: string;
+    productId?: string;
+    quantity?: unknown;
+    productVariantId?: string | null;
+    product_variant_id?: string | null;
+  }>
 ): Map<string, number> {
   const booked = new Map<string, number>();
   for (const p of products) {
     const pid = (p.productId ?? p.product_id)?.trim();
     if (!pid) continue;
+    const vid = p.productVariantId ?? p.product_variant_id ?? null;
+    const key = productPackageLineKey(pid, vid);
     const qty = Math.max(1, Math.floor(Number(p.quantity) || 1));
-    booked.set(pid, (booked.get(pid) ?? 0) + qty);
+    booked.set(key, (booked.get(key) ?? 0) + qty);
   }
   return booked;
 }
@@ -76,7 +119,21 @@ export function exceedsEntitlement(
   return null;
 }
 
-/** Product quantities required by a public `service_packages` payload (`items` with `type: "product"`). */
+/** Exact package match for server-side validation: no extras, no missing required lines. */
+export function entitlementMismatch(
+  booked: Map<string, number>,
+  entitlement: Map<string, number>
+): string | null {
+  const overOrUnknown = exceedsEntitlement(booked, entitlement);
+  if (overOrUnknown) return overOrUnknown;
+
+  for (const [id, required] of Array.from(entitlement.entries())) {
+    if ((booked.get(id) ?? 0) !== required) return id;
+  }
+  return null;
+}
+
+/** Product line quantities required by a public `service_packages` payload (`items` with `type: "product"`). */
 export function aggregatePackageProductRequirementsFromPublicPackage(pkg: {
   items?: Array<{ type?: string; id?: string; quantity?: number; product_variant_id?: string | null }>;
 }): Map<string, number> {
@@ -84,21 +141,36 @@ export function aggregatePackageProductRequirementsFromPublicPackage(pkg: {
   for (const it of pkg.items ?? []) {
     if (it.type !== "product" || !it.id?.trim()) continue;
     const q = Math.max(1, Math.floor(Number(it.quantity) || 1));
-    m.set(it.id.trim(), (m.get(it.id.trim()) ?? 0) + q);
+    const key = productPackageLineKey(it.id.trim(), it.product_variant_id);
+    m.set(key, (m.get(key) ?? 0) + q);
   }
   return m;
 }
 
-/** Cart key is `productId` or `productId:variantId` (customer booking flows). */
+/**
+ * Cart lines use `id` = `productId` or `productId:variantId` (customer booking / express cart).
+ * @deprecated Use `aggregateProductCartByPackageLineKey` — kept as alias for compatibility.
+ */
 export function aggregateProductCartByProductId(
+  lines: Array<{ id: string; quantity: number }>
+): Map<string, number> {
+  return aggregateProductCartByPackageLineKey(lines);
+}
+
+export function aggregateProductCartByPackageLineKey(
   lines: Array<{ id: string; quantity: number }>
 ): Map<string, number> {
   const m = new Map<string, number>();
   for (const p of lines) {
     const colon = p.id.indexOf(":");
-    const pid = colon !== -1 ? p.id.slice(0, colon).trim() : p.id.trim();
-    if (!pid) continue;
-    m.set(pid, (m.get(pid) ?? 0) + p.quantity);
+    const key =
+      colon === -1
+        ? productPackageLineKey(p.id.trim(), null)
+        : productPackageLineKey(
+            p.id.slice(0, colon).trim(),
+            p.id.slice(colon + 1).trim() || null
+          );
+    m.set(key, (m.get(key) ?? 0) + p.quantity);
   }
   return m;
 }
@@ -219,7 +291,7 @@ export function cartMatchesPublicCatalogPackage(
   if (!serviceIdsMatch) return false;
 
   const wantProd = aggregatePackageProductRequirementsFromPublicPackage(pkg);
-  const gotProd = aggregateProductCartByProductId(selectedProducts);
+  const gotProd = aggregateProductCartByPackageLineKey(selectedProducts);
   if (wantProd.size > 0) {
     if (wantProd.size !== gotProd.size) return false;
     for (const [k, v] of Array.from(wantProd.entries())) {

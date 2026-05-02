@@ -23,6 +23,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import type { CartItem } from "@/types/api";
 import { useCart } from "@/features/shop/useCart";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ProviderShippingConfig {
   offers_delivery: boolean;
@@ -66,6 +67,8 @@ function linePrice(item: CartItem): number {
 }
 
 export default function CartScreen() {
+  const { t } = useTranslation();
+  const tc = useCallback((key: string) => t(`customer.mobile.screens.cart.${key}`), [t]);
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
@@ -94,10 +97,10 @@ export default function CartScreen() {
 
   const handleClearCart = useCallback(() => {
     if (items.length === 0) return;
-    Alert.alert("Clear Cart", "Remove all items from your cart?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(tc("clearCartTitle"), tc("clearCartBody"), [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: "Clear All",
+        text: tc("clearAll"),
         style: "destructive",
         onPress: async () => {
           setClearingCart(true);
@@ -105,18 +108,21 @@ export default function CartScreen() {
             await clearCart();
             haptic.success();
           } catch {
-            Alert.alert("Error", "Failed to clear cart");
+            Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), tc("clearCartError"));
           } finally {
             setClearingCart(false);
           }
         },
       },
     ]);
-  }, [items.length, clearCart]);
+  }, [items.length, clearCart, tc, t]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: totalQty > 0 ? `Cart (${totalQty})` : "Cart",
+      title:
+        totalQty > 0
+          ? t("customer.mobile.screens.cart.headerTitleWithCount", { count: totalQty })
+          : t("customer.mobile.screens.cart.headerTitle"),
       headerShown: true,
       headerRight: totalQty > 0
         ? () => (
@@ -124,13 +130,13 @@ export default function CartScreen() {
               {clearingCart ? (
                 <ActivityIndicator size="small" color="#EF4444" />
               ) : (
-                <Text style={{ fontSize: 14, fontWeight: "500", color: "#EF4444" }}>Clear all</Text>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: "#EF4444" }}>{tc("clearAllCta")}</Text>
               )}
             </TouchableOpacity>
           )
         : undefined,
     });
-  }, [navigation, totalQty, handleClearCart, clearingCart]);
+  }, [navigation, totalQty, handleClearCart, clearingCart, t, tc]);
 
   // Derive provider IDs from items to pre-fetch shipping configs
   const providerIds = useMemo(
@@ -155,36 +161,36 @@ export default function CartScreen() {
       if (!item) return;
       const maxQty = item.stock_available ?? 999;
       if (newQty > maxQty) {
-        Alert.alert("Limited stock", `Only ${maxQty} available.`);
+        Alert.alert(tc("limitedStockTitle"), t("customer.mobile.screens.cart.limitedStockBody", { max: maxQty }));
         return;
       }
       setUpdatingId(itemId);
       haptic.light();
       const { error: err } = await patchCartQuantity(itemId, newQty);
-      if (err) Alert.alert("Error", err);
+      if (err) Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), err);
       setUpdatingId(null);
     },
-    [items, patchCartQuantity],
+    [items, patchCartQuantity, tc, t],
   );
 
   const removeItem = useCallback(
     (itemId: string) => {
-      Alert.alert("Remove item", "Remove this item from your cart?", [
-        { text: "Cancel", style: "cancel" },
+      Alert.alert(tc("removeItemTitle"), tc("removeItemBody"), [
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Remove",
+          text: t("common.delete"),
           style: "destructive",
           onPress: async () => {
             setRemovingId(itemId);
             haptic.light();
             const { error: err } = await removeCartLine(itemId);
-            if (err) Alert.alert("Error", err);
+            if (err) Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), err);
             setRemovingId(null);
           },
         },
       ]);
     },
-    [removeCartLine],
+    [removeCartLine, tc, t],
   );
 
   const signInForCheckout = useCallback((providerId: string) => {

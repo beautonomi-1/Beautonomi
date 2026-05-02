@@ -89,7 +89,8 @@ export async function GET(
           status,
           requested_at,
           paid_at
-        )
+        ),
+        service_packages:package_id(id, name)
       `)
       .eq("id", id)
       .single();
@@ -206,6 +207,16 @@ export async function GET(
       cancellation_reason: (bookingData as Record<string, unknown>).cancellation_reason ?? undefined,
       cancelled_at: (bookingData as Record<string, unknown>).cancelled_at ?? undefined,
       booking_source: (bookingData as Record<string, unknown>).booking_source ?? undefined,
+      package_id: ((bookingData as Record<string, unknown>).package_id as string | null | undefined) ?? null,
+      package_name: (() => {
+        const sp = (bookingData as Record<string, unknown>).service_packages as
+          | { name?: string | null }
+          | Array<{ name?: string | null }>
+          | null
+          | undefined;
+        const row = Array.isArray(sp) ? sp[0] : sp;
+        return row?.name ?? null;
+      })(),
       payment_provider: (bookingData as Record<string, unknown>).payment_provider ?? undefined,
       services: (bookingData.booking_services ?? []).map((bs: unknown) => {
         const b = bs as { id: string; offering_id?: string; staff_id?: string; duration_minutes?: number; price?: number; guest_name?: string; offering?: { title?: string; duration_minutes?: number; price?: number }; staff?: { name?: string } };

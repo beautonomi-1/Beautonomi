@@ -5,6 +5,7 @@ import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
 import { computeSlaResolutionDueIso } from "@/lib/support/support-ticket-sla";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { slackNotifyNewSupportTicket } from "@/lib/integrations/slack/triggers";
 
 function sanitizeIlikeTerm(raw: string) {
   // Strip PostgREST/or filter metacharacters so q cannot break `.or(...)`.
@@ -169,10 +170,12 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
       if (!slaErr && withSla) {
+        void slackNotifyNewSupportTicket(request, withSla as { id: string; ticket_number?: string; subject?: string; priority?: string });
         return NextResponse.json({ ticket: withSla });
       }
     }
 
+    void slackNotifyNewSupportTicket(request, data as { id: string; ticket_number?: string; subject?: string; priority?: string });
     return NextResponse.json({ ticket: data });
   } catch (error: unknown) {
     return handleApiError(error, "Failed to create support ticket");

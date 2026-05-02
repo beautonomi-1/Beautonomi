@@ -25,6 +25,7 @@ import { haptic } from "@/lib/haptics";
 import { trackProductCheckoutStarted, trackProductOrderPlaced } from "@/lib/analytics";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 const PRIMARY = Colors.primary;
 
@@ -103,6 +104,15 @@ export default function ProductCheckoutScreen() {
   const { fetchCart } = cart;
   const orders = useProductOrders();
   const { user, refreshSession } = useAuth();
+  const { t } = useTranslation();
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
+  const pc = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.tabs.productCheckout.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
 
   const [fulfillment, setFulfillment] = useState<"collection" | "delivery">("collection");
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -169,7 +179,10 @@ export default function ProductCheckoutScreen() {
   }, [user]);
 
   useEffect(() => {
-    if (!provider_id) return;
+    if (!provider_id) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -293,35 +306,31 @@ export default function ProductCheckoutScreen() {
   const handlePlaceOrder = useCallback(async () => {
     if (!provider_id) return;
     if (!user) {
-      Alert.alert(
-        "Sign in to checkout",
-        "Create an account or sign in so we can process payment and delivery.",
-        [
-          { text: "Not now", style: "cancel" },
-          {
-            text: "Sign in",
-            onPress: () =>
-              router.push({
-                pathname: "/(auth)/login",
-                params: {
-                  return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
-                },
-              } as any),
-          },
-        ],
-      );
+      Alert.alert(pc("signInToCheckoutTitle"), pc("signInToCheckoutBody"), [
+        { text: pc("notNow"), style: "cancel" },
+        {
+          text: pc("signInCta"),
+          onPress: () =>
+            router.push({
+              pathname: "/(auth)/login",
+              params: {
+                return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
+              },
+            } as any),
+        },
+      ]);
       return;
     }
     if (providerItems.length === 0) {
-      Alert.alert("Cart is empty", "Add products from this seller before checkout.");
+      Alert.alert(pc("cartEmptyTitle"), pc("cartEmptyBody"));
       return;
     }
     if (fulfillment === "delivery" && !selectedAddress) {
-      Alert.alert("Address Required", "Please select a delivery address");
+      Alert.alert(pc("addressRequiredTitle"), pc("addressRequiredBody"));
       return;
     }
     if (fulfillment === "collection" && !selectedLocation) {
-      Alert.alert("Location Required", "Please select a collection location");
+      Alert.alert(pc("locationRequiredTitle"), pc("locationRequiredBody"));
       return;
     }
 
@@ -340,7 +349,7 @@ export default function ProductCheckoutScreen() {
 
     if (result.error) {
       setPlacing(false);
-      Alert.alert("Order Failed", getApiErrorMessage(result.error, "Your order could not be placed. Please try again."));
+      Alert.alert(pc("orderFailedTitle"), getApiErrorMessage(result.error, pc("orderFailedBody")));
       return;
     }
 
@@ -356,37 +365,31 @@ export default function ProductCheckoutScreen() {
     // Paid fully with wallet – no Paystack
     if (paidWithWallet) {
       setPlacing(false);
-      Alert.alert(
-        "Order Placed!",
-        `Your order ${order?.order_number} has been paid from your wallet.`,
-        [{ text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) }],
-      );
+      Alert.alert(pc("orderPlacedTitle"), pc("orderPlacedWalletBody", { orderNumber: String(order?.order_number ?? "") }), [
+        { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
+      ]);
       return;
     }
 
     // For card_on_delivery, no online payment needed
     if (paymentMethod === "card_on_delivery") {
       setPlacing(false);
-      Alert.alert(
-        "Order Placed!",
-        `Your order ${order?.order_number} has been placed. Please have your card ready at delivery/collection.`,
-        [{ text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) }],
-      );
+      Alert.alert(pc("orderPlacedTitle"), pc("orderPlacedCardOnDeliveryBody", { orderNumber: String(order?.order_number ?? "") }), [
+        { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
+      ]);
       return;
     }
 
     if (!order) {
       setPlacing(false);
-      Alert.alert("Error", "We could not confirm your order. Please check Product orders or try again.");
+      Alert.alert(errTitle, pc("orderConfirmFailedBody"));
       return;
     }
     if (!customerEmail) {
       setPlacing(false);
-      Alert.alert(
-        "Order Placed!",
-        `Your order ${order.order_number} has been placed. Payment is pending — add an email in account settings to pay online, or complete payment from Orders.`,
-        [{ text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) }],
-      );
+      Alert.alert(pc("orderPlacedTitle"), pc("orderPlacedNoEmailBody", { orderNumber: String(order.order_number) }), [
+        { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
+      ]);
       return;
     }
 
@@ -411,11 +414,9 @@ export default function ProductCheckoutScreen() {
     setPlacing(false);
 
     if (paystackRes.error || !paystackRes.data?.authorization_url) {
-      Alert.alert(
-        "Order Created",
-        `Your order ${order.order_number} was placed but payment could not be initialized. You can pay later from your orders.`,
-        [{ text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) }],
-      );
+      Alert.alert(pc("orderCreatedPayFailedTitle"), pc("orderCreatedPayFailedBody", { orderNumber: String(order.order_number) }), [
+        { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
+      ]);
       return;
     }
 
@@ -456,24 +457,18 @@ export default function ProductCheckoutScreen() {
       if (paid) {
         await fetchCart();
         haptic.success();
-        Alert.alert(
-          "Payment successful",
-          `Your order ${order.order_number} has been confirmed.`,
-          [{ text: "View orders", onPress: () => router.replace("/(app)/product-orders" as any) }],
-        );
+        Alert.alert(pc("paymentSuccessTitle"), pc("paymentSuccessConfirmedBody", { orderNumber: String(order.order_number) }), [
+          { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
+        ]);
       } else {
-        Alert.alert(
-          "Payment pending",
-          "If you completed the card payment, it can take a few moments to confirm. Check Product orders shortly.",
-          [
-            { text: "View orders", onPress: () => router.replace("/(app)/product-orders" as any) },
-            { text: "OK", style: "cancel" },
-          ],
-        );
+        Alert.alert(pc("paymentPendingTitle"), pc("paymentPendingCheckoutBody"), [
+          { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
+          { text: t("common.ok"), style: "cancel" },
+        ]);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- orders/paymentMethod from context
-  }, [provider_id, fulfillment, selectedAddress, selectedLocation, providerItems.length, orders.createOrder, orders.fetchOrderDetail, router, user, total, useWallet, refreshSession, fetchCart]);
+  }, [provider_id, fulfillment, selectedAddress, selectedLocation, providerItems.length, orders.createOrder, orders.fetchOrderDetail, router, user, total, useWallet, refreshSession, fetchCart, pc, errTitle, t]);
 
   if (loading) {
     return (

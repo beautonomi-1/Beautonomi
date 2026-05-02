@@ -44,6 +44,8 @@ export const maxDuration = 60;
 
 type ReceiptPayload = {
   receipt?: {
+    package_id?: string | null;
+    package_name?: string | null;
     booking_number?: string;
     booking_date?: string;
     service_date?: string;
@@ -56,6 +58,8 @@ type ReceiptPayload = {
     tax?: number;
     tax_rate?: number;
     fees?: number;
+    platform_fee_percentage?: number;
+    service_fee_percentage?: number;
     travel_fee?: number;
     tip_amount?: number;
     cancellation_fee?: number;
@@ -152,6 +156,14 @@ export async function GET(
     }
 
     const currency = receipt.currency || "ZAR";
+    const formatPercent = (value?: number) => {
+      const n = Number(value || 0);
+      if (!Number.isFinite(n) || n <= 0) return "";
+      const display = n <= 1 ? n * 100 : n;
+      return Number.isInteger(display) ? String(display) : display.toFixed(1);
+    };
+    const platformFeePercent = formatPercent(receipt.platform_fee_percentage ?? receipt.service_fee_percentage);
+    const platformFeeLabel = platformFeePercent ? `Platform fee (${platformFeePercent}%)` : "Platform fee";
     const items = [
       ...(receipt.services || []).map((s) => ({
         name: s.name || "Service",
@@ -196,6 +208,7 @@ export async function GET(
         lines: [
           `Booked ${formatPdfDate(receipt.booking_date)}`,
           `Service ${formatPdfDate(receipt.service_date)}`,
+          ...(receipt.package_name ? [`Package: ${receipt.package_name}`] : []),
         ],
       },
     ]);
@@ -216,7 +229,7 @@ export async function GET(
       ...(Number(receipt.tax || 0) > 0
         ? [{ label: receipt.tax_rate ? `Tax (${receipt.tax_rate}%)` : "Tax", value: moneyPdf(receipt.tax, currency) }]
         : []),
-      ...(Number(receipt.fees || 0) > 0 ? [{ label: "Service / platform fee", value: moneyPdf(receipt.fees, currency) }] : []),
+      ...(Number(receipt.fees || 0) > 0 ? [{ label: platformFeeLabel, value: moneyPdf(receipt.fees, currency) }] : []),
       ...(Number(receipt.tip_amount || 0) > 0 ? [{ label: "Tip", value: moneyPdf(receipt.tip_amount, currency) }] : []),
       ...(Number(receipt.cancellation_fee || 0) > 0
         ? [{ label: "Cancellation fee", value: moneyPdf(receipt.cancellation_fee, currency), tone: "warning" as const }]

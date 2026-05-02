@@ -3,6 +3,7 @@ import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespo
 import { createClient } from "@supabase/supabase-js";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
+import { packageReportBookedValue } from "@/lib/reports/package-report-value";
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,7 +43,8 @@ export async function GET(request: NextRequest) {
         service_packages:package_id (
           id,
           name,
-          price
+          price,
+          discount_percentage
         ),
         booking_services (
           id,
@@ -71,6 +73,45 @@ export async function GET(request: NextRequest) {
       return handleApiError(
         new Error("Failed to fetch bookings"),
         "BOOKINGS_FETCH_ERROR",
+        500
+      );
+    }
+
+    let groupBookingsQuery = supabaseAdmin
+      .from("group_bookings")
+      .select(
+        `
+        id,
+        scheduled_at,
+        status,
+        package_id,
+        service_packages:package_id (
+          id,
+          name,
+          price,
+          discount_percentage
+        ),
+        booking_participants (
+          id,
+          price
+        )
+      `
+      )
+      .eq("provider_id", providerId)
+      .gte("scheduled_at", fromDate.toISOString())
+      .lte("scheduled_at", toDate.toISOString())
+      .in("status", ["booked", "started", "confirmed", "completed"])
+      .not("package_id", "is", null);
+
+    if (locationId) {
+      groupBookingsQuery = groupBookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: groupBookings, error: groupBookingsError } = await groupBookingsQuery;
+    if (groupBookingsError) {
+      return handleApiError(
+        new Error("Failed to fetch group bookings"),
+        "GROUP_BOOKINGS_FETCH_ERROR",
         500
       );
     }
@@ -104,7 +145,16 @@ export async function GET(request: NextRequest) {
           averageValue: 0,
         };
         existing.bookings += 1;
-        existing.revenue += Number(pkg.price || 0);
+        const lineSum =
+          ((booking as any).booking_services || []).reduce(
+            (sum: number, bs: { price?: number | null }) => sum + Number(bs.price || 0),
+            0
+          ) || 0;
+        existing.revenue += packageReportBookedValue({
+          catalogPrice: pkg.price,
+          catalogDiscountPercent: pkg.discount_percentage,
+          bookingServicesLineSum: lineSum,
+        });
         packageMap.set(packageId, existing);
         return;
       }
@@ -127,6 +177,31 @@ export async function GET(request: NextRequest) {
       });
     });
 
+    (groupBookings || []).forEach((group: any) => {
+      if (!group.package_id || !group.service_packages) return;
+      const pkg = group.service_packages;
+      const packageId = pkg.id;
+      const existing = packageMap.get(packageId) || {
+        packageId,
+        packageName: pkg.name || "Unknown Package",
+        bookings: 0,
+        revenue: 0,
+        averageValue: 0,
+      };
+      existing.bookings += 1;
+      const lineSum =
+        (group.booking_participants || []).reduce(
+          (sum: number, p: { price?: number | null }) => sum + Number(p.price || 0),
+          0
+        ) || 0;
+      existing.revenue += packageReportBookedValue({
+        catalogPrice: pkg.price,
+        catalogDiscountPercent: pkg.discount_percentage,
+        bookingServicesLineSum: lineSum,
+      });
+      packageMap.set(packageId, existing);
+    });
+
     const packageSales = Array.from(packageMap.values())
       .map((pkg) => ({
         ...pkg,
@@ -144,7 +219,7 @@ export async function GET(request: NextRequest) {
       averagePackageValue,
       packageSales,
       reportBasis:
-        "Package value is based on package/service line prices for confirmed or completed bookings by scheduled date. Booking-level travel fees, tips, and Platform Fees are excluded.",
+        "Package value is based on package/service line prices for confirmed/completed bookings and active group bookings by scheduled date. Booking-level travel fees, tips, add-ons, and Platform Fees are excluded.",
     });
   } catch (error) {
     return handleApiError(error, "PACKAGE_SALES_ERROR", 500);

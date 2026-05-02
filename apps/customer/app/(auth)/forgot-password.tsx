@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -17,8 +17,11 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { supabase } from "@/lib/supabase/client";
 import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function ForgotPasswordScreen() {
+  const { t } = useTranslation();
+  const fp = useCallback((key: string) => t(`customer.mobile.screens.forgotPassword.${key}`), [t]);
   const router = useRouter();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const [email, setEmail] = useState("");
@@ -32,17 +35,17 @@ export default function ForgotPasswordScreen() {
   const handleReset = async () => {
     const trimmed = email.trim().toLowerCase();
     if (!trimmed) {
-      Alert.alert("Email required", "Please enter your email address.");
+      Alert.alert(fp("emailRequiredTitle"), fp("emailRequiredBody"));
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      Alert.alert("Invalid email", "Please enter a valid email address.");
+      Alert.alert(fp("invalidEmailTitle"), fp("invalidEmailBody"));
       return;
     }
 
     const base = (APP_URL ?? "").replace(/\/$/, "");
     if (!base) {
-      Alert.alert("Configuration Error", "App URL is not configured. Please contact support.");
+      Alert.alert(fp("configErrorTitle"), fp("configErrorBody"));
       return;
     }
     const redirectTo = `${base}/auth/callback`;
@@ -53,13 +56,13 @@ export default function ForgotPasswordScreen() {
       });
 
       if (error) {
-        Alert.alert("Error", error.message);
+        Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), error.message);
         return;
       }
 
       setSent(true);
     } catch {
-      Alert.alert("Error", "Something went wrong. Please try again.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), fp("genericErrorBody"));
     } finally {
       setLoading(false);
     }
@@ -91,7 +94,7 @@ export default function ForgotPasswordScreen() {
           onPress={() => router.back()}
           style={{ marginBottom: 32, width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center" }}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel={fp("goBackA11y")}
         >
           <Ionicons name="arrow-back" size={20} color={Colors.gray[900]} />
         </TouchableOpacity>
@@ -101,35 +104,44 @@ export default function ForgotPasswordScreen() {
             <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: "#F0FDF4", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
               <Ionicons name="mail-outline" size={40} color="#059669" />
             </View>
-            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], textAlign: "center", marginBottom: 12 }}>Check your email</Text>
-            <Text style={{ fontSize: 16, color: Colors.gray[500], textAlign: "center", marginBottom: 8, lineHeight: 24 }}>We sent a password reset link to</Text>
+            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], textAlign: "center", marginBottom: 12 }}>
+              {fp("checkEmailTitle")}
+            </Text>
+            <Text style={{ fontSize: 16, color: Colors.gray[500], textAlign: "center", marginBottom: 8, lineHeight: 24 }}>
+              {fp("sentLead")}
+            </Text>
             <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], textAlign: "center", marginBottom: 32 }}>{email.trim().toLowerCase()}</Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[400], textAlign: "center", marginBottom: 32, lineHeight: 20 }}>Didn&apos;t receive the email? Check your spam folder, or try again with a different email.</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[400], textAlign: "center", marginBottom: 32, lineHeight: 20 }}>
+              {fp("spamHint")}
+            </Text>
 
             <TouchableOpacity
               style={{ width: "100%", borderRadius: 12, paddingVertical: 14, marginBottom: 16, backgroundColor: Colors.primary }}
               onPress={() => { setSent(false); setEmail(""); }}
               accessibilityRole="button"
-              accessibilityLabel="Try a different email"
+              accessibilityLabel={fp("tryDifferentEmailA11y")}
             >
-              <Text style={{ textAlign: "center", fontSize: 16, fontWeight: "600", color: Colors.white }}>Try different email</Text>
+              <Text style={{ textAlign: "center", fontSize: 16, fontWeight: "600", color: Colors.white }}>{fp("tryDifferentEmail")}</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => router.back()} accessibilityRole="link" accessibilityLabel="Back to login">
-              <Text style={{ textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>Back to <Text style={{ color: Colors.primary, fontWeight: "600" }}>Log In</Text></Text>
+            <TouchableOpacity onPress={() => router.back()} accessibilityRole="link" accessibilityLabel={fp("backToLoginA11y")}>
+              <Text style={{ textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
+                {fp("backToLoginLead")}{" "}
+                <Text style={{ color: Colors.primary, fontWeight: "600" }}>{t("auth.login")}</Text>
+              </Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
             <View style={{ marginBottom: 32 }}>
-              <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Reset your password</Text>
-              <Text style={{ fontSize: 16, color: Colors.gray[500], lineHeight: 24 }}>Enter the email address linked to your account and we&apos;ll send you a link to reset your password.</Text>
+              <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>{fp("resetTitle")}</Text>
+              <Text style={{ fontSize: 16, color: Colors.gray[500], lineHeight: 24 }}>{fp("resetSubtitle")}</Text>
             </View>
 
-            <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Email address</Text>
+            <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{fp("emailLabel")}</Text>
             <TextInput
               style={{ marginBottom: 24, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-              placeholder="you@example.com"
+              placeholder={fp("emailPlaceholder")}
               placeholderTextColor={Colors.gray[400]}
               value={email}
               onChangeText={setEmail}
@@ -140,7 +152,7 @@ export default function ForgotPasswordScreen() {
               importantForAutofill="yes"
               returnKeyType="done"
               onSubmitEditing={handleReset}
-              accessibilityLabel="Email input"
+              accessibilityLabel={fp("emailInputA11y")}
             />
 
             <TouchableOpacity
@@ -148,15 +160,22 @@ export default function ForgotPasswordScreen() {
               onPress={handleReset}
               disabled={loading}
               accessibilityRole="button"
-              accessibilityLabel="Send reset link"
+              accessibilityLabel={fp("sendResetLinkA11y")}
               accessibilityState={{ disabled: loading }}
             >
-              {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ textAlign: "center", fontSize: 16, fontWeight: "600", color: Colors.white }}>Send Reset Link</Text>}
+              {loading ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <Text style={{ textAlign: "center", fontSize: 16, fontWeight: "600", color: Colors.white }}>{fp("sendResetLink")}</Text>
+              )}
             </TouchableOpacity>
 
             <View style={{ marginTop: 32 }}>
-              <TouchableOpacity onPress={() => router.back()} accessibilityRole="link" accessibilityLabel="Back to login">
-                <Text style={{ textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>Remember your password? <Text style={{ color: Colors.primary, fontWeight: "600" }}>Log In</Text></Text>
+              <TouchableOpacity onPress={() => router.back()} accessibilityRole="link" accessibilityLabel={fp("backToLoginA11y")}>
+                <Text style={{ textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
+                  {fp("rememberPasswordLead")}{" "}
+                  <Text style={{ color: Colors.primary, fontWeight: "600" }}>{t("auth.login")}</Text>
+                </Text>
               </TouchableOpacity>
             </View>
           </>

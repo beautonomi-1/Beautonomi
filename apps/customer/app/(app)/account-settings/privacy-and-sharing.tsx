@@ -5,6 +5,7 @@ import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { pushWebCookiePolicy, pushWebPrivacyPolicy, pushWebTermsOfService } from "@/lib/legal-web";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface PrivacySettings {
   show_profile_publicly: boolean;
@@ -66,6 +67,12 @@ function mergeServerPrivacyPayload(raw: unknown): Partial<PrivacySettings> {
 }
 
 export default function PrivacyAndSharingScreen() {
+  const { t } = useTranslation();
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
+  const ps = useCallback(
+    (key: "updateErrorBody" | "loadFailed") => t(`customer.mobile.screens.privacySharing.${key}`) as string,
+    [t],
+  );
   const router = useRouter();
   const [settings, setSettings] = useState<PrivacySettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
@@ -78,16 +85,16 @@ export default function PrivacyAndSharingScreen() {
     try {
       const res = await api.get<PrivacySettings>("/api/me/privacy-settings");
       if (res.error) {
-        setError(res.error.message || "Failed to load privacy settings");
+        setError(res.error.message || ps("loadFailed"));
       } else if (res.data) {
         setSettings({ ...DEFAULT_SETTINGS, ...mergeServerPrivacyPayload(res.data) });
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load privacy settings");
+      setError(e instanceof Error ? e.message : ps("loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [ps]);
 
   useEffect(() => {
     load();
@@ -105,7 +112,7 @@ export default function PrivacyAndSharingScreen() {
         });
         if (res.error) {
           setSettings(previous);
-          Alert.alert("Error", res.error.message || "Could not update setting. Please try again.");
+          Alert.alert(errTitle, res.error.message || ps("updateErrorBody"));
         } else if (res.data) {
           const merged = mergeServerPrivacyPayload(res.data);
           if (Object.keys(merged).length) {
@@ -114,12 +121,12 @@ export default function PrivacyAndSharingScreen() {
         }
       } catch {
         setSettings(previous);
-        Alert.alert("Error", "Could not update setting. Please try again.");
+        Alert.alert(errTitle, ps("updateErrorBody"));
       } finally {
         setSavingKey(null);
       }
     },
-    [settings],
+    [settings, errTitle, ps],
   );
 
   return (

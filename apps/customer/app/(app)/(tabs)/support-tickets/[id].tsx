@@ -21,6 +21,7 @@ import { Colors } from "@/constants/colors";
 import { trackSupportTicketDetailView, trackSupportTicketReply } from "@/lib/analytics";
 import { labelForSupportTicketCategory } from "@/lib/supportTicketCategoryPresets";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useTranslation } from "@beautonomi/i18n";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 
@@ -86,6 +87,11 @@ function statusBg(status: string): string {
 
 export default function SupportTicketDetailScreen() {
   useScreenTracking("Support ticket detail");
+  const { t } = useTranslation();
+  const sd = useCallback(
+    (key: string) => t(`customer.mobile.screens.supportTicketDetail.${key}`) as string,
+    [t],
+  );
   const router = useRouter();
   const navigation = useNavigation();
   const { user } = useAuth();
@@ -110,22 +116,22 @@ export default function SupportTicketDetailScreen() {
       if (res.error) {
         setTicket(null);
         setMessages([]);
-        setLoadError(getApiErrorMessage(res.error, "Could not load ticket"));
+        setLoadError(getApiErrorMessage(res.error, sd("loadFailedFallback")));
         return;
       }
       const payload = res.data;
-      const t = payload?.ticket ?? null;
-      setTicket(t);
+      const loadedTicket = payload?.ticket ?? null;
+      setTicket(loadedTicket);
       setMessages(Array.isArray(payload?.messages) ? payload!.messages! : []);
-      if (t) trackSupportTicketDetailView(t.id, t.ticket_number);
+      if (loadedTicket) trackSupportTicketDetailView(loadedTicket.id, loadedTicket.ticket_number);
     } catch (e) {
       setTicket(null);
       setMessages([]);
-      setLoadError(e instanceof Error ? e.message : "Could not load ticket");
+      setLoadError(e instanceof Error ? e.message : sd("loadFailedFallback"));
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, sd]);
 
   useEffect(() => {
     loadTicket();
@@ -161,7 +167,7 @@ export default function SupportTicketDetailScreen() {
         attachments: pendingAttachments,
       });
       if (res.error) {
-        Alert.alert("Could not send", getApiErrorMessage(res.error, "Could not send reply"));
+        Alert.alert(sd("sendFailedTitle"), getApiErrorMessage(res.error, sd("sendReplyFallback")));
         return;
       }
       setReply("");
@@ -169,7 +175,10 @@ export default function SupportTicketDetailScreen() {
       trackSupportTicketReply(id);
       await loadTicket();
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Could not send reply");
+      Alert.alert(
+        t("customer.mobile.screens.authLogin.errorTitle"),
+        e instanceof Error ? e.message : sd("sendReplyFallback"),
+      );
     } finally {
       setSending(false);
     }
@@ -192,17 +201,20 @@ export default function SupportTicketDetailScreen() {
         { method: "POST", body: formData },
       );
       if (res.error) {
-        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload attachment"));
+        Alert.alert(sd("uploadFailedTitle"), getApiErrorMessage(res.error, sd("uploadAttachmentFallback")));
         return;
       }
       const attachments = res.data?.attachments ?? [];
       if (attachments.length === 0) {
-        Alert.alert("Upload failed", "The file uploaded but no attachment was returned.");
+        Alert.alert(sd("uploadFailedTitle"), sd("uploadNoAttachmentReturned"));
         return;
       }
       setPendingAttachments((prev) => [...prev, ...attachments].slice(0, 6));
     } catch (e) {
-      Alert.alert("Upload failed", e instanceof Error ? e.message : "Could not upload attachment");
+      Alert.alert(
+        sd("uploadFailedTitle"),
+        e instanceof Error ? e.message : sd("uploadAttachmentFallback"),
+      );
     } finally {
       setUploadingAttachment(false);
     }
@@ -210,14 +222,14 @@ export default function SupportTicketDetailScreen() {
 
   const openAttachment = (attachment: SupportAttachment) => {
     Linking.openURL(attachment.url).catch(() => {
-      Alert.alert("Could not open", "This attachment could not be opened on your device.");
+      Alert.alert(sd("openFailedTitle"), sd("openFailedBody"));
     });
   };
 
   if (!id) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.muted}>Invalid ticket</Text>
+        <Text style={styles.muted}>{sd("invalidTicket")}</Text>
       </View>
     );
   }

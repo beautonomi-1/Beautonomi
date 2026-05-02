@@ -17,7 +17,7 @@ interface DashboardData {
     stalled_signups: number;
     dropped_off: number;
     pending_approval: number;
-    /** §Release-audit 2026-04: duplicate-lead pressure (email/phone collisions + already-a-provider matches). */
+    /** Duplicate-lead pressure (email/phone collisions and existing-provider matches). */
     duplicate_groups?: number;
     duplicate_leads?: number;
   };
@@ -25,6 +25,8 @@ interface DashboardData {
   pipeline: Record<string, number>;
   recent_activities: { id: string; activity_type: string; description: string; created_at: string }[];
 }
+
+const OPS_DASHBOARD_REFETCH_MS = 60_000;
 
 const STAGE_COLORS: Record<string, string> = {
   new: "bg-blue-400", contacted: "bg-cyan-400", qualified: "bg-emerald-400",
@@ -39,6 +41,8 @@ export function ProviderOpsDashboardPage() {
     queryKey: adminQueryKeys.providerOps.dashboard(),
     queryFn: () => adminApi.getJson<DashboardData>("/api/admin/provider-ops/dashboard", { timeoutMs: 60_000 }),
     enabled: allowed,
+    refetchInterval: OPS_DASHBOARD_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 
   if (denied) return denied;

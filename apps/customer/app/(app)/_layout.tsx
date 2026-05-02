@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { View, Platform, TouchableOpacity, Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, router, usePathname } from "expo-router";
@@ -18,6 +18,7 @@ import {
   isSentryEnabled,
   setAuthFlowTags,
 } from "@/lib/sentry";
+import { useTranslation } from "@beautonomi/i18n";
 
 const CUSTOMER_SCHEME = "customer://";
 const REFERRAL_REF_KEY = "referral_ref";
@@ -98,6 +99,8 @@ function handleCustomerDeepLink(url: string): boolean {
 }
 
 export default function AppLayout() {
+  const { t } = useTranslation();
+  const stackTitle = useCallback((key: string) => t(`customer.mobile.stackTitles.${key}`), [t]);
   const { session, loading: authLoading } = useAuth();
 
   useEffect(() => {
@@ -229,28 +232,28 @@ export default function AppLayout() {
         <Stack.Screen name="partner-profile" options={{ headerShown: false }} />
         <Stack.Screen name="book" options={{ headerShown: false }} />
         <Stack.Screen name="book-checkout" options={{ headerShown: false }} />
-        <Stack.Screen name="chat" options={{ headerShown: true, title: "Chat" }} />
-        <Stack.Screen name="explore-post" options={{ headerShown: true, title: "Post" }} />
-        <Stack.Screen name="explore-collection/[id]" options={{ headerShown: true, title: "Board" }} />
-        <Stack.Screen name="custom-request-create" options={{ headerShown: true, title: "Custom Request" }} />
-        <Stack.Screen name="notifications" options={{ headerShown: true, title: "Notifications" }} />
-        <Stack.Screen name="booking-detail" options={{ headerShown: true, title: "Booking" }} />
-        <Stack.Screen name="help" options={{ headerShown: true, title: "Help" }} />
-        <Stack.Screen name="privacy-policy" options={{ headerShown: true, title: "Privacy policy" }} />
-        <Stack.Screen name="terms-of-service" options={{ headerShown: true, title: "Terms of service" }} />
+        <Stack.Screen name="chat" options={{ headerShown: true, title: stackTitle("chat") }} />
+        <Stack.Screen name="explore-post" options={{ headerShown: true, title: stackTitle("post") }} />
+        <Stack.Screen name="explore-collection/[id]" options={{ headerShown: true, title: stackTitle("board") }} />
+        <Stack.Screen name="custom-request-create" options={{ headerShown: true, title: stackTitle("customRequest") }} />
+        <Stack.Screen name="notifications" options={{ headerShown: true, title: stackTitle("notifications") }} />
+        <Stack.Screen name="booking-detail" options={{ headerShown: true, title: stackTitle("booking") }} />
+        <Stack.Screen name="help" options={{ headerShown: true, title: stackTitle("help") }} />
+        <Stack.Screen name="privacy-policy" options={{ headerShown: true, title: stackTitle("privacyPolicy") }} />
+        <Stack.Screen name="terms-of-service" options={{ headerShown: true, title: stackTitle("termsOfService") }} />
         <Stack.Screen name="contact-support" options={{ headerShown: false }} />
-        <Stack.Screen name="about" options={{ headerShown: true, title: "About Us" }} />
-        <Stack.Screen name="gift-card-purchase" options={{ headerShown: true, title: "Buy Gift Card" }} />
-        <Stack.Screen name="review-write" options={{ headerShown: true, title: "Write Review" }} />
-        <Stack.Screen name="product-detail" options={{ headerShown: true, title: "Product" }} />
-        <Stack.Screen name="product-order-detail" options={{ headerShown: true, title: "Order Details" }} />
-        <Stack.Screen name="request-return" options={{ headerShown: true, title: "Request Return" }} />
-        <Stack.Screen name="product-orders" options={{ headerShown: true, title: "My Orders" }} />
-        <Stack.Screen name="my-returns" options={{ headerShown: true, title: "Returns & Refunds" }} />
-        <Stack.Screen name="on-demand/waiting" options={{ headerShown: true, title: "Finding a provider" }} />
-        <Stack.Screen name="on-demand/result" options={{ headerShown: true, title: "Result" }} />
+        <Stack.Screen name="about" options={{ headerShown: true, title: stackTitle("aboutUs") }} />
+        <Stack.Screen name="gift-card-purchase" options={{ headerShown: true, title: stackTitle("buyGiftCard") }} />
+        <Stack.Screen name="review-write" options={{ headerShown: true, title: stackTitle("writeReview") }} />
+        <Stack.Screen name="product-detail" options={{ headerShown: true, title: stackTitle("product") }} />
+        <Stack.Screen name="product-order-detail" options={{ headerShown: true, title: stackTitle("orderDetails") }} />
+        <Stack.Screen name="request-return" options={{ headerShown: true, title: stackTitle("requestReturn") }} />
+        <Stack.Screen name="product-orders" options={{ headerShown: true, title: stackTitle("myOrders") }} />
+        <Stack.Screen name="my-returns" options={{ headerShown: true, title: stackTitle("returnsRefunds") }} />
+        <Stack.Screen name="on-demand/waiting" options={{ headerShown: true, title: stackTitle("findingProvider") }} />
+        <Stack.Screen name="on-demand/result" options={{ headerShown: true, title: stackTitle("result") }} />
         <Stack.Screen name="more-providers/[section]" options={{ headerShown: true }} />
-        <Stack.Screen name="in-app-browser" options={{ headerShown: false, title: "Link" }} />
+        <Stack.Screen name="in-app-browser" options={{ headerShown: false, title: stackTitle("link") }} />
         <Stack.Screen name="onboarding/index" options={{ headerShown: false, gestureEnabled: false, animation: "fade" }} />
       </Stack>
       </View>

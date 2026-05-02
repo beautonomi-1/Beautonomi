@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -86,10 +87,13 @@ function parseValidDate(value: unknown): Date | null {
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
-function formatDate(iso: string): string {
-  if (!iso) return "—";
+/** Translation helper for `customer.mobile.screens.recurringBookings.*` */
+type Rb = (key: string, options?: Record<string, string | number>) => string;
+
+function formatDate(iso: string, rb: Rb): string {
+  if (!iso) return rb("dash");
   const parsed = parseValidDate(iso);
-  if (!parsed) return "—";
+  if (!parsed) return rb("dash");
   return parsed.toLocaleDateString(getTenantLocaleTag(), {
     weekday: "short",
     year: "numeric",
@@ -111,58 +115,56 @@ function statusStyle(status: RecurringBooking["status"]): { bg: string; text: st
   }
 }
 
-function formatFrequencyLabel(raw: string | undefined): string {
+function formatFrequencyLabel(raw: string | undefined, rb: Rb): string {
   const f = (raw ?? "weekly").toLowerCase();
-  if (f === "biweekly") return "Every 2 weeks";
-  if (f === "monthly") return "Monthly";
-  if (f === "weekly") return "Weekly";
-  return raw ?? "Recurring";
+  if (f === "biweekly") return rb("freqEvery2Weeks");
+  if (f === "monthly") return rb("freqMonthly");
+  if (f === "weekly") return rb("freqWeekly");
+  return raw ?? rb("freqRecurring");
 }
 
-function humanizeRecurrenceRule(rule: string): string {
-  if (!rule) return "Recurring";
+function humanizeRecurrenceRule(rule: string, rb: Rb): string {
+  if (!rule) return rb("freqRecurring");
   const r = rule.toUpperCase();
   if (r.startsWith("FREQ=")) {
     const match = r.match(/FREQ=(\w+)/);
     const interval = r.match(/INTERVAL=(\d+)/);
     const freq = match?.[1];
     const n = interval ? parseInt(interval[1]!, 10) : 1;
-    const freqMap: Record<string, string> = {
-      DAILY: n === 1 ? "Every day" : `Every ${n} days`,
-      WEEKLY: n === 1 ? "Every week" : `Every ${n} weeks`,
-      BIWEEKLY: "Every 2 weeks",
-      MONTHLY: n === 1 ? "Every month" : `Every ${n} months`,
-      YEARLY: "Every year",
-    };
-    return freqMap[freq ?? ""] ?? rule;
+    if (freq === "DAILY") return n === 1 ? rb("everyDay") : rb("everyNDays", { n: String(n) });
+    if (freq === "WEEKLY") return n === 1 ? rb("everyWeek") : rb("everyNWeeks", { n: String(n) });
+    if (freq === "BIWEEKLY") return rb("every2WeeksRrule");
+    if (freq === "MONTHLY") return n === 1 ? rb("everyMonth") : rb("everyNMonths", { n: String(n) });
+    if (freq === "YEARLY") return rb("everyYear");
+    return rule;
   }
   const simple: Record<string, string> = {
-    DAILY: "Every day",
-    WEEKLY: "Every week",
-    BIWEEKLY: "Every 2 weeks",
-    MONTHLY: "Every month",
-    YEARLY: "Every year",
-    "2WEEKLY": "Every 2 weeks",
-    "4WEEKLY": "Every 4 weeks",
+    DAILY: rb("everyDay"),
+    WEEKLY: rb("everyWeek"),
+    BIWEEKLY: rb("every2WeeksRrule"),
+    MONTHLY: rb("everyMonth"),
+    YEARLY: rb("everyYear"),
+    "2WEEKLY": rb("every2WeeksRrule"),
+    "4WEEKLY": rb("everyNWeeks", { n: "4" }),
   };
   return simple[r] ?? rule;
 }
 
-function scheduleLabelFromRow(row: { frequency?: string | null; recurrence_rule?: string | null }): string {
+function scheduleLabelFromRow(row: { frequency?: string | null; recurrence_rule?: string | null }, rb: Rb): string {
   if (row.frequency && String(row.frequency).trim()) {
-    return formatFrequencyLabel(String(row.frequency));
+    return formatFrequencyLabel(String(row.frequency), rb);
   }
   if (row.recurrence_rule && String(row.recurrence_rule).trim()) {
-    return humanizeRecurrenceRule(String(row.recurrence_rule));
+    return humanizeRecurrenceRule(String(row.recurrence_rule), rb);
   }
-  return "Recurring";
+  return rb("freqRecurring");
 }
 
-function normalizeRecurringItem(row: any): RecurringBooking {
+function normalizeRecurringItem(row: any, rb: Rb): RecurringBooking {
   const provider = row.provider;
-  const providerName = row.provider_name ?? provider?.business_name ?? "Provider";
+  const providerName = row.provider_name ?? provider?.business_name ?? rb("providerFallback");
   const providerSlug = provider?.slug ?? null;
-  const serviceName = row.service_name ?? "Recurring appointment";
+  const serviceName = row.service_name ?? rb("serviceFallback");
   const nextDate =
     typeof row.next_date === "string" && row.next_date
       ? row.next_date
@@ -199,7 +201,7 @@ function normalizeRecurringItem(row: any): RecurringBooking {
     service_name: serviceName,
     provider_name: providerName,
     provider_slug: providerSlug,
-    frequency: scheduleLabelFromRow(row),
+    frequency: scheduleLabelFromRow(row, rb),
     next_date: nextDate,
     price,
     currency,
@@ -214,18 +216,31 @@ function normalizeRecurringItem(row: any): RecurringBooking {
   };
 }
 
-function paymentMethodLabel(method: string | null | undefined): string {
+function paymentMethodLabel(method: string | null | undefined, rb: Rb): string {
   const m = (method || "").toLowerCase();
-  if (m === "cash") return "Pay per visit (cash at salon or as agreed)";
-  if (m === "card") return "Pay per visit (card or in-app when you complete each booking)";
-  return "Pay per visit when each booking is due";
+  if (m === "cash") return rb("payCash");
+  if (m === "card") return rb("payCard");
+  return rb("payDefault");
 }
 
-function locationLabel(locationType: string | undefined): string {
-  const t = (locationType || "").toLowerCase();
-  if (t === "at_home") return "At your address (house call)";
-  if (t === "at_salon") return "At the salon";
-  return "—";
+function locationLabel(locationType: string | undefined, rb: Rb): string {
+  const loc = (locationType || "").toLowerCase();
+  if (loc === "at_home") return rb("locAtHome");
+  if (loc === "at_salon") return rb("locAtSalon");
+  return rb("dash");
+}
+
+function statusLabel(status: RecurringBooking["status"], rb: Rb): string {
+  switch (status) {
+    case "active":
+      return rb("statusActive");
+    case "paused":
+      return rb("statusPaused");
+    case "cancelled":
+      return rb("statusCancelled");
+    default:
+      return status;
+  }
 }
 
 const detailLabelStyle = { fontSize: 12, fontWeight: "600" as const, color: Colors.gray[500], marginBottom: 4 };
@@ -236,6 +251,15 @@ const detailValueStyle = { fontSize: 15, color: Colors.gray[900], lineHeight: 22
 /* ------------------------------------------------------------------ */
 
 export default function RecurringBookingsScreen() {
+  const { t } = useTranslation();
+  const rb = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.recurringBookings.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint =
     isTablet || Platform.OS === "web"
@@ -266,20 +290,20 @@ export default function RecurringBookingsScreen() {
         cache: "no-store",
       });
       if (res.error) {
-        setError(res.error.message || "Failed to load recurring bookings");
+        setError(res.error.message || rb("loadFailed"));
       } else {
         const data = res.data;
         const raw = Array.isArray(data) ? (data as unknown as any[]) : data?.recurring ?? [];
-        const items = (Array.isArray(raw) ? raw : []).map(normalizeRecurringItem);
+        const items = (Array.isArray(raw) ? raw : []).map((row) => normalizeRecurringItem(row, rb));
         setBookings(items);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load recurring bookings");
+      setError(e instanceof Error ? e.message : rb("loadFailed"));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [rb]);
 
   useEffect(() => {
     load();
@@ -298,7 +322,7 @@ export default function RecurringBookingsScreen() {
   const saveSchedule = useCallback(async () => {
     if (!editing) return;
     if (!editSeriesNoEnd && !editEndDate.trim()) {
-      Alert.alert("End date", 'Choose an end date or turn on "No end date".');
+      Alert.alert(rb("endDateTitle"), rb("endDateBody"));
       return;
     }
     setSavingSchedule(true);
@@ -314,18 +338,18 @@ export default function RecurringBookingsScreen() {
       }
       const res = await api.patch(apiRecurringBookingPath(editing.id), payload);
       if (res.error) {
-        Alert.alert("Error", res.error.message || "Failed to update schedule");
+        Alert.alert(errTitle, res.error.message || rb("updateScheduleError"));
       } else {
         setEditOpen(false);
         setEditing(null);
         await load(true);
       }
     } catch {
-      Alert.alert("Error", "Failed to update schedule");
+      Alert.alert(errTitle, rb("updateScheduleError"));
     } finally {
       setSavingSchedule(false);
     }
-  }, [editing, editPreferredTime, editFrequency, editEndDate, editSeriesNoEnd, load]);
+  }, [editing, editPreferredTime, editFrequency, editEndDate, editSeriesNoEnd, load, errTitle, rb]);
 
   const togglePauseResume = useCallback(async (booking: RecurringBooking) => {
     if (booking.status === "cancelled") return;
@@ -335,46 +359,49 @@ export default function RecurringBookingsScreen() {
         is_active: booking.status === "paused",
       });
       if (res.error) {
-        Alert.alert("Error", res.error.message || "Failed to update");
+        Alert.alert(errTitle, res.error.message || rb("updateFailed"));
       } else {
         await load(true);
       }
     } catch {
-      Alert.alert("Error", "Failed to update. Please try again.");
+      Alert.alert(errTitle, rb("updateRetry"));
     } finally {
       setTogglingId(null);
     }
-  }, [load]);
+  }, [load, errTitle, rb]);
 
-  const cancelBooking = useCallback((booking: RecurringBooking) => {
-    Alert.alert(
-      "Cancel Recurring Booking",
-      `Are you sure you want to cancel "${booking.service_name}" with ${booking.provider_name}?`,
-      [
-        { text: "Keep", style: "cancel" },
-        {
-          text: "End series",
-          style: "destructive",
-          onPress: async () => {
-            setCancellingId(booking.id);
-            try {
-              const res = await api.delete(apiRecurringBookingPath(booking.id));
-              if (res.error) {
-                Alert.alert("Error", res.error.message || "Failed to cancel booking");
-              } else {
-                setDetailItem((d) => (d?.id === booking.id ? null : d));
-                await load(true);
+  const cancelBooking = useCallback(
+    (booking: RecurringBooking) => {
+      Alert.alert(
+        rb("cancelRecurringTitle"),
+        rb("cancelRecurringBody", { serviceName: booking.service_name, providerName: booking.provider_name }),
+        [
+          { text: rb("keepCta"), style: "cancel" },
+          {
+            text: rb("endSeriesCta"),
+            style: "destructive",
+            onPress: async () => {
+              setCancellingId(booking.id);
+              try {
+                const res = await api.delete(apiRecurringBookingPath(booking.id));
+                if (res.error) {
+                  Alert.alert(errTitle, res.error.message || rb("cancelBookingError"));
+                } else {
+                  setDetailItem((d) => (d?.id === booking.id ? null : d));
+                  await load(true);
+                }
+              } catch {
+                Alert.alert(errTitle, rb("cancelBookingRetry"));
+              } finally {
+                setCancellingId(null);
               }
-            } catch {
-              Alert.alert("Error", "Failed to cancel booking. Please try again.");
-            } finally {
-              setCancellingId(null);
-            }
+            },
           },
-        },
-      ]
-    );
-  }, [load]);
+        ],
+      );
+    },
+    [load, rb, errTitle],
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: RecurringBooking }) => {
@@ -399,36 +426,34 @@ export default function RecurringBookingsScreen() {
             onPress={() => setDetailItem(item)}
             activeOpacity={0.92}
             accessibilityRole="button"
-            accessibilityLabel={`Details for ${item.service_name}`}
+            accessibilityLabel={rb("detailsA11y", { name: item.service_name })}
             style={{ padding: 16, paddingBottom: 12 }}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.service_name}</Text>
-                <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: "600", marginTop: 4 }}>Tap for details</Text>
+                <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: "600", marginTop: 4 }}>{rb("tapForDetails")}</Text>
               </View>
               <View style={{ paddingHorizontal: 10, paddingVertical: 2, borderRadius: 9999, backgroundColor: badge.bg }}>
-                <Text style={{ fontSize: 12, fontWeight: "500", color: badge.text, textTransform: "capitalize" }}>{item.status}</Text>
+                <Text style={{ fontSize: 12, fontWeight: "500", color: badge.text }}>{statusLabel(item.status, rb)}</Text>
               </View>
             </View>
             <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 4 }}>{item.provider_name}</Text>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
               <View>
-                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Frequency</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{rb("labelFrequency")}</Text>
                 <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{item.frequency}</Text>
               </View>
               <View style={{ alignItems: "flex-end" }}>
-                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Next appointment</Text>
-                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{formatDate(item.next_date)}</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{rb("labelNextAppointment")}</Text>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{formatDate(item.next_date, rb)}</Text>
               </View>
             </View>
             <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 8 }}>
-              Preferred time · {preferredTimeToInputValue(item.preferred_time)}
+              {rb("preferredTimeLine", { time: preferredTimeToInputValue(item.preferred_time) })}
             </Text>
             <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 4 }}>
-              {item.end_date
-                ? `Ends ${formatDate(item.end_date)}`
-                : "No fixed end date — runs until you pause or cancel."}
+              {item.end_date ? rb("endsOn", { date: formatDate(item.end_date, rb) }) : rb("noEndDateRuns")}
             </Text>
           </TouchableOpacity>
           {item.provider_slug ? (
@@ -438,7 +463,7 @@ export default function RecurringBookingsScreen() {
                   router.push({ pathname: "/(app)/partner-profile", params: { slug: item.provider_slug! } })
                 }
               >
-                <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>View salon</Text>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{rb("viewSalon")}</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -470,7 +495,7 @@ export default function RecurringBookingsScreen() {
                     backgroundColor: "#EFF6FF",
                   }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>Edit schedule</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>{rb("editSchedule")}</Text>
                 </TouchableOpacity>
               )}
               {canPauseResume && (
@@ -490,7 +515,7 @@ export default function RecurringBookingsScreen() {
                     <ActivityIndicator size="small" color={Colors.gray[600]} />
                   ) : (
                     <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-                      {item.status === "paused" ? "Resume" : "Pause"}
+                      {item.status === "paused" ? rb("resume") : rb("pause")}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -511,7 +536,7 @@ export default function RecurringBookingsScreen() {
                   {isCancelling ? (
                     <ActivityIndicator size="small" color={Colors.error} />
                   ) : (
-                    <Text style={{ fontSize: 14, fontWeight: "500", color: "#DC2626" }}>Cancel</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: "#DC2626" }}>{t("common.cancel")}</Text>
                   )}
                 </TouchableOpacity>
               )}
@@ -520,14 +545,14 @@ export default function RecurringBookingsScreen() {
         </View>
       );
     },
-    [cancellingId, togglingId, cancelBooking, togglePauseResume, openEdit]
+    [cancellingId, togglingId, cancelBooking, togglePauseResume, openEdit, rb, t]
   );
 
   if (loading && bookings.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading...</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>{t("common.loading")}</Text>
       </View>
     );
   }
@@ -537,7 +562,7 @@ export default function RecurringBookingsScreen() {
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
         <Text style={{ textAlign: "center", color: Colors.gray[700], marginBottom: 16 }}>{error}</Text>
         <TouchableOpacity onPress={() => load()} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
-          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>{t("common.retry")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -546,18 +571,14 @@ export default function RecurringBookingsScreen() {
   if (bookings.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>No recurring bookings yet</Text>
-        <Text style={{ textAlign: "center", color: Colors.gray[500], paddingHorizontal: 8 }}>
-          After you book while signed in, turn on &quot;Repeat this booking&quot; on checkout (app or web). You can also ask your provider to set up a series.
-        </Text>
-        <Text style={{ textAlign: "center", color: Colors.gray[500], paddingHorizontal: 16, marginTop: 14, fontSize: 13, lineHeight: 18 }}>
-          You pay per visit—repeat schedules do not auto-charge your card.
-        </Text>
+        <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{rb("emptyTitle")}</Text>
+        <Text style={{ textAlign: "center", color: Colors.gray[500], paddingHorizontal: 8 }}>{rb("emptyBody")}</Text>
+        <Text style={{ textAlign: "center", color: Colors.gray[500], paddingHorizontal: 16, marginTop: 14, fontSize: 13, lineHeight: 18 }}>{rb("emptyNote")}</Text>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tabs)/search")}
           style={{ marginTop: 20, backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
         >
-          <Text style={{ color: Colors.white, fontWeight: "600" }}>Find a salon</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>{rb("findSalonCta")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -581,9 +602,7 @@ export default function RecurringBookingsScreen() {
               marginBottom: 16,
             }}
           >
-            <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 19 }}>
-              Each visit is created by our daily schedule when a slot is due. You pay per booking (card, wallet, or cash as usual)—this repeat plan never auto-charges your card. If the time is no longer free, that visit may be skipped until you reschedule with the salon.
-            </Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 19 }}>{rb("listHeaderExplainer")}</Text>
           </View>
         }
         contentContainerStyle={{
@@ -605,51 +624,52 @@ export default function RecurringBookingsScreen() {
                   <Text style={{ fontSize: 15, color: Colors.gray[600], marginBottom: 16 }}>{detailItem.provider_name}</Text>
 
                   <View style={{ marginBottom: 14 }}>
-                    <Text style={detailLabelStyle}>Status</Text>
-                    <Text style={detailValueStyle}>{detailItem.status}</Text>
+                    <Text style={detailLabelStyle}>{rb("detailStatus")}</Text>
+                    <Text style={detailValueStyle}>{statusLabel(detailItem.status, rb)}</Text>
                   </View>
                   <View style={{ marginBottom: 14 }}>
-                    <Text style={detailLabelStyle}>Schedule</Text>
+                    <Text style={detailLabelStyle}>{rb("detailSchedule")}</Text>
                     <Text style={detailValueStyle}>{detailItem.frequency}</Text>
                     <Text style={[detailValueStyle, { marginTop: 4, fontSize: 13, color: Colors.gray[500] }]}>
-                      Preferred time {preferredTimeToInputValue(detailItem.preferred_time)} · Next {formatDate(detailItem.next_date)}
+                      {rb("detailScheduleLine", {
+                        time: preferredTimeToInputValue(detailItem.preferred_time),
+                        next: formatDate(detailItem.next_date, rb),
+                      })}
                     </Text>
                   </View>
                   <View style={{ marginBottom: 14 }}>
-                    <Text style={detailLabelStyle}>Series end</Text>
+                    <Text style={detailLabelStyle}>{rb("detailSeriesEnd")}</Text>
                     <Text style={detailValueStyle}>
-                      {detailItem.end_date ? formatDate(detailItem.end_date) : "Open-ended until you pause or cancel"}
+                      {detailItem.end_date ? formatDate(detailItem.end_date, rb) : rb("detailOpenEnded")}
                     </Text>
                   </View>
                   <View style={{ marginBottom: 14 }}>
-                    <Text style={detailLabelStyle}>Last visit booked by schedule</Text>
+                    <Text style={detailLabelStyle}>{rb("detailLastVisit")}</Text>
                     <Text style={detailValueStyle}>
-                      {detailItem.last_booking_date ? formatDate(detailItem.last_booking_date) : "None yet — starts after your first confirmed visit"}
+                      {detailItem.last_booking_date ? formatDate(detailItem.last_booking_date, rb) : rb("detailLastVisitNone")}
                     </Text>
                   </View>
                   <View style={{ marginBottom: 14 }}>
-                    <Text style={detailLabelStyle}>Location</Text>
-                    <Text style={detailValueStyle}>{locationLabel(detailItem.location_type)}</Text>
+                    <Text style={detailLabelStyle}>{rb("detailLocation")}</Text>
+                    <Text style={detailValueStyle}>{locationLabel(detailItem.location_type, rb)}</Text>
                   </View>
                   <View style={{ marginBottom: 14 }}>
-                    <Text style={detailLabelStyle}>Typical price (per visit)</Text>
+                    <Text style={detailLabelStyle}>{rb("detailTypicalPrice")}</Text>
                     <Text style={detailValueStyle}>
                       {detailItem.currency}{" "}
-                      {detailItem.price != null && detailItem.price > 0 ? detailItem.price.toFixed(2) : "—"}
+                      {detailItem.price != null && detailItem.price > 0 ? detailItem.price.toFixed(2) : rb("dash")}
                     </Text>
                   </View>
                   <View style={{ marginBottom: 16 }}>
-                    <Text style={detailLabelStyle}>Payments</Text>
-                    <Text style={detailValueStyle}>{paymentMethodLabel(detailItem.payment_method)}</Text>
+                    <Text style={detailLabelStyle}>{rb("detailPayments")}</Text>
+                    <Text style={detailValueStyle}>{paymentMethodLabel(detailItem.payment_method, rb)}</Text>
                     <Text style={[detailValueStyle, { marginTop: 8, fontSize: 13, color: Colors.gray[600], lineHeight: 19 }]}>
-                      The repeat plan only remembers your preference. Each future booking stays pending until you pay (or pay at the salon) like any other appointment.
+                      {rb("detailPaymentsNote")}
                     </Text>
                   </View>
                   <View style={{ marginBottom: 20, backgroundColor: "#F0F9FF", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#BAE6FD" }}>
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[800], marginBottom: 6 }}>Calendar & availability</Text>
-                    <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 19 }}>
-                      When a date is due, we try to book the same staff and time. If that slot is taken, the run may skip that day—check Bookings or contact the salon. Pausing stops new visits; cancel ends the whole series.
-                    </Text>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[800], marginBottom: 6 }}>{rb("detailCalendarTitle")}</Text>
+                    <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 19 }}>{rb("detailCalendarBody")}</Text>
                   </View>
                 </>
               ) : null}
@@ -659,7 +679,7 @@ export default function RecurringBookingsScreen() {
                 onPress={() => setDetailItem(null)}
                 style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: "center" }}
               >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>Close</Text>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>{rb("closeCta")}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -682,12 +702,10 @@ export default function RecurringBookingsScreen() {
                 paddingBottom: 32,
               }}
             >
-              <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Edit schedule</Text>
-              <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 16 }}>
-                Update how often you visit, preferred time, and optional end date.
-              </Text>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>{rb("editModalTitle")}</Text>
+              <Text style={{ fontSize: 13, color: Colors.gray[600], marginBottom: 16 }}>{rb("editModalSubtitle")}</Text>
 
-              <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 6 }}>Frequency</Text>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 6 }}>{rb("labelFrequencyPick")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
                 {(["weekly", "biweekly", "monthly"] as const).map((f) => (
                   <TouchableOpacity
@@ -703,17 +721,17 @@ export default function RecurringBookingsScreen() {
                     }}
                   >
                     <Text style={{ fontWeight: "600", color: editFrequency === f ? Colors.primary : Colors.gray[700], fontSize: 13 }}>
-                      {f === "weekly" ? "Weekly" : f === "biweekly" ? "Every 2 wks" : "Monthly"}
+                      {f === "weekly" ? rb("chipWeekly") : f === "biweekly" ? rb("chipBiweekly") : rb("chipMonthly")}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 6 }}>Preferred time (HH:MM)</Text>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 6 }}>{rb("labelPreferredTime")}</Text>
               <TextInput
                 value={editPreferredTime}
                 onChangeText={setEditPreferredTime}
-                placeholder="10:00"
+                placeholder={rb("timePlaceholder")}
                 keyboardType="numbers-and-punctuation"
                 style={{
                   borderWidth: 1,
@@ -728,8 +746,8 @@ export default function RecurringBookingsScreen() {
 
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <View style={{ flex: 1, marginRight: 12 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>No end date</Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>Uncheck to stop after a specific date.</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{rb("noEndDateToggle")}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>{rb("noEndDateHint")}</Text>
                 </View>
                 <Switch
                   value={editSeriesNoEnd}
@@ -744,11 +762,11 @@ export default function RecurringBookingsScreen() {
 
               {!editSeriesNoEnd && (
                 <>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 6 }}>End date (YYYY-MM-DD)</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 6 }}>{rb("endDateInputLabel")}</Text>
                   <TextInput
                     value={editEndDate}
                     onChangeText={setEditEndDate}
-                    placeholder="2026-12-31"
+                    placeholder={rb("datePlaceholder")}
                     style={{
                       borderWidth: 1,
                       borderColor: Colors.gray[200],
@@ -774,7 +792,7 @@ export default function RecurringBookingsScreen() {
                     alignItems: "center",
                   }}
                 >
-                  <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>Close</Text>
+                  <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{rb("closeCta")}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={saveSchedule}
@@ -791,7 +809,7 @@ export default function RecurringBookingsScreen() {
                   {savingSchedule ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={{ fontWeight: "700", color: "#fff" }}>Save</Text>
+                    <Text style={{ fontWeight: "700", color: "#fff" }}>{rb("saveCta")}</Text>
                   )}
                 </TouchableOpacity>
               </View>

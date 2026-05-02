@@ -26,6 +26,7 @@ import { haptic } from "@/lib/haptics";
 import { formatMoney } from "@beautonomi/utils";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 import { useLocation } from "@/hooks/useLocation";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
 
@@ -72,6 +73,11 @@ interface ProductsResponse {
 }
 
 export default function ShopScreen() {
+  const { t } = useTranslation();
+  const ts = useCallback(
+    (key: string) => t(`customer.mobile.tabs.shop.${key}`),
+    [t],
+  );
   const router = useRouter();
   const { contentPadding } = useResponsive();
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
@@ -141,7 +147,7 @@ export default function ShopScreen() {
     try {
       const res = await api.get<ProductsResponse>(`/api/public/products?${searchParams}`);
       if (res.error) {
-        setError("Could not load products. Pull to refresh.");
+        setError(ts("loadErrorRefresh"));
         if (pageNum === 1) setProducts([]);
       } else {
         const data = res.data as ProductsResponse;
@@ -155,13 +161,13 @@ export default function ShopScreen() {
         setHasMore(data?.has_more ?? (data?.pagination ? data.pagination.page < data.pagination.totalPages : false));
       }
     } catch {
-      setError("Could not load products.");
+      setError(ts("loadError"));
     } finally {
       setLoading(false);
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [query, params.category, effectiveLat, effectiveLng]);
+  }, [query, params.category, effectiveLat, effectiveLng, ts]);
 
   useEffect(() => {
     fetchProducts({ pageNum: 1 });
@@ -215,7 +221,7 @@ export default function ShopScreen() {
           { item_type: "product", item_id: p.id },
         );
         if (res.error) {
-          Alert.alert("Error", "Could not update wishlist. Please try again.");
+          Alert.alert(ts("wishlistErrorTitle"), ts("wishlistUpdateError"));
         } else {
           const action = (res.data as { action?: string; data?: { action?: string } })?.action
             ?? (res.data as { data?: { action?: string } })?.data?.action;
@@ -233,13 +239,13 @@ export default function ShopScreen() {
         setWishlistBusyId(null);
       }
     },
-    [user, router, wishlistBusyId],
+    [user, router, wishlistBusyId, ts],
   );
 
   const quickAddToCart = useCallback(
     async (p: ShopProduct) => {
       if (!p.provider?.id) {
-        Alert.alert("Unavailable", "This product cannot be added from the grid. Open the product page.");
+        Alert.alert(ts("unavailableTitle"), ts("unavailableGrid"));
         return;
       }
       if (p.has_variants) {
@@ -263,16 +269,16 @@ export default function ShopScreen() {
         provider_slug: p.provider.slug,
       });
       setAddingToCartId(null);
-      if (addErr) Alert.alert("Could not add to cart", addErr);
+      if (addErr) Alert.alert(ts("couldNotAddTitle"), addErr);
       else {
         haptic.success();
-        Alert.alert("Added to cart", "View your cart or keep shopping.", [
-          { text: "View cart", onPress: () => router.push("/(app)/(tabs)/cart" as any) },
-          { text: "OK", style: "cancel" },
+        Alert.alert(ts("addedToCartTitle"), ts("addedToCartBody"), [
+          { text: ts("viewCart"), onPress: () => router.push("/(app)/(tabs)/cart" as any) },
+          { text: t("common.ok"), style: "cancel" },
         ]);
       }
     },
-    [cart, imageUri, inStock, router, fb],
+    [cart, imageUri, inStock, router, fb, ts, t],
   );
 
   const renderProduct = useCallback(
@@ -453,7 +459,7 @@ export default function ShopScreen() {
         >
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
-        <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>Shop</Text>
+        <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>{ts("shopTitle")}</Text>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tabs)/cart" as any)}
           style={{ position: "relative", padding: 4 }}
@@ -477,7 +483,7 @@ export default function ShopScreen() {
               value={query}
               onChangeText={setQuery}
               onSubmitEditing={handleSearch}
-              placeholder="Search products…"
+              placeholder={ts("searchPlaceholder")}
               placeholderTextColor="#9CA3AF"
               returnKeyType="search"
               style={{ flex: 1, fontSize: 15, color: "#111827" }}
@@ -491,7 +497,7 @@ export default function ShopScreen() {
           </View>
           {query.length > 0 && (
             <TouchableOpacity onPress={handleSearch} style={{ paddingHorizontal: 14, paddingVertical: 8, backgroundColor: PRIMARY, borderRadius: 12 }}>
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Search</Text>
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>{ts("searchButton")}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -505,17 +511,17 @@ export default function ShopScreen() {
             <Ionicons name="wifi-outline" size={48} color="#D1D5DB" />
             <Text style={{ color: "#6B7280", marginTop: 12, textAlign: "center" }}>{error}</Text>
             <TouchableOpacity onPress={() => fetchProducts({ pageNum: 1 })} style={{ marginTop: 16, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: PRIMARY, borderRadius: 12 }}>
-              <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+              <Text style={{ color: "#fff", fontWeight: "600" }}>{ts("retry")}</Text>
             </TouchableOpacity>
           </View>
         ) : products.length === 0 ? (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: contentPadding }}>
             <Ionicons name="cube-outline" size={48} color="#D1D5DB" />
-            <Text style={{ fontSize: 16, fontWeight: "600", color: "#374151", marginTop: 12 }}>No products found</Text>
+            <Text style={{ fontSize: 16, fontWeight: "600", color: "#374151", marginTop: 12 }}>{ts("noProductsTitle")}</Text>
             {query ? (
-              <Text style={{ color: "#6B7280", marginTop: 6, textAlign: "center" }}>Try a different search term</Text>
+              <Text style={{ color: "#6B7280", marginTop: 6, textAlign: "center" }}>{ts("tryDifferentSearch")}</Text>
             ) : (
-              <Text style={{ color: "#6B7280", marginTop: 6, textAlign: "center" }}>No products are available right now</Text>
+              <Text style={{ color: "#6B7280", marginTop: 6, textAlign: "center" }}>{ts("noProductsAvailable")}</Text>
             )}
           </View>
         ) : (

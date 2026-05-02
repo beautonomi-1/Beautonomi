@@ -29,7 +29,7 @@ interface PreferencesResponse {
 
 export default function LanguageSettings() {
   useScreenTracking("Language shortcut");
-  useTranslation();
+  const { t } = useTranslation();
   const router = useRouter();
   const [currentCode, setCurrentCode] = useState(() => (i18n.language || "en").split("-")[0]);
   const { data: preferences, refresh } = useApi<PreferencesResponse>("/api/me/preferences");
@@ -63,12 +63,15 @@ export default function LanguageSettings() {
       if (API_LANGUAGE_CODES.has(code)) {
         const res = await api.post("/api/me/preferences", { language: code });
         if (res.error) {
-          Alert.alert("Note", "Language changed locally but could not sync to your account.");
+          Alert.alert(
+            t("customer.mobile.screens.languageScreen.syncNoteTitle"),
+            t("customer.mobile.screens.languageScreen.syncNoteBody"),
+          );
         }
         refresh();
       }
     },
-    [currentCode, refresh],
+    [currentCode, refresh, t],
   );
 
   return (

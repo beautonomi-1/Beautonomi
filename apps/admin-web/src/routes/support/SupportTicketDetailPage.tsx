@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
+import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
@@ -17,6 +18,7 @@ import { SUPPORT_TICKET_CANNED_RESPONSES } from "@/lib/supportTicketCannedRespon
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
 
 type Assignee = { id: string; email: string | null; full_name: string | null; role: string };
 
@@ -103,10 +105,14 @@ function attachmentsFromRow(raw: unknown): AttachmentItem[] {
   return out;
 }
 
+const DETAIL_REFETCH_MS = 45_000;
+
 export function SupportTicketDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_SUPPORT, "Support access is required.");
+  const { bootstrap } = useAdminSession();
+  const myStaffUserId = bootstrap?.userId ?? "";
 
   const [reply, setReply] = useState("");
   const [replyInternal, setReplyInternal] = useState(false);
@@ -125,12 +131,16 @@ export function SupportTicketDetailPage() {
     queryFn: () =>
       adminApi.getJson<TicketBundle>(`/api/admin/support-tickets/${encodeURIComponent(id)}`, { timeoutMs: 60_000 }),
     enabled: allowed && !!id,
+    refetchInterval: DETAIL_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 
   const assigneesQ = useQuery({
     queryKey: adminQueryKeys.supportTicketAssignees(),
     queryFn: () => adminApi.getJson<{ assignees: Assignee[] }>("/api/admin/support-ticket-assignees", { timeoutMs: 30_000 }),
     enabled: allowed && !!id && !detailQ.isLoading,
+    refetchOnWindowFocus: true,
+    staleTime: 60_000,
   });
 
   const invalidateTicket = () => {
@@ -148,12 +158,25 @@ export function SupportTicketDetailPage() {
       csat_score?: number | null;
       csat_comment?: string | null;
       sla_resolution_due_at?: string | null;
-    }) => adminApi.patchJson<{ ticket?: TicketRow }>(`/api/admin/support-tickets/${encodeURIComponent(id)}`, body),
+    }) => {
+      const bundle = qc.getQueryData<TicketBundle>(adminQueryKeys.supportTicketDetail(id));
+      const token = bundle?.ticket?.updated_at;
+      return adminApi.patchJson<{ ticket?: TicketRow }>(`/api/admin/support-tickets/${encodeURIComponent(id)}`, {
+        ...body,
+        ...(typeof token === "string" && token ? { expected_updated_at: token } : {}),
+      });
+    },
     onSuccess: () => {
       setPatchError(null);
       invalidateTicket();
     },
     onError: (e: Error) => {
+      if (e instanceof AdminApiError && e.status === 409) {
+        setPatchError(null);
+        adminToast.error("Another teammate updated this ticket — refreshed from server.");
+        invalidateTicket();
+        return;
+      }
       setPatchError(e.message);
       adminToast.error(e.message);
     },
@@ -280,20 +303,101 @@ export function SupportTicketDetailPage() {
   const assigneeInList = assignedId && assignees.some((a) => a.id === assignedId);
   const customerUserId = ticket.user_id == null ? null : str(ticket.user_id);
 
+  const ownerLabel =
+    ticket.assigned_user?.full_name ||
+    ticket.assigned_user?.email ||
+    (assignedId ? `User ${assignedId.slice(0, 8)}…` : null);
+  const iAmAssignee = Boolean(myStaffUserId && assignedId === myStaffUserId);
+
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title={str(ticket.subject) || "Support ticket"}
         description={`#${str(ticket.ticket_number)} · ${str(ticket.status).replace(/_/g, " ")}`}
         actions={
-          <Link
-            to={adminSpaTo("/admin/support-tickets")}
-            className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
-          >
-            ← Queue
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+              onClick={() => void detailQ.refetch()}
+              disabled={detailQ.isFetching}
+            >
+              {detailQ.isFetching ? "Refreshing…" : "Refresh"}
+            </button>
+            <Link
+              to={adminSpaTo("/admin/support-tickets")}
+              className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+            >
+              ← Queue
+            </Link>
+          </div>
         }
       />
+
+      <div className="rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 text-sm text-gray-800">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span>
+            <span className="text-gray-500">Owner </span>
+            <span className="font-medium text-gray-900">{ownerLabel ?? "Unassigned"}</span>
+            {iAmAssignee ? (
+              <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">You</span>
+            ) : null}
+          </span>
+          <span className="hidden sm:inline text-gray-300" aria-hidden>
+            |
+          </span>
+          <span className="text-gray-600">
+            Last updated{" "}
+            <time dateTime={ticket.updated_at ? String(ticket.updated_at) : undefined}>
+              {ticket.updated_at ? new Date(String(ticket.updated_at)).toLocaleString() : "—"}
+            </time>
+          </span>
+          <span className="text-xs text-gray-500 sm:ml-auto">
+            Queue auto-refreshes about every {Math.round(DETAIL_REFETCH_MS / 1000)}s while this tab is open.
+          </span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {myStaffUserId ? (
+            <>
+              <button
+                type="button"
+                className={adminToolbarButtonClass(patchTicket.isPending || assignedId === myStaffUserId)}
+                disabled={patchTicket.isPending || assignedId === myStaffUserId}
+                onClick={() => void patchTicket.mutateAsync({ assigned_to: myStaffUserId })}
+              >
+                Assign to me
+              </button>
+              <button
+                type="button"
+                className={adminToolbarButtonClass(
+                  patchTicket.isPending || (assignedId === myStaffUserId && str(ticket.status) === "in_progress"),
+                )}
+                disabled={
+                  patchTicket.isPending || (assignedId === myStaffUserId && str(ticket.status) === "in_progress")
+                }
+                onClick={() =>
+                  void patchTicket.mutateAsync({
+                    assigned_to: myStaffUserId,
+                    status: "in_progress",
+                  })
+                }
+              >
+                Claim &amp; start
+              </button>
+            </>
+          ) : null}
+          {assignedId ? (
+            <button
+              type="button"
+              className={adminToolbarButtonClass(patchTicket.isPending)}
+              disabled={patchTicket.isPending}
+              onClick={() => void patchTicket.mutateAsync({ assigned_to: null })}
+            >
+              Unassign
+            </button>
+          ) : null}
+        </div>
+      </div>
 
       {patchError ? (
         <p className="text-sm text-red-700" role="alert">

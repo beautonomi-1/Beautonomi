@@ -182,6 +182,26 @@ export default function GroupBookingsPage() {
     setIsDetailOpen(true);
   };
 
+  const handleDownloadReceipt = async (bookingId: string, refNumber?: string) => {
+    try {
+      const response = await fetch(`/api/provider/group-bookings/${encodeURIComponent(bookingId)}/receipt/pdf`);
+      if (!response.ok) throw new Error("Failed to generate group receipt");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `group-receipt-${refNumber || bookingId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("Group receipt downloaded");
+    } catch (error) {
+      console.error("Failed to download group receipt:", error);
+      toast.error("Failed to download group receipt");
+    }
+  };
+
   type GroupBookingStatus = GroupBooking["status"] | "confirmed" | "pending";
   const getStatusColor = (status: GroupBookingStatus) => {
     switch (status) {
@@ -529,6 +549,7 @@ export default function GroupBookingsPage() {
             onCheckOut={handleCheckOut}
             onEdit={() => { setIsDetailOpen(false); handleEdit(detailBooking); }}
             onCancel={() => handleDelete(detailBooking.id, detailBooking.status)}
+            onDownloadReceipt={() => handleDownloadReceipt(detailBooking.id, detailBooking.ref_number)}
             isStatusChanging={isStatusChanging}
           />}
         </SheetContent>
@@ -545,10 +566,11 @@ interface DetailPanelProps {
   onCheckOut: (bookingId: string, participantId: string) => void;
   onEdit: () => void;
   onCancel: () => void;
+  onDownloadReceipt: () => void;
   isStatusChanging: boolean;
 }
 
-function GroupBookingDetailPanel({ booking, onStatusChange, onCheckIn, onCheckOut, onEdit, onCancel, isStatusChanging }: DetailPanelProps) {
+function GroupBookingDetailPanel({ booking, onStatusChange, onCheckIn, onCheckOut, onEdit, onCancel, onDownloadReceipt, isStatusChanging }: DetailPanelProps) {
   const participants: GroupBookingParticipant[] = booking.participants ?? [];
   const cancelled = booking.status === "cancelled";
   const completed = booking.status === "completed";
@@ -597,6 +619,9 @@ function GroupBookingDetailPanel({ booking, onStatusChange, onCheckIn, onCheckOu
             {a.icon}{a.label}
           </Button>
         ))}
+        <Button variant="outline" size="sm" onClick={onDownloadReceipt} className="gap-1.5">
+          <FileText className="w-4 h-4" />Group receipt
+        </Button>
         {!isFinal && (
           <Button variant="outline" size="sm" onClick={onEdit} className="gap-1.5">
             <Edit className="w-4 h-4" />Edit

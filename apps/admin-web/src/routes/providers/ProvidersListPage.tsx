@@ -68,7 +68,7 @@ export function ProvidersListPage() {
       if (status !== "all") p.set("status", status);
       if (search.trim()) p.set("search", search.trim());
       p.set("limit", String(LIMIT));
-      p.set("page", String(page));
+      p.set("page", String(page + 1));
       const qs = p.toString();
       return adminApi.getJson<ProvidersPayload>(`/api/admin/providers${qs ? `?${qs}` : ""}`, { timeoutMs: 60_000 });
     },

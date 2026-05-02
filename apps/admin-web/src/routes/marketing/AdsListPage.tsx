@@ -1,12 +1,11 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
-import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -75,10 +74,7 @@ const LIMIT = 20;
 
 export function AdsListPage() {
   useAdminDocumentTitle("Ads & Campaigns");
-  const { allowed, denied } = useAdminSectionPage(
-    ADMIN_SECTION_MARKETING_COMMS,
-    "Marketing & comms access is required."
-  );
+  const { allowed, denied } = useSuperadminPage("Ads & Campaigns is superadmin-only.");
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const status = sp.get("status") || "all";

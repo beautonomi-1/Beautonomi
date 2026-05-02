@@ -12,7 +12,8 @@ import {
   aggregatePackageEntitlements,
   bookedOfferingCounts,
   bookedProductCounts,
-  exceedsEntitlement,
+  computeCatalogPackageServiceDiscount,
+  entitlementMismatch,
   percentOf,
   sumMoney,
 } from "@beautonomi/utils";
@@ -1028,7 +1029,7 @@ export async function validateBooking(
     // service_package_items quantities. Prevents applying a catalog package discount to arbitrary services.
     const { data: pkgItems, error: pkgItemsError } = await supabase
       .from("service_package_items")
-      .select("offering_id, product_id, quantity")
+      .select("offering_id, product_id, product_variant_id, quantity")
       .eq("package_id", draft.package_id);
 
     if (pkgItemsError) {
@@ -1041,7 +1042,12 @@ export async function validateBooking(
     }
 
     const { entitlementByOffering, entitlementByProduct } = aggregatePackageEntitlements(
-      pkgItems as Array<{ offering_id?: string | null; product_id?: string | null; quantity?: unknown }>
+      pkgItems as Array<{
+        offering_id?: string | null;
+        product_id?: string | null;
+        product_variant_id?: string | null;
+        quantity?: unknown;
+      }>
     );
 
     const hasPkgOfferingLines = entitlementByOffering.size > 0;
@@ -1058,15 +1064,25 @@ export async function validateBooking(
     }
 
     if (hasPkgOfferingLines) {
-      const bookedCounts = bookedOfferingCounts(
-        draft.services,
-        isGroupBookingDraft ? (validatedDraft.group_participants as Array<{ service_ids?: string[]; serviceIds?: string[] }>) : null
-      );
-      const badOffering = exceedsEntitlement(bookedCounts, entitlementByOffering);
+      const groupPackageParticipants = isGroupBookingDraft
+        ? (validatedDraft.group_participants as Array<{ service_ids?: string[]; serviceIds?: string[] }>)
+        : null;
+      let bookedCounts = bookedOfferingCounts(draft.services, groupPackageParticipants);
+      if (groupPackageParticipants?.length) {
+        const servicesOnly = bookedOfferingCounts(draft.services, null);
+        const participantsOnly = bookedOfferingCounts([], groupPackageParticipants);
+        const sameMultiset =
+          servicesOnly.size === participantsOnly.size &&
+          Array.from(servicesOnly.entries()).every(([id, count]) => participantsOnly.get(id) === count);
+        if (sameMultiset) {
+          bookedCounts = participantsOnly;
+        }
+      }
+      const badOffering = entitlementMismatch(bookedCounts, entitlementByOffering);
       if (badOffering) {
         return handleApiError(
           new Error("Package entitlement mismatch for offerings"),
-          "One or more selected services are not included in this package, or quantities exceed what the package allows.",
+          "Selected services must exactly match what this package includes.",
           "PACKAGE_ENTITLEMENT_MISMATCH",
           400
         );
@@ -1075,22 +1091,18 @@ export async function validateBooking(
 
     if (hasPkgProductLines) {
       const bookedProd = bookedProductCounts(products as Array<{ product_id?: string; productId?: string; quantity?: unknown }>);
-      const badProduct = exceedsEntitlement(bookedProd, entitlementByProduct);
+      const badProduct = entitlementMismatch(bookedProd, entitlementByProduct);
       if (badProduct) {
         return handleApiError(
           new Error("Package entitlement mismatch for products"),
-          "One or more selected products are not included in this package, or quantities exceed what the package allows.",
+          "Selected products must exactly match what this package includes.",
           "PACKAGE_ENTITLEMENT_MISMATCH",
           400
         );
       }
     }
 
-    if (pkg.price !== null && pkg.price !== undefined) {
-      packageDiscountAmount = Math.max(0, servicesSubtotal - Number(pkg.price));
-    } else if (pkg.discount_percentage) {
-      packageDiscountAmount = Math.max(0, percentOf(servicesSubtotal, Number(pkg.discount_percentage)));
-    }
+    packageDiscountAmount = computeCatalogPackageServiceDiscount(pkg, servicesSubtotal);
   }
 
   // ── Promo code ───────────────────────────────────────────────────────────

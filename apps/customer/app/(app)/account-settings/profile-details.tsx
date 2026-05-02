@@ -4,6 +4,7 @@
  * Linked from profile completion checklist (profile_questions, interests, beauty_preferences).
  */
 import { useState, useCallback } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -26,17 +27,17 @@ import { coerceProfileStringList } from "@beautonomi/utils";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 
 const PROFILE_QUESTION_FIELDS = [
-  { key: "school", label: "School / education" },
-  { key: "work", label: "Work / profession" },
-  { key: "location", label: "Where you're based" },
-  { key: "decade_born", label: "Decade you were born" },
-  { key: "favorite_song", label: "Favourite song" },
-  { key: "obsessed_with", label: "Something you're obsessed with" },
-  { key: "fun_fact", label: "Fun fact about you" },
-  { key: "useless_skill", label: "Useless skill you have" },
-  { key: "biography_title", label: "Your biography title" },
-  { key: "spend_time", label: "How you like to spend time" },
-  { key: "pets", label: "Pets" },
+  { key: "school", labelKey: "qSchool" as const },
+  { key: "work", labelKey: "qWork" as const },
+  { key: "location", labelKey: "qLocation" as const },
+  { key: "decade_born", labelKey: "qDecadeBorn" as const },
+  { key: "favorite_song", labelKey: "qFavoriteSong" as const },
+  { key: "obsessed_with", labelKey: "qObsessedWith" as const },
+  { key: "fun_fact", labelKey: "qFunFact" as const },
+  { key: "useless_skill", labelKey: "qUselessSkill" as const },
+  { key: "biography_title", labelKey: "qBiographyTitle" as const },
+  { key: "spend_time", labelKey: "qSpendTime" as const },
+  { key: "pets", labelKey: "qPets" as const },
 ] as const;
 
 const DECADE_BORN_OPTIONS = ["1950s", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "Prefer not to say"];
@@ -58,6 +59,15 @@ function thingsOrProductsToCommaField(raw: unknown): string {
 
 export default function ProfileDetailsScreen() {
   useScreenTracking("Profile Details");
+  const { t } = useTranslation();
+  const pd = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.profileDetails.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [beautyPrefsWarning, setBeautyPrefsWarning] = useState<string | null>(null);
@@ -84,21 +94,21 @@ export default function ProfileDetailsScreen() {
         api.get<Record<string, unknown>>("/api/me/beauty-preferences"),
       ]);
       if (profileRes.error) {
-        setError(getApiErrorMessage(profileRes.error, "Failed to load"));
+        setError(getApiErrorMessage(profileRes.error, pd("loadFailed")));
         return;
       }
       if (beautyRes.error) {
-        setBeautyPrefsWarning(getApiErrorMessage(beautyRes.error, "Beauty preferences could not be loaded"));
+        setBeautyPrefsWarning(getApiErrorMessage(beautyRes.error, pd("beautyPrefsLoadFailed")));
       }
-      const pd = profileRes.data;
-      setProfileData(pd ?? null);
+      const profileData = profileRes.data;
+      setProfileData(profileData ?? null);
       const q: Record<string, string> = {};
       PROFILE_QUESTION_FIELDS.forEach(({ key }) => {
-        const v = pd?.[key];
+        const v = profileData?.[key];
         q[key] = v != null && v !== "" ? String(v).trim() : "";
       });
       setProfileQuestions(q);
-      setInterests(coerceProfileStringList(pd?.interests));
+      setInterests(coerceProfileStringList(profileData?.interests));
 
       const bp = beautyRes.error ? {} : ((beautyRes.data ?? {}) as Record<string, unknown>);
       setBeautyPrefs(bp);
@@ -109,11 +119,11 @@ export default function ProfileDetailsScreen() {
       setAppointmentStyle(stringField(bp.appointment_style));
       setProductPreferences(thingsOrProductsToCommaField(bp.product_preferences));
     } catch (e) {
-      setError(getApiErrorMessage(e, "Failed to load"));
+      setError(getApiErrorMessage(e, pd("loadFailed")));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pd]);
 
   useFocusEffect(
     useCallback(() => {
@@ -145,23 +155,44 @@ export default function ProfileDetailsScreen() {
       const profileErr = profileRes.error;
       const beautyErr = beautyRes.error;
       if (profileErr || beautyErr) {
-        Alert.alert(
-          "Error",
-          [profileErr && "Profile data: " + (profileErr.message ?? "failed"), beautyErr && "Beauty preferences: " + (beautyErr.message ?? "failed")]
-            .filter(Boolean)
-            .join("\n")
-        );
+        const lines: string[] = [];
+        if (profileErr) {
+          lines.push(
+            pd("saveErrorProfile", {
+              message: profileErr.message ?? pd("saveFailedGeneric"),
+            }),
+          );
+        }
+        if (beautyErr) {
+          lines.push(
+            pd("saveErrorBeauty", {
+              message: beautyErr.message ?? pd("saveFailedGeneric"),
+            }),
+          );
+        }
+        Alert.alert(errTitle, lines.join("\n"));
       } else {
         setProfileData((profileRes.data ?? null) as Record<string, unknown> | null);
         setBeautyPrefs((beautyRes.data ?? {}) as Record<string, unknown>);
-        Alert.alert("Saved", "All profile details updated.");
+        Alert.alert(pd("savedTitle"), pd("savedBody"));
       }
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to save"));
+      Alert.alert(errTitle, getApiErrorMessage(e, pd("saveFailed")));
     } finally {
       setSaving(false);
     }
-  }, [profileQuestions, interests, hairType, skinType, allergies, thingsToAvoid, appointmentStyle, productPreferences]);
+  }, [
+    profileQuestions,
+    interests,
+    hairType,
+    skinType,
+    allergies,
+    thingsToAvoid,
+    appointmentStyle,
+    productPreferences,
+    errTitle,
+    pd,
+  ]);
 
   const answeredCount = Object.values(profileQuestions).filter((v) => v.trim().length > 0).length;
 
@@ -181,14 +212,14 @@ export default function ProfileDetailsScreen() {
           <View style={{ marginBottom: 24 }}>
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
               <Ionicons name="chatbubble-ellipses-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
-              <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900] }}>Profile questions</Text>
+              <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900] }}>{pd("profileQuestionsSection")}</Text>
             </View>
             <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>
-              Answer at least 3 to complete your profile. ({answeredCount}/3 done)
+              {pd("profileQuestionsHint", { answered: String(answeredCount) })}
             </Text>
-            {PROFILE_QUESTION_FIELDS.map(({ key, label }) => (
+            {PROFILE_QUESTION_FIELDS.map(({ key, labelKey }) => (
               <View key={key} style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{label}</Text>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{pd(labelKey)}</Text>
                 {key === "decade_born" ? (
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                     {DECADE_BORN_OPTIONS.map((opt) => {
@@ -224,8 +255,8 @@ export default function ProfileDetailsScreen() {
                       color: Colors.gray[900],
                     }}
                     value={profileQuestions[key] ?? ""}
-                    onChangeText={(t) => setProfileQuestions((prev) => ({ ...prev, [key]: t }))}
-                    placeholder="..."
+                    onChangeText={(text) => setProfileQuestions((prev) => ({ ...prev, [key]: text }))}
+                    placeholder={pd("placeholderShort")}
                     placeholderTextColor={Colors.gray[400]}
                   />
                 )}
@@ -237,11 +268,9 @@ export default function ProfileDetailsScreen() {
           <View style={{ marginBottom: 24, paddingTop: 16, borderTopWidth: 1, borderColor: Colors.gray[100] }}>
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
               <Ionicons name="heart-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
-              <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900] }}>Interests</Text>
+              <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900] }}>{pd("interestsSection")}</Text>
             </View>
-            <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 8 }}>
-              Add things you&apos;re into (select or type)
-            </Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 8 }}>{pd("interestsSubtitle")}</Text>
             <ChipCombobox
               value={interests}
               onChange={setInterests}
@@ -249,8 +278,8 @@ export default function ProfileDetailsScreen() {
                 "Hair", "Nails", "Skincare", "Makeup", "Pedicure", "Manicure", "Facial", "Massage", "Hair colour", "Braids", "Waxing", "Lashes", "Brows", "Travel", "Photography", "Cooking",
               ].map((i) => ({ value: i, label: i }))}
               allowFreeForm
-              placeholder="e.g. Hair, Nails, Skincare..."
-              accessibilityLabel="Your interests"
+              placeholder={pd("interestsPlaceholder")}
+              accessibilityLabel={pd("interestsA11y")}
             />
           </View>
 
@@ -258,11 +287,9 @@ export default function ProfileDetailsScreen() {
           <View style={{ marginBottom: 24, paddingTop: 16, borderTopWidth: 1, borderColor: Colors.gray[100] }}>
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
               <Ionicons name="sparkles-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
-              <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900] }}>Beauty preferences</Text>
+              <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900] }}>{pd("beautySection")}</Text>
             </View>
-            <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>
-              Help providers personalise your experience
-            </Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>{pd("beautySubtitle")}</Text>
             {beautyPrefsWarning ? (
               <View
                 style={{
@@ -278,7 +305,7 @@ export default function ProfileDetailsScreen() {
               </View>
             ) : null}
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Hair type</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{pd("hairType")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {HAIR_TYPE_OPTIONS.map((opt) => {
                   const selected = hairType.trim() === opt;
@@ -302,7 +329,7 @@ export default function ProfileDetailsScreen() {
               </View>
             </View>
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Skin type</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{pd("skinType")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {SKIN_TYPE_OPTIONS.map((opt) => {
                   const selected = skinType.trim() === opt;
@@ -326,18 +353,18 @@ export default function ProfileDetailsScreen() {
               </View>
             </View>
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Things to avoid</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{pd("thingsToAvoid")}</Text>
               <ChipCombobox
                 value={thingsToAvoid.trim() ? thingsToAvoid.split(/,\s*/).map((s) => s.trim()).filter(Boolean) : []}
                 onChange={(arr) => setThingsToAvoid(arr.join(", "))}
                 staticSuggestions={THINGS_TO_AVOID_OPTIONS.map((o) => ({ value: o, label: o }))}
                 allowFreeForm
-                placeholder="Select or type (e.g. fragrances, sulfates)"
-                accessibilityLabel="Things to avoid"
+                placeholder={pd("thingsToAvoidPlaceholder")}
+                accessibilityLabel={pd("thingsToAvoidA11y")}
               />
             </View>
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Appointment style</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{pd("appointmentStyle")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {APPOINTMENT_STYLE_OPTIONS.map((opt) => {
                   const selected = appointmentStyle.trim() === opt;
@@ -361,18 +388,18 @@ export default function ProfileDetailsScreen() {
               </View>
             </View>
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Product preferences</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{pd("productPreferences")}</Text>
               <ChipCombobox
                 value={productPreferences.trim() ? productPreferences.split(/,\s*/).map((s) => s.trim()).filter(Boolean) : []}
                 onChange={(arr) => setProductPreferences(arr.join(", "))}
                 staticSuggestions={PRODUCT_PREFERENCE_OPTIONS.map((o) => ({ value: o, label: o }))}
                 allowFreeForm
-                placeholder="Select or type (e.g. Vegan, Cruelty-free)"
-                accessibilityLabel="Product preferences"
+                placeholder={pd("productPreferencesPlaceholder")}
+                accessibilityLabel={pd("productPreferencesA11y")}
               />
             </View>
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Allergies & sensitivities</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{pd("allergies")}</Text>
               <ChipCombobox
                 value={allergies}
                 onChange={setAllergies}
@@ -380,8 +407,8 @@ export default function ProfileDetailsScreen() {
                   "Fragrance", "Parabens", "Sulfates", "Alcohol", "Dyes", "Formaldehyde", "Latex", "Nickel",
                 ].map((a) => ({ value: a, label: a }))}
                 allowFreeForm
-                placeholder="e.g. Nickel, Latex..."
-                accessibilityLabel="Allergies and sensitivities"
+                placeholder={pd("allergiesPlaceholder")}
+                accessibilityLabel={pd("allergiesA11y")}
               />
             </View>
           </View>
@@ -396,13 +423,13 @@ export default function ProfileDetailsScreen() {
               alignItems: "center",
               marginTop: 8,
             }}
-            accessibilityLabel="Save all profile details"
+            accessibilityLabel={pd("saveAllA11y")}
             accessibilityRole="button"
           >
             {saving ? (
               <ActivityIndicator size="small" color={Colors.white} />
             ) : (
-              <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>Save all</Text>
+              <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>{pd("saveAll")}</Text>
             )}
           </TouchableOpacity>
         </ScrollView>

@@ -1591,11 +1591,17 @@ export default function BookScreen() {
         : [];
     if (!provider || servicesForHold.length === 0) return;
     if (!selectedStaff) {
-      Alert.alert("Select a stylist", "Please choose a staff member before continuing.");
+      Alert.alert(
+        t("customer.mobile.screens.bookFlow.selectStylistTitle"),
+        t("customer.mobile.screens.bookFlow.selectStylistBody"),
+      );
       return;
     }
     if (!selectedSlot) {
-      Alert.alert("Select a time", "Please pick an available time slot before continuing.");
+      Alert.alert(
+        t("customer.mobile.screens.bookFlow.selectTimeTitle"),
+        t("customer.mobile.screens.bookFlow.selectTimeBody"),
+      );
       return;
     }
     setCreatingHold(true);

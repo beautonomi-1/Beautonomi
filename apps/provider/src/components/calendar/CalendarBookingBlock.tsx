@@ -33,6 +33,7 @@ export interface CalendarBookingBlockProps {
   paymentLabel: string | null;
   paymentNeedsAction: boolean;
   isNew: boolean;
+  isHighlighted?: boolean;
   onTap: () => void;
   onLongPress: () => void;
   onDrop: (absoluteX: number, absoluteY: number) => void;
@@ -64,6 +65,7 @@ function CalendarBookingBlockImpl({
   paymentLabel,
   paymentNeedsAction,
   isNew,
+  isHighlighted = false,
   onTap,
   onLongPress,
   onDrop,
@@ -242,7 +244,9 @@ function CalendarBookingBlockImpl({
           : 1,
     overflow: "hidden" as const,
     borderRadius: 8,
-    borderLeftWidth: 3,
+    borderWidth: isHighlighted ? 2 : 0,
+    borderColor: isHighlighted ? "#f59e0b" : "transparent",
+    borderLeftWidth: isHighlighted ? 5 : 3,
     borderLeftColor: colors.border,
     backgroundColor: blockBg,
     paddingHorizontal: 6,

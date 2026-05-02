@@ -4,10 +4,12 @@ import {
   requireAdminSection,
   successResponse,
   handleApiError,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { slackNotifyLeadReassigned } from "@/lib/integrations/slack/lead-triggers";
 
 export async function PATCH(
   request: NextRequest,
@@ -22,6 +24,28 @@ export async function PATCH(
     const supabase = getSupabaseAdmin();
     const body = await request.json();
     const tenantId = await resolveAdminApiTenantId(request);
+    const { expected_updated_at } = body;
+
+    const { data: beforeAssign } = await supabase
+      .from("provider_leads")
+      .select("updated_at, assigned_to, business_name")
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (
+      expected_updated_at != null &&
+      typeof expected_updated_at === "string" &&
+      beforeAssign &&
+      typeof beforeAssign.updated_at === "string" &&
+      beforeAssign.updated_at !== expected_updated_at
+    ) {
+      return errorResponse(
+        "This lead was updated by another teammate. Refresh and try again.",
+        "CONCURRENT_UPDATE",
+        409
+      );
+    }
 
     const assignedTo = body.assigned_to || null;
 
@@ -55,6 +79,13 @@ export async function PATCH(
       metadata: { assigned_to: assignedTo },
       ...extractRequestMeta(request),
     });
+
+    void slackNotifyLeadReassigned(
+      request,
+      { id, business_name: beforeAssign?.business_name as string | null | undefined },
+      assignedTo,
+      (beforeAssign?.assigned_to as string | null) ?? null
+    );
 
     return successResponse({ id, assigned_to: assignedTo });
   } catch (error) {

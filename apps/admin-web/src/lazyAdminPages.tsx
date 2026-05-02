@@ -106,6 +106,9 @@ export const ApiKeysListPage = lazy(() =>
 export const AmplitudeConfigPage = lazy(() =>
   import("@/routes/integrations/AmplitudeConfigPage").then((m) => ({ default: m.AmplitudeConfigPage }))
 );
+export const SlackIntegrationPage = lazy(() =>
+  import("@/routes/integrations/SlackIntegrationPage").then((m) => ({ default: m.SlackIntegrationPage }))
+);
 export const PaystackConfigPage = lazy(() =>
   import("@/routes/integrations/PaystackConfigPage").then((m) => ({ default: m.PaystackConfigPage }))
 );

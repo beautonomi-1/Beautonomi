@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
 import { notifySupportTicketUpdated, notifySupportStaffInboxActivity } from "@/lib/notifications/notification-service";
 import { computeSlaResolutionDueIso } from "@/lib/support/support-ticket-sla";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { slackNotifySupportTicketUpdated } from "@/lib/integrations/slack/triggers";
 
 export async function GET(
   request: NextRequest,
@@ -80,13 +81,28 @@ export async function PATCH(
       csat_score,
       csat_comment,
       sla_resolution_due_at,
+      expected_updated_at,
     } = body;
 
     const { data: before } = await supabase
       .from("support_tickets")
-      .select("assigned_to, ticket_number, created_at, priority, resolved_at")
+      .select("assigned_to, ticket_number, created_at, priority, status, resolved_at, updated_at")
       .eq("id", id)
       .maybeSingle();
+
+    if (
+      expected_updated_at != null &&
+      typeof expected_updated_at === "string" &&
+      before &&
+      typeof before.updated_at === "string" &&
+      before.updated_at !== expected_updated_at
+    ) {
+      return errorResponse(
+        "This ticket was updated by another teammate. Refresh the page and try again.",
+        "CONCURRENT_UPDATE",
+        409
+      );
+    }
 
     const updateData: Record<string, unknown> = {};
     if (status !== undefined) {
@@ -181,6 +197,19 @@ export async function PATCH(
       metadata: updateData,
       ip_address: reqMeta.ip_address,
       user_agent: reqMeta.user_agent,
+    });
+
+    void slackNotifySupportTicketUpdated(request, data as {
+      id: string;
+      ticket_number?: string | null;
+      priority?: string | null;
+      status?: string | null;
+      assigned_to?: string | null;
+      sla_resolution_due_at?: string | null;
+    }, before as {
+      priority?: string | null;
+      status?: string | null;
+      resolved_at?: string | null;
     });
 
     return NextResponse.json({ ticket: data });

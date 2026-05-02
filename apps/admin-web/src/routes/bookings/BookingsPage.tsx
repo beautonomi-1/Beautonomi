@@ -58,13 +58,14 @@ export function BookingsPage() {
   const [tab, setTab] = useState<string>("all");
   const deferredSearch = useDeferredValue(searchQuery);
 
-  const filters = { statusFilter, dateFilter };
+  const filters = { statusFilter, dateFilter, search: deferredSearch.trim() };
   const q = useQuery({
     queryKey: adminQueryKeys.bookings.list({ ...filters, page }),
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (dateFilter) params.set("date", dateFilter);
+      if (deferredSearch.trim()) params.set("search", deferredSearch.trim());
       params.set("limit", String(LIMIT));
       params.set("page", String(page));
       const qs = params.toString();
@@ -76,14 +77,14 @@ export function BookingsPage() {
   });
 
   const bulkMutation = useMutation({
-    mutationFn: async (payload: { booking_ids: string[]; action: "cancel" | "complete" | "export" }) => {
+    mutationFn: async (payload: { booking_ids: string[]; action: "cancel" | "complete" }) => {
       await adminApi.postJson("/api/admin/bookings/bulk", payload);
     },
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
       setSelectedIds(new Set());
       const count = vars.booking_ids.length;
-      const label = vars.action === "cancel" ? "cancelled" : vars.action === "complete" ? "completed" : "exported";
+      const label = vars.action === "cancel" ? "cancelled" : "completed";
       adminToast.success(`${count} booking${count !== 1 ? "s" : ""} ${label}`);
     },
     onError: (e: Error) => adminToast.error(`Bulk action failed: ${e.message}`),
@@ -151,7 +152,7 @@ export function BookingsPage() {
   async function exportCsv() {
     const params = new URLSearchParams();
     if (statusFilter !== "all") params.set("status", statusFilter);
-    if (dateFilter) params.set("start_date", dateFilter);
+    if (dateFilter) params.set("scheduled_date", dateFilter);
     const qs = params.toString();
     await downloadAdminBlob(
       `/api/admin/export/bookings${qs ? `?${qs}` : ""}`,
@@ -173,7 +174,7 @@ export function BookingsPage() {
     else setSelectedIds(new Set());
   }
 
-  function runBulk(action: "cancel" | "complete" | "export") {
+  function runBulk(action: "cancel" | "complete") {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     if (!window.confirm(`Perform ${action} on ${ids.length} booking(s)?`)) return;
@@ -312,14 +313,7 @@ export function BookingsPage() {
             >
               Cancel
             </button>
-            <button
-              type="button"
-              className="rounded bg-white px-2 py-1 text-gray-800 ring-1 ring-gray-200 disabled:opacity-50"
-              disabled={bulkMutation.isPending}
-              onClick={() => runBulk("export")}
-            >
-              Bulk export action
-            </button>
+            <span className="text-xs text-amber-900/80">Use Export CSV above for the current filtered booking set.</span>
           </div>
         ) : null}
 

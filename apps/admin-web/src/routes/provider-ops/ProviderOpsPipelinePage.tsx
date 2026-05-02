@@ -14,9 +14,11 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
+import { handleLeadConcurrent409 } from "@/lib/handleLeadConcurrentUpdate";
 import { GripVertical, Mail, Phone, MapPin, Tag, Calendar } from "lucide-react";
 
 const PIPELINE_PAGE_SIZE = 120;
+const OPS_PIPELINE_REFETCH_MS = 45_000;
 
 const PIPELINE_STAGES = [
   { key: "new", label: "New", color: "border-blue-300 bg-blue-50", headerBg: "bg-blue-500", dot: "bg-blue-500" },
@@ -49,6 +51,7 @@ interface Lead {
   tags?: string[];
   whatsapp_status?: "unknown" | "verified" | "not_found" | "check_failed" | null;
   provider_lead_categories?: LeadCategory[];
+  updated_at?: string;
 }
 
 interface LeadsPayload {
@@ -127,6 +130,8 @@ export function ProviderOpsPipelinePage() {
       ),
     getNextPageParam: (lastPage) => (lastPage.meta.has_more ? lastPage.meta.page + 1 : undefined),
     enabled: allowed,
+    refetchInterval: OPS_PIPELINE_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 
   const leads = useMemo(() => q.data?.pages.flatMap((p) => p.data) ?? [], [q.data]);
@@ -141,8 +146,19 @@ export function ProviderOpsPipelinePage() {
   const selectedCategoryNames = categoryIds.map((id) => categoryOptions.find((c) => c.id === id)?.name ?? "selected");
 
   const stageMut = useMutation({
-    mutationFn: ({ id, stage }: { id: string; stage: string }) =>
-      adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/stage`, { stage }),
+    mutationFn: ({
+      id,
+      stage,
+      expected_updated_at,
+    }: {
+      id: string;
+      stage: string;
+      expected_updated_at?: string;
+    }) =>
+      adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/stage`, {
+        stage,
+        ...(expected_updated_at ? { expected_updated_at } : {}),
+      }),
     onMutate: async ({ id, stage }) => {
       await qc.cancelQueries({ queryKey: qk });
       const previousStage = qc
@@ -161,10 +177,16 @@ export function ProviderOpsPipelinePage() {
       if (context?.previousStage !== undefined) {
         qc.setQueryData<InfiniteData<LeadsPayload>>(qk, (old) => applyLeadStageInCache(old, id, context.previousStage!));
       }
+      if (handleLeadConcurrent409(err)) {
+        void qc.invalidateQueries({ queryKey: qk });
+        void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.dashboard() });
+        return;
+      }
       adminToast.error(`Stage update failed: ${err.message}`);
     },
     onSuccess: () => {
       adminToast.success("Stage updated");
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.dashboard() });
     },
   });
 
@@ -227,7 +249,11 @@ export function ProviderOpsPipelinePage() {
       return;
     }
     setDraggedLeadId(null);
-    stageMut.mutate({ id: lead.id, stage: targetStage });
+    stageMut.mutate({
+      id: lead.id,
+      stage: targetStage,
+      expected_updated_at: lead.updated_at,
+    });
   }
 
   if (denied) return denied;
@@ -521,6 +547,33 @@ export function ProviderOpsPipelinePage() {
                             </div>
                           </div>
                         </Link>
+                        <div
+                          className="relative z-10 mt-1 px-2 pb-2"
+                          onClick={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                        >
+                          <label className="mb-0.5 block text-[10px] font-medium text-gray-500 md:hidden">Move (no drag)</label>
+                          <select
+                            aria-label={`Change stage for ${name}`}
+                            value={lead.commercial_stage}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              if (next === lead.commercial_stage) return;
+                              stageMut.mutate({
+                                id: lead.id,
+                                stage: next,
+                                expected_updated_at: lead.updated_at,
+                              });
+                            }}
+                            className="w-full min-h-10 touch-manipulation rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-medium text-gray-800 md:min-h-9 md:bg-white"
+                          >
+                            {PIPELINE_STAGES.map((s) => (
+                              <option key={s.key} value={s.key}>
+                                {s.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     </div>
                   );

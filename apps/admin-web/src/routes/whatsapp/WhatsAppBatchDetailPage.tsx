@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -8,6 +9,7 @@ import { AdminMetricCard } from "@/components/ui/AdminMetricCard";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminToast } from "@/lib/adminToast";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { Loader2, Pause, Play, XCircle, ArrowLeft, CheckCircle2, Clock, AlertTriangle, Send } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -55,6 +57,10 @@ const MSG_DOT: Record<string, string> = {
 };
 
 export function WhatsAppBatchDetailPage() {
+  const { allowed, denied } = useAdminSectionPage(
+    ADMIN_SECTION_INTEGRATIONS_DEV,
+    "Integrations & dev access is required for WhatsApp batches."
+  );
   const { batchId } = useParams<{ batchId: string }>();
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
@@ -65,7 +71,7 @@ export function WhatsAppBatchDetailPage() {
       adminApi.getJson<{ batch: Batch; messages: QueueMsg[]; meta: { total: number; has_more: boolean } }>(
         `/api/admin/whatsapp/bulk/${batchId}?page=${page}&limit=20`,
       ),
-    enabled: Boolean(batchId),
+    enabled: allowed && Boolean(batchId),
     refetchInterval: 10000,
   });
 
@@ -86,6 +92,8 @@ export function WhatsAppBatchDetailPage() {
     onSuccess: () => { adminToast.success("Remaining messages cancelled."); void qc.invalidateQueries({ queryKey: adminQueryKeys.whatsapp.batchDetail(batchId || "") }); },
     onError: (e: Error) => adminToast.error(e.message),
   });
+
+  if (denied) return denied;
 
   if (!batchId || batchQuery.isLoading) {
     return (

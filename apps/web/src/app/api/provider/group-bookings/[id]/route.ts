@@ -6,17 +6,22 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespon
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
 import { rescheduleBookingServicesSequential } from "@/lib/bookings/reschedule-booking-services";
+import {
+  groupPackageTotal,
+  groupProductLineTotal,
+  validateAndPriceGroupPackage,
+} from "@/lib/bookings/group-booking-package-pricing";
 
 async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabaseAdmin>, groupId: string) {
   const [{ data: group }, { data: participantRows }] = await Promise.all([
     admin
       .from("group_bookings")
-      .select("products, travel_fee, location_type")
+      .select("products, travel_fee, location_type, package_id, provider_id, location_id, service_id")
       .eq("id", groupId)
       .maybeSingle(),
     admin
       .from("booking_participants")
-      .select("price")
+      .select("price, service_id")
       .eq("group_booking_id", groupId),
   ]);
 
@@ -26,12 +31,26 @@ async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabase
     0,
   );
   const productTotal = products.reduce(
-    (sum: number, p: any) =>
-      sum + Math.max(0, Number(p.total_price ?? p.totalPrice ?? (Number(p.unit_price ?? p.unitPrice ?? 0) * Number(p.quantity ?? 1)))),
+    (sum: number, p: any) => sum + groupProductLineTotal(p),
     0,
   );
   const travelFee = group?.location_type === "at_home" ? Math.max(0, Number(group.travel_fee || 0)) : 0;
-  const total = participantTotal + productTotal + travelFee;
+  let packageDiscount = 0;
+  if (group?.package_id && group?.provider_id) {
+    const pkgPricing = await validateAndPriceGroupPackage({
+      supabaseAdmin: admin,
+      providerId: group.provider_id as string,
+      packageId: group.package_id as string,
+      locationType: String(group.location_type || "at_salon"),
+      locationId: group.location_id as string | null | undefined,
+      participantRows: (participantRows ?? []) as Array<Record<string, unknown>>,
+      fallbackServiceId: group.service_id as string | null | undefined,
+      productRows: products,
+      participantTotal,
+    });
+    if (pkgPricing.ok) packageDiscount = pkgPricing.packageDiscount;
+  }
+  const total = groupPackageTotal({ participantTotal, productTotal, travelFee, packageDiscount });
 
   await admin
     .from("group_bookings")
@@ -66,7 +85,8 @@ export async function GET(
         bookings:bookings(
           id, booking_number, ref_number, status, scheduled_at, total_amount,
           customer:users!bookings_customer_id_fkey(id, full_name, email, phone, avatar_url)
-        )
+        ),
+        service_packages:package_id(id, name)
       `)
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -76,7 +96,14 @@ export async function GET(
       return notFoundResponse("Group booking not found");
     }
 
-    return successResponse(groupBooking);
+    const pkg = Array.isArray((groupBooking as any).service_packages)
+      ? (groupBooking as any).service_packages[0]
+      : (groupBooking as any).service_packages;
+
+    return successResponse({
+      ...groupBooking,
+      package_name: pkg?.name ?? null,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to fetch group booking");
   }
@@ -235,18 +262,20 @@ export async function PATCH(
       "products" in sanitized ||
       "travel_fee" in sanitized ||
       "location_type" in sanitized ||
-      "total_price" in sanitized
+      "total_price" in sanitized ||
+      "package_id" in sanitized ||
+      "service_id" in sanitized
     ) {
       const [{ data: existingTotals }, { data: participantRows }] = await Promise.all([
         admin
           .from("group_bookings")
-          .select("products, travel_fee, location_type")
+          .select("products, travel_fee, location_type, package_id, location_id, service_id")
           .eq("id", id)
           .eq("provider_id", providerId)
           .maybeSingle(),
         admin
           .from("booking_participants")
-          .select("price")
+          .select("price, service_id")
           .eq("group_booking_id", id),
       ]);
       const nextProducts = Array.isArray(sanitized.products)
@@ -265,13 +294,39 @@ export async function PATCH(
         0,
       );
       const productTotal = nextProducts.reduce(
-        (sum: number, p: any) =>
-          sum + Math.max(0, Number(p.total_price ?? p.totalPrice ?? (Number(p.unit_price ?? p.unitPrice ?? 0) * Number(p.quantity ?? 1)))),
+        (sum: number, p: any) => sum + groupProductLineTotal(p),
         0,
       );
+      const nextPackageId =
+        "package_id" in sanitized
+          ? ((sanitized.package_id as string | null | undefined) ?? null)
+          : ((existingTotals?.package_id as string | null | undefined) ?? null);
+      const nextServiceId =
+        (sanitized.service_id as string | null | undefined) ??
+        (existingTotals?.service_id as string | null | undefined) ??
+        null;
+      const pkgPricing = await validateAndPriceGroupPackage({
+        supabaseAdmin: admin,
+        providerId,
+        packageId: nextPackageId,
+        locationType: nextLocationType,
+        locationId: nextLocationType === "at_home" ? null : ((sanitized.location_id as string | null | undefined) ?? existingTotals?.location_id ?? null),
+        participantRows: (participantRows ?? []) as Array<Record<string, unknown>>,
+        fallbackServiceId: nextServiceId,
+        productRows: nextProducts,
+        participantTotal,
+      });
+      if (pkgPricing.ok === false) {
+        return errorResponse(pkgPricing.message, pkgPricing.code, 400);
+      }
       sanitized.products = nextProducts;
       sanitized.travel_fee = nextTravelFee;
-      sanitized.total_price = participantTotal + productTotal + nextTravelFee;
+      sanitized.total_price = groupPackageTotal({
+        participantTotal,
+        productTotal,
+        travelFee: nextTravelFee,
+        packageDiscount: pkgPricing.packageDiscount,
+      });
     }
 
     const shouldSyncChildBookings =

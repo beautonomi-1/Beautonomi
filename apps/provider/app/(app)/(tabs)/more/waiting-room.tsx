@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from 
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format, parseISO, isSameDay } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
@@ -90,7 +91,7 @@ export default function WaitingRoomScreen() {
   );
 
   const { isTablet } = useResponsive();
-  const { selectedLocationId } = useProvider();
+  const { provider, selectedLocationId } = useProvider();
   const onDemandConfig = useModuleConfig("on_demand");
   const [metricRange, setMetricRange] = useState<FrontDeskMetricRange>("today");
   const prevWaitingQueueCountRef = useRef<number | null>(null);
@@ -157,9 +158,16 @@ export default function WaitingRoomScreen() {
   const { pendingToday, scheduleToday, pendingCount } = useMemo(() => {
     const list = Array.isArray(rawBookings) ? rawBookings : [];
     const today = new Date();
+    const providerTodayKey = provider?.timezone
+      ? formatInTimeZone(today, provider.timezone, "yyyy-MM-dd")
+      : null;
     const onToday = list.filter((b) => {
       const d = parseISO(b.scheduled_at);
-      return Number.isFinite(d.getTime()) && isSameDay(d, today);
+      if (!Number.isFinite(d.getTime())) return false;
+      if (provider?.timezone && providerTodayKey) {
+        return formatInTimeZone(d, provider.timezone, "yyyy-MM-dd") === providerTodayKey;
+      }
+      return isSameDay(d, today);
     });
     const pending = onToday.filter((b) => b.db_status === "pending").sort((a, b) => parseISO(a.scheduled_at).getTime() - parseISO(b.scheduled_at).getTime());
     const schedule = onToday
@@ -170,7 +178,7 @@ export default function WaitingRoomScreen() {
       scheduleToday: schedule,
       pendingCount: pending.length,
     };
-  }, [rawBookings]);
+  }, [rawBookings, provider?.timezone]);
 
   const metricSummary = useMemo(() => {
     const list = Array.isArray(rawBookings) ? rawBookings : [];

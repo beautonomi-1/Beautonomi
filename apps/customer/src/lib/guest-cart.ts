@@ -45,7 +45,9 @@ export function parseSyntheticGuestCartItemId(
   return { product_id, variant_id: tail.length > 0 ? tail : null };
 }
 
-const GUEST_STOCK_PLACEHOLDER = 999;
+// Guest carts are stored offline, so stock is confirmed only after sign-in/checkout.
+// Keep the local cap conservative instead of implying hundreds of units are available.
+const GUEST_STOCK_PLACEHOLDER = 10;
 
 export function guestLineToCartItem(line: GuestCartLine): CartItem {
   const id = syntheticGuestCartItemId(line.product_id, line.product_variant_id);

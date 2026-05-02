@@ -8,7 +8,8 @@
  *   → Shows a manual document-upload form (POST /api/me/verification).
  *     Admin reviews the document and approves manually.
  */
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -32,10 +33,10 @@ import { haptic } from "@/lib/haptics";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { getBackendUrl } from "@/config/public-env";
 
-const DOC_TYPES = [
-  { value: "license", label: "Driver's license" },
-  { value: "passport", label: "Passport" },
-  { value: "identity", label: "Identity card" },
+const DOCUMENT_TYPE_OPTIONS = [
+  { value: "license", labelKey: "docTypeLicense" },
+  { value: "passport", labelKey: "docTypePassport" },
+  { value: "identity", labelKey: "docTypeIdentity" },
 ] as const;
 
 interface VerificationStatus {
@@ -53,11 +54,23 @@ interface VerificationStatus {
 
 export default function IdentityVerificationScreen() {
   useScreenTracking("Identity Verification");
+  const { t } = useTranslation();
+  const iv = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.identityVerification.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const { bundle } = useConfigBundle();
   const env = bundle?.meta?.env ?? "production";
-  const countryPlaceholder = bundle?.meta?.tenant_region?.name?.trim()
-    ? `e.g. ${bundle.meta.tenant_region.name}`
-    : "e.g. South Africa";
+  const countryPlaceholder = useMemo(() => {
+    const regionName = bundle?.meta?.tenant_region?.name?.trim();
+    return regionName
+      ? iv("countryPlaceholderRegion", { region: regionName })
+      : iv("countryPlaceholderDefault");
+  }, [bundle, iv]);
 
   const [statusData, setStatusData] = useState<VerificationStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,7 +93,7 @@ export default function IdentityVerificationScreen() {
         `/api/me/verification?environment=${encodeURIComponent(env)}`
       );
       if (res.error) {
-        setError(res.error.message || "Failed to load verification status");
+        setError(res.error.message || iv("loadStatusFailed"));
         setStatusData(null);
         return;
       }
@@ -93,12 +106,12 @@ export default function IdentityVerificationScreen() {
         manual_verification: d?.manual_verification ?? null,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : iv("loadFailed"));
       setStatusData(null);
     } finally {
       setLoading(false);
     }
-  }, [env]);
+  }, [env, iv]);
 
   useEffect(() => {
     load();
@@ -113,21 +126,18 @@ export default function IdentityVerificationScreen() {
         `/api/me/verification/sumsub/token?environment=${encodeURIComponent(env)}`
       );
       if (res.error) {
-        Alert.alert("Error", res.error.message || "Could not start verification.");
+        Alert.alert(errTitle, res.error.message || iv("startError"));
         return;
       }
       const access_token = res.data?.access_token;
       const refresh_token = (res.data as any)?.refresh_token;
       if (!access_token) {
-        Alert.alert(
-          "Automated verification unavailable",
-          "Please use the manual document upload below to submit your ID."
-        );
+        Alert.alert(iv("tokenMissingTitle"), iv("tokenMissingBody"));
         return;
       }
       const base = getBackendUrl().replace(/\/$/, "");
       if (!base) {
-        Alert.alert("Configuration", "App URL is not configured.");
+        Alert.alert(iv("appUrlMissingTitle"), iv("appUrlMissingBody"));
         return;
       }
       const hash = `token=${encodeURIComponent(access_token)}${
@@ -135,18 +145,18 @@ export default function IdentityVerificationScreen() {
       }`;
       await Linking.openURL(`${base}/account-settings/verification/embed#${hash}`);
     } catch {
-      Alert.alert("Error", "Could not start verification. Please use the manual upload below.");
+      Alert.alert(errTitle, iv("startVerificationFailed"));
     } finally {
       setLaunching(false);
     }
-  }, [env]);
+  }, [env, errTitle, iv]);
 
   // ─── Manual upload ───────────────────────────────────────────────────────
   const pickDocument = async () => {
     try {
       const { status: perm } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (perm !== "granted") {
-        Alert.alert("Permission needed", "Allow access to photos to upload your document.");
+        Alert.alert(iv("photoPermissionTitle"), iv("photoPermissionBody"));
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -163,13 +173,13 @@ export default function IdentityVerificationScreen() {
       });
       haptic.light();
     } catch {
-      Alert.alert("Error", "Failed to pick image.");
+      Alert.alert(errTitle, iv("pickImageFailed"));
     }
   };
 
   const submitManual = async () => {
     if (!selectedFile || !country.trim()) {
-      Alert.alert("Missing info", "Please select a document and enter the country of issue.");
+      Alert.alert(iv("missingInfoTitle"), iv("missingInfoBody"));
       return;
     }
     setUploading(true);
@@ -189,19 +199,16 @@ export default function IdentityVerificationScreen() {
       );
 
       if (res.error) {
-        Alert.alert("Upload failed", getApiErrorMessage(res.error, "Could not upload document."));
+        Alert.alert(iv("uploadAlertTitle"), getApiErrorMessage(res.error, iv("uploadFailed")));
         return;
       }
       haptic.success();
-      Alert.alert(
-        "Submitted",
-        "Your document has been submitted. We'll notify you once it's reviewed — usually within 1–2 business days."
-      );
+      Alert.alert(iv("submittedTitle"), iv("submittedBody"));
       setSelectedFile(null);
       setCountry("");
       load();
     } catch {
-      Alert.alert("Error", "Upload failed. Please try again.");
+      Alert.alert(errTitle, iv("uploadRetry"));
     } finally {
       setUploading(false);
     }
@@ -231,12 +238,8 @@ export default function IdentityVerificationScreen() {
           >
             <Ionicons name="shield-checkmark" size={32} color="#059669" />
           </View>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>
-            Identity verified
-          </Text>
-          <Text style={{ fontSize: 14, color: Colors.gray[600], textAlign: "center" }}>
-            Your identity has been verified. Thank you.
-          </Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>{iv("verifiedTitle")}</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[600], textAlign: "center" }}>{iv("verifiedBody")}</Text>
         </View>
       </ScreenFrame>
     );
@@ -259,10 +262,8 @@ export default function IdentityVerificationScreen() {
               marginBottom: 20,
             }}
           >
-            <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400E" }}>Under review</Text>
-            <Text style={{ fontSize: 13, color: "#B45309", marginTop: 4 }}>
-              Your document has been submitted. {"We'll"} notify you once verification is complete.
-            </Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400E" }}>{iv("underReviewTitle")}</Text>
+            <Text style={{ fontSize: 13, color: "#B45309", marginTop: 4 }}>{iv("underReviewBody")}</Text>
           </View>
         )}
 
@@ -287,20 +288,16 @@ export default function IdentityVerificationScreen() {
               ) : (
                 <>
                   <Ionicons name="shield-checkmark-outline" size={18} color="#fff" />
-                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>
-                    Verify instantly
-                  </Text>
+                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>{iv("verifyInstantly")}</Text>
                   <Ionicons name="open-outline" size={16} color="#fff" />
                 </>
               )}
             </TouchableOpacity>
-            <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 6 }}>
-              Automated ID check — takes about 2 minutes
-            </Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 6 }}>{iv("sumsubSubtext")}</Text>
 
             <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 16 }}>
               <View style={{ flex: 1, height: 1, backgroundColor: Colors.gray[200] }} />
-              <Text style={{ marginHorizontal: 12, fontSize: 12, color: Colors.gray[400] }}>or upload manually</Text>
+              <Text style={{ marginHorizontal: 12, fontSize: 12, color: Colors.gray[400] }}>{iv("orUploadManually")}</Text>
               <View style={{ flex: 1, height: 1, backgroundColor: Colors.gray[200] }} />
             </View>
           </View>
@@ -319,21 +316,18 @@ export default function IdentityVerificationScreen() {
             }}
           >
             <Ionicons name="information-circle-outline" size={20} color="#3b82f6" />
-            <Text style={{ flex: 1, fontSize: 13, color: "#1e40af", lineHeight: 19 }}>
-              Automated ID checks are not available on this build yet. Use manual upload below — photos should be clear and
-              uncropped. We usually review within 1–2 business days and you will see status updates here.
-            </Text>
+            <Text style={{ flex: 1, fontSize: 13, color: "#1e40af", lineHeight: 19 }}>{iv("manualOnlyInfo")}</Text>
           </View>
         )}
 
         {/* Manual upload form — always shown unless already under review */}
         {!isUnderReview && (
           <>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
-              Document type
-            </Text>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{iv("documentType")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16, gap: 8 }}>
-              {DOC_TYPES.map((opt) => (
+              {DOCUMENT_TYPE_OPTIONS.map((opt) => {
+                const label = iv(opt.labelKey);
+                return (
                 <TouchableOpacity
                   key={opt.value}
                   onPress={() => { setDocumentType(opt.value); haptic.light(); }}
@@ -343,7 +337,7 @@ export default function IdentityVerificationScreen() {
                     borderRadius: RADIUS_INPUT,
                     backgroundColor: documentType === opt.value ? Colors.primary : Colors.gray[100],
                   }}
-                  accessibilityLabel={opt.label}
+                  accessibilityLabel={label}
                   accessibilityRole="button"
                   accessibilityState={{ selected: documentType === opt.value }}
                 >
@@ -354,15 +348,14 @@ export default function IdentityVerificationScreen() {
                       color: documentType === opt.value ? "#fff" : Colors.gray[700],
                     }}
                   >
-                    {opt.label}
+                    {label}
                   </Text>
                 </TouchableOpacity>
-              ))}
+                );
+              })}
             </View>
 
-            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
-              Country of issue
-            </Text>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{iv("countryOfIssue")}</Text>
             <TextInput
               style={{
                 borderRadius: RADIUS_INPUT,
@@ -382,9 +375,7 @@ export default function IdentityVerificationScreen() {
               autoCapitalize="words"
             />
 
-            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
-              Document photo
-            </Text>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{iv("documentPhoto")}</Text>
             <TouchableOpacity
               onPress={pickDocument}
               style={{
@@ -397,7 +388,7 @@ export default function IdentityVerificationScreen() {
                 alignItems: "center",
                 marginBottom: 20,
               }}
-              accessibilityLabel={selectedFile ? "Change document photo" : "Select document photo"}
+              accessibilityLabel={selectedFile ? iv("a11yChangeDocumentPhoto") : iv("a11ySelectDocumentPhoto")}
               accessibilityRole="button"
             >
               {selectedFile ? (
@@ -406,7 +397,7 @@ export default function IdentityVerificationScreen() {
                   <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
                     {selectedFile.fileName}
                   </Text>
-                  <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4 }}>Tap to change</Text>
+                  <Text style={{ fontSize: 12, color: Colors.primary, marginTop: 4 }}>{iv("tapToChange")}</Text>
                 </>
               ) : (
                 <>
@@ -416,12 +407,8 @@ export default function IdentityVerificationScreen() {
                     color={Colors.gray[400]}
                     style={{ marginBottom: 8 }}
                   />
-                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>
-                    Tap to select a photo of your document
-                  </Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>
-                    JPEG, PNG or WebP (max 10 MB)
-                  </Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>{iv("selectDocumentPhoto")}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>{iv("fileTypesHint")}</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -438,22 +425,20 @@ export default function IdentityVerificationScreen() {
                 borderRadius: RADIUS_BUTTON,
                 alignItems: "center",
               }}
-              accessibilityLabel={uploading ? "Submitting" : "Submit for verification"}
+              accessibilityLabel={uploading ? iv("a11ySubmitting") : iv("a11ySubmitVerification")}
               accessibilityRole="button"
             >
               {uploading ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>
-                  Submit for verification
-                </Text>
+                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>{iv("submitForVerification")}</Text>
               )}
             </TouchableOpacity>
 
             <Text
               style={{ fontSize: 12, color: Colors.gray[500], marginTop: 16, textAlign: "center" }}
             >
-              Your document is stored securely and used only for identity verification.
+              {iv("footerSecure")}
             </Text>
           </>
         )}

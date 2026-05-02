@@ -71,6 +71,30 @@ export function buildProviderRoute(params: SingularLinkParams): { pathname: stri
   if (screen === "calendar" || path === "calendar") {
     return { pathname: "/(app)/(tabs)/calendar" };
   }
+  if (screen === "bookings" || path === "bookings") {
+    const id = q.id ?? q.booking_id ?? "";
+    return id
+      ? { pathname: "/(app)/(tabs)/bookings/[id]", params: { id } }
+      : { pathname: "/(app)/(tabs)/bookings" };
+  }
+  if (screen === "group-bookings" || screen === "group_bookings" || path === "group-bookings") {
+    const open_group_id = q.id ?? q.group_booking_id ?? q.open_group_id ?? "";
+    return open_group_id
+      ? { pathname: "/(app)/(tabs)/more/group-bookings", params: { open_group_id } }
+      : { pathname: "/(app)/(tabs)/more/group-bookings" };
+  }
+  if (screen === "waiting-room" || screen === "waiting_room" || path === "waiting-room") {
+    return { pathname: "/(app)/(tabs)/more/waiting-room" };
+  }
+  if (screen === "express-booking" || screen === "express_booking" || path === "express-booking") {
+    return { pathname: "/(app)/(tabs)/more/express-booking" };
+  }
+  if (screen === "packages" || path === "packages") {
+    return { pathname: "/(app)/(tabs)/more/packages-list" };
+  }
+  if (screen === "reports" || path === "reports") {
+    return { pathname: "/(app)/(tabs)/more/reports" };
+  }
   if (screen === "clients" || path === "clients") {
     return { pathname: "/(app)/(tabs)/clients" };
   }

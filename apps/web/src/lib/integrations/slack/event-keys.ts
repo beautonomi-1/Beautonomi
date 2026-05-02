@@ -1,0 +1,32 @@
+/** Canonical Slack routing keys for Beautonomi admin alerts (avoid typos across triggers + UI). */
+export const SLACK_EVENT_KEYS = {
+  SUPPORT_TICKET_URGENT_CREATED: "support.ticket.urgent_created",
+  SUPPORT_TICKET_HIGH_CREATED: "support.ticket.high_priority_created",
+  SUPPORT_TICKET_HIGH_UNASSIGNED: "support.ticket.high_priority_unassigned",
+  SUPPORT_TICKET_OVERDUE: "support.ticket.overdue",
+  SUPPORT_TICKET_FOLLOWUP_OVERDUE: "support.ticket.followup_overdue",
+  SUPPORT_TICKET_ESCALATED: "support.ticket.escalated",
+  SUPPORT_TICKET_REOPENED: "support.ticket.reopened",
+  SUPPORT_QUEUE_HEALTH: "support.queue.health",
+  PROVIDER_LEAD_CREATED_UNASSIGNED: "provider_ops.lead.created_unassigned",
+  PROVIDER_LEAD_STALE: "provider_ops.lead.stale_followup",
+  PROVIDER_LEAD_BLOCKED: "provider_ops.lead.blocked_stage",
+  PROVIDER_LEAD_OVERDUE_NEXT_STEP: "provider_ops.lead.overdue_next_step",
+  PROVIDER_LEAD_MILESTONE: "provider_ops.lead.milestone",
+  PROVIDER_PIPELINE_HEALTH: "provider_ops.pipeline.health",
+  PROVIDER_LEAD_REASSIGNED: "provider_ops.lead.reassigned",
+  FINANCE_PAYOUT_REQUESTED: "finance.payout.requested",
+  FINANCE_PAYOUT_EXCEPTION: "finance.payout.exception",
+  FINANCE_REFUND_REVIEW: "finance.refund.manual_review",
+  FINANCE_RECONCILIATION_WARNING: "finance.reconciliation.warning",
+  DISPUTE_NEW: "dispute.new",
+  DISPUTE_OVERDUE: "dispute.overdue",
+  SAFETY_USER_REPORT: "safety.user_report.pending",
+  SAFETY_ADVERSE_REPORT: "safety.user_report.adverse",
+  VERIFICATION_PENDING: "verification.pending_review",
+  VERIFICATION_STUCK: "verification.stuck_review",
+  REPORT_DAILY_OPERATIONS_DIGEST: "report.daily_operations_digest",
+  REPORT_FINANCE_EXCEPTIONS_DIGEST: "report.finance_exceptions_digest",
+} as const;
+
+export type SlackEventKey = (typeof SLACK_EVENT_KEYS)[keyof typeof SLACK_EVENT_KEYS];

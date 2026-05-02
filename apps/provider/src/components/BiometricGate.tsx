@@ -93,7 +93,7 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
         // Enabled — prompt immediately on mount.
         await promptUnlock();
       } catch {
-        if (!cancelled) setStatus("unlocked");
+        if (!cancelled) setStatus("locked");
       }
     })();
 

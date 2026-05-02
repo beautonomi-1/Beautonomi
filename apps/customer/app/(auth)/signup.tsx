@@ -116,6 +116,7 @@ function parseRefFromUrl(url: string): string | null {
 export default function SignupScreen() {
   useScreenTracking("Signup");
   const { t } = useTranslation();
+  const as = useCallback((key: string) => t(`customer.mobile.screens.authSignup.${key}`), [t]);
   const { signUpWithEmail, signInWithOAuth } = useAuth();
   const params = useLocalSearchParams<{
     ref?: string;
@@ -264,7 +265,7 @@ export default function SignupScreen() {
     try {
       const result = await signUpWithEmail(email.trim(), password.trim(), fullName.trim());
       if (result.error) {
-        Alert.alert("Signup Failed", result.error.message);
+        Alert.alert(as("signUpFailedTitle"), result.error.message);
         return;
       }
       if (result.requiresConfirmation) {
@@ -272,11 +273,9 @@ export default function SignupScreen() {
         trackSignUp("email");
         if (signupSource) AsyncStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource).catch(() => {});
         AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage).catch(() => {});
-        Alert.alert(
-          "Check Your Email",
-          "We've sent a confirmation link to your email. Please confirm to activate your account.",
-          [{ text: "OK", onPress: () => router.replace("/(auth)/login") }],
-        );
+        Alert.alert(as("checkEmailTitle"), as("checkEmailBody"), [
+          { text: t("common.ok"), onPress: () => router.replace("/(auth)/login") },
+        ]);
         return;
       }
       // Session is available: persist phone, signup source, language, and attach referral
@@ -301,7 +300,7 @@ export default function SignupScreen() {
       haptic.success();
       await navigateAfterNewCustomerSignup(params.return_to);
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Signup failed");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), e instanceof Error ? e.message : as("genericError"));
     } finally {
       setLoading(false);
     }
@@ -314,14 +313,14 @@ export default function SignupScreen() {
       const { error } = await signInWithOAuth(provider);
       if (error) {
         if (!error.message.toLowerCase().includes("cancel")) {
-          Alert.alert("Sign Up Failed", error.message);
+          Alert.alert(as("signUpFailedTitle"), error.message);
         }
       } else {
         trackSignUp(provider);
         await navigateAfterNewCustomerSignup(params.return_to);
       }
     } catch {
-      Alert.alert("Sign Up Failed", "Something went wrong. Please try again.");
+      Alert.alert(as("signUpFailedTitle"), as("oauthGenericError"));
     } finally {
       setLoading(false);
     }
@@ -488,7 +487,7 @@ export default function SignupScreen() {
           <Ionicons name="person-outline" size={18} color="#9CA3AF" />
           <TextInput
             style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }}
-            placeholder="Your full name"
+            placeholder={as("namePlaceholder")}
             placeholderTextColor="#9CA3AF"
             value={fullName}
             onChangeText={(v) => { setFullName(v); setErrors((p) => ({ ...p, fullName: "" })); }}
@@ -520,7 +519,7 @@ export default function SignupScreen() {
           <TextInput
             ref={emailRef}
             style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }}
-            placeholder="you@example.com"
+            placeholder={as("emailPlaceholder")}
             placeholderTextColor="#9CA3AF"
             value={email}
             onChangeText={(v) => { setEmail(v); setErrors((p) => ({ ...p, email: "" })); }}
@@ -556,7 +555,7 @@ export default function SignupScreen() {
           <TextInput
             ref={passwordRef}
             style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }}
-            placeholder="Min. 8 characters"
+            placeholder={as("passwordPlaceholder")}
             placeholderTextColor="#9CA3AF"
             value={password}
             onChangeText={(v) => { setPassword(v); setErrors((p) => ({ ...p, password: "" })); }}
@@ -633,7 +632,7 @@ export default function SignupScreen() {
           <TextInput
             ref={confirmRef}
             style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }}
-            placeholder="Repeat password"
+            placeholder={as("repeatPasswordPlaceholder")}
             placeholderTextColor="#9CA3AF"
             value={confirmPassword}
             onChangeText={(v) => { setConfirmPassword(v); setErrors((p) => ({ ...p, confirmPassword: "" })); }}
@@ -686,7 +685,7 @@ export default function SignupScreen() {
               fontSize: 15,
               color: "#111827",
             }}
-            placeholder="71 234 5678"
+            placeholder={as("nationalPhonePlaceholder")}
             placeholderTextColor="#9CA3AF"
             value={phone}
             onChangeText={handlePhoneChange}
@@ -837,7 +836,7 @@ export default function SignupScreen() {
             </View>
             <View style={{ paddingHorizontal: contentPadding, paddingVertical: 12, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
               <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12 }}>
-                Select Country
+                {t("customer.mobile.components.phoneInput.selectCountryTitle")}
               </Text>
               <View
                 style={{
@@ -851,7 +850,7 @@ export default function SignupScreen() {
                 <Ionicons name="search" size={16} color="#9CA3AF" />
                 <TextInput
                   style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, fontSize: 15, color: "#111827" }}
-                  placeholder="Search country..."
+                  placeholder={t("customer.mobile.components.phoneInput.searchCountry")}
                   placeholderTextColor="#9CA3AF"
                   value={countrySearch}
                   onChangeText={setCountrySearch}

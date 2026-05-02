@@ -230,6 +230,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
         superadminOnly: true,
       },
       { title: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3 },
+      { title: "Slack", href: "/admin/integrations/slack", icon: MessageSquare },
       { title: "Paystack", href: "/admin/integrations/paystack", icon: CreditCard },
       { title: "Mapbox", href: "/admin/mapbox", icon: Map },
       { title: "OneSignal (push)", href: "/admin/notifications", icon: Radio },

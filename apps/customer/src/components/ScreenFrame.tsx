@@ -1,6 +1,7 @@
 import { View, Text, ScrollView, RefreshControl, ActivityIndicator, TouchableOpacity } from "react-native";
 import { SCREEN_PADDING, STACK_CONTENT_PADDING_BOTTOM, RADIUS_BUTTON } from "@/constants/layout";
 import { Colors } from "@/constants/colors";
+import { useThemedColors } from "@/hooks/useThemedColors";
 
 interface ScreenFrameProps {
   title?: string;
@@ -35,18 +36,23 @@ export function ScreenFrame({
   onRefresh,
   scrollable = true,
 }: ScreenFrameProps) {
+  // §UI-audit 2026-05: ScreenFrame is the most-reused customer screen
+  // shell, so making it theme-aware is the cheapest way to give the
+  // Light/Dark/System picker a real visible effect across stack screens
+  // without having to rewrite every individual screen at once.
+  const themed = useThemedColors();
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <View style={{ flex: 1, backgroundColor: themed.surface, alignItems: "center", justifyContent: "center", padding: 24 }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading...</Text>
+        <Text style={{ color: themed.textSecondary, marginTop: 16 }}>Loading...</Text>
       </View>
     );
   }
   if (error) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <Text style={{ textAlign: "center", color: Colors.gray[700], marginBottom: 16 }}>{error}</Text>
+      <View style={{ flex: 1, backgroundColor: themed.surface, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ textAlign: "center", color: themed.textPrimary, marginBottom: 16 }}>{error}</Text>
         {onRetry && (
           <TouchableOpacity
             onPress={onRetry}
@@ -63,22 +69,22 @@ export function ScreenFrame({
   }
   if (isEmpty && empty) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{empty.title}</Text>
-        {empty.message && <Text style={{ textAlign: "center", color: Colors.gray[600] }}>{empty.message}</Text>}
+      <View style={{ flex: 1, backgroundColor: themed.surface, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ textAlign: "center", fontWeight: "600", color: themed.textPrimary, marginBottom: 8 }}>{empty.title}</Text>
+        {empty.message && <Text style={{ textAlign: "center", color: themed.textSecondary }}>{empty.message}</Text>}
       </View>
     );
   }
   if (!scrollable) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.white }}>
+      <View style={{ flex: 1, backgroundColor: themed.surface }}>
         {children}
       </View>
     );
   }
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: Colors.white }}
+      style={{ flex: 1, backgroundColor: themed.surface }}
       contentContainerStyle={{ padding: SCREEN_PADDING, paddingBottom }}
       keyboardShouldPersistTaps="handled"
       refreshControl={

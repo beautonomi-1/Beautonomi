@@ -11,6 +11,7 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
@@ -21,6 +22,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { ProviderCard } from "@/components/ProviderCard";
 import type { SearchResult, Category } from "@/types/api";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+import { useTranslation } from "@beautonomi/i18n";
 
 type Suggestion = {
   type: "service" | "provider" | "category";
@@ -28,11 +30,16 @@ type Suggestion = {
   name: string;
   url?: string;
   slug?: string;
+  /** Provider thumbnail/avatar (from /api/public/search/suggestions). */
+  image_url?: string | null;
+  /** Service category name returned alongside service suggestions. */
+  category?: string;
 };
 
 export default function SearchScreen() {
   useScreenTracking("Search");
   const { contentPadding } = useResponsive();
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{ q?: string; category?: string }>();
   const [query, setQuery] = useState(params.q ?? "");
   const [category, setCategory] = useState<string>(params.category ?? "");
@@ -94,21 +101,21 @@ export default function SearchScreen() {
         const res = await api.get<SearchResult>(`/api/public/search?${searchParams.toString()}`);
 
         if (res.error) {
-          setError(getApiErrorMessage(res.error, "Search failed"));
+          setError(getApiErrorMessage(res.error, t("customer.searchScreen.searchFailed")));
           setResults(null);
         } else {
           const data = res.data as SearchResult;
           setResults(data || { providers: [], total: 0, page: 1, limit: 20, has_more: false });
         }
       } catch (e) {
-        setError(getApiErrorMessage(e, "Search failed"));
+        setError(getApiErrorMessage(e, t("customer.searchScreen.searchFailed")));
         setResults(null);
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [query, category, selectedAddress]
+    [query, category, selectedAddress, t]
   );
   searchRef.current = search;
 
@@ -159,6 +166,16 @@ export default function SearchScreen() {
   const onSuggestionPress = useCallback((s: Suggestion) => {
     setSuggestions([]);
     setShowSuggestions(false);
+    // §UI-audit 2026-05: tapping a provider suggestion previously just
+    // re-ran a name-based text search, which often returned 0 results
+    // for providers whose listing was hidden behind filters. Jump
+    // straight to the partner profile when we have the slug — that's
+    // what the user actually wants when they recognise the name in the
+    // typeahead. Falls back to a text search if no slug is available.
+    if (s.type === "provider" && s.slug) {
+      router.push({ pathname: "/(app)/partner-profile", params: { slug: s.slug } });
+      return;
+    }
     if (s.type === "category" && s.slug) {
       setCategory(s.slug);
       setQuery("");
@@ -194,16 +211,16 @@ export default function SearchScreen() {
             style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, marginLeft: -4 }}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
-            accessibilityLabel="Go back"
+            accessibilityLabel={t("common.back")}
             accessibilityHint="Navigate to the previous screen"
           >
             <Ionicons name="arrow-back" size={24} color={Colors.gray[700]} />
-            <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[700], marginLeft: 8 }}>Back</Text>
+            <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[700], marginLeft: 8 }}>{t("common.back")}</Text>
           </TouchableOpacity>
-          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>Search</Text>
+          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>{t("customer.searchScreen.title")}</Text>
           <TextInput
             style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-            placeholder="Search providers..."
+            placeholder={t("customer.searchScreen.placeholder")}
             placeholderTextColor={Colors.gray[400]}
             value={query}
             onChangeText={onQueryChange}
@@ -215,7 +232,7 @@ export default function SearchScreen() {
               search();
             }}
             returnKeyType="search"
-            accessibilityLabel="Search providers"
+            accessibilityLabel={t("customer.searchScreen.placeholder")}
             accessibilityHint="Type a provider name or service to search"
           />
           {/*
@@ -235,7 +252,7 @@ export default function SearchScreen() {
                 overflow: "hidden",
               }}
               accessibilityRole="list"
-              accessibilityLabel="Search suggestions"
+              accessibilityLabel={t("customer.searchScreen.suggestionsLabel")}
             >
               {suggestionsLoading ? (
                 <View style={{ paddingVertical: 12, alignItems: "center" }}>
@@ -257,23 +274,57 @@ export default function SearchScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`${s.name}, ${s.type}`}
                   >
-                    <Ionicons
-                      name={
-                        s.type === "provider"
-                          ? "storefront-outline"
-                          : s.type === "category"
-                          ? "pricetag-outline"
-                          : "cut-outline"
-                      }
-                      size={18}
-                      color={Colors.gray[500]}
-                      style={{ marginRight: 10 }}
-                    />
-                    <Text style={{ flex: 1, color: Colors.gray[800], fontSize: 14 }} numberOfLines={1}>
-                      {s.name}
-                    </Text>
+                    {/* §UI-audit 2026-05: providers now show their thumbnail
+                        in suggestions so users recognise the right business
+                        before tapping; non-provider rows keep the icon. */}
+                    {s.type === "provider" && s.image_url ? (
+                      <Image
+                        source={{ uri: s.image_url }}
+                        style={{ width: 32, height: 32, borderRadius: 16, marginRight: 10, backgroundColor: Colors.gray[100] }}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 16,
+                          marginRight: 10,
+                          backgroundColor: Colors.gray[100],
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Ionicons
+                          name={
+                            s.type === "provider"
+                              ? "storefront-outline"
+                              : s.type === "category"
+                                ? "pricetag-outline"
+                                : "cut-outline"
+                          }
+                          size={16}
+                          color={Colors.gray[500]}
+                        />
+                      </View>
+                    )}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: Colors.gray[800], fontSize: 14, fontWeight: "500" }} numberOfLines={1}>
+                        {s.name}
+                      </Text>
+                      {s.type === "service" && s.category ? (
+                        <Text style={{ color: Colors.gray[500], fontSize: 12 }} numberOfLines={1}>
+                          {s.category}
+                        </Text>
+                      ) : null}
+                    </View>
                     <Text style={{ color: Colors.gray[400], fontSize: 12, textTransform: "capitalize" }}>
-                      {s.type}
+                      {s.type === "provider"
+                        ? t("customer.searchScreen.suggestionProvider")
+                        : s.type === "category"
+                          ? t("customer.searchScreen.suggestionCategory")
+                          : t("customer.searchScreen.suggestionService")}
                     </Text>
                   </TouchableOpacity>
                 ))
@@ -292,11 +343,11 @@ export default function SearchScreen() {
             onPress={() => setCategory("")}
             style={{ marginRight: 8, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999, backgroundColor: !category ? Colors.primary : Colors.gray[100] }}
             accessibilityRole="button"
-            accessibilityLabel="All categories"
+            accessibilityLabel={t("customer.searchScreen.allCategories")}
             accessibilityState={{ selected: !category }}
             accessibilityHint="Show providers from all categories"
           >
-            <Text style={{ fontWeight: "500", color: !category ? Colors.white : Colors.gray[700] }}>All</Text>
+            <Text style={{ fontWeight: "500", color: !category ? Colors.white : Colors.gray[700] }}>{t("customer.searchScreen.allCategories")}</Text>
           </TouchableOpacity>
           {categories.map((c) => (
             <TouchableOpacity
@@ -320,14 +371,14 @@ export default function SearchScreen() {
           style={{ marginTop: 16, paddingVertical: 12, borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center" }}
           disabled={loading}
           accessibilityRole="button"
-          accessibilityLabel={loading ? "Searching" : "Search"}
+          accessibilityLabel={loading ? t("customer.searchScreen.searching") : t("common.search")}
           accessibilityState={{ disabled: loading }}
           accessibilityHint="Search for providers matching your query and filters"
         >
           {loading ? (
             <ActivityIndicator color="white" size="small" />
           ) : (
-            <Text style={{ fontWeight: "600", color: Colors.white }}>Search</Text>
+            <Text style={{ fontWeight: "600", color: Colors.white }}>{t("common.search")}</Text>
           )}
         </TouchableOpacity>
         </View>
@@ -352,34 +403,36 @@ export default function SearchScreen() {
         {loading ? (
           <View style={{ paddingVertical: 48, alignItems: "center" }}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={{ color: Colors.gray[500], marginTop: 12 }}>Searching...</Text>
+            <Text style={{ color: Colors.gray[500], marginTop: 12 }}>{t("customer.searchScreen.searching")}</Text>
           </View>
         ) : !results && searched && !error ? (
           <View style={{ paddingVertical: 48, alignItems: "center" }}>
-            <Text style={{ color: Colors.gray[600] }}>No results. Try different filters.</Text>
+            <Text style={{ color: Colors.gray[600] }}>{t("customer.searchScreen.noResults")}</Text>
           </View>
         ) : results && results.providers.length === 0 ? (
           <View style={{ paddingVertical: 48, alignItems: "center", paddingHorizontal: 24 }}>
             <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
               <Ionicons name="search-outline" size={32} color={Colors.gray[400]} />
             </View>
-            <Text style={{ color: Colors.gray[700], fontSize: 16, fontWeight: "600", marginBottom: 8, textAlign: "center" }}>No providers found</Text>
-            <Text style={{ color: Colors.gray[500], fontSize: 14, textAlign: "center", marginBottom: 20 }}>Try a different search term or category</Text>
+            <Text style={{ color: Colors.gray[700], fontSize: 16, fontWeight: "600", marginBottom: 8, textAlign: "center" }}>{t("customer.searchScreen.noProviders")}</Text>
+            <Text style={{ color: Colors.gray[500], fontSize: 14, textAlign: "center", marginBottom: 20 }}>{t("customer.searchScreen.noProvidersHint")}</Text>
             {(query.trim() || category) ? (
               <TouchableOpacity
                 onPress={() => { setQuery(""); setCategory(""); setError(null); search(); }}
                 style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, backgroundColor: Colors.gray[100] }}
-                accessibilityLabel="Clear filters and search again"
+                accessibilityLabel={t("customer.searchScreen.clearFilters")}
                 accessibilityRole="button"
               >
-                <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>Clear filters</Text>
+                <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>{t("customer.searchScreen.clearFilters")}</Text>
               </TouchableOpacity>
             ) : null}
           </View>
         ) : results ? (
           <>
             <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
-              {results.total} provider{results.total !== 1 ? "s" : ""} found
+              {results.total === 1
+                ? t("customer.searchScreen.providersFoundOne")
+                : t("customer.searchScreen.providersFoundMany", { count: results.total })}
             </Text>
             <View>
               {results.providers.map((p) => (
@@ -392,7 +445,7 @@ export default function SearchScreen() {
         ) : (
           <View style={{ paddingVertical: 48, alignItems: "center" }}>
             <Text style={{ color: Colors.gray[500], textAlign: "center" }}>
-              Enter a search term or select a category to find providers
+              {t("customer.searchScreen.promptDefault")}
             </Text>
           </View>
         )}

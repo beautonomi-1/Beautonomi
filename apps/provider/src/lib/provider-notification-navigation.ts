@@ -13,6 +13,7 @@ export type ProviderNotificationNavPayload = {
   action_url?: string;
   data?: {
     booking_id?: string;
+    group_booking_id?: string;
     /** Some pushes include workflow status for routing */
     db_status?: string;
     status?: string;
@@ -34,6 +35,12 @@ function getLinkParam(link: string, key: string): string {
     const match = link.match(new RegExp(`[?&]${key}=([^&#]+)`, "i"));
     return match?.[1] ? decodeURIComponent(match[1]).trim() : "";
   }
+}
+
+function getUuidAfterSegment(link: string, segment: string): string {
+  const escaped = segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = link.match(new RegExp(`${escaped}/([a-f0-9-]{36})`, "i"));
+  return match?.[1] ?? "";
 }
 
 function calendarHrefFromNotification(link: string, data: ProviderNotificationNavPayload["data"]): string {
@@ -163,6 +170,18 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     return;
   }
   if (link) {
+    const groupBookingId =
+      (typeof data.group_booking_id === "string" && data.group_booking_id.trim()) ||
+      getLinkParam(link, "group_booking_id") ||
+      getLinkParam(link, "open_group_id") ||
+      getUuidAfterSegment(link, "group-bookings");
+    if (groupBookingId || link.includes("group-bookings")) {
+      const route = groupBookingId
+        ? `/(app)/(tabs)/more/group-bookings?open_group_id=${encodeURIComponent(groupBookingId)}`
+        : "/(app)/(tabs)/more/group-bookings";
+      router.push(route as never);
+      return;
+    }
     const idMatch = link.match(/\/bookings\/([a-f0-9-]+)/i) || link.match(/\/booking\/([a-f0-9-]+)/i);
     if (idMatch) {
       router.push(`/(app)/(tabs)/bookings/${idMatch[1]}` as never);
@@ -188,6 +207,26 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     }
     if (link.includes("ecommerce/returns")) {
       router.push("/(app)/(tabs)/more/orders-hub?tab=returns" as never);
+      return;
+    }
+    if (link.includes("reports/packages")) {
+      router.push("/(app)/(tabs)/more/reports/packages" as never);
+      return;
+    }
+    if (link.includes("reports")) {
+      router.push("/(app)/(tabs)/more/reports" as never);
+      return;
+    }
+    if (link.includes("packages")) {
+      router.push("/(app)/(tabs)/more/packages-list" as never);
+      return;
+    }
+    if (link.includes("express-booking") || link.includes("booking-link")) {
+      router.push("/(app)/(tabs)/more/express-booking" as never);
+      return;
+    }
+    if (link.includes("finance") || link.includes("payout")) {
+      router.push("/(app)/(tabs)/more/finance" as never);
       return;
     }
     if (link.includes("clients")) {

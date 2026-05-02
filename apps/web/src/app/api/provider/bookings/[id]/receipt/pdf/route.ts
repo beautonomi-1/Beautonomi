@@ -125,6 +125,16 @@ export async function GET(
 
     const currency = r.currency || "ZAR";
     const money = (amount: number | undefined) => moneyPdf(amount, currency);
+    const formatPercent = (value?: number) => {
+      const n = Number(value || 0);
+      if (!Number.isFinite(n) || n <= 0) return "";
+      const display = n <= 1 ? n * 100 : n;
+      return Number.isInteger(display) ? String(display) : display.toFixed(1);
+    };
+    const platformFeePercent = formatPercent(r.service_fee_percentage);
+    const platformFeeLabel = platformFeePercent
+      ? `Platform fee (${platformFeePercent}%, customer-paid, retained by platform)`
+      : "Platform fee (customer-paid, retained by platform)";
 
     const doc = new PDFDocument({ size: "A4", margin: 50, bufferPages: true });
     const chunks: Buffer[] = [];
@@ -157,6 +167,7 @@ export async function GET(
         lines: [
           r.invoice_date ? `Issued ${formatPdfDate(r.invoice_date)}` : null,
           r.booking_date ? `Booked ${formatPdfDate(r.booking_date)}` : null,
+          r.package_name ? `Package: ${r.package_name}` : null,
         ],
       },
     ]);
@@ -201,7 +212,7 @@ export async function GET(
         ...(Number(r.loyalty_discount_amount || 0) > 0 ? [{ label: "Loyalty discount", value: `-${money(r.loyalty_discount_amount)}`, tone: "success" as const }] : []),
         ...(r.travel_fee > 0 ? [{ label: "Travel fee", value: money(r.travel_fee) }] : []),
         ...(r.tax_amount > 0 ? [{ label: r.tax_rate > 0 ? `Tax (${r.tax_rate.toFixed(1)}%)` : "Tax", value: money(r.tax_amount) }] : []),
-        ...(r.service_fee_amount > 0 ? [{ label: "Platform fee", value: money(r.service_fee_amount) }] : []),
+        ...(r.service_fee_amount > 0 ? [{ label: platformFeeLabel, value: money(r.service_fee_amount) }] : []),
         ...(r.tip_amount > 0 ? [{ label: "Tip", value: money(r.tip_amount) }] : []),
         ...(r.cancellation_fee > 0 ? [{ label: "Cancellation fee", value: money(r.cancellation_fee), tone: "warning" as const }] : []),
         ...(r.deposit_required && r.payment_option === "deposit"
@@ -269,6 +280,8 @@ export async function GET(
 
 type ReceiptData = {
   invoice_number?: string;
+  package_id?: string | null;
+  package_name?: string | null;
   invoice_date?: string;
   booking_date?: string;
   provider?: {

@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
@@ -24,6 +25,15 @@ import { getApiErrorMessage } from "@/lib/api-error";
 
 export default function DeactivateAccountScreen() {
   useScreenTracking("Deactivate account");
+  const { t } = useTranslation();
+  const da = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.deactivateAccount.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const router = useRouter();
   const { signOut } = useAuth();
   const [password, setPassword] = useState("");
@@ -33,7 +43,7 @@ export default function DeactivateAccountScreen() {
   const handleDeactivate = useCallback(async () => {
     const pwd = password.trim();
     if (!pwd) {
-      Alert.alert("Required", "Enter your password to deactivate your account.");
+      Alert.alert(da("requiredPasswordTitle"), da("requiredPasswordBody"));
       return;
     }
 
@@ -42,12 +52,12 @@ export default function DeactivateAccountScreen() {
     }
 
     Alert.alert(
-      "Deactivate account?",
-      "Your account will be disabled immediately. You can reactivate anytime by logging in again.",
+      da("confirmTitle"),
+      da("confirmBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Deactivate",
+          text: da("confirmDeactivateCta"),
           style: "destructive",
           onPress: async () => {
             setLoading(true);
@@ -57,13 +67,13 @@ export default function DeactivateAccountScreen() {
                 reason: reason.trim() || null,
               })) as { error?: { message?: string } };
               if (res.error) {
-                Alert.alert("Error", res.error.message ?? "Deactivation failed.");
+                Alert.alert(errTitle, res.error.message ?? da("deactivateFailed"));
                 return;
               }
               await signOut();
               router.replace("/(auth)/login?deactivated=1" as never);
             } catch (e) {
-              Alert.alert("Error", getApiErrorMessage(e, "Deactivation failed. Please try again."));
+              Alert.alert(errTitle, getApiErrorMessage(e, da("deactivateRetry")));
             } finally {
               setLoading(false);
             }
@@ -71,7 +81,7 @@ export default function DeactivateAccountScreen() {
         },
       ],
     );
-  }, [password, reason, signOut, router]);
+  }, [password, reason, signOut, router, da, errTitle, t]);
 
   return (
     <KeyboardAvoidingView
@@ -90,13 +100,10 @@ export default function DeactivateAccountScreen() {
             padding: 14,
           }}
         >
-          <Text style={{ fontSize: 14, color: "#92400e", lineHeight: 20 }}>
-            Deactivating disables your account. Your data is kept. You can reactivate by signing in again; we will
-            restore access when your deactivation was self-initiated.
-          </Text>
+          <Text style={{ fontSize: 14, color: "#92400e", lineHeight: 20 }}>{da("infoBanner")}</Text>
         </View>
 
-          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>Password</Text>
+          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>{da("passwordLabel")}</Text>
           <TextInput
             style={{
               borderRadius: 12,
@@ -118,7 +125,7 @@ export default function DeactivateAccountScreen() {
           />
 
           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginTop: 16, marginBottom: 6 }}>
-            Reason (optional)
+            {da("reasonLabel")}
           </Text>
           <TextInput
             style={{
@@ -133,17 +140,14 @@ export default function DeactivateAccountScreen() {
               minHeight: 88,
               textAlignVertical: "top",
             }}
-            placeholder="e.g. Taking a break"
+            placeholder={da("reasonPlaceholder")}
             placeholderTextColor={Colors.gray[400]}
             value={reason}
             onChangeText={setReason}
             multiline
           />
 
-          <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 12, lineHeight: 18 }}>
-            Password confirmation matches the web app: your account email must have a password set. If you only use
-            phone or social sign-in, set a password on the website first, or use the web app to deactivate.
-          </Text>
+          <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 12, lineHeight: 18 }}>{da("footerHint")}</Text>
 
           <TouchableOpacity
             onPress={() => void handleDeactivate()}
@@ -157,12 +161,12 @@ export default function DeactivateAccountScreen() {
               opacity: loading ? 0.7 : 1,
             }}
             accessibilityRole="button"
-            accessibilityLabel="Deactivate account"
+            accessibilityLabel={da("submitA11y")}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Deactivate account</Text>
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{da("submitLabel")}</Text>
             )}
           </TouchableOpacity>
       </ScreenFrame>

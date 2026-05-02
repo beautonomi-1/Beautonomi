@@ -77,6 +77,46 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    let groupBookingsQuery = supabaseAdmin
+      .from("group_bookings")
+      .select(
+        `
+        id,
+        scheduled_at,
+        status,
+        package_id,
+        service_packages:package_id (
+          id,
+          name
+        ),
+        booking_participants (
+          id,
+          booking_id,
+          bookings:booking_id (
+            customer_id
+          )
+        )
+      `
+      )
+      .eq("provider_id", providerId)
+      .gte("scheduled_at", fromDate.toISOString())
+      .lte("scheduled_at", toDate.toISOString())
+      .in("status", ["booked", "started", "confirmed", "completed"])
+      .not("package_id", "is", null);
+
+    if (locationId) {
+      groupBookingsQuery = groupBookingsQuery.eq("location_id", locationId);
+    }
+
+    const { data: groupBookings, error: groupBookingsError } = await groupBookingsQuery;
+    if (groupBookingsError) {
+      return handleApiError(
+        new Error("Failed to fetch group bookings"),
+        "GROUP_BOOKINGS_FETCH_ERROR",
+        500
+      );
+    }
+
     // Filter for bookings with packages (either via package_id or service_type = 'package')
     const packageBookings = bookings?.filter((booking) =>
       booking.package_id || 
@@ -93,7 +133,7 @@ export async function GET(request: NextRequest) {
     }>();
 
     packageBookings.forEach((booking) => {
-      // Handle bookings with package_id (newer approach)
+      // Prefer `bookings.package_id` — do not also count legacy package lines on the same row.
       if (booking.package_id && (booking as any).service_packages) {
         const pkg = (booking as any).service_packages;
         const packageId = pkg.id;
@@ -109,11 +149,11 @@ export async function GET(request: NextRequest) {
           existing.uniqueClients.add(booking.customer_id);
         }
         packageMap.set(packageId, existing);
+        return;
       }
-      
-      // Handle bookings with package services (legacy approach)
+
       booking.booking_services?.forEach((bs: any) => {
-        if (bs.offerings?.service_type === 'package') {
+        if (bs.offerings?.service_type === "package") {
           const packageId = bs.offerings.id;
           const existing = packageMap.get(packageId) || {
             packageId,
@@ -129,6 +169,25 @@ export async function GET(request: NextRequest) {
           packageMap.set(packageId, existing);
         }
       });
+    });
+
+    (groupBookings || []).forEach((group: any) => {
+      if (!group.package_id || !group.service_packages) return;
+      const pkg = group.service_packages;
+      const packageId = pkg.id;
+      const existing = packageMap.get(packageId) || {
+        packageId,
+        packageName: pkg.name || "Unknown Package",
+        totalUsage: 0,
+        uniqueClients: new Set<string>(),
+        averageUsagePerClient: 0,
+      };
+      existing.totalUsage += 1;
+      (group.booking_participants || []).forEach((participant: any) => {
+        const customerId = participant.bookings?.customer_id;
+        if (customerId) existing.uniqueClients.add(customerId);
+      });
+      packageMap.set(packageId, existing);
     });
 
     const packageUsage = Array.from(packageMap.values())
@@ -160,6 +219,21 @@ export async function GET(request: NextRequest) {
       };
       existing.packagesUsed += 1;
       clientMap.set(clientId, existing);
+    });
+
+    (groupBookings || []).forEach((group: any) => {
+      (group.booking_participants || []).forEach((participant: any) => {
+        const clientId = participant.bookings?.customer_id;
+        if (!clientId) return;
+        const existing = clientMap.get(clientId) || {
+          clientId,
+          clientName: "Group participant",
+          email: "",
+          packagesUsed: 0,
+        };
+        existing.packagesUsed += 1;
+        clientMap.set(clientId, existing);
+      });
     });
 
     const topClients = Array.from(clientMap.values())

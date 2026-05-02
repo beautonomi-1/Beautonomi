@@ -8,6 +8,7 @@
  *
  * Scope (kind):
  *   - `provider_booking_receipt` — provider-facing receipt PDF for a booking
+ *   - `provider_group_booking_receipt` — provider-facing aggregate group booking receipt PDF
  *   - `customer_booking_receipt` — customer-facing receipt PDF
  *   - `provider_invoice`         — provider invoice PDF
  *   - `customer_order_receipt`   — customer-facing product order receipt PDF
@@ -21,6 +22,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 
 export type ReceiptTokenKind =
   | "provider_booking_receipt"
+  | "provider_group_booking_receipt"
   | "customer_booking_receipt"
   | "provider_invoice"
   | "customer_order_receipt"

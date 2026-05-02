@@ -30,6 +30,7 @@ import * as Clipboard from "expo-clipboard";
 import { APP_URL } from "@/config/public-env";
 import type { ExplorePost, ExploreComment } from "@/types/api";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 function formatTime(iso: string) {
   const date = new Date(iso);
@@ -52,6 +53,7 @@ export default function ExplorePostScreen() {
   const { user } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   const [post, setPost] = useState<ExplorePost | null>(null);
   const [comments, setComments] = useState<ExploreComment[]>([]);
@@ -115,10 +117,14 @@ export default function ExplorePostScreen() {
   const toggleLike = useCallback(async () => {
     if (!post || liking) return;
     if (!user) {
-      Alert.alert("Sign in to like", "Create an account or sign in to like posts.", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Sign in", onPress: () => router.replace("/(auth)/login") },
-      ]);
+      Alert.alert(
+        t("customer.explorePost.signInToLikeTitle"),
+        t("customer.explorePost.signInToLikeBody"),
+        [
+          { text: t("common.cancel"), style: "cancel" },
+          { text: t("auth.login"), onPress: () => router.replace("/(auth)/login") },
+        ],
+      );
       return;
     }
     setLiking(true);
@@ -148,15 +154,19 @@ export default function ExplorePostScreen() {
     } finally {
       setLiking(false);
     }
-  }, [post, liking, user, heartAnim, router]);
+  }, [post, liking, user, heartAnim, router, t]);
 
   const toggleSave = useCallback(async () => {
     if (!post || saving) return;
     if (!user) {
-      Alert.alert("Sign in to save", "Create an account or sign in to save posts.", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Sign in", onPress: () => router.replace("/(auth)/login") },
-      ]);
+      Alert.alert(
+        t("customer.explorePost.signInToSaveTitle"),
+        t("customer.explorePost.signInToSaveBody"),
+        [
+          { text: t("common.cancel"), style: "cancel" },
+          { text: t("auth.login"), onPress: () => router.replace("/(auth)/login") },
+        ],
+      );
       return;
     }
     setSaving(true);
@@ -174,7 +184,7 @@ export default function ExplorePostScreen() {
     } finally {
       setSaving(false);
     }
-  }, [post, saving, user, router]);
+  }, [post, saving, user, router, t]);
 
   const sendComment = useCallback(async () => {
     const text = input.trim();
@@ -186,7 +196,7 @@ export default function ExplorePostScreen() {
       const res = await api.post<ExploreComment>(`/api/explore/posts/${id}/comments`, { body: text });
       if (res.error) {
         setInput(text);
-        Alert.alert("Error", "Could not post comment. Please try again.");
+        Alert.alert(t("common.error"), t("customer.explorePost.errorPostComment"));
         return;
       }
       const newComment = (res.data as any)?.data ?? res.data;
@@ -202,16 +212,21 @@ export default function ExplorePostScreen() {
       }
     } catch {
       setInput(text);
-      Alert.alert("Error", "Could not post comment. Please try again.");
+      Alert.alert(t("common.error"), t("customer.explorePost.errorPostComment"));
     } finally {
       setSending(false);
     }
-  }, [input, id, sending, user]);
+  }, [input, id, sending, user, t]);
 
   const postUrl = post?.id ? `${APP_URL}/explore/${post.id}` : "";
   const shareMessage = post?.caption
-    ? `${post.caption} — ${post.provider?.business_name || "Beautonomi"}`
-    : `Check this out from ${post?.provider?.business_name || "Beautonomi"}`;
+    ? t("customer.explorePost.shareWithCaption", {
+        caption: post.caption,
+        name: post.provider?.business_name || "Beautonomi",
+      })
+    : t("customer.explorePost.shareDefault", {
+        name: post?.provider?.business_name || "Beautonomi",
+      });
 
   const handleShare = useCallback(() => {
     Share.share({
@@ -233,11 +248,11 @@ export default function ExplorePostScreen() {
 
   const showMoreOptions = useCallback(() => {
     haptic.light();
-    Alert.alert("More options", undefined, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Share", onPress: handleShare },
+    Alert.alert(t("customer.explorePost.moreOptions"), undefined, [
+      { text: t("common.cancel"), style: "cancel" },
+      { text: t("common.share"), onPress: handleShare },
       {
-        text: "Copy link",
+        text: t("customer.explorePost.copyLink"),
         onPress: async () => {
           if (postUrl) {
             await Clipboard.setStringAsync(postUrl);
@@ -246,7 +261,7 @@ export default function ExplorePostScreen() {
         },
       },
     ]);
-  }, [handleShare, postUrl]);
+  }, [handleShare, postUrl, t]);
 
   const goToProvider = useCallback(() => {
     if (post?.provider?.slug) {
@@ -281,13 +296,15 @@ export default function ExplorePostScreen() {
         <View style={{ flex: 1, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: contentPadding }}>
           <Ionicons name={loadError ? "cloud-offline-outline" : "image-outline"} size={48} color="#D1D5DB" />
           <Text style={{ color: "#6B7280", fontSize: 16, marginTop: 12 }}>
-            {loadError ? "Failed to load post" : "Post not found"}
+            {loadError ? t("customer.explorePost.loadFailed") : t("customer.explorePost.notFound")}
           </Text>
           <TouchableOpacity
             onPress={loadError ? () => load() : () => router.back()}
             style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 16 }}
           >
-            <Text style={{ color: "#fff", fontWeight: "600" }}>{loadError ? "Retry" : "Go back"}</Text>
+            <Text style={{ color: "#fff", fontWeight: "600" }}>
+              {loadError ? t("common.retry") : t("common.back")}
+            </Text>
           </TouchableOpacity>
         </View>
       </>
@@ -422,113 +439,180 @@ export default function ExplorePostScreen() {
 
           {/* Content */}
           <View style={{ padding: contentPadding }}>
-            {/* Provider row */}
-            <Pressable
-              onPress={goToProvider}
-              style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}
-            >
-              <View
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  backgroundColor: Colors.primary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginRight: 10,
-                }}
+            {/* §UI-audit 2026-05: provider row + CTAs previously crammed
+                onto a single line, causing the "Book this look" label to
+                overflow and clip "View Profile" on small phones. Stack the
+                CTAs underneath the provider header so they each get full
+                width and never truncate the look name. */}
+            <View style={{ marginBottom: 14 }}>
+              <Pressable
+                onPress={goToProvider}
+                style={{ flexDirection: "row", alignItems: "center" }}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${post.provider?.business_name || "provider"} profile`}
               >
-                <Text style={{ color: "#fff", fontSize: 17, fontWeight: "700" }}>{providerInitial}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
-                  {post.provider?.business_name || "Provider"}
-                </Text>
-                {post.published_at ? (
-                  <Text style={{ fontSize: 12, color: "#9CA3AF" }}>{formatTime(post.published_at)}</Text>
-                ) : null}
-              </View>
+                <View
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    backgroundColor: Colors.primary,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: 12,
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>{providerInitial}</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}
+                    numberOfLines={1}
+                  >
+                    {post.provider?.business_name || "Provider"}
+                  </Text>
+                  {post.published_at ? (
+                    <Text style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>{formatTime(post.published_at)}</Text>
+                  ) : null}
+                </View>
+              </Pressable>
               {post.provider?.slug ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "stretch", gap: 8, marginTop: 12 }}>
                   {post.offering?.id ? (
                     <TouchableOpacity
                       onPress={goToBookThisLook}
                       style={{
+                        flex: 1,
                         borderWidth: 1.5,
                         borderColor: Colors.primary,
                         borderRadius: 10,
-                        paddingHorizontal: 14,
-                        paddingVertical: 7,
+                        paddingHorizontal: 12,
+                        paddingVertical: 9,
                         backgroundColor: Colors.primary,
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("customer.explorePost.bookThisLook")}
                     >
-                      <Text style={{ color: "#fff", fontWeight: "600", fontSize: 13 }}>
-                        Book this look{post.offering.name ? ` · ${post.offering.name}` : ""}
+                      <Text
+                        style={{ color: "#fff", fontWeight: "600", fontSize: 13 }}
+                        numberOfLines={1}
+                      >
+                        {t("customer.explorePost.bookThisLook")}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
                   <TouchableOpacity
                     onPress={goToProvider}
                     style={{
+                      flex: 1,
                       borderWidth: 1.5,
                       borderColor: Colors.primary,
                       borderRadius: 10,
-                      paddingHorizontal: 14,
-                      paddingVertical: 7,
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                      alignItems: "center",
+                      justifyContent: "center",
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("customer.explorePost.viewProfile")}
                   >
-                    <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 13 }}>View Profile</Text>
+                    <Text
+                      style={{ color: Colors.primary, fontWeight: "600", fontSize: 13 }}
+                      numberOfLines={1}
+                    >
+                      {t("customer.explorePost.viewProfile")}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
-            </Pressable>
+            </View>
 
-            {/* Action bar */}
-            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
+            {/* §UI-audit 2026-05: action bar previously used fixed
+                marginRight: 20 spacers, which left the Share icon orphaned
+                far left on phones >=400dp wide and crowded the right edge
+                on iPhone SE-class widths. Switch to space-between with
+                equal-width hit targets so Like / Comment / Save / Share
+                always read as a balanced row regardless of the device. */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 16,
+                paddingBottom: 16,
+                borderBottomWidth: 1,
+                borderColor: "#F3F4F6",
+              }}
+            >
               <TouchableOpacity
                 onPress={toggleLike}
                 disabled={liking}
-                style={{ flexDirection: "row", alignItems: "center", marginRight: 20 }}
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel={t("customer.explorePost.like")}
               >
                 <Ionicons
                   name={post.is_liked ? "heart" : "heart-outline"}
-                  size={26}
+                  size={24}
                   color={post.is_liked ? Colors.primary : "#374151"}
                   style={{ marginRight: 6 }}
                 />
-                <Text style={{ fontSize: 15, fontWeight: "600", color: post.is_liked ? Colors.primary : "#374151" }}>
-                  {post.like_count > 0 ? post.like_count : "Like"}
+                <Text
+                  style={{ fontSize: 14, fontWeight: "600", color: post.is_liked ? Colors.primary : "#374151" }}
+                  numberOfLines={1}
+                >
+                  {post.like_count > 0 ? post.like_count : t("customer.explorePost.like")}
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={focusCommentInput}
-                style={{ flexDirection: "row", alignItems: "center", marginRight: 20 }}
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel={t("customer.explorePost.comment")}
               >
-                <Ionicons name="chatbubble-outline" size={24} color="#374151" style={{ marginRight: 6 }} />
-                <Text style={{ fontSize: 15, fontWeight: "600", color: "#374151" }}>
-                  {comments.length > 0 ? comments.length : "Comment"}
+                <Ionicons name="chatbubble-outline" size={22} color="#374151" style={{ marginRight: 6 }} />
+                <Text
+                  style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}
+                  numberOfLines={1}
+                >
+                  {comments.length > 0 ? comments.length : t("customer.explorePost.comment")}
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={toggleSave}
                 disabled={saving}
-                style={{ flexDirection: "row", alignItems: "center", marginRight: 20 }}
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel={t("customer.explorePost.save")}
               >
                 <Ionicons
                   name={post.is_saved ? "bookmark" : "bookmark-outline"}
-                  size={24}
+                  size={22}
                   color={post.is_saved ? Colors.primary : "#374151"}
                   style={{ marginRight: 6 }}
                 />
-                <Text style={{ fontSize: 15, fontWeight: "600", color: post.is_saved ? Colors.primary : "#374151" }}>
-                  Save
+                <Text
+                  style={{ fontSize: 14, fontWeight: "600", color: post.is_saved ? Colors.primary : "#374151" }}
+                  numberOfLines={1}
+                >
+                  {t("customer.explorePost.save")}
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={handleShare}>
-                <Ionicons name="paper-plane-outline" size={24} color="#374151" />
+              <TouchableOpacity
+                onPress={handleShare}
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel={t("customer.explorePost.share")}
+              >
+                <Ionicons name="paper-plane-outline" size={22} color="#374151" style={{ marginRight: 6 }} />
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }} numberOfLines={1}>
+                  {t("customer.explorePost.share")}
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -548,11 +632,11 @@ export default function ExplorePostScreen() {
                       setCaptionExpanded((e) => !e);
                     }}
                     style={{ marginTop: 4 }}
-                    accessibilityLabel={captionExpanded ? "Show less" : "Show more"}
+                    accessibilityLabel={captionExpanded ? t("common.showLess") : t("common.showMore")}
                     accessibilityRole="button"
                   >
                     <Text style={{ fontSize: 14, color: "#6B7280", fontWeight: "500" }}>
-                      {captionExpanded ? "less" : "more"}
+                      {captionExpanded ? t("customer.explorePost.showLess") : t("customer.explorePost.showMore")}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -561,13 +645,15 @@ export default function ExplorePostScreen() {
 
             {/* Comments */}
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
-              Comments {comments.length > 0 ? `(${comments.length})` : ""}
+              {t("customer.explorePost.commentsTitle")} {comments.length > 0 ? `(${comments.length})` : ""}
             </Text>
 
             {comments.length === 0 ? (
               <View style={{ paddingVertical: 20, alignItems: "center" }}>
                 <Ionicons name="chatbubbles-outline" size={28} color="#D1D5DB" />
-                <Text style={{ fontSize: 13, color: "#9CA3AF", marginTop: 8 }}>No comments yet. Be the first!</Text>
+                <Text style={{ fontSize: 13, color: "#9CA3AF", marginTop: 8 }}>
+                  {t("customer.explorePost.noCommentsYet")}
+                </Text>
               </View>
             ) : (
               comments.map((c) => {
@@ -613,7 +699,7 @@ export default function ExplorePostScreen() {
             {relatedPosts.length > 0 ? (
               <View style={{ marginTop: 24, marginBottom: 16 }}>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
-                  More like this
+                  {t("customer.explorePost.moreLikeThis")}
                 </Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 }}>
                   {relatedPosts.slice(0, 6).map((p) => {
@@ -660,6 +746,12 @@ export default function ExplorePostScreen() {
           </View>
         </ScrollView>
 
+        {/* §UI-audit 2026-05: composer used a hardcoded 30dp bottom pad
+            on iOS that ignored the actual home indicator height — on
+            iPhone 15 Pro Max the bar floated over the indicator while
+            iPhone SE wasted space. Use `insets.bottom` so the bar hugs
+            the keyboard / indicator on every device, and pad
+            non-iOS bottoms by 10dp to keep tap targets accessible. */}
         {/* Comment input bar */}
         {user ? (
           <View
@@ -668,7 +760,7 @@ export default function ExplorePostScreen() {
               alignItems: "center",
               paddingHorizontal: contentPadding,
               paddingVertical: 10,
-              paddingBottom: Platform.OS === "ios" ? 30 : 10,
+              paddingBottom: 10 + (Platform.OS === "ios" ? insets.bottom : 0),
               borderTopWidth: 1,
               borderColor: "#F3F4F6",
               backgroundColor: "#fff",
@@ -700,7 +792,7 @@ export default function ExplorePostScreen() {
                 fontSize: 14,
                 color: "#111827",
               }}
-              placeholder="Add a comment..."
+              placeholder={t("customer.explorePost.addComment")}
               placeholderTextColor="#9CA3AF"
               value={input}
               onChangeText={setInput}
@@ -726,7 +818,7 @@ export default function ExplorePostScreen() {
             style={{
               paddingHorizontal: contentPadding,
               paddingVertical: 14,
-              paddingBottom: Platform.OS === "ios" ? 30 : 14,
+              paddingBottom: 14 + (Platform.OS === "ios" ? insets.bottom : 0),
               borderTopWidth: 1,
               borderColor: "#F3F4F6",
               backgroundColor: "#fff",
@@ -734,7 +826,7 @@ export default function ExplorePostScreen() {
             }}
           >
             <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>
-              Sign in to like, comment, and save
+              {t("customer.explorePost.signInPromptTitle")}
             </Text>
           </Pressable>
         )}

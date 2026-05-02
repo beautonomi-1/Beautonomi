@@ -169,6 +169,8 @@ export function SupportTicketsPage() {
         timeoutMs: 45_000,
       }),
     enabled: allowed,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const tickets = q.data?.tickets ?? [];
@@ -224,10 +226,10 @@ export function SupportTicketsPage() {
     slaOverdueFilter;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 sm:px-0">
       <AdminPageHeader
         title="Support tickets"
-        description="Filters sync to the URL for sharing."
+        description="Filters sync to the URL; the queue refreshes when you return to this tab and about every minute while it stays open."
         actions={
           <button
             type="button"
@@ -249,7 +251,7 @@ export function SupportTicketsPage() {
             <label className="block text-xs font-medium text-gray-700 mb-1">Description *</label>
             <textarea rows={4} value={newDescription} onChange={(e) => setNewDescription(e.target.value)} placeholder="Full issue details…" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Priority</label>
               <select value={newPriority} onChange={(e) => setNewPriority(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none">

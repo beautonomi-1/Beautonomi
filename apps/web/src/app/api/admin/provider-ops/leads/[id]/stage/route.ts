@@ -10,6 +10,7 @@ import {
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { slackNotifyLeadMilestone } from "@/lib/integrations/slack/lead-triggers";
 
 const VALID_STAGES = [
   "new",
@@ -35,6 +36,7 @@ export async function PATCH(
     const { id } = await params;
     const supabase = getSupabaseAdmin();
     const body = await request.json();
+    const { expected_updated_at } = body;
 
     const newStage = body.stage;
     if (!newStage || !VALID_STAGES.includes(newStage)) {
@@ -44,13 +46,26 @@ export async function PATCH(
     const tenantId = await resolveAdminApiTenantId(request);
     const { data: lead, error: fetchErr } = await supabase
       .from("provider_leads")
-      .select("id, commercial_stage, reopen_count")
+      .select("id, business_name, commercial_stage, reopen_count, updated_at")
       .eq("id", id)
       .eq("tenant_id", tenantId)
       .single();
     if (fetchErr) throw fetchErr;
     if (!lead) {
       return notFoundResponse("Lead not found");
+    }
+
+    if (
+      expected_updated_at != null &&
+      typeof expected_updated_at === "string" &&
+      typeof lead.updated_at === "string" &&
+      lead.updated_at !== expected_updated_at
+    ) {
+      return errorResponse(
+        "This lead was updated by another teammate. Refresh and try again.",
+        "CONCURRENT_UPDATE",
+        409
+      );
     }
 
     const oldStage = lead.commercial_stage;
@@ -110,6 +125,13 @@ export async function PATCH(
       metadata: { from_stage: oldStage, to_stage: newStage },
       ...extractRequestMeta(request),
     });
+
+    void slackNotifyLeadMilestone(
+      request,
+      { id, business_name: (lead as { business_name?: string | null }).business_name ?? null },
+      newStage,
+      oldStage
+    );
 
     return successResponse({ id, stage: newStage, previous_stage: oldStage });
   } catch (error) {

@@ -29,6 +29,7 @@ export default function LoyaltyPointsPage({
   initialLoyaltyPoints: LoyaltyPointsPageData | null;
 }) {
   const [loading, setLoading] = useState(() => initialLoyaltyPoints === null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loyaltyData, setLoyaltyData] = useState<LoyaltyData | null>(() => initialLoyaltyPoints);
   const [copiedReferral, setCopiedReferral] = useState(false);
   const skipHydrateLoadOnce = useRef(initialLoyaltyPoints !== null);
@@ -60,19 +61,73 @@ export default function LoyaltyPointsPage({
     }
   };
 
-  const copyReferralLink = () => {
-    const referralLink = `${window.location.origin}/signup?ref=YOUR_CODE`;
-    navigator.clipboard.writeText(referralLink);
-    setCopiedReferral(true);
-    toast.success("Referral link copied to clipboard");
-    setTimeout(() => setCopiedReferral(false), 2000);
+  const copyReferralLink = async () => {
+    try {
+      const res = await fetch("/api/me/referrals", { cache: "no-store" });
+      const body = (await res.json().catch(() => ({}))) as {
+        data?: { referral_link?: string; referral_code?: string };
+        referral_link?: string;
+        referral_code?: string;
+      };
+      const data = body.data ?? body;
+      const referralLink =
+        data.referral_link ||
+        (data.referral_code ? `${window.location.origin}/signup?ref=${encodeURIComponent(data.referral_code)}` : "");
+      if (!referralLink) {
+        toast.error("Could not load your referral link. Please try again.");
+        return;
+      }
+      await navigator.clipboard.writeText(referralLink);
+      setCopiedReferral(true);
+      toast.success("Referral link copied to clipboard");
+      setTimeout(() => setCopiedReferral(false), 2000);
+    } catch {
+      toast.error("Could not copy your referral link. Please try again.");
+    }
+  };
+
+  const loadMoreTransactions = async () => {
+    if (!loyaltyData || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const nextOffset = loyaltyData.pagination.offset + loyaltyData.pagination.limit;
+      const params = new URLSearchParams({
+        limit: String(loyaltyData.pagination.limit),
+        offset: String(nextOffset),
+      });
+      const response = await fetch(`/api/me/loyalty-points?${params.toString()}`, { cache: "no-store" });
+      const body = (await response.json().catch(() => ({}))) as { data?: LoyaltyData };
+      const payload = body?.data ?? (body as unknown as LoyaltyData);
+      if (payload && typeof payload === "object" && Array.isArray(payload.recent_transactions)) {
+        setLoyaltyData((prev) =>
+          prev
+            ? {
+                ...payload,
+                recent_transactions: [
+                  ...prev.recent_transactions,
+                  ...payload.recent_transactions.filter(
+                    (tx) => !prev.recent_transactions.some((existing) => existing.id === tx.id),
+                  ),
+                ],
+              }
+            : payload,
+        );
+      }
+    } catch (error) {
+      console.error("Failed to load more loyalty transactions:", error);
+      toast.error("Failed to load more activity");
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const getTransactionIcon = (type: string) => {
     switch (type) {
       case "earned":
+      case "earn":
         return <ArrowUp className="w-5 h-5 text-green-600" />;
       case "redeemed":
+      case "redeem":
         return <ArrowDown className="w-5 h-5 text-red-600" />;
       case "bonus":
         return <Gift className="w-5 h-5 text-purple-600" />;
@@ -85,7 +140,7 @@ export default function LoyaltyPointsPage({
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+    return new Date(dateString).toLocaleDateString(undefined, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -329,8 +384,8 @@ export default function LoyaltyPointsPage({
 
             {loyaltyData.pagination.has_more && (
               <div className="text-center">
-                <Button variant="outline" size="sm">
-                  Load More
+                <Button variant="outline" size="sm" onClick={loadMoreTransactions} disabled={loadingMore}>
+                  {loadingMore ? "Loading..." : "Load More"}
                 </Button>
               </div>
             )}

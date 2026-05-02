@@ -19,6 +19,7 @@ import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import * as Haptics from "expo-haptics";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 // ---------------------------------------------------------------------------
 // Types (aligned with API: custom_requests with offers[])
@@ -339,6 +340,12 @@ function RequestCard({
 
 export default function CustomRequestsScreen() {
   useScreenTracking("Custom Requests");
+  const { t } = useTranslation();
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
+  const crl = useCallback(
+    (key: string) => t(`customer.mobile.screens.customRequestsList.${key}`) as string,
+    [t],
+  );
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
 
@@ -402,53 +409,45 @@ export default function CustomRequestsScreen() {
           (res.data as { paymentUrl?: string } | undefined)?.paymentUrl ??
           (res as { data?: { paymentUrl?: string } }).data?.paymentUrl;
         if (res.error) {
-          Alert.alert(
-            "Error",
-            (res.error as { message?: string })?.message ?? "Failed to start payment"
-          );
+          Alert.alert(errTitle, (res.error as { message?: string })?.message ?? crl("startPaymentFailed"));
           return;
         }
         if (paymentUrl) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           router.push({
             pathname: "/(app)/in-app-browser",
-            params: { url: encodeURIComponent(paymentUrl), title: "Complete payment" },
+            params: { url: encodeURIComponent(paymentUrl), title: crl("completePaymentTitle") },
           });
         } else {
-          Alert.alert("Payment", "No payment link was returned. Please try again.");
+          Alert.alert(crl("noPaymentLinkTitle"), crl("noPaymentLinkBody"));
         }
       } catch (e) {
-        Alert.alert("Error", e instanceof Error ? e.message : "Failed to start payment");
+        Alert.alert(errTitle, e instanceof Error ? e.message : crl("startPaymentFailed"));
       } finally {
         setRefreshingOfferId(null);
       }
     },
-    []
+    [crl, errTitle]
   );
 
   const handleAcceptPay = useCallback(
     (offerId: string) => {
-      Alert.alert(
-        "Payment Option",
-        "How would you like to pay?",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Pay Deposit", onPress: () => doAcceptPay(offerId, "deposit") },
-          { text: "Pay in Full", onPress: () => doAcceptPay(offerId, "full"), style: "default" },
-        ],
-        { cancelable: true }
-      );
+      Alert.alert(crl("paymentOptionTitle"), crl("paymentOptionBody"), [
+        { text: t("common.cancel"), style: "cancel" },
+        { text: crl("payDepositCta"), onPress: () => doAcceptPay(offerId, "deposit") },
+        { text: crl("payInFullCta"), onPress: () => doAcceptPay(offerId, "full"), style: "default" },
+      ], { cancelable: true });
     },
-    [doAcceptPay]
+    [doAcceptPay, crl, t]
   );
 
   const handleContinuePayment = useCallback((paymentUrl: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push({
       pathname: "/(app)/in-app-browser",
-      params: { url: encodeURIComponent(paymentUrl), title: "Complete payment" },
+      params: { url: encodeURIComponent(paymentUrl), title: crl("completePaymentTitle") },
     });
-  }, []);
+  }, [crl]);
 
   const handlePressProvider = useCallback((item: CustomRequest) => {
     if (item.provider?.slug) {
@@ -461,41 +460,34 @@ export default function CustomRequestsScreen() {
 
   const handleCancelRequest = useCallback(
     (requestId: string) => {
-      Alert.alert(
-        "Cancel this request?",
-        "The provider will be notified. You can submit a new request later.",
-        [
-          { text: "Keep request", style: "cancel" },
-          {
-            text: "Cancel request",
-            style: "destructive",
-            onPress: async () => {
-              setCancellingRequestId(requestId);
-              try {
-                const res = await api.post<{ cancelled?: boolean }>(
-                  `/api/me/custom-requests/${requestId}/cancel`,
-                  {}
-                );
-                if (res.error) {
-                  Alert.alert(
-                    "Error",
-                    (res.error as { message?: string })?.message ?? "Failed to cancel request"
-                  );
-                  return;
-                }
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                await load(true);
-              } catch (e) {
-                Alert.alert("Error", e instanceof Error ? e.message : "Failed to cancel request");
-              } finally {
-                setCancellingRequestId(null);
+      Alert.alert(crl("cancelRequestTitle"), crl("cancelRequestBody"), [
+        { text: crl("keepRequestCta"), style: "cancel" },
+        {
+          text: crl("cancelRequestCta"),
+          style: "destructive",
+          onPress: async () => {
+            setCancellingRequestId(requestId);
+            try {
+              const res = await api.post<{ cancelled?: boolean }>(
+                `/api/me/custom-requests/${requestId}/cancel`,
+                {}
+              );
+              if (res.error) {
+                Alert.alert(errTitle, (res.error as { message?: string })?.message ?? crl("cancelRequestFailed"));
+                return;
               }
-            },
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              await load(true);
+            } catch (e) {
+              Alert.alert(errTitle, e instanceof Error ? e.message : crl("cancelRequestFailed"));
+            } finally {
+              setCancellingRequestId(null);
+            }
           },
-        ]
-      );
+        },
+      ]);
     },
-    [load]
+    [load, crl, errTitle]
   );
 
   if (loading && data.length === 0) {

@@ -8,6 +8,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { slackNotifyPayoutFailed } from "@/lib/integrations/slack/finance-triggers";
 
 const markFailedSchema = z.object({
   failure_reason: z.string().min(1, "Failure reason is required"),
@@ -199,6 +200,14 @@ export async function POST(
     } catch (notifError) {
       console.error("Error sending notification:", notifError);
     }
+
+    void slackNotifyPayoutFailed(request, {
+      id,
+      provider_id: payoutData.provider_id,
+      amount: payoutData.amount,
+      currency: payoutData.currency,
+      failure_reason: validationResult.data.failure_reason,
+    });
 
     return NextResponse.json({
       data: updatedPayout,

@@ -7,6 +7,7 @@ import {
   Shield,
   UserCheck,
   MessageCircle,
+  Radio,
 } from "lucide-react";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -20,6 +21,12 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     description: "Product analytics API configuration",
     to: adminSpaTo("/admin/integrations/amplitude"),
     icon: BarChart3,
+  },
+  {
+    title: "Slack",
+    description: "Workspace alerts for Support & Provider Ops",
+    to: adminSpaTo("/admin/integrations/slack"),
+    icon: Radio,
   },
   {
     title: "Mapbox",

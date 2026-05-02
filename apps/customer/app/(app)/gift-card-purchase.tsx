@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -20,11 +20,21 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 const AMOUNTS = [100, 250, 500, 1000, 2500, 5000];
 
 export default function GiftCardPurchaseScreen() {
   useScreenTracking("Gift Card Purchase");
+  const { t } = useTranslation();
+  const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
+  const gc = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.giftCardPurchase.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const router = useRouter();
   const { provider_id, provider_name } = useLocalSearchParams<{ provider_id?: string; provider_name?: string }>();
   const tenantCurrency = getTenantDefaultCurrency();
@@ -58,13 +68,13 @@ export default function GiftCardPurchaseScreen() {
         body
       );
       if (res.error) {
-        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to start purchase"));
+        Alert.alert(errTitle, getApiErrorMessage(res.error, gc("startPurchaseError")));
         return;
       }
       const data = res.data as any;
       const paymentUrl = data?.payment_url ?? data?.data?.payment_url;
       if (!paymentUrl) {
-        Alert.alert("Error", "Payment link not available");
+        Alert.alert(errTitle, gc("paymentLinkUnavailable"));
         return;
       }
       let reference =
@@ -114,14 +124,12 @@ export default function GiftCardPurchaseScreen() {
         }
       }
       Alert.alert(
-        issued ? "Gift card ready" : "Payment pending",
-        issued
-          ? "Your gift card has been issued and is available under Payments."
-          : "If you completed your payment, the gift card will appear in your account shortly.",
-        [{ text: "OK", onPress: () => router.back() }],
+        issued ? gc("giftCardReadyTitle") : gc("paymentPendingTitle"),
+        issued ? gc("giftCardReadyBody") : gc("paymentPendingBody"),
+        [{ text: t("common.ok"), onPress: () => router.back() }],
       );
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to purchase"));
+      Alert.alert(errTitle, getApiErrorMessage(e, gc("purchaseFailed")));
     } finally {
       setLoading(false);
     }
@@ -129,15 +137,22 @@ export default function GiftCardPurchaseScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: provider_name ? `Gift Card — ${provider_name}` : "Buy Gift Card", headerBackTitle: "Back" }} />
+      <Stack.Screen
+        options={{
+          title: provider_name ? gc("screenTitleWithProvider", { providerName: String(provider_name) }) : gc("screenTitleBuy"),
+          headerBackTitle: t("common.back"),
+        }}
+      />
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.white }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
           {provider_name ? (
             <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
-              For: <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>{provider_name}</Text>
+              {gc("forRecipientLead")} <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>{provider_name}</Text>
             </Text>
           ) : null}
-          <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Select amount ({tenantCurrency})</Text>
+          <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>
+            {gc("selectAmountHeading", { currency: tenantCurrency })}
+          </Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>
             {AMOUNTS.map((a) => (
               <TouchableOpacity
@@ -149,16 +164,16 @@ export default function GiftCardPurchaseScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Or enter custom amount</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{gc("customAmountLabel")}</Text>
           <TextInput
             style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 16 }}
-            placeholder="e.g. 350"
+            placeholder={gc("amountPlaceholder")}
             placeholderTextColor={Colors.gray[400]}
             value={customAmount}
             onChangeText={(t) => { setCustomAmount(t); if (t) setAmount(0); }}
             keyboardType="number-pad"
           />
-          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Quantity</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{gc("quantityLabel")}</Text>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 24 }}>
             <TouchableOpacity onPress={() => setQuantity((q) => Math.max(1, q - 1))} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center", marginRight: 16 }}>
               <Text style={{ fontSize: 20, color: Colors.gray[700] }}>−</Text>
@@ -169,13 +184,13 @@ export default function GiftCardPurchaseScreen() {
             </TouchableOpacity>
           </View>
           <View style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 24 }}>
-            <Text style={{ color: Colors.gray[600] }}>Total</Text>
+            <Text style={{ color: Colors.gray[600] }}>{gc("totalLabel")}</Text>
             <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{formatMoney(total, tenantCurrency)}</Text>
           </View>
           <TouchableOpacity onPress={purchase} disabled={finalAmount <= 0 || loading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: finalAmount <= 0 || loading ? 0.5 : 1 }}>
-            {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Pay with card</Text>}
+            {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>{gc("payWithCard")}</Text>}
           </TouchableOpacity>
-          <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 16 }}>You will be redirected to complete payment securely.</Text>
+          <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 16 }}>{gc("paymentRedirectHint")}</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </>

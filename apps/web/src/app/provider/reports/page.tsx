@@ -119,6 +119,7 @@ const reportCategories = [
     icon: Package,
     color: "text-cyan-600 bg-cyan-50",
     reports: [
+      { id: "packages-overview", name: "Packages Overview", href: "/provider/reports/packages" },
       { id: "package-sales", name: "Package Sales", href: "/provider/reports/packages/sales" },
       { id: "package-usage", name: "Package Usage", href: "/provider/reports/packages/usage" },
     ],

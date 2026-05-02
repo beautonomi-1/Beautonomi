@@ -74,6 +74,18 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-sm font-semibold text-gray-700">{children}</h2>;
 }
 
+function periodToDateParams(period: string): URLSearchParams {
+  const params = new URLSearchParams();
+  const now = new Date();
+  const days = period === "7d" ? 7 : period === "90d" ? 90 : period === "1y" ? 365 : 30;
+  const start = new Date(now);
+  start.setUTCDate(start.getUTCDate() - days + 1);
+  start.setUTCHours(0, 0, 0, 0);
+  params.set("start_date", start.toISOString());
+  params.set("end_date", now.toISOString());
+  return params;
+}
+
 // ── Revenue ───────────────────────────────────────────────────────────────────
 function RevenueReport({ data }: { data: Record<string, unknown> }) {
   const pr = data.platformRevenue as Record<string, number> | undefined;
@@ -1228,6 +1240,7 @@ export function ReportDetailPage() {
   );
   const [sp, setSp] = useSearchParams();
   const period = sp.get("period") || "30d";
+  const [exportBusy, setExportBusy] = useState(false);
   const apiPath = API_PATHS[reportKey];
 
   const q = useQuery({
@@ -1306,11 +1319,11 @@ export function ReportDetailPage() {
         </label>
         <button
           type="button"
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+          disabled={exportBusy}
           onClick={() => {
-            // Map each report to its dedicated export endpoint so the downloaded CSV
-            // matches what is on screen. Falls back to the generic analytics export
-            // for reports without a dedicated CSV endpoint yet.
+            if (exportBusy) return;
+            setExportBusy(true);
             const EXPORT_ENDPOINTS: Record<string, string> = {
               revenue: "/api/admin/export/finance",
               providers: "/api/admin/export/providers",
@@ -1319,13 +1332,16 @@ export function ReportDetailPage() {
               "yoco-reconciliation": "/api/admin/export/transactions",
             };
             const endpoint = EXPORT_ENDPOINTS[reportKey] ?? "/api/admin/export/analytics";
+            const params = reportKey === "revenue" ? periodToDateParams(period) : new URLSearchParams({ period });
             void downloadAdminBlob(
-              `${endpoint}?period=${encodeURIComponent(period)}`,
+              `${endpoint}?${params}`,
               `${reportKey}-${period}.csv`
-            ).catch(() => alert("Export failed"));
+            )
+              .catch(() => alert("Export failed"))
+              .finally(() => setExportBusy(false));
           }}
         >
-          Download CSV
+          {exportBusy ? "Preparing CSV…" : "Download CSV"}
         </button>
       </div>
 

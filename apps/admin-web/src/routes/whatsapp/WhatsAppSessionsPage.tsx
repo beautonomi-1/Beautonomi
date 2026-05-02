@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -7,6 +8,7 @@ import { AdminModal } from "@/components/admin/AdminModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminToast } from "@/lib/adminToast";
+import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { Loader2, Plus, Wifi, WifiOff, QrCode, Trash2, RotateCcw, Pause, Play, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -62,6 +64,10 @@ function StatusBadge({ status, isPaused }: { status: string; isPaused: boolean }
 }
 
 export function WhatsAppSessionsPage() {
+  const { allowed, denied } = useAdminSectionPage(
+    ADMIN_SECTION_INTEGRATIONS_DEV,
+    "Integrations & dev access is required for WhatsApp sessions."
+  );
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
@@ -76,6 +82,7 @@ export function WhatsAppSessionsPage() {
   const sessionsQuery = useQuery({
     queryKey: adminQueryKeys.whatsapp.sessions(),
     queryFn: () => adminApi.getJson<Session[]>("/api/admin/whatsapp/sessions"),
+    enabled: allowed,
   });
 
   const phoneValid = /^\+[1-9]\d{7,14}$/.test(newPhoneE164.replace(/\s/g, ""));
@@ -168,6 +175,8 @@ export function WhatsAppSessionsPage() {
   };
 
   const sessions = sessionsQuery.data || [];
+
+  if (denied) return denied;
 
   return (
     <div className="space-y-6">

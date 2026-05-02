@@ -2,7 +2,8 @@
  * Customer Loyalty Points — full experience with balance, history, milestones, redemption.
  * Uses /api/me/loyalty-points for enriched data.
  */
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -88,6 +89,14 @@ function AnimatedProgressBar({ progress, color = "#B45309" }: { progress: number
 
 export default function LoyaltyScreen() {
   useScreenTracking("Loyalty");
+  const { t } = useTranslation();
+  const lp = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.loyaltyPoints.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const [data, setData] = useState<LoyaltyData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,18 +111,18 @@ export default function LoyaltyScreen() {
       const res = await api.get<LoyaltyData>("/api/me/loyalty-points");
       if (res.error) {
         const fallback = await api.get<LoyaltyData>("/api/me/loyalty");
-        if (fallback.error) setError(fallback.error.message || "Failed to load");
+        if (fallback.error) setError(fallback.error.message || lp("loadFailed"));
         else setData(fallback.data);
       } else {
         setData(res.data);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : lp("loadFailed"));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [lp]);
 
   useEffect(() => {
     load();
@@ -129,26 +138,27 @@ export default function LoyaltyScreen() {
   const rate = data?.redemption_rate ?? data?.conversion?.rate ?? 100;
   const currency = data?.redemption_currency ?? data?.conversion?.currency ?? getTenantDefaultCurrency();
   const redemptionValue = data?.redemption_value ?? (rate > 0 ? points / rate : 0);
-  const earnDesc = data?.earning_rate_description ?? "Earn points with every booking";
+  const earnDesc = data?.earning_rate_description ?? lp("earnPointsDefault");
   const minRedeem = data?.minimum_redemption ?? data?.config?.min_redemption_points ?? 100;
   const canRedeem = points > 0 && points >= minRedeem;
 
   async function handleRedeem() {
     if (!canRedeem) {
       haptic.warning();
-      Alert.alert(
-        "Not Enough Points",
-        `You need at least ${minRedeem} points to redeem. Keep booking to earn more!`,
-      );
+      Alert.alert(lp("notEnoughPointsTitle"), lp("notEnoughPointsBody", { minRedeem: String(minRedeem) }));
       return;
     }
     Alert.alert(
-      "Redeem Points",
-      `Redeem ${points} points for ${currency} ${redemptionValue.toFixed(2)} wallet credit?`,
+      lp("redeemConfirmTitle"),
+      lp("redeemConfirmBody", {
+        points: String(points),
+        currency,
+        amount: redemptionValue.toFixed(2),
+      }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Redeem",
+          text: lp("redeemButton"),
           onPress: async () => {
             haptic.medium();
             setRedeeming(true);
@@ -156,15 +166,18 @@ export default function LoyaltyScreen() {
               const res = await api.post("/api/me/loyalty/redeem", { points });
               if (res.error) {
                 haptic.error();
-                Alert.alert("Error", res.error.message || "Redemption failed");
+                Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message || lp("redemptionFailed"));
               } else {
                 haptic.success();
-                Alert.alert("Success", "Points redeemed to your wallet!");
+                Alert.alert(lp("redeemSuccessTitle"), lp("redeemSuccessBody"));
                 load(true);
               }
             } catch (e) {
               haptic.error();
-              Alert.alert("Error", e instanceof Error ? e.message : "Redemption failed");
+              Alert.alert(
+                t("customer.mobile.screens.authLogin.errorTitle"),
+                e instanceof Error ? e.message : lp("redemptionFailed"),
+              );
             } finally {
               setRedeeming(false);
             }
@@ -179,7 +192,7 @@ export default function LoyaltyScreen() {
     const code = data?.referral_code ?? "BEAUTONOMI";
     try {
       await Share.share({
-        message: `Join me on Beautonomi and we both earn bonus loyalty points! Use my referral code: ${code}\n\nDownload: https://beautonomi.com/download`,
+        message: lp("referralShareMessage", { code }),
       });
       haptic.success();
     } catch {
@@ -197,11 +210,15 @@ export default function LoyaltyScreen() {
     });
   }
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "overview", label: "Overview" },
-    { key: "history", label: "History" },
-    { key: "milestones", label: "Milestones" },
-  ];
+  const tabs = useMemo(
+    () =>
+      [
+        { key: "overview" as const, label: lp("tabOverview") },
+        { key: "history" as const, label: lp("tabHistory") },
+        { key: "milestones" as const, label: lp("tabMilestones") },
+      ] satisfies { key: Tab; label: string }[],
+    [lp],
+  );
 
   return (
     <ScreenFrame
@@ -255,15 +272,15 @@ export default function LoyaltyScreen() {
           <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "600", color: "#3730A3" }}>Share & Earn Bonus Points</Text>
         </TouchableOpacity>
         <View style={{ flexDirection: "row", marginBottom: 16, borderRadius: 12, backgroundColor: Colors.gray[100], padding: 4 }}>
-          {tabs.map((t) => (
+          {tabs.map((row) => (
             <TouchableOpacity
-              key={t.key}
-              onPress={() => { setTab(t.key); haptic.light(); }}
-              style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: tab === t.key ? Colors.white : "transparent" }}
+              key={row.key}
+              onPress={() => { setTab(row.key); haptic.light(); }}
+              style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: tab === row.key ? Colors.white : "transparent" }}
               accessibilityRole="tab"
-              accessibilityState={{ selected: tab === t.key }}
+              accessibilityState={{ selected: tab === row.key }}
             >
-              <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: tab === t.key ? Colors.gray[900] : Colors.gray[600] }}>{t.label}</Text>
+              <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: tab === row.key ? Colors.gray[900] : Colors.gray[600] }}>{row.label}</Text>
             </TouchableOpacity>
           ))}
         </View>

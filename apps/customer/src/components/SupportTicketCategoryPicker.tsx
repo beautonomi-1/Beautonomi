@@ -18,6 +18,7 @@ import {
   labelForSupportTicketCategory,
   SUPPORT_TICKET_ALL_ITEMS,
 } from "@/lib/supportTicketCategoryPresets";
+import { useTranslation } from "@beautonomi/i18n";
 
 type CategoryRow = { value: string; label: string };
 type CategorySection = { title: string; data: CategoryRow[] };
@@ -28,6 +29,7 @@ interface SupportTicketCategoryPickerProps {
 }
 
 export function SupportTicketCategoryPicker({ value, onChange }: SupportTicketCategoryPickerProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -44,8 +46,13 @@ export function SupportTicketCategoryPicker({ value, onChange }: SupportTicketCa
     );
     return matches.length === 0
       ? []
-      : [{ title: "Search results", data: matches.map(({ value: v, label: l }) => ({ value: v, label: l })) }];
-  }, [query]);
+      : [
+          {
+            title: t("customer.mobile.components.supportTicketCategory.searchResultsSection"),
+            data: matches.map(({ value: v, label: l }) => ({ value: v, label: l })),
+          },
+        ];
+  }, [query, t]);
 
   const select = useCallback(
     (v: string) => {
@@ -76,11 +83,13 @@ export function SupportTicketCategoryPicker({ value, onChange }: SupportTicketCa
           paddingHorizontal: 14,
           paddingVertical: 12,
         }}
-        accessibilityLabel="Choose support ticket category"
+        accessibilityLabel={t("customer.mobile.components.supportTicketCategory.chooseCategoryA11y")}
         accessibilityRole="button"
       >
         <View style={{ flex: 1, marginRight: 8 }}>
-          <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[500], marginBottom: 2 }}>CATEGORY</Text>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[500], marginBottom: 2 }}>
+            {t("customer.mobile.components.supportTicketCategory.categoryFieldLabel")}
+          </Text>
           <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={2}>
             {labelForSupportTicketCategory(value)}
           </Text>
@@ -104,9 +113,17 @@ export function SupportTicketCategoryPicker({ value, onChange }: SupportTicketCa
               borderBottomColor: Colors.gray[100],
             }}
           >
-            <Text style={{ fontSize: 17, fontWeight: "700", color: Colors.gray[900] }}>Category</Text>
-            <TouchableOpacity onPress={() => setOpen(false)} hitSlop={12} accessibilityLabel="Close">
-              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.primary }}>Done</Text>
+            <Text style={{ fontSize: 17, fontWeight: "700", color: Colors.gray[900] }}>
+              {t("customer.mobile.components.supportTicketCategory.modalTitle")}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setOpen(false)}
+              hitSlop={12}
+              accessibilityLabel={t("customer.mobile.components.supportTicketCategory.closeA11y")}
+            >
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.primary }}>
+                {t("customer.mobile.components.supportTicketCategory.done")}
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -123,7 +140,7 @@ export function SupportTicketCategoryPicker({ value, onChange }: SupportTicketCa
               <Ionicons name="search" size={18} color={Colors.gray[400]} />
               <TextInput
                 style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, fontSize: 15, color: Colors.gray[900] }}
-                placeholder="Search categories…"
+                placeholder={t("customer.mobile.components.supportTicketCategory.searchPlaceholder")}
                 placeholderTextColor={Colors.gray[400]}
                 value={query}
                 onChangeText={setQuery}
