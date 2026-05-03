@@ -214,6 +214,12 @@ export default function StepPayment({
     Array<{ id: string; package_id: string; sessions_remaining: number; valid_from?: string | null; valid_until?: string | null }>
   >([]);
   const [packageEntitlementsLoading, setPackageEntitlementsLoading] = useState(false);
+  // Package catalog for the at-checkout picker (canonical pattern: package
+  // can only be applied here, mirroring customer-app `book-checkout.tsx`).
+  const [packageCatalog, setPackageCatalog] = useState<
+    Array<{ id: string; name: string; description?: string | null; price: number; currency: string; discount_percentage?: number | null }>
+  >([]);
+  const [packageCatalogLoading, setPackageCatalogLoading] = useState(false);
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -431,6 +437,55 @@ export default function StepPayment({
       cancelled = true;
     };
   }, [user?.id, bookingState.providerId, bookingState.selectedPackage?.id, updateBookingState]);
+
+  // Load this provider's published service packages so the customer can apply
+  // one at the confirmation step (parity with customer-app book-checkout).
+  useEffect(() => {
+    const slug =
+      searchParams.get("slug") ||
+      searchParams.get("partnerId") ||
+      searchParams.get("provider_id") ||
+      bookingState.providerId ||
+      "";
+    if (!slug) {
+      setPackageCatalog([]);
+      return;
+    }
+    let cancelled = false;
+    setPackageCatalogLoading(true);
+    fetcher
+      .get<{ data?: unknown } | unknown[]>(`/api/public/providers/${encodeURIComponent(slug)}/packages`)
+      .then((res) => {
+        if (cancelled) return;
+        const raw = (res as { data?: unknown } | unknown) ?? null;
+        const inner =
+          raw && typeof raw === "object" && "data" in (raw as Record<string, unknown>) && !Array.isArray(raw)
+            ? (raw as { data: unknown }).data
+            : raw;
+        const arr = Array.isArray(inner) ? (inner as Array<Record<string, unknown>>) : [];
+        setPackageCatalog(
+          arr
+            .map((p) => ({
+              id: String(p.id ?? ""),
+              name: String(p.name ?? "Package"),
+              description: (p.description as string | null | undefined) ?? null,
+              price: Number(p.price) || 0,
+              currency: String(p.currency ?? tenantCurrency),
+              discount_percentage: p.discount_percentage != null ? Number(p.discount_percentage) : null,
+            }))
+            .filter((p) => p.id),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setPackageCatalog([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPackageCatalogLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, bookingState.providerId, tenantCurrency]);
 
   // Fetch provider online booking settings: tip suggestions, deposit requirements
   useEffect(() => {
@@ -1168,6 +1223,92 @@ export default function StepPayment({
           </div>
         )}
 
+        {/* Apply-a-package picker (canonical: only here, mirrors customer-app `book-checkout.tsx`) */}
+        {packageCatalog.length > 0 && (
+          <div className="p-4 bg-violet-50/60 border border-violet-200/70 rounded-lg space-y-3">
+            <div className="flex items-center gap-2">
+              <Gift className="w-5 h-5 text-violet-700 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  {bookingState.selectedPackage?.id ? "Package applied" : "Apply a package (optional)"}
+                </p>
+                <p className="text-xs text-gray-600">
+                  Bundle pricing is applied at this step — pick one to use it for this booking.
+                </p>
+              </div>
+            </div>
+            {packageCatalogLoading ? (
+              <p className="text-sm text-gray-500">Loading packages…</p>
+            ) : (
+              <div className="space-y-2">
+                {packageCatalog.map((pkg) => {
+                  const selected = bookingState.selectedPackage?.id === pkg.id;
+                  return (
+                    <button
+                      type="button"
+                      key={pkg.id}
+                      onClick={() => {
+                        if (selected) {
+                          updateBookingState({ selectedPackage: undefined, customerPackageEntitlementId: null });
+                        } else {
+                          updateBookingState({
+                            selectedPackage: {
+                              id: pkg.id,
+                              title: pkg.name,
+                              price: pkg.price,
+                              discount: pkg.discount_percentage ?? 0,
+                            },
+                            customerPackageEntitlementId: null,
+                          });
+                        }
+                      }}
+                      className={cn(
+                        "w-full text-left flex items-start gap-3 rounded-lg border p-3 transition-colors",
+                        selected
+                          ? "border-violet-500 bg-white ring-1 ring-violet-300"
+                          : "border-gray-200 bg-white hover:border-violet-300",
+                      )}
+                      aria-pressed={selected}
+                    >
+                      <span
+                        className={cn(
+                          "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                          selected ? "border-violet-600 bg-violet-600 text-white" : "border-gray-300 bg-white text-transparent",
+                        )}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate">{pkg.name}</p>
+                        {pkg.description ? (
+                          <p className="text-xs text-gray-600 line-clamp-2 mt-0.5">{pkg.description}</p>
+                        ) : null}
+                      </div>
+                      <span className="text-sm font-semibold text-gray-900 shrink-0">
+                        {formatCurrency(pkg.price, pkg.currency)}
+                        {pkg.discount_percentage != null && pkg.discount_percentage > 0 ? (
+                          <span className="ml-1 text-xs font-medium text-emerald-600">·Save {pkg.discount_percentage}%</span>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
+                {bookingState.selectedPackage?.id && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateBookingState({ selectedPackage: undefined, customerPackageEntitlementId: null })
+                    }
+                    className="text-xs font-medium text-violet-700 hover:text-violet-900"
+                  >
+                    Remove package
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {user && bookingState.selectedPackage?.id && bookingState.providerId && (
           <div className="p-4 bg-amber-50/80 border border-amber-200/80 rounded-lg space-y-2">
             <div className="flex items-center gap-2">
@@ -1251,7 +1392,7 @@ export default function StepPayment({
           )}
           {bookingState.promotions.membershipDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
-              <span>Membership Discount</span>
+              <span>{bookingState.promotions.membershipPlanName || "Membership"}</span>
               <span>-{formatCurrency(bookingState.promotions.membershipDiscount, totals.currency)}</span>
             </div>
           )}

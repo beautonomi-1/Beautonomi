@@ -9,7 +9,6 @@ import { EVENT_CHECKOUT_START } from "@/lib/analytics/amplitude/types";
 import StepVenueChoice from "./steps/step-venue-choice";
 import StepServiceSelection from "./steps/step-service-selection";
 import StepGroupParticipants from "./steps/step-group-participants";
-import StepPackages from "./steps/step-packages";
 import StepCalendar from "./steps/step-calendar";
 import StepPromotions from "./steps/step-promotions";
 import StepYourInfo from "./steps/step-your-info";
@@ -44,7 +43,7 @@ import { isCompleteE164 } from "@/lib/phone";
 const BOOKING_CLIENT_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type BookingMode = "salon" | "mobile";
-export type BookingStep = "services" | "groupParticipants" | "venue" | "packages" | "calendar" | "promotions" | "yourInfo" | "forms" | "payment";
+export type BookingStep = "services" | "groupParticipants" | "venue" | "calendar" | "promotions" | "yourInfo" | "forms" | "payment";
 
 export interface BookingState {
   mode: BookingMode | null;
@@ -127,6 +126,7 @@ export interface BookingState {
     loyaltyDiscount?: number;
     membershipDiscount?: number;
     membershipPlanId?: string;
+    membershipPlanName?: string;
   };
   selectedPackage?: {
     id: string;
@@ -205,7 +205,12 @@ export interface BookingState {
   idempotencyKey?: string;
 }
 
-const STEP_ORDER: BookingStep[] = ["services", "groupParticipants", "venue", "packages", "calendar", "promotions", "yourInfo", "forms", "payment"];
+// Note: "packages" is no longer in the canonical step order. Packages are
+// applied at the confirmation/payment step (mirrors customer-app `book-checkout.tsx`).
+// Deep-links via `?package=` / `?package_id=` still prefill `selectedPackage`
+// in state, and the payment step renders a picker for users who want to
+// apply a package without arriving from a deep link.
+const STEP_ORDER: BookingStep[] = ["services", "groupParticipants", "venue", "calendar", "promotions", "yourInfo", "forms", "payment"];
 
 const slideVariants = {
   enter: (direction: number) => ({
@@ -276,8 +281,9 @@ export default function BookingFlow() {
   const checkoutTrackedRef = useRef(false);
   const prevFlowKeyRef = useRef<string | null>(null);
   const [direction, setDirection] = useState(0);
-  /** When false and no URL/deeplink package, the packages step is omitted (empty catalog). */
-  const [providerHasPackages, setProviderHasPackages] = useState<boolean | null>(null);
+  // Packages no longer drive a dedicated step. The payment step fetches the
+  // package catalog itself when rendering the picker, so we don't need to
+  // know provider-has-packages at the flow level any more.
   /**
    * B11: null = not yet loaded (keep the step in order so we never black-flash
    * past it); false = provider has no forms AND no booking custom-field defs
@@ -383,33 +389,17 @@ export default function BookingFlow() {
   );
 
   /**
-   * When `?package=` / `?package_id=` only (no direct service/product), packages step is first.
-   * If customer came via `?service=` / `?product_id=` etc., stay on canonical order and omit the packages step
-   * from this array so indices align with `effectiveStepOrder` (next/back never land on a ghost packages step).
+   * Packages no longer have a dedicated step. URL deep-links (`?package=` /
+   * `?package_id=`) are honoured via the prefill logic that populates
+   * `selectedPackage` directly. The package picker now lives on the payment
+   * (confirmation) step. We retain `serviceDirect` / `productDirect` flags
+   * for future use.
    */
   const activeStepOrder = useMemo((): BookingStep[] => {
-    const pkgPinned = Boolean(
-      searchParams.get("package")?.trim() || searchParams.get("package_id")?.trim()
-    );
-    let steps: BookingStep[];
-    if (!pkgPinned || serviceDirect || productDirect) {
-      steps = [...STEP_ORDER];
-    } else {
-      const rest = STEP_ORDER.filter((s) => s !== "packages");
-      const at = rest.indexOf("services");
-      if (at >= 0) {
-        steps = [...rest];
-        steps.splice(at, 0, "packages");
-      } else {
-        steps = ["packages", ...rest] as BookingStep[];
-      }
-    }
-    if (serviceDirect || productDirect) {
-      const ix = steps.indexOf("packages");
-      if (ix > -1) steps.splice(ix, 1);
-    }
-    return steps;
-  }, [searchParams, serviceDirect, productDirect]);
+    void serviceDirect;
+    void productDirect;
+    return [...STEP_ORDER];
+  }, [serviceDirect, productDirect]);
 
   useEffect(() => {
     setCurrentStepIndex((i) => Math.max(0, Math.min(i, activeStepOrder.length - 1)));
@@ -483,27 +473,6 @@ export default function BookingFlow() {
     };
   }, [bookingState.providerId]);
 
-  useEffect(() => {
-    const slug = searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id");
-    if (!slug) {
-      setProviderHasPackages(null);
-      return;
-    }
-    let cancelled = false;
-    fetch(`/api/public/providers/${encodeURIComponent(slug)}/packages`)
-      .then((r) => r.json())
-      .then((j: { data?: unknown }) => {
-        const list = Array.isArray(j?.data) ? j.data : [];
-        if (!cancelled) setProviderHasPackages(list.length > 0);
-      })
-      .catch(() => {
-        if (!cancelled) setProviderHasPackages(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [searchParams]);
-
   // Load effective platform fee settings for this provider.
   // Pass provider_id so the API mirrors validate-booking priority:
   // provider customer_fee_config → platform_settings.payouts fallback.
@@ -532,8 +501,56 @@ export default function BookingFlow() {
     void loadPlatformFeeSettings();
   }, [bookingState.providerId]);
 
-  // Membership discount is applied server-side from provider membership plans (user_memberships) in validate-booking
-  const membershipDiscountPercent = 0;
+  // Customer-facing membership preview: membership discount is computed authoritatively by the
+  // server in validate-booking, but we still preview it here so the action bar / payment step
+  // show the correct subtotal-after-membership, tax base, and Platform fee base before submit.
+  // Source: GET /api/me/membership → provider_memberships[].discount_percent for current providerId.
+  const [membershipDiscountPercent, setMembershipDiscountPercent] = useState<number>(0);
+  const [membershipPlanId, setMembershipPlanId] = useState<string | null>(null);
+  const [membershipPlanName, setMembershipPlanName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!bookingState.providerId) {
+      setMembershipDiscountPercent(0);
+      setMembershipPlanId(null);
+      setMembershipPlanName(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/me/membership", {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        const list = (json?.data?.provider_memberships ?? []) as Array<{
+          plan_id?: string;
+          plan_name?: string;
+          provider_id?: string;
+          discount_percent?: number;
+        }>;
+        const match = list.find((m) => m?.provider_id === bookingState.providerId);
+        if (cancelled) return;
+        const pct = match ? Number(match.discount_percent) : 0;
+        if (Number.isFinite(pct) && pct > 0 && pct <= 100) {
+          setMembershipDiscountPercent(pct);
+          setMembershipPlanId(match?.plan_id ?? null);
+          setMembershipPlanName((match?.plan_name?.trim() || null) ?? null);
+        } else {
+          setMembershipDiscountPercent(0);
+          setMembershipPlanId(null);
+          setMembershipPlanName(null);
+        }
+      } catch {
+        // Membership preview is optional; never block the flow.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bookingState.providerId]);
 
   // Calculate membership discount, tax, and Platform Fee whenever relevant values change
   useEffect(() => {
@@ -593,6 +610,8 @@ export default function BookingFlow() {
       promotions: {
         ...prev.promotions,
         membershipDiscount,
+        membershipPlanId: membershipPlanId ?? prev.promotions.membershipPlanId,
+        membershipPlanName: membershipPlanName ?? prev.promotions.membershipPlanName,
       },
       taxAmount,
       serviceFeeAmount: platformFeeSettings.show_service_fee_to_customer ? serviceFeeAmount : 0,
@@ -607,6 +626,8 @@ export default function BookingFlow() {
     bookingState.promotions.giftCardAmount,
     bookingState.promotions.loyaltyDiscount,
     membershipDiscountPercent,
+    membershipPlanId,
+    membershipPlanName,
     bookingState.taxRate,
     platformFeeSettings,
   ]);
@@ -683,13 +704,6 @@ export default function BookingFlow() {
       const index = steps.indexOf("groupParticipants");
       if (index > -1) steps.splice(index, 1);
     }
-    const pkgPinned = Boolean(
-      searchParams.get("package")?.trim() || searchParams.get("package_id")?.trim()
-    );
-    if (providerHasPackages === false && !pkgPinned && !bookingState.selectedPackage) {
-      const index = steps.indexOf("packages");
-      if (index > -1) steps.splice(index, 1);
-    }
     // B11: drop the forms step when the provider has nothing configured AND no
     // booking-level custom fields exist. While loading (null) we keep the step
     // in the order; StepForms shows a spinner and auto-advances once it
@@ -703,10 +717,7 @@ export default function BookingFlow() {
     user,
     bookingState.clientInfo,
     bookingState.isGroupBooking,
-    bookingState.selectedPackage,
-    providerHasPackages,
     hasFormsStep,
-    searchParams,
     activeStepOrder,
   ]);
 
@@ -925,7 +936,7 @@ export default function BookingFlow() {
   const handleNextRef = useRef(handleNext);
   handleNextRef.current = handleNext;
 
-  /** Navigate by index into `activeStepOrder` (order changes when `?package=` pins packages first). */
+  /** Navigate by index into `activeStepOrder` (canonical booking steps only). */
   const navigateToBookingStep = useCallback((stepIndex: number) => {
     setCurrentStepIndex(Math.max(0, Math.min(activeStepOrder.length - 1, stepIndex)));
   }, [activeStepOrder.length]);
@@ -1191,16 +1202,9 @@ export default function BookingFlow() {
     };
   }, [bookingState.selectedPackage?.id, bookingState.selectedServices, bookingState.selectedProducts, searchParams]);
 
-  /** Skip the packages step when the URL package is already applied (same UX as empty packages list). */
-  useEffect(() => {
-    if (currentStep !== "packages") return;
-    const pkgId = searchParams.get("package")?.trim() || searchParams.get("package_id")?.trim();
-    if (!pkgId || bookingState.selectedPackage?.id !== pkgId) return;
-    const t = setTimeout(() => {
-      handleNextRef.current();
-    }, 80);
-    return () => clearTimeout(t);
-  }, [currentStep, searchParams, bookingState.selectedPackage?.id]);
+  // Note: the packages step has been removed. Package deep-links (`?package=...`)
+  // populate `bookingState.selectedPackage` via prefill above; users who want
+  // to apply a package without a deep link do so on the payment step picker.
 
   const canProceed = () => {
     switch (currentStep) {
@@ -1231,8 +1235,6 @@ export default function BookingFlow() {
         }
         // For mobile, address is required
         return bookingState.address !== null;
-      case "packages":
-        return true; // Optional step
       case "calendar":
         return bookingState.selectedDate !== null && bookingState.selectedTimeSlot !== null;
       case "promotions":
@@ -1274,8 +1276,6 @@ export default function BookingFlow() {
         return "Add Participants";
       case "venue":
         return "How would you like your service?";
-      case "packages":
-        return "Select Package";
       case "calendar":
         return "Choose Date & Time";
       case "promotions":
@@ -1402,13 +1402,6 @@ export default function BookingFlow() {
                 />
               ) : currentStep === "venue" ? (
                 <StepVenueChoice
-                  bookingState={bookingState}
-                  updateBookingState={updateBookingState}
-                  onNext={handleNext}
-                  providerSlug={searchParams.get("slug") || searchParams.get("partnerId") || searchParams.get("provider_id") || ""}
-                />
-              ) : currentStep === "packages" ? (
-                <StepPackages
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
                   onNext={handleNext}

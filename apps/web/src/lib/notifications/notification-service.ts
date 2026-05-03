@@ -243,12 +243,35 @@ export async function notifyBookingConfirmed(bookingId: string, channels?: Notif
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
+  // Customer-facing pricing lines, exposed as template variables so admin
+  // email/SMS templates can include "Platform fee: {{platform_fee}}" or
+  // "{{membership_label}}: −{{membership_discount}}". Empty when zero so
+  // templates with conditional placeholders render cleanly.
+  const currency = bookingCurrency(booking);
+  const platformFeeAmt = Number(
+    booking.platform_fee_amount ?? booking.service_fee_amount ?? 0,
+  );
+  const membershipDiscountAmt = Number(booking.membership_discount_amount ?? 0);
+  const subtotalAmt = Number(booking.subtotal ?? 0);
+  const taxAmt = Number(booking.tax_amount ?? 0);
+  const tipAmt = Number(booking.tip_amount ?? 0);
+  const travelFeeAmt = Number(booking.travel_fee ?? 0);
+
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
     booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
     booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
-    total_amount: fmt(booking.total_amount || 0, bookingCurrency(booking)),
+    total_amount: fmt(booking.total_amount || 0, currency),
+    subtotal: subtotalAmt > 0 ? fmt(subtotalAmt, currency) : "",
+    tax_amount: taxAmt > 0 ? fmt(taxAmt, currency) : "",
+    travel_fee: travelFeeAmt > 0 ? fmt(travelFeeAmt, currency) : "",
+    platform_fee: platformFeeAmt > 0 ? fmt(platformFeeAmt, currency) : "",
+    /** Legacy alias mirroring DB columns; same value as platform_fee. */
+    service_fee: platformFeeAmt > 0 ? fmt(platformFeeAmt, currency) : "",
+    membership_discount: membershipDiscountAmt > 0 ? fmt(membershipDiscountAmt, currency) : "",
+    membership_label: membershipDiscountAmt > 0 ? "Membership" : "",
+    tip_amount: tipAmt > 0 ? fmt(tipAmt, currency) : "",
     booking_number: booking.booking_number || bookingId,
     booking_id: bookingId,
   };

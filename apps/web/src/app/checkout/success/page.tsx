@@ -16,6 +16,21 @@ const TEXT_SECONDARY = "#6B7280";
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 15;
 
+function formatMoney(amount: number, currency: string | undefined): string {
+  const cur = (currency || "").trim();
+  const value = Number.isFinite(amount) ? amount : 0;
+  if (!cur) return value.toFixed(2);
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: cur,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${cur} ${value.toFixed(2)}`;
+  }
+}
+
 /** Deep link scheme for customer mobile app (opens app to a specific screen when installed) */
 const CUSTOMER_APP_SCHEME = "customer";
 function appDeepLink(path: string, params?: Record<string, string>): string {
@@ -123,6 +138,19 @@ function CheckoutSuccessContent() {
     location?: { address?: string; name?: string };
     address?: { line1?: string; line2?: string; city?: string };
     location_type?: string;
+    /** Pricing breakdown — same fields surfaced by /api/me/bookings/[id]; mirrors /booking/confirmation. */
+    subtotal?: number;
+    travel_fee?: number;
+    tax_amount?: number;
+    tax_rate?: number;
+    service_fee_amount?: number;
+    platform_fee_amount?: number;
+    membership_discount_amount?: number;
+    loyalty_discount_amount?: number;
+    loyalty_points_used?: number;
+    promotion_discount_amount?: number;
+    discount_amount?: number;
+    tip_amount?: number;
   } | null>(null);
 
   const bookingForCalendar = bookingData;
@@ -435,6 +463,126 @@ function CheckoutSuccessContent() {
             </div>
           </div>
         )}
+
+        {/* ── PRICING BREAKDOWN ──
+            Mirrors /booking/confirmation so customers see Membership, Platform fee
+            and other line items here too (this is the page that express-link / hold
+            consume / Paystack callback all land on).
+        */}
+        {bookingForCalendar && !isWaitlist && (() => {
+          const cur = bookingForCalendar.currency;
+          const travel = Number(bookingForCalendar.travel_fee ?? 0);
+          const sub = Math.max(0, Number(bookingForCalendar.subtotal ?? 0) - travel);
+          const tax = Number(bookingForCalendar.tax_amount ?? 0);
+          const taxRate = Number(bookingForCalendar.tax_rate ?? 0);
+          // platform_fee_amount is the canonical name; service_fee_amount is the legacy alias
+          // both come from /api/me/bookings/[id] for parity with provider/admin views.
+          const platformFee = Number(
+            bookingForCalendar.platform_fee_amount ?? bookingForCalendar.service_fee_amount ?? 0,
+          );
+          const loyalty = Number(bookingForCalendar.loyalty_discount_amount ?? 0);
+          const loyaltyPts = Number(bookingForCalendar.loyalty_points_used ?? 0);
+          const membership = Number(bookingForCalendar.membership_discount_amount ?? 0);
+          const promo = Number(bookingForCalendar.promotion_discount_amount ?? 0);
+          const coupon = Number(bookingForCalendar.discount_amount ?? 0);
+          const tip = Number(bookingForCalendar.tip_amount ?? 0);
+          const giftCard = Number(bookingForCalendar.gift_card_amount ?? 0);
+          const total = Number(bookingForCalendar.total_amount ?? 0);
+          const hasAnyLine =
+            sub > 0 ||
+            tax > 0 ||
+            platformFee > 0 ||
+            travel > 0 ||
+            loyalty > 0 ||
+            membership > 0 ||
+            promo > 0 ||
+            coupon > 0 ||
+            tip > 0 ||
+            giftCard > 0;
+          if (!hasAnyLine && total <= 0) return null;
+          return (
+            <div
+              className="rounded-3xl border overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-125"
+              style={{ background: "#fff", borderColor: "rgba(0,0,0,0.06)", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}
+            >
+              <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(0,0,0,0.06)", background: `${ACCENT}06` }}>
+                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: ACCENT }}>
+                  Payment summary
+                </p>
+              </div>
+              <div className="px-6 py-5 space-y-1.5 text-sm">
+                {sub > 0 && (
+                  <div className="flex justify-between" style={{ color: TEXT_SECONDARY }}>
+                    <span>Subtotal</span>
+                    <span>{formatMoney(sub, cur)}</span>
+                  </div>
+                )}
+                {loyalty > 0 && (
+                  <div className="flex justify-between" style={{ color: "#047857" }}>
+                    <span>
+                      Loyalty{loyaltyPts > 0 ? ` (${loyaltyPts.toLocaleString()} pts)` : ""}
+                    </span>
+                    <span>−{formatMoney(loyalty, cur)}</span>
+                  </div>
+                )}
+                {membership > 0 && (
+                  <div className="flex justify-between" style={{ color: "#047857" }}>
+                    <span>Membership</span>
+                    <span>−{formatMoney(membership, cur)}</span>
+                  </div>
+                )}
+                {promo > 0 && (
+                  <div className="flex justify-between" style={{ color: "#047857" }}>
+                    <span>Promotion</span>
+                    <span>−{formatMoney(promo, cur)}</span>
+                  </div>
+                )}
+                {coupon > 0 && (
+                  <div className="flex justify-between" style={{ color: "#047857" }}>
+                    <span>Discount</span>
+                    <span>−{formatMoney(coupon, cur)}</span>
+                  </div>
+                )}
+                {giftCard > 0 && (
+                  <div className="flex justify-between" style={{ color: "#047857" }}>
+                    <span>Gift card</span>
+                    <span>−{formatMoney(giftCard, cur)}</span>
+                  </div>
+                )}
+                {travel > 0 && (
+                  <div className="flex justify-between" style={{ color: TEXT_SECONDARY }}>
+                    <span>Travel</span>
+                    <span>{formatMoney(travel, cur)}</span>
+                  </div>
+                )}
+                {tax > 0 && (
+                  <div className="flex justify-between" style={{ color: TEXT_SECONDARY }}>
+                    <span>Tax{taxRate > 0 ? ` (${taxRate}%)` : ""}</span>
+                    <span>{formatMoney(tax, cur)}</span>
+                  </div>
+                )}
+                {platformFee > 0 && (
+                  <div className="flex justify-between" style={{ color: TEXT_SECONDARY }}>
+                    <span>Platform fee</span>
+                    <span>{formatMoney(platformFee, cur)}</span>
+                  </div>
+                )}
+                {tip > 0 && (
+                  <div className="flex justify-between" style={{ color: TEXT_SECONDARY }}>
+                    <span>Tip</span>
+                    <span>{formatMoney(tip, cur)}</span>
+                  </div>
+                )}
+                {total > 0 && (
+                  <div className="mt-2 pt-3 flex justify-between font-semibold" style={{ color: TEXT_PRIMARY, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                    <span>Total</span>
+                    <span>{formatMoney(total, cur)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── ADD TO CALENDAR ── */}
         {calendarEvent && !isWaitlist && (

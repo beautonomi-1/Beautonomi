@@ -490,7 +490,7 @@ export default function StepPromotions({
         )}
         {bookingState.promotions.membershipDiscount && (
           <div className="flex justify-between text-sm text-green-600">
-            <span>Membership Discount</span>
+            <span>{bookingState.promotions.membershipPlanName || "Membership"}</span>
             <span>-{formatCurrency(bookingState.promotions.membershipDiscount, tenantCurrency)}</span>
           </div>
         )}

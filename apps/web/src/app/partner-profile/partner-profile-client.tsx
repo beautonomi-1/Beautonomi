@@ -31,9 +31,10 @@ const tabChunkFallback = (
   </div>
 );
 
-const PartnerPackages = dynamic(() => import("./components/partner-packages").then((m) => m.default), {
-  loading: () => tabChunkFallback,
-});
+// Service packages live on the booking checkout/payment step (canonical pattern).
+// We intentionally do not show a separate "Packages" tab on the profile so the
+// package only ever attaches at the confirmation step, matching the customer
+// app's `book-checkout.tsx` flow. See: apps/web/src/app/booking/components/steps/step-payment.tsx.
 const PartnerProducts = dynamic(() => import("./components/partner-products").then((m) => m.default), {
   loading: () => tabChunkFallback,
 });
@@ -188,7 +189,6 @@ export default function PartnerProfileClient({
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
               <TabsTrigger value="services" className={tabTriggerClass}>Services</TabsTrigger>
-              <TabsTrigger value="packages" className={tabTriggerClass}>Packages</TabsTrigger>
               <TabsTrigger value="shop" className={tabTriggerClass}>Shop</TabsTrigger>
               <TabsTrigger value="photos" className={tabTriggerClass}>Photos</TabsTrigger>
               {provider.business_type === "salon" && provider.staff_count && provider.staff_count > 0 && (
@@ -210,9 +210,6 @@ export default function PartnerProfileClient({
               id={provider.id}
               initialServiceCategories={initialServiceCategories}
             />
-          </TabsContent>
-          <TabsContent value="packages" className="mt-0">
-            <PartnerPackages slug={provider.slug} />
           </TabsContent>
           <TabsContent value="shop" className="mt-0">
             <PartnerProducts slug={provider.slug} />
