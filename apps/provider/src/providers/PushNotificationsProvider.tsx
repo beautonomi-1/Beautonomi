@@ -7,7 +7,7 @@
  * Notification templates are configured from the superadmin portal.
  */
 import { useEffect, useRef, useState } from "react";
-import { Platform, Vibration } from "react-native";
+import { Linking, Platform, Vibration } from "react-native";
 import { router } from "expo-router";
 import type {
   NotificationClickEvent,
@@ -59,6 +59,26 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       data.on_demand_request_id ?? data.id ?? "",
     );
     const productOrderId = String(data.product_order_id ?? data.order_id ?? "").trim();
+    const broadcastDeepLink =
+      typeof data.url === "string"
+        ? data.url.trim()
+        : typeof data.deep_link === "string"
+          ? String(data.deep_link).trim()
+          : "";
+
+    if (type === "admin_broadcast") {
+      const u = broadcastDeepLink;
+      if (u) {
+        if (u.startsWith("http://") || u.startsWith("https://")) {
+          void Linking.openURL(u);
+        } else {
+          router.push(u as never);
+        }
+      } else {
+        router.push("/(app)/notifications");
+      }
+      return;
+    }
 
     // ── Superadmin template pushes (OneSignal data = { template_key, ...variables }) ──
     if (templateKey === "provider_new_message") {
@@ -411,11 +431,21 @@ function usePushRegistration() {
           OneSignal.Notifications.addEventListener(
             "click",
             (event: NotificationClickEvent) => {
-              const additionalData = event.notification.additionalData as
-                | Record<string, unknown>
-                | undefined;
-              if (additionalData) {
-                handleNotificationRoute(additionalData);
+              const raw = event.notification as unknown as {
+                additionalData?: Record<string, unknown>;
+                launchURL?: string;
+              };
+              const additionalData = raw.additionalData;
+              const launchURL =
+                typeof raw.launchURL === "string" && raw.launchURL.trim()
+                  ? raw.launchURL.trim()
+                  : "";
+              const merged: Record<string, unknown> = {
+                ...(additionalData ?? {}),
+                ...(launchURL ? { url: launchURL, deep_link: launchURL } : {}),
+              };
+              if (Object.keys(merged).length > 0) {
+                handleNotificationRoute(merged);
               }
             },
           );

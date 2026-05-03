@@ -59,6 +59,18 @@ export function BroadcastComposePage() {
     enabled: allowed && channel === "push",
   });
 
+  const audiencePreviewQ = useQuery({
+    queryKey: ["broadcast-audience-preview", recipientType],
+    queryFn: () =>
+      adminApi.getJson<{ count?: number; mode?: string }>(
+        `/api/admin/broadcast/audience-preview?segment=${recipientType === "all_providers" ? "providers" : "customers"}`,
+        { timeoutMs: 25_000 },
+      ),
+    enabled:
+      allowed &&
+      (recipientType === "all_users" || recipientType === "all_providers"),
+  });
+
   const activeOneSignalConfig =
     recipientType === "all_providers"
       ? configQ.data?.onesignal_apps?.provider
@@ -115,22 +127,54 @@ export function BroadcastComposePage() {
         });
       }
       if (channel === "sms") {
-        return adminApi.postJson<{ message?: string }>("/api/admin/broadcast/sms", {
+        return adminApi.postJson<{
+          message?: string;
+          recipients?: number;
+          intended?: number;
+          failures?: number;
+          first_failure?: { error?: string } | null;
+        }>("/api/admin/broadcast/sms", {
           message: message.trim(),
           recipient_type: recipientType,
           user_ids,
+          app_type:
+            recipientType === "custom"
+              ? "customer" // SMS broadcasts target a phone, not a OneSignal app
+              : undefined,
+          url: url.trim() || undefined,
         });
       }
       if (!subject.trim()) throw new Error("Email broadcasts require a subject line.");
-      return adminApi.postJson<{ message?: string }>("/api/admin/broadcast/email", {
+      return adminApi.postJson<{
+        message?: string;
+        recipients?: number;
+        intended?: number;
+        failures?: number;
+        first_failure?: { error?: string } | null;
+      }>("/api/admin/broadcast/email", {
         subject: subject.trim(),
         message: message.trim(),
         recipient_type: recipientType,
         user_ids,
+        app_type:
+          recipientType === "custom"
+            ? "customer" // email is a single dedupe channel, app_type is informational
+            : undefined,
+        url: url.trim() || undefined,
       });
     },
     onSuccess: (res) => {
-      const r = res as { recipients?: number; message?: string; notification_id?: string; delivery?: string };
+      const r = res as {
+        recipients?: number;
+        intended?: number;
+        failures?: number;
+        message?: string;
+        notification_id?: string;
+        delivery?: string;
+        first_failure?: { error?: string } | null;
+        onesignal_recipients?: number | null;
+        onesignal_errors?: unknown[] | null;
+      };
       if (channel === "push") {
         const parts: string[] = [];
         if (typeof r.message === "string" && r.message.trim()) {
@@ -144,18 +188,36 @@ export function BroadcastComposePage() {
         } else {
           parts.push("Broadcast request completed.");
         }
+        if (typeof r.onesignal_recipients === "number") {
+          parts.push(`OneSignal reach: ${r.onesignal_recipients} device(s).`);
+          if (r.onesignal_recipients === 0) {
+            parts.push(
+              "Reach is zero — most likely no targeted user has logged into the right OneSignal app yet.",
+            );
+          }
+        }
+        if (Array.isArray(r.onesignal_errors) && r.onesignal_errors.length > 0) {
+          parts.push(
+            `OneSignal warnings: ${JSON.stringify(r.onesignal_errors).slice(0, 200)}`,
+          );
+        }
         if (r.notification_id) {
           parts.push(`OneSignal message id: ${r.notification_id}`);
         }
         setStatus(parts.join(" "));
         return;
       }
+      // Email / SMS: real Resend / Twilio path. Surface partial failures.
       if (typeof r.message === "string" && r.message.trim()) {
-        setStatus(r.message.trim());
+        if (r.first_failure?.error) {
+          setStatus(`${r.message.trim()} First failure: ${r.first_failure.error}`);
+        } else {
+          setStatus(r.message.trim());
+        }
         return;
       }
       if (typeof r.recipients === "number") {
-        setStatus(`Submitted for ${r.recipients} recipient(s).`);
+        setStatus(`Sent ${r.recipients} of ${r.intended ?? r.recipients} ${channel}.`);
         return;
       }
       setStatus("Sent.");
@@ -209,6 +271,25 @@ export function BroadcastComposePage() {
               <option value="custom">Custom user IDs</option>
             </select>
           </div>
+
+          {recipientType === "all_users" || recipientType === "all_providers" ? (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
+              <span className="font-medium">Audience preview: </span>
+              {audiencePreviewQ.isLoading
+                ? "Counting recipients…"
+                : audiencePreviewQ.isError
+                  ? "Could not load preview."
+                  : typeof audiencePreviewQ.data?.count === "number"
+                    ? `${audiencePreviewQ.data.count} user account(s)${audiencePreviewQ.data.mode ? ` (${audiencePreviewQ.data.mode})` : ""}. ${
+                        channel === "email"
+                          ? "Final reach depends on how many have an email on file."
+                          : channel === "sms"
+                            ? "Final reach depends on how many have a phone on file."
+                            : ""
+                      }`
+                    : "—"}
+            </div>
+          ) : null}
 
           {channel === "push" ? (
             <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-950">
@@ -305,17 +386,26 @@ export function BroadcastComposePage() {
             />
           </div>
 
-          {channel === "push" ? (
-            <div>
-              <label className="block text-xs font-medium text-gray-600">Deep link / launch URL (optional)</label>
-              <input
-                className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://… or app deep link"
-              />
-            </div>
-          ) : null}
+          <div>
+            <label className="block text-xs font-medium text-gray-600">
+              {channel === "push"
+                ? "Deep link / launch URL (optional)"
+                : channel === "email"
+                  ? "In-app deep link recorded with the broadcast (optional)"
+                  : "In-app deep link recorded with the broadcast (optional)"}
+            </label>
+            <input
+              className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder={channel === "push" ? "https://… or app deep link" : "/account-settings/notifications"}
+            />
+            {channel !== "push" ? (
+              <p className="mt-1 text-xs text-gray-500">
+                Tap target for the in-app inbox row mirrored from this broadcast. Leave blank to land on the notifications screen.
+              </p>
+            ) : null}
+          </div>
 
           {channel === "push" ? (
             <div>

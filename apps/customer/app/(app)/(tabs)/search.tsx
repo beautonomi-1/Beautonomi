@@ -23,6 +23,7 @@ import { ProviderCard } from "@/components/ProviderCard";
 import type { SearchResult, Category } from "@/types/api";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
 import { useTranslation } from "@beautonomi/i18n";
+import { captureError } from "@/lib/sentry";
 
 type Suggestion = {
   type: "service" | "provider" | "category";
@@ -53,6 +54,8 @@ export default function SearchScreen() {
   const { selectedAddress } = useSelectedAddress();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
+  const [noSuggestionMatches, setNoSuggestionMatches] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -133,25 +136,47 @@ export default function SearchScreen() {
   const onRefresh = () => search(true);
 
   const fetchSuggestions = useCallback(async (text: string) => {
-    const t = text.trim();
-    if (t.length < 2) {
+    const qTrim = text.trim();
+    if (qTrim.length < 1) {
       setSuggestions([]);
+      setSuggestionsError(null);
+      setNoSuggestionMatches(false);
       return;
     }
     setSuggestionsLoading(true);
+    setSuggestionsError(null);
+    setNoSuggestionMatches(false);
     try {
       const res = await api.get<{ suggestions?: Suggestion[]; data?: { suggestions?: Suggestion[] } }>(
-        `/api/public/search/suggestions?q=${encodeURIComponent(t)}&limit=10`
+        `/api/public/search/suggestions?q=${encodeURIComponent(qTrim)}&limit=10`
       );
+      if (res.error) {
+        const msg = getApiErrorMessage(res.error, t("customer.searchScreen.searchFailed"));
+        setSuggestionsError(msg);
+        setSuggestions([]);
+        setNoSuggestionMatches(false);
+        captureError(new Error("search_suggestions_failed"), {
+          scope: "customer_search",
+          code: res.error.code,
+          message: res.error.message,
+        });
+        return;
+      }
       const raw = res.data as { suggestions?: Suggestion[]; data?: { suggestions?: Suggestion[] } } | undefined;
       const list = raw?.suggestions ?? raw?.data?.suggestions ?? [];
-      setSuggestions(Array.isArray(list) ? list : []);
-    } catch {
+      const arr = Array.isArray(list) ? list : [];
+      setSuggestions(arr);
+      setNoSuggestionMatches(arr.length === 0);
+    } catch (e) {
       setSuggestions([]);
+      const msg = getApiErrorMessage(e, t("customer.searchScreen.searchFailed"));
+      setSuggestionsError(msg);
+      setNoSuggestionMatches(false);
+      captureError(e instanceof Error ? e : new Error("search_suggestions_throw"), { scope: "customer_search" });
     } finally {
       setSuggestionsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const onQueryChange = useCallback(
     (text: string) => {
@@ -225,7 +250,7 @@ export default function SearchScreen() {
             value={query}
             onChangeText={onQueryChange}
             onFocus={() => {
-              if (query.trim().length >= 2) setShowSuggestions(true);
+              if (query.trim().length >= 1) setShowSuggestions(true);
             }}
             onSubmitEditing={() => {
               setShowSuggestions(false);
@@ -241,7 +266,9 @@ export default function SearchScreen() {
             been rendered. Show typeahead suggestions when the user has typed 2+
             chars; tapping a suggestion runs the search via onSuggestionPress.
           */}
-          {showSuggestions && query.trim().length >= 2 && (suggestionsLoading || suggestions.length > 0) && (
+          {showSuggestions &&
+            query.trim().length >= 1 &&
+            (suggestionsLoading || suggestionsError || suggestions.length > 0 || noSuggestionMatches) && (
             <View
               style={{
                 marginTop: 8,
@@ -257,6 +284,16 @@ export default function SearchScreen() {
               {suggestionsLoading ? (
                 <View style={{ paddingVertical: 12, alignItems: "center" }}>
                   <ActivityIndicator size="small" color={Colors.primary} />
+                </View>
+              ) : suggestionsError ? (
+                <View style={{ paddingVertical: 12, paddingHorizontal: 12 }}>
+                  <Text style={{ fontSize: 14, color: "#b91c1c" }}>{suggestionsError}</Text>
+                </View>
+              ) : suggestions.length === 0 ? (
+                <View style={{ paddingVertical: 12, paddingHorizontal: 12 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
+                    {t("customer.searchScreen.noMatchesForQuery", { query: query.trim() })}
+                  </Text>
                 </View>
               ) : (
                 suggestions.map((s, idx) => (

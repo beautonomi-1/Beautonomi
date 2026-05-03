@@ -14,7 +14,7 @@ const createTimeBlockSchema = z.object({
   is_recurring: z.boolean().optional(),
   recurring_pattern: z.any().optional(),
   is_active: z.boolean().optional(),
-  notes: z.string().optional(),
+  notes: z.string().nullable().optional(),
 });
 
 /**

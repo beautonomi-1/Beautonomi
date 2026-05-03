@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -10,6 +10,7 @@ import { FaXTwitter } from "react-icons/fa6";
 import { fetcher } from "@/lib/http/fetcher";
 import type { PublicFooterInitial } from "@/types/public-footer-initial";
 import { CookieSettingsFooterLink } from "@/components/cookie-consent/CookieSettingsFooterLink";
+import { MarketCountryFooterPicker } from "@/components/layout/market-country-footer-picker";
 
 interface FooterLink {
   id: string;
@@ -380,7 +381,11 @@ export default function Footer({
                 )}
               </div>
             </div>
-            <div className="flex flex-wrap justify-center md:justify-end items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+            <div className="flex flex-col items-center gap-3 md:items-end">
+              <Suspense fallback={null}>
+                <MarketCountryFooterPicker />
+              </Suspense>
+              <div className="flex flex-wrap justify-center md:justify-end items-center gap-x-3 gap-y-1 text-sm text-gray-600">
               <span className="text-center md:text-right">
                 {footerSettings.copyright_text || "© 2024 Beautonomi. All rights reserved."}
               </span>
@@ -390,6 +395,7 @@ export default function Footer({
               <CookieSettingsFooterLink variant="footer" className="text-center md:text-right" showChevron />
               <span className="text-gray-400 hidden sm:inline">·</span>
               <Link href="/learn" className="hover:underline text-center md:text-right">Learning Center</Link>
+              </div>
             </div>
           </div>
         </div>

@@ -115,6 +115,36 @@ function clientHasBookableSalonMembership(c: Client): boolean {
   return m.status === "active";
 }
 
+/**
+ * §Provider-audit 2026-05: when a membership has lapsed (cancelled or
+ * expired) we still surface the historic relationship via this helper so
+ * providers can quickly resubscribe the client. We deliberately do NOT
+ * route this through `clientHasBookableSalonMembership` so the bookable
+ * pricing logic stays exact (no stale benefits applied).
+ */
+type MembershipBadgeState =
+  | { kind: "active"; label: string }
+  | { kind: "expired"; label: string }
+  | { kind: "cancelled"; label: string }
+  | null;
+
+function membershipBadgeState(c: Client): MembershipBadgeState {
+  const m = c.salon_membership;
+  if (!m) return null;
+  if (clientHasBookableSalonMembership(c)) return { kind: "active", label: "Member" };
+  if (m.cancelled_at) return { kind: "cancelled", label: "Cancelled" };
+  if (m.expires_at) {
+    const t = new Date(m.expires_at).getTime();
+    if (Number.isFinite(t) && t < Date.now()) {
+      return { kind: "expired", label: "Expired" };
+    }
+  }
+  if (m.status && m.status !== "active") {
+    return { kind: m.status === "cancelled" ? "cancelled" : "expired", label: m.status === "cancelled" ? "Cancelled" : "Expired" };
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Client card (memoized for FlashList performance)                   */
 /* ------------------------------------------------------------------ */
@@ -124,14 +154,61 @@ interface ClientCardProps {
   onPress: (client: Client) => void;
   onBook: (client: Client) => void;
   onMessage: (client: Client) => void;
+  onManageMembership?: (client: Client) => void;
 }
 
-const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onMessage }: ClientCardProps) {
+const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onMessage, onManageMembership }: ClientCardProps) {
   const isVip =
     client.tags?.some((t) => t.toLowerCase() === "vip") ||
     (client.total_bookings != null && client.total_bookings >= 10) ||
     (client.total_spent != null && client.total_spent >= 5000);
-  const isActiveMember = clientHasBookableSalonMembership(client);
+  const membership = membershipBadgeState(client);
+
+  // §Provider-audit 2026-05: membership tag is now clickable so providers
+  // can jump straight into managing the subscription (or starting a new
+  // one when the client is expired/cancelled). Also adds explicit
+  // "Cancelled"/"Expired" pills so a stale membership never reads as
+  // "still a Member" on the list.
+  const renderMembershipTag = () => {
+    if (!membership) return null;
+    const palette =
+      membership.kind === "active"
+        ? { bg: "#f3e8ff", fg: "#7c3aed" }
+        : membership.kind === "cancelled"
+          ? { bg: "#fee2e2", fg: "#b91c1c" }
+          : { bg: "#fef3c7", fg: "#b45309" };
+    const handlePress = () => {
+      if (onManageMembership) onManageMembership(client);
+    };
+    return (
+      <TouchableOpacity
+        onPress={handlePress}
+        disabled={!onManageMembership}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`Manage ${client.full_name}'s membership (${membership.label})`}
+        style={{
+          marginLeft: 8,
+          borderRadius: 9999,
+          backgroundColor: palette.bg,
+          paddingHorizontal: 8,
+          paddingVertical: 2,
+          flexDirection: "row",
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ fontSize: 10, fontWeight: "700", color: palette.fg }}>{membership.label}</Text>
+        {onManageMembership ? (
+          <Ionicons
+            name="chevron-forward"
+            size={11}
+            color={palette.fg}
+            style={{ marginLeft: 2 }}
+          />
+        ) : null}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={{ marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, elevation: 1 }}>
@@ -144,7 +221,7 @@ const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onM
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Avatar name={client.full_name} imageUrl={client.avatar_url} size="md" />
           <View style={{ marginLeft: 12, flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
               <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
                 {client.full_name}
               </Text>
@@ -158,11 +235,7 @@ const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onM
                   <Text style={{ fontSize: 10, fontWeight: "700", color: "#1d4ed8" }}>Platform</Text>
                 </View>
               )}
-              {isActiveMember && (
-                <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#f3e8ff", paddingHorizontal: 8, paddingVertical: 2 }}>
-                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#7c3aed" }}>Member</Text>
-                </View>
-              )}
+              {renderMembershipTag()}
             </View>
             <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }} numberOfLines={1}>
               {client.phone ? formatPhone(client.phone) : client.email || "No contact info"}
@@ -569,6 +642,13 @@ export default function ClientsScreen() {
     router.push(`/(app)/(tabs)/bookings/new?clientId=${client.customer_id}` as never);
   }, [router]);
 
+  // §Provider-audit 2026-05: tapping the membership badge sends the
+  // provider to the membership management section of the client detail
+  // page so they can renew/cancel subscriptions in one tap.
+  const handleManageMembership = useCallback((client: Client) => {
+    router.push(`/(app)/(tabs)/more/clients/${client.id}?section=membership` as never);
+  }, [router]);
+
   const handleMessage = useCallback(async (client: Client) => {
     // §Provider-audit 2026-04: walk-in / placeholder clients don't have a
     // Beautonomi auth account, so there's no inbox to deliver a chat to.
@@ -618,8 +698,9 @@ export default function ClientsScreen() {
       onPress={handleViewClient}
       onBook={handleBook}
       onMessage={handleMessage}
+      onManageMembership={handleManageMembership}
     />
-  ), [handleViewClient, handleBook, handleMessage]);
+  ), [handleViewClient, handleBook, handleMessage, handleManageMembership]);
 
   /* ---------------------------------------------------------------- */
   /*  JSX                                                             */

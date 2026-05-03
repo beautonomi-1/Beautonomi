@@ -14,9 +14,9 @@ import { isCustomerShellPublicRoute } from "@/lib/navigation/customer-shell-publ
  */
 export default function AuthLoadingSpinner() {
   const pathname = usePathname();
-  const { isLoading, isSigningOut } = useAuth();
+  const { isLoading, isSigningIn, isSigningOut } = useAuth();
   const [timedOut, setTimedOut] = useState(false);
-  const showOverlay = isLoading || isSigningOut;
+  const showOverlay = isLoading || isSigningIn || isSigningOut;
 
   useEffect(() => {
     if (!showOverlay) {
@@ -41,7 +41,7 @@ export default function AuthLoadingSpinner() {
       <div className="backdrop-blur-2xl bg-white/90 border border-border shadow-2xl rounded-2xl p-8 flex flex-col items-center gap-4 animate-in zoom-in-95 fade-in duration-200">
         <BeautonomiLoadingIcon size={56} />
         <p className="text-sm font-medium text-muted-foreground tracking-tight animate-in fade-in slide-in-from-bottom-2 duration-200 delay-75">
-          {isSigningOut ? "Signing out…" : "Checking authentication..."}
+          {isSigningOut ? "Signing out…" : isSigningIn ? "Signing in…" : "Checking authentication..."}
         </p>
       </div>
     </div>

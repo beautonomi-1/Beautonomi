@@ -188,6 +188,25 @@ function formatDateSafe(value: unknown): string {
   return parsed.toLocaleDateString();
 }
 
+function walkInSaleErrorMessage(code: string | null | undefined, message: string): string {
+  switch (code) {
+    case "FORBIDDEN":
+      return "You don't have permission to record sales. Ask an owner to grant create_sales.";
+    case "STOCK_ERROR":
+      return message || "Stock issue — check quantities or refresh the product list.";
+    case "YOCO_REFERENCE_REQUIRED":
+      return "Yoco walk-in sales need the terminal payment reference from the receipt.";
+    case "TENANT_ERROR":
+      return "Workspace configuration error. Check provider/tenant settings or support.";
+    case "VALIDATION_ERROR":
+      return message || "Check the sale details and try again.";
+    case "UNAUTHORIZED":
+      return "Session expired. Sign in again and retry.";
+    default:
+      return message || "Could not complete sale. Please try again.";
+  }
+}
+
 export default function WalkInSaleScreen() {
   const tenantCurrency = getTenantDefaultCurrency();
   const { screenPadding } = useResponsive();
@@ -204,6 +223,7 @@ export default function WalkInSaleScreen() {
   const [linkClientsOpen, setLinkClientsOpen] = useState(false);
   const [clientPickSearch, setClientPickSearch] = useState("");
   const [linkedClient, setLinkedClient] = useState<{ customer_id: string; full_name: string } | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const { data: productsData, loading: loadingProducts, error: productsError, refresh: refreshProducts } = useApi<ProductsResponse>(
     "/api/provider/products?limit=200",
@@ -284,6 +304,7 @@ export default function WalkInSaleScreen() {
     setLinkClientsOpen(false);
     setClientPickSearch("");
     setLinkedClient(null);
+    setCheckoutError(null);
     setCreateOpen(true);
     refreshProducts();
   }, [refreshProducts]);
@@ -369,15 +390,17 @@ export default function WalkInSaleScreen() {
     async (paymentRef?: string) => {
       const phoneErr = validateE164Phone(customerPhoneE164);
       if (phoneErr) {
+        setCheckoutError(phoneErr);
         Alert.alert("Invalid phone", phoneErr);
         return;
       }
+      setCheckoutError(null);
       const items = cart.map((c) => ({
         product_id: c.product_id,
         quantity: c.quantity,
         product_variant_id: c.product_variant_id ?? undefined,
       }));
-      const { data, error: err } = await postSale("/api/provider/product-sales", {
+      const { data, error: err, errorCode } = await postSale("/api/provider/product-sales", {
         items,
         payment_method: paymentMethod,
         payment_reference: paymentRef,
@@ -386,7 +409,9 @@ export default function WalkInSaleScreen() {
         customer_phone: customerPhoneE164.trim() || undefined,
       });
       if (err) {
-        Alert.alert("Error", err);
+        const friendly = walkInSaleErrorMessage(errorCode, err);
+        setCheckoutError(friendly);
+        Alert.alert("Couldn't complete sale", friendly);
         return;
       }
       const rawPayload = data as { order?: WalkInSale } | WalkInSale | null | undefined;
@@ -1008,11 +1033,29 @@ export default function WalkInSaleScreen() {
                 />
                 <E164PhoneField
                   valueE164={customerPhoneE164}
-                  onChangeE164={setCustomerPhoneE164}
+                  onChangeE164={(v) => {
+                    setCustomerPhoneE164(v);
+                    if (checkoutError) setCheckoutError(null);
+                  }}
                   compact
                   muted
                   accessibilityLabel="Customer phone"
                 />
+
+                {checkoutError ? (
+                  <View
+                    style={{
+                      marginBottom: 12,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: "#fecaca",
+                      backgroundColor: "#fef2f2",
+                      padding: 12,
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, color: "#b91c1c" }}>{checkoutError}</Text>
+                  </View>
+                ) : null}
 
                 <ActionButton
                   label={creating ? "Completing…" : `Complete sale · ${formatCurrency(cartTotalDue)}`}

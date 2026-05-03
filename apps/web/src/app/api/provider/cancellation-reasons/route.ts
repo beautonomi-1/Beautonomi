@@ -15,6 +15,10 @@ const createSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   is_active: z.boolean().optional(),
+  // §Provider-audit 2026-05: provider app sends `requires_note` to enforce a
+  // staff-entered explanation when this reason is picked. We accept it here
+  // and forward to the column so the cancel sheet can render the right UX.
+  requires_note: z.boolean().optional(),
 });
 
 /**
@@ -100,6 +104,10 @@ export async function POST(request: NextRequest) {
 
     if (validationResult.data.description !== undefined) {
       insertData.description = validationResult.data.description?.trim() || null;
+    }
+
+    if (validationResult.data.requires_note !== undefined) {
+      insertData.requires_note = validationResult.data.requires_note;
     }
 
     const { data, error } = await supabase

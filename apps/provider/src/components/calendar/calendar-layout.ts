@@ -41,6 +41,48 @@ export function getHourMinuteForInstantInZone(
   return { h: getHours(instant), m: getMinutes(instant) };
 }
 
+/**
+ * Converts Y offset in calendar scroll content to hour/minute, aligned with
+ * {@link CalendarDayGridColumn}: rowHeight = (timeIncrementMinutes/60) * slotHeightPerHour,
+ * first interactive row at `gridTopPadding`.
+ */
+export function contentYOffsetToHourMinute(args: {
+  contentY: number;
+  gridTopPadding: number;
+  startHour: number;
+  endHour: number;
+  slotHeightPerHour: number;
+  timeIncrementMinutes: number;
+}): { hour: number; minute: number } {
+  const {
+    contentY,
+    gridTopPadding,
+    startHour,
+    endHour,
+    slotHeightPerHour,
+    timeIncrementMinutes,
+  } = args;
+  const inc = Math.max(1, Math.min(60, timeIncrementMinutes));
+  const slotH =
+    Number.isFinite(slotHeightPerHour) && slotHeightPerHour > 0 ? slotHeightPerHour : 60;
+  const rowHeight = (inc / 60) * slotH;
+  const offset = contentY - gridTopPadding;
+  if (!Number.isFinite(offset) || rowHeight <= 0) {
+    return { hour: startHour, minute: 0 };
+  }
+  const rowIndex = Math.max(0, offset / rowHeight);
+  let totalMinFromMidnight = startHour * 60 + rowIndex * inc;
+  const gridEndMin = (endHour + 1) * 60;
+  totalMinFromMidnight = Math.min(Math.max(0, totalMinFromMidnight), gridEndMin - inc);
+  const hour = Math.floor(totalMinFromMidnight / 60);
+  const minuteRaw = totalMinFromMidnight % 60;
+  const minute = Math.round(minuteRaw / inc) * inc;
+  return {
+    hour: Math.min(23, Math.max(0, hour)),
+    minute: Math.min(59, Math.max(0, minute)),
+  };
+}
+
 export function getTopOffset(
   dateStr: string,
   startHour: number,

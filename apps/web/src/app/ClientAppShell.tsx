@@ -60,9 +60,13 @@ export default function ClientAppShell({ children, osType }: ClientAppShellProps
               <SessionTracker />
               <ImpersonationBanner />
               <AccountStatusGuard>
-                <MaintenanceGate>{children}</MaintenanceGate>
+                <MaintenanceGate>
+                  <Suspense fallback={null}>
+                    <MarketAvailabilityGate />
+                  </Suspense>
+                  {children}
+                </MaintenanceGate>
               </AccountStatusGuard>
-              <MarketAvailabilityGate />
               <Toaster position="top-center" />
               <DownloadBannerContainer osType={osType} />
             </AmplitudeProviderWrapper>

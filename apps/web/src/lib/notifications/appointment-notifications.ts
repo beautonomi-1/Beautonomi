@@ -16,8 +16,19 @@ import {
   notifyBookingRescheduled,
   notifyBookingCancelled,
   notifyBookingReminder,
+  notifyCustomerArrivedSalon,
+  notifyWaitingArea,
 } from "./notification-service";
-import type { NotificationChannel } from "./onesignal";
+import type { NotificationChannel, SendNotificationResult } from "./onesignal";
+
+/** True when template pipeline actually dispatched an external channel (not suppressed by prefs / quiet hours / empty channels). */
+function sentFromTemplateResult(result: SendNotificationResult): boolean {
+  if (!result.success) return false;
+  if (result.notification_id === "suppressed-quiet-hours") return false;
+  const msg = result.message ?? "";
+  if (msg.includes("No external channels enabled")) return false;
+  return true;
+}
 
 // ============================================================================
 // TYPES
@@ -79,7 +90,7 @@ export async function sendRescheduleNotification(
 
     return {
       success: result.success,
-      sent: true,
+      sent: sentFromTemplateResult(result),
       error: result.error,
       message: result.success ? "Client notified about reschedule" : undefined,
     };
@@ -120,7 +131,7 @@ export async function sendConfirmationNotification(
 
     return {
       success: result.success,
-      sent: true,
+      sent: sentFromTemplateResult(result),
       error: result.error,
       message: result.success ? "Client notified with confirmation" : undefined,
     };
@@ -176,7 +187,7 @@ export async function sendCancellationNotification(
 
     return {
       success: result.success,
-      sent: true,
+      sent: sentFromTemplateResult(result),
       error: result.error,
       message: result.success ? "Client notified about cancellation" : undefined,
     };
@@ -219,7 +230,7 @@ export async function sendReminderNotification(
 
     return {
       success: result.success,
-      sent: true,
+      sent: sentFromTemplateResult(result),
       error: result.error,
       message: result.success ? "Reminder sent to client" : undefined,
     };
@@ -315,10 +326,12 @@ export async function resendNotification(
 // ============================================================================
 
 /**
- * Notify a client that they've been checked in
- * 
- * @param bookingId - The booking/appointment ID
- * @param options - Notification options
+ * Notify a client that they've been checked in.
+ *
+ * §Notifications-audit 2026-05: this used to console.log and return
+ * `{success:true, sent:true}` without ever sending a real notification —
+ * a textbook silent fake. Now wired to the existing `customer_arrived_salon`
+ * template so the customer actually gets a push.
  */
 export async function sendCheckInNotification(
   bookingId: string,
@@ -332,16 +345,13 @@ export async function sendCheckInNotification(
     };
   }
 
-  // For now, we'll use a generic notification
-  // This should be expanded to use a specific template
   try {
-    // Placeholder: In production, create a specific check-in template
-    console.log(`Check-in notification for booking ${bookingId}`);
-    
+    const result = await notifyCustomerArrivedSalon(bookingId, options.channels);
     return {
-      success: true,
-      sent: true,
-      message: "Check-in notification sent",
+      success: result.success,
+      sent: sentFromTemplateResult(result),
+      error: result.error,
+      message: result.success ? "Check-in confirmation sent" : undefined,
     };
   } catch (error) {
     console.error("Failed to send check-in notification:", error);
@@ -354,10 +364,11 @@ export async function sendCheckInNotification(
 }
 
 /**
- * Notify a client that their provider is ready for them
- * 
- * @param bookingId - The booking/appointment ID
- * @param options - Notification options
+ * Notify a client that their provider is ready for them.
+ *
+ * §Notifications-audit 2026-05: previously a silent fake (see above). Now
+ * wired to the `salon_waiting_area` template which already has push +
+ * in-app coverage.
  */
 export async function sendReadyNotification(
   bookingId: string,
@@ -372,13 +383,12 @@ export async function sendReadyNotification(
   }
 
   try {
-    // Placeholder: In production, create a specific "ready" template
-    console.log(`Ready notification for booking ${bookingId}`);
-    
+    const result = await notifyWaitingArea(bookingId, "your waiting area", options.channels);
     return {
-      success: true,
-      sent: true,
-      message: "Ready notification sent",
+      success: result.success,
+      sent: sentFromTemplateResult(result),
+      error: result.error,
+      message: result.success ? "Ready notification sent" : undefined,
     };
   } catch (error) {
     console.error("Failed to send ready notification:", error);

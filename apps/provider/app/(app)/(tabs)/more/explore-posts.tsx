@@ -591,19 +591,38 @@ export default function ExplorePostsScreen() {
     setUploading(true);
     const paths: string[] = [];
     try {
-      for (const asset of selectedAssets) {
+      for (let i = 0; i < selectedAssets.length; i++) {
+        const asset = selectedAssets[i];
         const formData = new FormData();
+        // §Provider-audit 2026-05: pin a sensible mime/name based on the
+        // asset shape so HEIC photos and Android videos that arrive without
+        // a type don't get rejected by the server. The upload endpoint also
+        // now accepts heic/heif/gif/avif so iPhone library uploads work.
+        const fallbackName =
+          asset.fileName ??
+          (asset.mimeType?.startsWith("video/") ? `video-${i}.mp4` : `image-${i}.jpg`);
+        const safeType =
+          asset.mimeType ??
+          (fallbackName.toLowerCase().endsWith(".mp4") ||
+          fallbackName.toLowerCase().endsWith(".mov") ||
+          fallbackName.toLowerCase().endsWith(".m4v")
+            ? "video/mp4"
+            : "image/jpeg");
         appendFormDataFileNative(formData, "file", {
           uri: asset.uri,
-          type: asset.mimeType ?? "image/jpeg",
-          name: asset.fileName ?? "image.jpg",
+          type: safeType,
+          name: fallbackName,
         });
         const res = await api.fetch<{ path: string }>("/api/explore/upload", {
           method: "POST",
           body: formData,
         });
         if (res.error || !res.data?.path) {
-          Alert.alert("Upload failed", res.error?.message ?? "Could not upload file.");
+          const msg =
+            (res.error && typeof res.error === "object" && "message" in res.error
+              ? (res.error as { message?: string }).message
+              : null) ?? "Could not upload file.";
+          Alert.alert("Upload failed", `${msg}\n(Item ${i + 1} of ${selectedAssets.length})`);
           setUploading(false);
           return;
         }
@@ -623,7 +642,10 @@ export default function ExplorePostsScreen() {
       });
       setUploading(false);
       if (createErr) {
-        Alert.alert("Error", createErr);
+        Alert.alert(
+          publishNow ? "Couldn't publish post" : "Couldn't save draft",
+          createErr,
+        );
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -631,7 +653,10 @@ export default function ExplorePostsScreen() {
       refresh();
     } catch (e) {
       setUploading(false);
-      Alert.alert("Error", e instanceof Error ? e.message : "Something went wrong.");
+      Alert.alert(
+        publishNow ? "Couldn't publish post" : "Couldn't save draft",
+        e instanceof Error ? e.message : "Something went wrong.",
+      );
     }
   }, [canCreateExplorePosts, selectedAssets, caption, publishNow, primaryCategorySlug, offeringId, tagInput, createPost, refresh]);
 

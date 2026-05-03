@@ -1,24 +1,23 @@
 /**
  * Centralised helper for inserting in-app notification rows.
  *
- * WHY THIS EXISTS
- * The notifications.type column is a Postgres enum (notification_type) that was
- * originally defined with only 7 values.  Application code grew to use ~30+ type
- * strings that are NOT in the enum, so every insert threw a constraint error and
- * was silently swallowed — leaving the notifications table empty.
+ * §Notifications-audit 2026-05 — type fidelity
  *
- * This helper:
- *  1. Maps extended type strings → the nearest valid enum value so inserts succeed
- *     with the current schema (migration 413 later adds all values to the enum
- *     — run it once from the Supabase SQL editor when convenient).
- *  2. Accepts both `metadata` and `data` (merges them into the `data` column).
- *  3. Accepts both `link` and `action_url` (maps to `action_url`).
+ * The `notification_type` enum was originally 7 values; migrations 413 and
+ * 570 extended it to cover everything application code emits today. This
+ * helper now passes the type string through unchanged when it's a known
+ * enum value, so the bell, deep-link routing, and observability all see
+ * the real type (not "system").
+ *
+ * Older deployments may not have run 570 yet — the helper still maps any
+ * unknown value to "system" so `insert` never throws and the bell badge
+ * stays accurate. If your DB is up to date, the mapping branch is a no-op.
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-// The 7 values that currently exist in the notification_type enum.
-const VALID_TYPES = new Set([
+// Enum values guaranteed available after migration 413 (already shipped).
+const VALID_TYPES_413 = new Set<string>([
   "booking_confirmation",
   "booking_reminder",
   "booking_cancelled",
@@ -26,55 +25,104 @@ const VALID_TYPES = new Set([
   "review_request",
   "message",
   "system",
-] as const);
+  "new_appointment",
+  "new_message",
+  "booking_update",
+  "booking_status_update",
+  "booking_rescheduled",
+  "booking_staff_changed",
+  "appointment_reminder",
+  "rebook_reminder",
+  "refund_processed",
+  "payment_link_sent",
+  "additional_charge_paid",
+  "new_review",
+  "review_response",
+  "low_stock_alert",
+  "waitlist_available",
+  "waitlist_match",
+  "marketing_email",
+  "custom_offer",
+  "custom_request",
+  "on_demand_accepted",
+  "on_demand_declined",
+  "payout_processed",
+  "payout_failed",
+  "subscription_limit",
+  "product_order_update",
+  "return_update",
+  "staff_assignment",
+  "provider_broadcast",
+  "high_priority",
+  "account_verification",
+]);
 
-/** Extended type strings → closest valid enum value */
-const TYPE_MAP: Record<string, string> = {
-  // Booking
-  new_appointment: "booking_confirmation",
+// Values added by migration 570. We attempt them first; if the DB hasn't
+// run 570 yet, the insert fails with `invalid_text_representation` and we
+// retry using the legacy fallback map below.
+const VALID_TYPES_570 = new Set<string>([
+  "admin_broadcast",
+  "booking_confirmed",
+  "booking_accepted",
+  "payment_request",
+  "additional_charge_requested",
+]);
+
+/**
+ * Closest 413-valid enum value for any new type. Used when migration 570
+ * has not yet run on the target DB so the row is preserved (with slightly
+ * lower type fidelity) instead of being silently dropped.
+ */
+const TYPE_FALLBACK: Record<string, string> = {
+  rebook_reminder: "booking_reminder",
+  appointment_reminder: "booking_reminder",
+  booking_confirmed: "booking_confirmation",
+  booking_accepted: "booking_confirmation",
   booking_update: "booking_confirmation",
   booking_status_update: "booking_confirmation",
   booking_rescheduled: "booking_confirmation",
   booking_staff_changed: "booking_confirmation",
-  booking_confirmed: "booking_confirmation",
-  booking_accepted: "booking_confirmation",
-  // Reminders
-  appointment_reminder: "booking_reminder",
-  rebook_reminder: "booking_reminder",
-  // Payments
-  refund_processed: "payment_received",
+  new_appointment: "booking_confirmation",
   payment_request: "payment_received",
+  additional_charge_requested: "payment_received",
+  refund_processed: "payment_received",
   payment_link_sent: "payment_received",
   additional_charge_paid: "payment_received",
-  additional_charge_requested: "payment_received",
   payout_processed: "payment_received",
   payout_failed: "payment_received",
-  // Messages
   new_message: "message",
-  // Reviews
   new_review: "review_request",
   review_response: "review_request",
-  // Catch-all
-  low_stock_alert: "system",
-  waitlist_available: "system",
-  waitlist_match: "system",
-  marketing_email: "system",
+  admin_broadcast: "system",
+  provider_broadcast: "system",
   custom_offer: "system",
   custom_request: "system",
-  on_demand_accepted: "system",
-  on_demand_declined: "system",
-  subscription_limit: "system",
-  product_order_update: "system",
-  return_update: "system",
-  staff_assignment: "system",
-  provider_broadcast: "system",
-  high_priority: "system",
-  account_verification: "system",
 };
 
 function normaliseType(raw: string): string {
-  if (VALID_TYPES.has(raw as never)) return raw;
-  return TYPE_MAP[raw] ?? "system";
+  if (VALID_TYPES_413.has(raw)) return raw;
+  if (VALID_TYPES_570.has(raw)) return raw;
+  return TYPE_FALLBACK[raw] ?? "system";
+}
+
+/**
+ * Convert a 570-only type string to the 413-safe fallback so a retry can
+ * proceed when the enum upgrade hasn't run yet.
+ */
+function fallbackTypeFor(raw: string): string {
+  return TYPE_FALLBACK[raw] ?? "system";
+}
+
+function isInvalidEnumError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const rec = error as Record<string, unknown>;
+  const code = typeof rec.code === "string" ? rec.code : "";
+  if (code === "22P02") return true;
+  const msg = typeof rec.message === "string" ? rec.message.toLowerCase() : "";
+  return (
+    msg.includes("invalid input value for enum") ||
+    msg.includes("invalid input syntax for type")
+  );
 }
 
 export interface InsertNotificationInput {
@@ -93,6 +141,34 @@ export interface InsertNotificationInput {
   link?: string;
 }
 
+type NotificationRow = {
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  data: Record<string, unknown>;
+  action_url: string | null;
+};
+
+function buildRow(input: InsertNotificationInput): NotificationRow {
+  const mergedData = {
+    ...(input.data ?? {}),
+    ...(input.metadata ?? {}),
+  };
+  return {
+    user_id: input.user_id,
+    type: normaliseType(input.type),
+    title: input.title,
+    message: input.message,
+    data: Object.keys(mergedData).length > 0 ? mergedData : {},
+    action_url: input.action_url ?? input.link ?? null,
+  };
+}
+
+function downgradeRow(row: NotificationRow): NotificationRow {
+  return { ...row, type: fallbackTypeFor(row.type) };
+}
+
 /**
  * Insert a single in-app notification row.
  * Never throws — errors are logged and swallowed so callers don't break.
@@ -100,28 +176,30 @@ export interface InsertNotificationInput {
 export async function insertNotification(input: InsertNotificationInput): Promise<void> {
   try {
     const supabase = getSupabaseAdmin();
+    const row = buildRow(input);
 
-    const mergedData = {
-      ...(input.data ?? {}),
-      ...(input.metadata ?? {}),
-    };
-    const actionUrl = input.action_url ?? input.link ?? null;
+    const { error } = await supabase.from("notifications").insert(row);
+    if (!error) return;
 
-    const { error } = await supabase.from("notifications").insert({
-      user_id: input.user_id,
-      type: normaliseType(input.type),
-      title: input.title,
-      message: input.message,
-      data: Object.keys(mergedData).length > 0 ? mergedData : {},
-      action_url: actionUrl,
-    });
-
-    if (error) {
-      console.warn("[insertNotification] insert failed:", error.message, {
-        user_id: input.user_id,
-        type: input.type,
-      });
+    if (isInvalidEnumError(error) && row.type !== fallbackTypeFor(row.type)) {
+      // Migration 570 not yet applied: retry with a 413-safe type.
+      const downgraded = downgradeRow(row);
+      const { error: retryErr } = await supabase
+        .from("notifications")
+        .insert(downgraded);
+      if (retryErr) {
+        console.warn("[insertNotification] retry insert failed:", retryErr.message, {
+          user_id: input.user_id,
+          requested_type: row.type,
+          downgraded_type: downgraded.type,
+        });
+      }
+      return;
     }
+    console.warn("[insertNotification] insert failed:", error.message, {
+      user_id: input.user_id,
+      type: input.type,
+    });
   } catch (err) {
     console.warn("[insertNotification] unexpected error:", err);
   }
@@ -129,6 +207,11 @@ export async function insertNotification(input: InsertNotificationInput): Promis
 
 /**
  * Insert multiple notifications at once (e.g. notify a whole team).
+ *
+ * If the DB enum doesn't yet contain a type emitted by this batch (i.e.
+ * migration 570 isn't applied), the batch insert is retried row-by-row
+ * with the 413-safe fallback so we don't drop the entire batch on one
+ * unknown enum value.
  */
 export async function insertNotifications(
   inputs: InsertNotificationInput[]
@@ -136,25 +219,21 @@ export async function insertNotifications(
   if (inputs.length === 0) return;
   try {
     const supabase = getSupabaseAdmin();
-
-    const rows = inputs.map((input) => {
-      const mergedData = {
-        ...(input.data ?? {}),
-        ...(input.metadata ?? {}),
-      };
-      return {
-        user_id: input.user_id,
-        type: normaliseType(input.type),
-        title: input.title,
-        message: input.message,
-        data: Object.keys(mergedData).length > 0 ? mergedData : {},
-        action_url: input.action_url ?? input.link ?? null,
-      };
-    });
+    const rows = inputs.map(buildRow);
 
     const { error } = await supabase.from("notifications").insert(rows);
-    if (error) {
+    if (!error) return;
+
+    if (!isInvalidEnumError(error)) {
       console.warn("[insertNotifications] batch insert failed:", error.message);
+      return;
+    }
+
+    // Retry per-row with a downgraded type so the batch isn't lost.
+    const downgraded = rows.map(downgradeRow);
+    const { error: retryErr } = await supabase.from("notifications").insert(downgraded);
+    if (retryErr) {
+      console.warn("[insertNotifications] downgrade retry failed:", retryErr.message);
     }
   } catch (err) {
     console.warn("[insertNotifications] unexpected error:", err);

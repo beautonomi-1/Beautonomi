@@ -143,7 +143,6 @@ export function BottomSheet({
             />
           </Animated.View>
 
-          {/* Animated sheet - explicit opaque background for form content */}
           <Animated.View
             style={[
               { position: "absolute", bottom: 0, left: 0, right: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
@@ -159,7 +158,6 @@ export function BottomSheet({
               sheetAnimatedStyle,
             ]}
           >
-            {/* Drag handle */}
             {showHandle && (
               <GestureDetector gesture={panGesture}>
                 <Animated.View style={{ alignItems: "center", paddingBottom: 4, paddingTop: 12 }}>

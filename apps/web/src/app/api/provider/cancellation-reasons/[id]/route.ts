@@ -14,6 +14,9 @@ const updateSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   is_active: z.boolean().optional(),
+  // §Provider-audit 2026-05: align with the create route so the toggle in
+  // the provider app actually persists.
+  requires_note: z.boolean().optional(),
 });
 
 /**
@@ -90,6 +93,9 @@ export async function PATCH(
     }
     if (validationResult.data.is_active !== undefined) {
       updateData.is_active = validationResult.data.is_active;
+    }
+    if (validationResult.data.requires_note !== undefined) {
+      updateData.requires_note = validationResult.data.requires_note;
     }
     updateData.updated_at = new Date().toISOString();
 

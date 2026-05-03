@@ -247,11 +247,13 @@ export default function CustomOfferModal({
     return date.toISOString();
   };
 
+  const MIN_DESC = 5;
+
   const isValid = () => {
     return (
-      description.trim().length >= 10 &&
+      description.trim().length >= MIN_DESC &&
       description.trim().length <= 4000 &&
-      price &&
+      price !== "" &&
       Number(price) >= 0 &&
       durationMinutes &&
       Number(durationMinutes) >= 15 &&
@@ -260,6 +262,17 @@ export default function CustomOfferModal({
       Number(expirationDays) > 0
     );
   };
+
+  const validationHint = useMemo(() => {
+    const d = description.trim();
+    if (d.length > 0 && d.length < MIN_DESC) return `Add at least ${MIN_DESC - d.length} more character(s) to the description.`;
+    if (!price || Number.isNaN(Number(price)) || Number(price) < 0) return "Enter a valid price (0 or more).";
+    const dm = Number(durationMinutes);
+    if (!Number.isFinite(dm) || dm < 15 || dm > 480) return "Duration must be between 15 and 480 minutes.";
+    const ex = Number(expirationDays);
+    if (!Number.isFinite(ex) || ex <= 0) return "Expiration must be at least 1 day.";
+    return null;
+  }, [description, price, durationMinutes, expirationDays]);
 
   const handleSubmit = async () => {
     if (!isValid()) {
@@ -319,7 +332,7 @@ export default function CustomOfferModal({
         err instanceof FetchError
           ? err.message
           : "Failed to send custom offer. Please try again.";
-      toast.error(errorMessage);
+      toast.error(`Could not send offer: ${errorMessage}`);
       console.error("Error creating custom offer:", err);
     } finally {
       setIsSubmitting(false);
@@ -429,12 +442,18 @@ export default function CustomOfferModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe the service you're offering. Include details about what's included, style preferences, special features, etc."
+              aria-invalid={description.trim().length > 0 && description.trim().length < MIN_DESC}
               rows={5}
               className="resize-none"
             />
             <p className="text-xs text-gray-500">
-              {description.trim().length} / 10-4000 characters
+              {description.trim().length} / {MIN_DESC}-4000 characters
             </p>
+            {validationHint && (
+              <p className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5" role="status">
+                {validationHint}
+              </p>
+            )}
           </div>
 
           {/* Price and Currency */}
@@ -767,7 +786,12 @@ export default function CustomOfferModal({
           <Button
             onClick={handleSubmit}
             disabled={!isValid() || isSubmitting}
-            className="bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white"
+            className={cn(
+              "text-white shadow-sm transition-all",
+              isValid() && !isSubmitting
+                ? "bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary ring-2 ring-primary/30 ring-offset-2"
+                : "bg-gradient-to-r from-primary/70 to-primary-hover/80 hover:from-primary/80 hover:to-primary-hover/90 opacity-90",
+            )}
           >
             {isSubmitting ? "Sending..." : "Send Offer"}
           </Button>

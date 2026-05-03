@@ -79,7 +79,6 @@ export function CalendarDayGridColumn({
       style={{
         width: colWidth,
         height: totalGridHeight + gridTopPadding,
-        paddingTop: gridTopPadding,
         position: "relative",
       }}
     >

@@ -26,6 +26,11 @@ function normalizeHost(raw: string | null): string | null {
   return h || null;
 }
 
+/** Hostname (lowercase) → ISO 3166-1 alpha-2. Server env only (`TENANT_HOST_COUNTRY_MAP`). */
+export function getTenantHostCountryMap(): Record<string, string> {
+  return parseHostCountryMap();
+}
+
 function parseHostCountryMap(): Record<string, string> {
   const raw = process.env.TENANT_HOST_COUNTRY_MAP?.trim();
   if (!raw) {

@@ -26,6 +26,7 @@ import {
 } from "@/lib/bookings/provider-bookings-read-cache";
 import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import { validateProviderCatalogPackageMatch } from "@/lib/bookings/validate-provider-package-booking";
+import { resolveMembershipDiscount } from "@/lib/provider/salon-membership-entitlement";
 
 // Map frontend status to database enum values
 // Frontend: booked, started, completed, cancelled, no_show
@@ -985,6 +986,22 @@ async function handleCreateProviderBooking(request: NextRequest) {
       const packageDiscount = computeCatalogPackageServiceDiscount(pv.pkg, servicesSubtotal);
       serverDiscountAmount = Math.max(serverDiscountAmount, packageDiscount);
     }
+
+    // §Provider-audit 2026-05: auto-apply membership benefits so a provider
+    // booking a service for a salon member gets the same discount the public
+    // checkout would. Without this, members were being silently overcharged
+    // when their stylist created the booking from the provider app.
+    const subtotalForMembership = Math.max(0, serverSubtotal - serverDiscountAmount);
+    const membershipResult = await resolveMembershipDiscount({
+      supabase: supabaseAdmin,
+      customerId,
+      providerId,
+      subtotal: subtotalForMembership,
+    });
+    const membershipDiscountAmount = membershipResult.membershipDiscountAmount;
+    if (membershipDiscountAmount > 0) {
+      serverDiscountAmount = serverDiscountAmount + membershipDiscountAmount;
+    }
     const serverTipAmount = Number(body.tip_amount) || 0;
     const bookingLocationType = body.location_type || "at_salon";
     const serverTravelFee = bookingLocationType === "at_home" ? Number(body.travel_fee) || 0 : 0;
@@ -1026,6 +1043,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
       discount_amount: serverDiscountAmount,
       discount_code: body.discount_code || null,
       discount_reason: body.discount_reason || null,
+      // §Provider-audit 2026-05: persist the membership benefit applied so
+      // the bookings list, receipts, and reporting reflect the same numbers
+      // as the public checkout flow.
+      membership_plan_id: membershipResult.membershipPlanId,
+      membership_id: membershipResult.membershipId,
+      membership_discount_amount: membershipDiscountAmount,
       tax_amount: finalTaxAmount,
       tax_rate: effectiveTaxRate,
       tip_amount: serverTipAmount,

@@ -7,7 +7,9 @@ import { z } from "zod";
 const deviceSchema = z.object({
   player_id: z.string().min(1, "Player ID is required"),
   platform: z.enum(["web", "ios", "android"]),
-  app_type: z.enum(["customer", "provider"]).optional(),
+  app_type: z.enum(["customer", "provider"], {
+    errorMap: () => ({ message: "app_type is required (customer or provider)" }),
+  }),
 });
 
 /**
@@ -34,7 +36,7 @@ export async function POST(request: NextRequest) {
     const { player_id, platform, app_type } = validationResult.data;
 
     const supabase = await getSupabaseServer(request);
-    await registerDevice(supabase, user.id, player_id, platform, app_type ?? "customer");
+    await registerDevice(supabase, user.id, player_id, platform, app_type);
 
     return successResponse({ registered: true });
   } catch (error) {

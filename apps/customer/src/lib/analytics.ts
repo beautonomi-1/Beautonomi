@@ -301,7 +301,7 @@ export function trackMarketAutoSwitchSuppressed(input: {
 export function trackMarketManualSwitch(input: {
   fromHost: string;
   toHost: string;
-  reason: "unsupported" | "restricted" | "manual";
+  reason: "unsupported" | "restricted" | "manual" | "za_banner";
   countryCode?: string;
 }) {
   track("market_manual_switch", {
@@ -314,7 +314,7 @@ export function trackMarketManualSwitch(input: {
 
 export function trackMarketSwitchDeclined(input: {
   host: string;
-  reason: "unsupported" | "restricted";
+  reason: "unsupported" | "restricted" | "za_banner_stay";
   countryCode?: string;
 }) {
   track("market_switch_declined", {

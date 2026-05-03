@@ -359,8 +359,9 @@ export async function notifyBookingCancelled(
     ? "booking_cancelled_by_provider"
     : "booking_cancelled";
 
-  // Notify customer
-  await sendTemplateNotification(templateKey, [booking.customer_id], variables, channels, { appType: "customer" });
+  const customerResult = await sendTemplateNotification(templateKey, [booking.customer_id], variables, channels, {
+    appType: "customer",
+  });
 
   // If cancelled by customer, notify provider team (owner + active staff).
   if (cancelledBy === "customer" && booking.provider?.user_id) {
@@ -383,7 +384,7 @@ export async function notifyBookingCancelled(
     );
   }
 
-  return { success: true };
+  return customerResult;
 }
 
 /**
@@ -408,8 +409,14 @@ export async function notifyBookingRescheduled(
     booking_id: bookingId,
   };
 
-  // Notify customer
-  await sendTemplateNotification("booking_rescheduled", [booking.customer_id], variables, channels, { appType: "customer" });
+  // Notify customer — return value used by resend flows to know if anything was actually dispatched.
+  const customerResult = await sendTemplateNotification(
+    "booking_rescheduled",
+    [booking.customer_id],
+    variables,
+    channels,
+    { appType: "customer" },
+  );
 
   // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
@@ -429,7 +436,7 @@ export async function notifyBookingRescheduled(
     );
   }
 
-  return { success: true };
+  return customerResult;
 }
 
 // ============================================================================

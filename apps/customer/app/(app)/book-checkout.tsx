@@ -1840,7 +1840,10 @@ export default function BookCheckoutScreen() {
         if (errCode === "HOLD_INACTIVE") {
           setError(
             (res.error as { message?: string }).message?.trim() ||
-              t("checkout.slotTakenFallback", "That time slot was just taken. Please go back and choose another time."),
+              t(
+                "checkout.holdInactiveFallback",
+                "This time reservation is no longer active (expired or cancelled). Go back and pick another time.",
+              ),
           );
           return;
         }
@@ -1849,7 +1852,12 @@ export default function BookCheckoutScreen() {
           return;
         }
         if (errStatus === 409 || errCode === "CONFLICT") {
-          setError(t("checkout.slotTakenFallback", "That time slot was just taken. Please go back and choose another time."));
+          setError(
+            t(
+              "checkout.slotConflictFallback",
+              "That time slot is no longer available. Go back to the calendar and try again — or pick a different time.",
+            ),
+          );
           return;
         }
         setError(getApiErrorMessage(res.error, "Failed to complete booking"));

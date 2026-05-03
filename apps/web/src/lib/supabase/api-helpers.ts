@@ -9,6 +9,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import * as Sentry from "@sentry/nextjs";
+import { ZodError } from "zod";
 import { getSupabaseServer, createSupabaseClientFromToken } from "./server";
 import { getSupabaseAdmin } from "./admin";
 import { requireRole as requireRoleAuth } from '@/lib/auth/requireRole';
@@ -144,6 +145,15 @@ export function handleApiError(
   // Determine status code from arguments (backward compatibility)
   let status = typeof _codeOrStatus === "number" ? _codeOrStatus : (_statusCode ?? 500);
   let code = typeof _codeOrStatus === "string" ? _codeOrStatus : "INTERNAL_ERROR";
+
+  if (error instanceof ZodError) {
+    const first = error.issues[0];
+    const message =
+      first?.path?.length
+        ? `${String(first.path.join("."))}: ${first.message}`
+        : first?.message ?? defaultMessage;
+    return errorResponse(message, "VALIDATION_ERROR", 400, { issues: error.issues });
+  }
 
   if (error instanceof Error) {
     // Supabase Auth (and similar) attach `status` (4xx) for user-facing validation — don't map to 500.

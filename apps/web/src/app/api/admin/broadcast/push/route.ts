@@ -141,17 +141,21 @@ export async function POST(request: NextRequest) {
       b.additional_data && typeof b.additional_data === "object" && !Array.isArray(b.additional_data)
         ? (b.additional_data as Record<string, unknown>)
         : {};
+    const trimmedUrl = b.url?.trim() || "";
     const dataPayload: Record<string, unknown> = {
       type: "admin_broadcast",
       recipient_type,
       ...extraData,
+      ...(trimmedUrl
+        ? { url: trimmedUrl, deep_link: trimmedUrl }
+        : {}),
     };
 
     const notif: NotificationPayload = {
       title: b.title,
       message: b.message,
       type: "admin_broadcast",
-      url: b.url?.trim() || undefined,
+      url: trimmedUrl || undefined,
       data: dataPayload,
     };
     if (b.name?.trim()) notif.name = b.name.trim().slice(0, 128);
@@ -170,6 +174,24 @@ export async function POST(request: NextRequest) {
       tenantId,
     });
 
+    if (result.success) {
+      try {
+        const { insertNotifications } = await import("@/lib/notifications/insert-notification");
+        await insertNotifications(
+          userIds.map((uid) => ({
+            user_id: uid,
+            type: "admin_broadcast",
+            title: b.title,
+            message: b.message,
+            data: dataPayload as Record<string, unknown>,
+            link: trimmedUrl || undefined,
+          })),
+        );
+      } catch (e) {
+        console.warn("[broadcast] in-app notification insert skipped:", e);
+      }
+    }
+
     if (!result.success) {
       const detail = result.error || result.message || "Failed to send broadcast";
       const notConfigured =
@@ -183,6 +205,28 @@ export async function POST(request: NextRequest) {
         notConfigured ? 503 : 500
       );
     }
+
+    // §Notifications-audit 2026-05: OneSignal returns the real subscriber
+    // reach in `data.recipients`; surface it in the response and audit log
+    // so admins see "Submitted to 312 devices" instead of just the user
+    // account count we tried to address. We still keep `recipient_count`
+    // (the user-account scope) on the broadcast log because that's how the
+    // audience preview is sized.
+    const onesignalRecipients = (() => {
+      const raw = result.data?.recipients;
+      if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+      if (typeof raw === "string") {
+        const n = Number.parseInt(raw, 10);
+        if (Number.isFinite(n)) return n;
+      }
+      return null;
+    })();
+    const onesignalErrors = (() => {
+      const raw = result.data?.errors;
+      if (Array.isArray(raw)) return raw.length > 0 ? raw : null;
+      if (raw && typeof raw === "object") return [raw];
+      return null;
+    })();
 
     // Log broadcast
     const { error: logError } = await supabase.from("broadcast_logs").insert({
@@ -212,20 +256,32 @@ export async function POST(request: NextRequest) {
       risk_level: "high",
       retention_tier: "routine",
       status: "succeeded",
-      metadata: { recipient_type, recipient_count: userIds.length, title: b.title },
+      metadata: {
+        recipient_type,
+        recipient_count: userIds.length,
+        onesignal_recipients: onesignalRecipients,
+        onesignal_errors: onesignalErrors,
+        title: b.title,
+      },
       ip_address: reqMeta.ip_address,
       user_agent: reqMeta.user_agent,
     });
 
     const scheduled = Boolean(b.send_after?.trim());
+    const reachLine =
+      onesignalRecipients != null
+        ? `OneSignal will deliver to ${onesignalRecipients} subscribed device(s).`
+        : "OneSignal accepted the message.";
     return successResponse({
       success: true,
       recipients: userIds.length,
+      onesignal_recipients: onesignalRecipients,
+      onesignal_errors: onesignalErrors,
       notification_id: result.notification_id,
       delivery: scheduled ? "scheduled" : "immediate",
       message: scheduled
-        ? `Scheduled in OneSignal for ${userIds.length} user account(s). OneSignal will deliver to subscribed devices at the chosen time.`
-        : `Submitted to OneSignal for ${userIds.length} user account(s). This is not a Beautonomi job queue — OneSignal delivers to devices, typically within seconds.`,
+        ? `Scheduled for ${userIds.length} user account(s). ${reachLine}`
+        : `Submitted for ${userIds.length} user account(s). ${reachLine}`,
     });
   } catch (error) {
     return handleApiError(error, "Failed to send push broadcast");
