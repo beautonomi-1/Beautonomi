@@ -2,20 +2,30 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import {
   MARKET_GEO_OPT_OUT_COOKIE,
-  getConfiguredZaMarketHost,
   isCountryAllowedForAutoSwitch,
   isGlobalEntryHost,
-  isZaMarketHost,
   marketAutoSwitchEnabled,
+  marketGeoEdgeRedirectEnabled,
   normalizeHostLabel,
 } from "./host-config";
+import {
+  buildMarketHostCatalog,
+  hostsMatchMarket,
+  resolveTransactionalHostForCountry,
+} from "@/lib/tenant/market-host-catalog";
+
+const ISO2 = /^[A-Z]{2}$/;
 
 /**
- * ZA-first: redirect global entry (.com) to default market host (.co.za) when
- * geo indicates South Africa, unless the user opted out (cookie from MarketAvailabilityGate).
- * Used from Next.js `proxy.ts` (single network boundary per Next 16+).
+ * Optional edge redirect from global entry (.com) → transactional ccTLD when IP geo matches a mapped market.
+ * Requires `MARKET_GEO_EDGE_REDIRECT_ENABLED=true`. Prefer client banners by default.
+ * Host targets come from `TENANT_HOST_COUNTRY_MAP` via `buildMarketHostCatalog()`.
  */
 export function maybeMarketGeoRedirect(request: NextRequest): NextResponse | null {
+  if (!marketGeoEdgeRedirectEnabled()) {
+    return null;
+  }
+
   if (request.method !== "GET" && request.method !== "HEAD") {
     return null;
   }
@@ -47,7 +57,12 @@ export function maybeMarketGeoRedirect(request: NextRequest): NextResponse | nul
       ?.trim()
       .toUpperCase() ||
     "";
-  if (country !== "ZA" || !isCountryAllowedForAutoSwitch("ZA")) {
+
+  if (!ISO2.test(country) || country === "XX" || country === "T1") {
+    return null;
+  }
+
+  if (!isCountryAllowedForAutoSwitch(country)) {
     return null;
   }
 
@@ -55,8 +70,13 @@ export function maybeMarketGeoRedirect(request: NextRequest): NextResponse | nul
     return null;
   }
 
-  const targetHost = getConfiguredZaMarketHost();
-  if (isZaMarketHost(host)) {
+  const catalog = buildMarketHostCatalog();
+  const targetHost = resolveTransactionalHostForCountry(country, catalog);
+  if (!targetHost) {
+    return null;
+  }
+
+  if (hostsMatchMarket(host, targetHost)) {
     return null;
   }
 

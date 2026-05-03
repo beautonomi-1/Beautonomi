@@ -286,9 +286,13 @@ function BookContinueContent() {
   /** From booking flow when a service package was selected (`?package=` or Packages UI) — forwarded to consume as `package_id`. */
   const [consumePackageId, setConsumePackageId] = useState<string | null>(null);
   const [providerTaxRate, setProviderTaxRate] = useState(0);
-  const [platformServiceFee, setPlatformServiceFee] = useState<{ type: "percentage" | "fixed"; percentage: number; fixed: number }>({
-    type: "percentage", percentage: 0, fixed: 0,
+  const [platformServiceFee, setPlatformServiceFee] = useState<{ type: "percentage" | "fixed"; percentage: number; fixed: number; show: boolean }>({
+    type: "percentage", percentage: 0, fixed: 0, show: true,
   });
+  /** Salon membership preview — same shape used by /booking and customer app checkout. */
+  const [membershipDiscountPercent, setMembershipDiscountPercent] = useState(0);
+  const [membershipPlanId, setMembershipPlanId] = useState<string | null>(null);
+  const [membershipPlanName, setMembershipPlanName] = useState<string | null>(null);
   const [requestingNow, setRequestingNow] = useState(false);
   /** Mirrors customer app: disable checkout when the hold clock hits zero without waiting for a refetch. */
   const [isSlotExpired, setIsSlotExpired] = useState(false);
@@ -370,8 +374,14 @@ function BookContinueContent() {
 
         {
           const slugForLookup = holdData.provider_slug;
+          // Pass provider_id so the platform-fees route mirrors the canonical priority chain
+          // (provider customer_fee_config → platform_settings.payouts) — same as /booking flow
+          // and validate-booking on the server. Avoids fee divergence in the review card.
+          const feeUrl = holdData.provider_id
+            ? `/api/public/platform-fees?provider_id=${encodeURIComponent(holdData.provider_id)}`
+            : "/api/public/platform-fees";
           const taxFeePromises: Promise<any>[] = [
-            fetcher.get<any>("/api/public/platform-fees").catch(() => null),
+            fetcher.get<any>(feeUrl).catch(() => null),
           ];
           if (slugForLookup) {
             taxFeePromises.push(
@@ -391,8 +401,34 @@ function BookContinueContent() {
                 type: feeData.platform_service_fee_type ?? "percentage",
                 percentage: Number(feeData.platform_service_fee_percentage) || 0,
                 fixed: Number(feeData.platform_service_fee_fixed) || 0,
+                show: feeData.show_service_fee_to_customer !== false,
               });
             }
+          });
+        }
+
+        // Salon membership preview — match /booking flow + customer app checkout.
+        // Membership is applied authoritatively server-side, but we preview it
+        // here so customers see "Membership −X" alongside Platform fee on review.
+        if (user) {
+          fetcher.get<{ data?: { provider_memberships?: Array<{ provider_id: string; plan_id?: string; plan_name?: string; discount_percent?: number }> } }>(
+            "/api/me/membership",
+          ).then((res) => {
+            const list = (res as any)?.data?.provider_memberships ?? (res as any)?.provider_memberships ?? [];
+            const match = (list as Array<{ provider_id: string; plan_id?: string; plan_name?: string; discount_percent?: number }>)
+              .find((m) => m?.provider_id === holdData.provider_id);
+            const pct = match ? Number(match.discount_percent) : 0;
+            if (Number.isFinite(pct) && pct > 0 && pct <= 100) {
+              setMembershipDiscountPercent(pct);
+              setMembershipPlanId(match?.plan_id ?? null);
+              setMembershipPlanName((match?.plan_name?.trim() || null) ?? null);
+            } else {
+              setMembershipDiscountPercent(0);
+              setMembershipPlanId(null);
+              setMembershipPlanName(null);
+            }
+          }).catch(() => {
+            // Membership preview is optional; never block checkout.
           });
         }
 
@@ -791,6 +827,11 @@ function BookContinueContent() {
         payload.package_id = consumePackageId;
         payload.primary_package_id = consumePackageId;
       }
+      // Forward membership plan id so server applies the same discount we
+      // previewed in the breakdown — server is still the source of truth.
+      if (membershipPlanId) {
+        payload.membership_plan_id = membershipPlanId;
+      }
       if (rescheduleBookingId) payload.reschedule_booking_id = rescheduleBookingId;
       if (effectiveClient && (effectiveClient.firstName || effectiveClient.lastName || effectiveClient.email || effectiveClient.phone)) {
         const rawPhone = effectiveClient.phone?.trim();
@@ -971,14 +1012,23 @@ function BookContinueContent() {
     const promoDiscountAmount = promoDiscount ?? 0;
     const subtotalBeforePromo = servicesTotal + addonsTotal + productsFromLinkTotal + travelFee;
     const subtotalAfterPromo = Math.max(0, subtotalBeforePromo - promoDiscountAmount);
-    const taxAmount = providerTaxRate > 0
-      ? Number(((subtotalAfterPromo * providerTaxRate) / 100).toFixed(2))
+    // Apply membership discount on the post-promo subtotal — matches validate-booking order.
+    const membershipDiscountAmount = membershipDiscountPercent > 0
+      ? Math.min(
+          Number(((subtotalAfterPromo * membershipDiscountPercent) / 100).toFixed(2)),
+          subtotalAfterPromo,
+        )
       : 0;
-    const serviceFeeAmount =
+    const subtotalAfterMembership = Math.max(0, subtotalAfterPromo - membershipDiscountAmount);
+    const taxAmount = providerTaxRate > 0
+      ? Number(((subtotalAfterMembership * providerTaxRate) / 100).toFixed(2))
+      : 0;
+    const rawServiceFee =
       platformServiceFee.type === "percentage"
-        ? Number(((subtotalAfterPromo * platformServiceFee.percentage) / 100).toFixed(2))
+        ? Number(((subtotalAfterMembership * platformServiceFee.percentage) / 100).toFixed(2))
         : platformServiceFee.fixed;
-    const totalAmount = subtotalAfterPromo + taxAmount + serviceFeeAmount + tipAmount;
+    const serviceFeeAmount = platformServiceFee.show ? rawServiceFee : 0;
+    const totalAmount = subtotalAfterMembership + taxAmount + serviceFeeAmount + tipAmount;
     const currency = hold.booking_services_snapshot[0]?.currency ?? tenantCurrency;
     const startDate = new Date(hold.start_at);
     const timeStr = startDate.toLocaleTimeString([], {
@@ -1066,6 +1116,12 @@ function BookContinueContent() {
               <div className="flex justify-between text-sm border-b border-white/10 pb-2" style={{ color: "#86efac" }}>
                 <span>Promo discount</span>
                 <span>-{formatCurrency(promoDiscountAmount, currency)}</span>
+              </div>
+            )}
+            {membershipDiscountAmount > 0 && (
+              <div className="flex justify-between text-sm border-b border-white/10 pb-2" style={{ color: "#86efac" }}>
+                <span>{membershipPlanName || "Membership"}{membershipDiscountPercent > 0 ? ` (${membershipDiscountPercent}%)` : ""}</span>
+                <span>-{formatCurrency(membershipDiscountAmount, currency)}</span>
               </div>
             )}
             <div className="border-t border-white/10 pt-3 space-y-2">

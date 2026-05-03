@@ -8,12 +8,15 @@ import type { Session } from "@supabase/supabase-js";
 import { scheduleRetentionSyncOnSession } from "@/lib/retention/client-sync";
 import { clearFetcherCache } from "@/lib/http/fetcher";
 import { readAllowsFunctionalFromStorage } from "@/lib/cookie-consent/guards";
+import { signIn as signInViaProxy } from "@/lib/supabase/auth";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   role: UserRole | null;
   isLoading: boolean;
+  /** True while sign-in is in flight (show signing-in UI / disable double submit). */
+  isSigningIn: boolean;
   /** True while sign-out is in flight (show signing-out UI). */
   isSigningOut: boolean;
   isEmailVerified: boolean; // Email verification status
@@ -103,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(cached.session);
   const [role, setRole] = useState<UserRole | null>(cached.role);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isEmailVerified, setIsEmailVerified] = useState(true);
   const router = useRouter();
@@ -1008,22 +1012,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     if (!supabase) return;
+    setIsSigningIn(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      if (data.session) {
-        await refreshUser();
-      }
+      // Use the same /api/auth/sign-in proxy as the login page (avoids CORS/502 on some networks).
+      await signInViaProxy({ email, password });
+      await refreshUser();
     } catch (error) {
       console.error("Sign in error:", error);
       throw error;
+    } finally {
+      setIsSigningIn(false);
     }
   }, [supabase, refreshUser]);
 
@@ -1094,6 +1092,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         role,
         isLoading,
+        isSigningIn,
         isSigningOut,
         isEmailVerified,
         signOut,

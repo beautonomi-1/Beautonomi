@@ -71,7 +71,7 @@ const walkInSaleSchema = z.object({
   payment_method: z.enum(["cash", "yoco", "card", "eft", "other"]),
   payment_reference: z.string().max(200).optional(),
   customer_name: z.string().max(100).optional(),
-  customer_phone: z.string().max(20).optional(),
+  customer_phone: z.string().max(32).optional(),
   customer_id: z.string().uuid().optional(),
 });
 

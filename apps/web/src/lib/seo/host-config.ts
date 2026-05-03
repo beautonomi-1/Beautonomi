@@ -62,6 +62,12 @@ export function marketAutoSwitchEnabled(): boolean {
   return raw !== "false" && raw !== "0" && raw !== "off" && raw !== "no";
 }
 
+/** Edge 307 from global entry → ZA market when IP geo is ZA. Off by default; prefer client banners (MarketAvailabilityGate). */
+export function marketGeoEdgeRedirectEnabled(): boolean {
+  const raw = (process.env.MARKET_GEO_EDGE_REDIRECT_ENABLED ?? "").trim().toLowerCase();
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+}
+
 const ISO2 = /^[A-Z]{2}$/;
 
 /** Empty env = all countries allowed (matches server market-routing). */

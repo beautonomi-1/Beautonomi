@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import * as Linking from "expo-linking";
 
 export interface Notification {
   id: string;
@@ -90,6 +91,26 @@ export function navigateFromNotification(n: Notification): void {
     anyBookingIdRaw != null && String(anyBookingIdRaw).trim() !== "" ? String(anyBookingIdRaw).trim() : "";
   if (!nType && !subtype && !dataType && directBookingId && !data.conversation_id) {
     router.push({ pathname: "/(app)/booking-detail", params: { id: directBookingId } });
+    return;
+  }
+
+  const adminBroadcastPath =
+    typeof data.url === "string"
+      ? data.url.trim()
+      : typeof data.deep_link === "string"
+        ? String(data.deep_link).trim()
+        : "";
+  if (nType === "admin_broadcast" || dataType === "admin_broadcast") {
+    const u = adminBroadcastPath || link;
+    if (u && (u.startsWith("http://") || u.startsWith("https://"))) {
+      void Linking.openURL(u);
+      return;
+    }
+    if (u && u.startsWith("/")) {
+      router.push(u as never);
+      return;
+    }
+    router.push("/(app)/notifications" as never);
     return;
   }
 

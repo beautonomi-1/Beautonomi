@@ -17,6 +17,7 @@ import {
   formatPdfDate,
   moneyPdf,
 } from "@/lib/receipts/pdf-design";
+import { assertReceiptInvariant } from "@/lib/bookings/display-invariants";
 
 // Wave 2.5 (audit 2026-04 final 100/100): extend serverless timeout to
 // 60s so large receipts (many services + products + additional charges +
@@ -265,6 +266,19 @@ export async function GET(
         : []),
     ];
     drawPdfTotals(doc, totalRows, { label: "Total", value: moneyPdf(receipt.total, currency) });
+
+    assertReceiptInvariant("customer-booking-receipt-pdf", {
+      total: Number(receipt.total ?? 0),
+      subtotal: Number(receipt.subtotal ?? 0),
+      travel_fee: Number(receipt.travel_fee ?? 0),
+      tax: Number(receipt.tax ?? 0),
+      fees: Number(receipt.fees ?? 0),
+      tip_amount: Number(receipt.tip_amount ?? 0),
+      discount: Number(receipt.discount ?? 0),
+      membership_discount_amount: Number(receipt.membership_discount_amount ?? 0),
+      loyalty_discount_amount: Number(receipt.loyalty_discount_amount ?? 0),
+      cancellation_fee: Number(receipt.cancellation_fee ?? 0),
+    });
 
     if (receipt.additional_charges && receipt.additional_charges.length > 0) {
       doc.moveDown(0.4);

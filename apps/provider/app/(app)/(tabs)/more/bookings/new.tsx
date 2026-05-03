@@ -91,6 +91,16 @@ interface ApiClient {
     phone?: string;
     avatar_url?: string | null;
   };
+  /** §Provider-audit 2026-05: surfaced from `/api/provider/clients` so we
+   * can render a member/expired/cancelled pill on the new-booking flow. */
+  salon_membership?: {
+    plan_id?: string | null;
+    plan_name?: string | null;
+    status?: string | null;
+    expires_at?: string | null;
+    cancelled_at?: string | null;
+    is_entitled?: boolean;
+  } | null;
 }
 
 interface Client {
@@ -100,6 +110,19 @@ interface Client {
   email: string;
   phone: string;
   avatar_url?: string | null;
+  /**
+   * §Provider-audit 2026-05: when present, the new-booking screen surfaces
+   * an explicit member/cancelled/expired pill so providers know exactly
+   * which benefits the server will auto-apply.
+   */
+  salon_membership?: {
+    plan_id?: string | null;
+    plan_name?: string | null;
+    status?: string | null;
+    expires_at?: string | null;
+    cancelled_at?: string | null;
+    is_entitled?: boolean;
+  } | null;
 }
 
 interface SelectedService {
@@ -368,6 +391,7 @@ export default function NewBookingScreen() {
       email: c.customer?.email || "",
       phone: c.customer?.phone || "",
       avatar_url: c.customer?.avatar_url ?? null,
+      salon_membership: c.salon_membership ?? null,
     }));
   }, [rawSearchedClients]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -443,6 +467,7 @@ export default function NewBookingScreen() {
           email: raw.customer?.email || "",
           phone: raw.customer?.phone || "",
           avatar_url: raw.customer?.avatar_url ?? null,
+          salon_membership: raw.salon_membership ?? null,
         });
       }
     }
@@ -666,27 +691,77 @@ export default function NewBookingScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
+  /**
+   * §Provider-audit 2026-05: previously the draft restorer only filtered
+   * services by id, so a draft that had a stale `staffId` (team member
+   * removed) or a stale add-on would silently ride along and then fail
+   * server validation when the provider tapped Confirm. We now sanitise
+   * each line against the *current* catalogue before applying it, and
+   * surface any drops as a small toast-style alert so the provider knows
+   * what was kept vs dropped.
+   */
   const applyPendingDraft = useCallback(() => {
     if (!pendingDraft) return;
     const draft = pendingDraft;
     if (draft.notes) setNotes(draft.notes);
+
+    let droppedServices = 0;
+    let droppedAddOns = 0;
+    let droppedStaff = 0;
+    let droppedProducts = 0;
+    let droppedPackage = false;
+
+    // Compute the fallback staff inline to avoid relying on `defaultStaffForNewLines`
+    // which is declared further down in this component (TDZ).
+    const fallbackStaff =
+      typeof params.staff_id === "string" && params.staff_id.length > 0
+        ? params.staff_id
+        : staffList?.length === 1
+          ? staffList[0]?.id
+          : undefined;
+
     if (Array.isArray(draft.selectedServices) && draft.selectedServices.length > 0) {
-      // Only restore services whose IDs still exist in the catalogue.
-      const validServices = services
-        ? draft.selectedServices.filter((s) =>
-            services.some((cat) => cat.id === s.serviceId),
-          )
-        : draft.selectedServices;
+      const validServices: SelectedService[] = [];
+      for (const line of draft.selectedServices) {
+        const svc = services ? services.find((s) => s.id === line.serviceId) : null;
+        if (services && !svc) {
+          droppedServices += 1;
+          continue;
+        }
+        const validAddOnIds = svc
+          ? line.addOnIds.filter((aoId) => svc.add_ons?.some((a) => a.id === aoId))
+          : line.addOnIds;
+        if (svc) droppedAddOns += line.addOnIds.length - validAddOnIds.length;
+        const staffOk =
+          !line.staffId || (staffList ? staffList.some((s) => s.id === line.staffId) : true);
+        if (!staffOk) droppedStaff += 1;
+        validServices.push({
+          ...line,
+          addOnIds: validAddOnIds,
+          ...(staffOk ? {} : { staffId: fallbackStaff }),
+        });
+      }
       if (validServices.length > 0) setSelectedServices(validServices);
     }
+
     if (Array.isArray(draft.selectedProducts) && draft.selectedProducts.length > 0) {
-      setSelectedProducts(draft.selectedProducts);
+      const validProducts = productsList.length > 0
+        ? draft.selectedProducts.filter((p) => productsList.some((cat) => cat.id === p.productId))
+        : draft.selectedProducts;
+      droppedProducts = (draft.selectedProducts.length - validProducts.length);
+      if (validProducts.length > 0) setSelectedProducts(validProducts);
     }
+
     if (draft.discountValue) setDiscountValue(draft.discountValue);
     if (draft.discountType) setDiscountType(draft.discountType);
     if (draft.promoCode) setPromoCode(draft.promoCode);
     if (draft.tipAmount) setTipAmount(draft.tipAmount);
-    if (draft.selectedPackageId) setSelectedPackageId(draft.selectedPackageId);
+    if (draft.selectedPackageId) {
+      // Only restore the package if it's still active in the provider's catalogue.
+      const stillActive = packagesList.some((p) => p.id === draft.selectedPackageId);
+      if (stillActive) setSelectedPackageId(draft.selectedPackageId);
+      else droppedPackage = true;
+    }
     if (draft.isRecurring === true) setIsRecurring(true);
     if (draft.recurrencePattern) setRecurrencePattern(draft.recurrencePattern);
     if (draft.recurrenceEndDate) setRecurrenceEndDate(draft.recurrenceEndDate);
@@ -698,8 +773,22 @@ export default function NewBookingScreen() {
       setProviderFormResponses(draft.providerFormResponses);
     }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    const drops: string[] = [];
+    if (droppedServices > 0) drops.push(`${droppedServices} service${droppedServices === 1 ? "" : "s"} no longer in catalogue`);
+    if (droppedAddOns > 0) drops.push(`${droppedAddOns} add-on${droppedAddOns === 1 ? "" : "s"} removed`);
+    if (droppedStaff > 0) drops.push(`${droppedStaff} staff assignment${droppedStaff === 1 ? "" : "s"} reset`);
+    if (droppedProducts > 0) drops.push(`${droppedProducts} product${droppedProducts === 1 ? "" : "s"} removed`);
+    if (droppedPackage) drops.push("package no longer active");
+    if (drops.length > 0) {
+      Alert.alert(
+        "Draft resumed with changes",
+        `We restored your draft, but updated it because ${drops.join(", ")}.`,
+      );
+    }
+
     setPendingDraft(null);
-  }, [pendingDraft, services]);
+  }, [pendingDraft, services, staffList, productsList, packagesList, params.staff_id]);
 
   const discardPendingDraft = useCallback(() => {
     AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
@@ -1692,20 +1781,68 @@ export default function NewBookingScreen() {
                 {clientMode === "search" ? (
                   <View>
                     {selectedClient ? (
-                      <View style={twStyle("flex-row items-center rounded-xl border border-indigo-200 bg-indigo-50 p-3")}>
-                        <Avatar name={selectedClient.full_name} imageUrl={selectedClient.avatar_url} size="sm" />
-                        <View style={twStyle("ml-2 flex-1")}>
-                          <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                            {selectedClient.full_name}
-                          </Text>
-                          <Text style={twStyle("text-xs text-gray-500")}>{selectedClient.phone || selectedClient.email}</Text>
+                      <View>
+                        <View style={twStyle("flex-row items-center rounded-xl border border-indigo-200 bg-indigo-50 p-3")}>
+                          <Avatar name={selectedClient.full_name} imageUrl={selectedClient.avatar_url} size="sm" />
+                          <View style={twStyle("ml-2 flex-1")}>
+                            <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                              {selectedClient.full_name}
+                            </Text>
+                            <Text style={twStyle("text-xs text-gray-500")}>{selectedClient.phone || selectedClient.email}</Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => setSelectedClient(null)}
+                            accessibilityLabel="Remove selected client"
+                          >
+                            <Ionicons name="close-circle" size={20} color="#6366f1" />
+                          </TouchableOpacity>
                         </View>
-                        <TouchableOpacity
-                          onPress={() => setSelectedClient(null)}
-                          accessibilityLabel="Remove selected client"
-                        >
-                          <Ionicons name="close-circle" size={20} color="#6366f1" />
-                        </TouchableOpacity>
+                        {/* §Provider-audit 2026-05: visible reminder that the
+                          server will auto-apply the membership benefit, and
+                          a clear cancelled/expired pill so providers don't
+                          assume a lapsed member is still entitled. */}
+                        {selectedClient.salon_membership ? (
+                          <View
+                            style={twStyle(
+                              `mt-2 flex-row items-center rounded-xl border px-3 py-2 ${
+                                selectedClient.salon_membership.is_entitled
+                                  ? "border-purple-200 bg-purple-50"
+                                  : selectedClient.salon_membership.cancelled_at
+                                    ? "border-red-200 bg-red-50"
+                                    : "border-amber-200 bg-amber-50"
+                              }`,
+                            )}
+                          >
+                            <Ionicons
+                              name={selectedClient.salon_membership.is_entitled ? "ribbon-outline" : "alert-circle-outline"}
+                              size={16}
+                              color={
+                                selectedClient.salon_membership.is_entitled
+                                  ? "#7c3aed"
+                                  : selectedClient.salon_membership.cancelled_at
+                                    ? "#b91c1c"
+                                    : "#b45309"
+                              }
+                            />
+                            <Text
+                              style={twStyle(
+                                `ml-2 flex-1 text-xs font-medium ${
+                                  selectedClient.salon_membership.is_entitled
+                                    ? "text-purple-800"
+                                    : selectedClient.salon_membership.cancelled_at
+                                      ? "text-red-700"
+                                      : "text-amber-800"
+                                }`,
+                              )}
+                            >
+                              {selectedClient.salon_membership.is_entitled
+                                ? `Active member${selectedClient.salon_membership.plan_name ? ` — ${selectedClient.salon_membership.plan_name}` : ""}. Member discount applied automatically.`
+                                : selectedClient.salon_membership.cancelled_at
+                                  ? "Membership cancelled — no member benefits will apply."
+                                  : "Membership expired — no member benefits will apply."}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                     ) : (
                       <>

@@ -51,6 +51,7 @@ import { CurrentTimeIndicator } from "@/components/calendar/CurrentTimeIndicator
 import {
   CALENDAR_GRID_TOP_PADDING,
   addCalendarDaysToDateKey,
+  contentYOffsetToHourMinute,
   getBlockHeight,
   getHourMinuteForInstantInZone,
   getTopOffset,
@@ -1664,13 +1665,17 @@ function CalendarScreenBody() {
       if (seg.date !== dayStr) continue;
       if (!blockMatchesStaff(seg.team_member_id)) continue;
       if (!blockMatchesLocation(seg.location_id)) continue;
+      const stLoose = normalizeCalendarTime(seg.start_time) ?? seg.start_time;
+      const etLoose = normalizeCalendarTime(seg.end_time) ?? seg.end_time;
+      const range = validateCalendarTimeRange(stLoose, etLoose);
+      if (!range.ok) continue;
       out.push({
         id: seg.id,
         staff_id: seg.team_member_id,
         block_type: "booking_hold",
         title: seg.reason?.trim() || t("provider.calendarScreen.bookingHoldTitle"),
-        start_time: normalizeCalendarTime(seg.start_time) ?? seg.start_time,
-        end_time: normalizeCalendarTime(seg.end_time) ?? seg.end_time,
+        start_time: range.startTime,
+        end_time: range.endTime,
         date: seg.date,
         calendar_overlay_kind: "booking_hold",
         hold_id: seg.hold_id ?? seg.id,
@@ -2072,14 +2077,14 @@ function CalendarScreenBody() {
       const contentY = scrollY + (absoluteY - gridY);
       const contentX = scrollX + (absoluteX - gridX);
 
-      const slotOffset = contentY - GRID_TOP_PADDING;
-      const slotIndex = Math.max(0, slotOffset / SLOT_HEIGHT);
-      const hour = startHour + Math.floor(slotIndex);
-      const frac = slotIndex % 1;
-      const inc = preferences.timeIncrementMinutes;
-      const minute = Math.round((frac * 60) / inc) * inc;
-      const clampedMinute = Math.min(59, Math.max(0, minute));
-      const hourClamp = Math.min(23, Math.max(0, hour));
+      const { hour: hourClamp, minute: clampedMinute } = contentYOffsetToHourMinute({
+        contentY,
+        gridTopPadding: GRID_TOP_PADDING,
+        startHour,
+        endHour,
+        slotHeightPerHour: SLOT_HEIGHT,
+        timeIncrementMinutes: preferences.timeIncrementMinutes,
+      });
       // §Release-audit 2026-04: build a timezone-aware ISO using the
       // **provider's** IANA zone (e.g. Africa/Johannesburg), not the
       // device's. Previously we used `naive.getTimezoneOffset()` which

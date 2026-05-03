@@ -410,12 +410,15 @@ function TrustModule({
 }
 
 /* ─── Section Tabs ─── */
-const TAB_KEYS = ["services", "packages", "products", "photos", "locations", "team", "reviews", "memberships", "giftcard", "custom_service", "about"] as const;
+// Service packages are applied at the booking confirmation/checkout step
+// (see `book-checkout.tsx` package selector). They are intentionally not
+// surfaced as a separate tab on the partner profile so the package only
+// attaches at the canonical confirmation surface.
+const TAB_KEYS = ["services", "products", "photos", "locations", "team", "reviews", "memberships", "giftcard", "custom_service", "about"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 const TAB_LABELS: Record<TabKey, string> = {
   services: "Services",
-  packages: "Packages",
   products: "Products",
   photos: "Photos",
   locations: "Locations",
@@ -1028,9 +1031,7 @@ function MembershipCard({
 }
 
 const PROFILE_PRODUCT_PAGE = 12;
-const PROFILE_PACKAGE_PAGE = 10;
 const PROFILE_MANY_PRODUCTS = 12;
-const PROFILE_MANY_PACKAGES = 8;
 const PROFILE_MANY_CAT_PILLS = 10;
 
 /* ═══════════════════════════════════════════
@@ -1112,15 +1113,10 @@ export default function PartnerProfileScreen() {
   } | null>(null);
   const [providerProducts, setProviderProducts] = useState<PublicProviderProduct[]>([]);
   const [providerProductsLoading, setProviderProductsLoading] = useState(false);
-  const [providerPackages, setProviderPackages] = useState<
-    { id: string; name: string; description?: string | null; price: number; currency: string; discount_percentage?: number | null }[]
-  >([]);
   const [productListCategory, setProductListCategory] = useState<string>("All");
   const [productListSearch, setProductListSearch] = useState("");
   const [productCategoryQuery, setProductCategoryQuery] = useState("");
   const [productListVisible, setProductListVisible] = useState(PROFILE_PRODUCT_PAGE);
-  const [packageListSearch, setPackageListSearch] = useState("");
-  const [packageListVisible, setPackageListVisible] = useState(PROFILE_PACKAGE_PAGE);
 
   const { selectedAddress } = useSelectedAddress();
   const { coords } = useLocation();
@@ -1153,10 +1149,11 @@ export default function PartnerProfileScreen() {
     const lng = fromRoute?.longitude ?? selectedAddress?.longitude ?? coords?.longitude;
     const qs = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : "";
     try {
-      const [provRes, svcRes, pkRes] = await Promise.all([
+      // Packages are fetched at the booking checkout step (book-checkout.tsx)
+      // — they no longer have a dedicated tab on this profile.
+      const [provRes, svcRes] = await Promise.all([
         api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}${qs}`),
         api.get<ProviderServicesResponse>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/services`),
-        api.get<{ data?: unknown } | unknown[]>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/packages`),
       ]);
       if (provRes.error) {
         setError(provRes.error.message || "Provider not found");
@@ -1167,26 +1164,6 @@ export default function PartnerProfileScreen() {
       if (!svcRes.error) {
         setServices(svcRes.data);
         if (svcRes.data?.categories?.[0]) setActiveCategory(svcRes.data.categories[0].id);
-      }
-      if (!pkRes.error && pkRes.data != null) {
-        const raw = pkRes.data as { data?: unknown } | unknown;
-        const inner =
-          raw && typeof raw === "object" && "data" in raw && !Array.isArray(raw)
-            ? (raw as { data: unknown }).data
-            : raw;
-        const arr = Array.isArray(inner) ? inner : [];
-        setProviderPackages(
-          arr.map((p: Record<string, unknown>) => ({
-            id: String(p.id ?? ""),
-            name: String(p.name ?? "Package"),
-            description: (p.description as string | null | undefined) ?? null,
-            price: Number(p.price) || 0,
-            currency: String(p.currency ?? getTenantDefaultCurrency()),
-            discount_percentage: p.discount_percentage != null ? Number(p.discount_percentage) : null,
-          })).filter((p) => p.id),
-        );
-      } else {
-        setProviderPackages([]);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -1571,10 +1548,6 @@ export default function PartnerProfileScreen() {
     setProductListVisible(PROFILE_PRODUCT_PAGE);
   }, [productListCategory, productListSearch]);
 
-  useEffect(() => {
-    setPackageListVisible(PROFILE_PACKAGE_PAGE);
-  }, [packageListSearch]);
-
   const filteredProfileProducts = useMemo(() => {
     let list =
       productListCategory === "All"
@@ -1610,26 +1583,9 @@ export default function PartnerProfileScreen() {
     [filteredProfileProducts, productListVisible],
   );
 
-  const filteredProfilePackages = useMemo(() => {
-    const q = packageListSearch.trim().toLowerCase();
-    if (!q) return providerPackages;
-    return providerPackages.filter(
-      (pkg) =>
-        pkg.name.toLowerCase().includes(q) ||
-        (pkg.description && String(pkg.description).toLowerCase().includes(q)),
-    );
-  }, [providerPackages, packageListSearch]);
-
-  const visibleProfilePackages = useMemo(
-    () => filteredProfilePackages.slice(0, packageListVisible),
-    [filteredProfilePackages, packageListVisible],
-  );
-
   const showProductSearch =
     providerProducts.length >= PROFILE_MANY_PRODUCTS || filteredProfileProducts.length >= PROFILE_MANY_PRODUCTS;
   const showProductCategoryFilter = productCategoryPills.length >= PROFILE_MANY_CAT_PILLS;
-  const showPackageSearch =
-    providerPackages.length >= PROFILE_MANY_PACKAGES || filteredProfilePackages.length >= PROFILE_MANY_PACKAGES;
 
   /* ═══ Loading state ═══ */
   if (loading && !provider) {
@@ -1677,7 +1633,6 @@ export default function PartnerProfileScreen() {
 
   const visibleTabs = TAB_KEYS.filter((t) => {
     if (t === "services") return (services?.total_services ?? 0) > 0;
-    if (t === "packages") return true;
     if (t === "products") return true;
     if (t === "photos") return images.length > 1;
     if (t === "locations") return (provider.locations?.length ?? 0) > 0;
@@ -1988,132 +1943,6 @@ export default function PartnerProfileScreen() {
                     >
                       <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 14 }}>View all services</Text>
                     </TouchableOpacity>
-                  )}
-                </View>
-              )}
-
-              {/* ── PACKAGES (bundles — same order as web: next to Services) ── */}
-              {activeTab === "packages" && (
-                <View>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 8 }}>Packages</Text>
-                  <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 16 }}>
-                    Book a bundle at a set price.
-                  </Text>
-                  {providerPackages.length === 0 ? (
-                    <View style={{ alignItems: "center", paddingVertical: 28 }}>
-                      <Ionicons name="gift-outline" size={40} color="#D1D5DB" />
-                      <Text style={{ fontSize: 14, color: "#9CA3AF", marginTop: 10, textAlign: "center" }}>
-                        No packages published yet.
-                      </Text>
-                    </View>
-                  ) : (
-                    <>
-                      {showPackageSearch && (
-                        <TextInput
-                          value={packageListSearch}
-                          onChangeText={setPackageListSearch}
-                          placeholder={t("booking.searchPackagesPlaceholder")}
-                          placeholderTextColor="#9CA3AF"
-                          style={{
-                            backgroundColor: "#FFF",
-                            borderWidth: 1,
-                            borderColor: "#E5E7EB",
-                            borderRadius: 10,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
-                            fontSize: 14,
-                            color: "#111827",
-                            marginBottom: 12,
-                          }}
-                        />
-                      )}
-                      {filteredProfilePackages.length === 0 ? (
-                        <Text style={{ fontSize: 13, color: "#6B7280", paddingVertical: 8 }}>{t("checkout.noMatchingPackages")}</Text>
-                      ) : (
-                        <>
-                          {visibleProfilePackages.length < filteredProfilePackages.length && (
-                            <Text style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>
-                              {t("booking.servicesPaginationSummary", { shown: visibleProfilePackages.length, total: filteredProfilePackages.length })}
-                            </Text>
-                          )}
-                          {visibleProfilePackages.map((pkg) => (
-                            <View
-                              key={pkg.id}
-                              style={{
-                                backgroundColor: "#fff",
-                                borderRadius: 14,
-                                borderWidth: 1,
-                                borderColor: "#E5E7EB",
-                                padding: 14,
-                                marginBottom: 12,
-                                ...Shadows.cardSmall,
-                              }}
-                            >
-                              <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>{pkg.name}</Text>
-                              {pkg.description ? (
-                                <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 6 }} numberOfLines={3}>
-                                  {pkg.description}
-                                </Text>
-                              ) : null}
-                              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
-                                <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.primary }}>
-                                  {formatMoney(pkg.price, pkg.currency ?? tenantFb)}
-                                  {pkg.discount_percentage != null && pkg.discount_percentage > 0 ? (
-                                    <Text style={{ fontSize: 12, fontWeight: "600", color: "#16A34A" }}> · Save {pkg.discount_percentage}%</Text>
-                                  ) : null}
-                                </Text>
-                                <TouchableOpacity
-                                  onPress={() => {
-                                    haptic.medium();
-                                    router.push({
-                                      pathname: "/(app)/book",
-                                      params: {
-                                        slug: slug as string,
-                                        package: pkg.id,
-                                        package_name: pkg.name,
-                                        package_price: String(pkg.price),
-                                        package_currency: pkg.currency,
-                                        package_discount: pkg.discount_percentage != null ? String(pkg.discount_percentage) : "",
-                                      },
-                                    } as never);
-                                  }}
-                                  style={{
-                                    backgroundColor: Colors.primary,
-                                    paddingHorizontal: 16,
-                                    paddingVertical: 10,
-                                    borderRadius: 10,
-                                  }}
-                                  accessibilityRole="button"
-                                  accessibilityLabel={`Book package ${pkg.name}`}
-                                >
-                                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Book</Text>
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                          ))}
-                          {packageListVisible < filteredProfilePackages.length && (
-                            <TouchableOpacity
-                              onPress={() => {
-                                haptic.selection();
-                                setPackageListVisible((c) => Math.min(c + PROFILE_PACKAGE_PAGE, filteredProfilePackages.length));
-                              }}
-                              style={{
-                                paddingVertical: 12,
-                                paddingHorizontal: 16,
-                                borderRadius: 12,
-                                borderWidth: 1,
-                                borderColor: "#E5E7EB",
-                                backgroundColor: "#FFF",
-                                alignItems: "center",
-                                marginBottom: 8,
-                              }}
-                            >
-                              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("booking.loadMorePackages")}</Text>
-                            </TouchableOpacity>
-                          )}
-                        </>
-                      )}
-                    </>
                   )}
                 </View>
               )}

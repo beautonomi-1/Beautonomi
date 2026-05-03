@@ -31,16 +31,49 @@ export default function NewSupportTicketScreen() {
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [submitting, setSubmitting] = useState(false);
 
-  const canSubmit = subject.trim().length >= 4 && message.trim().length >= 10;
+  /**
+   * §Provider-audit 2026-05: previously the Submit button silently stayed
+   * disabled until subject ≥ 4 chars and message ≥ 10 chars, with no hint
+   * about what the user needed to do. That made the button feel "greyed out
+   * and broken". The API itself only requires both fields to be non-empty,
+   * so we mirror that minimum and surface inline hints + an Alert when the
+   * user taps a still-disabled button so the experience is honest.
+   */
+  const subjectTrimmed = subject.trim();
+  const messageTrimmed = message.trim();
+  const subjectOk = subjectTrimmed.length >= 1;
+  const messageOk = messageTrimmed.length >= 1;
+  const canSubmit = subjectOk && messageOk;
+  const subjectHint =
+    subjectTrimmed.length === 0
+      ? "Required — short summary of the issue"
+      : subjectTrimmed.length < 4
+        ? "Tip: a few more words helps us route it faster"
+        : null;
+  const messageHint =
+    messageTrimmed.length === 0
+      ? "Required — describe what happened"
+      : messageTrimmed.length < 10
+        ? "Tip: include any error or steps so we can help fast"
+        : null;
 
   const handleSubmit = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      const missing: string[] = [];
+      if (!subjectOk) missing.push("a short subject");
+      if (!messageOk) missing.push("a description of the issue");
+      Alert.alert(
+        "A little more info",
+        `Please add ${missing.join(" and ")} so we can help.`,
+      );
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSubmitting(true);
     try {
       const res = await api.post("/api/me/support-tickets", {
-        subject: subject.trim(),
-        message: message.trim(),
+        subject: subjectTrimmed,
+        message: messageTrimmed,
         category,
         priority,
       }) as { error?: { message?: string } };
@@ -107,7 +140,7 @@ export default function NewSupportTicketScreen() {
           <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Subject</Text>
           <TextInput
             style={{
-              marginBottom: 20,
+              marginBottom: subjectHint ? 6 : 20,
               borderRadius: 12,
               borderWidth: 1,
               borderColor: Colors.gray[200],
@@ -124,12 +157,15 @@ export default function NewSupportTicketScreen() {
             maxLength={160}
             returnKeyType="next"
           />
+          {subjectHint ? (
+            <Text style={{ marginBottom: 16, fontSize: 12, color: Colors.gray[500] }}>{subjectHint}</Text>
+          ) : null}
 
           {/* Message */}
           <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Details</Text>
           <TextInput
             style={{
-              marginBottom: 24,
+              marginBottom: messageHint ? 6 : 24,
               borderRadius: 12,
               borderWidth: 1,
               borderColor: Colors.gray[200],
@@ -148,12 +184,16 @@ export default function NewSupportTicketScreen() {
             multiline
             maxLength={2000}
           />
+          {messageHint ? (
+            <Text style={{ marginBottom: 20, fontSize: 12, color: Colors.gray[500] }}>{messageHint}</Text>
+          ) : null}
 
           <ActionButton
             label={submitting ? "Submitting…" : "Submit ticket"}
             onPress={handleSubmit}
+            variant="brand"
             fullWidth
-            disabled={!canSubmit || submitting}
+            disabled={submitting}
           />
           <Text style={{ marginTop: 12, textAlign: "center", fontSize: 12, color: Colors.gray[400] }}>
             We typically respond within 1–2 business days

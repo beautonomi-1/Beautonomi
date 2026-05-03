@@ -3,7 +3,10 @@ import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
-import { resolveActiveMarketFromRequest } from "@/lib/tenant/resolve-active-market";
+import {
+  effectiveBrowseCountryCode,
+  resolveActiveMarketFromRequest,
+} from "@/lib/tenant/resolve-active-market";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import type { PublicProviderCard } from "@/types/beautonomi";
@@ -122,7 +125,9 @@ export async function GET(request: Request) {
     const latitude = searchParams.get("lat");
     const longitude = searchParams.get("lng");
     const city = searchParams.get("city");
-    const country = resolveActiveMarketFromRequest(request, searchParams.get("country")).countryCode;
+    const country = effectiveBrowseCountryCode(
+      resolveActiveMarketFromRequest(request, searchParams.get("country")).countryCode,
+    );
     const categorySlug = searchParams.get("category"); // Filter by category slug
 
     const cacheKey = `home-${tenantId}-${latitude ?? ""}-${longitude ?? ""}-${city ?? ""}-${country}-${categorySlug ?? "all"}`;

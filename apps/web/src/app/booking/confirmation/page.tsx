@@ -581,7 +581,9 @@ export default function BookingConfirmationPage() {
               const sub = Math.max(0, (booking.subtotal ?? 0) - travel);
               const tax = booking.tax_amount ?? 0;
               const taxRate = booking.tax_rate ?? 0;
-              const svcFee = booking.service_fee_amount ?? 0;
+              const svcFee =
+                Number((booking as { platform_fee_amount?: number }).platform_fee_amount ?? 0) ||
+                Number(booking.service_fee_amount ?? 0);
               const loyalty = booking.loyalty_discount_amount ?? 0;
               const loyaltyPtsUsed = booking.loyalty_points_used ?? 0;
               const membership = booking.membership_discount_amount ?? 0;

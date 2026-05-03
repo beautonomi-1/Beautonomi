@@ -737,6 +737,9 @@ export async function POST(request: NextRequest) {
         if (packageIdForHold) {
           holdMetadata = { ...holdMetadata, package_id: packageIdForHold };
         }
+        if (bodyPreferredStaffIds && bodyPreferredStaffIds.length > 0) {
+          holdMetadata = { ...holdMetadata, preferred_staff_ids: bodyPreferredStaffIds };
+        }
 
         const expiresAt = new Date(Date.now() + HOLD_EXPIRY_MINUTES * 60 * 1000);
 

@@ -41,6 +41,7 @@ Runtime controls:
 - `RESTRICTED_COUNTRIES` (optional deny list)
 - `NEXT_PUBLIC_GLOBAL_ENTRY_HOST` (global popup entry host)
 - `NEXT_PUBLIC_DEFAULT_MARKET_HOST` (switch target host, e.g. `beautonomi.co.za`)
+- **`MARKET_GEO_EDGE_REDIRECT_ENABLED`** (production should be **`true`** on Vercel): enables the Next.js edge/geo hook in `src/lib/seo/maybe-market-geo-redirect.ts` so visitors on the global entry host (e.g. `.com`) with a **ZA** geo signal are **308-redirected** to the configured ZA market host (e.g. `.co.za`). This complements the in-app amber banner for unsupported countries; SA traffic should land on the transactional domain without relying on manual region picks alone. See also `apps/web/.env.example`.
 
 ## Route Behavior Contract
 

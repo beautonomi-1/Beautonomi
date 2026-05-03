@@ -55,6 +55,16 @@ describe("resolveActiveMarketFromRequest", () => {
     expect(r.source).toBe("geo_header");
   });
 
+  it("returns empty country on global entry when no geo header (banner may prompt)", () => {
+    vi.stubEnv("NEXT_PUBLIC_GLOBAL_ENTRY_HOST", "beautonomi.com");
+    const req = new Request("http://beautonomi.com/api/public/home", {
+      headers: { host: "beautonomi.com" },
+    });
+    const r = resolveActiveMarketFromRequest(req, null);
+    expect(r.countryCode).toBe("");
+    expect(r.source).toBe("default");
+  });
+
   it("falls back to DEFAULT_MARKET_COUNTRY when no hints exist", () => {
     vi.stubEnv("DEFAULT_MARKET_COUNTRY", "GB");
     const req = new Request("http://unknown-host.local/api/public/home", {

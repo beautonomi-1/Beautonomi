@@ -10,10 +10,37 @@ import {
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { hasPermission } from "@/lib/auth/permissions";
 
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
+/**
+ * §Provider-audit 2026-05: previously only "image/jpeg|jpg|png|webp" was
+ * allowed, which silently 400'd HEIC/HEIF photos shipped from iPhone
+ * libraries (most providers' phones default to HEIC). The provider app
+ * relays whatever ImagePicker gives us; rejecting HEIC made every iPhone
+ * library upload appear "broken" with the generic "Invalid file type"
+ * error. We now accept HEIC/HEIF + a few common gif/avif variants — the
+ * Supabase storage bucket and downstream consumers handle them fine.
+ */
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
+  "image/gif",
+  "image/avif",
+];
+const ALLOWED_VIDEO_TYPES = [
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-m4v",
+  "video/m4v",
+  "video/mpeg",
+];
 const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES];
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB (HEIC/large originals)
 const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
 
 /**
@@ -63,19 +90,32 @@ export async function POST(request: NextRequest) {
       return errorResponse("No file provided", "VALIDATION_ERROR", 400);
     }
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    // §Provider-audit 2026-05: be lenient when ImagePicker hands us
+    // `application/octet-stream` (Android sometimes does), and fall back to
+    // the file extension when present. Anything still unrecognised gets a
+    // friendlier error message that names the formats we accept.
+    const declaredType = (file.type || "").toLowerCase();
+    const looksLikeImageByExt = /\.(jpe?g|png|webp|heic|heif|gif|avif)$/i.test(file.name);
+    const looksLikeVideoByExt = /\.(mp4|webm|mov|m4v|mpeg|mpg)$/i.test(file.name);
+    const isAllowed =
+      ALLOWED_TYPES.includes(declaredType) ||
+      ((declaredType === "" || declaredType === "application/octet-stream") &&
+        (looksLikeImageByExt || looksLikeVideoByExt));
+    if (!isAllowed) {
       return errorResponse(
-        "Invalid file type. Use JPEG, PNG, WebP, MP4, or WebM.",
+        "Unsupported file type. Use JPEG, PNG, WebP, HEIC, GIF, MP4, MOV, or WebM.",
         "VALIDATION_ERROR",
         400
       );
     }
 
-    const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
+    const isVideo =
+      ALLOWED_VIDEO_TYPES.includes(declaredType) ||
+      (looksLikeVideoByExt && !ALLOWED_IMAGE_TYPES.includes(declaredType));
     const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
     if (file.size > maxSize) {
       return errorResponse(
-        `File too large. Max ${isVideo ? "50MB" : "5MB"} for ${isVideo ? "videos" : "images"}.`,
+        `File too large. Max ${isVideo ? "50MB" : "10MB"} for ${isVideo ? "videos" : "images"}.`,
         "VALIDATION_ERROR",
         400
       );
@@ -88,10 +128,20 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // Use the declared/derived content-type, falling back to a sane default
+    // so the storage object always carries a Content-Type that the browser
+    // (and the provider app's expo-image rendering) can understand.
+    const storageContentType =
+      declaredType && declaredType !== "application/octet-stream"
+        ? file.type
+        : isVideo
+          ? "video/mp4"
+          : "image/jpeg";
+
     const { data: uploadData, error } = await supabaseAdmin.storage
       .from("explore-posts")
       .upload(path, buffer, {
-        contentType: file.type,
+        contentType: storageContentType,
         cacheControl: "3600",
         upsert: false,
       });

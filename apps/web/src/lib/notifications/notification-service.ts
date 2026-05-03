@@ -12,6 +12,7 @@ import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { formatInTimeZone } from "date-fns-tz";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
+import { computePackageAppliedForDisplay } from "@/lib/bookings/display-invariants";
 
 /**
  * §Cross-app audit 2026-04 (multi-staff push): historically every
@@ -210,15 +211,25 @@ async function getBookingDetails(bookingId: string): Promise<any> {
   return booking;
 }
 
-/** Services line for email/push templates; includes package name when the booking used a package. */
+/** Services line for email/push templates; prefixes package only when a package actually applied. */
 function formatBookingServicesLineForTemplates(booking: {
   services?: { service?: { name?: string } }[];
   package?: { name?: string } | null;
+  package_id?: string | null;
+  customer_package_entitlement_id?: string | null;
+  discount_amount?: number | null;
+  promotion_discount_amount?: number | null;
 }): string {
   const servicesList =
     booking.services?.map((s) => s.service?.name).join(", ") ?? "Services";
-  const pkgName = booking.package?.name;
-  return pkgName?.trim() ? `Package: ${pkgName.trim()} — ${servicesList}` : servicesList;
+  const pkgName = booking.package?.name?.trim();
+  const pkgApplied = computePackageAppliedForDisplay({
+    package_id: booking.package_id ?? null,
+    customer_package_entitlement_id: booking.customer_package_entitlement_id ?? null,
+    discount_amount: booking.discount_amount ?? null,
+    promotion_discount_amount: booking.promotion_discount_amount ?? null,
+  });
+  return pkgApplied && pkgName ? `Package: ${pkgName} — ${servicesList}` : servicesList;
 }
 
 /**
@@ -232,6 +243,42 @@ function replaceUrlVariables(url: string, variables: Record<string, string>): st
   return result;
 }
 
+/** Rich HTML block for email templates (empty string when nothing to show). */
+function buildCustomerPricingBreakdownHtml(booking: Record<string, unknown>, currency: string): string {
+  const rows: string[] = [];
+  const pf = Number(booking.platform_fee_amount ?? booking.service_fee_amount ?? 0);
+  const sub = Number(booking.subtotal ?? 0);
+  const tax = Number(booking.tax_amount ?? 0);
+  const tip = Number(booking.tip_amount ?? 0);
+  const travel = Number(booking.travel_fee ?? 0);
+  const mem = Number(booking.membership_discount_amount ?? 0);
+  const loy = Number(booking.loyalty_discount_amount ?? 0);
+  const promo = Number(booking.promotion_discount_amount ?? 0);
+  const disc = Number(booking.discount_amount ?? 0);
+  const pkgApplied = computePackageAppliedForDisplay({
+    package_id: (booking.package_id as string | null | undefined) ?? null,
+    customer_package_entitlement_id:
+      (booking.customer_package_entitlement_id as string | null | undefined) ?? null,
+    discount_amount: disc,
+    promotion_discount_amount: promo,
+  });
+  const pkgDisc = pkgApplied ? Math.max(0, disc - promo) : 0;
+
+  if (sub > 0) rows.push(`Subtotal: ${fmt(sub, currency)}`);
+  if (travel > 0) rows.push(`Travel: ${fmt(travel, currency)}`);
+  if (promo > 0) rows.push(`Promotion: −${fmt(promo, currency)}`);
+  if (pkgDisc > 0) rows.push(`Package: −${fmt(pkgDisc, currency)}`);
+  if (mem > 0) rows.push(`Membership: −${fmt(mem, currency)}`);
+  if (loy > 0) rows.push(`Loyalty: −${fmt(loy, currency)}`);
+  if (tax > 0) rows.push(`Tax: ${fmt(tax, currency)}`);
+  if (pf > 0) rows.push(`Platform fee: ${fmt(pf, currency)}`);
+  if (tip > 0) rows.push(`Tip: ${fmt(tip, currency)}`);
+
+  if (rows.length === 0) return "";
+  const inner = rows.map((r) => `<div style="margin:4px 0;">${r}</div>`).join("");
+  return `<div style="margin:16px 0 0;padding:14px 16px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;"><p style="margin:0 0 8px;color:#6b7280;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Price breakdown</p>${inner}</div>`;
+}
+
 // ============================================================================
 // BOOKING NOTIFICATIONS
 // ============================================================================
@@ -243,12 +290,52 @@ export async function notifyBookingConfirmed(bookingId: string, channels?: Notif
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
+  // Customer-facing pricing lines, exposed as template variables so admin
+  // email/SMS templates can include "Platform fee: {{platform_fee}}" or
+  // "{{membership_label}}: −{{membership_discount}}". Empty when zero so
+  // templates with conditional placeholders render cleanly.
+  const currency = bookingCurrency(booking);
+  const platformFeeAmt = Number(
+    booking.platform_fee_amount ?? booking.service_fee_amount ?? 0,
+  );
+  const membershipDiscountAmt = Number(booking.membership_discount_amount ?? 0);
+  const subtotalAmt = Number(booking.subtotal ?? 0);
+  const taxAmt = Number(booking.tax_amount ?? 0);
+  const tipAmt = Number(booking.tip_amount ?? 0);
+  const travelFeeAmt = Number(booking.travel_fee ?? 0);
+  const loyaltyAmt = Number(booking.loyalty_discount_amount ?? 0);
+  const promoAmt = Number(booking.promotion_discount_amount ?? 0);
+  const discountAmt = Number(booking.discount_amount ?? 0);
+  const pkgApplied = computePackageAppliedForDisplay({
+    package_id: booking.package_id ?? null,
+    customer_package_entitlement_id: booking.customer_package_entitlement_id ?? null,
+    discount_amount: discountAmt,
+    promotion_discount_amount: promoAmt,
+  });
+  const pkgDisc = pkgApplied ? Math.max(0, discountAmt - promoAmt) : 0;
+  const pkgDisplayName =
+    pkgApplied && booking.package?.name ? String(booking.package.name).trim() : "";
+
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
     booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
     booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
-    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
-    total_amount: fmt(booking.total_amount || 0, bookingCurrency(booking)),
+    services: formatBookingServicesLineForTemplates(booking),
+    total_amount: fmt(booking.total_amount || 0, currency),
+    subtotal: subtotalAmt > 0 ? fmt(subtotalAmt, currency) : "",
+    tax_amount: taxAmt > 0 ? fmt(taxAmt, currency) : "",
+    travel_fee: travelFeeAmt > 0 ? fmt(travelFeeAmt, currency) : "",
+    platform_fee: platformFeeAmt > 0 ? fmt(platformFeeAmt, currency) : "",
+    /** Legacy alias mirroring DB columns; same value as platform_fee. */
+    service_fee: platformFeeAmt > 0 ? fmt(platformFeeAmt, currency) : "",
+    membership_discount: membershipDiscountAmt > 0 ? fmt(membershipDiscountAmt, currency) : "",
+    membership_label: membershipDiscountAmt > 0 ? "Membership" : "",
+    loyalty_discount: loyaltyAmt > 0 ? fmt(loyaltyAmt, currency) : "",
+    promotion_discount: promoAmt > 0 ? fmt(promoAmt, currency) : "",
+    package_discount: pkgDisc > 0 ? fmt(pkgDisc, currency) : "",
+    package_name: pkgDisplayName,
+    tip_amount: tipAmt > 0 ? fmt(tipAmt, currency) : "",
+    pricing_breakdown_html: buildCustomerPricingBreakdownHtml(booking as Record<string, unknown>, currency),
     booking_number: booking.booking_number || bookingId,
     booking_id: bookingId,
   };
@@ -359,8 +446,9 @@ export async function notifyBookingCancelled(
     ? "booking_cancelled_by_provider"
     : "booking_cancelled";
 
-  // Notify customer
-  await sendTemplateNotification(templateKey, [booking.customer_id], variables, channels, { appType: "customer" });
+  const customerResult = await sendTemplateNotification(templateKey, [booking.customer_id], variables, channels, {
+    appType: "customer",
+  });
 
   // If cancelled by customer, notify provider team (owner + active staff).
   if (cancelledBy === "customer" && booking.provider?.user_id) {
@@ -383,7 +471,7 @@ export async function notifyBookingCancelled(
     );
   }
 
-  return { success: true };
+  return customerResult;
 }
 
 /**
@@ -408,8 +496,14 @@ export async function notifyBookingRescheduled(
     booking_id: bookingId,
   };
 
-  // Notify customer
-  await sendTemplateNotification("booking_rescheduled", [booking.customer_id], variables, channels, { appType: "customer" });
+  // Notify customer — return value used by resend flows to know if anything was actually dispatched.
+  const customerResult = await sendTemplateNotification(
+    "booking_rescheduled",
+    [booking.customer_id],
+    variables,
+    channels,
+    { appType: "customer" },
+  );
 
   // Notify provider team (owner + active staff).
   if (booking.provider?.user_id) {
@@ -429,7 +523,7 @@ export async function notifyBookingRescheduled(
     );
   }
 
-  return { success: true };
+  return customerResult;
 }
 
 // ============================================================================
@@ -1223,11 +1317,46 @@ export async function notifyReceiptSent(
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
+  const currency = bookingCurrency(booking);
+  const platformFeeAmt = Number(
+    booking.platform_fee_amount ?? booking.service_fee_amount ?? 0,
+  );
+  const membershipDiscountAmt = Number(booking.membership_discount_amount ?? 0);
+  const subtotalAmt = Number(booking.subtotal ?? 0);
+  const taxAmt = Number(booking.tax_amount ?? 0);
+  const tipAmt = Number(booking.tip_amount ?? 0);
+  const travelFeeAmt = Number(booking.travel_fee ?? 0);
+  const loyaltyAmt = Number(booking.loyalty_discount_amount ?? 0);
+  const promoAmt = Number(booking.promotion_discount_amount ?? 0);
+  const discountAmt = Number(booking.discount_amount ?? 0);
+  const pkgApplied = computePackageAppliedForDisplay({
+    package_id: booking.package_id ?? null,
+    customer_package_entitlement_id: booking.customer_package_entitlement_id ?? null,
+    discount_amount: discountAmt,
+    promotion_discount_amount: promoAmt,
+  });
+  const pkgDisc = pkgApplied ? Math.max(0, discountAmt - promoAmt) : 0;
+  const pkgDisplayName =
+    pkgApplied && booking.package?.name ? String(booking.package.name).trim() : "";
+
   const variables = {
     booking_number: booking.booking_number || bookingId,
-    total_amount: fmt(totalAmount, bookingCurrency(booking)),
+    total_amount: fmt(totalAmount, currency),
     payment_date: paymentDate.toLocaleDateString(),
     booking_id: bookingId,
+    subtotal: subtotalAmt > 0 ? fmt(subtotalAmt, currency) : "",
+    tax_amount: taxAmt > 0 ? fmt(taxAmt, currency) : "",
+    travel_fee: travelFeeAmt > 0 ? fmt(travelFeeAmt, currency) : "",
+    platform_fee: platformFeeAmt > 0 ? fmt(platformFeeAmt, currency) : "",
+    service_fee: platformFeeAmt > 0 ? fmt(platformFeeAmt, currency) : "",
+    membership_discount: membershipDiscountAmt > 0 ? fmt(membershipDiscountAmt, currency) : "",
+    membership_label: membershipDiscountAmt > 0 ? "Membership" : "",
+    loyalty_discount: loyaltyAmt > 0 ? fmt(loyaltyAmt, currency) : "",
+    promotion_discount: promoAmt > 0 ? fmt(promoAmt, currency) : "",
+    package_discount: pkgDisc > 0 ? fmt(pkgDisc, currency) : "",
+    package_name: pkgDisplayName,
+    tip_amount: tipAmt > 0 ? fmt(tipAmt, currency) : "",
+    pricing_breakdown_html: buildCustomerPricingBreakdownHtml(booking as Record<string, unknown>, currency),
   };
 
   return await sendTemplateNotification(

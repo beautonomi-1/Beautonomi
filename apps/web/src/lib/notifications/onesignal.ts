@@ -67,9 +67,26 @@ function eventTypeFromPayloadData(data: unknown): string {
 
 /**
  * Map internal payload targeting to OneSignal Create Message fields.
- * - Push with subscription IDs (Expo `getIdAsync`) → `include_subscription_ids` (no mixing with aliases).
- * - Single-channel external users (Expo `OneSignal.login(user.id)`) → `include_aliases.external_id` + `target_channel`.
- * - Multi-channel external sends → legacy `include_external_user_ids` + `channel_for_external_user_ids`.
+ *
+ * OneSignal API v9/v10 does NOT allow mixing target sets in a single request
+ * (https://documentation.onesignal.com/reference/create-message). The previous
+ * implementation set both `include_subscription_ids` and
+ * `include_external_user_ids` — OneSignal silently kept whichever one it
+ * preferred, causing intermittent missed deliveries (especially for users with
+ * `OneSignal.login(userId)` but no row in `user_devices`).
+ *
+ * Targeting strategy (in order of preference):
+ *   1. External IDs + single channel  → `include_aliases.external_id` +
+ *      `target_channel`. Modern alias targeting; OneSignal fans out to ALL of
+ *      the user's subscribed devices, including ones we never saw via
+ *      `/api/me/devices`.
+ *   2. External IDs + multi channel   → legacy
+ *      `include_external_user_ids` + `channel_for_external_user_ids`.
+ *   3. No external IDs, push only     → `include_subscription_ids`.
+ *
+ * The caller should always pass `include_external_user_ids` when it has user
+ * IDs available (the customer/provider apps both call
+ * `OneSignal.login(user.id)` on launch).
  *
  * @see https://documentation.onesignal.com/reference/create-message
  */
@@ -100,25 +117,26 @@ function applyOneSignalTargeting(
       ? chans[0]
       : null;
 
-  if (playerIds.length > 0 && singleChannel === "push") {
-    notification.include_subscription_ids = playerIds;
-    return;
-  }
-
+  // Modern path: external IDs + single channel. Reaches every subscribed
+  // device for that user without needing a registered subscription_id.
   if (extIds.length > 0 && singleChannel) {
     notification.include_aliases = { external_id: extIds };
     notification.target_channel = singleChannel;
     return;
   }
 
+  // Multi-channel external sends (push + email + sms in one request).
   if (extIds.length > 0) {
     notification.include_external_user_ids = extIds;
     if (chans.length > 0) {
       notification.channel_for_external_user_ids = chans;
     }
+    return;
   }
+
+  // No external IDs (e.g. anonymous web subscribers): subscription IDs only.
   if (playerIds.length > 0) {
-    notification.include_player_ids = playerIds;
+    notification.include_subscription_ids = playerIds;
   }
 }
 
@@ -368,6 +386,11 @@ async function sendOneSignalNotification(
   }
   if (payload.big_picture) {
     notification.big_picture = payload.big_picture;
+    notification.mutable_content = true;
+    notification.ios_attachments = { id1: payload.big_picture };
+    if (!payload.android_channel_id && process.env.ONESIGNAL_DEFAULT_ANDROID_CHANNEL_ID?.trim()) {
+      notification.android_channel_id = process.env.ONESIGNAL_DEFAULT_ANDROID_CHANNEL_ID.trim();
+    }
   }
   if (payload.url) {
     notification.url = payload.url;

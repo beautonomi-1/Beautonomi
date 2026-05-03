@@ -18,7 +18,7 @@ import {
   sumMoney,
 } from "@beautonomi/utils";
 import { sumChainedBlockedMinutes } from "@/lib/booking-slot-math/blocked-window-minutes";
-import { isSalonMembershipEntitledForDiscount } from "@/lib/provider/salon-membership-entitlement";
+import { applyPublicBookingHoldSnapshotToDraft } from "@/lib/bookings/apply-hold-snapshot-to-draft";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -210,6 +210,94 @@ export async function validateBooking(
       "PROVIDER_INACTIVE",
       400
     );
+  }
+
+  /**
+   * Hold snapshot (authoritative when `hold_id` is present for non-group bookings).
+   *
+   * The `booking_holds` row is the source of truth for `selected_datetime`, core
+   * `services` (offering_id + staff_id as resolved when the hold was created),
+   * and salon `location_type` / `location_id`. The client may still send addons,
+   * products, payment fields, notes, and (for at_home) a refined address — but
+   * must not drift the slot time or staff assignment. Previously the server
+   * trusted `draft.services` + `pickFirstStaffForNullStaffLines` without
+   * `preferred_staff_ids`, re-picking a different any-staff member than the hold
+   * snapshot → false 409 CONFLICT while GET hold still showed active.
+   */
+  const isGroupBookingFlow =
+    Boolean(validatedDraft.is_group_booking) &&
+    Array.isArray(validatedDraft.group_participants) &&
+    (validatedDraft.group_participants as unknown[]).length > 0;
+
+  /** End time reserved by the hold row — used for advisory lock + booking end parity */
+  let holdReservedEndAt: Date | null = null;
+  /** From hold.metadata — used only if snapshot lines still have null staff (legacy edge). */
+  let holdPreferredStaffIdsForPick: string[] | null = null;
+
+  if (validatedDraft.hold_id) {
+    const { data: holdRow } = await supabaseAdmin
+      .from("booking_holds")
+      .select(
+        "end_at, hold_status, provider_id, expires_at, start_at, booking_services_snapshot, location_type, location_id, metadata"
+      )
+      .eq("id", validatedDraft.hold_id)
+      .maybeSingle();
+
+    const holdExpired =
+      holdRow &&
+      holdRow.expires_at &&
+      new Date(holdRow.expires_at as string).getTime() < Date.now();
+    const holdUsable =
+      holdRow &&
+      (holdRow.hold_status === "active" || holdRow.hold_status === "consuming") &&
+      !holdExpired;
+
+    if (!holdUsable) {
+      console.warn("[validate-booking] hold rejected", {
+        holdId: validatedDraft.hold_id,
+        found: !!holdRow,
+        status: holdRow?.hold_status ?? "missing",
+        expired: holdExpired,
+        expiresAt: holdRow?.expires_at ?? null,
+      });
+      return handleApiError(
+        new Error("Booking hold is no longer valid"),
+        "Your hold has expired or was already used. Please select a new time.",
+        "HOLD_INVALID",
+        410
+      );
+    }
+
+    if (holdRow!.provider_id !== draft.provider_id) {
+      return handleApiError(
+        new Error("Hold does not match provider"),
+        "This booking session is no longer valid. Please start again.",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+
+    holdReservedEndAt = new Date(holdRow!.end_at as string);
+
+    if (!isGroupBookingFlow) {
+      try {
+        const { preferredStaffIds } = applyPublicBookingHoldSnapshotToDraft(draft, {
+          start_at: holdRow!.start_at as string,
+          booking_services_snapshot: holdRow!.booking_services_snapshot,
+          location_type: holdRow!.location_type as string | null,
+          location_id: holdRow!.location_id as string | null,
+          metadata: holdRow!.metadata,
+        });
+        holdPreferredStaffIdsForPick = preferredStaffIds;
+      } catch {
+        return handleApiError(
+          new Error("Hold has no services"),
+          "Your hold is invalid. Please select a new time.",
+          "HOLD_INVALID",
+          410
+        );
+      }
+    }
   }
 
   const tenantIdForCurrency = provider.tenant_id || marketTenantId || null;
@@ -1215,64 +1303,21 @@ export async function validateBooking(
     Math.max(0, servicesSubtotal - packageDiscountAmount) + addonsSubtotal + productsSubtotal - promoDiscountAmount;
 
   // ── Membership discount ──────────────────────────────────────────────────
-  let membershipPlanId: string | null = null;
-  let membershipId: string | null = null;
-  let membershipDiscountAmount = 0;
-  try {
-    const { data: membership } = await (supabase.from("user_memberships") as any)
-      .select("status, expires_at, plan:membership_plans(id, provider_id, discount_percent, is_active)")
-      .eq("user_id", customerId)
-      .eq("provider_id", draft.provider_id)
-      .maybeSingle();
-
-    const planProviderId = membership?.plan?.provider_id ?? null;
-    const planMatchesProvider = planProviderId === draft.provider_id;
-    const entitled =
-      planMatchesProvider &&
-      isSalonMembershipEntitledForDiscount({
-        status: membership?.status ?? "",
-        expires_at: membership?.expires_at ?? null,
-        planIsActive: membership?.plan?.is_active,
-      });
-
-    if (entitled) {
-      membershipPlanId = membership.plan?.id || null;
-      const pct = Number(membership.plan?.discount_percent || 0);
-      if (pct > 0) {
-        membershipDiscountAmount = Math.max(0, percentOf(subtotal, pct));
-        membershipDiscountAmount = Math.min(membershipDiscountAmount, subtotal);
-      }
-    }
-
-    const { data: platformMemberships } = await (supabase.from("customer_memberships") as any)
-      .select("id, status, expires_at, provider_id, membership:memberships(id, discount_percentage, discount_cap_per_booking, discount_applies_to)")
-      .eq("customer_id", customerId)
-      .eq("status", "active");
-
-    for (const row of platformMemberships ?? []) {
-      const providerScope = row.provider_id ?? null;
-      if (providerScope && providerScope !== draft.provider_id) continue;
-      const expiresAt = row.expires_at ? new Date(row.expires_at).getTime() : null;
-      if (expiresAt != null && Number.isFinite(expiresAt) && expiresAt < Date.now()) continue;
-      const membership = row.membership;
-      if (!membership || (membership.discount_applies_to && membership.discount_applies_to !== "all_services")) {
-        continue;
-      }
-      const pct = Number(membership.discount_percentage || 0);
-      if (pct <= 0) continue;
-      const cap = Number(membership.discount_cap_per_booking || 0) || 0;
-      let discount = Math.max(0, percentOf(subtotal, pct));
-      if (cap > 0) discount = Math.min(discount, cap);
-      discount = Math.min(discount, subtotal);
-      if (discount > membershipDiscountAmount) {
-        membershipDiscountAmount = discount;
-        membershipPlanId = null;
-        membershipId = membership.id || null;
-      }
-    }
-  } catch {
-    // ignore – membership tables may not exist in some dev envs
-  }
+  // §Provider-audit 2026-05: routed through the shared helper so the public
+  // checkout flow and the provider-app `POST /api/provider/bookings` flow
+  // compute identical membership benefits and persist the same plan/id.
+  const { resolveMembershipDiscount } = await import(
+    "@/lib/provider/salon-membership-entitlement"
+  );
+  const membershipResolved = await resolveMembershipDiscount({
+    supabase,
+    customerId,
+    providerId: draft.provider_id,
+    subtotal,
+  });
+  const membershipPlanId = membershipResolved.membershipPlanId;
+  const membershipId = membershipResolved.membershipId;
+  const membershipDiscountAmount = membershipResolved.membershipDiscountAmount;
 
   const subtotalAfterMembership = Math.max(0, subtotal - membershipDiscountAmount);
   const commissionBase = Math.max(0, commissionBaseBeforeMembership - membershipDiscountAmount);
@@ -1527,49 +1572,7 @@ export async function validateBooking(
   // ── Hold validation (per-segment conflict check runs after booking_services rows are built) ──
   let allowOverride = false;
   let conflictResult: ConflictResult | null = null;
-  /** When completing a hold, RPC conflict window must match hold.end_at (not recomputed duration). */
-  let holdReservedEndAt: Date | null = null;
-
-  if (validatedDraft.hold_id) {
-    const { data: holdRow } = await supabaseAdmin
-      .from("booking_holds")
-      .select("end_at, hold_status, provider_id, expires_at")
-      .eq("id", validatedDraft.hold_id)
-      .maybeSingle();
-    const holdExpired =
-      holdRow &&
-      holdRow.expires_at &&
-      new Date(holdRow.expires_at as string).getTime() < Date.now();
-    /** `consuming` is set by `claim_booking_hold_for_consume` before inner POST /api/public/bookings. */
-    const holdUsable =
-      holdRow &&
-      (holdRow.hold_status === "active" || holdRow.hold_status === "consuming") &&
-      !holdExpired;
-    if (!holdUsable) {
-      console.warn("[validate-booking] hold rejected", {
-        holdId: validatedDraft.hold_id,
-        found: !!holdRow,
-        status: holdRow?.hold_status ?? "missing",
-        expired: holdExpired,
-        expiresAt: holdRow?.expires_at ?? null,
-      });
-      return handleApiError(
-        new Error("Booking hold is no longer valid"),
-        "Your hold has expired or was already used. Please select a new time.",
-        "HOLD_INVALID",
-        410
-      );
-    }
-    if (holdRow.provider_id !== draft.provider_id) {
-      return handleApiError(
-        new Error("Hold does not match provider"),
-        "This booking session is no longer valid. Please start again.",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-    holdReservedEndAt = new Date(holdRow.end_at as string);
-  }
+  // holdReservedEndAt is set early when validatedDraft.hold_id is present (see authoritative hold snapshot).
 
   // ── Resource availability ────────────────────────────────────────────────
   const { getRequiredResourcesForOffering, checkResourceAvailability } = await import(
@@ -1741,6 +1744,7 @@ export async function validateBooking(
         locationId: locationIdForCalendar,
         bookingServicesData: bookingServicesData as any,
         offeringBufferMinutesById,
+        preferredStaffIds: holdPreferredStaffIdsForPick ?? undefined,
       });
       if (picked.ok) {
         bookingServicesData = bookingServicesData.map((s: any) => ({

@@ -52,7 +52,18 @@ export async function POST(
 
     const result = await resendNotification(id, type, context);
 
-    return successResponse({ success: result.success, sent: result.sent, error: result.error });
+    const detail =
+      !result.sent && (result.message || result.error)
+        ? String(result.message || result.error)
+        : undefined;
+
+    return successResponse({
+      success: result.success,
+      sent: result.sent,
+      error: result.error,
+      message: result.message,
+      detail,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to resend notification");
   }

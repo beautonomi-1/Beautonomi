@@ -1810,17 +1810,25 @@ export default function BookingDetailScreen() {
         Alert.alert("Notification", res.error);
         return;
       }
-      const sent = (res.data as { sent?: boolean } | undefined)?.sent;
+      const payload = res.data as
+        | { sent?: boolean; success?: boolean; detail?: string; message?: string; error?: string }
+        | undefined;
+      const sent = payload?.sent;
       if (sent === false) {
-        Alert.alert("Notification", "Customer could not be notified.");
+        const reason =
+          payload?.detail ||
+          payload?.message ||
+          payload?.error ||
+          "No channel accepted the message (check customer email/phone and notification settings).";
+        Alert.alert("Not sent", reason);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
-        "Notification",
+        "Sent",
         type === "confirmation"
-          ? "Confirmation re-sent to customer."
-          : "Reminder sent to customer.",
+          ? "Confirmation re-sent to the customer."
+          : "Reminder sent to the customer.",
       );
     } finally {
       setIsNotifying(false);

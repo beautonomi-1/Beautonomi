@@ -74,6 +74,8 @@ pnpm test:run     # Run Vitest
 
 **Customer app (Expo)**
 
+Native builds must include **`EXPO_PUBLIC_WEB_API_TENANT_HOST`** when using tenant-scoped public APIs (search, tenant discovery); otherwise some routes may return 503. Copy `apps/customer/.env.example` to `.env.local` and set tenant/market vars documented there alongside `EXPO_PUBLIC_APP_URL` and Supabase keys.
+
 ```bash
 cd apps/customer
 pnpm dev          # Expo dev server

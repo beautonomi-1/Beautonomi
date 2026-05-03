@@ -215,7 +215,7 @@ export function TimeBlocksContent() {
         ? { frequency: "weekly", days: [blockDate.getDay()] }
         : undefined,
       is_active: editingBlock?.is_active ?? true,
-      notes: notes.trim() || null,
+      ...(notes.trim() ? { notes: notes.trim() } : {}),
     };
     const { error: err } = editingBlock
       ? await patchBlock(`/api/provider/time-blocks/${editingBlock.id}`, payload)

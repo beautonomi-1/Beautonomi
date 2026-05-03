@@ -24,6 +24,7 @@ path,class,note
 /api/admin/bookings/bulk,T,"uses resolveAdminApiTenantId"
 /api/admin/bookings,T,"uses resolveAdminApiTenantId"
 /api/admin/bootstrap,U,"needs tenant review"
+/api/admin/broadcast/audience-preview,T,"uses resolveAdminApiTenantId; GET segment=customers|providers"
 /api/admin/broadcast/email,T,"uses resolveAdminApiTenantId"
 /api/admin/broadcast/history,T,"review: likely tenant-scoped ops"
 /api/admin/broadcast/push,T,"uses resolveAdminApiTenantId"

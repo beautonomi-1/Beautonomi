@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { sendToUser, type NotificationChannel } from "@/lib/notifications/onesignal";
 import { requireAdminSectionAny, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { getSupabaseServer } from "@/lib/supabase/server";
 import {
   ADMIN_SECTION_INTEGRATIONS_DEV,
   ADMIN_SECTION_MARKETING_COMMS,
@@ -38,6 +39,16 @@ export async function POST(request: NextRequest) {
     const { channel } = parsed.data;
     const channels = [channel] as NotificationChannel[];
 
+    const supabase = await getSupabaseServer(request);
+    const { data: profile } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    const role = String((profile as { role?: string } | null)?.role ?? "");
+    const appType =
+      role === "provider_owner" || role === "provider_staff" ? "provider" : "customer";
+
     const result = await sendToUser(
       user.id,
       {
@@ -45,7 +56,8 @@ export async function POST(request: NextRequest) {
         message: "This is a test notification from the admin Notifications page. If you received it, the channel is working.",
         type: "admin_channel_test",
       },
-      channels
+      channels,
+      { appType },
     );
 
     if (!result.success) {

@@ -1,5 +1,6 @@
 import {
   addCalendarDaysToDateKey,
+  contentYOffsetToHourMinute,
   getBlockHeight,
   getTopOffset,
 } from "@/components/calendar/calendar-layout";
@@ -20,5 +21,33 @@ describe("calendar-layout", () => {
       services: [{ duration_minutes: 0 } as never],
     } as CalendarBooking;
     expect(getBlockHeight(booking, 60, false)).toBeGreaterThan(10);
+  });
+
+  it("contentYOffsetToHourMinute maps y offset to 30-min slot times", () => {
+    const gridTopPadding = 8;
+    const slotHeightPerHour = 120;
+    const timeIncrementMinutes = 30;
+    const rowHeight = (timeIncrementMinutes / 60) * slotHeightPerHour;
+    const startHour = 8;
+    expect(
+      contentYOffsetToHourMinute({
+        contentY: gridTopPadding + rowHeight * 0,
+        gridTopPadding,
+        startHour,
+        endHour: 18,
+        slotHeightPerHour,
+        timeIncrementMinutes,
+      }),
+    ).toEqual({ hour: 8, minute: 0 });
+    expect(
+      contentYOffsetToHourMinute({
+        contentY: gridTopPadding + rowHeight * 1,
+        gridTopPadding,
+        startHour,
+        endHour: 18,
+        slotHeightPerHour,
+        timeIncrementMinutes,
+      }),
+    ).toEqual({ hour: 8, minute: 30 });
   });
 });

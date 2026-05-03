@@ -143,6 +143,7 @@ export function useOneSignal() {
           body: JSON.stringify({
             player_id: playerId,
             platform,
+            app_type: "customer",
           }),
         });
 

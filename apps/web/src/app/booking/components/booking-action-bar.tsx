@@ -139,7 +139,7 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
           )}
           {bookingState.promotions.membershipDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
-              <span>Membership Discount</span>
+              <span>{bookingState.promotions.membershipPlanName || "Membership"}</span>
               <span>-{formatCurrency(bookingState.promotions.membershipDiscount, totals.currency)}</span>
             </div>
           )}

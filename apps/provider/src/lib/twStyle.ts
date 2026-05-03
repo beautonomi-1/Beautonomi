@@ -2,6 +2,19 @@
  * Runtime Tailwind-like class string → React Native style.
  * Use for automated migration: replace className="..." with style={twStyle("...")}.
  * Matches Tailwind spacing (4px scale), Colors, and common utilities so native layout works.
+ *
+ * §Provider-audit 2026-05: the curated `COLOR_MAP` below was missing many
+ * shades that screens actually use (e.g. `bg-emerald-600`, `text-indigo-800`,
+ * `border-pink-300`). Anywhere a missing class was rendered, the active state
+ * silently dropped to no background colour while the text class still
+ * resolved to `#fff`, producing "white-on-white" chips and buttons across
+ * tip pickers, time pickers, the Next-step CTA, and many setting screens.
+ *
+ * The fix: keep `COLOR_MAP` as the fast/authoritative path for the curated
+ * tokens we already used, but add a fallback `PALETTE` that resolves the
+ * full standard Tailwind shade range (50…900 + 950) for the colours the app
+ * uses. The fallback only runs when a class isn't in the explicit map, so
+ * existing styles are unchanged.
  */
 import type { ViewStyle, TextStyle } from "react-native";
 
@@ -59,86 +72,266 @@ const COLOR_MAP: Record<string, string> = {
   "bg-black": "#000000",
   "text-white": "#FFFFFF",
   "text-black": "#000000",
-  // red
-  "bg-red-50": "#FEF2F2",
-  "bg-red-100": "#FEE2E2",
-  "bg-red-200": "#FECACA",
-  "bg-red-400": "#F87171",
-  "bg-red-500": "#EF4444",
-  "bg-red-600": "#DC2626",
-  "text-red-500": "#EF4444",
-  "text-red-600": "#DC2626",
-  "text-red-700": "#B91C1C",
-  "text-red-800": "#991B1B",
-  "border-red-100": "#FEE2E2",
-  "border-red-200": "#FECACA",
-  "border-red-400": "#F87171",
-  "border-red-500": "#EF4444",
-  // green
-  "bg-green-50": "#DCFCE7",
-  "bg-green-100": "#DCFCE7",
-  "bg-green-500": "#22C55E",
-  "bg-green-600": "#16A34A",
-  "text-green-600": "#16A34A",
-  "text-green-700": "#15803D",
-  "text-green-800": "#166534",
-  "border-green-100": "#DCFCE7",
-  // amber
-  "bg-amber-50": "#FFFBEB",
-  "bg-amber-100": "#FEF3C7",
-  "bg-amber-500": "#F59E0B",
-  "text-amber-700": "#B45309",
-  "text-amber-800": "#92400E",
-  "border-amber-100": "#FEF3C7",
-  "border-amber-200": "#FDE68A",
-  // indigo
-  "bg-indigo-50": "#EEF2FF",
-  "bg-indigo-100": "#E0E7FF",
-  "bg-indigo-600": "#4F46E5",
-  "text-indigo-600": "#4F46E5",
-  "text-indigo-700": "#4338CA",
-  "border-indigo-200": "#C7D2FE",
-  "border-indigo-300": "#A5B4FC",
-  // violet / purple
-  "bg-violet-50": "#F5F3FF",
-  "bg-violet-100": "#EDE9FE",
-  "bg-violet-200": "#C4B5FD",
-  "text-violet-700": "#6D28D9",
-  "border-violet-200": "#C4B5FD",
-  "border-violet-300": "#C4B5FD",
-  // pink
-  "bg-pink-50": "#FDF2F8",
-  "bg-pink-100": "#FCE7F3",
-  "text-pink-700": "#BE185D",
-  "text-pink-800": "#9D174D",
-  "border-pink-100": "#FCE7F3",
-  // blue
-  "bg-blue-50": "#EFF6FF",
-  "bg-blue-100": "#DBEAFE",
-  "text-blue-700": "#1D4ED8",
-  "border-blue-200": "#BFDBFE",
-  // sky
-  "bg-sky-50": "#F0F9FF",
-  "bg-sky-100": "#E0F2FE",
-  // teal
-  "bg-teal-50": "#F0FDFA",
-  "bg-teal-100": "#CCFBF1",
-  "text-teal-700": "#0F766E",
-  // emerald
-  "bg-emerald-50": "#ECFDF5",
-  "bg-emerald-100": "#D1FAE5",
-  "text-emerald-600": "#059669",
-  "border-emerald-100": "#A7F3D0",
-  // rose
-  "bg-rose-50": "#FFF1F2",
-  "text-rose-700": "#BE123C",
-  // cyan
-  "bg-cyan-50": "#ECFEFF",
-  // purple
-  "bg-purple-50": "#FAF5FF",
-  "bg-purple-100": "#F3E8FF",
-  "text-purple-700": "#7E22CE",
 };
+
+/**
+ * Standard Tailwind palette (v3) for fallback resolution.
+ * Only includes the colours the provider app uses.
+ */
+const PALETTE: Record<string, Record<string, string>> = {
+  red: {
+    50: "#FEF2F2",
+    100: "#FEE2E2",
+    200: "#FECACA",
+    300: "#FCA5A5",
+    400: "#F87171",
+    500: "#EF4444",
+    600: "#DC2626",
+    700: "#B91C1C",
+    800: "#991B1B",
+    900: "#7F1D1D",
+  },
+  orange: {
+    50: "#FFF7ED",
+    100: "#FFEDD5",
+    200: "#FED7AA",
+    300: "#FDBA74",
+    400: "#FB923C",
+    500: "#F97316",
+    600: "#EA580C",
+    700: "#C2410C",
+    800: "#9A3412",
+    900: "#7C2D12",
+  },
+  amber: {
+    50: "#FFFBEB",
+    100: "#FEF3C7",
+    200: "#FDE68A",
+    300: "#FCD34D",
+    400: "#FBBF24",
+    500: "#F59E0B",
+    600: "#D97706",
+    700: "#B45309",
+    800: "#92400E",
+    900: "#78350F",
+  },
+  yellow: {
+    50: "#FEFCE8",
+    100: "#FEF9C3",
+    200: "#FEF08A",
+    300: "#FDE047",
+    400: "#FACC15",
+    500: "#EAB308",
+    600: "#CA8A04",
+    700: "#A16207",
+    800: "#854D0E",
+    900: "#713F12",
+  },
+  lime: {
+    50: "#F7FEE7",
+    100: "#ECFCCB",
+    200: "#D9F99D",
+    300: "#BEF264",
+    400: "#A3E635",
+    500: "#84CC16",
+    600: "#65A30D",
+    700: "#4D7C0F",
+    800: "#3F6212",
+    900: "#365314",
+  },
+  green: {
+    50: "#F0FDF4",
+    100: "#DCFCE7",
+    200: "#BBF7D0",
+    300: "#86EFAC",
+    400: "#4ADE80",
+    500: "#22C55E",
+    600: "#16A34A",
+    700: "#15803D",
+    800: "#166534",
+    900: "#14532D",
+  },
+  emerald: {
+    50: "#ECFDF5",
+    100: "#D1FAE5",
+    200: "#A7F3D0",
+    300: "#6EE7B7",
+    400: "#34D399",
+    500: "#10B981",
+    600: "#059669",
+    700: "#047857",
+    800: "#065F46",
+    900: "#064E3B",
+  },
+  teal: {
+    50: "#F0FDFA",
+    100: "#CCFBF1",
+    200: "#99F6E4",
+    300: "#5EEAD4",
+    400: "#2DD4BF",
+    500: "#14B8A6",
+    600: "#0D9488",
+    700: "#0F766E",
+    800: "#115E59",
+    900: "#134E4A",
+  },
+  cyan: {
+    50: "#ECFEFF",
+    100: "#CFFAFE",
+    200: "#A5F3FC",
+    300: "#67E8F9",
+    400: "#22D3EE",
+    500: "#06B6D4",
+    600: "#0891B2",
+    700: "#0E7490",
+    800: "#155E75",
+    900: "#164E63",
+  },
+  sky: {
+    50: "#F0F9FF",
+    100: "#E0F2FE",
+    200: "#BAE6FD",
+    300: "#7DD3FC",
+    400: "#38BDF8",
+    500: "#0EA5E9",
+    600: "#0284C7",
+    700: "#0369A1",
+    800: "#075985",
+    900: "#0C4A6E",
+  },
+  blue: {
+    50: "#EFF6FF",
+    100: "#DBEAFE",
+    200: "#BFDBFE",
+    300: "#93C5FD",
+    400: "#60A5FA",
+    500: "#3B82F6",
+    600: "#2563EB",
+    700: "#1D4ED8",
+    800: "#1E40AF",
+    900: "#1E3A8A",
+  },
+  indigo: {
+    50: "#EEF2FF",
+    100: "#E0E7FF",
+    200: "#C7D2FE",
+    300: "#A5B4FC",
+    400: "#818CF8",
+    500: "#6366F1",
+    600: "#4F46E5",
+    700: "#4338CA",
+    800: "#3730A3",
+    900: "#312E81",
+  },
+  violet: {
+    50: "#F5F3FF",
+    100: "#EDE9FE",
+    200: "#DDD6FE",
+    300: "#C4B5FD",
+    400: "#A78BFA",
+    500: "#8B5CF6",
+    600: "#7C3AED",
+    700: "#6D28D9",
+    800: "#5B21B6",
+    900: "#4C1D95",
+  },
+  purple: {
+    50: "#FAF5FF",
+    100: "#F3E8FF",
+    200: "#E9D5FF",
+    300: "#D8B4FE",
+    400: "#C084FC",
+    500: "#A855F7",
+    600: "#9333EA",
+    700: "#7E22CE",
+    800: "#6B21A8",
+    900: "#581C87",
+  },
+  fuchsia: {
+    50: "#FDF4FF",
+    100: "#FAE8FF",
+    200: "#F5D0FE",
+    300: "#F0ABFC",
+    400: "#E879F9",
+    500: "#D946EF",
+    600: "#C026D3",
+    700: "#A21CAF",
+    800: "#86198F",
+    900: "#701A75",
+  },
+  pink: {
+    50: "#FDF2F8",
+    100: "#FCE7F3",
+    200: "#FBCFE8",
+    300: "#F9A8D4",
+    400: "#F472B6",
+    500: "#EC4899",
+    600: "#DB2777",
+    700: "#BE185D",
+    800: "#9D174D",
+    900: "#831843",
+  },
+  rose: {
+    50: "#FFF1F2",
+    100: "#FFE4E6",
+    200: "#FECDD3",
+    300: "#FDA4AF",
+    400: "#FB7185",
+    500: "#F43F5E",
+    600: "#E11D48",
+    700: "#BE123C",
+    800: "#9F1239",
+    900: "#881337",
+  },
+  slate: {
+    50: "#F8FAFC",
+    100: "#F1F5F9",
+    200: "#E2E8F0",
+    300: "#CBD5E1",
+    400: "#94A3B8",
+    500: "#64748B",
+    600: "#475569",
+    700: "#334155",
+    800: "#1E293B",
+    900: "#0F172A",
+  },
+  zinc: {
+    50: "#FAFAFA",
+    100: "#F4F4F5",
+    200: "#E4E4E7",
+    300: "#D4D4D8",
+    400: "#A1A1AA",
+    500: "#71717A",
+    600: "#52525B",
+    700: "#3F3F46",
+    800: "#27272A",
+    900: "#18181B",
+  },
+  stone: {
+    50: "#FAFAF9",
+    100: "#F5F5F4",
+    200: "#E7E5E4",
+    300: "#D6D3D1",
+    400: "#A8A29E",
+    500: "#78716C",
+    600: "#57534E",
+    700: "#44403C",
+    800: "#292524",
+    900: "#1C1917",
+  },
+};
+
+const PALETTE_RE =
+  /^(text|bg|border)(?:t|b|l|r)?-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|zinc|stone)-(\d{2,3})$/;
+
+/** Resolve a Tailwind-style colour class against the standard palette. */
+function resolvePaletteColor(cls: string): string | null {
+  const m = cls.match(PALETTE_RE);
+  if (!m) return null;
+  const shades = PALETTE[m[2]];
+  if (!shades) return null;
+  return shades[m[3]] ?? null;
+}
 
 function parsePx(value: string): number {
   const n = parseInt(value, 10);
@@ -271,26 +464,52 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
       continue;
     }
 
-    // Border
+    // Border width (no colour)
     if (c === "border") { style.borderWidth = 1; continue; }
     if (c === "border-2") { style.borderWidth = 2; continue; }
     if (c === "border-t") { style.borderTopWidth = 1; continue; }
     if (c === "border-b") { style.borderBottomWidth = 1; continue; }
     if (c === "border-l") { style.borderLeftWidth = 1; continue; }
     if (c === "border-r") { style.borderRightWidth = 1; continue; }
-    const bMatch = c.match(/^border(?:t|b|l|r)?-(?:gray|red|amber|indigo|violet|pink|blue|green|white|black)-(\d+)$/);
-    if (bMatch) {
-      const colorKey = c.replace(/^border(?:t|b|l|r)?-/, "border-");
-      const color = COLOR_MAP[colorKey];
-      if (color) {
-        if (c.includes("border-t-")) style.borderTopWidth = 1;
-        else if (c.includes("border-b-")) style.borderBottomWidth = 1;
-        else if (c.includes("border-l-")) style.borderLeftWidth = 1;
-        else if (c.includes("border-r-")) style.borderRightWidth = 1;
-        else style.borderWidth = 1;
-        if (!style.borderColor) style.borderColor = color;
+
+    // Border colour (curated map first)
+    if (c.startsWith("border-")) {
+      const direct = COLOR_MAP[c];
+      if (direct) {
+        // Default to 1 unless an explicit width was set on a side
+        if (
+          style.borderWidth === undefined &&
+          style.borderTopWidth === undefined &&
+          style.borderBottomWidth === undefined &&
+          style.borderLeftWidth === undefined &&
+          style.borderRightWidth === undefined
+        ) {
+          style.borderWidth = 1;
+        }
+        if (!style.borderColor) style.borderColor = direct;
+        continue;
       }
-      continue;
+      const palette = resolvePaletteColor(c);
+      if (palette) {
+        if (
+          style.borderWidth === undefined &&
+          style.borderTopWidth === undefined &&
+          style.borderBottomWidth === undefined &&
+          style.borderLeftWidth === undefined &&
+          style.borderRightWidth === undefined
+        ) {
+          style.borderWidth = 1;
+        }
+        if (!style.borderColor) {
+          // Honour `border-t-`/`border-b-`/`border-l-`/`border-r-` colour tokens
+          if (c.startsWith("border-t-")) style.borderTopColor = palette;
+          else if (c.startsWith("border-b-")) style.borderBottomColor = palette;
+          else if (c.startsWith("border-l-")) style.borderLeftColor = palette;
+          else if (c.startsWith("border-r-")) style.borderRightColor = palette;
+          else style.borderColor = palette;
+        }
+        continue;
+      }
     }
     if (c === "border-dashed") { style.borderStyle = "dashed"; continue; }
 
@@ -300,6 +519,7 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
     else if (c === "rounded-lg") style.borderRadius = 8;
     else if (c === "rounded-xl") style.borderRadius = 12;
     else if (c === "rounded-2xl") style.borderRadius = 16;
+    else if (c === "rounded-3xl") style.borderRadius = 24;
     else if (c === "rounded-full") style.borderRadius = 9999;
     else if (c === "rounded-t-md") {
       style.borderTopLeftRadius = 6;
@@ -312,16 +532,21 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
       if (rMatch) style.borderRadius = getSpace(rMatch[1]);
     }
 
-    // Text color (check before bg so we don't set backgroundColor for text-*)
+    // Text colour: curated map first, then standard palette
     if (c.startsWith("text-")) {
       const textColor = COLOR_MAP[c];
       if (textColor) {
         style.color = textColor;
         continue;
       }
+      const palette = resolvePaletteColor(c);
+      if (palette) {
+        style.color = palette;
+        continue;
+      }
     }
 
-    // Background color (including opacity: bg-black/40, bg-primary/10, etc.)
+    // Background colour (including opacity: bg-black/40, bg-primary/10, etc.)
     if (c.startsWith("bg-") && !c.includes("[")) {
       const bgSlash = c.match(/^bg-(black|white)\/(\d+)$/);
       if (bgSlash) {
@@ -337,6 +562,11 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
       const grayKey = c.replace("bg-gray-", "");
       if (grayKey in GRAY) {
         style.backgroundColor = (GRAY as Record<string, string>)[grayKey];
+        continue;
+      }
+      const palette = resolvePaletteColor(c);
+      if (palette) {
+        style.backgroundColor = palette;
         continue;
       }
     }
@@ -370,6 +600,16 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
       style.shadowOffset = { width: 0, height: 1 };
       style.shadowOpacity = 0.05;
       style.shadowRadius = 2;
+    } else if (c === "shadow-sm") {
+      style.shadowColor = "#000";
+      style.shadowOffset = { width: 0, height: 1 };
+      style.shadowOpacity = 0.04;
+      style.shadowRadius = 1;
+    } else if (c === "shadow-md") {
+      style.shadowColor = "#000";
+      style.shadowOffset = { width: 0, height: 2 };
+      style.shadowOpacity = 0.08;
+      style.shadowRadius = 4;
     } else if (c === "shadow-lg") {
       style.shadowColor = "#000";
       style.shadowOffset = { width: 0, height: 4 };
@@ -378,7 +618,10 @@ export function twStyle(classNames: string): ViewStyle & TextStyle {
     }
 
     // Opacity / overflow
+    if (c === "opacity-50") style.opacity = 0.5;
     if (c === "opacity-60") style.opacity = 0.6;
+    if (c === "opacity-70") style.opacity = 0.7;
+    if (c === "opacity-80") style.opacity = 0.8;
     if (c === "overflow-hidden") style.overflow = "hidden";
 
     // Special: last:border-b-0 is not applicable in RN (we use index in list). Skip.

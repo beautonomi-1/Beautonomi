@@ -567,7 +567,17 @@ export default function BookCheckoutScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   /** Shown after a successful booking before navigating to booking-detail */
-  const [bookingConfirmedData, setBookingConfirmedData] = useState<{ bookingId?: string; providerName?: string; date?: string; time?: string; services?: string; bookingStatus?: string } | null>(null);
+  const [bookingConfirmedData, setBookingConfirmedData] = useState<{
+    bookingId?: string;
+    providerName?: string;
+    date?: string;
+    time?: string;
+    services?: string;
+    bookingStatus?: string;
+    totalPaid?: number;
+    platformFee?: number;
+    currency?: string;
+  } | null>(null);
   const [consuming, setConsuming] = useState(false);
   const consumeInFlightRef = useRef(false);
   const [requestingNow, setRequestingNow] = useState(false);
@@ -1537,6 +1547,9 @@ export default function BookCheckoutScreen() {
       time: bookingTime,
       services: serviceNames || undefined,
       bookingStatus,
+      totalPaid: total,
+      platformFee: serviceFeeAmount,
+      currency,
     });
 
     const navigate = () => {
@@ -1581,7 +1594,7 @@ export default function BookCheckoutScreen() {
     };
 
     navTimeoutRef.current = setTimeout(navigate, 2600);
-  }, [routeCampaignId, routeProviderId, hold_id, hold, t]);
+  }, [routeCampaignId, routeProviderId, hold_id, hold, t, total, serviceFeeAmount, currency]);
 
   const handleRequestNow = useCallback(async () => {
     if (!hold_id || !hold || !user) return;
@@ -1840,7 +1853,10 @@ export default function BookCheckoutScreen() {
         if (errCode === "HOLD_INACTIVE") {
           setError(
             (res.error as { message?: string }).message?.trim() ||
-              t("checkout.slotTakenFallback", "That time slot was just taken. Please go back and choose another time."),
+              t(
+                "checkout.holdInactiveFallback",
+                "This time reservation is no longer active (expired or cancelled). Go back and pick another time.",
+              ),
           );
           return;
         }
@@ -1849,7 +1865,12 @@ export default function BookCheckoutScreen() {
           return;
         }
         if (errStatus === 409 || errCode === "CONFLICT") {
-          setError(t("checkout.slotTakenFallback", "That time slot was just taken. Please go back and choose another time."));
+          setError(
+            t(
+              "checkout.slotConflictFallback",
+              "That time slot is no longer available. Go back to the calendar and try again — or pick a different time.",
+            ),
+          );
           return;
         }
         setError(getApiErrorMessage(res.error, "Failed to complete booking"));
@@ -3719,6 +3740,14 @@ export default function BookCheckoutScreen() {
                     </View>
                     <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 18 }} numberOfLines={2}>{bookingConfirmedData.services}</Text>
                   </View>
+                )}
+                {bookingConfirmedData.totalPaid != null && bookingConfirmedData.totalPaid > 0 && bookingConfirmedData.currency && (
+                  <Text style={{ fontSize: 12, color: "#4b5563", textAlign: "center", marginTop: 4 }}>
+                    Total paid {formatCurrency(bookingConfirmedData.totalPaid, bookingConfirmedData.currency)}
+                    {bookingConfirmedData.platformFee != null && bookingConfirmedData.platformFee > 0
+                      ? ` (incl. platform fee ${formatCurrency(bookingConfirmedData.platformFee, bookingConfirmedData.currency)})`
+                      : ""}
+                  </Text>
                 )}
               </View>
             )}

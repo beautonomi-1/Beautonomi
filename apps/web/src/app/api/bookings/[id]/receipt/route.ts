@@ -3,7 +3,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, userHasProviderAccessAdmin } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import {
+  computeBookingOutstandingDisplay,
+  computePackageAppliedForDisplay,
+} from "@/lib/bookings/display-invariants";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 
 type BookingServiceRow = {
@@ -359,12 +362,19 @@ export async function GET(
     const loyaltyDiscount = Number(booking.loyalty_discount_amount || 0);
     const loyaltyPointsUsed = Number(booking.loyalty_points_used || booking.loyalty_points_redeemed || 0);
     const rawPkgId = (bookingRaw as Record<string, unknown>).package_id;
-    const hasPackage =
-      typeof rawPkgId === "string" && rawPkgId.length > 0;
     const spJoin = (bookingRaw as { service_packages?: { id?: string; name?: string } | { id?: string; name?: string }[] })
       .service_packages;
     const pkgJoined = Array.isArray(spJoin) ? spJoin[0] : spJoin;
-    const packageDiscount = hasPackage ? Math.max(0, discount - promotionDiscount) : 0;
+    const entitlementIdRaw = (bookingRaw as Record<string, unknown>).customer_package_entitlement_id;
+    const packageActuallyApplied = computePackageAppliedForDisplay({
+      package_id: typeof rawPkgId === "string" ? rawPkgId : null,
+      customer_package_entitlement_id:
+        typeof entitlementIdRaw === "string" ? entitlementIdRaw : null,
+      discount_amount: discount,
+      promotion_discount_amount: promotionDiscount,
+    });
+    const packageDiscount =
+      packageActuallyApplied ? Math.max(0, discount - promotionDiscount) : 0;
     const discountTotal = discount + membershipDiscount + loyaltyDiscount;
     const cancellationFee = Number(booking.cancellation_fee || 0);
 
@@ -449,8 +459,8 @@ export async function GET(
     const paymentOption = (bRaw.payment_option as string) || "full";
 
     const receipt = {
-      package_id: hasPackage ? rawPkgId : null,
-      package_name: hasPackage ? (pkgJoined?.name ?? null) : null,
+      package_id: packageActuallyApplied ? rawPkgId : null,
+      package_name: packageActuallyApplied ? (pkgJoined?.name ?? null) : null,
       booking_number: booking.booking_number,
       booking_date: booking.created_at,
       service_date: booking.scheduled_at,

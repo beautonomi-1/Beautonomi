@@ -9,6 +9,10 @@ import {
   getSupportedMarketCountries,
 } from "@/lib/tenant/market-availability";
 import { resolveTenantRoutingDecision } from "@/lib/tenant/market-routing";
+import {
+  buildMarketHostCatalog,
+  getDistinctMarketHostsByCountry,
+} from "@/lib/tenant/market-host-catalog";
 
 /**
  * GET /api/public/tenant-context
@@ -80,6 +84,14 @@ export async function GET(request: NextRequest) {
           }
         : null;
 
+    const marketCatalogRaw = buildMarketHostCatalog();
+    const marketCatalog = {
+      transactionalHostnames: marketCatalogRaw.transactionalHostnames,
+      distinctMarkets: getDistinctMarketHostsByCountry(marketCatalogRaw),
+      globalEntryVariants: marketCatalogRaw.globalEntryVariants,
+      defaultMarketHost: marketCatalogRaw.defaultMarketHost,
+    };
+
     return successResponse({
       tenant: tenant
         ? {
@@ -109,6 +121,7 @@ export async function GET(request: NextRequest) {
         supportedCountries: Array.from(getSupportedMarketCountries()),
       },
       routing,
+      marketCatalog,
     });
   } catch (error) {
     return handleApiError(error, "Failed to resolve tenant context");

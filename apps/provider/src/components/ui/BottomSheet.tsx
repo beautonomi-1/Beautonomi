@@ -131,8 +131,8 @@ export function BottomSheet({
       <GestureRoot style={{ flex: 1 }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? Math.max(insets.top, 12) + 8 : 0}
+          behavior="padding"
+          keyboardVerticalOffset={Platform.OS === "ios" ? Math.max(insets.top, 12) + 8 : Math.max(insets.bottom, 12)}
         >
           <Animated.View style={[{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }, backdropAnimatedStyle]}>
             <Pressable

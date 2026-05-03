@@ -789,7 +789,8 @@
       "suggestionService": "service",
       "suggestionProvider": "provider",
       "suggestionCategory": "category",
-      "promptDefault": "Enter a search term or select a category to find providers"
+      "promptDefault": "Enter a search term or select a category to find providers",
+      "noMatchesForQuery": "No matches for \"{{query}}\""
     },
     "chatScreen": {
       "messagePlaceholder": "Message...",

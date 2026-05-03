@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { csrfCheck, setCsrfCookie } from '@/lib/csrf';
+import { maybeMarketGeoRedirect } from '@/lib/seo/maybe-market-geo-redirect';
 
 const ALLOWED_ORIGINS = [
   'http://localhost:8081',
@@ -142,6 +143,9 @@ export async function proxy(request: NextRequest) {
       url.hostname = wwwHost;
       return NextResponse.redirect(url, 308);
     }
+
+    const geoRedirect = maybeMarketGeoRedirect(request);
+    if (geoRedirect) return geoRedirect;
 
     if (isAdminHost(host)) {
       if (pathname === '/') {

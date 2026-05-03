@@ -633,11 +633,17 @@ export default function BookScreen() {
           id: packageIdFromRoute,
           name: packageNameParam,
           price: parseFloat(packagePriceParam ?? "0") || 0,
-          currency: packageCurrencyParam ?? "",
+          currency:     packageCurrencyParam ?? "",
           discount_percentage: packageDiscountParam ? parseFloat(packageDiscountParam) : null,
         }
       : null
   );
+  /** Line items from GET …/packages when cart resolution is still loading or used as fallback UI */
+  const [packageIncludedPreview, setPackageIncludedPreview] = useState<
+    { title: string; durationLabel?: string }[]
+  >([]);
+  /** Shown when strict menu match failed but skip-mode resolution succeeded (catalog drift). */
+  const [packageResolutionWarning, setPackageResolutionWarning] = useState<string | null>(null);
 
   // Week navigation for date picker
   const [weekOffset, setWeekOffset] = useState(0);
@@ -815,6 +821,8 @@ export default function BookScreen() {
     }
     setLoading(true);
     setError(null);
+    setPackageIncludedPreview([]);
+    setPackageResolutionWarning(null);
     setPackageIdForCheckout(null);
     setSelectedPackageProducts([]);
     resolvedPackageShapeRef.current = null;
@@ -962,12 +970,29 @@ export default function BookScreen() {
               }
             | undefined;
           if (pkg) {
+            const rawItems = Array.isArray(pkg.items) ? pkg.items : [];
+            const previewFromApi = rawItems
+              .map((it: { title?: string; duration_minutes?: number | null; type?: string }) => ({
+                title: String(it.title ?? "").trim(),
+                durationLabel:
+                  typeof it.duration_minutes === "number" && it.duration_minutes > 0
+                    ? `${it.duration_minutes} min`
+                    : undefined,
+              }))
+              .filter((row) => row.title.length > 0);
+            setPackageIncludedPreview(previewFromApi);
+
             const svcItems =
               pkg.services && pkg.services.length > 0
                 ? pkg.services
                 : (pkg.items ?? []).filter((x) => x.type === "service" || !x.type);
             const ids = svcItems.map((it) => it.id).filter(Boolean) as string[];
-            const applied = applyMultiFromIds(ids, "strict");
+            let applied = applyMultiFromIds(ids, "strict");
+            let usedSkipFallback = false;
+            if (!applied && ids.length > 0) {
+              applied = applyMultiFromIds(ids, "skip");
+              usedSkipFallback = Boolean(applied);
+            }
             if (applied) {
               const rawProd = !prodRes.error && prodRes.data != null ? prodRes.data : [];
               const prodList = Array.isArray(rawProd) ? rawProd : [];
@@ -986,6 +1011,16 @@ export default function BookScreen() {
               );
               if (bundleOk) {
                 setPackageIdForCheckout(pkgId);
+                if (usedSkipFallback) {
+                  setPackageResolutionWarning(
+                    t(
+                      "booking.packageCatalogDrift",
+                      "Some package details were adjusted to match the provider's current menu.",
+                    ),
+                  );
+                } else {
+                  setPackageResolutionWarning(null);
+                }
                 autoExpandPreselectedCategory(applied, (svcRes.data as ProviderServicesResponse).categories);
                 setActivePackage({
                   id: pkgId,
@@ -999,8 +1034,39 @@ export default function BookScreen() {
                 setSelectedPackageProducts([]);
                 setPackageIdForCheckout(null);
                 setActivePackage(null);
+                setPackageIncludedPreview([]);
+                setError(
+                  t(
+                    "booking.packageNotBookable",
+                    "This package can't be booked online right now. Please choose services individually or contact the provider.",
+                  ),
+                );
               }
+            } else {
+              setActivePackage(null);
+              setPackageIdForCheckout(null);
+              setSelectedPackageProducts([]);
+              resolvedPackageShapeRef.current = null;
+              setPackageIncludedPreview(previewFromApi);
+              setError(
+                t(
+                  "booking.packageNotBookable",
+                  "This package can't be booked online right now. Please choose services individually or contact the provider.",
+                ),
+              );
             }
+          } else {
+            setActivePackage(null);
+            setPackageIdForCheckout(null);
+            setSelectedPackageProducts([]);
+            resolvedPackageShapeRef.current = null;
+            setPackageIncludedPreview([]);
+            setError(
+              t(
+                "booking.packageNotFoundOrUnavailable",
+                "This package is not available. Please go back and choose another package.",
+              ),
+            );
           }
         }
       }
@@ -1971,11 +2037,35 @@ export default function BookScreen() {
                       </View>
                     </View>
 
+                    {packageResolutionWarning ? (
+                      <View
+                        style={{
+                          backgroundColor: "#FFFBEB",
+                          borderRadius: 12,
+                          padding: 12,
+                          marginBottom: 12,
+                          borderWidth: 1,
+                          borderColor: "#FDE68A",
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, color: "#92400E" }}>{packageResolutionWarning}</Text>
+                      </View>
+                    ) : null}
+
                     {/* Included services — locked, no remove button */}
                     <Text style={{ fontSize: 15, fontWeight: "700", color: "#374151", marginBottom: 10 }}>
                       What&apos;s included
                     </Text>
-                    {selectedServices.map((item, idx) => (
+                    {loading && activePackage && selectedServices.length === 0 ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+                        <ActivityIndicator color={Colors.primary} style={{ marginRight: 10 }} />
+                        <Text style={{ fontSize: 14, color: "#6B7280" }}>
+                          {t("booking.loadingPackage", "Loading package…")}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {selectedServices.length > 0
+                      ? selectedServices.map((item, idx) => (
                       <View
                         key={`${item.offeringId}-${idx}`}
                         style={{
@@ -1991,7 +2081,34 @@ export default function BookScreen() {
                           <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{item.duration_minutes} min</Text>
                         </View>
                       </View>
-                    ))}
+                    ))
+                      : packageIncludedPreview.map((row, idx) => (
+                          <View
+                            key={`pkg-preview-${idx}`}
+                            style={{
+                              flexDirection: "row", alignItems: "center",
+                              paddingVertical: 12, paddingHorizontal: 14,
+                              backgroundColor: "#fff", borderRadius: 12,
+                              borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 8,
+                            }}
+                          >
+                            <Ionicons name="checkmark-circle" size={18} color="#16A34A" style={{ marginRight: 10 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{row.title}</Text>
+                              {row.durationLabel ? (
+                                <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{row.durationLabel}</Text>
+                              ) : null}
+                            </View>
+                          </View>
+                        ))}
+                    {!loading &&
+                    selectedServices.length === 0 &&
+                    packageIncludedPreview.length === 0 &&
+                    activePackage ? (
+                      <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 8 }}>
+                        {t("booking.packageNoLineItems", "Package details will appear here when available.")}
+                      </Text>
+                    ) : null}
                     {selectedPackageProducts.length > 0 && (
                       <>
                         <Text style={{ fontSize: 15, fontWeight: "700", color: "#374151", marginBottom: 10, marginTop: 16 }}>
@@ -3358,10 +3475,23 @@ export default function BookScreen() {
                   alignItems: "center", flexDirection: "row", justifyContent: "center",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={activePackage ? `Book ${activePackage.name}` : "Next"}
+                accessibilityLabel={
+                  activePackage && loading && selectedServices.length === 0
+                    ? t("booking.loadingPackage", "Loading package…")
+                    : activePackage
+                      ? `Book ${activePackage.name}`
+                      : "Next"
+                }
                 accessibilityState={{ disabled: selectedServices.length === 0 }}
               >
-                {activePackage ? (
+                {activePackage && loading && selectedServices.length === 0 ? (
+                  <>
+                    <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
+                      {t("booking.loadingPackage", "Loading package…")}
+                    </Text>
+                  </>
+                ) : activePackage ? (
                   <>
                     <Ionicons name="gift-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
                     <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Book {activePackage.name}</Text>

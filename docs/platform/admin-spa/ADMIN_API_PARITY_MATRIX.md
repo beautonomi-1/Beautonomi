@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **344** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **345** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -135,7 +135,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 51 | `/admin/gamification/badges` | W4 | marketing_comms | Y | `GET/POST/PATCH/DELETE .../gamification/badges`, `PUT .../gamification/backfill/initialize` | |
 | 52 | `/admin/gift-cards` | W4 | marketing_comms | Y | `GET/POST/PATCH /api/admin/gift-cards` | |
 | 53 | `/admin/notifications` | W4 | marketing_comms | Y | `GET/POST/PUT/DELETE .../notifications/templates`, logs, `POST .../send`, `POST .../notifications/test`, `GET .../users/search` | |
-| 54 | `/admin/broadcast` | W4 | marketing_comms | Y | `GET/POST/PATCH /api/admin/broadcast` (+ related) | |
+| 54 | `/admin/broadcast` | W4 | marketing_comms | Y | `GET /api/admin/broadcast/audience-preview`; `GET/POST/PATCH /api/admin/broadcast` (+ related push/sms/email/history) | |
 | 55 | `/admin/automations` | W4 | marketing_comms | Y | `GET/POST /api/admin/automations` | |
 | 56 | `/admin/notification-templates` | W4 | marketing_comms | Y | Template CRUD under `/api/admin/notification-templates` | |
 | 57 | `/admin/sms-templates` | W4 | marketing_comms | R | — | Redirect → notification-templates |
@@ -292,3 +292,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-16 | Taxonomy: `+2` routes (`GET /api/admin/analytics/fx-rate`, `POST /api/admin/compliance/reset-tenant`); §4 row 96.1 tenant-reset page. §1.1 inventory **332**. |
 | 2026-04-30 | Taxonomy: `+2` routes (`GET /api/admin/reports/support-performance`, `GET /api/admin/reports/support-workload`); §4 rows 35a–35b; SPA [`ReportDetailPage`](../../apps/admin-web/src/routes/reports/ReportDetailPage.tsx) + [`ReportsHubPage`](../../apps/admin-web/src/routes/ReportsHubPage.tsx). §1.1 inventory **334**. |
 | 2026-05-02 | Taxonomy: `+6` Slack integration routes under `/api/admin/integrations/slack/*`; §4 row 61a; §1.1 inventory **344**. |
+| 2026-05-03 | Taxonomy: `+1` route (`GET /api/admin/broadcast/audience-preview`); §4 row 54 broadcast note; §1.1 inventory **345**. |

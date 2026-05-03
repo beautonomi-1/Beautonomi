@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import { useAuth } from "@/providers/AuthProvider";
-import { signIn as signInAuth, signInWithOAuth } from "@/lib/supabase/auth";
+import { signInWithOAuth } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   SUPABASE_AUTH_OTP_LENGTH,
@@ -31,7 +31,7 @@ export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
-  const { refreshUser, role: contextRole } = useAuth();
+  const { refreshUser, role: contextRole, signIn: signInWithSession } = useAuth();
   const nextUrl = searchParams.get("next") || searchParams.get("redirect") || "";
   const initialAuthError = searchParams.get("error")?.trim() || null;
 
@@ -288,9 +288,9 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      const loginResult = await signInAuth({ email: trimmedEmail, password });
+      await signInWithSession(trimmedEmail, password);
       setFormError(null);
-      await routeAfterAuth(loginResult);
+      await routeAfterAuth();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Login failed. Please try again.";
       setFormError(msg);

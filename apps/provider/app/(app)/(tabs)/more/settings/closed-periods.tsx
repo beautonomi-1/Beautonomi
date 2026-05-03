@@ -68,7 +68,7 @@ export default function ClosedPeriodsScreen() {
     "/api/provider/availability-blocks"
   );
   const { execute: updateBlock, loading: updatingBlock } =
-    useApiMutation("patch");
+    useApiMutation("put");
   const { execute: deleteBlock } = useApiMutation("delete");
 
   const handleRefresh = useCallback(async () => {
@@ -171,13 +171,21 @@ export default function ClosedPeriodsScreen() {
       Alert.alert("Required", "Please enter start and end dates");
       return;
     }
-    const startAt = `${form.start_date}T${form.start_time}:00`;
-    const endAt = `${form.end_date}T${form.end_time}:00`;
+    const startLocal = new Date(`${form.start_date}T${form.start_time}:00`);
+    const endLocal = new Date(`${form.end_date}T${form.end_time}:00`);
+    if (!Number.isFinite(startLocal.getTime()) || !Number.isFinite(endLocal.getTime())) {
+      Alert.alert("Invalid", "Could not parse start or end date/time.");
+      return;
+    }
+    if (endLocal.getTime() <= startLocal.getTime()) {
+      Alert.alert("Invalid times", "End must be after start.");
+      return;
+    }
 
     const payload = {
       block_type: form.block_type,
-      start_at: startAt,
-      end_at: endAt,
+      start_at: startLocal.toISOString(),
+      end_at: endLocal.toISOString(),
       reason: form.reason.trim() || null,
       is_recurring: form.is_recurring,
       recurrence_pattern: form.is_recurring ? form.recurrence_pattern : null,
@@ -189,13 +197,19 @@ export default function ClosedPeriodsScreen() {
         payload
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(
+          "Could not save closed period",
+          __DEV__ ? `${error}` : error,
+        );
         return;
       }
     } else {
       const { error } = await createBlock(payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(
+          "Could not save closed period",
+          __DEV__ ? `${error}` : error,
+        );
         return;
       }
     }

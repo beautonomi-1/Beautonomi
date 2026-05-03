@@ -185,6 +185,14 @@ export function SlackIntegrationPage() {
     return first?.channel_id || channelOptions[0]?.id || "";
   }, [routingDraft, channelOptions]);
 
+  const connectionBadge = useMemo(() => {
+    if (!q.data?.id) return { label: "Disconnected", className: "bg-gray-100 text-gray-800 border-gray-200" };
+    if (q.data.bot_token_set && q.data.team_name) {
+      return { label: "Connected", className: "bg-emerald-50 text-emerald-900 border-emerald-200" };
+    }
+    return { label: "Setup incomplete", className: "bg-amber-50 text-amber-900 border-amber-200" };
+  }, [q.data]);
+
   if (denied) return denied;
   if (q.isLoading) {
     return (
@@ -234,13 +242,23 @@ export function SlackIntegrationPage() {
 
       <AdminPanel className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
-          <div>
-            <p className="text-sm font-medium text-gray-900">Status</p>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-medium text-gray-900">Status</p>
+              <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${connectionBadge.className}`}>
+                {connectionBadge.label}
+              </span>
+            </div>
             <p className="text-xs text-gray-500">
               {q.data?.team_name
-                ? `Connected to ${q.data.team_name}${q.data.team_id ? ` (${q.data.team_id})` : ""}`
+                ? `Workspace ${q.data.team_name}${q.data.team_id ? ` (${q.data.team_id})` : ""}`
                 : "Not connected — use Connect Slack workspace (OAuth)."}
             </p>
+            {!q.data?.bot_token_set && q.data?.id ? (
+              <p className="text-xs text-amber-800">
+                Bot token not stored — finish OAuth or verify <code className="rounded bg-gray-100 px-1">SLACK_CLIENT_ID</code> / secret on the server.
+              </p>
+            ) : null}
           </div>
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
@@ -342,6 +360,11 @@ export function SlackIntegrationPage() {
             Send test message
           </button>
           {channelsQ.isFetching && <span className="text-xs text-gray-400">Loading channels…</span>}
+          {channelsQ.isError && (
+            <span className="text-xs text-red-600">
+              Could not load channels: {(channelsQ.error as Error)?.message ?? "error"}
+            </span>
+          )}
         </div>
       </AdminPanel>
 
@@ -384,8 +407,30 @@ export function SlackIntegrationPage() {
       </AdminPanel>
 
       <AdminPanel className="text-xs text-gray-500">
-        <p>
-          Register redirect URL <code className="rounded bg-gray-100 px-1">{typeof window !== "undefined" ? window.location.origin : ""}/api/admin/integrations/slack/oauth/callback</code> on your Slack app (OAuth & Permissions). Required bot scopes:{" "}
+        <p className="flex flex-wrap items-center gap-2">
+          <span>
+            Register redirect URL{" "}
+            <code className="rounded bg-gray-100 px-1">
+              {typeof window !== "undefined" ? window.location.origin : ""}/api/admin/integrations/slack/oauth/callback
+            </code>{" "}
+            on your Slack app (OAuth & Permissions).
+          </span>
+          <button
+            type="button"
+            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] font-medium text-gray-800 hover:bg-gray-50"
+            onClick={() => {
+              const url = `${typeof window !== "undefined" ? window.location.origin : ""}/api/admin/integrations/slack/oauth/callback`;
+              void navigator.clipboard.writeText(url).then(
+                () => adminToast.success("Callback URL copied"),
+                () => adminToast.error("Could not copy"),
+              );
+            }}
+          >
+            Copy URL
+          </button>
+        </p>
+        <p className="mt-2">
+          Required bot scopes:{" "}
           <code className="rounded bg-gray-100 px-1">channels:read</code>,{" "}
           <code className="rounded bg-gray-100 px-1">groups:read</code>,{" "}
           <code className="rounded bg-gray-100 px-1">chat:write</code>. Set{" "}
