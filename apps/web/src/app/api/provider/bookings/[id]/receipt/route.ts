@@ -1,5 +1,8 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import {
+  computeBookingOutstandingDisplay,
+  computePackageAppliedForDisplay,
+} from "@/lib/bookings/display-invariants";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -244,7 +247,16 @@ export async function GET(
     const packageId = typeof b.package_id === "string" && b.package_id.length > 0 ? b.package_id : null;
     const spJoin = b.service_packages as { id?: string | null; name?: string | null } | Array<{ id?: string | null; name?: string | null }> | null | undefined;
     const pkgJoined = Array.isArray(spJoin) ? spJoin[0] : spJoin;
-    const packageDiscountAmount = packageId ? Math.max(0, discountAmount - promotionDiscountAmount) : 0;
+    const entitlementId = (b as Record<string, unknown>).customer_package_entitlement_id;
+    const packageActuallyApplied = computePackageAppliedForDisplay({
+      package_id: packageId,
+      customer_package_entitlement_id: typeof entitlementId === "string" ? entitlementId : null,
+      discount_amount: discountAmount,
+      promotion_discount_amount: promotionDiscountAmount,
+    });
+    const packageDiscountAmount = packageActuallyApplied
+      ? Math.max(0, discountAmount - promotionDiscountAmount)
+      : 0;
     const discountTotalAmount = discountAmount + membershipDiscountAmount + loyaltyDiscountAmount;
     const cancellationFee = Number(b.cancellation_fee || 0);
     const totalAmount =
@@ -293,8 +305,8 @@ export async function GET(
 
     const receiptData = {
       invoice_number: b.booking_number || `${receiptPrefix}-${String(receiptNextNumber).padStart(4, "0")}`,
-      package_id: packageId,
-      package_name: packageId ? (pkgJoined?.name ?? null) : null,
+      package_id: packageActuallyApplied ? packageId : null,
+      package_name: packageActuallyApplied ? (pkgJoined?.name ?? null) : null,
       group_booking_ref: (b as any).group_bookings?.ref_number || null,
       invoice_date: new Date(b.created_at || Date.now()).toLocaleDateString(),
       booking_date: b.scheduled_at

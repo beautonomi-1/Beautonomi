@@ -18,6 +18,7 @@ import {
   formatPdfDate,
   moneyPdf,
 } from "@/lib/receipts/pdf-design";
+import { assertReceiptInvariant } from "@/lib/bookings/display-invariants";
 
 // Wave 2.5 (audit 2026-04 final 100/100): 60s serverless budget +
 // Supabase Storage-backed cache for finalized receipts. Cold cost is
@@ -226,6 +227,19 @@ export async function GET(
       ],
       { label: "Total", value: money(r.total_amount) },
     );
+
+    assertReceiptInvariant("provider-booking-receipt-pdf", {
+      total: Number(r.total_amount ?? 0),
+      subtotal: Number(r.subtotal ?? 0),
+      travel_fee: Number(r.travel_fee ?? 0),
+      tax: Number(r.tax_amount ?? 0),
+      fees: Number(r.service_fee_amount ?? 0),
+      tip_amount: Number(r.tip_amount ?? 0),
+      discount: Number(r.discount_amount ?? 0),
+      membership_discount_amount: Number(r.membership_discount_amount ?? 0),
+      loyalty_discount_amount: Number(r.loyalty_discount_amount ?? 0),
+      cancellation_fee: Number(r.cancellation_fee ?? 0),
+    });
 
     // Additional charges
     if (r.additional_charges && r.additional_charges.length > 0) {

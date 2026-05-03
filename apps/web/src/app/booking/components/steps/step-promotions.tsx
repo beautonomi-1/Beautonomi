@@ -425,7 +425,18 @@ export default function StepPromotions({
             {bookingState.promotions.loyaltyPointsUsed ? (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-blue-900">
-                  Using {bookingState.promotions.loyaltyPointsUsed} points
+                  Using {bookingState.promotions.loyaltyPointsUsed.toLocaleString()} points
+                  {bookingState.promotions.loyaltyDiscount != null &&
+                  bookingState.promotions.loyaltyDiscount > 0 ? (
+                    <>
+                      {" "}
+                      · −
+                      {formatCurrency(
+                        bookingState.promotions.loyaltyDiscount,
+                        tenantCurrency,
+                      )}
+                    </>
+                  ) : null}
                 </span>
                 <button
                   onClick={() => removePromotion("loyalty")}

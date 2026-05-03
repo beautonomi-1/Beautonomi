@@ -544,7 +544,10 @@ export default function MarketAvailabilityGate() {
               <X className="h-4 w-4" />
             </button>
             <p className="text-sm leading-snug pr-7 sm:pr-0">
-              {reason || "Beautonomi isn’t available in your country yet."}
+              {reason ||
+                (countryCode
+                  ? `We're not yet available in ${detectedCountryLabel} — join the waitlist to be notified when we launch.`
+                  : "We couldn't confirm your region — join the waitlist to hear when Beautonomi launches near you.")}
               {countryCode ? ` (${countryCode})` : ""}
               {supportedCountries.length > 0 ? ` Available: ${supportedCountries.join(", ")}.` : ""}
             </p>

@@ -575,20 +575,21 @@ export default function BookingFlow() {
       bookingState.selectedProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0) +
       (bookingState.address?.travelFee || 0);
 
-    const otherDiscounts =
+    // Coupon + gift only — membership applies before loyalty (parity with validate-booking + mobile checkout).
+    const nonMembershipDiscounts =
       (bookingState.promotions.couponDiscount || 0) +
-      (bookingState.promotions.giftCardAmount || 0) +
-      (bookingState.promotions.loyaltyDiscount || 0);
+      (bookingState.promotions.giftCardAmount || 0);
 
-    const subtotalAfterOtherDiscounts = Math.max(0, subtotal - otherDiscounts);
+    const subtotalAfterPromo = Math.max(0, subtotal - nonMembershipDiscounts);
 
-    // Calculate membership discount (applied on subtotal after other discounts)
     const membershipDiscount =
       membershipDiscountPercent > 0
-        ? Math.min((subtotalAfterOtherDiscounts * membershipDiscountPercent) / 100, subtotalAfterOtherDiscounts)
+        ? Math.min((subtotalAfterPromo * membershipDiscountPercent) / 100, subtotalAfterPromo)
         : 0;
 
-    const allDiscounts = otherDiscounts + membershipDiscount;
+    const loyaltyDiscount = bookingState.promotions.loyaltyDiscount || 0;
+    const allDiscounts =
+      nonMembershipDiscounts + membershipDiscount + loyaltyDiscount;
     const subtotalAfterDiscounts = Math.max(0, subtotal - allDiscounts);
 
     // Calculate tax (on subtotal after all discounts)

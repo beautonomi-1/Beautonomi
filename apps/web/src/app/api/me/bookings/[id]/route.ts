@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
-import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import {
+  computeBookingOutstandingDisplay,
+  computePackageAppliedForDisplay,
+} from "@/lib/bookings/display-invariants";
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 /**
  * GET /api/me/bookings/[id]
@@ -207,7 +210,18 @@ export async function GET(
       cancellation_reason: (bookingData as Record<string, unknown>).cancellation_reason ?? undefined,
       cancelled_at: (bookingData as Record<string, unknown>).cancelled_at ?? undefined,
       booking_source: (bookingData as Record<string, unknown>).booking_source ?? undefined,
-      package_id: ((bookingData as Record<string, unknown>).package_id as string | null | undefined) ?? null,
+      package_id: (() => {
+        const pid = ((bookingData as Record<string, unknown>).package_id as string | null | undefined) ?? null;
+        const applied = computePackageAppliedForDisplay({
+          package_id: pid,
+          customer_package_entitlement_id:
+            ((bookingData as Record<string, unknown>).customer_package_entitlement_id as string | null | undefined) ??
+            null,
+          discount_amount: Number((bookingData as Record<string, unknown>).discount_amount ?? 0),
+          promotion_discount_amount: Number((bookingData as Record<string, unknown>).promotion_discount_amount ?? 0),
+        });
+        return applied ? pid : null;
+      })(),
       package_name: (() => {
         const sp = (bookingData as Record<string, unknown>).service_packages as
           | { name?: string | null }
@@ -215,7 +229,16 @@ export async function GET(
           | null
           | undefined;
         const row = Array.isArray(sp) ? sp[0] : sp;
-        return row?.name ?? null;
+        const pid = ((bookingData as Record<string, unknown>).package_id as string | null | undefined) ?? null;
+        const applied = computePackageAppliedForDisplay({
+          package_id: pid,
+          customer_package_entitlement_id:
+            ((bookingData as Record<string, unknown>).customer_package_entitlement_id as string | null | undefined) ??
+            null,
+          discount_amount: Number((bookingData as Record<string, unknown>).discount_amount ?? 0),
+          promotion_discount_amount: Number((bookingData as Record<string, unknown>).promotion_discount_amount ?? 0),
+        });
+        return applied ? row?.name ?? null : null;
       })(),
       payment_provider: (bookingData as Record<string, unknown>).payment_provider ?? undefined,
       services: (bookingData.booking_services ?? []).map((bs: unknown) => {

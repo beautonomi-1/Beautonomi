@@ -381,11 +381,11 @@ export default function Footer({
                 )}
               </div>
             </div>
-            <div className="flex flex-col items-center gap-3 md:items-end">
+            <div className="flex flex-col items-center gap-2 md:items-end md:text-right">
               <Suspense fallback={null}>
                 <MarketCountryFooterPicker />
               </Suspense>
-              <div className="flex flex-wrap justify-center md:justify-end items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+              <div className="flex flex-wrap justify-center md:justify-end items-baseline gap-x-3 gap-y-1 text-[11px] leading-tight text-gray-500">
               <span className="text-center md:text-right">
                 {footerSettings.copyright_text || "© 2024 Beautonomi. All rights reserved."}
               </span>

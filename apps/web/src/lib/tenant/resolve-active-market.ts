@@ -12,6 +12,7 @@ export type ActiveMarketSource =
   | "default";
 
 export interface ResolvedActiveMarket {
+  /** ISO 3166-1 alpha-2, or empty string when the global entry host cannot infer country (see `effectiveBrowseCountryCode`). */
   countryCode: string;
   source: ActiveMarketSource;
   /** Normalized host used for mapping (lowercase, no port), if any */
@@ -62,9 +63,16 @@ function globalEntryHost(): string | null {
   return host ? normalizeHost(host) : null;
 }
 
-function defaultMarketCountry(): string {
+/** Exported for browse/catalog APIs that require a valid ISO2 when resolver returns "". */
+export function defaultMarketCountryCode(): string {
   const d = process.env.DEFAULT_MARKET_COUNTRY?.trim().toUpperCase();
   return d && ISO2.test(d) ? d : "ZA";
+}
+
+/** Use resolved ISO2 when valid; otherwise fall back to DEFAULT_MARKET_COUNTRY (ZA). */
+export function effectiveBrowseCountryCode(resolvedIso2: string): string {
+  const c = (resolvedIso2 ?? "").trim().toUpperCase();
+  return ISO2.test(c) ? c : defaultMarketCountryCode();
 }
 
 function countryFromGeoHeaders(h: Headers): string | null {
@@ -130,8 +138,17 @@ export function resolveActiveMarketFromRequest(
     return { countryCode: geo, source: "geo_header", host };
   }
 
+  const globalHost = globalEntryHost();
+  if (globalHost && host && (host === globalHost || host === `www.${globalHost}`)) {
+    return {
+      countryCode: "",
+      source: "default",
+      host,
+    };
+  }
+
   return {
-    countryCode: defaultMarketCountry(),
+    countryCode: defaultMarketCountryCode(),
     source: "default",
     host,
   };
