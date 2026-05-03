@@ -7,9 +7,10 @@ import { z } from "zod";
 const deviceSchema = z.object({
   player_id: z.string().min(1, "Player ID is required"),
   platform: z.enum(["web", "ios", "android"]),
-  app_type: z.enum(["customer", "provider"], {
-    errorMap: () => ({ message: "app_type is required (customer or provider)" }),
-  }),
+  app_type: z.enum(
+    ["customer", "provider"] as const,
+    "app_type is required (customer or provider)",
+  ),
 });
 
 /**
