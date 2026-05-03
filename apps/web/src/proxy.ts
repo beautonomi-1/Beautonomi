@@ -11,6 +11,10 @@ const ALLOWED_ORIGINS = [
   'http://localhost:8084',
   'http://localhost:3000',
   'http://localhost:3001',
+  /** Admin Vite dev server (`apps/admin-web` default port 5173) — credentialed API + CSRF preflight */
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
   /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
   /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
 ];
@@ -149,7 +153,7 @@ export async function proxy(request: NextRequest) {
 
     if (isAdminHost(host)) {
       if (pathname === '/') {
-        return withNoIndexAdmin(NextResponse.rewrite(new URL('/admin', request.url)));
+        return setCsrfCookie(withNoIndexAdmin(NextResponse.rewrite(new URL('/admin', request.url))));
       }
 
       if (
@@ -175,7 +179,8 @@ export async function proxy(request: NextRequest) {
       if (isAdminSpaBundledAsset(pathname)) {
         return NextResponse.next();
       }
-      return withNoIndexAdmin(NextResponse.rewrite(new URL('/admin/index.html', request.url)));
+      /** SPA shell bypasses `/api` — still need CSRF cookie before client mutations race bootstrap GETs */
+      return setCsrfCookie(withNoIndexAdmin(NextResponse.rewrite(new URL('/admin/index.html', request.url))));
     }
 
     // Handle CORS preflight for API routes
