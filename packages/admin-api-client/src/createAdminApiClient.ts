@@ -2,6 +2,27 @@ import { mergeAdminScopeIntoJsonBody, withAdminScopeUrl } from "./adminScope";
 import { AdminApiError, isForbiddenStatus, isUnauthorizedStatus } from "./errors";
 import { adminBootstrapSchema, type AdminBootstrap } from "./schemas/bootstrap";
 
+/** Matches `apps/web` middleware CSRF check: cookie session + mutation requires header (Bearer exempt). */
+const CSRF_HEADER = "x-csrf-token";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/** Matches `apps/web` src/lib/http/fetcher.ts — same regex and raw cookie substring for the header value */
+function csrfHeadersFromCookie(): Record<string, string> {
+  if (typeof document === "undefined") return {};
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match?.[1] ? { [CSRF_HEADER]: match[1] } : {};
+}
+
+function attachCsrfForCookieMutations(headers: Headers, method: string, hasBearerAuth: boolean): void {
+  if (SAFE_METHODS.has(method)) return;
+  if (hasBearerAuth) return;
+  if (headers.has(CSRF_HEADER)) return;
+  const csrf = csrfHeadersFromCookie();
+  for (const [k, v] of Object.entries(csrf)) {
+    headers.set(k, v);
+  }
+}
+
 export interface AdminApiClientOptions {
   /** e.g. "" when using same-origin + Vite proxy */
   baseUrl?: string;
@@ -20,6 +41,30 @@ function joinUrl(base: string, path: string): string {
 
 export function createAdminApiClient(options: AdminApiClientOptions = {}) {
   const baseUrl = options.baseUrl ?? "";
+  /** Vite dev serves HTML without Next proxy — csrf cookie only appears after a `/api` GET; dedupe concurrent primes */
+  let csrfPrimeInflight: Promise<void> | null = null;
+
+  async function ensureCsrfCookieBeforeMutation(
+    method: string,
+    hasBearerAuth: boolean,
+    headers: Headers
+  ): Promise<void> {
+    if (SAFE_METHODS.has(method)) return;
+    if (hasBearerAuth) return;
+    if (headers.has(CSRF_HEADER)) return;
+    if (Object.keys(csrfHeadersFromCookie()).length > 0) return;
+
+    if (!csrfPrimeInflight) {
+      const pingUrl = joinUrl(baseUrl, "/api/admin/bootstrap");
+      csrfPrimeInflight = fetch(pingUrl, { method: "GET", credentials: "include" })
+        .then(() => {})
+        .catch(() => {})
+        .finally(() => {
+          csrfPrimeInflight = null;
+        });
+    }
+    await csrfPrimeInflight;
+  }
 
   async function requestJson<T>(
     path: string,
@@ -38,9 +83,12 @@ export function createAdminApiClient(options: AdminApiClientOptions = {}) {
       headers.set("Content-Type", "application/json");
     }
     const token = options.getAccessToken?.();
+    const hasBearerAuth = Boolean(token);
     if (token) {
       headers.set("Authorization", `Bearer ${token}`);
     }
+    await ensureCsrfCookieBeforeMutation(method, hasBearerAuth, headers);
+    attachCsrfForCookieMutations(headers, method, hasBearerAuth);
     const { timeoutMs: _omit, unwrapData: _unwrap, ...fetchInit } = init;
     try {
       const res = await fetch(url, {
@@ -121,9 +169,12 @@ export function createAdminApiClient(options: AdminApiClientOptions = {}) {
     const t = setTimeout(() => controller.abort(), timeoutMs);
     const headers = new Headers(init.headers);
     const token = options.getAccessToken?.();
+    const hasBearerAuth = Boolean(token);
     if (token) {
       headers.set("Authorization", `Bearer ${token}`);
     }
+    await ensureCsrfCookieBeforeMutation(method, hasBearerAuth, headers);
+    attachCsrfForCookieMutations(headers, method, hasBearerAuth);
     const { timeoutMs: _omit, ...fetchInit } = init;
     try {
       const res = await fetch(url, {
