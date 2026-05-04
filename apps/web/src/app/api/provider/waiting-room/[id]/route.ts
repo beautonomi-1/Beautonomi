@@ -3,6 +3,11 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
+import {
+  mapBookingEmbedToWaitingRoomEntry,
+  WAITING_ROOM_BOOKING_SELECT,
+  type WaitingRoomBookingEmbedRow,
+} from "@/lib/provider-waiting-room/booking-to-waiting-room-entry";
 
 const updateWaitingRoomEntrySchema = z.object({
   status: z.enum(["waiting", "in_service", "completed", "left"]).optional(),
@@ -32,28 +37,9 @@ export async function GET(
       return notFoundResponse("Provider not found");
     }
 
-    // Query booking by ID
     const { data: booking, error } = await supabase
       .from("bookings")
-      .select(`
-        id,
-        booking_number,
-        customer_id,
-        customer_name,
-        customer_email,
-        customer_phone,
-        service_id,
-        service_name,
-        staff_id,
-        scheduled_at,
-        checked_in_time,
-        status,
-        notes,
-        provider_staff:staff_id(
-          id,
-          name:users(full_name)
-        )
-      `)
+      .select(WAITING_ROOM_BOOKING_SELECT)
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -62,38 +48,8 @@ export async function GET(
       return notFoundResponse("Waiting room entry not found");
     }
 
-    // Transform booking to waiting room entry
-    let wrStatus: "waiting" | "in_service" | "completed" | "left" = "waiting";
-    if (booking.status === "in_progress" || booking.status === "started") {
-      wrStatus = "in_service";
-    } else if (booking.status === "completed") {
-      wrStatus = "completed";
-    } else if (booking.status === "cancelled" || booking.status === "no_show") {
-      wrStatus = "left";
-    }
-
-    const staff = Array.isArray(booking.provider_staff) ? booking.provider_staff?.[0] : booking.provider_staff;
-    const nameData = staff?.name;
-    const staffName = Array.isArray(nameData) ? nameData?.[0]?.full_name : (nameData as { full_name?: string })?.full_name;
-    const entry = {
-      id: booking.id,
-      appointment_id: booking.id,
-      client_name: booking.customer_name || "Client",
-      client_email: booking.customer_email,
-      client_phone: booking.customer_phone,
-      service_id: booking.service_id,
-      service_name: booking.service_name || "Service",
-      team_member_id: booking.staff_id,
-      team_member_name: staffName || (staff as { full_name?: string })?.full_name || "Staff",
-      checked_in_time: booking.checked_in_time || booking.scheduled_at,
-      checked_in_method: "staff" as const,
-      status: wrStatus,
-      notes: booking.notes,
-      position: undefined,
-      estimated_wait_time: undefined,
-    };
-
-    return successResponse(entry);
+    const row = booking as unknown as WaitingRoomBookingEmbedRow;
+    return successResponse(mapBookingEmbedToWaitingRoomEntry(row));
   } catch (error) {
     return handleApiError(error, "Failed to fetch waiting room entry");
   }
@@ -173,63 +129,15 @@ export async function PATCH(
       .from("bookings")
       .update(updateData)
       .eq("id", id)
-      .select(`
-        id,
-        booking_number,
-        customer_id,
-        customer_name,
-        customer_email,
-        customer_phone,
-        service_id,
-        service_name,
-        staff_id,
-        scheduled_at,
-        checked_in_time,
-        status,
-        notes,
-        provider_staff:staff_id(
-          id,
-          name:users(full_name)
-        )
-      `)
+      .select(WAITING_ROOM_BOOKING_SELECT)
       .single();
 
     if (error) {
       throw error;
     }
 
-    // Transform back to waiting room entry format
-    let wrStatus: "waiting" | "in_service" | "completed" | "left" = "waiting";
-    if (updatedBooking.status === "in_progress" || updatedBooking.status === "started") {
-      wrStatus = "in_service";
-    } else if (updatedBooking.status === "completed") {
-      wrStatus = "completed";
-    } else if (updatedBooking.status === "cancelled" || updatedBooking.status === "no_show") {
-      wrStatus = "left";
-    }
-
-    const updStaff = Array.isArray(updatedBooking.provider_staff) ? updatedBooking.provider_staff?.[0] : updatedBooking.provider_staff;
-    const updNameData = updStaff?.name;
-    const updStaffName = Array.isArray(updNameData) ? updNameData?.[0]?.full_name : (updNameData as { full_name?: string })?.full_name;
-    const entry = {
-      id: updatedBooking.id,
-      appointment_id: updatedBooking.id,
-      client_name: updatedBooking.customer_name || "Client",
-      client_email: updatedBooking.customer_email,
-      client_phone: updatedBooking.customer_phone,
-      service_id: updatedBooking.service_id,
-      service_name: updatedBooking.service_name || "Service",
-      team_member_id: updatedBooking.staff_id,
-      team_member_name: updStaffName || (updStaff as { full_name?: string })?.full_name || "Staff",
-      checked_in_time: updatedBooking.checked_in_time || updatedBooking.scheduled_at,
-      checked_in_method: "staff" as const,
-      status: wrStatus,
-      notes: updatedBooking.notes,
-      position: undefined,
-      estimated_wait_time: undefined,
-    };
-
-    return successResponse(entry);
+    const updRow = updatedBooking as unknown as WaitingRoomBookingEmbedRow;
+    return successResponse(mapBookingEmbedToWaitingRoomEntry(updRow));
   } catch (error) {
     return handleApiError(error, "Failed to update waiting room entry");
   }

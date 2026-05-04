@@ -15,11 +15,11 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, Stack, router } from "expo-router";
+import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorMessage, getHttpErrorStatus } from "@/lib/api-error";
 import { trackCheckoutStarted, trackBookingConfirmed, trackPaymentSuccess } from "@/lib/analytics";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -544,9 +544,11 @@ export default function BookCheckoutScreen() {
   }>();
   const pickRouteParam = (v: string | string[] | undefined) =>
     typeof v === "string" ? v : Array.isArray(v) ? v[0] : undefined;
+  /** Normalised single string — Expo Router can sometimes yield string[] via params. */
+  const normalizedHoldId = pickRouteParam(hold_id as string | string[] | undefined) ?? "";
   /** Preserved across login / 401 so reschedule checkout does not lose `reschedule_booking_id`. */
   const bookContinueReturnTo = useMemo(() => {
-    const hid = pickRouteParam(hold_id as string | string[] | undefined);
+    const hid = normalizedHoldId;
     if (!hid) return "/(app)/(tabs)/home" as const;
     const rid = pickRouteParam(routeRescheduleBookingId as string | string[] | undefined);
     const q = new URLSearchParams({ hold_id: hid });
@@ -580,6 +582,54 @@ export default function BookCheckoutScreen() {
   } | null>(null);
   const [consuming, setConsuming] = useState(false);
   const consumeInFlightRef = useRef(false);
+  /** Tracks whether the initial hold load has completed — suppresses the focus re-check on first mount. */
+  const holdLoadedRef = useRef(false);
+
+  /**
+   * Re-validate hold status whenever the screen regains focus (e.g. user navigated back
+   * from time-selection which cancelled this hold, then returned via app/browser back-forward).
+   * Detects a cancelled hold early — before the user presses Pay — so they see a clear
+   * "pick a new time" message instead of a confusing payment failure.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      if (!holdLoadedRef.current || !normalizedHoldId || bookingConfirmedData || consuming) return;
+      (async () => {
+        try {
+          const res = await api.get<{ hold_status: string }>(
+            `/api/public/booking-holds/${normalizedHoldId}`,
+            { timeout: 10_000 },
+          );
+          if (res.error) {
+            // API returns HTTP 410 (HOLD_INACTIVE) when the hold is no longer active.
+            const httpStatus = getHttpErrorStatus(res.error);
+            const errCode = (res.error as { code?: string })?.code ?? "";
+            if (httpStatus === 410 || httpStatus === 404 || errCode === "HOLD_INACTIVE") {
+              setError(
+                t(
+                  "checkout.holdExpiredFallback",
+                  "Your reserved slot is no longer available. Please go back and select a new time.",
+                ),
+              );
+            }
+            // Other errors (network, timeout) are non-blocking
+          } else if (res.data) {
+            const holdStatusVal = (res.data as { hold_status?: string }).hold_status;
+            if (holdStatusVal && holdStatusVal !== "active" && holdStatusVal !== "consuming") {
+              setError(
+                t(
+                  "checkout.holdExpiredFallback",
+                  "Your reserved slot is no longer available. Please go back and select a new time.",
+                ),
+              );
+            }
+          }
+        } catch {
+          // Non-blocking — don't interrupt checkout on network error
+        }
+      })();
+    }, [normalizedHoldId, bookingConfirmedData, consuming, t]),
+  );
   const [requestingNow, setRequestingNow] = useState(false);
   const onDemandAcceptEnabled = useFeatureFlag("on_demand_accept_customer_enabled");
   const onDemandModule = useModuleConfig("on_demand");
@@ -682,7 +732,7 @@ export default function BookCheckoutScreen() {
   }, [hold_id]);
 
   useEffect(() => {
-    if (!hold_id) {
+    if (!normalizedHoldId) {
       setError(t("checkout.missingBooking"));
       setLoading(false);
       return;
@@ -692,7 +742,7 @@ export default function BookCheckoutScreen() {
 
     const load = async () => {
       try {
-        const res = await api.get<HoldData>(`/api/public/booking-holds/${hold_id}`, { timeout: 120_000 });
+        const res = await api.get<HoldData>(`/api/public/booking-holds/${normalizedHoldId}`, { timeout: 120_000 });
         if (cancelled) return;
 
         if (res.error) {
@@ -759,6 +809,7 @@ export default function BookCheckoutScreen() {
           ...(packageIdFromHold ? { package_id: packageIdFromHold } : {}),
         };
         setHold(holdData);
+        holdLoadedRef.current = true;
         // Read platform payment policy (cash optional on-platform) as fallback when hold payload is older.
         try {
           const feeRes = await api.get<{ cash_enabled_on_platform?: boolean }>("/api/public/platform-fees");
@@ -1794,7 +1845,7 @@ export default function BookCheckoutScreen() {
       }
 
       const res = await api.post<ConsumeResponse>(
-        `/api/public/booking-holds/${hold_id}/consume`,
+        `/api/public/booking-holds/${normalizedHoldId}/consume`,
         payload,
         { timeout: 120_000 }
       );

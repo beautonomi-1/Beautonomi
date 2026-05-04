@@ -31,7 +31,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorMessage, getBookingHoldSlotUnavailableMessage } from "@/lib/api-error";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 import { trackBookingStarted, trackBookingHoldCreated } from "@/lib/analytics";
 import {
@@ -481,7 +481,10 @@ export default function BookScreen() {
     date: dateParam,
     addons: addonsParam,
     promo: promoParam,
+    promo_code: promoCodeParam,
     gift_card: giftCardParam,
+    gift_card_code: giftCardCodeParam,
+    ref: refParam,
     products: productsParam,
     package: packageParam,
     package_name: packageNameParam,
@@ -506,7 +509,11 @@ export default function BookScreen() {
     date?: string;
     addons?: string;
     promo?: string;
+    promo_code?: string | string[];
     gift_card?: string;
+    gift_card_code?: string | string[];
+    /** Referral code from shared link — attach before first booking hold (web parity). */
+    ref?: string | string[];
     products?: string;
     /** `service_packages.id` — preselects bundle line items (same as web `?package=`) */
     package?: string | string[];
@@ -543,6 +550,40 @@ export default function BookScreen() {
       : Array.isArray(packageParam)
         ? packageParam[0]
         : undefined;
+
+  const effectivePromoFromRoute = useMemo(() => {
+    const a = typeof promoParam === "string" ? promoParam : Array.isArray(promoParam) ? promoParam[0] ?? "" : "";
+    const b =
+      typeof promoCodeParam === "string"
+        ? promoCodeParam
+        : Array.isArray(promoCodeParam)
+          ? promoCodeParam[0] ?? ""
+          : "";
+    return (a || b).trim();
+  }, [promoParam, promoCodeParam]);
+
+  const effectiveGiftCardFromRoute = useMemo(() => {
+    const a =
+      typeof giftCardParam === "string"
+        ? giftCardParam
+        : Array.isArray(giftCardParam)
+          ? giftCardParam[0] ?? ""
+          : "";
+    const b =
+      typeof giftCardCodeParam === "string"
+        ? giftCardCodeParam
+        : Array.isArray(giftCardCodeParam)
+          ? giftCardCodeParam[0] ?? ""
+          : "";
+    return (a || b).trim();
+  }, [giftCardParam, giftCardCodeParam]);
+
+  const referralCodeFromRoute = useMemo(() => {
+    const r =
+      typeof refParam === "string" ? refParam : Array.isArray(refParam) ? refParam[0] ?? "" : "";
+    return r.trim();
+  }, [refParam]);
+
   const { user } = useAuth();
   const { coords } = useLocation();
   const { selectedAddress: primaryAddress } = useSelectedAddress();
@@ -674,6 +715,8 @@ export default function BookScreen() {
   const [calendarModalVisible, setCalendarModalVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const appliedPrefillAddonsRef = useRef(false);
+  /** Set after a successful `POST /api/me/referrals/attach` during this booking session. */
+  const referralAttachSucceededRef = useRef(false);
   /** Public package shape from API — used with {@link cartMatchesPublicCatalogPackage} when `packageIdForCheckout` is set. */
   const resolvedPackageShapeRef = useRef<{
     items?: { type?: string; id?: string; quantity?: number }[];
@@ -1204,6 +1247,16 @@ export default function BookScreen() {
     return { durationMinutes: (dur || 60) + selectedAddonDuration, bufferMinutes: buf };
   }, [selectedServices, selectedVariant, selectedService, duration_minutes, selectedAddonDuration]);
 
+  /** Single source of truth for at-home travel buffer: availability GET + hold POST must match. */
+  const atHomeTravelBufferMinutes = useMemo(() => {
+    if (locationType !== "at_home") return 30;
+    if (travelFeePreview.status === "success") {
+      const m = (travelFeePreview as { travelTimeMinutes?: number }).travelTimeMinutes;
+      if (typeof m === "number" && Number.isFinite(m) && m > 0) return Math.ceil(m);
+    }
+    return 30;
+  }, [locationType, travelFeePreview]);
+
   const effectiveOfferingId = selectedServices.length > 0
     ? selectedServices[0].offeringId
     : selectedVariant
@@ -1255,11 +1308,7 @@ export default function BookScreen() {
         params.set("excludeHoldId", excludeHoldIdForSlots);
       }
       if (locationType === "at_home") {
-        const dynamicTravel =
-          travelFeePreview.status === "success"
-            ? (travelFeePreview as { travelTimeMinutes?: number }).travelTimeMinutes
-            : undefined;
-        params.set("travel_buffer_minutes", String(dynamicTravel ? Math.ceil(dynamicTravel) : 30));
+        params.set("travel_buffer_minutes", String(atHomeTravelBufferMinutes));
       }
       if (reschedule_booking_id) {
         params.set("exclude_booking_id", reschedule_booking_id);
@@ -1292,7 +1341,7 @@ export default function BookScreen() {
     selectedStaff,
     locationType,
     selectedLocation,
-    travelFeePreview,
+    atHomeTravelBufferMinutes,
     minNoticeMinutes,
     maxAdvanceDays,
     selectedServices,
@@ -1396,11 +1445,7 @@ export default function BookScreen() {
           params.set("excludeHoldId", excludeHoldIdForSlots);
         }
         if (locationType === "at_home") {
-          const dynamicTravel =
-            travelFeePreview.status === "success"
-              ? (travelFeePreview as { travelTimeMinutes?: number }).travelTimeMinutes
-              : undefined;
-          params.set("travel_buffer_minutes", String(dynamicTravel ? Math.ceil(dynamicTravel) : 30));
+          params.set("travel_buffer_minutes", String(atHomeTravelBufferMinutes));
         }
         if (reschedule_booking_id) {
           params.set("exclude_booking_id", reschedule_booking_id);
@@ -1449,7 +1494,7 @@ export default function BookScreen() {
     maxAdvanceDays,
     selectedServices,
     excludeHoldIdForSlots,
-    travelFeePreview,
+    atHomeTravelBufferMinutes,
     reschedule_booking_id,
   ]);
 
@@ -1672,6 +1717,19 @@ export default function BookScreen() {
     }
     setCreatingHold(true);
     try {
+      if (user?.id && referralCodeFromRoute && !referralAttachSucceededRef.current) {
+        try {
+          const attachRes = await api.post("/api/me/referrals/attach", {
+            referral_code: referralCodeFromRoute,
+          });
+          if (!attachRes.error) {
+            referralAttachSucceededRef.current = true;
+          }
+        } catch {
+          // Non-blocking: customer can still complete the booking if attach fails.
+        }
+      }
+
       const latLng = atHomeCoords;
       const address =
         locationType === "at_home"
@@ -1701,12 +1759,6 @@ export default function BookScreen() {
       const startAt = toIsoUtcTimestamp(selectedSlot.start);
       const endAt = toIsoUtcTimestamp(selectedSlot.end);
       const holdStaffId = holdStaffIdFromSlotAndSelection(selectedStaff, selectedSlot);
-      const availabilityTravelBufferMinutes =
-        locationType === "at_home"
-          ? travelFeePreview.status === "success" && travelFeePreview.travelTimeMinutes
-            ? Math.ceil(travelFeePreview.travelTimeMinutes)
-            : 30
-          : undefined;
 
       // Previous hold is cancelled server-side via `previous_hold_id` on POST /booking-holds
       // so we do not release early (avoids a race where the slot becomes bookable by others).
@@ -1753,9 +1805,7 @@ export default function BookScreen() {
           previous_hold_id: excludeHoldIdForSlots || null,
           guest_fingerprint_hash: fingerprint,
           preferred_staff_ids: preferredStaffIds,
-          ...(availabilityTravelBufferMinutes != null
-            ? { availability_travel_buffer_minutes: availabilityTravelBufferMinutes }
-            : {}),
+          ...(locationType === "at_home" ? { availability_travel_buffer_minutes: atHomeTravelBufferMinutes } : {}),
           ...(packageIdForCheckout
             ? { package_id: packageIdForCheckout, primary_package_id: packageIdForCheckout }
             : {}),
@@ -1769,7 +1819,7 @@ export default function BookScreen() {
       const holdData = (res.data ?? {}) as { hold_id?: string; id?: string };
       const holdId = holdData.hold_id ?? holdData.id;
       if (res.error || !holdId) {
-        setError(getApiErrorMessage(res.error, t("booking.failedToReserveSlot")));
+        setError(getBookingHoldSlotUnavailableMessage(res.error, t("booking.failedToReserveSlot")));
         return;
       }
 
@@ -1792,12 +1842,12 @@ export default function BookScreen() {
         params.primary_package_id = packageIdForCheckout;
       }
       await AsyncStorage.setItem("beautonomi_booking_addons", JSON.stringify(selectedAddonIds));
-      if (promoParam?.trim()) {
-        await AsyncStorage.setItem("beautonomi_booking_promotion_code", promoParam.trim());
+      if (effectivePromoFromRoute) {
+        await AsyncStorage.setItem("beautonomi_booking_promotion_code", effectivePromoFromRoute);
         await AsyncStorage.setItem("beautonomi_booking_promotion_prefill", "1");
       }
-      if (giftCardParam?.trim()) {
-        await AsyncStorage.setItem("beautonomi_booking_gift_card_code", giftCardParam.trim());
+      if (effectiveGiftCardFromRoute) {
+        await AsyncStorage.setItem("beautonomi_booking_gift_card_code", effectiveGiftCardFromRoute);
       }
       const fromUrl = parseExpressProductCartParam(productsParam);
       const fromPackage = selectedPackageProducts.map((p) => {
@@ -1830,7 +1880,7 @@ export default function BookScreen() {
     setCreatingHold(false);
   }
 // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [provider, selectedService, selectedServices, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, effectiveOfferingId, effectiveDuration, selectedLocation, selectedVariant, reschedule_booking_id, campaign_id, provider_id, selectedAddonIds, promoParam, giftCardParam, productsParam, packageIdForCheckout, selectedPackageProducts, slug, t]);
+}, [provider, selectedService, selectedServices, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, effectiveOfferingId, effectiveDuration, selectedLocation, selectedVariant, reschedule_booking_id, campaign_id, provider_id, selectedAddonIds, effectivePromoFromRoute, effectiveGiftCardFromRoute, productsParam, packageIdForCheckout, selectedPackageProducts, slug, t, user?.id, referralCodeFromRoute]);
 
   const goBack = useCallback(() => {
     haptic.light();

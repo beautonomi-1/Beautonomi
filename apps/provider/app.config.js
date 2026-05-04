@@ -37,7 +37,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.26",
+  version: "1.0.27",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -64,6 +64,9 @@ const BASE_EXPO_CONFIG = {
       },
     ],
     "../../tooling/expo-plugins/withGradleWrapperResilience",
+    // Prevents Android from destroying the React Native activity (and triggering
+    // an ANR) when the device locale, font scale, or time settings change.
+    "../../tooling/expo-plugins/withAndroidConfigChanges",
     [
       "expo-local-authentication",
       {
@@ -137,7 +140,7 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "218",
+    buildNumber: "219",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
@@ -168,7 +171,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 219,
+    versionCode: 220,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

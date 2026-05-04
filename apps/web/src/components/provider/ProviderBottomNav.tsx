@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { 
   LayoutDashboard, 
   Calendar, 
@@ -16,7 +16,6 @@ import { usePlatformSettings } from "@/providers/PlatformSettingsProvider";
 
 export function ProviderBottomNav() {
   const pathname = usePathname();
-  const router = useRouter();
   const { branding } = usePlatformSettings();
   const primaryColor = branding?.primary_color || "#FF0077";
   const [isVisible, setIsVisible] = useState(true);
@@ -103,19 +102,6 @@ export function ProviderBottomNav() {
   };
 
   const activeTab = getActiveTab();
-
-  useEffect(() => {
-    [
-      "/provider/dashboard",
-      "/provider/calendar",
-      "/provider/clients",
-      "/provider/messaging",
-      "/provider/more",
-      "/provider/sales",
-      "/provider/waitlist",
-      "/provider/orders",
-    ].forEach((href) => router.prefetch(href));
-  }, [router]);
 
   useEffect(() => {
     let rafId: number | null = null;

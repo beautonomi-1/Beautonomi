@@ -10,6 +10,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -50,6 +51,7 @@ interface ServicePackage {
 
 export default function PackagesListScreen() {
   const router = useRouter();
+  const { isTablet } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
 
   const { data, loading, error, refresh } = useApi<unknown>("/api/provider/packages");
@@ -79,6 +81,14 @@ export default function PackagesListScreen() {
     router.push("/(app)/(tabs)/more/packages" as never);
   }, [router]);
 
+  const handleEditPackage = useCallback(
+    (pkg: ServicePackage) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      router.push(`/(app)/(tabs)/more/packages?editId=${encodeURIComponent(pkg.id)}` as never);
+    },
+    [router],
+  );
+
   const renderPackageRow = (pkg: ServicePackage) => {
     const itemLabel = (item: PackageItem) => {
       if (item.offering) return item.offering.title;
@@ -93,22 +103,29 @@ export default function PackagesListScreen() {
       return "Item";
     };
     return (
-      <View
+      <TouchableOpacity
         key={pkg.id}
+        activeOpacity={0.88}
+        onPress={() => handleEditPackage(pkg)}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit package ${pkg.name}`}
         style={[
-          { marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 },
+          { marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, flex: 1 },
           !pkg.is_active && { opacity: 0.6 },
         ]}
       >
         <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
+          <Text style={{ flex: 1, fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
             {pkg.name}
           </Text>
-          {!pkg.is_active && (
-            <View style={{ borderRadius: 4, backgroundColor: Colors.gray[200], paddingHorizontal: 8, paddingVertical: 2 }}>
-              <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[600] }}>Inactive</Text>
-            </View>
-          )}
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            {!pkg.is_active && (
+              <View style={{ borderRadius: 4, backgroundColor: Colors.gray[200], paddingHorizontal: 8, paddingVertical: 2, marginRight: 8 }}>
+                <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[600] }}>Inactive</Text>
+              </View>
+            )}
+            <Ionicons name="create-outline" size={20} color={Colors.gray[400]} accessibilityLabel="" />
+          </View>
         </View>
         {pkg.description ? (
           <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[500] }} numberOfLines={2}>
@@ -137,7 +154,7 @@ export default function PackagesListScreen() {
             </Text>
           )}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -194,7 +211,19 @@ export default function PackagesListScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
           contentContainerStyle={{ paddingBottom: 100 }}
-          renderItem={({ item }: { item: ServicePackage }) => renderPackageRow(item)}
+          numColumns={isTablet ? 2 : 1}
+          key={isTablet ? "tablet" : "phone"}
+          columnWrapperStyle={isTablet ? { marginBottom: 0 } : undefined}
+          renderItem={({ item, index }: { item: ServicePackage; index: number }) => (
+            <View
+              style={[
+                isTablet ? { flex: 1 } : undefined,
+                isTablet && index % 2 === 0 ? { marginRight: 12 } : undefined,
+              ]}
+            >
+              {renderPackageRow(item)}
+            </View>
+          )}
         />
       )}
     </ScreenContainer>

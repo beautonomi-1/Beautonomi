@@ -128,7 +128,7 @@ import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { PostForRewardNudge } from "@/components/provider/PostForRewardNudge";
 import { getStatusColors } from "@/lib/scheduling/visualMapping";
 import { DEFAULT_APPOINTMENT_STATUS } from "@/lib/provider-portal/constants";
-import { computeTravelFee, DEFAULT_TRAVEL_FEE_RULES, type TravelFeeRules } from "@/lib/travel/travelFeeEngine";
+import { DEFAULT_TRAVEL_FEE_RULES, type TravelFeeRules } from "@/lib/travel/travelFeeEngine";
 import { NotificationToggle } from "@/components/calendar/NotificationToggle";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
@@ -269,6 +269,10 @@ export function AppointmentSidebar({
   
   // Travel settings state - loaded from API
   const [_travelSettings, setTravelSettings] = useState<TravelFeeRules>(DEFAULT_TRAVEL_FEE_RULES);
+
+  /** POST /api/location/validate for at-home travel fee (aligned with customer + group booking flows). */
+  const [isValidatingTravelFee, setIsValidatingTravelFee] = useState(false);
+  const travelFeeValidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Buffer time settings state - loaded from API
   const [_bufferSettings, setBufferSettings] = useState({ bufferBeforeMinutes: 0, bufferAfterMinutes: 0, cleanupTimeMinutes: 0 });
@@ -1919,41 +1923,121 @@ export function AppointmentSidebar({
     }
   }, [services]);
 
-  // Compute travel fee when address or geocoded coordinates change
+  // Compute travel fee via server /api/location/validate (matches DB travel tiers + zones).
   useEffect(() => {
     if (formData.kind !== AppointmentKind.AT_HOME) return;
-    if (!formData.addressPostalCode && !formData.addressLatitude) return;
+    if (!portalProvider?.id) return;
+    if (formData.hasTravelOverride) return;
 
-    // Resolve salon/location coordinates for distance-based fee
-    const selectedLocation = (locations || []).find((l) => l.id === formData.locationId);
-    const baseCoords =
-      selectedLocation?.latitude != null && selectedLocation?.longitude != null
-        ? { latitude: selectedLocation.latitude, longitude: selectedLocation.longitude }
-        : null;
+    const hasStructuredAddr =
+      Boolean(formData.addressLine1?.trim()) &&
+      Boolean(formData.addressCity?.trim());
+    const hasCoords =
+      formData.addressLatitude != null &&
+      formData.addressLongitude != null &&
+      Number.isFinite(formData.addressLatitude) &&
+      Number.isFinite(formData.addressLongitude);
+    if (!hasStructuredAddr && !hasCoords) return;
 
-    const clientAddr = {
-      line1: formData.addressLine1,
-      line2: formData.addressLine2,
-      city: formData.addressCity,
-      postalCode: formData.addressPostalCode,
-      ...(formData.addressLatitude != null && formData.addressLongitude != null
-        ? { coordinates: { latitude: formData.addressLatitude, longitude: formData.addressLongitude } }
-        : {}),
-    };
+    let cancelled = false;
 
-    const result = computeTravelFee(baseCoords, clientAddr);
-    if (result.fee >= 0) {
-      setFormData(prev => {
-        const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
-        const pricing = calculatePricing(prev.services, prev.products, result.fee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
-        return {
-          ...prev,
-          travelFee: result.fee,
-          totalAmount: pricing.totalAmount,
-        };
-      });
+    if (travelFeeValidateTimerRef.current) {
+      clearTimeout(travelFeeValidateTimerRef.current);
+      travelFeeValidateTimerRef.current = null;
     }
-  }, [formData.kind, formData.addressPostalCode, formData.addressLine1, formData.addressLine2, formData.addressCity, formData.addressLatitude, formData.addressLongitude, formData.locationId, locations, calculatePricing, mode]);
+
+    travelFeeValidateTimerRef.current = setTimeout(() => {
+      void (async () => {
+        setIsValidatingTravelFee(true);
+        try {
+          const country = formData.addressCountry?.trim() || "South Africa";
+          const addressString = hasStructuredAddr
+            ? [formData.addressLine1, formData.addressLine2, formData.addressCity, formData.addressPostalCode, country]
+                .filter(Boolean)
+                .join(", ")
+            : `${formData.addressLatitude},${formData.addressLongitude}`;
+
+          const body: Record<string, unknown> = {
+            address: addressString,
+            provider_id: portalProvider.id,
+          };
+          if (hasCoords) {
+            body.latitude = formData.addressLatitude;
+            body.longitude = formData.addressLongitude;
+          }
+
+          const json = (await fetcher.post<{ data?: { valid?: boolean; travelFee?: number } }>(
+            "/api/location/validate",
+            body,
+          )) as { data?: { valid?: boolean; travelFee?: number } };
+          const payload = json?.data;
+          if (cancelled) return;
+
+          const fee =
+            payload?.valid === true ? Math.max(0, Number(payload.travelFee ?? 0)) : 0;
+
+          setFormData((prev) => {
+            if (prev.hasTravelOverride) return prev;
+            const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
+            const pricing = calculatePricing(
+              prev.services,
+              prev.products,
+              fee,
+              prev.discountAmount,
+              prev.taxRate,
+              serviceFeeToUse,
+              prev.tipAmount,
+            );
+            return {
+              ...prev,
+              travelFee: fee,
+              totalAmount: pricing.totalAmount,
+            };
+          });
+        } catch {
+          if (!cancelled) {
+            setFormData((prev) => {
+              if (prev.hasTravelOverride) return prev;
+              const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
+              const pricing = calculatePricing(
+                prev.services,
+                prev.products,
+                0,
+                prev.discountAmount,
+                prev.taxRate,
+                serviceFeeToUse,
+                prev.tipAmount,
+              );
+              return { ...prev, travelFee: 0, totalAmount: pricing.totalAmount };
+            });
+          }
+        } finally {
+          if (!cancelled) setIsValidatingTravelFee(false);
+        }
+      })();
+    }, 600);
+
+    return () => {
+      cancelled = true;
+      if (travelFeeValidateTimerRef.current) {
+        clearTimeout(travelFeeValidateTimerRef.current);
+        travelFeeValidateTimerRef.current = null;
+      }
+    };
+  }, [
+    formData.kind,
+    formData.addressLine1,
+    formData.addressLine2,
+    formData.addressCity,
+    formData.addressPostalCode,
+    formData.addressCountry,
+    formData.addressLatitude,
+    formData.addressLongitude,
+    formData.hasTravelOverride,
+    portalProvider?.id,
+    calculatePricing,
+    mode,
+  ]);
 
   // Handle create appointment
   const handleCreate = async () => {
@@ -3345,10 +3429,20 @@ export function AppointmentSidebar({
                       </div>
                       <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 flex items-center gap-2">
                         <MapPin className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                        <p className="text-xs text-blue-700">
-                          <span className="font-medium">Travel fee:</span> {formatMoney(formData.travelFee)}
-                          {formData.addressLatitude && formData.addressLongitude && (
-                            <span className="ml-2 text-blue-500 text-[10px]">Geocoded</span>
+                        <p className="text-xs text-blue-700 flex items-center gap-2 flex-wrap">
+                          <span className="font-medium">Travel fee:</span>
+                          {isValidatingTravelFee ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
+                              <span className="text-blue-600">Calculating…</span>
+                            </>
+                          ) : (
+                            <>
+                              {formatMoney(formData.travelFee)}
+                              {formData.addressLatitude && formData.addressLongitude && (
+                                <span className="ml-2 text-blue-500 text-[10px]">Geocoded</span>
+                              )}
+                            </>
                           )}
                         </p>
                       </div>

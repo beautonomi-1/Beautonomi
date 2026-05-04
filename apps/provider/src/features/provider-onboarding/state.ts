@@ -21,6 +21,7 @@ export const INITIAL_FORM: OnboardingFormData = {
     postal_code: "",
     country: DEFAULT_COUNTRY_NAME,
   },
+  accepts_custom_requests: true,
   operating_hours: {
     monday: { open: "09:00", close: "18:00", closed: false },
     tuesday: { open: "09:00", close: "18:00", closed: false },

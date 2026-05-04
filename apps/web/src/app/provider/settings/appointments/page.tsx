@@ -13,6 +13,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info } from "lucide-react";
+import { fetcher } from "@/lib/http/fetcher";
 
 const statusLabels: Record<string, string> = {
   pending: "Pending",
@@ -28,6 +29,8 @@ export default function AppointmentSettingsPage() {
   const [localSettings, setLocalSettings] = React.useState(settings);
   const [isSaving, setIsSaving] = React.useState(false);
   const [originalSettings, setOriginalSettings] = React.useState(settings);
+  const [acceptsCustomRequests, setAcceptsCustomRequests] = React.useState(true);
+  const [originalAcceptsCustom, setOriginalAcceptsCustom] = React.useState(true);
 
   // Update local settings when settings change
   React.useEffect(() => {
@@ -37,11 +40,34 @@ export default function AppointmentSettingsPage() {
     }
   }, [settings]);
 
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetcher.get<{ data: { acceptsCustomRequests: boolean } }>(
+          "/api/provider/settings/custom-requests",
+        );
+        if (!cancelled) {
+          const v = res.data.acceptsCustomRequests !== false;
+          setAcceptsCustomRequests(v);
+          setOriginalAcceptsCustom(v);
+        }
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleSave = async () => {
     try {
       setIsSaving(true);
+      await fetcher.patch("/api/provider/settings/custom-requests", { acceptsCustomRequests });
       await updateSettings(localSettings);
       setOriginalSettings(localSettings);
+      setOriginalAcceptsCustom(acceptsCustomRequests);
       toast.success("Appointment settings saved successfully");
     } catch (error: any) {
       toast.error(error.message || "Failed to save settings");
@@ -50,7 +76,10 @@ export default function AppointmentSettingsPage() {
     }
   };
 
-  const hasChanges = originalSettings && JSON.stringify(localSettings) !== JSON.stringify(originalSettings);
+  const hasChanges =
+    Boolean(originalSettings) &&
+    (JSON.stringify(localSettings) !== JSON.stringify(originalSettings) ||
+      acceptsCustomRequests !== originalAcceptsCustom);
 
   const breadcrumbs = [
     { label: "Home", href: "/" },
@@ -174,6 +203,27 @@ export default function AppointmentSettingsPage() {
                   onCheckedChange={(checked) =>
                     setLocalSettings({ ...localSettings, requireConfirmationForBookings: checked })
                   }
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Custom service requests */}
+          <div className="border-t pt-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex-1">
+                <Label htmlFor="accept-custom-requests" className="text-base sm:text-lg font-medium block mb-2">
+                  Accept custom service requests
+                </Label>
+                <p className="text-sm text-gray-600">
+                  When off, customers see that you are not accepting custom requests from the app or web profile.
+                </p>
+              </div>
+              <div className="flex-shrink-0">
+                <Switch
+                  id="accept-custom-requests"
+                  checked={acceptsCustomRequests}
+                  onCheckedChange={setAcceptsCustomRequests}
                 />
               </div>
             </div>

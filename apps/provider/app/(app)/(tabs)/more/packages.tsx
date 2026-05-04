@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useLocalSearchParams } from "expo-router";
 import { useApi, useApiMutation, useApiPost } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -89,6 +90,8 @@ function formatVariantLabel(variant?: ProductVariant | null): string {
 
 export default function PackagesScreen() {
   const { isTablet } = useResponsive();
+  const params = useLocalSearchParams<{ editId?: string | string[] }>();
+  const editParamHandledRef = useRef<string | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
@@ -117,6 +120,7 @@ export default function PackagesScreen() {
     name: "",
     description: "",
     price: "",
+    currency: getTenantDefaultCurrency(),
     discount_percentage: "",
     is_active: true,
     items: [] as FormItem[],
@@ -147,7 +151,7 @@ export default function PackagesScreen() {
   }, [packages, filter, search]);
 
   function resetForm() {
-    setForm({ name: "", description: "", price: "", discount_percentage: "", is_active: true, items: [] });
+    setForm({ name: "", description: "", price: "", currency: getTenantDefaultCurrency(), discount_percentage: "", is_active: true, items: [] });
   }
 
   function openCreate() {
@@ -156,12 +160,13 @@ export default function PackagesScreen() {
     setShowForm(true);
   }
 
-  function openEdit(pkg: ServicePackage) {
+  const openEdit = useCallback((pkg: ServicePackage) => {
     setEditingPkg(pkg);
     setForm({
       name: pkg.name,
       description: pkg.description ?? "",
       price: String(pkg.price),
+      currency: pkg.currency || getTenantDefaultCurrency(),
       discount_percentage: pkg.discount_percentage ? String(pkg.discount_percentage) : "",
       is_active: pkg.is_active,
       items: (pkg.items ?? []).map((it) => ({
@@ -173,7 +178,22 @@ export default function PackagesScreen() {
       })),
     });
     setShowForm(true);
-  }
+  }, []);
+
+  useEffect(() => {
+    const raw = params.editId;
+    const editId = typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : undefined;
+    if (!editId) {
+      editParamHandledRef.current = null;
+      return;
+    }
+    if (packages.length === 0) return;
+    const pkg = packages.find((p) => p.id === editId);
+    if (!pkg) return;
+    if (editParamHandledRef.current === editId) return;
+    editParamHandledRef.current = editId;
+    openEdit(pkg);
+  }, [params.editId, packages, openEdit]);
 
   function addServiceItem(svc: ServiceOption) {
     setForm((p) => ({
@@ -248,6 +268,7 @@ export default function PackagesScreen() {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
       price: Number(form.price),
+      currency: form.currency.trim() || getTenantDefaultCurrency(),
       discount_percentage: form.discount_percentage ? Number(form.discount_percentage) : undefined,
       is_active: form.is_active,
       items: form.items.map((it) => ({
@@ -343,9 +364,14 @@ export default function PackagesScreen() {
           numColumns={isTablet ? 2 : 1}
           columnWrapperStyle={isTablet ? { marginBottom: 12 } : undefined}
           renderItem={({ item: pkg, index }: { item: ServicePackage; index: number }) => (
-            <View style={isTablet && index % 2 === 0 ? { marginRight: 12 } : undefined}>
+            <View
+              style={[
+                isTablet ? { flex: 1 } : undefined,
+                isTablet && index % 2 === 0 ? { marginRight: 12 } : undefined,
+              ]}
+            >
             <TouchableOpacity
-              style={[ { borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }, isTablet && { flex: 1 } ]}
+              style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
               onPress={() => openEdit(pkg)}
               activeOpacity={0.7}
             >
@@ -406,6 +432,7 @@ export default function PackagesScreen() {
         visible={showForm}
         onClose={() => { setShowForm(false); setEditingPkg(null); }}
         title={editingPkg ? "Edit Package" : "New Package"}
+        snapHeight={isTablet ? "full" : "auto"}
       >
         <View>
           <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Package Name *</Text>
@@ -429,8 +456,8 @@ export default function PackagesScreen() {
           />
 
           <View style={{ marginBottom: 12, flexDirection: "row" }}>
-            <View style={{ flex: 1, marginRight: 12 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{`Price (${getTenantDefaultCurrency()}) *`}</Text>
+            <View style={{ flex: 2, marginRight: 8 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Price *</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={form.price}
@@ -438,6 +465,18 @@ export default function PackagesScreen() {
                 placeholder="0.00"
                 placeholderTextColor="#9ca3af"
                 keyboardType="decimal-pad"
+              />
+            </View>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Currency</Text>
+              <TextInput
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+                value={form.currency}
+                onChangeText={(t) => setForm((p) => ({ ...p, currency: t.toUpperCase().slice(0, 3) }))}
+                placeholder={getTenantDefaultCurrency()}
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="characters"
+                maxLength={3}
               />
             </View>
             <View style={{ flex: 1 }}>

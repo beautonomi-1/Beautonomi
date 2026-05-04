@@ -556,6 +556,59 @@ function BookContinueContent() {
     return () => clearInterval(timer);
   }, [hold?.expires_at, serverClockOffsetMs]);
 
+  /**
+   * Re-validate the hold when the tab becomes visible again (visibilitychange) or when the
+   * page is restored from the browser back-forward cache (pageshow with persisted=true).
+   * Catches the scenario where the user navigated back, created a new hold (cancelling this
+   * one), then returned via browser forward to the stale checkout page.
+   */
+  useEffect(() => {
+    if (typeof document === "undefined" || !holdId) return;
+
+    const revalidateHold = async () => {
+      if (status !== "review") return;
+      try {
+        // staleTimeMs: 0 bypasses the client GET cache so we always hit the server.
+        const res = await fetcher.get<{ hold_status?: string }>(
+          `/api/public/booking-holds/${holdId}`,
+          { staleTimeMs: 0 },
+        );
+        const normalizedData = (res as any)?.data ?? res;
+        const holdStatus = (normalizedData as { hold_status?: string })?.hold_status;
+        if (holdStatus && holdStatus !== "active" && holdStatus !== "consuming") {
+          setErrorMessage("Your reserved slot is no longer available. Please go back and select a new time.");
+          setStatus("error");
+          clearBeautonomiHoldClientMarkers();
+        }
+      } catch (err) {
+        // The API returns HTTP 410 (HOLD_INACTIVE) when the hold is no longer active.
+        // Treat this as a definitive "hold is gone" signal rather than a network error.
+        const statusCode = err instanceof FetchError ? err.status : 0;
+        const errorCode = err instanceof FetchError ? err.code : "";
+        if (statusCode === 410 || errorCode === "HOLD_INACTIVE" || statusCode === 404) {
+          setErrorMessage("Your reserved slot is no longer available. Please go back and select a new time.");
+          setStatus("error");
+          clearBeautonomiHoldClientMarkers();
+        }
+        // For other errors (network, timeout, etc.) — non-blocking, don't interrupt checkout
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void revalidateHold();
+    };
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) void revalidateHold();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, [holdId, status]);
+
   useEffect(() => {
     if (!hold) return;
     const pct = hold.deposit_percentage ?? 0;

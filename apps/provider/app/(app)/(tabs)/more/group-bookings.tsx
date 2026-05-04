@@ -1311,50 +1311,59 @@ export default function GroupBookingsScreen() {
     }
 
     const groupRef = createdGroup?.ref_number || createdGroup?.data?.ref_number || null;
-    for (const [idx, participant] of participantsToCreate.entries()) {
-      const line = participantLines[idx];
-      const res = await createParticipantBookingAndLink({
-        groupId: createdGroupId,
-        groupRef,
-        scheduledDate: createForm.date,
-        scheduledTime: createForm.time,
-        serviceId: line.serviceId,
-        serviceName: line.service ? serviceLabel(line.service) : undefined,
-        addOns: line.addOns,
-        packageId: createForm.packageId || null,
-        staffId: createForm.staffId,
-        locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
-        locationType: createForm.locationType,
-        address: createForm.locationType === "at_home"
-          ? {
-              address_line1: createForm.addressLine1.trim(),
-              address_city: createForm.addressCity.trim(),
-              address_state: createForm.addressState.trim(),
-              address_postal_code: createForm.addressPostalCode.trim(),
-              address_country: createForm.addressCountry.trim() || "South Africa",
-              address_latitude: createForm.addressLatitude,
-              address_longitude: createForm.addressLongitude,
-              travel_fee: idx === 0 ? travelFee : 0,
-            }
-          : undefined,
-        products: idx === 0 ? createProducts : [],
-        durationMinutes: line.durationMinutes,
-        unitPrice: line.price,
-        participant,
-        isPrimary: idx === 0,
-      });
-      if (res.error) {
-        Alert.alert(
-          "Group created, participant failed",
-          `${participant.name}: ${res.error}`,
-        );
-        refresh();
-        return;
+    try {
+      for (const [idx, participant] of participantsToCreate.entries()) {
+        const line = participantLines[idx];
+        const res = await createParticipantBookingAndLink({
+          groupId: createdGroupId,
+          groupRef,
+          scheduledDate: createForm.date,
+          scheduledTime: createForm.time,
+          serviceId: line.serviceId,
+          serviceName: line.service ? serviceLabel(line.service) : undefined,
+          addOns: line.addOns,
+          packageId: createForm.packageId || null,
+          staffId: createForm.staffId,
+          locationId: createForm.locationType === "at_home" ? null : createForm.locationId,
+          locationType: createForm.locationType,
+          address: createForm.locationType === "at_home"
+            ? {
+                address_line1: createForm.addressLine1.trim(),
+                address_city: createForm.addressCity.trim(),
+                address_state: createForm.addressState.trim(),
+                address_postal_code: createForm.addressPostalCode.trim(),
+                address_country: createForm.addressCountry.trim() || "South Africa",
+                address_latitude: createForm.addressLatitude,
+                address_longitude: createForm.addressLongitude,
+                travel_fee: idx === 0 ? travelFee : 0,
+              }
+            : undefined,
+          products: idx === 0 ? createProducts : [],
+          durationMinutes: line.durationMinutes,
+          unitPrice: line.price,
+          participant,
+          isPrimary: idx === 0,
+        });
+        if (res.error) {
+          throw new Error(`${participant.name}: ${res.error}`);
+        }
       }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowCreate(false);
+      refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not add all participants.";
+      const { error: deleteErr } = await cancelGroup(`/api/provider/group-bookings/${createdGroupId}`);
+      if (deleteErr) {
+        Alert.alert(
+          "Group creation failed",
+          `${msg}\n\nThe group could not be rolled back automatically: ${deleteErr}. Check the group list for a partial group to cancel manually.`,
+        );
+      } else {
+        Alert.alert("Group creation failed", msg);
+      }
+      refresh();
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setShowCreate(false);
-    refresh();
   }
 
   async function applyCreateAddress(parsed: {

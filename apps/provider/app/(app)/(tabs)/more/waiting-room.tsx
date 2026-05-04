@@ -2,7 +2,7 @@ import { useEffect, useRef, useMemo, useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { format, parseISO, isSameDay } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -89,7 +89,7 @@ export default function WaitingRoomScreen() {
       // Guard against synthetic group:UUID ids that slip through without the flag.
       const safeId = b.id.startsWith("group:") ? null : b.id;
       if (safeId) {
-        router.push(`/(app)/(tabs)/bookings/${safeId}` as never);
+        router.push(`/(app)/(tabs)/more/bookings/${safeId}` as never);
       }
     },
     [router],
@@ -98,7 +98,7 @@ export default function WaitingRoomScreen() {
   const { isTablet } = useResponsive();
   const { provider, selectedLocationId } = useProvider();
   const onDemandConfig = useModuleConfig("on_demand");
-  const [metricRange, setMetricRange] = useState<FrontDeskMetricRange>("today");
+  const [metricRange, setMetricRange] = useState<FrontDeskMetricRange>("week");
   const prevWaitingQueueCountRef = useRef<number | null>(null);
   const prevPendingConfirmCountRef = useRef<number | null>(null);
   const ringtoneStopRef = useRef<(() => void) | null>(null);
@@ -109,9 +109,8 @@ export default function WaitingRoomScreen() {
   const { data: entries, loading: waitingLoading, error: waitingError, refresh: refreshWaiting } =
     useApi<WaitingRoomEntry[]>(waitingRoomUrl);
 
-  /** Same calendar window as web Front Desk metrics (bounded “All” = last 90 days). Lists below still filter to today. */
-  const bookingsRangeUrl = useMemo(() => {
-    const params = new URLSearchParams();
+  /** Same calendar window as web Front Desk metrics (bounded “All” = last 90 days). */
+  const listRangeDates = useMemo(() => {
     let dates = getMetricRangeParams(metricRange, new Date());
     const tz = provider?.timezone?.trim();
     if (tz && metricRange === "today") {
@@ -122,12 +121,18 @@ export default function WaitingRoomScreen() {
         /* keep device-local range */
       }
     }
+    return dates;
+  }, [metricRange, provider?.timezone]);
+
+  const bookingsRangeUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    const dates = listRangeDates;
     if (dates.start) params.set("start_date", dates.start);
     if (dates.end) params.set("end_date", dates.end);
     params.set("limit", "1000");
     if (selectedLocationId != null) params.set("location_id", selectedLocationId);
     return `/api/provider/bookings?${params.toString()}`;
-  }, [metricRange, selectedLocationId, provider?.timezone]);
+  }, [listRangeDates, selectedLocationId]);
 
   const {
     data: rawBookings,
@@ -169,32 +174,32 @@ export default function WaitingRoomScreen() {
   const waitingList = (entries ?? []).filter((e) => e.status === "waiting");
   const inServiceList = (entries ?? []).filter((e) => e.status === "in_service");
 
-  const { pendingToday, scheduleToday, pendingCount } = useMemo(() => {
+  const { pendingInRange, scheduleInRange, pendingCount } = useMemo(() => {
     const list = Array.isArray(rawBookings) ? rawBookings : [];
-    const today = new Date();
-    const providerTodayKey = provider?.timezone
-      ? formatInTimeZone(today, provider.timezone, "yyyy-MM-dd")
-      : null;
-    const onToday = list.filter((b) => {
+    const startYmd = listRangeDates.start;
+    const endYmd = listRangeDates.end;
+    const inSelectedRange = (b: TodayBookingRow) => {
       const d = parseISO(b.scheduled_at);
       if (!Number.isFinite(d.getTime())) return false;
-      if (provider?.timezone && providerTodayKey) {
-        return formatInTimeZone(d, provider.timezone, "yyyy-MM-dd") === providerTodayKey;
-      }
-      return isSameDay(d, today);
-    });
-    const pending = onToday
+      const ymd = provider?.timezone?.trim()
+        ? formatInTimeZone(d, provider.timezone, "yyyy-MM-dd")
+        : format(d, "yyyy-MM-dd");
+      if (startYmd && endYmd) return ymd >= startYmd && ymd <= endYmd;
+      return true;
+    };
+    const inRange = list.filter(inSelectedRange);
+    const pending = inRange
       .filter((b) => needsConfirmation(b.db_status))
       .sort((a, b) => parseISO(a.scheduled_at).getTime() - parseISO(b.scheduled_at).getTime());
-    const schedule = onToday
+    const schedule = inRange
       .filter((b) => !needsConfirmation(b.db_status) && isActiveScheduleBooking(b))
       .sort((a, b) => parseISO(a.scheduled_at).getTime() - parseISO(b.scheduled_at).getTime());
     return {
-      pendingToday: pending,
-      scheduleToday: schedule,
+      pendingInRange: pending,
+      scheduleInRange: schedule,
       pendingCount: pending.length,
     };
-  }, [rawBookings, provider?.timezone]);
+  }, [rawBookings, provider?.timezone, listRangeDates.start, listRangeDates.end]);
 
   const metricSummary = useMemo(() => {
     const list = Array.isArray(rawBookings) ? rawBookings : [];
@@ -208,7 +213,8 @@ export default function WaitingRoomScreen() {
   const metricRangeLabel = METRIC_RANGES.find((range) => range.id === metricRange)?.label ?? "Today";
 
   const headerSubtitle = useMemo(
-    () => `${formatFrontDeskRangeCaption(metricRange, new Date())} · Today’s lists below`,
+    () =>
+      `${formatFrontDeskRangeCaption(metricRange, new Date())} · Pending & schedule use the range above · Physical check-in queue is today only`,
     [metricRange],
   );
 
@@ -322,13 +328,11 @@ export default function WaitingRoomScreen() {
         </View>
 
         {waitingError && entries === null && (
-          <View style={twStyle("mx-4 mb-4 rounded-xl border border-red-200 bg-red-50 p-3")}>
-            <View style={twStyle("flex-row items-center")}>
-              <Ionicons name="warning-outline" size={18} color="#dc2626" />
-              <Text style={twStyle("ml-2 flex-1 text-sm text-red-700")}>
-                Could not load check-in queue. Pull down to retry.
-              </Text>
-            </View>
+          <View style={twStyle("mx-4 mb-4")}>
+            <ErrorState
+              message={`Could not load check-in queue: ${waitingError}. Pull down to retry.`}
+              onRetry={onRefresh}
+            />
           </View>
         )}
 
@@ -346,12 +350,12 @@ export default function WaitingRoomScreen() {
         {/* Pending confirmations */}
         <View style={twStyle("px-4 mb-6")}>
           <Text style={twStyle("mb-2 text-sm font-bold text-gray-900")}>Pending confirmation</Text>
-          {pendingToday.length === 0 ? (
+          {pendingInRange.length === 0 ? (
             <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 p-4")}>
               <Text style={twStyle("text-center text-sm text-gray-500")}>None — you’re caught up.</Text>
             </View>
           ) : (
-            pendingToday.map((b) => {
+            pendingInRange.map((b) => {
               const t =
                 provider?.timezone?.trim()
                   ? formatInTimeZone(parseISO(b.scheduled_at), provider.timezone, "HH:mm")
@@ -388,15 +392,17 @@ export default function WaitingRoomScreen() {
           )}
         </View>
 
-        {/* Today's schedule (matches calendar for this date) */}
+        {/* Schedule in selected metric range */}
         <View style={twStyle("px-4 mb-6")}>
-          <Text style={twStyle("mb-2 text-sm font-bold text-gray-900")}>Today&apos;s schedule</Text>
-          {scheduleToday.length === 0 ? (
+          <Text style={twStyle("mb-2 text-sm font-bold text-gray-900")}>
+            Schedule · {metricRangeLabel}
+          </Text>
+          {scheduleInRange.length === 0 ? (
             <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 p-4")}>
               <Text style={twStyle("text-center text-sm text-gray-500")}>No other active appointments today.</Text>
             </View>
           ) : (
-            scheduleToday.map((b) => {
+            scheduleInRange.map((b) => {
               const t =
                 provider?.timezone?.trim()
                   ? formatInTimeZone(parseISO(b.scheduled_at), provider.timezone, "HH:mm")
@@ -434,10 +440,13 @@ export default function WaitingRoomScreen() {
           )}
         </View>
 
-        {/* Physical check-in queue (checked in at salon) */}
+        {/* Physical check-in queue (checked in at salon) — today’s salon floor only */}
         <View style={twStyle(isTablet ? "flex-row px-4" : "px-4")}>
           <View style={twStyle(isTablet ? "flex-1 pr-2" : "")}>
             <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Waiting (checked in)</Text>
+            <Text style={twStyle("mb-2 text-[10px] font-medium uppercase tracking-wide text-gray-500")}>
+              Today only — who is physically at the salon right now
+            </Text>
             {waitingList.length === 0 ? (
               <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 p-4")}>
                 <Text style={twStyle("text-center text-sm text-gray-500")}>No one in the waiting queue.</Text>

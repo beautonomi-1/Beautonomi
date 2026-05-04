@@ -33,6 +33,13 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
     const reportContext = await getProviderReportContext(supabaseAdmin, providerId);
+    const { data: providerTenantRow } = await supabaseAdmin
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const providerTenantId =
+      (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
 
     const searchParams = request.nextUrl.searchParams;
     const { fromDate, toDate } = reportDateRangeFromParams(searchParams, reportContext.timezone, {
@@ -210,6 +217,57 @@ export async function GET(request: NextRequest) {
     const averageTransactionValue = totalPayments > 0 ? gmv / totalPayments : 0;
     const refundRate = settledLedgerAmount > 0 ? (refundedAmount / settledLedgerAmount) * 100 : 0;
 
+    // Walk-in / cash / "other" booking_payments often have no matching `finance_transactions`
+    // row (documented gap vs Paystack webhook flow). Surface for provider reconciliation.
+    let cashStylePaymentsWithoutLedgerCount = 0;
+    let cashStylePaymentsWithoutLedgerAmount = 0;
+    {
+      let bpQuery = supabaseAdmin
+        .from("booking_payments")
+        .select("booking_id, amount, payment_method")
+        .eq("status", "completed")
+        .gte("created_at", fromDate.toISOString())
+        .lte("created_at", toDate.toISOString())
+        .in("payment_method", ["cash", "other"]);
+      if (providerTenantId) {
+        bpQuery = bpQuery.eq("tenant_id", providerTenantId);
+      }
+      const { data: bpOffline } = await bpQuery;
+      const bpList = (bpOffline ?? []) as Array<{ booking_id: string; amount?: number }>;
+      const candidateIds = [...new Set(bpList.map((r) => r.booking_id))];
+      if (candidateIds.length > 0) {
+        let bq = supabaseAdmin
+          .from("bookings")
+          .select("id")
+          .eq("provider_id", providerId)
+          .in("id", candidateIds);
+        if (locationId) {
+          bq = bq.eq("location_id", locationId);
+        }
+        const { data: allowedBookings } = await bq;
+        const allowed = new Set((allowedBookings ?? []).map((b: { id: string }) => b.id));
+        const scopedBp = bpList.filter((r) => allowed.has(r.booking_id));
+        const scopedBookingIds = [...new Set(scopedBp.map((r) => r.booking_id))];
+        if (scopedBookingIds.length > 0) {
+          const { data: ftPay } = await supabaseAdmin
+            .from("finance_transactions")
+            .select("booking_id")
+            .eq("provider_id", providerId)
+            .eq("transaction_type", "payment")
+            .in("booking_id", scopedBookingIds);
+          const withLedger = new Set(
+            (ftPay ?? []).map((r: { booking_id: string | null }) => r.booking_id).filter(Boolean) as string[],
+          );
+          for (const row of scopedBp) {
+            if (!withLedger.has(row.booking_id)) {
+              cashStylePaymentsWithoutLedgerCount += 1;
+              cashStylePaymentsWithoutLedgerAmount += Number(row.amount ?? 0);
+            }
+          }
+        }
+      }
+    }
+
     return successResponse({
       // Core metrics
       gmv,
@@ -262,6 +320,8 @@ export async function GET(request: NextRequest) {
       paymentsByStatus,
       // Payment-status breakdown
       failedPayments: 0,
+      cashStylePaymentsWithoutLedgerCount,
+      cashStylePaymentsWithoutLedgerAmount,
     });
   } catch (error) {
     console.error("Error in payment summary report:", error);

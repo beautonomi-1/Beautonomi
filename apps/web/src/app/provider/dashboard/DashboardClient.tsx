@@ -244,10 +244,23 @@ export function DashboardClient({
   useEffect(() => {
     if (hasPrefetchedRoutesRef.current) return;
     hasPrefetchedRoutesRef.current = true;
-    router.prefetch("/provider/calendar");
-    router.prefetch("/provider/bookings");
-    router.prefetch("/provider/finance");
-    router.prefetch("/provider/clients");
+    const routes = [
+      "/provider/calendar",
+      "/provider/bookings",
+      "/provider/finance",
+      "/provider/clients",
+    ];
+    const run = () => {
+      routes.forEach((href, index) => {
+        window.setTimeout(() => router.prefetch(href), index * 120);
+      });
+    };
+    if (typeof requestIdleCallback !== "undefined") {
+      const id = requestIdleCallback(run, { timeout: 3000 });
+      return () => cancelIdleCallback(id);
+    }
+    run();
+    return undefined;
   }, [router]);
 
   // Memoize calculated values to prevent unnecessary recalculations

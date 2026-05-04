@@ -1,6 +1,6 @@
 import { Tabs, useRouter, type Router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { View, Platform, AppState, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -99,6 +99,18 @@ export default function TabsLayout() {
   );
   const moreBadge = formatTabBadge(moreCriticalCount);
 
+  // Debounce guard: prevents the 25 s interval and the AppState "active"
+  // handler from both firing refreshNavCounts in the same JS tick, which
+  // was contributing to the JS thread saturation that caused the ANR.
+  const lastNavRefreshRef = useRef(0);
+  const refreshNavCountsDebounced = useRef(() => {});
+  refreshNavCountsDebounced.current = () => {
+    const now = Date.now();
+    if (now - lastNavRefreshRef.current < 5_000) return;
+    lastNavRefreshRef.current = now;
+    void refreshNavCounts();
+  };
+
   useEffect(() => {
     if (!isSentryEnabled()) return;
     authFlowBreadcrumb("authenticated_tabs_layout_mount", { app: "provider" });
@@ -106,17 +118,17 @@ export default function TabsLayout() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      void refreshNavCounts();
+      refreshNavCountsDebounced.current();
     }, 25_000);
     return () => clearInterval(interval);
-  }, [refreshNavCounts]);
+  }, []);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") void refreshNavCounts();
+      if (state === "active") refreshNavCountsDebounced.current();
     });
     return () => sub.remove();
-  }, [refreshNavCounts]);
+  }, []);
 
   const safeBottom = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
   const TAB_BAR_HEIGHT = tabBarOuterHeight(insets.bottom);

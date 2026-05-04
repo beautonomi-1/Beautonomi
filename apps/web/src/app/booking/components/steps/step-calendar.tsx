@@ -133,7 +133,7 @@ export default function StepCalendar({
   bookingState,
   updateBookingState,
   onNext: _onNext,
-  providerSlug: _providerSlug,
+  providerSlug,
 }: StepCalendarProps) {
   const searchParams = useSearchParams();
   const excludeHoldId = searchParams.get("hold_id")?.trim() || undefined;
@@ -223,13 +223,66 @@ export default function StepCalendar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay, bookingState.selectedTimeSlot, availability?.date]);
 
+  /** Offering id → duration for group participants (matches OnlineBookingFlowNew maxDur logic). */
+  const [offeringDurationById, setOfferingDurationById] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!providerSlug || !bookingState.isGroupBooking || !bookingState.groupParticipants?.length) {
+      return;
+    }
+    let cancelled = false;
+    fetcher
+      .get<{ data?: Array<{ id?: string; duration_minutes?: number }> }>(
+        `/api/public/providers/${encodeURIComponent(providerSlug)}/offerings`
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const raw = (res as { data?: unknown }).data ?? res;
+        const list = Array.isArray(raw) ? raw : [];
+        const next: Record<string, number> = {};
+        for (const o of list) {
+          if (!o || typeof o !== "object") continue;
+          const id = "id" in o && o.id != null ? String(o.id) : "";
+          if (!id) continue;
+          const d =
+            "duration_minutes" in o && typeof (o as { duration_minutes?: unknown }).duration_minutes === "number"
+              ? (o as { duration_minutes: number }).duration_minutes
+              : 0;
+          next[id] = Math.max(0, Number.isFinite(d) ? d : 0);
+        }
+        setOfferingDurationById(next);
+      })
+      .catch(() => {
+        if (!cancelled) setOfferingDurationById({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [providerSlug, bookingState.isGroupBooking, bookingState.groupParticipants]);
+
   const totalDuration = useMemo(() => {
     const slices = slicesFromBookingCart(
       bookingState.selectedServices,
       bookingState.selectedAddons
     );
-    return availabilityRouteDurationMinutes(slices);
-  }, [bookingState.selectedServices, bookingState.selectedAddons]);
+    const base = availabilityRouteDurationMinutes(slices);
+    if (!bookingState.isGroupBooking || !bookingState.groupParticipants?.length) {
+      return base;
+    }
+    const stackMinutes = (ids: string[]) =>
+      ids.reduce((sum, id) => sum + (offeringDurationById[id] ?? 0), 0);
+    let maxDur = base;
+    for (const p of bookingState.groupParticipants) {
+      maxDur = Math.max(maxDur, stackMinutes(p.serviceIds));
+    }
+    return maxDur;
+  }, [
+    bookingState.selectedServices,
+    bookingState.selectedAddons,
+    bookingState.isGroupBooking,
+    bookingState.groupParticipants,
+    offeringDurationById,
+  ]);
 
   const travelBuffer = getTravelBuffer(bookingState.mode, bookingState.address?.travelTimeMinutes);
 

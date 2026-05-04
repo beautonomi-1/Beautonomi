@@ -730,7 +730,11 @@ async function handleCreateProviderBooking(request: NextRequest) {
       // If still no customer, create a new one for walk-in (use admin client)
       if (!customerId) {
         if (!body.customer_name) {
-          throw new Error("Customer name is required for walk-in appointments");
+          return errorResponse(
+            "Customer name is required for walk-in appointments",
+            "WALK_IN_NAME_REQUIRED",
+            422,
+          );
         }
 
         // IMPORTANT:
@@ -752,7 +756,14 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
         if (createUserError || !createdUser?.user?.id) {
           console.error("Error creating auth user for walk-in:", createUserError);
-          throw new Error(`Failed to create customer: ${createUserError?.message || "Unknown error"}`);
+          return errorResponse(
+            createUserError?.message
+              ? `Could not create walk-in customer: ${createUserError.message}`
+              : "Could not create walk-in customer. Check email/phone and try again.",
+            "WALK_IN_AUTH_FAILED",
+            422,
+            createUserError ? { auth: createUserError } : undefined,
+          );
         }
 
         customerId = createdUser.user.id;
@@ -782,7 +793,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
           
           if (insertError) {
             console.error("Error manually creating user profile:", insertError);
-            throw new Error(`Failed to create customer profile: ${insertError.message ?? "unknown error"}`);
+            return errorResponse(
+              `Failed to create customer profile: ${insertError.message ?? "unknown error"}`,
+              "WALK_IN_PROFILE_FAILED",
+              422,
+              { db: insertError },
+            );
           }
         } else {
           // Update user profile with any additional info if needed
@@ -805,7 +821,11 @@ async function handleCreateProviderBooking(request: NextRequest) {
     }
     
     if (!customerId) {
-      throw new Error("Customer ID is required but could not be determined");
+      return errorResponse(
+        "Customer ID is required but could not be determined. Please select an existing customer or provide a name for a walk-in.",
+        "CUSTOMER_ID_REQUIRED",
+        422,
+      );
     }
 
     if (body.location_type === "at_home") {
@@ -1020,6 +1040,17 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const finalTaxAmount = recomputedTaxAmount;
     const finalTotalAmount = recomputedTotalAmount;
 
+    // Pre-validate status mapping before building bookingData so a bad status
+    // returns a structured 422 instead of throwing inside an object literal.
+    const mappedBookingStatus = mapStatusToDatabase(finalStatus);
+    if (!mappedBookingStatus) {
+      return errorResponse(
+        `Unknown booking status: "${finalStatus}". Accepted values: pending, confirmed, cancelled, completed.`,
+        "INVALID_STATUS",
+        422,
+      );
+    }
+
     // Prepare booking data - only include columns that exist in the bookings table
     // Note: services and addons are stored in separate tables (booking_services, booking_addons)
     const bookingData: any = {
@@ -1054,11 +1085,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       tip_amount: serverTipAmount,
       total_amount: finalTotalAmount,
       currency: body.currency || lastResortCurrency,
-      status: (() => {
-        const mapped = mapStatusToDatabase(finalStatus);
-        if (!mapped) throw new Error(`Unknown booking status: "${finalStatus}"`);
-        return mapped;
-      })(),
+      status: mappedBookingStatus,
       payment_status: (() => {
         if (body.payment_option === "deposit") {
           // Deposit booking: if an in-person payment was collected now, partially_paid; otherwise pending.
@@ -1087,13 +1114,13 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
     // Validate required fields
     if (!bookingData.scheduled_at) {
-      throw new Error("scheduled_at is required");
+      return errorResponse("Appointment date/time (scheduled_at) is required.", "MISSING_SCHEDULED_AT", 422);
     }
     if (!bookingData.provider_id) {
-      throw new Error("provider_id is required");
+      return errorResponse("Provider ID is required.", "MISSING_PROVIDER_ID", 422);
     }
     if (!bookingData.customer_id) {
-      throw new Error("customer_id is required");
+      return errorResponse("Customer ID is required.", "MISSING_CUSTOMER_ID", 422);
     }
 
     // Resolve staff and time range for conflict check / RPC path
@@ -1320,10 +1347,19 @@ async function handleCreateProviderBooking(request: NextRequest) {
           );
         }
         console.error("RPC create_booking_with_locking error:", rpcError);
-        throw new Error(`Database error: ${msg}`);
+        return errorResponse(
+          "A database error occurred while saving the booking. Please try again.",
+          "DB_ERROR",
+          500,
+        );
       }
       if (!bookingId) {
-        throw new Error("Failed to create booking: No data returned from database");
+        console.error("RPC create_booking_with_locking returned no booking ID");
+        return errorResponse(
+          "The booking could not be created: the database did not return a booking ID. Please try again.",
+          "DB_NO_RESULT",
+          500,
+        );
       }
 
       // Fetch created booking and set provider-only fields not in RPC
@@ -1347,7 +1383,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
       if (fetchErr || !createdBooking) {
         console.error("Failed to fetch/update booking after RPC:", fetchErr);
-        throw new Error("Failed to create booking");
+        // The booking row was created by the RPC; it can be found in the calendar.
+        return errorResponse(
+          "Booking was saved but could not be fully loaded after creation. Please check your calendar to confirm it was created.",
+          "DB_FETCH_ERROR",
+          500,
+        );
       }
       booking = createdBooking;
       console.log("Booking created successfully via RPC:", booking.id);
@@ -1397,11 +1438,19 @@ async function handleCreateProviderBooking(request: NextRequest) {
       if (error) {
         console.error("Error inserting booking:", error);
         console.error("Error details:", JSON.stringify(error, null, 2));
-        throw new Error(`Database error: ${error.message || JSON.stringify(error)}`);
+        return errorResponse(
+          "A database error prevented the booking from being saved. Please try again.",
+          "DB_ERROR",
+          500,
+        );
       }
       if (!insertedBooking) {
         console.error("No booking returned from insert");
-        throw new Error("Failed to create booking: No data returned from database");
+        return errorResponse(
+          "The booking could not be created: the database did not return a record. Please try again.",
+          "DB_NO_RESULT",
+          500,
+        );
       }
       booking = insertedBooking;
       console.log("Booking created successfully:", booking.id);
@@ -1439,7 +1488,11 @@ async function handleCreateProviderBooking(request: NextRequest) {
         if (bsError) {
           console.error("Error creating booking_services — rolling back booking:", bsError);
           await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
-          throw new Error(`Failed to create booking line items: ${bsError.message ?? "unknown error"}`);
+          return errorResponse(
+            "The booking could not be saved because the service items failed to save. The booking has been rolled back — please try again.",
+            "SERVICES_FAILED",
+            500,
+          );
         }
         console.log("Booking services created:", bookingServicesData.length);
       } else if (body.service_id || body.offering_id) {
@@ -1461,7 +1514,11 @@ async function handleCreateProviderBooking(request: NextRequest) {
         if (bsError) {
           console.error("Error creating booking_services — rolling back booking:", bsError);
           await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
-          throw new Error(`Failed to create booking line item: ${bsError.message ?? "unknown error"}`);
+          return errorResponse(
+            "The booking could not be saved because the service item failed to save. The booking has been rolled back — please try again.",
+            "SERVICE_FAILED",
+            500,
+          );
         }
       }
     }
@@ -1515,7 +1572,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
       if (bpError) {
         console.error("Error creating booking_products — rolling back booking:", bpError);
         await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
-        throw new Error(`Failed to create booking products: ${bpError.message ?? "unknown error"}`);
+        return errorResponse(
+          `Failed to create booking products: ${bpError.message ?? "unknown error"}`,
+          "BOOKING_PRODUCTS_FAILED",
+          422,
+          { db: bpError },
+        );
       } else {
         console.log("Booking products created:", bookingProductsData.length);
       }
@@ -1529,11 +1591,13 @@ async function handleCreateProviderBooking(request: NextRequest) {
         );
         await supabaseAdmin.from("product_orders").delete().eq("booking_id", booking.id);
         await supabaseAdmin.from("bookings").delete().eq("id", booking.id);
-        throw new Error(
+        const msg =
           orderSyncError instanceof Error
-            ? `Failed to create appointment product order: ${orderSyncError.message}`
-            : "Failed to create appointment product order",
-        );
+            ? orderSyncError.message
+            : "Failed to sync product order for this appointment";
+        return errorResponse(msg, "PRODUCT_SYNC_FAILED", 422, {
+          cause: orderSyncError instanceof Error ? orderSyncError.stack : String(orderSyncError),
+        });
       }
 
       // §Provider-audit 2026-04 (round 3): if this booking is being

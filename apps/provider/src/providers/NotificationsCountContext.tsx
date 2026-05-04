@@ -76,7 +76,12 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
-      if (next === "active") void refreshRef.current();
+      if (next === "active") {
+        // Stagger 200 ms behind the AuthProvider and TabsLayout AppState
+        // handlers so all three don't hit the JS thread in the same tick,
+        // reducing the risk of ANR on foreground.
+        setTimeout(() => void refreshRef.current(), 200);
+      }
     });
     return () => sub.remove();
   }, []);

@@ -87,7 +87,11 @@ export async function POST(request: NextRequest) {
       }
       const { error: uErr } = await admin
         .from("bookings")
-        .update({ group_booking_id: group.id, updated_at: new Date().toISOString() })
+        .update({
+          group_booking_id: group.id,
+          is_group_booking: true,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", b.id)
         .eq("provider_id", providerId);
       if (uErr) {

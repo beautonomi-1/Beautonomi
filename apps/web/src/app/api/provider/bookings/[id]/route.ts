@@ -815,9 +815,22 @@ export async function PATCH(
       const locationType = (currentBooking as BookingRow)?.location_type;
       // client_arrived only applies to at-salon; at-home uses provider_on_way/provider_arrived
       if (current_stage === "client_arrived" && locationType === "at_home") {
-        // Ignore: house calls don't have "client arrived" concept
+        console.warn("[provider PATCH bookings/:id] Ignoring client_arrived for at_home booking", { bookingId: id });
       } else {
         updateData.current_stage = current_stage === null || current_stage === "" ? null : current_stage;
+      }
+    }
+
+    // In-salon: stamp physical check-in time when moving to checked_in or marking client arrived.
+    const bookingLocationTypeForCheckIn = (currentBooking as BookingRow)?.location_type;
+    if (bookingLocationTypeForCheckIn !== "at_home") {
+      const nextStage = updateData.current_stage as string | undefined;
+      const nextStatus = updateData.status as string | undefined;
+      if (nextStatus === "checked_in" || nextStage === "client_arrived") {
+        const existingCit = (currentBooking as Record<string, unknown>).checked_in_time;
+        if (existingCit == null || existingCit === "") {
+          updateData.checked_in_time = new Date().toISOString();
+        }
       }
     }
 
@@ -1052,6 +1065,51 @@ export async function PATCH(
         "CONFLICT",
         409
       );
+    }
+
+    const actorProfile = user as {
+      full_name?: string | null;
+      email?: string | null;
+    };
+    const actorName =
+      actorProfile.full_name?.trim() || actorProfile.email || "Provider";
+
+    try {
+      if (
+        typeof scheduled_at === "string" &&
+        scheduled_at.trim().length > 0 &&
+        scheduled_at !== String((currentBooking as BookingRow).scheduled_at ?? "")
+      ) {
+        await supabaseAdminPatch.from("booking_audit_log").insert({
+          booking_id: id,
+          event_type: "rescheduled",
+          event_data: {
+            previous_scheduled_at: (currentBooking as BookingRow).scheduled_at,
+            new_scheduled_at: scheduled_at,
+          },
+          created_by: user.id,
+          created_by_name: actorName,
+        });
+      }
+    } catch (auditErr) {
+      console.warn("[provider PATCH bookings/:id] reschedule audit log failed:", auditErr);
+    }
+
+    try {
+      if (requestedDbStatus === "cancelled" && cancellation_reason) {
+        await supabaseAdminPatch.from("booking_audit_log").insert({
+          booking_id: id,
+          event_type: "updated",
+          event_data: {
+            field: "cancellation_reason",
+            reason: cancellation_reason,
+          },
+          created_by: user.id,
+          created_by_name: actorName,
+        });
+      }
+    } catch (auditErr2) {
+      console.warn("[provider PATCH bookings/:id] cancellation reason audit log failed:", auditErr2);
     }
 
     // When a provider cancels a booking and applies a cancellation fee, record it in the

@@ -355,8 +355,11 @@ export async function createBookingFromRecurringSeries(
     service_fee_amount: recurringServiceFeeAmount,
     service_fee_paid_by: "customer",
   };
-  if ((row as { payment_method?: string | null }).payment_method === "cash") {
+  const seriesPaymentMethod = (row as { payment_method?: string | null }).payment_method;
+  if (seriesPaymentMethod === "cash") {
     bookingData.payment_provider = "cash";
+  } else if (seriesPaymentMethod === "yoco_pos") {
+    bookingData.payment_provider = "yoco";
   }
   // Recurring generation creates the appointment, not the money movement.
   // Leave payment pending until Paystack, wallet/gift-card settlement, or a

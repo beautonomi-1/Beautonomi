@@ -31,7 +31,10 @@ const createRecurringSchema = z.object({
   occurrences: z.number().int().positive().optional().nullable(),
   preferred_time: z.string().optional().nullable(),
   location_type: z.enum(["at_salon", "at_home"]).optional().nullable(),
-  payment_method: z.enum(["card", "cash"]).optional().nullable(),
+  payment_method: z
+    .enum(["card", "cash", "pay_later", "yoco_pos", "payment_link"])
+    .optional()
+    .nullable(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 

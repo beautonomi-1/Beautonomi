@@ -4,9 +4,10 @@
  */
 
 export const PROVIDER_BOOKING_STATUS_TRANSITIONS: Record<string, readonly string[]> = {
-  pending: ["confirmed", "cancelled"],
+  pending: ["confirmed", "checked_in", "cancelled"],
   pending_payment: ["cancelled"],
-  confirmed: ["in_progress", "cancelled", "no_show"],
+  /** Salon check-in: `checked_in` is physical arrival (waiting room); `in_progress` is chair time. */
+  confirmed: ["checked_in", "in_progress", "cancelled", "no_show"],
   in_progress: ["completed", "cancelled"],
   completed: [],
   cancelled: [],
@@ -63,4 +64,22 @@ export function optimisticBookingFieldsForDbTarget(dbTarget: string): { db_statu
     db_status: dbTarget,
     status: dbTargetToPatchStatusField(dbTarget),
   };
+}
+
+/**
+ * At-home bookings may require arrival verification before starting service.
+ * Remove `in_progress` from the generic status picker when OTP/QR is still pending.
+ */
+export function filterInProgressWhenAtHomeVerificationPending(args: {
+  targets: readonly string[];
+  atHome: boolean;
+  arrivalVerified: boolean;
+  arrivalOtpPending: boolean;
+  qrArrivalPending: boolean;
+}): string[] {
+  const { targets, atHome, arrivalVerified, arrivalOtpPending, qrArrivalPending } = args;
+  if (atHome && !arrivalVerified && (arrivalOtpPending || qrArrivalPending)) {
+    return targets.filter((t) => t !== "in_progress");
+  }
+  return [...targets];
 }

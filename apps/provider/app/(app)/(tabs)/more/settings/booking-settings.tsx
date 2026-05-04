@@ -32,6 +32,10 @@ interface OnlineBookingSettings {
   cancellationHours: number;
 }
 
+interface CustomRequestSettings {
+  acceptsCustomRequests: boolean;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
   booked: "Booked",
@@ -169,11 +173,19 @@ export default function BookingSettingsScreen() {
     refresh: refreshOnline,
   } = useApi<OnlineBookingSettings>("/api/provider/settings/online-booking");
 
+  const {
+    data: customRequestSettings,
+    loading: customLoading,
+    error: customError,
+    refresh: refreshCustom,
+  } = useApi<CustomRequestSettings>("/api/provider/settings/custom-requests");
+
   const { execute: saveAppt, loading: savingAppt } = useApiMutation("patch");
   const { execute: saveOnline, loading: savingOnline } = useApiMutation("patch");
+  const { execute: saveCustomRequests, loading: savingCustom } = useApiMutation("patch");
 
-  const loading = apptLoading || onlineLoading;
-  const saving = savingAppt || savingOnline;
+  const loading = apptLoading || onlineLoading || customLoading;
+  const saving = savingAppt || savingOnline || savingCustom;
 
   const [autoConfirm, setAutoConfirm] = useState(false);
   const [requireConfirmation, setRequireConfirmation] = useState(true);
@@ -182,6 +194,8 @@ export default function BookingSettingsScreen() {
   const [enabled, setEnabled] = useState(true);
   const [advanceNoticeHours, setAdvanceNoticeHours] = useState(24);
   const [cancellationHours, setCancellationHours] = useState(24);
+
+  const [acceptsCustomRequests, setAcceptsCustomRequests] = useState(true);
 
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -200,6 +214,12 @@ export default function BookingSettingsScreen() {
       setCancellationHours(onlineSettings.cancellationHours ?? 24);
     }
   }, [onlineSettings]);
+
+  useEffect(() => {
+    if (customRequestSettings) {
+      setAcceptsCustomRequests(customRequestSettings.acceptsCustomRequests !== false);
+    }
+  }, [customRequestSettings]);
 
   function markChanged() {
     setHasChanges(true);
@@ -220,23 +240,27 @@ export default function BookingSettingsScreen() {
       cancellationHours,
     };
 
-    const [apptRes, onlineRes] = await Promise.all([
+    const customPayload = { acceptsCustomRequests };
+
+    const [apptRes, onlineRes, customRes] = await Promise.all([
       saveAppt("/api/provider/settings/appointments", apptPayload),
       saveOnline("/api/provider/settings/online-booking", onlinePayload),
+      saveCustomRequests("/api/provider/settings/custom-requests", customPayload),
     ]);
 
-    if (apptRes.error || onlineRes.error) {
-      Alert.alert("Error", apptRes.error || onlineRes.error || "Failed to save");
+    if (apptRes.error || onlineRes.error || customRes.error) {
+      Alert.alert("Error", apptRes.error || onlineRes.error || customRes.error || "Failed to save");
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Saved", "Booking settings updated successfully.");
       setHasChanges(false);
       refreshAppt();
       refreshOnline();
+      refreshCustom();
     }
   }, [
-    saveAppt, saveOnline, defaultStatus, autoConfirm, requireConfirmation,
-    enabled, advanceNoticeHours, cancellationHours, refreshAppt, refreshOnline,
+    saveAppt, saveOnline, saveCustomRequests, defaultStatus, autoConfirm, requireConfirmation,
+    enabled, advanceNoticeHours, cancellationHours, acceptsCustomRequests, refreshAppt, refreshOnline, refreshCustom,
   ]);
 
   const availableStatuses = apptSettings?.availableStatuses ?? [
@@ -252,12 +276,12 @@ export default function BookingSettingsScreen() {
     );
   }
 
-  const fetchError = apptError || onlineError;
-  if (fetchError && !apptSettings && !onlineSettings) {
+  const fetchError = apptError || onlineError || customError;
+  if (fetchError && !apptSettings && !onlineSettings && !customRequestSettings) {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Booking Settings" showBack />
-        <ErrorState message={fetchError} onRetry={() => { refreshAppt(); refreshOnline(); }} />
+        <ErrorState message={fetchError} onRetry={() => { refreshAppt(); refreshOnline(); refreshCustom(); }} />
       </ScreenContainer>
     );
   }
@@ -266,7 +290,7 @@ export default function BookingSettingsScreen() {
     <ScreenContainer>
       <ScreenHeader title="Booking Settings" showBack />
 
-      {(apptError || onlineError) && (apptSettings || onlineSettings) && (
+      {(apptError || onlineError || customError) && (apptSettings || onlineSettings || customRequestSettings) && (
         <View style={twStyle("mb-3 rounded-xl bg-amber-50 border border-amber-200 p-3")}>
           <Text style={twStyle("text-xs text-amber-800")}>
             Some settings could not be loaded. The values shown may be defaults. Pull down to retry.
@@ -322,6 +346,20 @@ export default function BookingSettingsScreen() {
             </TouchableOpacity>
           ))}
         </View>
+      </View>
+
+      {/* ─── Custom service requests ─── */}
+      <SectionHeader title="Custom service requests" />
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4")}>
+        <ToggleRow
+          label="Accept custom requests"
+          description="Let clients ask for bespoke services from your profile and messaging. Turn off to show that you are not accepting requests."
+          value={acceptsCustomRequests}
+          onValueChange={(v) => {
+            setAcceptsCustomRequests(v);
+            markChanged();
+          }}
+        />
       </View>
 
       {/* ─── Scheduling ─── */}

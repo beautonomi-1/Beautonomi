@@ -146,6 +146,7 @@ export function CalendarDayGridColumn({
             key={tb.id}
             block={tb}
             startHour={startHour}
+            endHour={endHour}
             slotHeight={slotHeight}
             gridTopPadding={gridTopPadding}
             quarterHeight={quarterHeight}
