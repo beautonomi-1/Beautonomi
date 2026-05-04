@@ -51,28 +51,34 @@ describe("GET /api/provider/waiting-room", () => {
         {
           id: "booking-1",
           booking_number: "B-1",
-          customer_name: "Ada Lovelace",
-          customer_email: "ada@example.com",
-          customer_phone: "+27123456789",
-          service_id: "service-1",
-          service_name: "Cut",
-          staff_id: "staff-1",
           scheduled_at: "2026-05-01T09:00:00.000Z",
           checked_in_time: "2026-05-01T08:55:00.000Z",
           status: "checked_in",
           notes: "Window seat",
+          special_requests: null,
           is_group_booking: true,
           group_booking_id: "group-1",
+          customers: {
+            full_name: "Ada Lovelace",
+            email: "ada@example.com",
+            phone: "+27123456789",
+          },
+          booking_services: [
+            {
+              offering_id: "service-1",
+              staff_id: "staff-1",
+              scheduled_start_at: "2026-05-01T09:00:00.000Z",
+              guest_name: null,
+              offering: { title: "Cut" },
+              staff: { id: "staff-1", name: "Grace" },
+            },
+          ],
         },
       ],
       error: null,
     });
-    const staffChain = createAwaitableChain({
-      data: [{ id: "staff-1", name: "Grace" }],
-      error: null,
-    });
     const supabase = {
-      from: vi.fn((table: string) => (table === "provider_staff" ? staffChain : bookingChain)),
+      from: vi.fn(() => bookingChain),
     };
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     vi.mocked(getSupabaseAdmin).mockReturnValue(supabase as any);
@@ -100,7 +106,6 @@ describe("GET /api/provider/waiting-room", () => {
     expect(bookingChain.eq).toHaveBeenCalledWith("provider_id", "provider-1");
     expect(bookingChain.eq).toHaveBeenCalledWith("location_id", "loc-1");
     expect(bookingChain.in).toHaveBeenCalledWith("status", ["waiting", "checked_in", "confirmed"]);
-    expect(staffChain.in).toHaveBeenCalledWith("id", ["staff-1"]);
   });
 
   it("maps in-progress status filter to active service entries", async () => {
@@ -108,11 +113,24 @@ describe("GET /api/provider/waiting-room", () => {
       data: [
         {
           id: "booking-2",
-          customer_name: "Client",
-          service_name: "Service",
-          checked_in_time: "2026-05-01T08:55:00.000Z",
           scheduled_at: "2026-05-01T09:00:00.000Z",
+          checked_in_time: "2026-05-01T08:55:00.000Z",
           status: "in_progress",
+          notes: null,
+          special_requests: null,
+          is_group_booking: false,
+          group_booking_id: null,
+          customers: { full_name: "Client", email: null, phone: null },
+          booking_services: [
+            {
+              offering_id: "off-1",
+              staff_id: null,
+              scheduled_start_at: "2026-05-01T09:00:00.000Z",
+              guest_name: null,
+              offering: { title: "Service" },
+              staff: null,
+            },
+          ],
         },
       ],
       error: null,

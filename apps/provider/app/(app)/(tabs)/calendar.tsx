@@ -47,6 +47,7 @@ import { CalendarActionRail } from "@/components/calendar/CalendarActionRail";
 import { CalendarBookingBlock } from "@/components/calendar/CalendarBookingBlock";
 import { CalendarDayGridColumn } from "@/components/calendar/CalendarDayGridColumn";
 import { CalendarDragGhost } from "@/components/calendar/CalendarDragGhost";
+import { CalendarBookingQuickSheet } from "@/components/calendar/CalendarBookingQuickSheet";
 import { CurrentTimeIndicator } from "@/components/calendar/CurrentTimeIndicator";
 import {
   CALENDAR_GRID_TOP_PADDING,
@@ -1111,10 +1112,20 @@ function CalendarScreenBody() {
   const draggingBookingIdRef = useRef<string | null>(null);
   const [draggingBooking, setDraggingBooking] = useState<CalendarBooking | null>(null);
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
+  /** In-context preview after tapping an appointment (avoids switching away from Calendar tab). */
+  const [quickSheetBooking, setQuickSheetBooking] = useState<CalendarBooking | null>(null);
 
   const SLOT_HEIGHT = preferences.compactMode ? 40 : 60;
   const QUARTER_HEIGHT = SLOT_HEIGHT / 4;
   const GRID_TOP_PADDING = CALENDAR_GRID_TOP_PADDING;
+
+  /**
+   * Measured height of the per-column header in multi-staff day-columns and 3-day view.
+   * Used to offset the full-width CurrentTimeIndicator overlay so it starts at the top
+   * of the grid rows, not at the top of the gridContainerRef which is above the headers.
+   */
+  const [staffColHeaderHeight, setStaffColHeaderHeight] = useState(0);
+  const [threeDayColHeaderHeight, setThreeDayColHeaderHeight] = useState(0);
 
   const providerTz = provider?.timezone ?? null;
   const dateStr = calendarDateKey(selectedDate, providerTz);
@@ -1129,12 +1140,17 @@ function CalendarScreenBody() {
   const endDate = viewMode === "week" ? weekEnd : viewMode === "3day" ? threeDayEnd : weekEnd;
   const locationParam = locationFilter !== "all" ? `&location_id=${locationFilter}` : "";
 
+  /** Bumps every minute so `providerTodayKey` refreshes after midnight if the screen stays open. */
+  const [providerTodayTick, setProviderTodayTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setProviderTodayTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   // TZ-aware "today" key — matches the provider's wall-clock date, not the device's.
   const providerTodayKey = useMemo(
     () => formatDateKeyInTimeZone(new Date(), providerTz),
-    // Recompute at most once per render; selectedDate change refreshes the memo
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [providerTz, selectedDate],
+    [providerTz, selectedDate, providerTodayTick],
   );
   const isProviderToday = useCallback(
     (d: Date) => formatDateKeyInTimeZone(d, providerTz) === providerTodayKey,
@@ -1393,7 +1409,13 @@ function CalendarScreenBody() {
     if (!preferences.scrollToNow || hasScrolledToNow.current) return;
     const now = new Date();
     const { h, m } = getHourMinuteForInstantInZone(now, provider?.timezone ?? null);
-    const offset = Math.max(0, (h - startHour - 1) * SLOT_HEIGHT + (m / 60) * SLOT_HEIGHT);
+    // Include the ScrollView contentContainerStyle paddingTop (20px) and GRID_TOP_PADDING (8px)
+    // so the scroll position aligns with the actual rendered hour rows.
+    // The -1 hour keeps one hour of context visible above the current time indicator.
+    const offset = Math.max(
+      0,
+      20 + GRID_TOP_PADDING + (h - startHour - 1) * SLOT_HEIGHT + (m / 60) * SLOT_HEIGHT,
+    );
     scrollRef.current?.scrollTo({ y: offset, animated: false });
     hasScrolledToNow.current = true;
   }, [preferences.scrollToNow, startHour, SLOT_HEIGHT, provider?.timezone]);
@@ -1869,9 +1891,9 @@ function CalendarScreenBody() {
       time: timeParam,
       status: preferences.defaultNewAppointmentStatus,
     });
-    if (columnStaffId && columnStaffId !== "all") {
+    if (columnStaffId && columnStaffId !== "all" && columnStaffId !== "unassigned") {
       params.set("staff_id", columnStaffId);
-    } else if (staffFilter !== "all") {
+    } else if (staffFilter !== "all" && staffFilter !== "unassigned") {
       params.set("staff_id", staffFilter);
     }
     if (locationFilter !== "all") {
@@ -1899,7 +1921,7 @@ function CalendarScreenBody() {
       );
       return;
     }
-    router.push(`/(app)/(tabs)/bookings/${booking.id}` as never);
+    setQuickSheetBooking(booking);
   }
 
   function handleLongPressBooking(booking: CalendarBooking) {
@@ -1941,7 +1963,9 @@ function CalendarScreenBody() {
             return;
           }
           if (buttonIndex === 2) {
-            router.push(`/(app)/(tabs)/bookings/${booking.id}?focusPayment=1` as never);
+            router.push(
+              `/(app)/(tabs)/more/bookings/${booking.calendar_parent_booking_id?.trim() ? booking.calendar_parent_booking_id : booking.id}?focusPayment=1` as never,
+            );
             return;
           }
           const dbTarget = availableActions[buttonIndex - 3];
@@ -2072,9 +2096,12 @@ function CalendarScreenBody() {
     targetDay: Date,
   ) {
     gridContainerRef.current?.measureInWindow((gridX, gridY) => {
-      const scrollY = scrollOffsetRef.current.y;
+      // Vertical: gridContainer is inside the vertically-scrolled parent, so measureInWindow
+      // already moves with contentOffset.y — do not add scrollY again.
+      const contentY = absoluteY - gridY;
+      // Horizontal: staff/3-day columns scroll inside a nested horizontal ScrollView; the
+      // outer grid row's window X does not move with that scroll — add contentOffset.x.
       const scrollX = scrollOffsetRef.current.x;
-      const contentY = scrollY + (absoluteY - gridY);
       const contentX = scrollX + (absoluteX - gridX);
 
       const { hour: hourClamp, minute: clampedMinute } = contentYOffsetToHourMinute({
@@ -2998,7 +3025,15 @@ function CalendarScreenBody() {
                 .map((row) => (
                   <View
                     key={`t-${row.hour}`}
-                    style={{ position: "absolute", left: 0, right: 0, top: (row.hour - startHour) * SLOT_HEIGHT, width: TIME_COL_WIDTH, alignItems: "flex-end", paddingRight: 8 }}
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      top: GRID_TOP_PADDING + (row.hour - startHour) * SLOT_HEIGHT,
+                      width: TIME_COL_WIDTH,
+                      alignItems: "flex-end",
+                      paddingRight: 8,
+                    }}
                   >
                     <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[600] }}>{row.label}</Text>
                   </View>
@@ -3021,6 +3056,7 @@ function CalendarScreenBody() {
                             <TouchableOpacity
                               style={{ width: threeDayColWidth, alignItems: "center", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingBottom: 4, paddingTop: 4, backgroundColor: isToday ? TEAL_ACCENT + "30" : "#f9fafb" }}
                               onPress={() => { setSelectedDate(day); setViewMode("day"); }}
+                              onLayout={(e) => { const h = e.nativeEvent.layout.height; if (h > 0) setThreeDayColHeaderHeight(h); }}
                             >
                               <Text style={{ fontSize: 10, color: Colors.gray[400] }}>{format(day, "EEE")}</Text>
                               <Text style={{ fontSize: 14, fontWeight: "700", color: isToday ? "#4f46e6" : Colors.gray[700] }}>{format(day, "d MMM")}</Text>
@@ -3044,7 +3080,7 @@ function CalendarScreenBody() {
                       style={{
                         position: "absolute",
                         left: TIME_COL_WIDTH,
-                        top: 0,
+                        top: threeDayColHeaderHeight,
                         width: 3 * Math.max(MIN_STAFF_COL_WIDTH, availableWidth / 3),
                         height: totalGridHeight + GRID_TOP_PADDING,
                         pointerEvents: "none",
@@ -3083,6 +3119,7 @@ function CalendarScreenBody() {
                               style={{ width: dayColumnWidth, alignItems: "center", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingHorizontal: 4, paddingBottom: 4, paddingTop: 4, backgroundColor: DARK_HEADER }}
                               onPress={() => handleStaffHeaderPress(col)}
                               activeOpacity={0.7}
+                              onLayout={(e) => { const h = e.nativeEvent.layout.height; if (h > 0) setStaffColHeaderHeight(h); }}
                             >
                               <View style={{ marginBottom: 2 }}>
                                 <Avatar name={col.staffName} imageUrl={col.staffAvatarUrl} size="sm" />
@@ -3112,7 +3149,7 @@ function CalendarScreenBody() {
                       style={{
                         position: "absolute",
                         left: TIME_COL_WIDTH,
-                        top: 0,
+                        top: staffColHeaderHeight,
                         width: staffScrollContentWidth,
                         height: totalGridHeight + GRID_TOP_PADDING,
                         pointerEvents: "none",
@@ -3247,7 +3284,9 @@ function CalendarScreenBody() {
                 onPress={() => {
                   const b = androidBookingMenu;
                   setAndroidBookingMenu(null);
-                  router.push(`/(app)/(tabs)/bookings/${b.id}?focusPayment=1` as never);
+                  router.push(
+                    `/(app)/(tabs)/more/bookings/${b.calendar_parent_booking_id?.trim() ? b.calendar_parent_booking_id : b.id}?focusPayment=1` as never,
+                  );
                 }}
               >
                 <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }}>
@@ -3690,6 +3729,18 @@ function CalendarScreenBody() {
           </Pressable>
         </Modal>
       )}
+
+      <CalendarBookingQuickSheet
+        visible={quickSheetBooking != null}
+        booking={quickSheetBooking}
+        providerTimezone={providerTz}
+        onClose={() => setQuickSheetBooking(null)}
+        onViewFullDetails={(bookingId) => {
+          router.push(`/(app)/(tabs)/more/bookings/${bookingId}` as never);
+        }}
+        translateBookingStatusLabel={translateBookingStatusLabel}
+        t={t}
+      />
     </ScreenContainer>
   );
 }

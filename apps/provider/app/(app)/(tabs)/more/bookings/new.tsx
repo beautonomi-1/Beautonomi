@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import { format, addDays, isSameDay, parseISO, startOfDay } from "date-fns";
+import { format, addDays, isSameDay, parseISO, isValid, startOfDay } from "date-fns";
 import { useApiPost, useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
@@ -143,6 +143,8 @@ interface Product {
   name: string;
   price: number;
   currency: string;
+  /** Retail category string (from products table / API). */
+  category?: string | null;
   variants?: { id: string; name: string; price: number }[];
 }
 
@@ -270,6 +272,7 @@ const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof
 ];
 const TIP_PERCENTAGES = [0, 10, 15, 20] as const;
 const UNCATEGORIZED_SERVICE_CATEGORY = "__uncategorized__";
+const UNCATEGORIZED_PRODUCT_CATEGORY = "__uncategorized_product__";
 
 function getServiceCategoryInfo(service: Service): { id: string; label: string } {
   const id =
@@ -408,7 +411,8 @@ export default function NewBookingScreen() {
   );
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     if (params.date) {
-      try { return parseISO(params.date); } catch { /* fallback */ }
+      const parsed = parseISO(params.date);
+      if (isValid(parsed)) return parsed;
     }
     return today;
   });
@@ -420,6 +424,7 @@ export default function NewBookingScreen() {
   const [staffPickerService, setStaffPickerService] = useState<string | null>(null);
   const [addOnPickerService, setAddOnPickerService] = useState<string | null>(null);
   const [selectedServiceCategory, setSelectedServiceCategory] = useState("all");
+  const [selectedProductCategory, setSelectedProductCategory] = useState("all");
 
   // --- Products ---
   // §Provider-audit 2026-04 (round 4): /api/provider/products returns
@@ -488,6 +493,11 @@ export default function NewBookingScreen() {
   const [addressMapPinOpen, setAddressMapPinOpen] = useState(false);
   const [locatingClientAddress, setLocatingClientAddress] = useState(false);
   const [travelFee, setTravelFee] = useState("");
+  /** When true, address-based /api/location/validate will not overwrite the travel fee field. */
+  const travelFeeUserLockedRef = useRef(false);
+  const [travelFeePreviewLoading, setTravelFeePreviewLoading] = useState(false);
+  /** From POST /api/location/validate — drives availability `travel_buffer` parity with customer booking. */
+  const [travelPreviewMinutes, setTravelPreviewMinutes] = useState<number | null>(null);
   const [tipAmount, setTipAmount] = useState("");
   const [notes, setNotes] = useState("");
   // §Provider-audit 2026-04: allow providers to suppress customer
@@ -537,6 +547,96 @@ export default function NewBookingScreen() {
     () => addressCountry.trim() || bundle?.meta?.tenant_region?.name?.trim() || "South Africa",
     [addressCountry, bundle?.meta?.tenant_region?.name],
   );
+
+  const atHomeTravelBufferMinutes = useMemo(() => {
+    if (locationType !== "at_home") return 0;
+    if (travelPreviewMinutes != null && Number.isFinite(travelPreviewMinutes) && travelPreviewMinutes > 0) {
+      return Math.ceil(travelPreviewMinutes);
+    }
+    return DEFAULT_MOBILE_TRAVEL_BUFFER_MINUTES;
+  }, [locationType, travelPreviewMinutes]);
+
+  // New address / pin → allow server to refresh travel fee again
+  useEffect(() => {
+    travelFeeUserLockedRef.current = false;
+  }, [addressLatitude, addressLongitude]);
+
+  // Dynamic travel fee + drive time (same engine as customer / web booking)
+  useEffect(() => {
+    if (locationType !== "at_home") {
+      setTravelPreviewMinutes(null);
+      return;
+    }
+    const pid = providerProfile?.id;
+    if (!pid) return;
+    if (!addressLine1.trim() || !addressCity.trim()) return;
+    if (addressLatitude == null || addressLongitude == null) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        setTravelFeePreviewLoading(true);
+        try {
+          const country = addressCountry.trim() || homeAddressCountryFallback;
+          const addressString = [addressLine1, addressLine2, addressCity, addressPostalCode, country]
+            .filter(Boolean)
+            .join(", ");
+          const res = await api.post<{
+            valid?: boolean;
+            travelFee?: number;
+            travelTimeMinutes?: number;
+          }>("/api/location/validate", {
+            address: addressString,
+            provider_id: pid,
+            latitude: addressLatitude,
+            longitude: addressLongitude,
+          });
+          if (cancelled) return;
+          if (res.error) {
+            setTravelPreviewMinutes(null);
+            return;
+          }
+          const d = res.data;
+          if (d?.valid === true) {
+            const fee = Math.max(0, Number(d.travelFee ?? 0));
+            setTravelPreviewMinutes(
+              typeof d.travelTimeMinutes === "number" && Number.isFinite(d.travelTimeMinutes)
+                ? d.travelTimeMinutes
+                : null,
+            );
+            if (!travelFeeUserLockedRef.current) {
+              setTravelFee(fee === 0 ? "" : fee.toFixed(2));
+            }
+          } else {
+            setTravelPreviewMinutes(null);
+            if (!travelFeeUserLockedRef.current) {
+              setTravelFee("");
+            }
+          }
+        } catch {
+          if (!cancelled) setTravelPreviewMinutes(null);
+        } finally {
+          if (!cancelled) setTravelFeePreviewLoading(false);
+        }
+      })();
+    }, 600);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    locationType,
+    providerProfile?.id,
+    addressLine1,
+    addressLine2,
+    addressCity,
+    addressPostalCode,
+    addressCountry,
+    addressLatitude,
+    addressLongitude,
+    homeAddressCountryFallback,
+  ]);
 
   const handleAtHomeDropPin = useCallback(
     async (lat: number, lng: number) => {
@@ -804,6 +904,39 @@ export default function NewBookingScreen() {
   // `@beautonomi/utils` so the customer app and the web API share the
   // same coercion instead of re-implementing it.
 
+  /** Pre-discount cart total for membership preview (matches summary subtotal before discounts). */
+  const cartSubtotalOnly = useMemo(() => {
+    let subtotal = 0;
+    selectedServices.forEach((sel) => {
+      const svc = services?.find((s) => s.id === sel.serviceId);
+      if (!svc) return;
+      const svcPrice = safeNum(svc.price);
+      subtotal += svcPrice;
+      sel.addOnIds.forEach((aoId) => {
+        const ao = svc.add_ons?.find((a) => a.id === aoId);
+        if (!ao) return;
+        subtotal += safeNum(ao.price);
+      });
+    });
+    selectedProducts.forEach((p) => {
+      const unit = safeNum(p.unitPrice);
+      const qty = Math.max(1, Math.floor(safeNum(p.quantity)) || 1);
+      subtotal += unit * qty;
+    });
+    return subtotal;
+  }, [selectedServices, selectedProducts, services]);
+
+  const membershipPreviewUrl = useMemo(() => {
+    const cid = selectedClient?.customer_id;
+    if (!cid || cartSubtotalOnly <= 0) return "";
+    return `/api/provider/bookings/pricing-preview?customer_id=${encodeURIComponent(cid)}&subtotal=${encodeURIComponent(String(cartSubtotalOnly))}`;
+  }, [selectedClient?.customer_id, cartSubtotalOnly]);
+
+  const { data: membershipPricingPreview } = useApi<{
+    membershipDiscountAmount?: number;
+    membershipPlanName?: string | null;
+  }>(membershipPreviewUrl, { enabled: membershipPreviewUrl.length > 0 });
+
   // Summary (must be before slotParams which uses summary.totalMinutes)
   const summary = useMemo(() => {
     let subtotal = 0;
@@ -863,7 +996,9 @@ export default function NewBookingScreen() {
       ? Math.max(0, servicesSubtotal - safeNum(activePackage.price))
       : 0;
 
-    const discountAmt = Math.max(manualDiscount, promoDiscount, packageDiscount);
+    const membershipDiscountAmt = safeNum(membershipPricingPreview?.membershipDiscountAmount);
+    const baseDiscountAmt = Math.max(manualDiscount, promoDiscount, packageDiscount);
+    const discountAmt = baseDiscountAmt + membershipDiscountAmt;
 
     const taxRatePercent = safeNum(paymentSettings?.taxRatePercent);
     const taxRate = taxRatePercent / 100;
@@ -883,7 +1018,12 @@ export default function NewBookingScreen() {
       items,
       subtotal,
       discountAmt,
+      baseDiscountAmt,
+      membershipDiscountAmt,
+      membershipPlanName: membershipPricingPreview?.membershipPlanName ?? null,
       packageDiscount,
+      manualDiscount,
+      promoDiscount,
       afterDiscount: safeNum(pricing.afterDiscount),
       tax: safeNum(pricing.taxAmount),
       total: safeNum(pricing.totalAmount),
@@ -894,7 +1034,22 @@ export default function NewBookingScreen() {
       travelFeeNum,
       tipNum,
     };
-  }, [selectedServices, selectedProducts, services, staffList, discountValue, discountType, paymentSettings, travelFee, tipAmount, promoApplied, selectedPackageId, packagesList]);
+  }, [
+    selectedServices,
+    selectedProducts,
+    services,
+    staffList,
+    discountValue,
+    discountType,
+    paymentSettings,
+    travelFee,
+    tipAmount,
+    promoApplied,
+    selectedPackageId,
+    packagesList,
+    membershipPricingPreview?.membershipDiscountAmount,
+    membershipPricingPreview?.membershipPlanName,
+  ]);
 
   // Auto-clear promo code when cart items change so stale discount doesn't apply
   useEffect(() => {
@@ -913,7 +1068,7 @@ export default function NewBookingScreen() {
     const staffIds = selectedServices.map((s) => s.staffId).filter((id): id is string => !!id);
     const serviceIds = [...new Set(selectedServices.map((s) => s.serviceId).filter(Boolean))];
     const mode = locationType === "at_home" ? "mobile" : "salon";
-    const travelBuffer = locationType === "at_home" ? DEFAULT_MOBILE_TRAVEL_BUFFER_MINUTES : 0;
+    const travelBuffer = locationType === "at_home" ? atHomeTravelBufferMinutes : 0;
     return {
       date: d,
       duration_minutes: dur,
@@ -923,7 +1078,7 @@ export default function NewBookingScreen() {
       mode,
       travel_buffer: travelBuffer,
     };
-  }, [selectedDate, summary.totalMinutes, selectedServices, selectedLocationId, locationType]);
+  }, [selectedDate, summary.totalMinutes, selectedServices, selectedLocationId, locationType, atHomeTravelBufferMinutes]);
 
   const availableSlotsUrl = useMemo(() => {
     const p = slotParams;
@@ -991,6 +1146,45 @@ export default function NewBookingScreen() {
       setSelectedServiceCategory("all");
     }
   }, [selectedServiceCategory, serviceCategoryOptions]);
+
+  const productCategoryOptions = useMemo(() => {
+    if (!productsList.length) return [];
+    const categories = new Map<string, { id: string; label: string; count: number }>();
+    productsList.forEach((product) => {
+      const raw = (product.category ?? "").trim();
+      const id = raw.length > 0 ? raw : UNCATEGORIZED_PRODUCT_CATEGORY;
+      const label = raw.length > 0 ? raw : "Uncategorized";
+      const existing = categories.get(id);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        categories.set(id, { id, label, count: 1 });
+      }
+    });
+    return Array.from(categories.values()).sort((a, b) => {
+      if (a.id === UNCATEGORIZED_PRODUCT_CATEGORY) return 1;
+      if (b.id === UNCATEGORIZED_PRODUCT_CATEGORY) return -1;
+      return a.label.localeCompare(b.label);
+    });
+  }, [productsList]);
+
+  useEffect(() => {
+    if (
+      selectedProductCategory !== "all" &&
+      !productCategoryOptions.some((c) => c.id === selectedProductCategory)
+    ) {
+      setSelectedProductCategory("all");
+    }
+  }, [selectedProductCategory, productCategoryOptions]);
+
+  const productsForPicker = useMemo(() => {
+    if (selectedProductCategory === "all") return productsList;
+    return productsList.filter((product) => {
+      const raw = (product.category ?? "").trim();
+      const id = raw.length > 0 ? raw : UNCATEGORIZED_PRODUCT_CATEGORY;
+      return id === selectedProductCategory;
+    });
+  }, [productsList, selectedProductCategory]);
 
   // §Provider-launch (audit 2026-04): when the user entered this screen
   // from a specific staff column or a filtered location on the calendar,
@@ -1270,7 +1464,7 @@ export default function NewBookingScreen() {
       params.set("mode", locationType === "at_home" ? "mobile" : "salon");
       params.set(
         "travel_buffer",
-        locationType === "at_home" ? String(DEFAULT_MOBILE_TRAVEL_BUFFER_MINUTES) : "0",
+        locationType === "at_home" ? String(atHomeTravelBufferMinutes) : "0",
       );
 
       const res = await api.get<{ available?: boolean; conflicts?: string[] }>(
@@ -1456,6 +1650,9 @@ export default function NewBookingScreen() {
         if (occurrenceCount && Number.isFinite(occurrenceCount) && occurrenceCount > 1) {
           recurrenceParts.push(`COUNT=${Math.floor(occurrenceCount)}`);
         }
+        const winManual = summary.baseDiscountAmt === summary.manualDiscount;
+        const winPromo = summary.baseDiscountAmt === summary.promoDiscount;
+        const winPackage = summary.baseDiscountAmt === summary.packageDiscount;
         const recurringBody: Record<string, unknown> = {
           customer_id: selectedClient.customer_id,
           service_id: selectedServicePayloads[0]?.service_id,
@@ -1471,7 +1668,7 @@ export default function NewBookingScreen() {
           frequency: recurrencePattern,
           preferred_time: selectedTime.slice(0, 5),
           location_type: locationType,
-          payment_method: paymentMethod === "cash" || paymentMethod === "card" ? paymentMethod : undefined,
+          payment_method: paymentMethod,
           metadata: {
             duration_minutes: summary.totalMinutes,
             price: summary.total,
@@ -1480,6 +1677,19 @@ export default function NewBookingScreen() {
               offering_id: s.service_id,
               staff_id: s.staff_id,
             })),
+            pricing: {
+              subtotal: summary.subtotal,
+              discount_amount: winManual || winPackage ? (winManual ? summary.manualDiscount : summary.packageDiscount) : 0,
+              promotion_discount_amount: winPromo ? summary.promoDiscount : 0,
+              membership_discount_amount: summary.membershipDiscountAmt,
+              tax_amount: summary.tax,
+              tax_rate: summary.taxRatePercent,
+              service_fee_percentage: 0,
+              service_fee_amount: 0,
+              tip_amount: summary.tipNum,
+              travel_fee: summary.travelFeeNum,
+              total_amount: summary.total,
+            },
             ...(locationType === "at_home"
               ? {
                   address: {
@@ -1951,45 +2161,83 @@ export default function NewBookingScreen() {
 
               {/* -------- DATE -------- */}
               <SectionLabel label="Date" required />
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={twStyle("mb-4")}
-                contentContainerStyle={{ paddingVertical: 4 }}
-              >
-                {dateOptions.map((d) => {
-                  const isActive = isSameDay(d, selectedDate);
-                  const isToday = isSameDay(d, today);
-                  return (
-                    <TouchableOpacity
-                      key={d.toISOString()}
-                      style={[twStyle(`items-center rounded-2xl px-3 py-2.5 ${
-                        isActive ? "bg-gray-900" : isToday ? "border border-emerald-200 bg-emerald-50" : "border border-gray-200 bg-white"
-                      }`), { minWidth: 64, marginRight: 8 }]}
-                      onPress={() => setSelectedDate(d)}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: isActive }}
-                      accessibilityLabel={format(d, "EEEE, MMMM d")}
-                    >
-                      <Text
-                        style={twStyle(`text-[10px] font-semibold ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}
+              {isTablet ? (
+                <View style={[twStyle("mb-4"), { flexDirection: "row", flexWrap: "wrap" }]}>
+                  {dateOptions.map((d) => {
+                    const isActive = isSameDay(d, selectedDate);
+                    const isToday = isSameDay(d, today);
+                    return (
+                      <View key={d.toISOString()} style={{ width: `${100 / 7}%`, padding: 3 }}>
+                        <TouchableOpacity
+                          style={[twStyle(`items-center rounded-2xl px-2 py-2 ${
+                            isActive ? "bg-gray-900" : isToday ? "border border-emerald-200 bg-emerald-50" : "border border-gray-200 bg-white"
+                          }`), { width: "100%" }]}
+                          onPress={() => setSelectedDate(d)}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: isActive }}
+                          accessibilityLabel={format(d, "EEEE, MMMM d")}
+                        >
+                          <Text
+                            style={twStyle(`text-[10px] font-semibold ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}
+                          >
+                            {isToday ? "Today" : format(d, "EEE")}
+                          </Text>
+                          <Text
+                            style={twStyle(`text-base font-bold ${
+                              isActive ? "text-white" : "text-gray-900"
+                            }`)}
+                          >
+                            {format(d, "d")}
+                          </Text>
+                          <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}>
+                            {format(d, "MMM")}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={twStyle("mb-4")}
+                  contentContainerStyle={{ paddingVertical: 4 }}
+                >
+                  {dateOptions.map((d) => {
+                    const isActive = isSameDay(d, selectedDate);
+                    const isToday = isSameDay(d, today);
+                    return (
+                      <TouchableOpacity
+                        key={d.toISOString()}
+                        style={[twStyle(`items-center rounded-2xl px-3 py-2.5 ${
+                          isActive ? "bg-gray-900" : isToday ? "border border-emerald-200 bg-emerald-50" : "border border-gray-200 bg-white"
+                        }`), { minWidth: 64, marginRight: 8 }]}
+                        onPress={() => setSelectedDate(d)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: isActive }}
+                        accessibilityLabel={format(d, "EEEE, MMMM d")}
                       >
-                        {isToday ? "Today" : format(d, "EEE")}
-                      </Text>
-                      <Text
-                        style={twStyle(`text-base font-bold ${
-                          isActive ? "text-white" : "text-gray-900"
-                        }`)}
-                      >
-                        {format(d, "d")}
-                      </Text>
-                      <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}>
-                        {format(d, "MMM")}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+                        <Text
+                          style={twStyle(`text-[10px] font-semibold ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}
+                        >
+                          {isToday ? "Today" : format(d, "EEE")}
+                        </Text>
+                        <Text
+                          style={twStyle(`text-base font-bold ${
+                            isActive ? "text-white" : "text-gray-900"
+                          }`)}
+                        >
+                          {format(d, "d")}
+                        </Text>
+                        <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}>
+                          {format(d, "MMM")}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
 
               {/* -------- TIME -------- */}
               <SectionLabel label="Time" required />
@@ -2294,13 +2542,24 @@ export default function NewBookingScreen() {
                     />
                   </View>
                   <View style={{ marginTop: 12 }}>
-                    <Text style={twStyle("mb-1 text-xs text-gray-500")}>Travel fee ({tenantCurrency}, optional)</Text>
+                    <Text style={twStyle("mb-1 text-xs text-gray-500")}>
+                      Travel fee ({tenantCurrency}) — calculated from address (override optional)
+                    </Text>
+                    {travelFeePreviewLoading ? (
+                      <View style={twStyle("flex-row items-center py-2")}>
+                        <ActivityIndicator size="small" color="#6366f1" />
+                        <Text style={twStyle("ml-2 text-sm text-gray-600")}>Calculating travel fee…</Text>
+                      </View>
+                    ) : null}
                     <TextInput
                       style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                       placeholder="0"
                       placeholderTextColor="#9ca3af"
                       value={travelFee}
-                      onChangeText={setTravelFee}
+                      onChangeText={(t) => {
+                        travelFeeUserLockedRef.current = true;
+                        setTravelFee(t);
+                      }}
                       keyboardType="decimal-pad"
                       accessibilityLabel="Travel fee amount"
                     />
@@ -2717,7 +2976,10 @@ export default function NewBookingScreen() {
                       paymentMethod === pm.value
                         ? "border-gray-900 bg-gray-900"
                         : "border-gray-200 bg-white"
-                    }`), { width: "48%", marginBottom: idx < PAYMENT_METHODS.length - 1 ? 8 : 0 }]}
+                    }`), {
+                      width: isTablet ? "100%" : "48%",
+                      marginBottom: idx < PAYMENT_METHODS.length - 1 ? 8 : 0,
+                    }]}
                     onPress={() => setPaymentMethod(pm.value)}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: paymentMethod === pm.value }}
@@ -2963,14 +3225,25 @@ export default function NewBookingScreen() {
               <Text style={twStyle("text-sm text-gray-500")}>Subtotal</Text>
               <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.subtotal, tenantCurrency)}</Text>
             </View>
-            {summary.discountAmt > 0 && (
+            {summary.membershipDiscountAmt > 0 && (
+              <View style={twStyle("flex-row justify-between")}>
+                <Text style={twStyle("text-sm text-indigo-700")}>
+                  Membership discount
+                  {summary.membershipPlanName ? ` (${summary.membershipPlanName})` : ""}
+                </Text>
+                <Text style={twStyle("text-sm text-indigo-700")}>
+                  {formatCurrency(-summary.membershipDiscountAmt, tenantCurrency)}
+                </Text>
+              </View>
+            )}
+            {summary.baseDiscountAmt > 0 && (
               <View style={twStyle("flex-row justify-between")}>
                 <Text style={twStyle("text-sm text-green-600")}>
-                  {selectedPackageId && summary.packageDiscount > 0 && summary.discountAmt === summary.packageDiscount
+                  {selectedPackageId && summary.packageDiscount > 0 && summary.baseDiscountAmt === summary.packageDiscount
                     ? "Package saving"
                     : "Discount"}
                 </Text>
-                <Text style={twStyle("text-sm text-green-600")}>{formatCurrency(-summary.discountAmt, tenantCurrency)}</Text>
+                <Text style={twStyle("text-sm text-green-600")}>{formatCurrency(-summary.baseDiscountAmt, tenantCurrency)}</Text>
               </View>
             )}
             <View style={twStyle("flex-row justify-between")}>
@@ -3138,8 +3411,56 @@ export default function NewBookingScreen() {
           onClose={() => setShowProductPicker(false)}
           title="Add Product"
         >
+          {productCategoryOptions.length > 1 && (
+            <View style={twStyle("mb-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-2")}>
+              <Text style={twStyle("mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
+                Filter by category
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <TouchableOpacity
+                  style={[
+                    twStyle(`mr-2 rounded-full border px-3 py-2 ${
+                      selectedProductCategory === "all" ? "border-indigo-900 bg-indigo-900" : "border-indigo-200 bg-white"
+                    }`),
+                  ]}
+                  onPress={() => setSelectedProductCategory("all")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show all products"
+                >
+                  <Text style={twStyle(`text-xs font-semibold ${selectedProductCategory === "all" ? "text-white" : "text-gray-700"}`)}>
+                    All
+                  </Text>
+                </TouchableOpacity>
+                {productCategoryOptions.map((category) => {
+                  const active = selectedProductCategory === category.id;
+                  return (
+                    <TouchableOpacity
+                      key={category.id}
+                      style={[
+                        twStyle(`mr-2 rounded-full border px-3 py-2 ${
+                          active ? "border-indigo-600 bg-indigo-600" : "border-indigo-200 bg-white"
+                        }`),
+                      ]}
+                      onPress={() => setSelectedProductCategory(category.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Show ${category.label} products`}
+                    >
+                      <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-indigo-700"}`)}>
+                        {category.label} · {category.count}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
           <ScrollView style={{ maxHeight: 400 }}>
-            {productsList.map((product) => {
+            {productsForPicker.length === 0 && (
+              <Text style={twStyle("py-6 text-center text-sm text-gray-500")}>
+                {productsList.length === 0 ? "No products in catalogue" : "No products in this category"}
+              </Text>
+            )}
+            {productsForPicker.map((product) => {
               if (product.variants && product.variants.length > 0) {
                 return (
                   <View key={product.id}>
@@ -3399,6 +3720,13 @@ function ConfirmationView({
     taxRatePercent?: number;
     travelFeeNum?: number;
     tipNum?: number;
+    membershipDiscountAmt?: number;
+    membershipPlanName?: string | null;
+    baseDiscountAmt?: number;
+    packageDiscount?: number;
+    manualDiscount?: number;
+    promoDiscount?: number;
+    taxInclusive?: boolean;
   };
   currency: string;
   selectedDate: Date;
@@ -3501,10 +3829,21 @@ function ConfirmationView({
           <Text style={twStyle("text-sm text-gray-500")}>Subtotal</Text>
           <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.subtotal, currency)}</Text>
         </View>
-        {summary.discountAmt > 0 && (
+        {summary.membershipDiscountAmt > 0 && (
+          <View style={twStyle("flex-row justify-between")}>
+            <Text style={twStyle("text-sm text-indigo-700")}>
+              Membership discount
+              {summary.membershipPlanName ? ` (${summary.membershipPlanName})` : ""}
+            </Text>
+            <Text style={twStyle("text-sm text-indigo-700")}>
+              {formatCurrency(-summary.membershipDiscountAmt, currency)}
+            </Text>
+          </View>
+        )}
+        {summary.baseDiscountAmt > 0 && (
           <View style={twStyle("flex-row justify-between")}>
             <Text style={twStyle("text-sm text-green-600")}>Discount</Text>
-            <Text style={twStyle("text-sm text-green-600")}>{formatCurrency(-summary.discountAmt, currency)}</Text>
+            <Text style={twStyle("text-sm text-green-600")}>{formatCurrency(-summary.baseDiscountAmt, currency)}</Text>
           </View>
         )}
         <View style={twStyle("flex-row justify-between")}>

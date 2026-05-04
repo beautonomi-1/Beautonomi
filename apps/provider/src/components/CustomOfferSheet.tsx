@@ -3,8 +3,8 @@
  * Aligned with API: service_name, service_category_id, location_type (at_salon/at_home),
  * address for at_home, description, price, duration, expiration, location_id, staff_id, preferred_start_at.
  */
-import { useState, useCallback, useEffect, useMemo } from "react";
-import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView } from "react-native";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from "react-native";
 import * as Haptics from "expo-haptics";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -116,7 +116,12 @@ export function CustomOfferSheet({
   const [addressState, setAddressState] = useState("");
   const [addressPostalCode, setAddressPostalCode] = useState("");
   const [addressCountry, setAddressCountry] = useState("");
+  const [addressLatitude, setAddressLatitude] = useState<number | null>(null);
+  const [addressLongitude, setAddressLongitude] = useState<number | null>(null);
   const [travelFee, setTravelFee] = useState("");
+  const travelFeeUserLockedRef = useRef(false);
+  const [travelFeePreviewLoading, setTravelFeePreviewLoading] = useState(false);
+  const [travelPreviewMinutes, setTravelPreviewMinutes] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const tenantCurrency = getTenantDefaultCurrency();
   const selectedDateKey = dateKey(scheduledAt);
@@ -130,6 +135,14 @@ export function CustomOfferSheet({
       return d;
     });
   }, []);
+  const atHomeTravelBufferMinutes = useMemo(() => {
+    if (locationType !== "at_home") return 0;
+    if (travelPreviewMinutes != null && Number.isFinite(travelPreviewMinutes) && travelPreviewMinutes > 0) {
+      return Math.ceil(travelPreviewMinutes);
+    }
+    return 30;
+  }, [locationType, travelPreviewMinutes]);
+
   const slotsUrl = useMemo(() => {
     if (!visible || !selectedDateKey) return "";
     const durationNum = Number(duration);
@@ -137,9 +150,12 @@ export function CustomOfferSheet({
     let q = `/api/provider/bookings/available-slots?date=${encodeURIComponent(selectedDateKey)}&duration_minutes=${encodeURIComponent(String(durationNum))}`;
     if (staffId) q += `&staff_ids=${encodeURIComponent(staffId)}`;
     if (locationType === "at_salon" && locationId) q += `&location_id=${encodeURIComponent(locationId)}`;
-    q += locationType === "at_home" ? "&mode=mobile&travel_buffer=30" : "&mode=salon&travel_buffer=0";
+    q +=
+      locationType === "at_home"
+        ? `&mode=mobile&travel_buffer=${encodeURIComponent(String(atHomeTravelBufferMinutes))}`
+        : "&mode=salon&travel_buffer=0";
     return q;
-  }, [duration, locationId, locationType, selectedDateKey, staffId, visible]);
+  }, [duration, locationId, locationType, selectedDateKey, staffId, visible, atHomeTravelBufferMinutes]);
   const { data: slotsData, loading: slotsLoading } = useApi<AvailableSlotsResponse>(slotsUrl, { enabled: slotsUrl.length > 0 });
   const slotRows = useMemo(() => {
     if (Array.isArray(slotsData?.slot_grid) && slotsData.slot_grid.length > 0) return slotsData.slot_grid;
@@ -169,7 +185,11 @@ export function CustomOfferSheet({
     setAddressState("");
     setAddressPostalCode("");
     setAddressCountry("");
+    setAddressLatitude(null);
+    setAddressLongitude(null);
     setTravelFee("");
+    setTravelPreviewMinutes(null);
+    travelFeeUserLockedRef.current = false;
     setCategoryQuery("");
   }, []);
 
@@ -192,6 +212,88 @@ export function CustomOfferSheet({
     const next = new Date(iso);
     if (Number.isFinite(next.getTime())) setScheduledAt(next);
   }, [providerTz, selectedDateKey, selectedTimeKey, slotRows, slotsData?.provider_timezone]);
+
+  useEffect(() => {
+    travelFeeUserLockedRef.current = false;
+  }, [addressLatitude, addressLongitude]);
+
+  useEffect(() => {
+    if (!visible || locationType !== "at_home") {
+      setTravelPreviewMinutes(null);
+      return;
+    }
+    const pid = provider?.id;
+    if (!pid) return;
+    if (!addressLine1.trim() || !addressCity.trim()) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        setTravelFeePreviewLoading(true);
+        try {
+          const country =
+            addressCountry.trim() ||
+            getCachedConfigBundle()?.meta?.tenant_region?.name?.trim() ||
+            "South Africa";
+          const addressString = [addressLine1, addressLine2, addressCity, addressPostalCode, country]
+            .filter(Boolean)
+            .join(", ");
+          const body: Record<string, unknown> = {
+            address: addressString,
+            provider_id: pid,
+          };
+          if (addressLatitude != null && addressLongitude != null) {
+            body.latitude = addressLatitude;
+            body.longitude = addressLongitude;
+          }
+          const res = await api.post<{
+            valid?: boolean;
+            travelFee?: number;
+            travelTimeMinutes?: number;
+          }>("/api/location/validate", body);
+          if (cancelled) return;
+          if (res.error) {
+            setTravelPreviewMinutes(null);
+            return;
+          }
+          const d = res.data;
+          if (d?.valid === true) {
+            const fee = Math.max(0, Number(d.travelFee ?? 0));
+            setTravelPreviewMinutes(
+              typeof d.travelTimeMinutes === "number" && Number.isFinite(d.travelTimeMinutes)
+                ? d.travelTimeMinutes
+                : null,
+            );
+            if (!travelFeeUserLockedRef.current) {
+              setTravelFee(fee === 0 ? "" : fee.toFixed(2));
+            }
+          } else {
+            setTravelPreviewMinutes(null);
+            if (!travelFeeUserLockedRef.current) setTravelFee("");
+          }
+        } catch {
+          if (!cancelled) setTravelPreviewMinutes(null);
+        } finally {
+          if (!cancelled) setTravelFeePreviewLoading(false);
+        }
+      })();
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    visible,
+    locationType,
+    provider?.id,
+    addressLine1,
+    addressLine2,
+    addressCity,
+    addressPostalCode,
+    addressCountry,
+    addressLatitude,
+    addressLongitude,
+  ]);
 
   const isValid =
     description.trim().length >= 10 &&
@@ -508,6 +610,8 @@ export function CustomOfferSheet({
                 setAddressState(addr.state);
                 setAddressPostalCode(addr.postal_code);
                 setAddressCountry(addr.country);
+                setAddressLatitude(addr.latitude);
+                setAddressLongitude(addr.longitude);
               }}
               onBlur={(q) => {
                 if (!addressLine1.trim() && q.trim()) setAddressLine1(q.trim());
@@ -561,16 +665,29 @@ export function CustomOfferSheet({
                 placeholderTextColor="#9ca3af"
               />
             </View>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Travel fee (optional, {tenantCurrency})</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+              Travel fee ({tenantCurrency}) — from address (override optional)
+            </Text>
+            {travelFeePreviewLoading ? (
+              <View style={twStyle("mb-2 flex-row items-center")}>
+                <ActivityIndicator size="small" color="#6366f1" />
+                <Text style={twStyle("ml-2 text-xs text-gray-600")}>Calculating travel fee…</Text>
+              </View>
+            ) : null}
             <TextInput
               style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={travelFee}
-              onChangeText={setTravelFee}
+              onChangeText={(t) => {
+                travelFeeUserLockedRef.current = true;
+                setTravelFee(t);
+              }}
               keyboardType="decimal-pad"
               placeholder="e.g. 50"
               placeholderTextColor="#9ca3af"
             />
-            <Text style={twStyle("mb-3 text-xs text-gray-500")}>Add a travel fee for this house call. Leave empty for no fee.</Text>
+            <Text style={twStyle("mb-3 text-xs text-gray-500")}>
+              Fee updates when you pick or edit the address. Edit the amount above to override.
+            </Text>
           </>
         )}
 

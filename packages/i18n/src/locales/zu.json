@@ -309,6 +309,8 @@
       "pendingBadge": "{{count}} kusalindile",
       "overlayPartialWarningA11y": "Ezinye izivimbelo zekhalenda noma izindawo ezibanjiwe azikwazanga ukulayisha. Thepha ukuze uvuselele.",
       "viewDetails": "Buka imininingwane",
+      "viewFullDetails": "Buka yonke imininingwane",
+      "quickSheetLongPressHint": "Cindezela isikhathi eside ebhukini kwikalenda ukuze ushintshe isimo noma ukhokhe ngaphandle kokushiya lesi sikrini.",
       "collectPayment": "Thola inkokhelo",
       "currentStatusLabel": "Isimo samanje: {{status}}",
       "bookingLabelFallback": "Ukubhukha",

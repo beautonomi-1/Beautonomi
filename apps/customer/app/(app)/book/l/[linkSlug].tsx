@@ -80,8 +80,16 @@ export default function ExpressBookLinkScreen() {
 
       const pf = data.prefill;
       if (pf?.addon_ids?.length) params.addons = pf.addon_ids.join(",");
-      if (pf?.promotion_code?.trim()) params.promo = pf.promotion_code.trim();
-      if (pf?.gift_card_code?.trim()) params.gift_card = pf.gift_card_code.trim();
+      if (pf?.promotion_code?.trim()) {
+        const code = pf.promotion_code.trim();
+        params.promo = code;
+        params.promo_code = code;
+      }
+      if (pf?.gift_card_code?.trim()) {
+        const gc = pf.gift_card_code.trim();
+        params.gift_card = gc;
+        params.gift_card_code = gc;
+      }
       if (pf?.product_cart?.length) {
         params.products = productCartToQueryParam(pf.product_cart);
       }

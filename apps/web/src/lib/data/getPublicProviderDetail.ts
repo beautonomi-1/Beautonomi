@@ -94,9 +94,8 @@ export const getPublicProviderDetail = cache(
       const providerData = providerRow as Record<string, any>;
       const userData = providerData.users as Record<string, any> | null;
       const includeInSearchEngines = userData?.include_in_search_engines ?? false;
-      // DB default is false — only show "Request Custom Service" tab when the
-      // provider has explicitly opted in, not for everyone.
-      const acceptsCustomRequests = providerData.accepts_custom_requests ?? false;
+      // Treat null/undefined as accepting (matches public API + mobile defaults).
+      const acceptsCustomRequests = providerData.accepts_custom_requests !== false;
 
       // Parallel queries
       const [locationsResult, offeringsResult, staffCountResult, policiesResult, pointsResult] =

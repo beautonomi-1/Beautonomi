@@ -7,11 +7,21 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { ReportFilters, DateRange } from "../../components/ReportFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, CreditCard, TrendingUp, TrendingDown, DollarSign, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import {
+  Download,
+  CreditCard,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  ArrowUpRight,
+  ArrowDownRight,
+  Info,
+} from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
@@ -48,6 +58,9 @@ interface PaymentSummaryData {
     providerEarnings?: string;
     providerNetActivity?: string;
   };
+  /** Walk-in / cash `booking_payments` in range with no matching `finance_transactions` payment row. */
+  cashStylePaymentsWithoutLedgerCount?: number;
+  cashStylePaymentsWithoutLedgerAmount?: number;
 }
 
 export default function PaymentSummaryReport() {
@@ -172,6 +185,33 @@ export default function PaymentSummaryReport() {
           onDateRangeChange={setDateRange}
           onReset={handleReset}
         />
+
+        {(data.cashStylePaymentsWithoutLedgerCount ?? 0) > 0 && (
+          <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+            <Info className="h-4 w-4 text-amber-800" />
+            <div>
+              <AlertTitle className="text-amber-950">Ledger reconciliation note</AlertTitle>
+              <AlertDescription className="text-amber-950/90 space-y-1">
+                <p>
+                  This period includes{" "}
+                  <strong>{data.cashStylePaymentsWithoutLedgerCount}</strong> walk-in or cash-style payment
+                  {data.cashStylePaymentsWithoutLedgerCount === 1 ? "" : "s"} (≈{" "}
+                  <strong>{fmt(data.cashStylePaymentsWithoutLedgerAmount ?? 0)}</strong>) recorded in booking
+                  payments but with no matching settlement row in <code className="text-xs">finance_transactions</code>
+                  .
+                </p>
+                <p className="text-sm">
+                  Gateway flows (e.g. Paystack) post automatically; cash and terminal takings may need manual
+                  reconciliation against your payout ledger. Compare with{" "}
+                  <a className="underline font-medium" href="/provider/reports/payments/payouts">
+                    Payout earnings (ledger)
+                  </a>{" "}
+                  and end-of-day cash-up when closing books.
+                </p>
+              </AlertDescription>
+            </div>
+          </Alert>
+        )}
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

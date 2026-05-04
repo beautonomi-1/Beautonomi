@@ -100,7 +100,7 @@ const onboardingSchema = z.object({
   avatar_url: z.string().optional().nullable(), // optional profile circle (business face); data URLs from form or URL string
   gallery: z.array(z.string().url()).optional().default([]),
   years_in_business: z.number().int().min(0).optional().nullable(),
-  accepts_custom_requests: z.boolean().optional().default(false),
+  accepts_custom_requests: z.boolean().optional().default(true),
   response_rate: z.number().int().min(0).max(100).optional().default(100),
   response_time_hours: z.number().int().min(0).optional().default(1),
   languages_spoken: z.array(z.string()).optional().default(["English"]),
@@ -305,7 +305,7 @@ export async function POST(request: NextRequest) {
         vat_number: is_vat_registered === true ? (vat_number || null) : null,
         // New fields for public homepage optimization
         years_in_business: years_in_business || null,
-        accepts_custom_requests: accepts_custom_requests || false,
+        accepts_custom_requests: accepts_custom_requests ?? true,
         response_rate: response_rate || 100,
         response_time_hours: response_time_hours || 1,
         languages_spoken: languages_spoken || ["English"],

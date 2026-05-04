@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   AppState,
   AppStateStatus,
+  InteractionManager,
   Platform,
   Text,
   TouchableOpacity,
@@ -97,7 +98,12 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
       }
     })();
 
-    const sub = AppState.addEventListener("change", async (next: AppStateStatus) => {
+    // Synchronously track state transitions; defer all native bridge calls
+    // (SecureStore, LocalAuthentication) so they don't compete on the JS
+    // thread with the other AppState "active" handlers (auth refresh, nav
+    // count fetches, etc.) that all fire in the same tick — which was
+    // causing the ANR on Android when screen+locale changed simultaneously.
+    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
       const prev = appStateRef.current;
       appStateRef.current = next;
 
@@ -107,14 +113,26 @@ export function BiometricGate({ children }: { children: React.ReactNode }) {
       }
 
       if (next === "active" && prev.match(/inactive|background/)) {
-        const stored = await SecureStore.getItemAsync(BIOMETRIC_ENABLED_KEY).catch(() => null);
-        if (stored !== "true") return;
         const backgroundedAt = lastBackgroundedAtRef.current;
         const away = backgroundedAt ? Date.now() - backgroundedAt : Infinity;
-        if (away >= BACKGROUND_GRACE_MS) {
-          setStatus("locked");
-          promptUnlock().catch(() => setStatus("locked"));
-        }
+        if (away < BACKGROUND_GRACE_MS) return;
+
+        // Defer SecureStore + biometric prompt until after the current JS
+        // interaction batch completes (navigation animations, re-renders,
+        // parallel API fetches). The 150 ms padding gives other AppState
+        // listeners (AuthProvider, TabsLayout, NotificationsCountContext)
+        // a chance to start their own work before we add bridge overhead.
+        InteractionManager.runAfterInteractions(() => {
+          setTimeout(() => {
+            SecureStore.getItemAsync(BIOMETRIC_ENABLED_KEY)
+              .catch(() => null)
+              .then((stored) => {
+                if (stored !== "true") return;
+                setStatus("locked");
+                promptUnlock().catch(() => setStatus("locked"));
+              });
+          }, 150);
+        });
       }
     });
 

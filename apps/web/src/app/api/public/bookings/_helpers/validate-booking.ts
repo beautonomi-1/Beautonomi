@@ -19,6 +19,8 @@ import {
 } from "@beautonomi/utils";
 import { sumChainedBlockedMinutes } from "@/lib/booking-slot-math/blocked-window-minutes";
 import { applyPublicBookingHoldSnapshotToDraft } from "@/lib/bookings/apply-hold-snapshot-to-draft";
+import { formatInTimeZone, toZonedTime } from "date-fns-tz";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -1975,6 +1977,15 @@ export async function validateBooking(
       "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic"
     );
 
+    const providerTz =
+      normalizeProviderTimezone((provider as { timezone?: string | null }).timezone) ?? "UTC";
+
+    const minutesFromInstantInZone = (instant: Date): number => {
+      const hm = formatInTimeZone(instant, providerTz, "HH:mm");
+      const [h, m] = hm.split(":").map((x) => parseInt(x, 10));
+      return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+    };
+
     for (let i = 0; i < bookingServicesData.length; i++) {
       const line = bookingServicesData[i];
       const segStart = new Date(line.scheduled_start_at);
@@ -1986,8 +1997,7 @@ export async function validateBooking(
       const effectiveSegEnd = new Date(segEnd.getTime() + (buf + travelTail) * 60000);
 
       const staffIdForGuard = line.staff_id ?? `provider-${draft.provider_id}`;
-      const dateStr = segStart.toISOString().slice(0, 10);
-      const dayIdx = new Date(`${dateStr}T12:00:00`).getDay();
+      const dayIdx = toZonedTime(segStart, providerTz).getDay();
       const dayKey = DAY_KEYS_GUARD[dayIdx];
 
       const wh = await resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
@@ -2004,8 +2014,8 @@ export async function validateBooking(
         };
         const openMin = parseHHMM(wh.open_time);
         const closeMin = parseHHMM(wh.close_time);
-        const segStartMin = segStart.getHours() * 60 + segStart.getMinutes();
-        const segEndMin = effectiveSegEnd.getHours() * 60 + effectiveSegEnd.getMinutes();
+        const segStartMin = minutesFromInstantInZone(segStart);
+        const segEndMin = minutesFromInstantInZone(effectiveSegEnd);
 
         if (closeMin > openMin && (segStartMin < openMin || segEndMin > closeMin)) {
           console.warn(

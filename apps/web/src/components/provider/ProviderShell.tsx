@@ -47,7 +47,17 @@ export function ProviderShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (hasPrefetched.current) return;
     hasPrefetched.current = true;
-    PRIMARY_ROUTES.forEach((route) => router.prefetch(route));
+    const run = () => {
+      PRIMARY_ROUTES.forEach((route, index) => {
+        window.setTimeout(() => router.prefetch(route), index * 120);
+      });
+    };
+    if (typeof requestIdleCallback !== "undefined") {
+      const id = requestIdleCallback(run, { timeout: 3000 });
+      return () => cancelIdleCallback(id);
+    }
+    run();
+    return undefined;
   }, [router]);
 
   // Pages that need special full-height treatment

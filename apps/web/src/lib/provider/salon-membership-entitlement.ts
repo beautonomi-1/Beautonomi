@@ -34,6 +34,8 @@ export interface MembershipDiscountResult {
   membershipPlanId: string | null;
   membershipId: string | null;
   membershipDiscountAmount: number;
+  /** Salon plan display name when `membershipPlanId` is set (null for platform membership wins). */
+  membershipPlanName: string | null;
 }
 
 export async function resolveMembershipDiscount(params: {
@@ -49,6 +51,7 @@ export async function resolveMembershipDiscount(params: {
     membershipPlanId: null,
     membershipId: null,
     membershipDiscountAmount: 0,
+    membershipPlanName: null,
   };
   if (!params.customerId || params.subtotal <= 0) return result;
 
@@ -59,7 +62,7 @@ export async function resolveMembershipDiscount(params: {
     // Salon membership (per-provider): take the most recent qualifying row.
     const { data: membership } = await params.supabase
       .from("user_memberships")
-      .select("status, expires_at, plan:membership_plans(id, provider_id, discount_percent, is_active)")
+      .select("status, expires_at, plan:membership_plans(id, provider_id, discount_percent, is_active, name)")
       .eq("user_id", params.customerId)
       .eq("provider_id", params.providerId)
       .maybeSingle();
@@ -76,6 +79,10 @@ export async function resolveMembershipDiscount(params: {
 
     if (entitled && membership?.plan) {
       result.membershipPlanId = membership.plan.id || null;
+      result.membershipPlanName =
+        typeof membership.plan.name === "string" && membership.plan.name.trim()
+          ? membership.plan.name.trim()
+          : null;
       const pct = Number(membership.plan.discount_percent || 0);
       if (pct > 0) {
         result.membershipDiscountAmount = Math.min(
@@ -89,7 +96,7 @@ export async function resolveMembershipDiscount(params: {
     const { data: platformMemberships } = await params.supabase
       .from("customer_memberships")
       .select(
-        "id, status, expires_at, provider_id, membership:memberships(id, discount_percentage, discount_cap_per_booking, discount_applies_to)",
+        "id, status, expires_at, provider_id, membership:memberships(id, discount_percentage, discount_cap_per_booking, discount_applies_to, name)",
       )
       .eq("customer_id", params.customerId)
       .eq("status", "active");
@@ -110,6 +117,8 @@ export async function resolveMembershipDiscount(params: {
       if (discount > result.membershipDiscountAmount) {
         result.membershipDiscountAmount = discount;
         result.membershipPlanId = null;
+        result.membershipPlanName =
+          typeof m.name === "string" && m.name.trim() ? m.name.trim() : "Platform membership";
         result.membershipId = m.id || null;
       }
     }

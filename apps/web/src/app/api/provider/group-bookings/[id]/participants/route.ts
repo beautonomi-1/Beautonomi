@@ -10,30 +10,55 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import {
+  groupPackageTotal,
+  groupProductLineTotal,
+  validateAndPriceGroupPackage,
+} from "@/lib/bookings/group-booking-package-pricing";
 
 async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabaseAdmin>, groupId: string) {
   const [{ data: group }, { data: participantRows }] = await Promise.all([
     admin
       .from("group_bookings")
-      .select("products, travel_fee, location_type")
+      .select("products, travel_fee, location_type, package_id, provider_id, location_id, service_id")
       .eq("id", groupId)
       .maybeSingle(),
     admin
       .from("booking_participants")
-      .select("price")
+      .select("price, service_id")
       .eq("group_booking_id", groupId),
   ]);
   const products = Array.isArray(group?.products) ? group.products : [];
-  const participantTotal = (participantRows ?? []).reduce((sum: number, p: any) => sum + Math.max(0, Number(p.price || 0)), 0);
+  const participantTotal = (participantRows ?? []).reduce(
+    (sum: number, p: { price?: unknown }) => sum + Math.max(0, Number(p.price || 0)),
+    0,
+  );
   const productTotal = products.reduce(
-    (sum: number, p: any) =>
-      sum + Math.max(0, Number(p.total_price ?? p.totalPrice ?? (Number(p.unit_price ?? p.unitPrice ?? 0) * Number(p.quantity ?? 1)))),
+    (sum: number, p: unknown) => sum + groupProductLineTotal(p as Record<string, unknown>),
     0,
   );
   const travelFee = group?.location_type === "at_home" ? Math.max(0, Number(group.travel_fee || 0)) : 0;
+  let packageDiscount = 0;
+  if (group?.package_id && group?.provider_id) {
+    const pkgPricing = await validateAndPriceGroupPackage({
+      supabaseAdmin: admin,
+      providerId: group.provider_id as string,
+      packageId: group.package_id as string,
+      locationType: String(group.location_type || "at_salon"),
+      locationId: group.location_id as string | null | undefined,
+      participantRows: (participantRows ?? []) as Array<Record<string, unknown>>,
+      fallbackServiceId: group.service_id as string | null | undefined,
+      productRows: products,
+      participantTotal,
+    });
+    if (pkgPricing.ok) packageDiscount = pkgPricing.packageDiscount;
+  }
   await admin
     .from("group_bookings")
-    .update({ total_price: participantTotal + productTotal + travelFee, updated_at: new Date().toISOString() })
+    .update({
+      total_price: groupPackageTotal({ participantTotal, productTotal, travelFee, packageDiscount }),
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", groupId);
 }
 

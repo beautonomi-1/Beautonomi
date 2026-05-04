@@ -309,6 +309,8 @@
       "pendingBadge": "{{count}} e emetse",
       "overlayPartialWarningA11y": "Diboloko tse ding tsa khalendara kapa dinako tse tshwerweng ha di a kgona ho laela. Tlanya ho ntjhafatsa.",
       "viewDetails": "Sheba lintlha",
+      "viewFullDetails": "Sheba lintlha ka botlalo",
+      "quickSheetLongPressHint": "Tlanya ho feta nako e telele ho fetola boemo kapa ho lefa ntle le ho tloha mona.",
       "collectPayment": "Bokella tefo",
       "currentStatusLabel": "Boemo ba jwale: {{status}}",
       "bookingLabelFallback": "Ho buka",

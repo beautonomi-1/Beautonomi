@@ -2,7 +2,7 @@
  * Custom request detail: view request and send an offer (POST /api/provider/custom-requests/[id]/offers).
  * Loads request via GET /api/provider/custom-requests/[id]. Supports travel_fee when request is at_home.
  */
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -56,6 +56,13 @@ type CustomRequest = {
     staff?: { name?: string | null } | null;
     location?: { name?: string | null } | null;
   }[];
+  /** Filled when customer submitted a house-call address with the request (migration 265). */
+  address_line1?: string | null;
+  address_line2?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_country?: string | null;
+  address_postal_code?: string | null;
 };
 
 interface AvailableSlotRow {
@@ -93,8 +100,8 @@ function formatDateTimeSafe(value: unknown): string {
 
 export default function CustomRequestDetailScreen() {
   const router = useRouter();
-  const { selectedLocationId, provider } = useProvider();
-  const providerTz = provider?.timezone ?? null;
+  const { selectedLocationId, provider: providerFromContext } = useProvider();
+  const providerTz = providerFromContext?.timezone ?? null;
   const tenantCurrency = getTenantDefaultCurrency();
   const { id } = useLocalSearchParams<{ id: string }>();
   const requestId = id ?? "";
@@ -135,6 +142,9 @@ export default function CustomRequestDetailScreen() {
     return d;
   });
   const [travelFee, setTravelFee] = useState("");
+  const travelFeeUserLockedRef = useRef(false);
+  const [travelFeePreviewLoading, setTravelFeePreviewLoading] = useState(false);
+  const [travelPreviewMinutes, setTravelPreviewMinutes] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const selectedDateKey = dateKey(scheduledAt);
   const selectedTimeKey = timeKey(scheduledAt);
@@ -166,15 +176,25 @@ export default function CustomRequestDetailScreen() {
     durationNum <= 480 &&
     Number.isFinite(expDaysNum) &&
     expDaysNum >= 1;
+  const atHomeTravelBufferMinutes = useMemo(() => {
+    if (!isAtHome) return 0;
+    if (travelPreviewMinutes != null && Number.isFinite(travelPreviewMinutes) && travelPreviewMinutes > 0) {
+      return Math.ceil(travelPreviewMinutes);
+    }
+    return 30;
+  }, [isAtHome, travelPreviewMinutes]);
+
   const slotsUrl = useMemo(() => {
     if (!request || !selectedDateKey) return "";
     if (!Number.isFinite(durationNum) || durationNum < 15) return "";
     let q = `/api/provider/bookings/available-slots?date=${encodeURIComponent(selectedDateKey)}&duration_minutes=${encodeURIComponent(String(durationNum))}`;
     if (staffId) q += `&staff_ids=${encodeURIComponent(staffId)}`;
     if (!isAtHome && locationId) q += `&location_id=${encodeURIComponent(locationId)}`;
-    q += isAtHome ? "&mode=mobile&travel_buffer=30" : "&mode=salon&travel_buffer=0";
+    q += isAtHome
+      ? `&mode=mobile&travel_buffer=${encodeURIComponent(String(atHomeTravelBufferMinutes))}`
+      : "&mode=salon&travel_buffer=0";
     return q;
-  }, [durationNum, isAtHome, locationId, request, selectedDateKey, staffId]);
+  }, [durationNum, isAtHome, locationId, request, selectedDateKey, staffId, atHomeTravelBufferMinutes]);
   const { data: slotsData, loading: slotsLoading } = useApi<AvailableSlotsResponse>(slotsUrl, {
     enabled: slotsUrl.length > 0,
   });
@@ -183,6 +203,97 @@ export default function CustomRequestDetailScreen() {
     if (Array.isArray(slotsData?.slots)) return slotsData.slots.map((time) => ({ time, available: true }));
     return [] as AvailableSlotRow[];
   }, [slotsData]);
+
+  useEffect(() => {
+    travelFeeUserLockedRef.current = false;
+  }, [
+    request?.address_line1,
+    request?.address_line2,
+    request?.address_city,
+    request?.address_postal_code,
+    request?.address_country,
+  ]);
+
+  useEffect(() => {
+    if (!isAtHome || !request || !providerFromContext?.id) {
+      setTravelPreviewMinutes(null);
+      return;
+    }
+    const line1 = request.address_line1?.trim() ?? "";
+    const city = request.address_city?.trim() ?? "";
+    if (!line1 || !city) {
+      setTravelPreviewMinutes(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        setTravelFeePreviewLoading(true);
+        try {
+          const country = (request.address_country?.trim() || "South Africa");
+          const addressString = [
+            line1,
+            request.address_line2,
+            city,
+            request.address_postal_code,
+            request.address_state,
+            country,
+          ]
+            .filter((x) => (x != null && String(x).trim().length > 0))
+            .map((x) => String(x).trim())
+            .join(", ");
+          const res = await api.post<{
+            valid?: boolean;
+            travelFee?: number;
+            travelTimeMinutes?: number;
+          }>("/api/location/validate", {
+            address: addressString,
+            provider_id: providerFromContext.id,
+          });
+          if (cancelled) return;
+          if (res.error) {
+            setTravelPreviewMinutes(null);
+            return;
+          }
+          const d = res.data;
+          if (d?.valid === true) {
+            const fee = Math.max(0, Number(d.travelFee ?? 0));
+            setTravelPreviewMinutes(
+              typeof d.travelTimeMinutes === "number" && Number.isFinite(d.travelTimeMinutes)
+                ? d.travelTimeMinutes
+                : null,
+            );
+            if (!travelFeeUserLockedRef.current) {
+              setTravelFee(fee === 0 ? "" : fee.toFixed(2));
+            }
+          } else {
+            setTravelPreviewMinutes(null);
+            if (!travelFeeUserLockedRef.current) setTravelFee("");
+          }
+        } catch {
+          if (!cancelled) setTravelPreviewMinutes(null);
+        } finally {
+          if (!cancelled) setTravelFeePreviewLoading(false);
+        }
+      })();
+    }, 600);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    isAtHome,
+    request?.id,
+    request?.address_line1,
+    request?.address_line2,
+    request?.address_city,
+    request?.address_state,
+    request?.address_country,
+    request?.address_postal_code,
+    providerFromContext?.id,
+  ]);
 
   useEffect(() => {
     if (request?.duration_minutes != null && request.duration_minutes > 0) {
@@ -553,13 +664,35 @@ export default function CustomRequestDetailScreen() {
 
             {isAtHome && (
               <>
+                {(request.address_line1?.trim() || request.address_city?.trim()) ? (
+                  <Text style={twStyle("mb-2 text-xs text-gray-600")}>
+                    Customer address on file:{" "}
+                    {[request.address_line1, request.address_city, request.address_postal_code]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </Text>
+                ) : (
+                  <Text style={twStyle("mb-2 text-xs text-amber-800")}>
+                    No street address on this request — enter a travel fee manually or ask the customer to update their
+                    request with a full address.
+                  </Text>
+                )}
                 <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                  Travel fee ({requestCurrency}, optional)
+                  Travel fee ({requestCurrency}) — calculated when address is on file (override optional)
                 </Text>
+                {travelFeePreviewLoading ? (
+                  <View style={twStyle("mb-2 flex-row items-center")}>
+                    <ActivityIndicator size="small" color="#6366f1" />
+                    <Text style={twStyle("ml-2 text-xs text-gray-600")}>Calculating travel fee…</Text>
+                  </View>
+                ) : null}
                 <TextInput
                   style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   value={travelFee}
-                  onChangeText={setTravelFee}
+                  onChangeText={(t) => {
+                    travelFeeUserLockedRef.current = true;
+                    setTravelFee(t);
+                  }}
                   keyboardType="decimal-pad"
                   placeholder="0"
                   placeholderTextColor="#9ca3af"

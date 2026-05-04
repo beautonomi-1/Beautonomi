@@ -10,6 +10,35 @@
  * - string: returns as-is
  * - Otherwise: returns fallback
  */
+function readBookingHoldSlotErrorCode(error: unknown): string | undefined {
+  if (error == null || typeof error !== "object") return undefined;
+  const details = (error as { details?: unknown }).details;
+  if (!details || typeof details !== "object") return undefined;
+  const code = (details as { slot_error_code?: unknown }).slot_error_code;
+  return typeof code === "string" ? code : undefined;
+}
+
+/**
+ * Differentiated copy for POST /api/public/booking-holds when the server
+ * returns `details.slot_error_code` alongside the generic slot message.
+ */
+export function getBookingHoldSlotUnavailableMessage(
+  error: unknown,
+  fallback: string = "Something went wrong. Please try again.",
+): string {
+  const code = readBookingHoldSlotErrorCode(error);
+  if (code === "NO_STAFF_AVAILABLE") {
+    return "No staff member can take this slot right now. Try a different time or pick a specific staff.";
+  }
+  if (code === "CALENDAR_BLOCKED") {
+    return "The provider just blocked this time. Please pick another slot.";
+  }
+  if (code === "SLOT_TAKEN_BY_HOLD") {
+    return "Someone else just reserved this slot. Pick another time.";
+  }
+  return getApiErrorMessage(error, fallback);
+}
+
 export function getApiErrorMessage(
   error: unknown,
   fallback: string = "Something went wrong. Please try again."

@@ -180,8 +180,12 @@ function getWorkflowPrimaryNext(
   }
 }
 
-function getDestructiveNextStatuses(current: string): string[] {
-  if (current === "cancelled" || current === "refunded" || current === "delivered") return [];
+function getDestructiveNextStatuses(current: string, orderSource?: string | null): string[] {
+  if (current === "cancelled" || current === "refunded") return [];
+  // Walk-in orders start as "delivered" (already fulfilled in-store) but still need a refund path.
+  if (current === "delivered") {
+    return orderSource === "walk_in" ? ["refunded"] : [];
+  }
   return ["cancelled", "refunded"];
 }
 
@@ -640,14 +644,21 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       </View>
                     </View>
                     <Text style={twStyle("mt-0.5 text-sm text-gray-600")} numberOfLines={1}>
-                      {order.customer?.full_name ?? order.customer_name ?? "Customer"}{" "}
+                      {order.customer?.full_name ?? order.customer_name ?? (order.order_source === "walk_in" ? "Walk-in" : "Customer")}{" "}
                       · {formatCurrency(Number(order.total_amount), currency)}
                     </Text>
-                    {order.tracking_number && (
-                      <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>
-                        Tracking: {order.tracking_number}
-                      </Text>
-                    )}
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
+                      {order.order_source === "walk_in" && (
+                        <View style={twStyle("rounded-full bg-amber-100 px-2 py-0.5")}>
+                          <Text style={twStyle("text-xs font-medium text-amber-800")}>Walk-in</Text>
+                        </View>
+                      )}
+                      {order.tracking_number ? (
+                        <Text style={twStyle("text-xs text-gray-400")}>
+                          Tracking: {order.tracking_number}
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color="#d1d5db" style={{ marginLeft: 8 }} />
                 </View>
@@ -1083,7 +1094,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   activeOrder.fulfillment_type,
                   activeOrder.payment_status,
                 );
-                const destructive = getDestructiveNextStatuses(activeOrder.status);
+                const destructive = getDestructiveNextStatuses(activeOrder.status, activeOrder.order_source);
                 if (!primary && destructive.length === 0) return null;
                 const primaryLabel =
                   primary === "confirmed"
@@ -1131,8 +1142,12 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                     {destructive.length > 0 ? (
                       <TouchableOpacity
                         onPress={() => {
+                          const walkInRefund =
+                            activeOrder.order_source === "walk_in" &&
+                            destructive.length === 1 &&
+                            destructive[0] === "refunded";
                           Alert.alert(
-                            "More actions",
+                            walkInRefund ? "Process refund / return" : "More actions",
                             "Cancellation or refund affects stock and payouts. Use when there’s a problem with this order.",
                             [
                               ...destructive.map((st) => ({
@@ -1149,8 +1164,16 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                         accessibilityRole="button"
                         accessibilityLabel="More actions"
                       >
-                        <Ionicons name="ellipsis-horizontal-circle-outline" size={18} color="#374151" />
-                        <Text style={twStyle("ml-2 text-sm font-semibold text-gray-700")}>More actions</Text>
+                        <Ionicons
+                          name={activeOrder.order_source === "walk_in" && activeOrder.status === "delivered"
+                            ? "return-down-back-outline"
+                            : "ellipsis-horizontal-circle-outline"}
+                          size={18}
+                          color={activeOrder.order_source === "walk_in" && activeOrder.status === "delivered" ? "#dc2626" : "#374151"}
+                        />
+                        <Text style={[twStyle("ml-2 text-sm font-semibold"), { color: activeOrder.order_source === "walk_in" && activeOrder.status === "delivered" ? "#dc2626" : "#374151" }]}>
+                          {activeOrder.order_source === "walk_in" && activeOrder.status === "delivered" ? "Process refund / return" : "More actions"}
+                        </Text>
                       </TouchableOpacity>
                     ) : null}
                   </View>

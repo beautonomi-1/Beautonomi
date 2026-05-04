@@ -19,6 +19,7 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { handleApiError, successResponse, errorResponse } from "@/lib/supabase/api-helpers";
+import { bookingHoldSlotUnavailableResponse } from "@/lib/public-booking/booking-hold-slot-errors";
 import { verifyPublicBookingCaptcha } from "@/lib/security/captcha";
 import {
   extractIdempotencyKey,
@@ -87,6 +88,8 @@ const createHoldSchema = z.object({
 });
 
 const HOLD_EXPIRY_MINUTES = 20;
+/** Abandoned checkout holds can stick in `consuming` — release before evaluating overlap. */
+const STALE_CONSUMING_HOLD_MINUTES = 15;
 
 type HoldOverlapScopeArgs = {
   supabase: SupabaseClient;
@@ -295,7 +298,7 @@ export async function POST(request: NextRequest) {
             .from("booking_holds")
             .update({ hold_status: "cancelled" })
             .eq("id", previous_hold_id)
-            .eq("hold_status", "active");
+            .in("hold_status", ["active", "consuming"]);
         }
 
         // Cancel any existing active holds from the same client so a retry
@@ -305,7 +308,7 @@ export async function POST(request: NextRequest) {
             .from("booking_holds")
             .update({ hold_status: "cancelled" })
             .eq("guest_fingerprint_hash", guest_fingerprint_hash)
-            .eq("hold_status", "active")
+            .in("hold_status", ["active", "consuming"])
             .eq("provider_id", provider_id);
         }
 
@@ -334,6 +337,17 @@ export async function POST(request: NextRequest) {
             400
           );
         }
+
+        const staleConsumingBefore = new Date(
+          Date.now() - STALE_CONSUMING_HOLD_MINUTES * 60 * 1000,
+        ).toISOString();
+        await supabase
+          .from("booking_holds")
+          .update({ hold_status: "expired", consuming_at: null })
+          .eq("provider_id", provider_id)
+          .eq("hold_status", "consuming")
+          .not("consuming_at", "is", null)
+          .lt("consuming_at", staleConsumingBefore);
 
         const { data: obSettings } = await supabase
           .from("provider_online_booking_settings")
@@ -488,12 +502,7 @@ export async function POST(request: NextRequest) {
               .update({ hold_status: "cancelled" })
               .in("id", scopeOverlaps.map((h) => h.id));
           } else {
-            return handleApiError(
-              new Error("This time slot is no longer available. Please select another time."),
-              "This time slot is no longer available. Please select another time.",
-              "CONFLICT",
-              409
-            );
+            return bookingHoldSlotUnavailableResponse("SLOT_TAKEN_BY_HOLD");
           }
         }
 
@@ -564,13 +573,8 @@ export async function POST(request: NextRequest) {
             for (const s of bookingServicesSnapshot) {
               s.staff_id = picked.staffId;
             }
-          } else if (picked.ok === false && picked.reason === "no_one_available_for_window") {
-            return handleApiError(
-              new Error("This time slot is no longer available. Please select another time."),
-              "This time slot is no longer available. Please select another time.",
-              "CONFLICT",
-              409
-            );
+          } else {
+            return bookingHoldSlotUnavailableResponse("NO_STAFF_AVAILABLE");
           }
         }
 
@@ -581,12 +585,7 @@ export async function POST(request: NextRequest) {
           offeringBufferMinutesById
         );
         if (conflictResult.hasConflict) {
-          return handleApiError(
-            new Error("This time slot is no longer available. Please select another time."),
-            "This time slot is no longer available. Please select another time.",
-            "CONFLICT",
-            409
-          );
+          return bookingHoldSlotUnavailableResponse("CONFLICT_SNAPSHOT");
         }
 
         const locationIdForCalendar =
@@ -608,12 +607,7 @@ export async function POST(request: NextRequest) {
               endAt: effectiveEnd,
             });
             if (cal.blocked) {
-              return handleApiError(
-                new Error("This time slot is no longer available. Please select another time."),
-                "This time slot is no longer available. Please select another time.",
-                "CONFLICT",
-                409
-              );
+              return bookingHoldSlotUnavailableResponse("CALENDAR_BLOCKED");
             }
           }
         }
@@ -679,12 +673,7 @@ export async function POST(request: NextRequest) {
               .update({ hold_status: "cancelled" })
               .in("id", overlappingHolds.map((h) => h.id));
           } else {
-            return handleApiError(
-              new Error("This time slot is no longer available. Please select another time."),
-              "This time slot is no longer available. Please select another time.",
-              "CONFLICT",
-              409
-            );
+            return bookingHoldSlotUnavailableResponse("SLOT_TAKEN_BY_HOLD");
           }
         }
 
@@ -775,12 +764,7 @@ export async function POST(request: NextRequest) {
                   t.includes("booking_holds_no_overlap_provider_anyone"))
             );
           if (isExclusionViolation) {
-            return handleApiError(
-              new Error("This time slot is no longer available. Please select another time."),
-              "This time slot is no longer available. Please select another time.",
-              "CONFLICT",
-              409
-            );
+            return bookingHoldSlotUnavailableResponse("SLOT_TAKEN_BY_HOLD");
           }
           throw insertError;
         }

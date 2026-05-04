@@ -3280,7 +3280,9 @@ export class ProviderApiClient implements ProviderApi {
       occurrences: ruleObj?.occurrences && ruleObj.occurrences > 0 ? Math.floor(ruleObj.occurrences) : undefined,
       preferred_time,
       location_type: (data as any).location_type ?? undefined,
-      payment_method: (data as any).payment_method === "cash" || (data as any).payment_method === "card"
+      payment_method: ["cash", "card", "pay_later", "yoco_pos", "payment_link"].includes(
+        String((data as any).payment_method || ""),
+      )
         ? (data as any).payment_method
         : undefined,
     };

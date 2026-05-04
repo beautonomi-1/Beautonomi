@@ -11,7 +11,14 @@ export interface GroupBooking {
   primary_contact_booking_id: string | null;
   ref_number: string;
   scheduled_at: string;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  /** Align with DB migration 518+: lifecycle mirrors single bookings where applicable */
+  status:
+    | 'pending'
+    | 'confirmed'
+    | 'booked'
+    | 'started'
+    | 'cancelled'
+    | 'completed';
   created_at: string;
   updated_at: string;
 }

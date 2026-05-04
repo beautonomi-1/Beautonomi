@@ -309,6 +309,8 @@
       "pendingBadge": "{{count}} hangend",
       "overlayPartialWarningA11y": "Sommige kalenderblokke of gehoude gleuwe kon nie laai nie. Tik om te verfris.",
       "viewDetails": "Bekyk besonderhede",
+      "viewFullDetails": "Bekyk volledige besonderhede",
+      "quickSheetLongPressHint": "Druk lank op die bespreking op die kalender vir statusveranderinge en betaling sonder om hierdie skerm te verlaat.",
       "collectPayment": "Inkas betaling",
       "currentStatusLabel": "Huidige status: {{status}}",
       "bookingLabelFallback": "Bespreking",

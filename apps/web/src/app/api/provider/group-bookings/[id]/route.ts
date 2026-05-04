@@ -12,54 +12,6 @@ import {
   validateAndPriceGroupPackage,
 } from "@/lib/bookings/group-booking-package-pricing";
 
-async function recalculateGroupBookingTotal(admin: ReturnType<typeof getSupabaseAdmin>, groupId: string) {
-  const [{ data: group }, { data: participantRows }] = await Promise.all([
-    admin
-      .from("group_bookings")
-      .select("products, travel_fee, location_type, package_id, provider_id, location_id, service_id")
-      .eq("id", groupId)
-      .maybeSingle(),
-    admin
-      .from("booking_participants")
-      .select("price, service_id")
-      .eq("group_booking_id", groupId),
-  ]);
-
-  const products = Array.isArray(group?.products) ? group.products : [];
-  const participantTotal = (participantRows ?? []).reduce(
-    (sum: number, p: any) => sum + Math.max(0, Number(p.price || 0)),
-    0,
-  );
-  const productTotal = products.reduce(
-    (sum: number, p: any) => sum + groupProductLineTotal(p),
-    0,
-  );
-  const travelFee = group?.location_type === "at_home" ? Math.max(0, Number(group.travel_fee || 0)) : 0;
-  let packageDiscount = 0;
-  if (group?.package_id && group?.provider_id) {
-    const pkgPricing = await validateAndPriceGroupPackage({
-      supabaseAdmin: admin,
-      providerId: group.provider_id as string,
-      packageId: group.package_id as string,
-      locationType: String(group.location_type || "at_salon"),
-      locationId: group.location_id as string | null | undefined,
-      participantRows: (participantRows ?? []) as Array<Record<string, unknown>>,
-      fallbackServiceId: group.service_id as string | null | undefined,
-      productRows: products,
-      participantTotal,
-    });
-    if (pkgPricing.ok) packageDiscount = pkgPricing.packageDiscount;
-  }
-  const total = groupPackageTotal({ participantTotal, productTotal, travelFee, packageDiscount });
-
-  await admin
-    .from("group_bookings")
-    .update({ total_price: total, updated_at: new Date().toISOString() })
-    .eq("id", groupId);
-
-  return total;
-}
-
 /**
  * GET /api/provider/group-bookings/[id]
  */
@@ -86,7 +38,12 @@ export async function GET(
           id, booking_number, ref_number, status, scheduled_at, total_amount,
           customer:users!bookings_customer_id_fkey(id, full_name, email, phone, avatar_url)
         ),
-        service_packages:package_id(id, name)
+        service_packages:package_id(id, name),
+        booking_participants(
+          id, booking_id, participant_name, participant_email, participant_phone,
+          is_primary_contact, service_id, service_name, price, duration_minutes, addons,
+          checked_in_at, checked_out_at
+        )
       `)
       .eq("id", id)
       .eq("provider_id", providerId)

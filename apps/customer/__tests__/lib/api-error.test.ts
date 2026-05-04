@@ -1,4 +1,8 @@
-import { getApiErrorMessage, getHttpErrorStatus } from "@/lib/api-error";
+import {
+  getApiErrorMessage,
+  getBookingHoldSlotUnavailableMessage,
+  getHttpErrorStatus,
+} from "@/lib/api-error";
 
 describe("getApiErrorMessage", () => {
   it("returns fallback for nullish", () => {
@@ -20,6 +24,33 @@ describe("getApiErrorMessage", () => {
 
   it("reads message from plain object", () => {
     expect(getApiErrorMessage({ message: "  x  " })).toBe("x");
+  });
+});
+
+describe("getBookingHoldSlotUnavailableMessage", () => {
+  it("maps slot_error_code to friendly copy", () => {
+    expect(
+      getBookingHoldSlotUnavailableMessage(
+        { message: "generic", details: { slot_error_code: "NO_STAFF_AVAILABLE" } },
+        "fallback",
+      ),
+    ).toContain("No staff member");
+    expect(
+      getBookingHoldSlotUnavailableMessage(
+        { message: "generic", details: { slot_error_code: "CALENDAR_BLOCKED" } },
+        "fallback",
+      ),
+    ).toContain("blocked");
+    expect(
+      getBookingHoldSlotUnavailableMessage(
+        { message: "generic", details: { slot_error_code: "SLOT_TAKEN_BY_HOLD" } },
+        "fallback",
+      ),
+    ).toContain("Someone else");
+  });
+
+  it("falls back when no slot code", () => {
+    expect(getBookingHoldSlotUnavailableMessage({ message: "x" }, "fb")).toBe("x");
   });
 });
 

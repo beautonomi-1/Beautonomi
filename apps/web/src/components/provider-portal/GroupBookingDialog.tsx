@@ -693,10 +693,6 @@ export function GroupBookingDialog({
       }));
 
       const apiPayload: Record<string, unknown> = {
-        // Providers create group bookings intentionally — skip the strict
-        // slot-availability grid check (same override pattern as the regular
-        // bookings route body.allow_override flag).
-        allow_override: true,
         title: formData.title || formData.service_name || "Group Session",
         scheduled_at: scheduledAt,
         service_id: formData.service_id || undefined,

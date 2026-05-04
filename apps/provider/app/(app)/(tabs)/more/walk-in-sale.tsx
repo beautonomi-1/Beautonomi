@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -210,6 +211,7 @@ function walkInSaleErrorMessage(code: string | null | undefined, message: string
 export default function WalkInSaleScreen() {
   const tenantCurrency = getTenantDefaultCurrency();
   const { screenPadding } = useResponsive();
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -220,6 +222,7 @@ export default function WalkInSaleScreen() {
   const [showYocoPayment, setShowYocoPayment] = useState(false);
   const [variantPickProduct, setVariantPickProduct] = useState<Product | null>(null);
   const [selectedSale, setSelectedSale] = useState<WalkInSale | null>(null);
+  const [refunding, setRefunding] = useState(false);
   const [linkClientsOpen, setLinkClientsOpen] = useState(false);
   const [clientPickSearch, setClientPickSearch] = useState("");
   const [linkedClient, setLinkedClient] = useState<{ customer_id: string; full_name: string } | null>(null);
@@ -237,6 +240,7 @@ export default function WalkInSaleScreen() {
     data?: { tax_rate_percent?: number; is_vat_registered?: boolean };
   }>("/api/provider/settings/sales/taxes");
   const { execute: postSale, loading: creating } = useApiMutation<{ order: WalkInSale }>("post");
+  const { execute: patchOrder } = useApiMutation<{ order: WalkInSale }>("patch");
 
   const clientsPickPath = useMemo(() => {
     const q = clientPickSearch.trim();
@@ -308,6 +312,42 @@ export default function WalkInSaleScreen() {
     setCreateOpen(true);
     refreshProducts();
   }, [refreshProducts]);
+
+  const handleRefundSale = useCallback(
+    (sale: WalkInSale) => {
+      Alert.alert(
+        "Process refund",
+        `Refund order ${sale.order_number} (${formatCurrency(Number(sale.total_amount), tenantCurrency)})? This marks the order as refunded. Adjust stock manually in Products if items are returned.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Refund",
+            style: "destructive",
+            onPress: async () => {
+              setRefunding(true);
+              try {
+                const { error: err } = await patchOrder(
+                  `/api/provider/product-orders/${sale.id}`,
+                  { status: "refunded" },
+                );
+                if (err) {
+                  Alert.alert("Refund failed", err);
+                } else {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  Alert.alert("Refunded", `Order ${sale.order_number} has been marked as refunded.`);
+                  setSelectedSale(null);
+                  refresh();
+                }
+              } finally {
+                setRefunding(false);
+              }
+            },
+          },
+        ],
+      );
+    },
+    [patchOrder, refresh, tenantCurrency],
+  );
 
   const addLine = useCallback((product: Product, variant: ProductVariant | null) => {
     const variantId = variant?.id ?? null;
@@ -538,13 +578,17 @@ export default function WalkInSaleScreen() {
                   <Ionicons name="receipt-outline" size={20} color="#f59e0b" />
                 </View>
                 <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{sale.order_number}</Text>
-                  <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
-                    {formatCurrency(Number(sale.total_amount), tenantCurrency)} · {sale.payment_method}
-                    {n > 0 ? ` · ${n} line${n !== 1 ? "s" : ""}` : ""}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontWeight: "700", color: Colors.gray[900] }}>{sale.order_number}</Text>
+                    {sale.customer_name?.trim() ? (
+                      <Text style={{ fontSize: 12, color: Colors.gray[500] }} numberOfLines={1}>· {sale.customer_name.trim()}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={{ marginTop: 3, fontSize: 15, fontWeight: "600", color: Colors.gray[800] }}>
+                    {formatCurrency(Number(sale.total_amount), tenantCurrency)}
                   </Text>
                   <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-                    {formatDateSafe(sale.created_at)} · tap for items
+                    {sale.payment_method.replace(/_/g, " ")} · {n > 0 ? `${n} item${n !== 1 ? "s" : ""} · ` : ""}{formatDateSafe(sale.created_at)}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
@@ -561,41 +605,61 @@ export default function WalkInSaleScreen() {
         subtitle={selectedSale ? formatDateSafe(selectedSale.created_at) : undefined}
       >
         {selectedSale ? (
-          <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
+            {/* Status badges */}
             <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, backgroundColor: "#fef3c7", paddingHorizontal: 10, paddingVertical: 6 }}>
+                <Ionicons name="storefront-outline" size={13} color="#92400e" />
+                <Text style={{ marginLeft: 5, fontSize: 12, fontWeight: "600", color: "#92400e" }}>Walk-in · Delivered</Text>
+              </View>
               <View style={{ borderRadius: 10, backgroundColor: Colors.gray[100], paddingHorizontal: 10, paddingVertical: 6 }}>
-                <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>{String(selectedSale.payment_method)}</Text>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>
+                  {String(selectedSale.payment_method).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                </Text>
               </View>
               {selectedSale.customer_id ? (
                 <View style={{ borderRadius: 10, backgroundColor: "#e0e7ff", paddingHorizontal: 10, paddingVertical: 6 }}>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: "#3730a3" }}>Client profile linked</Text>
-                </View>
-              ) : null}
-              {selectedSale.customer_name?.trim() ? (
-                <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, backgroundColor: "#ecfdf5", paddingHorizontal: 10, paddingVertical: 6 }}>
-                  <Ionicons name="person-outline" size={14} color="#047857" />
-                  <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: "#047857" }} numberOfLines={1}>
-                    {selectedSale.customer_name.trim()}
-                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: "#3730a3" }}>Client linked</Text>
                 </View>
               ) : null}
             </View>
-            {selectedSale.customer_phone?.trim() ? (
-              <Text style={{ marginBottom: 12, fontSize: 14, color: Colors.gray[600] }}>
-                {selectedSale.customer_phone.trim()}
-              </Text>
-            ) : null}
-            {selectedSale.payment_reference?.trim() ? (
-              <Text style={{ marginBottom: 12, fontSize: 13, color: Colors.gray[600] }} selectable>
-                Ref: {selectedSale.payment_reference.trim()}
-              </Text>
+
+            {/* Customer info */}
+            {(selectedSale.customer_name?.trim() || selectedSale.customer_phone?.trim()) ? (
+              <View style={{ marginBottom: 12, borderRadius: 12, backgroundColor: "#ecfdf5", padding: 12, flexDirection: "row", alignItems: "center" }}>
+                <View style={{ height: 36, width: 36, borderRadius: 18, backgroundColor: "#d1fae5", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+                  <Ionicons name="person-outline" size={18} color="#047857" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  {selectedSale.customer_name?.trim() ? (
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#065f46" }} numberOfLines={1}>
+                      {selectedSale.customer_name.trim()}
+                    </Text>
+                  ) : null}
+                  {selectedSale.customer_phone?.trim() ? (
+                    <Text style={{ fontSize: 13, color: "#047857" }} selectable>
+                      {selectedSale.customer_phone.trim()}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
             ) : null}
 
-            <Text style={{ marginBottom: 8, fontSize: 13, fontWeight: "600", color: Colors.gray[500], letterSpacing: 0.5, textTransform: "uppercase" }}>
+            {selectedSale.payment_reference?.trim() ? (
+              <View style={{ marginBottom: 12, backgroundColor: Colors.gray[50], borderRadius: 10, padding: 10, flexDirection: "row", alignItems: "center" }}>
+                <Ionicons name="receipt-outline" size={16} color={Colors.gray[500]} />
+                <Text style={{ marginLeft: 8, fontSize: 13, color: Colors.gray[600] }} selectable numberOfLines={1}>
+                  Ref: {selectedSale.payment_reference.trim()}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Line items */}
+            <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "700", color: Colors.gray[400], letterSpacing: 0.8, textTransform: "uppercase" }}>
               Items
             </Text>
             {(selectedSale.items ?? selectedSale.product_order_items ?? []).length === 0 ? (
-              <Text style={{ fontSize: 14, color: Colors.gray[500] }}>No line items returned for this sale.</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 12 }}>No line items returned for this sale.</Text>
             ) : (
               (selectedSale.items ?? selectedSale.product_order_items ?? []).map((it, idx) => (
                 <View
@@ -613,7 +677,7 @@ export default function WalkInSaleScreen() {
                     <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={3}>
                       {it.product_name}
                     </Text>
-                    <Text style={{ marginTop: 4, fontSize: 13, color: Colors.gray[500] }}>
+                    <Text style={{ marginTop: 3, fontSize: 13, color: Colors.gray[500] }}>
                       {it.quantity} × {formatCurrency(Number(it.unit_price), tenantCurrency)}
                     </Text>
                   </View>
@@ -624,7 +688,8 @@ export default function WalkInSaleScreen() {
               ))
             )}
 
-            <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 12 }}>
+            {/* Totals */}
+            <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 12, marginBottom: 16 }}>
               {selectedSale.subtotal != null && Number(selectedSale.subtotal) > 0 ? (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Subtotal</Text>
@@ -638,11 +703,48 @@ export default function WalkInSaleScreen() {
                 </View>
               ) : null}
               <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total paid</Text>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
                   {formatCurrency(Number(selectedSale.total_amount), tenantCurrency)}
                 </Text>
               </View>
+            </View>
+
+            {/* Actions */}
+            <View style={{ gap: 10, paddingBottom: 8 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedSale(null);
+                  router.push(`/(app)/(tabs)/more/orders-hub?order=${selectedSale.id}` as never);
+                }}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel="Manage order in orders hub"
+              >
+                <Ionicons name="cube-outline" size={18} color={Colors.gray[700]} />
+                <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Manage in Orders</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => handleRefundSale(selectedSale)}
+                disabled={refunding}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 12,
+                  backgroundColor: refunding ? "#fca5a5" : "#fee2e2",
+                  paddingVertical: 12,
+                  opacity: refunding ? 0.6 : 1,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Process refund for this sale"
+              >
+                <Ionicons name="return-down-back-outline" size={18} color="#dc2626" />
+                <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "600", color: "#dc2626" }}>
+                  {refunding ? "Processing…" : "Process Refund / Return"}
+                </Text>
+              </TouchableOpacity>
             </View>
           </ScrollView>
         ) : null}
@@ -656,6 +758,7 @@ export default function WalkInSaleScreen() {
         }}
         title="New walk-in sale"
         subtitle="Search products, choose variants when needed, then pay"
+        snapHeight="full"
       >
         {loadingProducts && !productsData ? (
           <LoadingState />

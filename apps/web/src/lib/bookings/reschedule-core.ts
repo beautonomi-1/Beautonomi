@@ -18,6 +18,13 @@
  * This module centralises the whole flow so all three paths share one
  * implementation. Divergence is now impossible: there is only one place
  * to change.
+ *
+ * SAST / ZA tenants: when a client sends a local calendar date without an
+ * explicit IANA zone (e.g. some mobile flows), treat device-local wall time
+ * as equivalent to `Africa/Johannesburg` for South Africa–based tenants only
+ * after `normalizeProviderTimezone` has pinned the provider row. Any UTC
+ * conversion must still go through explicit provider tz + `toIsoUtcTimestamp`
+ * on the server; do not assume device tz matches the salon.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatInTimeZone } from "date-fns-tz";

@@ -6,6 +6,11 @@ import { z } from "zod";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  mapBookingEmbedToWaitingRoomEntry,
+  WAITING_ROOM_BOOKING_SELECT,
+  type WaitingRoomBookingEmbedRow,
+} from "@/lib/provider-waiting-room/booking-to-waiting-room-entry";
 
 const createWaitingRoomEntrySchema = z.object({
   client_name: z.string().min(1),
@@ -20,29 +25,6 @@ const createWaitingRoomEntrySchema = z.object({
   estimated_wait_time: z.number().optional(),
   notes: z.string().optional(),
 });
-
-type WaitingRoomBookingRow = {
-  id: string;
-  booking_number?: string | null;
-  customer_id?: string | null;
-  customer_name?: string | null;
-  customer_email?: string | null;
-  customer_phone?: string | null;
-  service_id?: string | null;
-  service_name?: string | null;
-  staff_id?: string | null;
-  scheduled_at?: string | null;
-  checked_in_time?: string | null;
-  status?: string | null;
-  notes?: string | null;
-  is_group_booking?: boolean | null;
-  group_booking_id?: string | null;
-};
-
-type WaitingRoomStaffRow = {
-  id: string;
-  name: string;
-};
 
 type WaitingRoomServiceRow = {
   id?: string;
@@ -107,28 +89,10 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    // Checked-in queue: bookings with a check-in timestamp (staff_id → provider_staff, not users).
+    // Checked-in queue: real `bookings` columns + joins (no denormalized customer_name/service_* on bookings).
     let query = supabase
       .from("bookings")
-      .select(
-        `
-        id,
-        booking_number,
-        customer_id,
-        customer_name,
-        customer_email,
-        customer_phone,
-        service_id,
-        service_name,
-        staff_id,
-        scheduled_at,
-        checked_in_time,
-        status,
-        notes,
-        is_group_booking,
-        group_booking_id
-      `.trim(),
-      )
+      .select(WAITING_ROOM_BOOKING_SELECT)
       .eq("provider_id", providerId)
       .in("status", ["waiting", "checked_in", "confirmed"])
       .not("checked_in_time", "is", null)
@@ -156,49 +120,8 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    const rows = (Array.isArray(bookings) ? bookings : []) as unknown as WaitingRoomBookingRow[];
-    const staffIds = [
-      ...new Set(rows.map((b: { staff_id?: string | null }) => b.staff_id).filter((x): x is string => !!x)),
-    ];
-    let staffNames: Record<string, string> = {};
-    if (staffIds.length > 0) {
-      const { data: staffRows } = await supabase.from("provider_staff").select("id, name").in("id", staffIds);
-      staffNames = Object.fromEntries(((staffRows ?? []) as WaitingRoomStaffRow[]).map((s) => [s.id, s.name]));
-    }
-
-    // Transform bookings to waiting room entries
-    const entries = rows.map((booking: any) => {
-      // Determine waiting room status from booking status
-      let wrStatus: "waiting" | "in_service" | "completed" | "left" = "waiting";
-      if (booking.status === "in_progress") {
-        wrStatus = "in_service";
-      } else if (booking.status === "completed") {
-        wrStatus = "completed";
-      } else if (booking.status === "cancelled" || booking.status === "no_show") {
-        wrStatus = "left";
-      }
-
-      return {
-        id: booking.id,
-        appointment_id: booking.id,
-        client_name: booking.customer_name || "Client",
-        client_email: booking.customer_email,
-        client_phone: booking.customer_phone,
-        service_id: booking.service_id,
-        service_name: booking.service_name || "Service",
-        team_member_id: booking.staff_id,
-        team_member_name:
-          (booking.staff_id && staffNames[booking.staff_id as string]) || "Staff",
-        checked_in_time: booking.checked_in_time || booking.scheduled_at,
-        checked_in_method: "staff" as const,
-        status: wrStatus,
-        notes: booking.notes,
-        position: undefined,
-        estimated_wait_time: undefined,
-        is_group_booking: Boolean(booking.is_group_booking),
-        group_booking_id: booking.group_booking_id ?? null,
-      };
-    });
+    const rows = (Array.isArray(bookings) ? bookings : []) as unknown as WaitingRoomBookingEmbedRow[];
+    const entries = rows.map((booking) => mapBookingEmbedToWaitingRoomEntry(booking));
 
     return successResponse(entries);
   } catch (error) {
@@ -262,23 +185,7 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", data.appointment_id)
         .eq("provider_id", providerId)
-        .select(
-          `
-          id,
-          booking_number,
-          customer_id,
-          customer_name,
-          customer_email,
-          customer_phone,
-          service_id,
-          service_name,
-          staff_id,
-          scheduled_at,
-          checked_in_time,
-          status,
-          notes
-        `.trim(),
-        )
+        .select(WAITING_ROOM_BOOKING_SELECT)
         .single();
 
       if (bookingError || !booking) {
@@ -288,31 +195,11 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const bookingRow = booking as unknown as WaitingRoomBookingRow;
-      let teamMemberName = data.team_member_name || "Staff";
-      const sid = bookingRow.staff_id;
-      if (sid) {
-        const { data: st } = await supabase.from("provider_staff").select("name").eq("id", sid).maybeSingle();
-        const staffRow = st as { name?: string | null } | null;
-        if (staffRow?.name) teamMemberName = staffRow.name;
-      }
-
-      // Transform to waiting room entry format
+      const bookingRow = booking as unknown as WaitingRoomBookingEmbedRow;
       const entry = {
-        id: bookingRow.id,
-        appointment_id: bookingRow.id,
-        client_name: bookingRow.customer_name || data.client_name || "Client",
-        client_email: bookingRow.customer_email || data.client_email,
-        client_phone: bookingRow.customer_phone || data.client_phone,
-        service_id: bookingRow.service_id || data.service_id,
-        service_name: bookingRow.service_name || data.service_name || "Service",
-        team_member_id: bookingRow.staff_id || data.team_member_id,
-        team_member_name: teamMemberName,
-        checked_in_time: bookingRow.checked_in_time || checkedInTime,
+        ...mapBookingEmbedToWaitingRoomEntry(bookingRow),
         checked_in_method: data.checked_in_method || "staff",
         status: "waiting" as const,
-        notes: bookingRow.notes || data.notes,
-        position: undefined,
         estimated_wait_time: data.estimated_wait_time,
       };
 
@@ -322,41 +209,28 @@ export async function POST(request: NextRequest) {
     // If no appointment_id, create a new booking for walk-in
     // This is for walk-in clients who don't have a pre-existing appointment
     const customerId = await ensureWaitingRoomCustomer(supabase, data);
+    const walkInRef =
+      globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const bookingNumber = `WI-${walkInRef.slice(0, 8).toUpperCase()}`;
     const { data: newBooking, error: createError } = await supabase
       .from("bookings")
       .insert({
         provider_id: providerId,
         tenant_id: effectiveTenantId,
         customer_id: customerId,
-        customer_name: data.client_name,
-        customer_email: data.client_email,
-        customer_phone: data.client_phone,
-        scheduled_at: new Date().toISOString(), // Current time for walk-in
-        location_type: 'at_salon',
-        booking_source: 'walk_in',
-        status: 'checked_in',
+        booking_number: bookingNumber,
+        scheduled_at: checkedInTime,
+        location_type: "at_salon",
+        booking_source: "walk_in",
+        status: "checked_in",
         checked_in_time: checkedInTime,
-        staff_id: data.team_member_id || null,
         notes: data.notes || null,
         currency: bookingCurrency,
+        subtotal: 0,
+        total_amount: 0,
+        payment_status: "pending",
       })
-      .select(
-        `
-        id,
-        booking_number,
-        customer_id,
-        customer_name,
-        customer_email,
-        customer_phone,
-        service_id,
-        service_name,
-        staff_id,
-        scheduled_at,
-        checked_in_time,
-        status,
-        notes
-      `.trim(),
-      )
+      .select(WAITING_ROOM_BOOKING_SELECT)
       .single();
 
     if (createError || !newBooking) {
@@ -365,7 +239,7 @@ export async function POST(request: NextRequest) {
         "Failed to add to waiting room"
       );
     }
-    const newBookingRow = newBooking as unknown as WaitingRoomBookingRow;
+    const newBookingRow = newBooking as unknown as WaitingRoomBookingEmbedRow;
 
     // If service_id is provided, create booking_service entry
     if (data.service_id) {
@@ -393,42 +267,19 @@ export async function POST(request: NextRequest) {
             price: serviceRow.price || 0,
             currency: bookingCurrency,
           });
-
-        // Update booking with service info
-        await supabase
-          .from("bookings")
-          .update({
-            service_id: data.service_id,
-            service_name: serviceRow.title || data.service_name,
-          })
-          .eq("id", newBookingRow.id);
       }
     }
 
-    let walkInStaffName = data.team_member_name || "Staff";
-    const nbSid = newBookingRow.staff_id;
-    if (nbSid) {
-      const { data: st } = await supabase.from("provider_staff").select("name").eq("id", nbSid).maybeSingle();
-      const staffRow = st as { name?: string | null } | null;
-      if (staffRow?.name) walkInStaffName = staffRow.name;
-    }
-
-    // Transform to waiting room entry format
+    const { data: refreshedWalkIn } = await supabase
+      .from("bookings")
+      .select(WAITING_ROOM_BOOKING_SELECT)
+      .eq("id", newBookingRow.id)
+      .maybeSingle();
+    const walkInEmbed = (refreshedWalkIn ?? newBookingRow) as WaitingRoomBookingEmbedRow;
     const entry = {
-      id: newBookingRow.id,
-      appointment_id: newBookingRow.id,
-      client_name: newBookingRow.customer_name || data.client_name,
-      client_email: newBookingRow.customer_email || data.client_email,
-      client_phone: newBookingRow.customer_phone || data.client_phone,
-      service_id: newBookingRow.service_id || data.service_id,
-      service_name: newBookingRow.service_name || data.service_name || "Service",
-      team_member_id: newBookingRow.staff_id || data.team_member_id,
-      team_member_name: walkInStaffName,
-      checked_in_time: newBookingRow.checked_in_time || checkedInTime,
+      ...mapBookingEmbedToWaitingRoomEntry(walkInEmbed),
       checked_in_method: data.checked_in_method || "staff",
       status: "waiting" as const,
-      notes: newBookingRow.notes || data.notes,
-      position: undefined,
       estimated_wait_time: data.estimated_wait_time,
     };
 

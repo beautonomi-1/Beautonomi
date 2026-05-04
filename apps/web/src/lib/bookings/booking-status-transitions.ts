@@ -33,9 +33,10 @@ export const PROVIDER_BOOKING_STATUS_TRANSITIONS: Record<
   BookingStatus,
   readonly BookingStatus[]
 > = {
-  pending: ["confirmed", "cancelled"],
+  pending: ["confirmed", "checked_in", "cancelled"],
   pending_payment: ["cancelled"],
-  confirmed: ["in_progress", "cancelled", "no_show"],
+  /** Salon check-in: `checked_in` is physical arrival (waiting room); `in_progress` is chair time. */
+  confirmed: ["checked_in", "in_progress", "cancelled", "no_show"],
   in_progress: ["completed", "cancelled"],
   completed: [],
   cancelled: [],

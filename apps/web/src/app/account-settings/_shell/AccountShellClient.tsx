@@ -14,7 +14,17 @@ export function AccountShellClient({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (hasPrefetched.current) return;
     hasPrefetched.current = true;
-    CUSTOMER_PRIMARY_ROUTES.forEach((route) => router.prefetch(route));
+    const run = () => {
+      CUSTOMER_PRIMARY_ROUTES.forEach((route, index) => {
+        window.setTimeout(() => router.prefetch(route), index * 120);
+      });
+    };
+    if (typeof requestIdleCallback !== "undefined") {
+      const id = requestIdleCallback(run, { timeout: 3000 });
+      return () => cancelIdleCallback(id);
+    }
+    run();
+    return undefined;
   }, [router]);
 
   return (
@@ -34,7 +44,7 @@ export function AccountShellClient({ children }: { children: React.ReactNode }) 
                 <Link
                   key={href}
                   href={href}
-                  prefetch
+                  prefetch={false}
                   className={cn(
                     "shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors md:text-sm",
                     active

@@ -15,9 +15,31 @@ export interface CalendarOverlayTimeBlockModel extends CalendarOverlayColorSourc
   calendar_overlay_kind?: "availability" | "staff_off" | "time_block" | "booking_hold";
 }
 
+/** Pure layout helper: clamp wall-clock minutes to visible grid window (tests + component). */
+export function clampOverlayBlockToGrid(args: {
+  startMin: number;
+  endMin: number;
+  startHour: number;
+  endHour: number;
+  slotHeight: number;
+  gridTopPadding: number;
+  quarterHeight: number;
+}): { top: number; height: number } | null {
+  const { startMin, endMin, startHour, endHour, slotHeight, gridTopPadding, quarterHeight } = args;
+  const gridStartMin = startHour * 60;
+  const gridEndMin = (endHour + 1) * 60;
+  const visibleStartMin = Math.max(startMin, gridStartMin);
+  const visibleEndMin = Math.min(endMin, gridEndMin);
+  if (visibleEndMin <= visibleStartMin) return null;
+  const top = gridTopPadding + (visibleStartMin / 60 - startHour) * slotHeight;
+  const height = Math.max(((visibleEndMin - visibleStartMin) / 60) * slotHeight, quarterHeight);
+  return { top, height };
+}
+
 export function CalendarOverlayTimeBlock({
   block,
   startHour,
+  endHour,
   slotHeight,
   gridTopPadding,
   quarterHeight,
@@ -26,6 +48,7 @@ export function CalendarOverlayTimeBlock({
 }: {
   block: CalendarOverlayTimeBlockModel;
   startHour: number;
+  endHour: number;
   slotHeight: number;
   gridTopPadding: number;
   quarterHeight: number;
@@ -37,8 +60,17 @@ export function CalendarOverlayTimeBlock({
   const startMin = parseCalendarTimeStrict(block.start_time);
   const endMin = parseCalendarTimeStrict(block.end_time);
   if (startMin == null || endMin == null || endMin <= startMin) return null;
-  const top = gridTopPadding + (startMin / 60 - startHour) * slotHeight;
-  const height = Math.max(((endMin - startMin) / 60) * slotHeight, quarterHeight);
+  const clamped = clampOverlayBlockToGrid({
+    startMin,
+    endMin,
+    startHour,
+    endHour,
+    slotHeight,
+    gridTopPadding,
+    quarterHeight,
+  });
+  if (!clamped) return null;
+  const { top, height } = clamped;
   const interactive = !!block.calendar_overlay_kind;
   const isBookingHold = block.calendar_overlay_kind === "booking_hold";
   const boxStyle = isBookingHold

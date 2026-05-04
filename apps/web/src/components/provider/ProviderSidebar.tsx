@@ -479,7 +479,6 @@ export function ProviderSidebar() {
                   const linkContent = (
                     <Link
                       href={item.href}
-                      prefetch={true}
                       className={cn(
                         "flex items-center gap-3 min-h-11 touch-manipulation rounded-xl transition-all relative group",
                         isExpanded ? "px-3" : "justify-center px-2",
@@ -559,7 +558,6 @@ export function ProviderSidebar() {
             const linkContent = (
               <Link
                 href={item.href}
-                prefetch={true}
                 className={cn(
                   "flex items-center gap-3 min-h-11 touch-manipulation rounded-xl transition-all",
                   isExpanded ? "px-3" : "justify-center px-2",

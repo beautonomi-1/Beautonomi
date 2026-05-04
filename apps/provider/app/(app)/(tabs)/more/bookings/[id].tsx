@@ -63,7 +63,9 @@ import {
   getAllowedTransitionTargets,
   labelForDbStatus,
   optimisticBookingFieldsForDbTarget,
+  filterInProgressWhenAtHomeVerificationPending,
 } from "@/lib/provider-booking-status-transitions";
+import { getBookingNextStepCard } from "@/lib/provider-booking-next-step-card";
 
 function extractIsoDatePart(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -340,11 +342,84 @@ type AuditLogEntry = {
     old_value?: unknown;
     new_value?: unknown;
     reason?: string;
-  };
+    previous_scheduled_at?: string;
+    new_scheduled_at?: string;
+    amount?: number;
+    payment_method?: string;
+    payment_id?: string;
+    source?: string;
+  } | null;
   created_by: string;
   created_by_name?: string;
   created_at: string;
 };
+
+function formatTimelineDateTime(value: unknown, tz?: string | null): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  try {
+    return parsed.toLocaleString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: tz || DEFAULT_TZ,
+    });
+  } catch {
+    return parsed.toLocaleString();
+  }
+}
+
+function humanizeBookingStatusKey(raw: string | undefined | null): string {
+  if (!raw) return "—";
+  const map: Record<string, string> = {
+    pending: "Pending",
+    pending_payment: "Pending payment",
+    confirmed: "Confirmed",
+    booked: "Booked",
+    waiting: "Waiting",
+    checked_in: "Checked in",
+    in_progress: "In progress",
+    completed: "Completed",
+    cancelled: "Cancelled",
+    no_show: "No show",
+  };
+  if (map[raw]) return map[raw];
+  return raw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function buildAuditEntryDescription(entry: AuditLogEntry, currency: string): string | null {
+  const d = entry.event_data;
+  if (!d || typeof d !== "object") return null;
+  if (entry.event_type === "payment_received" || entry.event_type === "refunded") {
+    const amt = typeof d.amount === "number" ? d.amount : null;
+    const method = typeof d.payment_method === "string" ? d.payment_method : null;
+    if (amt != null && Number.isFinite(amt)) {
+      const money = new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency?.trim() || "ZAR",
+      }).format(amt);
+      return method ? `${money} · ${method}` : money;
+    }
+  }
+  if (d.previous_status != null && d.new_status != null) {
+    return `${humanizeBookingStatusKey(String(d.previous_status))} → ${humanizeBookingStatusKey(String(d.new_status))}`;
+  }
+  if (typeof d.previous_scheduled_at === "string" && typeof d.new_scheduled_at === "string") {
+    return "Appointment time was changed.";
+  }
+  if (typeof d.reason === "string" && d.reason.trim()) {
+    return d.reason.trim();
+  }
+  if (entry.event_type === "updated" && d.field === "cancellation_reason") {
+    return typeof d.reason === "string" && d.reason.trim() ? `Reason: ${d.reason.trim()}` : "Cancellation details updated";
+  }
+  return null;
+}
 
 function statusColor(status: string): string {
   switch (status) {
@@ -384,86 +459,10 @@ function statusTextColor(status: string): string {
   }
 }
 
-function getBookingNextStep(
-  booking: BookingDetail,
-  options: { outstanding: number; isAtHome: boolean; isAtSalon: boolean },
-): { title: string; description: string; icon: keyof typeof Ionicons.glyphMap; color: string } {
-  const status = (booking.status || "").toLowerCase();
-  if (status === "pending" || status === "pending_payment") {
-    return {
-      title: "Review and confirm",
-      description: "Confirm the appointment, collect any required payment, or reschedule before the visit.",
-      icon: "alert-circle-outline",
-      color: "#d97706",
-    };
-  }
-  if (options.isAtHome && booking.current_stage === "en_route") {
-    return {
-      title: "Mark arrival next",
-      description: "You are en route. Mark arrived when you reach the client, then verify their PIN or QR.",
-      icon: "navigate-outline",
-      color: "#7c3aed",
-    };
-  }
-  if (options.isAtHome && booking.current_stage === "arrived" && !booking.arrival_otp_verified && !booking.qr_code_verified) {
-    return {
-      title: "Verify arrival",
-      description: "Ask the client for their arrival PIN or QR before starting the service.",
-      icon: "qr-code-outline",
-      color: "#7c3aed",
-    };
-  }
-  if (status === "confirmed" || status === "booked") {
-    return {
-      title: options.isAtHome ? "Ready for journey" : options.isAtSalon ? "Ready for check-in" : "Ready for service",
-      description: options.isAtHome
-        ? "Start journey when you leave for the client."
-        : "Use client arrived or start service when the customer is ready.",
-      icon: options.isAtHome ? "car-outline" : "play-circle-outline",
-      color: "#2563eb",
-    };
-  }
-  if (status === "started" || status === "in_progress") {
-    return {
-      title: "Service in progress",
-      description: "Complete the service when finished, then settle any outstanding balance.",
-      icon: "timer-outline",
-      color: "#d97706",
-    };
-  }
-  if (status === "completed" && options.outstanding > 0) {
-    return {
-      title: "Payment still due",
-      description: "Send a payment link, take Yoco, or mark the remaining amount as paid.",
-      icon: "card-outline",
-      color: "#d97706",
-    };
-  }
-  if (status === "completed") {
-    return {
-      title: "Completed",
-      description: "Receipt, payment, products, forms, and history remain available below.",
-      icon: "checkmark-circle-outline",
-      color: "#16a34a",
-    };
-  }
-  if (status === "cancelled" || status === "no_show") {
-    return {
-      title: status === "no_show" ? "Marked no-show" : "Cancelled",
-      description: "You can still review history, notify the customer, or handle refunds if payment exists.",
-      icon: "close-circle-outline",
-      color: "#dc2626",
-    };
-  }
-  return {
-    title: "Manage booking",
-    description: "Review appointment details and use the available actions for this booking.",
-    icon: "calendar-outline",
-    color: "#4b5563",
-  };
-}
-
 const ETA_OPTIONS = [15, 30, 45] as const;
+
+/** At-home reschedule slot queries: matches `new.tsx` fallback before /api/location/validate returns. */
+const DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES = 30;
 
 const PAYMENT_METHODS = [
   { label: "Cash", value: "cash" },
@@ -590,13 +589,26 @@ export default function BookingDetailScreen() {
     () => getAllowedTransitionTargets(currentDbStatus),
     [currentDbStatus],
   );
-  const allowedStatusTargets = useMemo(
-    () =>
-      rawAllowedStatusTargets.filter((target) =>
-        target === "cancelled" ? canCancelAppointments : canEditAppointments,
-      ),
-    [rawAllowedStatusTargets, canCancelAppointments, canEditAppointments],
-  );
+  const allowedStatusTargets = useMemo(() => {
+    let list = rawAllowedStatusTargets.filter((target) =>
+      target === "cancelled" ? canCancelAppointments : canEditAppointments,
+    );
+    const row = resolvedBooking ?? (data as BookingDetail | undefined);
+    if (!row) return list;
+    const rawLoc = row.location_type;
+    const atHome =
+      rawLoc === "at_home" ||
+      (rawLoc == null &&
+        !row.location_id &&
+        !!(row as BookingDetail).address?.line1?.trim());
+    return filterInProgressWhenAtHomeVerificationPending({
+      targets: list,
+      atHome,
+      arrivalVerified: row.arrival_otp_verified === true || row.qr_code_verified === true,
+      arrivalOtpPending: row.arrival_otp_pending === true,
+      qrArrivalPending: row.qr_arrival_pending === true,
+    });
+  }, [rawAllowedStatusTargets, canCancelAppointments, canEditAppointments, resolvedBooking, data]);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationPermissionDeniedRef = useRef(false);
   const mainScrollRef = useRef<ScrollView>(null);
@@ -622,7 +634,89 @@ export default function BookingDetailScreen() {
   const [rescheduleDate, setRescheduleDate] = useState<Date>(() => new Date());
   const [rescheduleTime, setRescheduleTime] = useState("");
   const [rescheduling, setRescheduling] = useState(false);
+  /** From POST /api/location/validate using the booking’s stored address (at-home only). */
+  const [rescheduleTravelBufferMinutes, setRescheduleTravelBufferMinutes] = useState(
+    DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES,
+  );
   const rescheduleDateStr = format(rescheduleDate, "yyyy-MM-dd");
+
+  useEffect(() => {
+    if (!showReschedule) {
+      setRescheduleTravelBufferMinutes(DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES);
+      return;
+    }
+    const row = data;
+    if (!row || row.location_type !== "at_home") {
+      return;
+    }
+    const addr = row.address;
+    const line1 = addr?.line1?.trim();
+    const city = addr?.city?.trim();
+    const pid = providerProfile?.id;
+    if (!pid || !line1 || !city) {
+      setRescheduleTravelBufferMinutes(DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const postal = (addr?.postal_code ?? "").trim();
+          const country = (addr?.country ?? "").trim() || "South Africa";
+          const line2 = (addr?.line2 ?? "").trim();
+          const addressString = [line1, line2, postal, city, country].filter(Boolean).join(", ");
+          const lat =
+            typeof addr?.latitude === "number" && Number.isFinite(addr.latitude) ? addr.latitude : undefined;
+          const lng =
+            typeof addr?.longitude === "number" && Number.isFinite(addr.longitude) ? addr.longitude : undefined;
+          const res = await api.post<{
+            valid?: boolean;
+            travelTimeMinutes?: number;
+          }>("/api/location/validate", {
+            address: addressString,
+            provider_id: pid,
+            ...(lat != null && lng != null ? { latitude: lat, longitude: lng } : {}),
+          });
+          if (cancelled) return;
+          if (res.error) {
+            setRescheduleTravelBufferMinutes(DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES);
+            return;
+          }
+          const d = res.data;
+          if (
+            d?.valid === true &&
+            typeof d.travelTimeMinutes === "number" &&
+            Number.isFinite(d.travelTimeMinutes) &&
+            d.travelTimeMinutes > 0
+          ) {
+            setRescheduleTravelBufferMinutes(Math.ceil(d.travelTimeMinutes));
+          } else {
+            setRescheduleTravelBufferMinutes(DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES);
+          }
+        } catch {
+          if (!cancelled) setRescheduleTravelBufferMinutes(DEFAULT_RESCHEDULE_TRAVEL_BUFFER_MINUTES);
+        }
+      })();
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    showReschedule,
+    data?.id,
+    data?.location_type,
+    data?.address?.line1,
+    data?.address?.line2,
+    data?.address?.city,
+    data?.address?.postal_code,
+    data?.address?.country,
+    data?.address?.latitude,
+    data?.address?.longitude,
+    providerProfile?.id,
+  ]);
 
   const rescheduleAvailableSlotsUrl = useMemo(() => {
     if (!showReschedule || !rescheduleDateStr || !bookingIdStr) return "";
@@ -638,14 +732,14 @@ export default function BookingDetailScreen() {
     const locId = b?.location_id?.trim();
     const isHome = b?.location_type === "at_home";
     const mode = isHome ? "mobile" : "salon";
-    const travelBuffer = isHome ? 30 : 0;
+    const travelBuffer = isHome ? rescheduleTravelBufferMinutes : 0;
     let q = `/api/provider/bookings/available-slots?date=${encodeURIComponent(rescheduleDateStr)}&duration_minutes=${encodeURIComponent(String(durationMinutes))}&exclude_booking_id=${encodeURIComponent(bookingIdStr)}`;
     if (staffIds.length > 0) q += `&staff_ids=${encodeURIComponent(staffIds.join(","))}`;
     if (offeringIds.length > 0) q += `&service_ids=${encodeURIComponent(offeringIds.join(","))}`;
     if (locId) q += `&location_id=${encodeURIComponent(locId)}`;
     q += `&mode=${encodeURIComponent(mode)}&travel_buffer=${encodeURIComponent(String(travelBuffer))}`;
     return q;
-  }, [showReschedule, rescheduleDateStr, bookingIdStr, durationMinutes, data]);
+  }, [showReschedule, rescheduleDateStr, bookingIdStr, durationMinutes, data, rescheduleTravelBufferMinutes]);
 
   type RescheduleSlotRow = { time: string; available: boolean; reason?: string };
   type RescheduleSlotsResponse = {
@@ -919,6 +1013,14 @@ export default function BookingDetailScreen() {
     };
   }, [showAuditLog, id]);
 
+  const sortedAuditLogs = useMemo(
+    () =>
+      [...auditLogs].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      ),
+    [auditLogs],
+  );
+
   // Load whether provider already submitted a client rating (provider_client_ratings)
   useEffect(() => {
     if (!bookingIdStr || !data) return;
@@ -1127,7 +1229,10 @@ export default function BookingDetailScreen() {
   const canCheckInAtSalon =
     canEditAppointments &&
     isAtSalon &&
-    (b.status === "confirmed" || b.status === "booked" || b.status === "pending") &&
+    (b.status === "confirmed" ||
+      b.status === "booked" ||
+      b.status === "pending" ||
+      b.db_status === "checked_in") &&
     b.current_stage !== "client_arrived" &&
     !isStarted;
   const totalAmount = b.total_amount ?? 0;
@@ -1568,7 +1673,10 @@ export default function BookingDetailScreen() {
         checkParams.set("offering_ids", rescheduleOfferingIds.join(","));
       const rescheduleIsHome = b.location_type === "at_home";
       checkParams.set("mode", rescheduleIsHome ? "mobile" : "salon");
-      checkParams.set("travel_buffer", rescheduleIsHome ? "30" : "0");
+      checkParams.set(
+        "travel_buffer",
+        rescheduleIsHome ? String(rescheduleTravelBufferMinutes) : "0",
+      );
       const checkRes = await api.get<{ available?: boolean; conflicts?: string[] }>(
         `/api/provider/bookings/check-availability?${checkParams}`
       );
@@ -1911,6 +2019,7 @@ export default function BookingDetailScreen() {
     try {
       const version = (b as BookingDetail & { version?: number }).version;
       const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
+        status: "checked_in",
         current_stage: "client_arrived",
         send_arrival_notification: true,
         ...(version !== undefined && { version }),
@@ -2032,7 +2141,7 @@ export default function BookingDetailScreen() {
   const canRequestPayment = canProcessPayments && (isStarted || b.status === "completed");
   const canSendPaymentLink = canProcessPayments && outstanding > 0 && b.status !== "cancelled";
   const canReschedule = canEditAppointments && (isActive || isStarted) && Boolean(b.scheduled_at);
-  const nextStep = getBookingNextStep(b, { outstanding, isAtHome, isAtSalon });
+  const nextStep = getBookingNextStepCard(b, { outstanding, isAtHome, isAtSalon });
   const primaryServiceName = services[0]?.offering_name ?? "Appointment";
   const serviceCountLabel =
     services.length > 1 ? `${primaryServiceName} +${services.length - 1} more` : primaryServiceName;
@@ -2064,8 +2173,10 @@ export default function BookingDetailScreen() {
       refunded: "Refunded",
       rescheduled: "Rescheduled",
       note_added: "Note Added",
+      deleted: "Deleted",
+      updated: "Updated",
     };
-    return labels[eventType] ?? eventType;
+    return labels[eventType] ?? eventType.replace(/_/g, " ");
   };
 
   return (
@@ -2784,10 +2895,10 @@ export default function BookingDetailScreen() {
         )}
 
         {/* Client rating (provider → customer via provider_client_ratings) */}
-        {(b.status === "completed" || b.status === "no_show") && canViewClientRatings && hasProviderClientRating !== null && (
+        {(b.status === "completed" || b.status === "no_show") && canViewClientRatings && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Client rating</Text>
-            {hasProviderClientRating ? (
+            {hasProviderClientRating === true ? (
               <Text style={twStyle("text-sm text-gray-600")}>You have rated this client for this booking.</Text>
             ) : canRateClients ? (
               <TouchableOpacity
@@ -3925,29 +4036,45 @@ export default function BookingDetailScreen() {
           <View style={twStyle("py-8 items-center")}>
             <ActivityIndicator size="large" color="#6366f1" />
           </View>
-        ) : auditLogs.length === 0 ? (
-          <Text style={twStyle("text-center text-gray-500 py-8")}>No audit log entries</Text>
+        ) : sortedAuditLogs.length === 0 ? (
+          <View style={twStyle("py-6 px-2")}>
+            <Text style={twStyle("text-center text-gray-600")}>No events yet</Text>
+            <Text style={twStyle("text-center text-gray-500 text-sm mt-2 leading-5")}>
+              Events will appear here as the booking progresses.
+            </Text>
+          </View>
         ) : (
-          <ScrollView style={twStyle("max-h-96")} showsVerticalScrollIndicator>
-            {auditLogs.map((entry) => (
-              <View
-                key={entry.id}
-                style={twStyle("border border-gray-200 rounded-lg p-3 mb-2")}
-              >
-                <Text style={twStyle("font-medium text-gray-900")}>
-                  {getAuditEventLabel(entry.event_type)}
-                </Text>
-                {entry.event_data?.reason ? (
-                  <Text style={twStyle("text-sm text-gray-600 mt-1")}>
-                    Reason: {entry.event_data.reason}
-                  </Text>
-                ) : null}
-                <Text style={twStyle("text-xs text-gray-500 mt-2")}>
-                  {entry.created_by_name ?? "System"} ·{" "}
-                  {formatDateTimeSafe(entry.created_at)}
-                </Text>
-              </View>
-            ))}
+          <ScrollView style={twStyle("max-h-96 pr-1")} showsVerticalScrollIndicator>
+            {sortedAuditLogs.map((entry, idx) => {
+              const isLast = idx === sortedAuditLogs.length - 1;
+              const desc = buildAuditEntryDescription(entry, b.currency ?? "ZAR");
+              return (
+                <View key={entry.id} style={twStyle("flex-row")}>
+                  <View style={twStyle("w-7 items-center mr-2")}>
+                    <View style={twStyle("w-2.5 h-2.5 rounded-full bg-primary mt-1")} />
+                    {!isLast ? (
+                      <View
+                        style={{ width: 2, marginTop: 4, alignSelf: "stretch", minHeight: 36, backgroundColor: "#E5E7EB" }}
+                        accessibilityElementsHidden
+                        importantForAccessibility="no"
+                      />
+                    ) : null}
+                  </View>
+                  <View style={twStyle("flex-1 pb-4")}>
+                    <Text style={twStyle("text-base font-semibold text-gray-900")}>
+                      {getAuditEventLabel(entry.event_type)}
+                    </Text>
+                    {desc ? (
+                      <Text style={twStyle("text-sm text-gray-600 mt-1 leading-5")}>{desc}</Text>
+                    ) : null}
+                    <Text style={twStyle("text-xs text-gray-500 mt-2")}>
+                      {(entry.created_by_name ?? "System").trim() || "System"} ·{" "}
+                      {formatTimelineDateTime(entry.created_at, providerTimezone ?? b.display_time_zone)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
           </ScrollView>
         )}
       </BottomSheet>

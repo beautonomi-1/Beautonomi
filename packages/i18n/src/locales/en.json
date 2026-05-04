@@ -321,6 +321,8 @@
       "pendingBadge": "{{count}} pending",
       "overlayPartialWarningA11y": "Some calendar blocks or holds could not load. Tap to refresh.",
       "viewDetails": "View details",
+      "viewFullDetails": "View full details",
+      "quickSheetLongPressHint": "Long-press the booking on the calendar for status changes and payment without leaving this screen.",
       "collectPayment": "Collect payment",
       "currentStatusLabel": "Current status: {{status}}",
       "bookingLabelFallback": "Booking",

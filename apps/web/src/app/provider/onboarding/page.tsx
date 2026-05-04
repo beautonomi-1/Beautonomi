@@ -699,7 +699,7 @@ export default function ProviderOnboarding() {
         avatar_url: formData.avatar_url || null,
         gallery: formData.gallery || [],
         years_in_business: formData.years_in_business || null,
-        accepts_custom_requests: formData.accepts_custom_requests || false,
+        accepts_custom_requests: formData.accepts_custom_requests ?? true,
         response_rate: formData.response_rate || 100,
         response_time_hours: formData.response_time_hours || 1,
         languages_spoken: formData.languages_spoken || ["English"],
