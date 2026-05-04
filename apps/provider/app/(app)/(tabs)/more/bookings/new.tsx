@@ -3829,21 +3829,21 @@ function ConfirmationView({
           <Text style={twStyle("text-sm text-gray-500")}>Subtotal</Text>
           <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.subtotal, currency)}</Text>
         </View>
-        {summary.membershipDiscountAmt > 0 && (
+        {(summary.membershipDiscountAmt ?? 0) > 0 && (
           <View style={twStyle("flex-row justify-between")}>
             <Text style={twStyle("text-sm text-indigo-700")}>
               Membership discount
               {summary.membershipPlanName ? ` (${summary.membershipPlanName})` : ""}
             </Text>
             <Text style={twStyle("text-sm text-indigo-700")}>
-              {formatCurrency(-summary.membershipDiscountAmt, currency)}
+              {formatCurrency(-(summary.membershipDiscountAmt ?? 0), currency)}
             </Text>
           </View>
         )}
-        {summary.baseDiscountAmt > 0 && (
+        {(summary.baseDiscountAmt ?? 0) > 0 && (
           <View style={twStyle("flex-row justify-between")}>
             <Text style={twStyle("text-sm text-green-600")}>Discount</Text>
-            <Text style={twStyle("text-sm text-green-600")}>{formatCurrency(-summary.baseDiscountAmt, currency)}</Text>
+            <Text style={twStyle("text-sm text-green-600")}>{formatCurrency(-(summary.baseDiscountAmt ?? 0), currency)}</Text>
           </View>
         )}
         <View style={twStyle("flex-row justify-between")}>

@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import { getAllowedTransitionTargets } from "@/lib/provider-booking-status-transitions";
 
 describe("getAllowedTransitionTargets salon check-in", () => {

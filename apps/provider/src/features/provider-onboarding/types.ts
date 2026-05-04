@@ -69,6 +69,8 @@ export interface OnboardingFormData {
   operating_hours: Record<string, { open: string; close: string; closed: boolean }>;
   selected_plan_id?: string;
   selected_plan_name?: string;
+  /** When true, provider accepts ad-hoc / custom booking requests (defaults true in API). */
+  accepts_custom_requests?: boolean;
 }
 
 export interface OnboardingStepMeta {
