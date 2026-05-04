@@ -18,15 +18,32 @@ describe("AccountShellClient", () => {
     pathnameRef.current = "/account-settings/bookings";
   });
 
-  it("prefetches each primary route exactly once on mount", () => {
-    render(
-      <AccountShellClient>
-        <div>child</div>
-      </AccountShellClient>,
+  it("prefetches each primary route exactly once on mount", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "requestIdleCallback",
+      (cb: IdleRequestCallback) => {
+        cb({ didTimeout: false, timeRemaining: () => 50 } as IdleDeadline);
+        return 1;
+      },
     );
-    expect(prefetch.mock.calls.length).toBe(CUSTOMER_PRIMARY_ROUTES.length);
-    for (const route of CUSTOMER_PRIMARY_ROUTES) {
-      expect(prefetch.mock.calls.some((c) => c[0] === route)).toBe(true);
+    vi.stubGlobal("cancelIdleCallback", vi.fn());
+
+    try {
+      const { unmount } = render(
+        <AccountShellClient>
+          <div>child</div>
+        </AccountShellClient>,
+      );
+      await vi.runAllTimersAsync();
+      expect(prefetch.mock.calls.length).toBe(CUSTOMER_PRIMARY_ROUTES.length);
+      for (const route of CUSTOMER_PRIMARY_ROUTES) {
+        expect(prefetch.mock.calls.some((c) => c[0] === route)).toBe(true);
+      }
+      unmount();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
     }
   });
 

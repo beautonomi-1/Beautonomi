@@ -15,9 +15,7 @@ export function AccountShellClient({ children }: { children: React.ReactNode }) 
     if (hasPrefetched.current) return;
     hasPrefetched.current = true;
     const run = () => {
-      CUSTOMER_PRIMARY_ROUTES.forEach((route, index) => {
-        window.setTimeout(() => router.prefetch(route), index * 120);
-      });
+      CUSTOMER_PRIMARY_ROUTES.forEach((route) => router.prefetch(route));
     };
     if (typeof requestIdleCallback !== "undefined") {
       const id = requestIdleCallback(run, { timeout: 3000 });

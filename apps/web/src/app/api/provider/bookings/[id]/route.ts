@@ -1067,10 +1067,12 @@ export async function PATCH(
       );
     }
 
+    const actorProfile = user as {
+      full_name?: string | null;
+      email?: string | null;
+    };
     const actorName =
-      (user as { full_name?: string | null; email?: string | undefined }).full_name?.trim() ||
-      user.email ||
-      "Provider";
+      actorProfile.full_name?.trim() || actorProfile.email || "Provider";
 
     try {
       if (
