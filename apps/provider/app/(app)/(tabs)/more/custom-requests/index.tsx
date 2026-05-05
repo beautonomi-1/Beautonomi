@@ -104,8 +104,7 @@ export default function CustomRequestsListScreen() {
           </View>
         ) : (
           <View style={{ paddingBottom: 16 }}>
-            {requests.map((r) => (
-              {(() => {
+            {requests.map((r) => {
                 const offers = r.offers ?? [];
                 const paidOffer = offers.find((o) => o.status === "paid");
                 const pendingOffer = offers.find((o) => o.status === "pending" && !(o.expiration_at && new Date(o.expiration_at).getTime() < Date.now()));
@@ -169,8 +168,7 @@ export default function CustomRequestsListScreen() {
                   </View>
                 </TouchableOpacity>
                 );
-              })()}
-            ))}
+            })}
           </View>
         )}
       </ScrollView>

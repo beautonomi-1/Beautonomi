@@ -149,7 +149,7 @@ export async function POST(
 
             await sendToUser(provUserId, {
               title: "Custom request cancelled",
-              body: "The customer has cancelled their custom request. Your offer has been automatically withdrawn.",
+              message: "The customer has cancelled their custom request. Your offer has been automatically withdrawn.",
               data: { custom_request_id: id },
             });
             await insertNotification({
