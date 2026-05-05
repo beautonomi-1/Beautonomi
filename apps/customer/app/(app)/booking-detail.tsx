@@ -548,6 +548,10 @@ export default function BookingDetailScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- load is stable
   }, [booking, id, bd, errTitle]);
 
+  const openInBrowser = useCallback(() => {
+    router.push("/(app)/(tabs)/home" as never);
+  }, []);
+
   const handleReschedule = useCallback(() => {
     if (!booking) return;
     haptic.light();
