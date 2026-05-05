@@ -34,7 +34,9 @@ export async function GET(
           slug,
           phone,
           email,
-          timezone
+          timezone,
+          rating_average,
+          review_count
         ),
         group_bookings!bookings_group_booking_id_fkey(ref_number),
         location:provider_locations(
@@ -158,7 +160,16 @@ export async function GET(
       address_country?: string; address_postal_code?: string; address_latitude?: number; address_longitude?: number;
       location?: { name?: string; address_line1?: string; address_line2?: string; city?: string; country?: string };
       special_requests?: string; group_booking_id?: string; group_bookings?: { ref_number?: string };
-      provider?: { id: string; business_name?: string; slug?: string; phone?: string; email?: string };
+      provider?: {
+        id: string;
+        business_name?: string;
+        slug?: string;
+        phone?: string;
+        email?: string;
+        timezone?: string | null;
+        rating_average?: number | null;
+        review_count?: number | null;
+      };
     };
     const bookingData = booking as BookingDataRow;
     const transformedBooking = {
@@ -190,11 +201,15 @@ export async function GET(
       travel_fee: Number((bookingData as Record<string, unknown>).travel_fee ?? 0),
       tax_amount: Number((bookingData as Record<string, unknown>).tax_amount ?? 0),
       tax_rate: Number((bookingData as Record<string, unknown>).tax_rate ?? 0),
-      platform_fee_amount: Number((bookingData as Record<string, unknown>).platform_fee_amount ?? (bookingData as Record<string, unknown>).service_fee_amount ?? 0),
-      platform_fee_percentage: Number((bookingData as Record<string, unknown>).platform_fee_percentage ?? (bookingData as Record<string, unknown>).service_fee_percentage ?? 0),
-      platform_service_fee: Number((bookingData as Record<string, unknown>).platform_fee_amount ?? (bookingData as Record<string, unknown>).platform_service_fee ?? (bookingData as Record<string, unknown>).service_fee_amount ?? 0),
-      service_fee_amount: Number((bookingData as Record<string, unknown>).platform_fee_amount ?? (bookingData as Record<string, unknown>).service_fee_amount ?? 0),
-      service_fee_percentage: Number((bookingData as Record<string, unknown>).platform_fee_percentage ?? (bookingData as Record<string, unknown>).service_fee_percentage ?? 0),
+      // Use || (not ??) so a stored 0 falls through to the legacy alias column.
+      // Bookings created before the platform_fee_* columns were added have
+      // platform_fee_amount = 0 (DEFAULT) while service_fee_amount holds the
+      // real value — ??(nullish) would return 0 and hide the fee line.
+      platform_fee_amount: Number((bookingData as Record<string, unknown>).platform_fee_amount || (bookingData as Record<string, unknown>).service_fee_amount || 0),
+      platform_fee_percentage: Number((bookingData as Record<string, unknown>).platform_fee_percentage || (bookingData as Record<string, unknown>).service_fee_percentage || 0),
+      platform_service_fee: Number((bookingData as Record<string, unknown>).platform_fee_amount || (bookingData as Record<string, unknown>).platform_service_fee || (bookingData as Record<string, unknown>).service_fee_amount || 0),
+      service_fee_amount: Number((bookingData as Record<string, unknown>).platform_fee_amount || (bookingData as Record<string, unknown>).service_fee_amount || 0),
+      service_fee_percentage: Number((bookingData as Record<string, unknown>).platform_fee_percentage || (bookingData as Record<string, unknown>).service_fee_percentage || 0),
       total_amount: Number(bookingData.total_amount ?? 0),
       total_paid: Number((bookingData as Record<string, unknown>).total_paid ?? 0),
       total_refunded: Number((bookingData as Record<string, unknown>).total_refunded ?? 0),
@@ -320,6 +335,8 @@ export async function GET(
         phone: bookingData.provider.phone,
         email: bookingData.provider.email,
         timezone: (bookingData.provider as { timezone?: string | null }).timezone ?? null,
+        rating_average: Number((bookingData.provider as { rating_average?: number | null }).rating_average ?? 0) || null,
+        review_count: Number((bookingData.provider as { review_count?: number | null }).review_count ?? 0) || null,
       } : undefined,
       /** IANA zone for formatting `scheduled_at` (provider default). */
       display_time_zone: resolveBookingDisplayTimeZone(

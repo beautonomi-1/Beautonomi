@@ -12,6 +12,8 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
+  Modal,
+  Pressable,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -53,6 +55,8 @@ type CustomRequest = {
     duration_minutes?: number;
     expiration_at?: string;
     notes?: string | null;
+    travel_fee?: number | null;
+    booking_id?: string | null;
     staff?: { name?: string | null } | null;
     location?: { name?: string | null } | null;
   }[];
@@ -74,6 +78,29 @@ interface AvailableSlotsResponse {
   slots?: string[];
   slot_grid?: AvailableSlotRow[];
   provider_timezone?: string | null;
+}
+
+interface CrOfferDetail {
+  id: string;
+  status: string;
+  price?: number;
+  currency?: string;
+  duration_minutes?: number;
+  expiration_at?: string | null;
+  notes?: string | null;
+  travel_fee?: number | null;
+  booking_id?: string | null;
+  request?: {
+    service_name?: string | null;
+    description?: string | null;
+    location_type?: string | null;
+    preferred_start_at?: string | null;
+    address_line1?: string | null;
+    address_line2?: string | null;
+    address_city?: string | null;
+    address_state?: string | null;
+    address_postal_code?: string | null;
+  } | null;
 }
 
 function dateKey(date: Date): string {
@@ -146,6 +173,9 @@ export default function CustomRequestDetailScreen() {
   const [travelFeePreviewLoading, setTravelFeePreviewLoading] = useState(false);
   const [travelPreviewMinutes, setTravelPreviewMinutes] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [offerDetailVisible, setOfferDetailVisible] = useState(false);
+  const [offerDetailLoading, setOfferDetailLoading] = useState(false);
+  const [offerDetailData, setOfferDetailData] = useState<CrOfferDetail | null>(null);
   const selectedDateKey = dateKey(scheduledAt);
   const selectedTimeKey = timeKey(scheduledAt);
   const dateOptions = useMemo(() => {
@@ -380,6 +410,20 @@ export default function CustomRequestDetailScreen() {
     router,
   ]);
 
+  const openOfferDetail = useCallback(async (offerId: string) => {
+    setOfferDetailData(null);
+    setOfferDetailVisible(true);
+    setOfferDetailLoading(true);
+    try {
+      const res = await api.get<CrOfferDetail>(`/api/provider/custom-offers/${offerId}`);
+      if (res.data) setOfferDetailData(res.data);
+    } catch {
+      // sheet shows error state
+    } finally {
+      setOfferDetailLoading(false);
+    }
+  }, []);
+
   if (!requestId) {
     return (
       <ScreenContainer scrollable={false}>
@@ -501,26 +545,70 @@ export default function CustomRequestDetailScreen() {
           </View>
         ) : null}
 
-        {request.offers && request.offers.length > 0 ? (
+        {request.offers && request.offers.length > 0 ? (() => {
+          const allInactive = request.offers!.every((o) => {
+            if (o.status === "withdrawn" || o.status === "paid" || o.status === "expired") return true;
+            if (o.expiration_at && new Date(o.expiration_at).getTime() < Date.now()) return true;
+            return false;
+          });
+          const hasWithdrawnOrExpired = request.offers!.some((o) => o.status === "withdrawn" || o.status === "expired" || (o.expiration_at && new Date(o.expiration_at).getTime() < Date.now()));
+          const noneActive = allInactive && !request.offers!.some((o) => o.status === "paid");
+          return (
           <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-white p-4")}>
             <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Offers</Text>
-            {request.offers.map((o) => (
-              <View key={o.id} style={twStyle("mb-3 border-b border-gray-100 pb-3 last:mb-0 last:border-0")}>
-                <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                  {formatCurrency(Number(o.price ?? 0), o.currency ?? requestCurrency)} · {o.status ?? "—"}
+            {noneActive && canSendOffer ? (
+              <View style={twStyle("mb-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2")}>
+                <Text style={twStyle("text-xs text-blue-800")}>
+                  {hasWithdrawnOrExpired ? "Your previous offer was withdrawn or expired." : "No active offer."} You can send a new one below.
                 </Text>
-                <Text style={twStyle("text-xs text-gray-500")}>
+              </View>
+            ) : null}
+            {request.offers!.map((o) => {
+              const isInactive = o.status === "withdrawn" || o.status === "expired" || (o.expiration_at && new Date(o.expiration_at).getTime() < Date.now());
+              const isPaid = o.status === "paid";
+              const statusColour = isPaid ? "#166534" : isInactive ? "#6b7280" : "#1E40AF";
+              const statusBg = isPaid ? "#DCFCE7" : isInactive ? "#F3F4F6" : "#EFF6FF";
+              return (
+              <TouchableOpacity
+                key={o.id}
+                activeOpacity={0.8}
+                onPress={() => openOfferDetail(o.id)}
+                style={twStyle("mb-3 border-b border-gray-100 pb-3 last:mb-0 last:border-0")}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                    {formatCurrency(Number(o.price ?? 0), o.currency ?? requestCurrency)}
+                    {typeof o.travel_fee === "number" && o.travel_fee > 0
+                      ? `  + ${formatCurrency(o.travel_fee, o.currency ?? requestCurrency)} travel`
+                      : ""}
+                  </Text>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: statusBg }}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: statusColour, textTransform: "capitalize" }}>
+                      {o.status ?? "pending"}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>
                   {o.duration_minutes != null ? `${o.duration_minutes} min` : ""}
                   {o.staff?.name ? ` · ${o.staff.name}` : ""}
                   {o.location?.name ? ` · ${o.location.name}` : ""}
                 </Text>
                 {o.expiration_at ? (
-                  <Text style={twStyle("text-xs text-gray-400")}>Expires: {formatDateTimeSafe(o.expiration_at)}</Text>
+                  <Text style={[twStyle("text-xs mt-0.5"), { color: isInactive ? "#B45309" : "#6b7280" }]}>
+                    {isInactive && o.status !== "paid" && o.status !== "withdrawn" ? "Expired: " : "Expires: "}
+                    {formatDateTimeSafe(o.expiration_at)}
+                  </Text>
                 ) : null}
-              </View>
-            ))}
+                {o.notes ? (
+                  <Text style={twStyle("text-xs text-gray-500 mt-1 italic")}>{o.notes}</Text>
+                ) : null}
+                <Text style={twStyle("text-[10px] text-gray-400 mt-1 text-right")}>Tap for full details</Text>
+              </TouchableOpacity>
+              );
+            })}
           </View>
-        ) : null}
+          );
+        })() : null}
 
         {!canSendOffer ? (
           <View style={twStyle("mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4")}>
@@ -727,6 +815,135 @@ export default function CustomRequestDetailScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Offer detail sheet */}
+      <Modal
+        visible={offerDetailVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setOfferDetailVisible(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}
+          onPress={() => setOfferDetailVisible(false)}
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 8, paddingBottom: 36, maxHeight: "88%" }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#e5e7eb", alignSelf: "center", marginBottom: 14 }} />
+            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 20, marginBottom: 18 }}>
+              <Text style={{ flex: 1, fontSize: 17, fontWeight: "700", color: "#111827" }}>Offer details</Text>
+              <TouchableOpacity onPress={() => setOfferDetailVisible(false)} hitSlop={12}>
+                <Text style={{ fontSize: 22, color: "#9ca3af" }}>×</Text>
+              </TouchableOpacity>
+            </View>
+            {offerDetailLoading ? (
+              <View style={{ alignItems: "center", paddingVertical: 40 }}>
+                <ActivityIndicator size="large" color="#0f3460" />
+              </View>
+            ) : !offerDetailData ? (
+              <View style={{ alignItems: "center", paddingVertical: 40, paddingHorizontal: 20 }}>
+                <Text style={{ color: "#6b7280", textAlign: "center" }}>Could not load offer details.</Text>
+              </View>
+            ) : (() => {
+              const d = offerDetailData;
+              const req = d.request;
+              const isExpired = d.status === "expired" || (d.expiration_at && new Date(d.expiration_at).getTime() < Date.now());
+              const isWithdrawn = d.status === "withdrawn";
+              const isPaid = d.status === "paid";
+              const isPending = d.status === "pending";
+
+              const fmtDate = (iso: string | null | undefined) => {
+                if (!iso) return "—";
+                return new Date(iso).toLocaleString("en-ZA", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+              };
+
+              const statusBadge = isWithdrawn
+                ? { label: "Withdrawn", bg: "#FEF3C7", text: "#92400E" }
+                : isExpired
+                ? { label: "Expired", bg: "#F3F4F6", text: "#6B7280" }
+                : isPaid
+                ? { label: "Paid / Booked", bg: "#DCFCE7", text: "#166534" }
+                : d.status === "payment_pending"
+                ? { label: "Payment in progress", bg: "#DBEAFE", text: "#1D4ED8" }
+                : { label: "Pending acceptance", bg: "#EFF6FF", text: "#1E40AF" };
+
+              const locLabel = req?.location_type === "at_home" ? "At home" : req?.location_type === "at_salon" ? "At salon" : req?.location_type ?? "—";
+              const addrParts = [req?.address_line1, req?.address_line2, req?.address_city, req?.address_state, req?.address_postal_code].filter(Boolean);
+
+              return (
+                <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 8 }} showsVerticalScrollIndicator={false}>
+                  <View style={{ alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: statusBadge.bg, marginBottom: 16 }}>
+                    <Text style={{ color: statusBadge.text, fontSize: 12, fontWeight: "700" }}>{statusBadge.label}</Text>
+                  </View>
+                  {req?.service_name ? (
+                    <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827", marginBottom: 4 }}>{req.service_name}</Text>
+                  ) : null}
+                  <Text style={{ fontSize: 28, fontWeight: "800", color: "#0f3460", marginBottom: 4 }}>
+                    {formatCurrency(d.price ?? 0, d.currency ?? "")}
+                    {typeof d.travel_fee === "number" && d.travel_fee > 0
+                      ? `  + ${formatCurrency(d.travel_fee, d.currency ?? "")} travel`
+                      : ""}
+                  </Text>
+                  {req?.description ? (
+                    <Text style={{ color: "#4b5563", fontSize: 14, marginBottom: 14, lineHeight: 20 }}>{req.description}</Text>
+                  ) : null}
+                  <View style={{ gap: 10 }}>
+                    {d.duration_minutes ? (
+                      <Text style={{ color: "#374151", fontSize: 14 }}>⏱ {d.duration_minutes} min</Text>
+                    ) : null}
+                    {req?.preferred_start_at ? (
+                      <Text style={{ color: "#374151", fontSize: 14 }}>📅 {fmtDate(req.preferred_start_at)}</Text>
+                    ) : null}
+                    {d.expiration_at ? (
+                      <Text style={{ color: isExpired ? "#B45309" : "#374151", fontSize: 14 }}>⏳ Offer expires: {fmtDate(d.expiration_at)}</Text>
+                    ) : null}
+                    {req?.location_type ? (
+                      <View>
+                        <Text style={{ color: "#374151", fontSize: 14 }}>📍 {locLabel}</Text>
+                        {addrParts.length > 0 ? (
+                          <Text style={{ color: "#6b7280", fontSize: 12, marginTop: 2, marginLeft: 20 }}>{addrParts.join(", ")}</Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    {d.notes ? (
+                      <Text style={{ color: "#374151", fontSize: 14, lineHeight: 20 }}>📝 {d.notes}</Text>
+                    ) : null}
+                  </View>
+                  {isPending && d.id ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setOfferDetailVisible(false);
+                        setTimeout(() => {
+                          Alert.alert("Withdraw offer", "Are you sure you want to withdraw this offer?", [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: "Withdraw",
+                              style: "destructive",
+                              onPress: async () => {
+                                try {
+                                  await api.post(`/api/provider/custom-offers/${d.id}/retract`, {});
+                                  refresh();
+                                } catch {
+                                  Alert.alert("Error", "Could not withdraw the offer.");
+                                }
+                              },
+                            },
+                          ]);
+                        }, 300);
+                      }}
+                      style={{ marginTop: 24, borderRadius: 12, backgroundColor: "#F59E0B", alignItems: "center", paddingVertical: 14 }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Withdraw offer</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </ScrollView>
+              );
+            })()}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenContainer>
   );
 }

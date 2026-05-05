@@ -33,6 +33,8 @@ export async function GET(
         staff_id,
         travel_fee,
         status,
+        booking_id,
+        paid_at,
         request:custom_requests(
           id,
           customer_id,

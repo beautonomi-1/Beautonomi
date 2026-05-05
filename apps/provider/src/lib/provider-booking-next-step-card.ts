@@ -42,12 +42,30 @@ export function getBookingNextStepCard(
       color: "#7c3aed",
     };
   }
+  if (status === "waiting") {
+    return {
+      title: "Client is waiting",
+      description: "The client has arrived and is in the waiting area. Check them in when you are ready.",
+      icon: "time-outline",
+      color: "#d97706",
+    };
+  }
+  if (status === "checked_in") {
+    return {
+      title: "Client checked in",
+      description: options.isAtHome
+        ? "Client arrival confirmed. Start the service when ready."
+        : "Client is at your station. Start the service when ready.",
+      icon: "person-circle-outline",
+      color: "#2563eb",
+    };
+  }
   if (status === "confirmed" || status === "booked") {
     return {
       title: options.isAtHome ? "Ready for journey" : options.isAtSalon ? "Ready for check-in" : "Ready for service",
       description: options.isAtHome
         ? "Start journey when you leave for the client."
-        : "Use client arrived or start service when the customer is ready.",
+        : "Use Change Status to check in the client or start service.",
       icon: options.isAtHome ? "car-outline" : "play-circle-outline",
       color: "#2563eb",
     };

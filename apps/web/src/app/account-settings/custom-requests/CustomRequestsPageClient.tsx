@@ -320,10 +320,34 @@ export default function CustomRequestsPageClient({
 
   const [depositChoiceOfferId, setDepositChoiceOfferId] = useState<string | null>(null);
 
+  // Offer detail sheet
+  const [offerDetailOpen, setOfferDetailOpen] = useState(false);
+  const [offerDetailLoading, setOfferDetailLoading] = useState(false);
+  const [offerDetailData, setOfferDetailData] = useState<Record<string, any> | null>(null);
+  const [isAcceptingDetail, setIsAcceptingDetail] = useState(false);
+
+  const openOfferDetail = async (offerId: string) => {
+    setOfferDetailOpen(true);
+    setOfferDetailLoading(true);
+    setOfferDetailData(null);
+    try {
+      const endpoint = isProvider
+        ? `/api/provider/custom-offers/${offerId}`
+        : `/api/me/custom-offers/${offerId}`;
+      const res = await fetcher.get<{ data: Record<string, any> }>(endpoint);
+      setOfferDetailData(res.data);
+    } catch {
+      toast.error("Failed to load offer details");
+      setOfferDetailOpen(false);
+    } finally {
+      setOfferDetailLoading(false);
+    }
+  };
+
   const acceptAndPay = async (offerId: string, paymentOption: "full" | "deposit" = "full") => {
     try {
-      const res = await fetcher.post<{ data: { paymentUrl: string } }>(`/api/me/custom-offers/${offerId}/accept`, { payment_option: paymentOption });
-      const url = res.data.paymentUrl;
+      const res = await fetcher.post<{ data: { paymentUrl?: string; payment_url?: string } }>(`/api/me/custom-offers/${offerId}/accept`, { payment_option: paymentOption });
+      const url = res.data?.paymentUrl ?? res.data?.payment_url;
       if (url) {
         window.location.href = url;
         return;
@@ -527,48 +551,83 @@ export default function CustomRequestsPageClient({
 
                 <div className="mt-4 space-y-2">
                   {r.offers && r.offers.length > 0 ? (
-                    r.offers.map((o) => (
-                      <div key={o.id} className="border rounded-md p-3 flex items-center justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium">
-                            Offer: {o.currency} {o.price} • {o.duration_minutes} mins
-                          </div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            Expires: {new Date(o.expiration_at).toLocaleString()} • <span className="capitalize">{o.status}</span>
-                          </div>
-                          {(o.location?.name || o.staff?.name) && (
-                            <div className="text-sm text-gray-600 mt-1">
-                              {o.location?.name && <span>Venue: {o.location.name}</span>}
-                              {o.location?.name && o.staff?.name && " • "}
-                              {o.staff?.name && <span>Staff: {o.staff.name}</span>}
+                    <>
+                      {r.offers.map((o) => {
+                        const st = String(o.status || "pending").toLowerCase();
+                        const isPaid = st === "paid";
+                        const isWithdrawn = st === "withdrawn" || st === "declined";
+                        const isExpired = st === "expired";
+                        const isPaymentPending = st === "payment_pending";
+                        const isInactive = isPaid || isWithdrawn || isExpired;
+                        const badgeClass = isPaid
+                          ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                          : isWithdrawn
+                            ? "bg-slate-100 text-slate-500 border border-slate-200"
+                            : isExpired
+                              ? "bg-amber-100 text-amber-700 border border-amber-200"
+                              : isPaymentPending
+                                ? "bg-yellow-100 text-yellow-700 border border-yellow-200"
+                                : "bg-blue-50 text-blue-700 border border-blue-200";
+                        const badgeLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : isPaymentPending ? "Processing…" : "Pending";
+                        return (
+                          <div
+                            key={o.id}
+                            className={`border rounded-md p-3 flex items-start justify-between gap-4 transition-colors ${!isInactive || isPaid ? "cursor-pointer hover:bg-gray-50" : ""}`}
+                            onClick={() => openOfferDetail(o.id)}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>
+                                  {badgeLabel}
+                                </span>
+                                {isPaymentPending && <span className="w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin inline-block" />}
+                              </div>
+                              <div className="font-medium">
+                                {o.currency} {o.price} • {o.duration_minutes} mins
+                              </div>
+                              <div className="text-sm text-gray-500 mt-0.5">
+                                Expires: {new Date(o.expiration_at).toLocaleDateString()}
+                              </div>
+                              {(o.location?.name || o.staff?.name) && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {o.location?.name && <span>Venue: {o.location.name}</span>}
+                                  {o.location?.name && o.staff?.name && " · "}
+                                  {o.staff?.name && <span>Staff: {o.staff.name}</span>}
+                                </div>
+                              )}
+                              {o.notes ? <div className="text-xs text-gray-600 mt-1 line-clamp-2">{o.notes}</div> : null}
+                              <div className="text-[11px] text-gray-400 mt-1">Tap for details</div>
                             </div>
-                          )}
-                          {(o.scheduled_at ?? r.preferred_start_at) && (
-                            <div className="text-sm text-gray-600">
-                              Scheduled: {new Date(o.scheduled_at ?? r.preferred_start_at!).toLocaleString()}
-                            </div>
-                          )}
-                          {o.notes ? <div className="text-sm mt-1">{o.notes}</div> : null}
-                        </div>
-                        {!isProvider && (
-                          <div className="flex gap-2">
-                            {o.status === "paid" ? (
-                              <Button variant="secondary" disabled>
-                                Paid
-                              </Button>
-                            ) : ["withdrawn", "declined", "expired", "accepted"].includes(
-                                String(o.status || "").toLowerCase()
-                              ) ? (
-                              <Button variant="secondary" disabled className="capitalize">
-                                {o.status === "withdrawn" ? "Withdrawn" : o.status}
-                              </Button>
-                            ) : (
-                              <Button onClick={() => setDepositChoiceOfferId(o.id)}>Accept & Pay</Button>
+                            {!isProvider && (
+                              <div className="flex gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                {isPaid ? (
+                                  <Button variant="secondary" size="sm" disabled>Paid</Button>
+                                ) : isInactive ? (
+                                  <Button variant="secondary" size="sm" disabled className="capitalize">{badgeLabel}</Button>
+                                ) : isPaymentPending ? (
+                                  <Button variant="secondary" size="sm" disabled>Processing…</Button>
+                                ) : (
+                                  <Button size="sm" onClick={() => setDepositChoiceOfferId(o.id)}>Accept & Pay</Button>
+                                )}
+                              </div>
                             )}
                           </div>
+                        );
+                      })}
+                      {/* All-withdrawn/expired hint */}
+                      {r.offers.length > 0 &&
+                        r.offers.every((o) => ["withdrawn", "declined", "expired"].includes(String(o.status || "").toLowerCase())) &&
+                        ["pending", "offered"].includes(r.status) && (
+                          <div className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+                            <span className="mt-0.5 text-blue-500 shrink-0">ℹ</span>
+                            <span>
+                              {isProvider
+                                ? "All your offers have been withdrawn or expired. You can send a new offer below."
+                                : "All offers have been withdrawn or expired. Your request is still open — a new offer may arrive."}
+                            </span>
+                          </div>
                         )}
-                      </div>
-                    ))
+                    </>
                   ) : (
                     <div className="text-sm text-gray-600">
                       {isProvider ? "No offers sent yet." : "No offers yet."}
@@ -1057,6 +1116,150 @@ export default function CustomRequestsPageClient({
               Pay Deposit Only
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Offer Detail Sheet */}
+      <Dialog open={offerDetailOpen} onOpenChange={setOfferDetailOpen}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Custom Offer Details</DialogTitle>
+          </DialogHeader>
+          {offerDetailLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : offerDetailData ? (() => {
+            const d = offerDetailData;
+            const req = d.request ?? d;
+            const rawStatus = String(d.status ?? "pending").toLowerCase();
+            const isPaid = rawStatus === "paid" || !!d.booking_id;
+            const isWithdrawn = rawStatus === "withdrawn";
+            const isExpired = rawStatus === "expired";
+            const isPaymentPending = rawStatus === "payment_pending";
+            const statusLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : isPaymentPending ? "Processing…" : "Pending";
+            const statusClass = isPaid
+              ? "bg-emerald-100 text-emerald-700"
+              : isWithdrawn ? "bg-slate-100 text-slate-600"
+                : isExpired ? "bg-amber-100 text-amber-700"
+                  : isPaymentPending ? "bg-yellow-100 text-yellow-700"
+                    : "bg-blue-50 text-blue-700";
+            return (
+              <div className="space-y-4 pb-2">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusClass}`}>{statusLabel}</span>
+                </div>
+                {(req.service_name || req.description) && (
+                  <div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Service</div>
+                    <div className="font-semibold text-gray-900">{req.service_name || req.description}</div>
+                  </div>
+                )}
+                <div className="flex gap-6">
+                  <div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Price</div>
+                    <div className="font-bold text-lg text-gray-900">{d.currency} {d.price}</div>
+                    {d.travel_fee ? <div className="text-xs text-gray-500">+ {d.currency} {d.travel_fee} travel fee</div> : null}
+                  </div>
+                  {d.duration_minutes && (
+                    <div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Duration</div>
+                      <div className="font-semibold text-gray-900">{d.duration_minutes} mins</div>
+                    </div>
+                  )}
+                </div>
+                {(d.scheduled_at ?? req.preferred_start_at) && (
+                  <div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Preferred Time</div>
+                    <div className="text-sm text-gray-800">{new Date(d.scheduled_at ?? req.preferred_start_at).toLocaleString()}</div>
+                  </div>
+                )}
+                {(req.location_type || d.location?.name) && (
+                  <div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Location</div>
+                    <div className="text-sm text-gray-800 capitalize">
+                      {d.location?.name || (req.location_type === "at_home" ? "At your home" : req.location_type === "at_salon" ? "At the salon" : req.location_type || "–")}
+                    </div>
+                    {req.location_type === "at_home" && req.address_line1 && (
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {[req.address_line1, req.address_line2, req.address_city, req.address_country].filter(Boolean).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {d.expiration_at && (
+                  <div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Offer Expires</div>
+                    <div className={`text-sm ${isExpired ? "text-amber-600 font-medium" : "text-gray-800"}`}>
+                      {new Date(d.expiration_at).toLocaleString()}{isExpired ? " (expired)" : ""}
+                    </div>
+                  </div>
+                )}
+                {d.notes && (
+                  <div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Notes</div>
+                    <div className="text-sm text-gray-800 bg-gray-50 rounded-lg p-2.5">{d.notes}</div>
+                  </div>
+                )}
+                {isExpired && (
+                  <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    This offer has expired. The provider may send a new one.
+                  </div>
+                )}
+                {isWithdrawn && (
+                  <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    This offer has been withdrawn. The provider may send a new one.
+                  </div>
+                )}
+                <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                  {!isProvider && !isPaid && !isWithdrawn && !isExpired && !isPaymentPending && d.id && (
+                    <Button
+                      className="w-full"
+                      disabled={isAcceptingDetail}
+                      onClick={() => {
+                        setOfferDetailOpen(false);
+                        setDepositChoiceOfferId(d.id);
+                      }}
+                    >
+                      Accept & Pay
+                    </Button>
+                  )}
+                  {!isProvider && isPaid && d.booking_id && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => { window.location.href = `/account-settings/bookings/${d.booking_id}`; }}
+                    >
+                      View Booking →
+                    </Button>
+                  )}
+                  {isProvider && !isPaid && !isWithdrawn && !isExpired && d.id && (
+                    <Button
+                      variant="outline"
+                      className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
+                      onClick={async () => {
+                        if (!confirm("Are you sure you want to withdraw this offer?")) return;
+                        try {
+                          await fetcher.post(`/api/provider/custom-offers/${d.id}/retract`, {});
+                          toast.success("Offer withdrawn");
+                          setOfferDetailOpen(false);
+                          const locQ = "";
+                          const res = await fetcher.get<{ data: CustomRequest[] }>(isProvider ? `/api/provider/custom-requests${locQ}` : "/api/me/custom-requests");
+                          setItems(res.data || []);
+                        } catch {
+                          toast.error("Failed to withdraw offer");
+                        }
+                      }}
+                    >
+                      Withdraw Offer
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })() : (
+            <div className="text-sm text-gray-500 py-4 text-center">Could not load offer details.</div>
+          )}
         </DialogContent>
       </Dialog>
       </div>

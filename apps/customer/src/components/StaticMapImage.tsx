@@ -1,11 +1,15 @@
 /**
  * Static Mapbox map image — pin(s) at coordinates (shared with booking detail).
+ * When Mapbox token is unavailable, shows an "Open in Maps" action instead.
  */
 import { useEffect, useState } from "react";
 import {
   View,
   ActivityIndicator,
   Text,
+  TouchableOpacity,
+  Linking,
+  Platform,
   type ImageStyle,
   type StyleProp,
   type ViewStyle,
@@ -13,6 +17,60 @@ import {
 import { Image } from "expo-image";
 import { Colors } from "@/constants/colors";
 import { getMapboxConfig } from "@/lib/third-party-config";
+
+/** Build URLs for Apple / Google maps from coordinates or plain address query. */
+export function buildOpenInMapsUrls(opts: {
+  latitude?: number;
+  longitude?: number;
+  /** Full address — used when coords missing or alongside coords for search UX */
+  query?: string;
+}): { primary: string; fallback?: string } {
+  const lat = opts.latitude;
+  const lng = opts.longitude;
+  const q = opts.query?.trim();
+  const hasCoords =
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng);
+  if (hasCoords) {
+    const encoded = encodeURIComponent(`${lat},${lng}`);
+    if (Platform.OS === "ios") {
+      return {
+        primary: `http://maps.apple.com/?ll=${lat},${lng}`,
+        fallback: `https://maps.google.com/?q=${encoded}`,
+      };
+    }
+    return {
+      primary: `https://maps.google.com/?q=${encoded}`,
+      fallback: `geo:${lat},${lng}?q=${encoded}`,
+    };
+  }
+  if (q) {
+    const enc = encodeURIComponent(q);
+    return { primary: `https://maps.google.com/maps/search/?api=1&query=${enc}` };
+  }
+  return { primary: "" };
+}
+
+export async function openInMaps(opts: Parameters<typeof buildOpenInMapsUrls>[0]): Promise<boolean> {
+  const { primary, fallback } = buildOpenInMapsUrls(opts);
+  if (!primary) return false;
+  const ok = await Linking.canOpenURL(primary).catch(() => false);
+  if (ok) {
+    await Linking.openURL(primary);
+    return true;
+  }
+  if (fallback) {
+    const ok2 = await Linking.canOpenURL(fallback).catch(() => false);
+    if (ok2) {
+      await Linking.openURL(fallback);
+      return true;
+    }
+  }
+  await Linking.openURL(primary.startsWith("http") ? primary : `https://${primary}`);
+  return true;
+}
 
 interface StaticMapImageProps {
   latitude: number;
@@ -26,6 +84,8 @@ interface StaticMapImageProps {
   borderRadius?: number;
   /** Merged into map image / placeholders (e.g. `{ borderRadius: 12 }`). */
   style?: StyleProp<ImageStyle | ViewStyle>;
+  /** When static map fails, open Apple/Google Maps with coords or this address string */
+  fallbackQuery?: string;
 }
 
 export function StaticMapImage({
@@ -38,6 +98,7 @@ export function StaticMapImage({
   zoom = 14,
   borderRadius = 16,
   style,
+  fallbackQuery,
 }: StaticMapImageProps) {
   const [uri, setUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,16 +163,40 @@ export function StaticMapImage({
   }
 
   if (!uri) {
+    const canOpen =
+      (Number.isFinite(latitude) && Number.isFinite(longitude)) ||
+      Boolean(fallbackQuery?.trim());
     return (
-      <View
+      <TouchableOpacity
+        activeOpacity={0.85}
+        disabled={!canOpen}
+        onPress={() =>
+          openInMaps({
+            latitude,
+            longitude,
+            query: fallbackQuery,
+          }).catch(() => {})
+        }
         style={[
           baseSize,
-          { backgroundColor: "#f3f4f6", justifyContent: "center", alignItems: "center" },
+          {
+            backgroundColor: "#eef2ff",
+            justifyContent: "center",
+            alignItems: "center",
+            paddingHorizontal: 12,
+          },
           style,
         ]}
       >
-        <Text style={{ fontSize: 11, color: "#9ca3af" }}>Map unavailable</Text>
-      </View>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary, textAlign: "center" }}>
+          {canOpen ? "Open in Maps" : "Map unavailable"}
+        </Text>
+        {canOpen ? (
+          <Text style={{ fontSize: 11, color: Colors.gray[500], marginTop: 4, textAlign: "center" }}>
+            Opens in Apple or Google Maps
+          </Text>
+        ) : null}
+      </TouchableOpacity>
     );
   }
 

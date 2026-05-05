@@ -492,11 +492,7 @@ export default function ProductCheckoutPage() {
                 Online payment is currently unavailable. Please pay when you receive your order.
               </p>
             )}
-            {!cashEnabledOnPlatform && (
-              <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                Pay-on-delivery is disabled by platform policy. Please complete payment online.
-              </p>
-            )}
+            {/* Pay-on-delivery availability is reflected by showing/hiding the cash option below — no need to expose internal platform policy to customers */}
             <div className="space-y-3">
               {paystackEnabled && (
                 <label

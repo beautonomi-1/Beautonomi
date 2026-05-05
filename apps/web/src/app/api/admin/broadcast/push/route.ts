@@ -35,6 +35,13 @@ const broadcastPushBodySchema = z
     ios_interruption_level: z.enum(["passive", "active", "time_sensitive", "critical"]).optional(),
     /** Merged into the push `data` payload (with admin_broadcast). Values should be string-serializable. */
     additional_data: z.record(z.string(), z.unknown()).optional(),
+    announcement_type: z.enum(["general", "promotion", "event", "news"]).default("general"),
+    /** Cover media — image attaches to OS push; video is in-app only */
+    media_url: z.string().max(2000).optional(),
+    media_type: z.enum(["image", "video"]).optional(),
+    cta_label: z.string().max(80).optional(),
+    cta_url: z.string().max(2000).optional(),
+    expires_at: z.string().max(80).optional(),
   })
   .superRefine((val, ctx) => {
     if (val.recipient_type === "custom" && (!val.user_ids || val.user_ids.length === 0)) {
@@ -85,6 +92,28 @@ export async function POST(request: NextRequest) {
         void new URL(b.image.trim());
       } catch {
         return errorResponse("image must be a valid URL (e.g. https://…)", "VALIDATION_ERROR", 400);
+      }
+    }
+    const mediaTrim = b.media_url?.trim() ?? "";
+    if (mediaTrim) {
+      try {
+        void new URL(mediaTrim);
+      } catch {
+        return errorResponse("media_url must be a valid URL (e.g. https://…)", "VALIDATION_ERROR", 400);
+      }
+    }
+    const ctaUrlTrim = b.cta_url?.trim() ?? "";
+    if (ctaUrlTrim) {
+      try {
+        void new URL(ctaUrlTrim);
+      } catch {
+        return errorResponse("cta_url must be a valid URL (e.g. https://…)", "VALIDATION_ERROR", 400);
+      }
+    }
+    if (b.expires_at?.trim()) {
+      const t = Date.parse(b.expires_at.trim());
+      if (Number.isNaN(t)) {
+        return errorResponse("expires_at must be a valid ISO date-time string", "VALIDATION_ERROR", 400);
       }
     }
 
@@ -141,27 +170,52 @@ export async function POST(request: NextRequest) {
       b.additional_data && typeof b.additional_data === "object" && !Array.isArray(b.additional_data)
         ? (b.additional_data as Record<string, unknown>)
         : {};
-    const trimmedUrl = b.url?.trim() || "";
+
+    const DEFAULT_ANNOUNCEMENTS_DEEP_LINK = "/(app)/announcements";
+    const adminUrlTrim = b.url?.trim() || "";
+    const resolvedDeepLink = adminUrlTrim || DEFAULT_ANNOUNCEMENTS_DEEP_LINK;
+
+    const mediaUrlTrim = b.media_url?.trim() ?? "";
+    const announcementType = b.announcement_type ?? "general";
+    const ctaLab = b.cta_label?.trim() ?? "";
+    const expiresTrim = b.expires_at?.trim() ?? "";
+
+    const extraDataMerged: Record<string, unknown> = {
+      ...extraData,
+      announcement_type: announcementType,
+      ...(mediaUrlTrim ? { media_url: mediaUrlTrim } : {}),
+      ...(b.media_type ? { media_type: b.media_type } : {}),
+      ...(ctaLab ? { cta_label: ctaLab } : {}),
+      ...(ctaUrlTrim ? { cta_url: ctaUrlTrim } : {}),
+      ...(expiresTrim ? { expires_at: expiresTrim } : {}),
+    };
+
     const dataPayload: Record<string, unknown> = {
       type: "admin_broadcast",
       recipient_type,
-      ...extraData,
-      ...(trimmedUrl
-        ? { url: trimmedUrl, deep_link: trimmedUrl }
-        : {}),
+      ...extraDataMerged,
+      url: resolvedDeepLink,
+      deep_link: resolvedDeepLink,
     };
 
     const notif: NotificationPayload = {
       title: b.title,
       message: b.message,
       type: "admin_broadcast",
-      url: trimmedUrl || undefined,
+      url: resolvedDeepLink,
       data: dataPayload,
     };
     if (b.name?.trim()) notif.name = b.name.trim().slice(0, 128);
     if (b.subtitle?.trim()) notif.subtitle = b.subtitle.trim();
-    if (b.image?.trim()) {
-      (notif as { image?: string }).image = b.image.trim();
+    /** Big picture / rich push: explicit image, or media_url when packaged as image (not video). */
+    const osImageUrl =
+      b.media_type !== "video" && mediaUrlTrim
+        ? mediaUrlTrim
+        : b.image?.trim()
+          ? b.image.trim()
+          : undefined;
+    if (osImageUrl) {
+      (notif as { image?: string }).image = osImageUrl;
     }
     if (b.send_after?.trim()) notif.send_after = b.send_after.trim();
     if (b.priority != null) notif.priority = b.priority;
@@ -184,7 +238,7 @@ export async function POST(request: NextRequest) {
             title: b.title,
             message: b.message,
             data: dataPayload as Record<string, unknown>,
-            link: trimmedUrl || undefined,
+            link: resolvedDeepLink,
           })),
         );
       } catch (e) {
@@ -239,6 +293,15 @@ export async function POST(request: NextRequest) {
       status: result.success ? "sent" : "failed",
       notification_id: result.notification_id,
       created_at: new Date().toISOString(),
+      metadata: {
+        announcement_type: announcementType,
+        ...(mediaUrlTrim ? { media_url: mediaUrlTrim } : {}),
+        ...(b.media_type ? { media_type: b.media_type } : {}),
+        ...(ctaLab ? { cta_label: ctaLab } : {}),
+        ...(ctaUrlTrim ? { cta_url: ctaUrlTrim } : {}),
+        ...(expiresTrim ? { expires_at: expiresTrim } : {}),
+        deep_link: resolvedDeepLink,
+      },
     });
 
     if (logError) {

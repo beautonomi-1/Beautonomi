@@ -139,7 +139,13 @@ export function timeBlockAppliesOnDate(block: ExpandableTimeBlock, ymd: string):
     const anchorParts = parseYmdParts(anchorYmd);
     const targetParts = parseYmdParts(ymd);
     if (!anchorParts || !targetParts) return false;
-    return targetParts.d === anchorParts.d;
+    // Must be the same day-of-month as the anchor date.
+    if (targetParts.d !== anchorParts.d) return false;
+    // Respect the interval (every N months): compute whole months elapsed and check modulo.
+    const monthsElapsed =
+      (targetParts.y - anchorParts.y) * 12 + (targetParts.m - anchorParts.m);
+    if (monthsElapsed < 0) return false;
+    return monthsElapsed % interval === 0;
   }
 
   return false;

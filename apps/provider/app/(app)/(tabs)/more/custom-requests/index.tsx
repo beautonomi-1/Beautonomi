@@ -23,7 +23,7 @@ type CustomRequest = {
   budget_min?: number | null;
   budget_max?: number | null;
   customer?: { full_name?: string | null; email?: string | null } | null;
-  offers?: { status?: string; price?: number; created_at?: string }[];
+  offers?: { status?: string; price?: number; currency?: string; expiration_at?: string; created_at?: string }[];
 };
 
 function formatDateSafe(value: unknown): string {
@@ -104,56 +104,71 @@ export default function CustomRequestsListScreen() {
           </View>
         ) : (
           <View style={{ paddingBottom: 16 }}>
-            {requests.map((r) => (
-              <TouchableOpacity
-                key={r.id}
-                activeOpacity={0.7}
-                onPress={() => router.push(`/(app)/(tabs)/more/custom-requests/${r.id}`)}
-                style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
-                    {r.customer?.full_name ?? r.customer?.email ?? "Customer"}
-                  </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    {r.status ? (
-                      <View
-                        style={{
-                          marginRight: 8,
-                          borderRadius: 9999,
-                          paddingHorizontal: 8,
-                          paddingVertical: 2,
-                          backgroundColor: Colors.gray[100],
-                        }}
-                      >
-                        <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[700], textTransform: "capitalize" }}>
-                          {String(r.status)}
-                        </Text>
+            {requests.map((r) => {
+                const offers = r.offers ?? [];
+                const paidOffer = offers.find((o) => o.status === "paid");
+                const pendingOffer = offers.find((o) => o.status === "pending" && !(o.expiration_at && new Date(o.expiration_at).getTime() < Date.now()));
+                const allWithdrawnOrExpired = offers.length > 0 && offers.every((o) => o.status === "withdrawn" || o.status === "expired" || (o.expiration_at && new Date(o.expiration_at).getTime() < Date.now()));
+
+                const offerBadge = paidOffer
+                  ? { label: "Booked", bg: "#DCFCE7", text: "#166534" }
+                  : pendingOffer
+                  ? { label: `Offer sent · ${formatCurrency(Number(pendingOffer.price ?? 0), pendingOffer.currency ?? r.currency ?? "")}`, bg: "#EFF6FF", text: "#1E40AF" }
+                  : allWithdrawnOrExpired
+                  ? { label: "Offer withdrawn/expired", bg: "#FEF3C7", text: "#92400E" }
+                  : offers.length === 0
+                  ? { label: "No offer yet", bg: Colors.gray[100], text: Colors.gray[500] }
+                  : null;
+
+                return (
+                <TouchableOpacity
+                  key={r.id}
+                  activeOpacity={0.7}
+                  onPress={() => router.push(`/(app)/(tabs)/more/custom-requests/${r.id}`)}
+                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <Text style={{ fontWeight: "600", color: Colors.gray[900], flex: 1, marginRight: 8 }} numberOfLines={1}>
+                      {r.customer?.full_name ?? r.customer?.email ?? "Customer"}
+                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      {r.status ? (
+                        <View style={{ marginRight: 8, borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: r.status === "cancelled" ? "#FEE2E2" : Colors.gray[100] }}>
+                          <Text style={{ fontSize: 11, fontWeight: "600", color: r.status === "cancelled" ? "#B91C1C" : Colors.gray[700], textTransform: "capitalize" }}>
+                            {String(r.status)}
+                          </Text>
+                        </View>
+                      ) : null}
+                      <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                    </View>
+                  </View>
+                  {r.description ? (
+                    <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[600] }} numberOfLines={2}>
+                      {r.description}
+                    </Text>
+                  ) : null}
+                  <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
+                      {formatDateSafe(r.created_at)}
+                      {r.location_type === "at_home" ? " · At home" : " · At salon"}
+                      {(r.budget_min != null || r.budget_max != null) && (
+                        <>
+                          {" · Budget "}
+                          {formatCurrency(Number(r.budget_min ?? 0), r.currency ?? undefined)}
+                          {" – "}
+                          {formatCurrency(Number(r.budget_max ?? 0), r.currency ?? undefined)}
+                        </>
+                      )}
+                    </Text>
+                    {offerBadge ? (
+                      <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: offerBadge.bg }}>
+                        <Text style={{ fontSize: 11, fontWeight: "600", color: offerBadge.text }}>{offerBadge.label}</Text>
                       </View>
                     ) : null}
-                    <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
                   </View>
-                </View>
-                {r.description ? (
-                  <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[600] }} numberOfLines={2}>
-                    {r.description}
-                  </Text>
-                ) : null}
-                <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[500] }}>
-                  {formatDateSafe(r.created_at)}
-                  {r.location_type === "at_home" ? " · At home" : " · At salon"}
-                  {(r.budget_min != null || r.budget_max != null) && (
-                    <>
-                      {" · Budget "}
-                      {formatCurrency(Number(r.budget_min ?? 0), r.currency ?? undefined)}
-                      {" – "}
-                      {formatCurrency(Number(r.budget_max ?? 0), r.currency ?? undefined)}
-                    </>
-                  )}
-                  {r.offers?.length ? ` · ${r.offers.length} offer(s)` : " · No offer yet"}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+                );
+            })}
           </View>
         )}
       </ScrollView>

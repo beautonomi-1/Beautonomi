@@ -22,6 +22,8 @@ export type ProviderNotificationNavPayload = {
     order_id?: string;
     on_demand_request_id?: string;
     ticket_id?: string;
+    custom_request_id?: string;
+    custom_offer_id?: string;
     [key: string]: unknown;
   };
 };
@@ -142,6 +144,41 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     return;
   }
 
+  // ── On-demand requests — must come before custom-request block so that
+  //    a bare `request_id` query param is not mis-routed as a custom_request.
+  const nType = (n.type ?? "").toLowerCase();
+  if (nType.includes("on_demand") || nType.includes("on-demand") || link.includes("on-demand")) {
+    const reqId =
+      (typeof data.on_demand_request_id === "string" ? data.on_demand_request_id.trim() : "") ||
+      getLinkParam(link, "on_demand_request_id") ||
+      getLinkParam(link, "request_id");
+    if (reqId) {
+      router.push(`/(app)/on-demand/incoming/${reqId}` as never);
+    } else {
+      router.push("/(app)/(tabs)/bookings" as never);
+    }
+    return;
+  }
+
+  // ── Custom requests / offers ─────────────────────────────────────────────
+  const customRequestId =
+    (typeof data.custom_request_id === "string" && data.custom_request_id.trim()
+      ? data.custom_request_id.trim()
+      : getLinkParam(link, "custom_request_id") ||
+        getLinkParam(link, "request_id")) || "";
+  if (customRequestId) {
+    router.push(`/(app)/(tabs)/more/custom-requests/${customRequestId}` as never);
+    return;
+  }
+  if (
+    nTypeLc === "custom_offer" ||
+    nTypeLc === "custom_request" ||
+    nTypeLc.includes("custom_request")
+  ) {
+    router.push("/(app)/(tabs)/more/custom-requests" as never);
+    return;
+  }
+
   if (data.booking_id) {
     router.push(`/(app)/(tabs)/bookings/${data.booking_id}` as never);
     return;
@@ -154,19 +191,6 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     router.push(
       `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(productOrderIdFromData)}` as never,
     );
-    return;
-  }
-  const nType = (n.type ?? "").toLowerCase();
-  if (nType.includes("on_demand") || nType.includes("on-demand") || link.includes("on-demand")) {
-    const reqId =
-      (typeof data.on_demand_request_id === "string" ? data.on_demand_request_id.trim() : "") ||
-      getLinkParam(link, "on_demand_request_id") ||
-      getLinkParam(link, "request_id");
-    if (reqId) {
-      router.push(`/(app)/on-demand/incoming/${reqId}` as never);
-    } else {
-      router.push("/(app)/(tabs)/bookings" as never);
-    }
     return;
   }
   if (link) {

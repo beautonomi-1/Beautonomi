@@ -189,7 +189,14 @@ type BookingDetail = {
   /** Whether customer should show QR / 8-char code for this booking */
   qr_arrival_pending?: boolean;
   customer_id?: string | null;
-  customers?: { id?: string; full_name?: string | null; email?: string | null; phone?: string | null } | null;
+  customers?: {
+    id?: string;
+    full_name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    rating_average?: number | null;
+    review_count?: number | null;
+  } | null;
   locations?: { name?: string | null } | null;
   location_id?: string | null;
   custom_field_values?: Record<string, string | number | boolean | null>;
@@ -429,6 +436,10 @@ function statusColor(status: string): string {
     case "in_progress":
     case "started":
       return "bg-amber-100";
+    case "waiting":
+      return "bg-amber-100";
+    case "checked_in":
+      return "bg-indigo-100";
     case "completed":
       return "bg-green-100";
     case "cancelled":
@@ -448,6 +459,10 @@ function statusTextColor(status: string): string {
     case "in_progress":
     case "started":
       return "text-amber-800";
+    case "waiting":
+      return "text-amber-800";
+    case "checked_in":
+      return "text-indigo-800";
     case "completed":
       return "text-green-800";
     case "cancelled":
@@ -926,6 +941,7 @@ export default function BookingDetailScreen() {
   const [submittingRateClient, setSubmittingRateClient] = useState(false);
   /** Whether this booking already has a row in provider_client_ratings (null = not loaded yet). */
   const [hasProviderClientRating, setHasProviderClientRating] = useState<boolean | null>(null);
+  const [providerClientRatingValue, setProviderClientRatingValue] = useState<number | null>(null);
 
   const isAtHomeFromData =
     data?.location_type === "at_home" ||
@@ -1026,23 +1042,35 @@ export default function BookingDetailScreen() {
     if (!bookingIdStr || !data) return;
     if (data.status !== "completed" && data.status !== "no_show") {
       setHasProviderClientRating(null);
+      setProviderClientRatingValue(null);
       return;
     }
     if (!canViewClientRatings) {
       setHasProviderClientRating(false);
+      setProviderClientRatingValue(null);
       return;
     }
     let cancelled = false;
     setHasProviderClientRating(null);
+    setProviderClientRatingValue(null);
     api
-      .get<{ has_rating?: boolean }>(`/api/provider/ratings?booking_id=${encodeURIComponent(bookingIdStr)}`)
+      .get<{ has_rating?: boolean; rating?: { rating?: number } | null }>(
+        `/api/provider/ratings?booking_id=${encodeURIComponent(bookingIdStr)}`
+      )
       .then((res) => {
         if (cancelled) return;
         const d = res.data;
         setHasProviderClientRating(!!d?.has_rating);
+        const ratingVal = Number(d?.rating?.rating ?? NaN);
+        setProviderClientRatingValue(
+          Number.isFinite(ratingVal) && ratingVal >= 1 && ratingVal <= 5 ? ratingVal : null
+        );
       })
       .catch(() => {
-        if (!cancelled) setHasProviderClientRating(false);
+        if (!cancelled) {
+          setHasProviderClientRating(false);
+          setProviderClientRatingValue(null);
+        }
       });
     return () => {
       cancelled = true;
@@ -1100,6 +1128,7 @@ export default function BookingDetailScreen() {
       setRateClientStars(0);
       setRateClientComment("");
       setHasProviderClientRating(true);
+      setProviderClientRatingValue(Math.min(5, Math.max(1, Math.floor(Number(rateClientStars)) || 0)));
       if (typeof refresh === "function") refresh();
       Alert.alert("Done", "Thanks for rating this client.");
     } catch (e: unknown) {
@@ -1223,7 +1252,7 @@ export default function BookingDetailScreen() {
   const arrivalOtpPending = b.arrival_otp_pending === true;
   const qrArrivalPending = b.qr_arrival_pending === true;
 
-  const isActive = ["pending", "booked", "confirmed"].includes(b.status);
+  const isActive = ["pending", "booked", "confirmed", "waiting", "checked_in"].includes(b.status);
   const isStarted = ["started", "in_progress"].includes(b.status);
   const clientArrivedAtSalon = isAtSalon && b.current_stage === "client_arrived";
   const canCheckInAtSalon =
@@ -1671,7 +1700,7 @@ export default function BookingDetailScreen() {
       );
       if (rescheduleOfferingIds.length > 0)
         checkParams.set("offering_ids", rescheduleOfferingIds.join(","));
-      const rescheduleIsHome = b.location_type === "at_home";
+      const rescheduleIsHome = effectiveLocationType === "at_home";
       checkParams.set("mode", rescheduleIsHome ? "mobile" : "salon");
       checkParams.set(
         "travel_buffer",
@@ -2197,7 +2226,7 @@ export default function BookingDetailScreen() {
       />
       <ScreenHeader
         title={b.booking_number ?? "Booking"}
-        subtitle={b.status}
+        subtitle={labelForDbStatus(currentDbStatus)}
         onBack={() => router.back()}
         rightAction={
           <TouchableOpacity
@@ -2293,6 +2322,11 @@ export default function BookingDetailScreen() {
           <View style={twStyle("flex-row items-center justify-between mb-3")}>
             <View style={twStyle("flex-row items-center flex-1")}>
               <Text style={twStyle("font-semibold text-gray-900")}>{customerName}</Text>
+              {typeof b.customers?.rating_average === "number" && b.customers.rating_average > 0 ? (
+                <Text style={twStyle("ml-2 text-xs font-semibold text-amber-700")}>
+                  {`${b.customers.rating_average.toFixed(1)}${b.customers.review_count ? ` (${b.customers.review_count})` : ""} ★`}
+                </Text>
+              ) : null}
               {customerId ? (
                 <TouchableOpacity
                   onPress={openCustomerProfile}
@@ -2381,7 +2415,7 @@ export default function BookingDetailScreen() {
             </View>
           </View>
           <Text style={twStyle("text-sm text-gray-600")}>
-            {formatDateTimeSafe(b.scheduled_at, b.display_time_zone)}
+            {formatDateTimeSafe(b.scheduled_at, b.display_time_zone ?? providerTimezone)}
           </Text>
           {addressLine ? (
             <Text style={twStyle("mt-2 text-sm text-gray-500")}>{addressLine}</Text>
@@ -2437,11 +2471,15 @@ export default function BookingDetailScreen() {
               <TouchableOpacity
                 onPress={() => setShowStatusPicker(true)}
                 disabled={patchLoading || mutating}
-                style={twStyle("rounded-xl bg-gray-900 px-4 py-2.5")}
+                style={twStyle(isAtHome ? "rounded-xl px-4 py-2.5" : "rounded-xl bg-gray-900 px-4 py-2.5")}
                 accessibilityRole="button"
                 accessibilityLabel="Change booking status"
               >
-                <Text style={twStyle("text-sm font-semibold text-white")}>Change status</Text>
+                <Text
+                  style={twStyle(`text-sm font-semibold ${isAtHome ? "text-primary underline" : "text-white"}`)}
+                >
+                  Change status
+                </Text>
               </TouchableOpacity>
             ) : null}
             {canReschedule ? (
@@ -2470,11 +2508,19 @@ export default function BookingDetailScreen() {
             {canMarkPaid ? (
               <TouchableOpacity
                 onPress={() => setShowMarkPaid(true)}
-                style={twStyle("rounded-xl bg-emerald-600 px-4 py-2.5")}
+                style={twStyle(
+                  isAtHome
+                    ? "rounded-xl bg-emerald-600 px-4 py-2.5"
+                    : "rounded-xl border border-emerald-600 bg-white px-4 py-2.5",
+                )}
                 accessibilityRole="button"
                 accessibilityLabel="Mark booking paid"
               >
-                <Text style={twStyle("text-sm font-semibold text-white")}>Mark paid</Text>
+                <Text
+                  style={twStyle(`text-sm font-semibold ${isAtHome ? "text-white" : "text-emerald-700"}`)}
+                >
+                  Mark paid
+                </Text>
               </TouchableOpacity>
             ) : canSendPaymentLink ? (
               <TouchableOpacity
@@ -2622,6 +2668,7 @@ export default function BookingDetailScreen() {
 
         {isAtHome && (canStartJourney || isEnRoute || isArrived) && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
+            <Text style={twStyle("text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-2")}>Journey steps</Text>
             <View style={twStyle("flex-row items-center justify-between mb-3")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>At-home visit</Text>
               {addressLine ? (
@@ -2835,71 +2882,38 @@ export default function BookingDetailScreen() {
           </View>
         )}
 
-        {/* At-salon: Client arrived / check-in */}
-        {isAtSalon && (clientArrivedAtSalon || canCheckInAtSalon) && (
-          <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-3")}>At salon</Text>
-            <Text style={twStyle("text-xs text-gray-600 leading-5 mb-3")}>{PROVIDER_SALON_CHECKIN_EXCELLENCE_NUDGE}</Text>
-            {clientArrivedAtSalon ? (
-              <View style={twStyle("rounded-lg bg-purple-50 border border-purple-200 py-2 px-3")}>
-                <Text style={twStyle("text-sm font-medium text-purple-800")}>
-                  Client arrived – ready for service
-                </Text>
-              </View>
-            ) : canCheckInAtSalon ? (
-              <TouchableOpacity
-                onPress={handleClientArrived}
-                disabled={isCheckingIn}
-                style={twStyle("rounded-xl bg-purple-600 py-3 items-center")}
-                accessibilityRole="button"
-                accessibilityLabel="Mark client arrived"
-              >
-                {isCheckingIn ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={twStyle("text-white font-semibold")}>Client arrived</Text>
-                )}
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        )}
+        {/* At-salon check-in removed: the "Client arrived" button consistently fails for at-salon
+            bookings and duplicates the "Change Status" flow. Providers should use Change Status. */}
 
-        {/* Status & reschedule: same legal transitions as provider web (see provider-booking-status-transitions) */}
-        {(allowedStatusTargets.length > 0 || ((isActive || isStarted) && b.scheduled_at)) && (
-          <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-3")}>Actions</Text>
-            <View style={twStyle("flex-row flex-wrap gap-2")}>
-              {allowedStatusTargets.length > 0 ? (
-                <TouchableOpacity
-                  onPress={() => setShowStatusPicker(true)}
-                  disabled={patchLoading || mutating}
-                  style={twStyle("rounded-xl border border-gray-300 bg-white py-3 px-4")}
-                >
-                  {patchLoading || mutating ? (
-                    <ActivityIndicator size="small" color="#111" />
-                  ) : (
-                    <Text style={twStyle("font-medium text-gray-800")}>Change status</Text>
-                  )}
-                </TouchableOpacity>
-              ) : null}
-              {canReschedule ? (
-                <TouchableOpacity
-                  onPress={openRescheduleEditor}
-                  style={twStyle("rounded-xl border border-primary py-3 px-4")}
-                >
-                  <Text style={twStyle("font-medium text-primary")}>Reschedule</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          </View>
-        )}
+        {isAtHome && allowedStatusTargets.length > 0 ? (
+          <Text style={twStyle("text-[11px] text-gray-500 mb-3 px-1")}>
+            Manual override — use{" "}
+            <Text style={twStyle("font-semibold text-gray-700")}>Change status</Text> above for the full transition list.
+          </Text>
+        ) : null}
 
         {/* Client rating (provider → customer via provider_client_ratings) */}
         {(b.status === "completed" || b.status === "no_show") && canViewClientRatings && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Client rating</Text>
             {hasProviderClientRating === true ? (
-              <Text style={twStyle("text-sm text-gray-600")}>You have rated this client for this booking.</Text>
+              <View>
+                <Text style={twStyle("text-sm text-gray-600 mb-1")}>You have rated this client for this booking.</Text>
+                {providerClientRatingValue != null ? (
+                  <View style={twStyle("flex-row items-center")}>
+                    <Text style={twStyle("text-xs text-gray-500 mr-2")}>Your rating</Text>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Ionicons
+                        key={star}
+                        name={star <= providerClientRatingValue ? "star" : "star-outline"}
+                        size={15}
+                        color="#f59e0b"
+                        style={twStyle("mr-1")}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+              </View>
             ) : canRateClients ? (
               <TouchableOpacity
                 onPress={() => setShowRateClientSheet(true)}
@@ -3231,7 +3245,7 @@ export default function BookingDetailScreen() {
                 )}
                 {s.scheduled_start_at && (
                   <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-                    {formatTimeSafe(s.scheduled_start_at, b.display_time_zone)}
+                    {formatTimeSafe(s.scheduled_start_at, b.display_time_zone ?? providerTimezone)}
                     {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
                   </Text>
                 )}

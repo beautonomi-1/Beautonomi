@@ -9,6 +9,9 @@ import {
   Alert,
   Platform,
   AppState,
+  Modal,
+  Pressable,
+  ScrollView,
 } from "react-native";
 import { useFocusEffect, router } from "expo-router";
 import { Image } from "expo-image";
@@ -68,6 +71,34 @@ interface CustomRequest {
   address_country?: string | null;
   offers?: CustomRequestOffer[];
 }
+type PaymentMethodSummary = {
+  id: string;
+  card_type?: string;
+  last4?: string;
+};
+
+type OfferDetailData = {
+  id: string;
+  status: string;
+  price?: number;
+  currency?: string;
+  duration_minutes?: number;
+  expiration_at?: string | null;
+  notes?: string | null;
+  travel_fee?: number | null;
+  booking_id?: string | null;
+  request?: {
+    service_name?: string | null;
+    description?: string | null;
+    location_type?: string | null;
+    preferred_start_at?: string | null;
+    address_line1?: string | null;
+    address_line2?: string | null;
+    address_city?: string | null;
+    address_state?: string | null;
+    address_postal_code?: string | null;
+  } | null;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -164,6 +195,7 @@ function RequestCard({
   onContinuePayment,
   onPressProvider,
   onCancel,
+  onViewOfferDetail,
   refreshingOfferId,
   cancellingRequestId,
 }: {
@@ -172,6 +204,7 @@ function RequestCard({
   onContinuePayment: (paymentUrl: string) => void;
   onPressProvider: () => void;
   onCancel: (requestId: string) => void;
+  onViewOfferDetail: (offerId: string) => void;
   refreshingOfferId: string | null;
   cancellingRequestId: string | null;
 }) {
@@ -266,16 +299,30 @@ function RequestCard({
           )}
         </TouchableOpacity>
       )}
-      {item.offers && item.offers.length > 0 && (
+      {item.offers && item.offers.length > 0 && (() => {
+        const allInactive = item.offers!.every(
+          (o) => o.status === "withdrawn" || o.status === "expired" || (o.expiration_at && new Date(o.expiration_at).getTime() < Date.now())
+        );
+        const isOpenRequest = item.status === "pending" || item.status === "offered";
+        return (
         <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 12 }}>
-          {item.offers.map((o) => {
+          {allInactive && isOpenRequest ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: "#EFF6FF", marginBottom: 8 }}>
+              <Text style={{ fontSize: 13, color: "#1D4ED8", flex: 1 }}>
+                All offers have been withdrawn or expired. Your request is still open — a new offer may arrive.
+              </Text>
+            </View>
+          ) : null}
+          {item.offers!.map((o) => {
             const expired = o.expiration_at && new Date(o.expiration_at).getTime() < Date.now();
             const canAccept = actionsAllowed && canAcceptOffer(o);
             const canPayContinue = actionsAllowed && canContinuePayment(o);
             const isRefreshing = refreshingOfferId === o.id;
             return (
-              <View
+              <TouchableOpacity
                 key={o.id}
+                activeOpacity={0.8}
+                onPress={() => onViewOfferDetail(o.id)}
                 style={{
                   borderRadius: 8,
                   padding: 12,
@@ -325,11 +372,12 @@ function RequestCard({
                   ) : null}
                 </View>
                 {o.notes ? <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 8 }}>{o.notes}</Text> : null}
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
-      )}
+        );
+      })()}
     </View>
   );
 }
@@ -355,6 +403,9 @@ export default function CustomRequestsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshingOfferId, setRefreshingOfferId] = useState<string | null>(null);
   const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
+  const [offerDetailVisible, setOfferDetailVisible] = useState(false);
+  const [offerDetailLoading, setOfferDetailLoading] = useState(false);
+  const [offerDetailData, setOfferDetailData] = useState<OfferDetailData | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -398,18 +449,32 @@ export default function CustomRequestsScreen() {
   );
 
   const doAcceptPay = useCallback(
-    async (offerId: string, paymentOption: "full" | "deposit") => {
+    async (offerId: string, paymentOption: "full" | "deposit", paymentMethodId?: string) => {
       setRefreshingOfferId(offerId);
       try {
-        const res = await api.post<{ paymentUrl?: string }>(
+        const res = await api.post<{ paymentUrl?: string; charged?: boolean }>(
           `/api/me/custom-offers/${offerId}/accept`,
-          { payment_option: paymentOption }
+          { payment_option: paymentOption, payment_method_id: paymentMethodId }
         );
         const paymentUrl =
           (res.data as { paymentUrl?: string } | undefined)?.paymentUrl ??
           (res as { data?: { paymentUrl?: string } }).data?.paymentUrl;
         if (res.error) {
           Alert.alert(errTitle, (res.error as { message?: string })?.message ?? crl("startPaymentFailed"));
+          return;
+        }
+        if (res.data?.charged) {
+          for (let i = 0; i < 15; i += 1) {
+            const state = await api.get<{ booking_id?: string | null }>(`/api/me/custom-offers/${offerId}`);
+            const bookingId = (state.data as { booking_id?: string | null } | undefined)?.booking_id ?? null;
+            if (bookingId) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
+              return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+          Alert.alert(errTitle, crl("startPaymentFailed"));
           return;
         }
         if (paymentUrl) {
@@ -431,7 +496,26 @@ export default function CustomRequestsScreen() {
   );
 
   const handleAcceptPay = useCallback(
-    (offerId: string) => {
+    async (offerId: string) => {
+      const methodsRes = await api.get<PaymentMethodSummary[]>("/api/me/payment-methods");
+      const methods = Array.isArray(methodsRes.data) ? methodsRes.data.slice(0, 3) : [];
+      if (methods.length > 0) {
+        Alert.alert(
+          crl("paymentOptionTitle"),
+          crl("paymentOptionBody"),
+          [
+            ...methods.map((m) => ({
+              text: `${crl("payWithSavedCard")} ${(m.card_type || "card").toUpperCase()} •••• ${m.last4 || "----"}`,
+              onPress: () => void doAcceptPay(offerId, "full", m.id),
+            })),
+            { text: crl("payDepositCta"), onPress: () => doAcceptPay(offerId, "deposit") },
+            { text: crl("payInFullCta"), onPress: () => doAcceptPay(offerId, "full"), style: "default" as const },
+            { text: t("common.cancel"), style: "cancel" as const },
+          ],
+          { cancelable: true },
+        );
+        return;
+      }
       Alert.alert(crl("paymentOptionTitle"), crl("paymentOptionBody"), [
         { text: t("common.cancel"), style: "cancel" },
         { text: crl("payDepositCta"), onPress: () => doAcceptPay(offerId, "deposit") },
@@ -455,6 +539,20 @@ export default function CustomRequestsScreen() {
         pathname: "/(app)/partner-profile",
         params: { slug: item.provider.slug },
       });
+    }
+  }, []);
+
+  const openOfferDetail = useCallback(async (offerId: string) => {
+    setOfferDetailData(null);
+    setOfferDetailVisible(true);
+    setOfferDetailLoading(true);
+    try {
+      const res = await api.get<OfferDetailData>(`/api/me/custom-offers/${offerId}`);
+      if (res.data) setOfferDetailData(res.data);
+    } catch {
+      // sheet shows error state
+    } finally {
+      setOfferDetailLoading(false);
     }
   }, []);
 
@@ -523,6 +621,7 @@ export default function CustomRequestsScreen() {
             onContinuePayment={handleContinuePayment}
             onPressProvider={() => handlePressProvider(item)}
             onCancel={handleCancelRequest}
+            onViewOfferDetail={openOfferDetail}
             refreshingOfferId={refreshingOfferId}
             cancellingRequestId={cancellingRequestId}
           />
@@ -536,6 +635,139 @@ export default function CustomRequestsScreen() {
           </View>
         }
       />
+
+      {/* Offer Detail Sheet */}
+      <Modal
+        visible={offerDetailVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setOfferDetailVisible(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}
+          onPress={() => setOfferDetailVisible(false)}
+        >
+          <Pressable
+            style={{
+              backgroundColor: Colors.white,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              paddingTop: 8,
+              paddingBottom: 36,
+              maxHeight: "88%",
+            }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.gray[200], alignSelf: "center", marginBottom: 14 }} />
+            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 20, marginBottom: 18 }}>
+              <Text style={{ flex: 1, fontSize: 17, fontWeight: "700", color: Colors.gray[900] }}>Offer details</Text>
+              <TouchableOpacity onPress={() => setOfferDetailVisible(false)} hitSlop={12}>
+                <Text style={{ fontSize: 22, color: Colors.gray[400] }}>×</Text>
+              </TouchableOpacity>
+            </View>
+            {offerDetailLoading ? (
+              <View style={{ alignItems: "center", paddingVertical: 40 }}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+              </View>
+            ) : !offerDetailData ? (
+              <View style={{ alignItems: "center", paddingVertical: 40, paddingHorizontal: 20 }}>
+                <Text style={{ color: Colors.gray[500], textAlign: "center" }}>Could not load offer details.</Text>
+              </View>
+            ) : (() => {
+              const d = offerDetailData;
+              const req = d.request;
+              const isExpired = d.status === "expired";
+              const isWithdrawn = d.status === "withdrawn";
+              const isPaid = d.status === "paid";
+              const isPending = d.status === "pending";
+
+              const fmtDate = (iso: string | null | undefined) => {
+                if (!iso) return "—";
+                return new Date(iso).toLocaleString("en-ZA", {
+                  weekday: "short", day: "numeric", month: "short", year: "numeric",
+                  hour: "2-digit", minute: "2-digit",
+                });
+              };
+
+              const statusBadge = isWithdrawn
+                ? { label: "Withdrawn", bg: "#FEF3C7", text: "#92400E" }
+                : isExpired
+                ? { label: "Expired", bg: "#F3F4F6", text: "#6B7280" }
+                : isPaid
+                ? { label: "Booked ✓", bg: "#DCFCE7", text: "#166534" }
+                : d.status === "payment_pending"
+                ? { label: "Payment in progress", bg: "#DBEAFE", text: "#1D4ED8" }
+                : { label: "Pending acceptance", bg: "#EFF6FF", text: "#1E40AF" };
+
+              const locLabel = req?.location_type === "at_home" ? "At home" : req?.location_type === "at_salon" ? "At salon" : req?.location_type ?? "—";
+              const addrParts = [req?.address_line1, req?.address_line2, req?.address_city, req?.address_state, req?.address_postal_code].filter(Boolean);
+
+              return (
+                <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 8 }} showsVerticalScrollIndicator={false}>
+                  <View style={{ alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: statusBadge.bg, marginBottom: 16 }}>
+                    <Text style={{ color: statusBadge.text, fontSize: 12, fontWeight: "700" }}>{statusBadge.label}</Text>
+                  </View>
+                  {req?.service_name ? (
+                    <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>{req.service_name}</Text>
+                  ) : null}
+                  <Text style={{ fontSize: 28, fontWeight: "800", color: Colors.primary, marginBottom: 4 }}>
+                    {d.currency || ""} {typeof d.price === "number" ? d.price.toFixed(2) : "—"}
+                    {typeof d.travel_fee === "number" && d.travel_fee > 0
+                      ? `  + ${d.currency} ${d.travel_fee.toFixed(2)} travel`
+                      : ""}
+                  </Text>
+                  {req?.description ? (
+                    <Text style={{ color: Colors.gray[600], fontSize: 14, marginBottom: 14, lineHeight: 20 }}>{req.description}</Text>
+                  ) : null}
+                  <View style={{ gap: 10 }}>
+                    {d.duration_minutes ? (
+                      <Text style={{ color: Colors.gray[700], fontSize: 14 }}>⏱ {d.duration_minutes} min</Text>
+                    ) : null}
+                    {req?.preferred_start_at ? (
+                      <Text style={{ color: Colors.gray[700], fontSize: 14 }}>📅 {fmtDate(req.preferred_start_at)}</Text>
+                    ) : null}
+                    {d.expiration_at ? (
+                      <Text style={{ color: isExpired ? "#B45309" : Colors.gray[700], fontSize: 14 }}>⏳ Offer expires: {fmtDate(d.expiration_at)}</Text>
+                    ) : null}
+                    {req?.location_type ? (
+                      <View>
+                        <Text style={{ color: Colors.gray[700], fontSize: 14 }}>📍 {locLabel}</Text>
+                        {addrParts.length > 0 ? (
+                          <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 2, marginLeft: 20 }}>{addrParts.join(", ")}</Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    {d.notes ? (
+                      <Text style={{ color: Colors.gray[700], fontSize: 14, lineHeight: 20 }}>📝 {d.notes}</Text>
+                    ) : null}
+                  </View>
+                  {isPending && d.id ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setOfferDetailVisible(false);
+                        setTimeout(() => handleAcceptPay(d.id), 300);
+                      }}
+                      style={{ marginTop: 24, borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center", paddingVertical: 14 }}
+                    >
+                      <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>Accept & Pay</Text>
+                    </TouchableOpacity>
+                  ) : isPaid && d.booking_id ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setOfferDetailVisible(false);
+                        setTimeout(() => router.push({ pathname: "/(app)/booking-detail", params: { id: d.booking_id! } }), 300);
+                      }}
+                      style={{ marginTop: 24, borderRadius: 12, backgroundColor: "#166534", alignItems: "center", paddingVertical: 14 }}
+                    >
+                      <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>View Booking</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </ScrollView>
+              );
+            })()}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

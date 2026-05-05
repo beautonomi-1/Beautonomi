@@ -1,7 +1,57 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { unstable_cache } from "next/cache";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
+
+type MapboxPublicResult = { public_token: string; style_url?: string; enabled: true };
+
+/** Prefer mapbox_config rows, then platform_settings.mapbox, then public env (parity with admin / local dev). */
+async function resolveMapboxPublic(
+  supabase: SupabaseClient,
+  tenantId: string,
+  settingsMapbox?: { enabled?: boolean; public_token?: string },
+): Promise<MapboxPublicResult | null> {
+  let mapboxConfigRow: { public_access_token?: string; style_url?: string; is_enabled?: boolean } | null = null;
+  if (tenantId) {
+    const { data: tenantMapboxConfig } = await supabase
+      .from("mapbox_config")
+      .select("public_access_token, style_url, is_enabled")
+      .eq("is_enabled", true)
+      .eq("tenant_id", tenantId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    mapboxConfigRow = (tenantMapboxConfig as typeof mapboxConfigRow) ?? null;
+  }
+  if (!mapboxConfigRow) {
+    const { data: globalMapboxConfig } = await supabase
+      .from("mapbox_config")
+      .select("public_access_token, style_url, is_enabled")
+      .eq("is_enabled", true)
+      .is("tenant_id", null)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    mapboxConfigRow = (globalMapboxConfig as typeof mapboxConfigRow) ?? null;
+  }
+
+  if (mapboxConfigRow?.public_access_token) {
+    return {
+      public_token: mapboxConfigRow.public_access_token,
+      style_url: (mapboxConfigRow as { style_url?: string }).style_url ?? undefined,
+      enabled: true,
+    };
+  }
+  if (settingsMapbox?.enabled && settingsMapbox?.public_token?.trim()) {
+    return { public_token: settingsMapbox.public_token.trim(), enabled: true };
+  }
+  const envTok = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim();
+  if (envTok) {
+    return { public_token: envTok, enabled: true };
+  }
+  return null;
+}
 
 /**
  * GET /api/public/third-party-config
@@ -56,9 +106,20 @@ async function getCachedThirdPartyConfig(service: string, app: string, tenantId:
 
       type SettingsRow = { settings?: { onesignal?: { enabled?: boolean; app_id?: string; app_id_provider?: string; safari_web_id?: string }; mapbox?: { enabled?: boolean; public_token?: string }; amplitude?: { enabled?: boolean; api_key?: string }; google?: { enabled?: boolean; maps_api_key?: string; places_api_key?: string; analytics_id?: string }; social_auth?: { google?: boolean; apple?: boolean } } };
       const s = (tenantSettings ?? globalSettings) as SettingsRow | null;
+      const svc = service || undefined;
+
+      // Mapbox works even when no platform_settings row exists (mapbox_config table + env fallback).
+      const mapboxPublic = await resolveMapboxPublic(supabase, tenantId, s?.settings?.mapbox);
+      if (!s?.settings) {
+        // Only short-circuit when client asked for mapbox alone (not "all services" with no service param).
+        if (svc === "mapbox") {
+          return { data: mapboxPublic ? mapboxPublic : {}, error: null };
+        }
+        return { data: {}, error: null };
+      }
+
       if (s?.settings) {
         const config: Record<string, unknown> = {};
-        const svc = service || undefined;
         const appType = app || undefined;
 
         if (!svc || svc === "onesignal") {
@@ -78,44 +139,8 @@ async function getCachedThirdPartyConfig(service: string, app: string, tenantId:
           }
         }
 
-        // Mapbox - single source for web + mobile: prefer mapbox_config (Admin > Mapbox); fallback to platform_settings
-        if (!svc || svc === "mapbox") {
-          let mapboxConfigRow: { public_access_token?: string; style_url?: string; is_enabled?: boolean } | null = null;
-          if (tenantId) {
-            const { data: tenantMapboxConfig } = await supabase
-              .from("mapbox_config")
-              .select("public_access_token, style_url, is_enabled")
-              .eq("is_enabled", true)
-              .eq("tenant_id", tenantId)
-              .order("updated_at", { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            mapboxConfigRow = (tenantMapboxConfig as typeof mapboxConfigRow) ?? null;
-          }
-          if (!mapboxConfigRow) {
-            const { data: globalMapboxConfig } = await supabase
-              .from("mapbox_config")
-              .select("public_access_token, style_url, is_enabled")
-              .eq("is_enabled", true)
-              .is("tenant_id", null)
-              .order("updated_at", { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            mapboxConfigRow = (globalMapboxConfig as typeof mapboxConfigRow) ?? null;
-          }
-
-          if (mapboxConfigRow?.public_access_token) {
-            config.mapbox = {
-              public_token: mapboxConfigRow.public_access_token,
-              style_url: (mapboxConfigRow as { style_url?: string }).style_url ?? undefined,
-              enabled: true,
-            };
-          } else if (s.settings.mapbox?.enabled && s.settings.mapbox?.public_token) {
-            config.mapbox = {
-              public_token: s.settings.mapbox.public_token,
-              enabled: true,
-            };
-          }
+        if ((!svc || svc === "mapbox") && mapboxPublic) {
+          config.mapbox = mapboxPublic;
         }
 
         if (!svc || svc === "amplitude") {

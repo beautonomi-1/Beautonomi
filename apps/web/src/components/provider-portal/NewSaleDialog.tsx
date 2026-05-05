@@ -71,6 +71,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
@@ -243,8 +244,13 @@ export function NewSaleDialog({
   const [selectedLocationId, setSelectedLocationId] = useState<string | undefined>(undefined);
   const [houseCallAddress, setHouseCallAddress] = useState({
     address_line1: "",
+    place_name: "",       // full Mapbox label — displayed in the autocomplete input
     city: "",
+    state: "",
     postal_code: "",
+    country: "",
+    latitude: undefined as number | undefined,
+    longitude: undefined as number | undefined,
   });
   
   // Service category selection
@@ -454,7 +460,7 @@ export function NewSaleDialog({
     setCustomServiceForm({ name: "", price: "", duration_minutes: "30", category_id: "" });
     setServiceLocationType("at-salon");
     setSelectedLocationId("");
-    setHouseCallAddress({ address_line1: "", city: "", postal_code: "" });
+    setHouseCallAddress({ address_line1: "", place_name: "", city: "", state: "", postal_code: "", country: "", latitude: undefined, longitude: undefined });
     setSelectedCategoryIndex(0);
   };
 
@@ -1231,36 +1237,80 @@ export function NewSaleDialog({
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="house_call_address" className="text-xs">Street Address *</Label>
-                      <Input
-                        id="house_call_address"
-                        value={houseCallAddress.address_line1}
-                        onChange={(e) => setHouseCallAddress({ ...houseCallAddress, address_line1: e.target.value })}
-                        placeholder="Enter customer address"
-                        className="h-12 text-base"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="house_call_city" className="text-xs">City *</Label>
-                        <Input
-                          id="house_call_city"
-                          value={houseCallAddress.city}
-                          onChange={(e) => setHouseCallAddress({ ...houseCallAddress, city: e.target.value })}
-                          placeholder="City"
-                          className="h-12 text-base"
+                    <div className="space-y-3 p-3 bg-blue-50/40 rounded-xl border border-blue-100">
+                      {/* Autocomplete: fills all fields on selection */}
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium text-gray-600">Street Address *</Label>
+                        <AddressAutocomplete
+                          inputId="house_call_address"
+                          value={houseCallAddress.place_name || houseCallAddress.address_line1}
+                          placeholder="Search customer address…"
+                          geocodeTypes={["address"]}
+                          onInputChange={(val) =>
+                            setHouseCallAddress((prev) => ({ ...prev, place_name: val, address_line1: val }))
+                          }
+                          onChange={(addr) =>
+                            setHouseCallAddress({
+                              address_line1: addr.address_line1,
+                              place_name: addr.place_name || addr.address_line1,
+                              city: addr.city,
+                              state: addr.state || "",
+                              postal_code: addr.postal_code || "",
+                              country: addr.country,
+                              latitude: addr.latitude,
+                              longitude: addr.longitude,
+                            })
+                          }
+                          required
                         />
+                        {/* Coordinates confirmation chip */}
+                        {houseCallAddress.latitude != null && houseCallAddress.longitude != null && (
+                          <p className="text-[11px] text-blue-600 flex items-center gap-1 mt-0.5">
+                            <span>📍</span>
+                            {houseCallAddress.latitude.toFixed(5)}, {houseCallAddress.longitude.toFixed(5)}
+                          </p>
+                        )}
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="house_call_postal" className="text-xs">Postal Code</Label>
-                        <Input
-                          id="house_call_postal"
-                          value={houseCallAddress.postal_code}
-                          onChange={(e) => setHouseCallAddress({ ...houseCallAddress, postal_code: e.target.value })}
-                          placeholder="Postal code"
-                          className="h-12 text-base"
-                        />
+                      {/* Structured fields — auto-filled from autocomplete, editable for corrections */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">City</Label>
+                          <Input
+                            value={houseCallAddress.city}
+                            onChange={(e) => setHouseCallAddress((prev) => ({ ...prev, city: e.target.value }))}
+                            placeholder="Auto-filled"
+                            className="h-9 text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">Postal Code</Label>
+                          <Input
+                            value={houseCallAddress.postal_code}
+                            onChange={(e) => setHouseCallAddress((prev) => ({ ...prev, postal_code: e.target.value }))}
+                            placeholder="Auto-filled"
+                            className="h-9 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">Province / State</Label>
+                          <Input
+                            value={houseCallAddress.state}
+                            onChange={(e) => setHouseCallAddress((prev) => ({ ...prev, state: e.target.value }))}
+                            placeholder="Auto-filled"
+                            className="h-9 text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">Country</Label>
+                          <Input
+                            value={houseCallAddress.country}
+                            onChange={(e) => setHouseCallAddress((prev) => ({ ...prev, country: e.target.value }))}
+                            placeholder="Auto-filled"
+                            className="h-9 text-sm"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>

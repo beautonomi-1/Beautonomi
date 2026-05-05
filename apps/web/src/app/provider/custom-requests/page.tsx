@@ -69,6 +69,26 @@ export default function ProviderCustomRequestsPage() {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Offer detail sheet
+  const [offerDetailOpen, setOfferDetailOpen] = useState(false);
+  const [offerDetailLoading, setOfferDetailLoading] = useState(false);
+  const [offerDetailData, setOfferDetailData] = useState<Record<string, any> | null>(null);
+
+  const openOfferDetail = async (offerId: string) => {
+    setOfferDetailOpen(true);
+    setOfferDetailLoading(true);
+    setOfferDetailData(null);
+    try {
+      const res = await fetcher.get<{ data: Record<string, any> }>(`/api/provider/custom-offers/${offerId}`);
+      setOfferDetailData(res.data);
+    } catch {
+      toast.error("Failed to load offer details");
+      setOfferDetailOpen(false);
+    } finally {
+      setOfferDetailLoading(false);
+    }
+  };
+
   const load = async () => {
     try {
       setIsLoading(true);
@@ -239,9 +259,45 @@ export default function ProviderCustomRequestsPage() {
                   </div>
                 </div>
                 {r.offers && r.offers.length > 0 ? (
-                  <div className="mt-3 text-sm text-gray-600">
-                    Offers:{" "}
-                    {r.offers.map((o) => `${o.currency} ${o.price} (${o.status})`).join(" • ")}
+                  <div className="mt-3 space-y-2">
+                    {r.offers.map((o) => {
+                      const st = String(o.status || "pending").toLowerCase();
+                      const isPaid = st === "paid";
+                      const isWithdrawn = st === "withdrawn";
+                      const isExpired = st === "expired";
+                      const isInactive = isWithdrawn || isExpired;
+                      const badgeClass = isPaid
+                        ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                        : isWithdrawn
+                          ? "bg-slate-100 text-slate-500 border border-slate-200"
+                          : isExpired
+                            ? "bg-amber-100 text-amber-700 border border-amber-200"
+                            : "bg-blue-50 text-blue-700 border border-blue-200";
+                      const badgeLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : "Pending";
+                      return (
+                        <div
+                          key={o.id}
+                          className="border rounded-md p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                          onClick={() => openOfferDetail(o.id)}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>{badgeLabel}</span>
+                            </div>
+                            <div className="text-sm font-medium">{o.currency} {o.price}</div>
+                            <div className="text-[11px] text-gray-400 mt-0.5">Tap for details</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {/* All-withdrawn/expired nudge */}
+                    {r.offers.every((o) => ["withdrawn", "expired"].includes(String(o.status || "").toLowerCase())) &&
+                      ["pending", "offered"].includes(r.status) && (
+                        <div className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+                          <span className="mt-0.5 shrink-0">ℹ</span>
+                          <span>All your offers have been withdrawn or expired. You can send a new offer above.</span>
+                        </div>
+                      )}
                   </div>
                 ) : null}
               </div>
@@ -393,6 +449,111 @@ export default function ProviderCustomRequestsPage() {
                 </Button>
               </div>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Offer Detail Sheet */}
+        <Dialog open={offerDetailOpen} onOpenChange={setOfferDetailOpen}>
+          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Custom Offer Details</DialogTitle>
+            </DialogHeader>
+            {offerDetailLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : offerDetailData ? (() => {
+              const d = offerDetailData;
+              const req = d.request ?? d;
+              const rawStatus = String(d.status ?? "pending").toLowerCase();
+              const isPaid = rawStatus === "paid" || !!d.booking_id;
+              const isWithdrawn = rawStatus === "withdrawn";
+              const isExpired = rawStatus === "expired";
+              const statusLabel = isPaid ? "Booked ✓" : isWithdrawn ? "Withdrawn" : isExpired ? "Expired" : "Pending";
+              const statusClass = isPaid ? "bg-emerald-100 text-emerald-700" : isWithdrawn ? "bg-slate-100 text-slate-600" : isExpired ? "bg-amber-100 text-amber-700" : "bg-blue-50 text-blue-700";
+              return (
+                <div className="space-y-4 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusClass}`}>{statusLabel}</span>
+                  </div>
+                  {(req.service_name || req.description) && (
+                    <div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Service</div>
+                      <div className="font-semibold text-gray-900">{req.service_name || req.description}</div>
+                    </div>
+                  )}
+                  <div className="flex gap-6">
+                    <div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Price</div>
+                      <div className="font-bold text-lg text-gray-900">{d.currency} {d.price}</div>
+                      {d.travel_fee ? <div className="text-xs text-gray-500">+ {d.currency} {d.travel_fee} travel fee</div> : null}
+                    </div>
+                    {d.duration_minutes && (
+                      <div>
+                        <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Duration</div>
+                        <div className="font-semibold text-gray-900">{d.duration_minutes} mins</div>
+                      </div>
+                    )}
+                  </div>
+                  {(d.scheduled_at ?? req.preferred_start_at) && (
+                    <div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Preferred Time</div>
+                      <div className="text-sm text-gray-800">{new Date(d.scheduled_at ?? req.preferred_start_at).toLocaleString()}</div>
+                    </div>
+                  )}
+                  {(req.location_type || d.location?.name) && (
+                    <div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Location</div>
+                      <div className="text-sm text-gray-800 capitalize">
+                        {d.location?.name || (req.location_type === "at_home" ? "At customer's home" : req.location_type === "at_salon" ? "At the salon" : req.location_type || "–")}
+                      </div>
+                    </div>
+                  )}
+                  {d.expiration_at && (
+                    <div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Offer Expires</div>
+                      <div className={`text-sm ${isExpired ? "text-amber-600 font-medium" : "text-gray-800"}`}>
+                        {new Date(d.expiration_at).toLocaleString()}{isExpired ? " (expired)" : ""}
+                      </div>
+                    </div>
+                  )}
+                  {d.notes && (
+                    <div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Notes</div>
+                      <div className="text-sm text-gray-800 bg-gray-50 rounded-lg p-2.5">{d.notes}</div>
+                    </div>
+                  )}
+                  {isPaid && d.booking_id && (
+                    <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                      Booking created. Reference: {d.booking_id}
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                    {!isPaid && !isWithdrawn && !isExpired && d.id && (
+                      <Button
+                        variant="outline"
+                        className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
+                        onClick={async () => {
+                          if (!confirm("Are you sure you want to withdraw this offer?")) return;
+                          try {
+                            await fetcher.post(`/api/provider/custom-offers/${d.id}/retract`, {});
+                            toast.success("Offer withdrawn");
+                            setOfferDetailOpen(false);
+                            load();
+                          } catch {
+                            toast.error("Failed to withdraw offer");
+                          }
+                        }}
+                      >
+                        Withdraw Offer
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="text-sm text-gray-500 py-4 text-center">Could not load offer details.</div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

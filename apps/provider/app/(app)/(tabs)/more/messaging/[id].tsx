@@ -11,6 +11,9 @@ import {
   Alert,
   ActionSheetIOS,
   Linking,
+  Modal,
+  Pressable,
+  ScrollView,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -44,6 +47,30 @@ interface CustomOfferAttachment {
   duration_minutes?: number;
   preferred_start_at?: string | null;
   withdrawn?: boolean;
+  expired?: boolean;
+  status?: string;
+}
+
+interface ProviderOfferDetail {
+  id: string;
+  status: string;
+  price?: number;
+  currency?: string;
+  duration_minutes?: number;
+  expiration_at?: string | null;
+  notes?: string | null;
+  travel_fee?: number | null;
+  request?: {
+    service_name?: string | null;
+    description?: string | null;
+    location_type?: string | null;
+    preferred_start_at?: string | null;
+    address_line1?: string | null;
+    address_line2?: string | null;
+    address_city?: string | null;
+    address_state?: string | null;
+    address_postal_code?: string | null;
+  } | null;
 }
 
 /** Files from /api/me/messages/upload or legacy URLs in JSON */
@@ -111,6 +138,9 @@ export default function ChatScreen() {
   const [message, setMessage] = useState("");
   const [showCustomOfferSheet, setShowCustomOfferSheet] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [offerDetailVisible, setOfferDetailVisible] = useState(false);
+  const [offerDetailLoading, setOfferDetailLoading] = useState(false);
+  const [offerDetailData, setOfferDetailData] = useState<ProviderOfferDetail | null>(null);
   const flatListRef = useRef<FlatList>(null);
   // §UI-audit 2026-04: `initialScrollDone` used to be a module-level
   // mutable object shared across every mount, so switching between two
@@ -468,6 +498,20 @@ export default function ChatScreen() {
     ]);
   }, [conversationId, sending, uploading, uploadNativeFile]);
 
+  const openOfferDetail = useCallback(async (offerId: string) => {
+    setOfferDetailData(null);
+    setOfferDetailVisible(true);
+    setOfferDetailLoading(true);
+    try {
+      const res = await api.get<ProviderOfferDetail>(`/api/provider/custom-offers/${offerId}`);
+      if (res.data) setOfferDetailData(res.data);
+    } catch {
+      // leave null — sheet shows error state
+    } finally {
+      setOfferDetailLoading(false);
+    }
+  }, []);
+
   const handleWithdrawOffer = useCallback(
     async (offerId: string) => {
       if (!offerId) return;
@@ -656,6 +700,12 @@ export default function ChatScreen() {
                 paddingTop: 12,
                 paddingBottom: 220,
               }}
+              onContentSizeChange={() => {
+                if (!initialScrollDoneRef.current && allMessages.length > 0) {
+                  initialScrollDoneRef.current = true;
+                  flatListRef.current?.scrollToEnd({ animated: false });
+                }
+              }}
               ListEmptyComponent={
                 <View style={twStyle("py-12 items-center")}>
                   <Ionicons
@@ -750,7 +800,9 @@ export default function ChatScreen() {
                 return (
                   <View style={twStyle(`mb-3 ${isMe ? "items-end" : "items-start"}`)}>
                     {showOfferCard ? (
-                      <View
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={() => offer?.offer_id && openOfferDetail(offer.offer_id)}
                         style={twStyle(`max-w-[85%] rounded-2xl overflow-hidden ${
                           isMe ? "rounded-br-sm bg-primary/10 border border-primary/20" : "rounded-bl-sm bg-gray-100 border border-gray-200"
                         }`)}
@@ -777,7 +829,15 @@ export default function ChatScreen() {
                             <View style={twStyle("mt-2 px-2 py-1 rounded bg-amber-100 self-start")}>
                               <Text style={twStyle("text-xs font-medium text-amber-800")}>Withdrawn</Text>
                             </View>
-                          ) : isMe && offer?.offer_id ? (
+                          ) : (offer?.expired === true || offer?.status === "expired") ? (
+                            <View style={twStyle("mt-2 px-2 py-1 rounded bg-gray-100 self-start")}>
+                              <Text style={twStyle("text-xs font-medium text-gray-500")}>Expired</Text>
+                            </View>
+                          ) : offer?.status === "paid" ? (
+                            <View style={twStyle("mt-2 px-2 py-1 rounded bg-emerald-100 self-start")}>
+                              <Text style={twStyle("text-xs font-medium text-emerald-800")}>Paid / Booked</Text>
+                            </View>
+                          ) : isMe && offer?.offer_id && !offer?.withdrawn && offer?.status !== "expired" ? (
                             <TouchableOpacity
                               onPress={() => handleWithdrawOffer(offer.offer_id!)}
                               style={twStyle("mt-2 px-3 py-1.5 rounded-lg bg-amber-500 active:opacity-80")}
@@ -797,7 +857,7 @@ export default function ChatScreen() {
                             />
                           ) : null}
                         </View>
-                      </View>
+                      </TouchableOpacity>
                     ) : null}
 
                     {hasCustomRequest ? (
@@ -936,6 +996,171 @@ export default function ChatScreen() {
         conversationId={conversationId}
         onSuccess={() => refresh()}
       />
+
+      {/* Offer Detail Sheet */}
+      <Modal
+        visible={offerDetailVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setOfferDetailVisible(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}
+          onPress={() => setOfferDetailVisible(false)}
+        >
+          <Pressable
+            style={{
+              backgroundColor: "#fff",
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              paddingTop: 8,
+              paddingBottom: 36,
+              maxHeight: "88%",
+            }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* drag handle */}
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#e5e7eb", alignSelf: "center", marginBottom: 14 }} />
+            {/* header */}
+            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 20, marginBottom: 18 }}>
+              <Text style={{ flex: 1, fontSize: 17, fontWeight: "700", color: "#111827" }}>Custom offer detail</Text>
+              <TouchableOpacity onPress={() => setOfferDetailVisible(false)} hitSlop={12}>
+                <Ionicons name="close" size={22} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            {offerDetailLoading ? (
+              <View style={{ alignItems: "center", paddingVertical: 40 }}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+              </View>
+            ) : !offerDetailData ? (
+              <View style={{ alignItems: "center", paddingVertical: 40, paddingHorizontal: 20 }}>
+                <Text style={{ color: "#6b7280", textAlign: "center" }}>Could not load offer details.</Text>
+              </View>
+            ) : (() => {
+              const d = offerDetailData;
+              const req = d.request;
+              const isExpired = d.status === "expired";
+              const isWithdrawn = d.status === "withdrawn";
+              const isPaid = d.status === "paid";
+              const isPending = d.status === "pending";
+
+              const formatDate = (iso: string | null | undefined) => {
+                if (!iso) return "—";
+                return new Date(iso).toLocaleString("en-ZA", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+              };
+
+              const statusBadge = isWithdrawn
+                ? { label: "Withdrawn", bg: "#FEF3C7", text: "#92400E" }
+                : isExpired
+                ? { label: "Expired", bg: "#F3F4F6", text: "#6B7280" }
+                : isPaid
+                ? { label: "Paid / Booked", bg: "#DCFCE7", text: "#166534" }
+                : d.status === "payment_pending"
+                ? { label: "Payment in progress", bg: "#DBEAFE", text: "#1D4ED8" }
+                : { label: "Pending customer acceptance", bg: "#EFF6FF", text: "#1E40AF" };
+
+              const locationLabel = req?.location_type === "at_home" ? "At home" : req?.location_type === "at_salon" ? "At salon" : req?.location_type ?? "—";
+              const addressParts = [req?.address_line1, req?.address_line2, req?.address_city, req?.address_state, req?.address_postal_code].filter(Boolean);
+
+              return (
+                <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 8 }} showsVerticalScrollIndicator={false}>
+                  {/* Status badge */}
+                  <View style={{ alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: statusBadge.bg, marginBottom: 16 }}>
+                    <Text style={{ color: statusBadge.text, fontSize: 12, fontWeight: "700" }}>{statusBadge.label}</Text>
+                  </View>
+
+                  {/* Service name */}
+                  {req?.service_name ? (
+                    <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827", marginBottom: 4 }}>{req.service_name}</Text>
+                  ) : null}
+
+                  {/* Price */}
+                  <Text style={{ fontSize: 28, fontWeight: "800", color: Colors.primary, marginBottom: 4 }}>
+                    {formatCurrency(d.price ?? 0, d.currency ?? "")}
+                    {typeof d.travel_fee === "number" && d.travel_fee > 0
+                      ? `  + ${formatCurrency(d.travel_fee, d.currency ?? "")} travel`
+                      : ""}
+                  </Text>
+
+                  {/* Description */}
+                  {req?.description ? (
+                    <Text style={{ color: "#4b5563", fontSize: 14, marginBottom: 14, lineHeight: 20 }}>{req.description}</Text>
+                  ) : null}
+
+                  {/* Detail rows */}
+                  <View style={{ gap: 12 }}>
+                    {d.duration_minutes ? (
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Ionicons name="time-outline" size={16} color="#6b7280" style={{ marginTop: 1 }} />
+                        <Text style={{ color: "#374151", fontSize: 14 }}>{d.duration_minutes} min</Text>
+                      </View>
+                    ) : null}
+                    {req?.preferred_start_at ? (
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Ionicons name="calendar-outline" size={16} color="#6b7280" style={{ marginTop: 1 }} />
+                        <Text style={{ color: "#374151", fontSize: 14 }}>{formatDate(req.preferred_start_at)}</Text>
+                      </View>
+                    ) : null}
+                    {d.expiration_at ? (
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Ionicons name="hourglass-outline" size={16} color={isExpired ? "#B45309" : "#6b7280"} style={{ marginTop: 1 }} />
+                        <Text style={{ color: isExpired ? "#B45309" : "#374151", fontSize: 14 }}>
+                          Offer expires: {formatDate(d.expiration_at)}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {req?.location_type ? (
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Ionicons name="location-outline" size={16} color="#6b7280" style={{ marginTop: 1 }} />
+                        <View>
+                          <Text style={{ color: "#374151", fontSize: 14 }}>{locationLabel}</Text>
+                          {addressParts.length > 0 ? (
+                            <Text style={{ color: "#6b7280", fontSize: 12, marginTop: 2 }}>{addressParts.join(", ")}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ) : null}
+                    {d.notes ? (
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Ionicons name="document-text-outline" size={16} color="#6b7280" style={{ marginTop: 1 }} />
+                        <Text style={{ color: "#374151", fontSize: 14, flex: 1, lineHeight: 20 }}>{d.notes}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  {/* Actions */}
+                  {isPending && d.id ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setOfferDetailVisible(false);
+                        setTimeout(() => handleWithdrawOffer(d.id), 300);
+                      }}
+                      style={{
+                        marginTop: 24,
+                        borderRadius: 12,
+                        backgroundColor: "#F59E0B",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingVertical: 14,
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Withdraw offer</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </ScrollView>
+              );
+            })()}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }

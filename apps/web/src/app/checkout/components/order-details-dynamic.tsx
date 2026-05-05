@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
   getCustomerEtaUiParts,
 } from "@beautonomi/utils";
 import { generateQRCodeDataURL, isQRCodeExpired, type QRCodeData } from "@/lib/qr/generator";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 function isCompleteArrivalOtpInput(raw: string): boolean {
   const c = raw.replace(/\D/g, "");
@@ -62,7 +63,7 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
     }
     loadEvents();
     loadAdditionalCharges();
-    
+
     const interval = setInterval(() => {
       loadBooking();
       loadEvents();
@@ -105,6 +106,39 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
       console.error("Error loading additional charges:", error);
     }
   };
+
+  /** Realtime booking updates (mirrors customer-app `booking-detail.tsx`) + 15s poll fallback above */
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase || !bookingId) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const channel = supabase
+      .channel(`checkout-order-detail-${bookingId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "bookings",
+          filter: `id=eq.${bookingId}`,
+        },
+        () => {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            debounceTimer = null;
+            void loadBooking();
+            void loadEvents();
+            void loadAdditionalCharges();
+          }, 400);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      void supabase.removeChannel(channel);
+    };
+  }, [bookingId]);
 
   const handleVerifyOTP = async () => {
     const code = otp.replace(/\D/g, "");

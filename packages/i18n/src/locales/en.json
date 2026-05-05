@@ -87,6 +87,7 @@
     "searchProductsPlaceholder": "Search products in this category…",
     "loadMoreProducts": "Load more products",
     "searchPackagesPlaceholder": "Search packages…",
+    "redeemPackageHint": "Only packages that include your selected service(s) are shown.",
     "loadMorePackages": "Load more packages",
     "servicesPaginationSummary": "Showing {{shown}} of {{total}}",
     "selectVenue": "Where do you want your service?",
@@ -288,6 +289,10 @@
     },
     "moreTab": {
       "rateStoreHeading": "Love the app?"
+    },
+    "notifications": {
+      "rateClientReminderTitle": "Rate your client",
+      "rateClientReminderBody": "Don't forget to rate this client for today's booking."
     },
     "calendarScreen": {
       "calendarActions": "Calendar actions",
@@ -497,8 +502,8 @@
         "workdayStartDesc": "Hour the calendar grid begins",
         "workdayEnd": "Workday End",
         "workdayEndDesc": "Hour the calendar grid ends",
-        "processingBuffer": "Processing & Buffer",
-        "processingBufferDesc": "Show processing and buffer time segments on blocks",
+        "processingBuffer": "Show booking holds",
+        "processingBufferDesc": "Show ghost slots on the calendar when a customer is actively completing a booking checkout",
         "defaultNewStatus": "Default New Status",
         "defaultNewStatusDesc": "Status assigned to new appointments",
         "statusConfirmed": "Confirmed",
@@ -827,7 +832,13 @@
       "customOfferTitle": "CUSTOM OFFER",
       "customOfferDurationFallback": "Duration not set",
       "customOfferWithdrawn": "This offer was withdrawn.",
+      "customOfferExpired": "This offer has expired.",
       "customOfferAcceptPay": "Accept & Pay",
+      "customOfferPaymentPending": "Payment in progress...",
+      "customOfferPaid": "Booked",
+      "customOfferPaidViewBooking": "View Booking",
+      "payWithSavedCard": "Pay with saved card",
+      "payWithNewCard": "Pay with new card",
       "customRequestLabel": "Custom request",
       "openCustomRequests": "Open Custom Requests",
       "offerActionFailedTitle": "Offer action failed",
@@ -918,7 +929,9 @@
         "returnsRefunds": "Returns & Refunds",
         "findingProvider": "Finding a provider",
         "result": "Result",
-        "link": "Link"
+        "link": "Link",
+        "announcements": "Announcements",
+        "announcementDetail": "Announcement"
       },
       "components": {
         "addressPicker": {
@@ -1505,6 +1518,7 @@
           "paymentOptionBody": "How would you like to pay?",
           "payDepositCta": "Pay deposit",
           "payInFullCta": "Pay in full",
+          "payWithSavedCard": "Pay with saved card",
           "completePaymentTitle": "Complete payment",
           "cancelRequestTitle": "Cancel this request?",
           "cancelRequestBody": "The provider will be notified. You can submit a new request later.",

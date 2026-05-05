@@ -176,9 +176,12 @@ function usePushRegistration() {
           });
         }
 
-        // Returning users (flag already in storage): same behaviour as before this onboarding flow.
-        if (gate.phase === "complete" && gate.fromRestore) {
-          OneSignal.Notifications.requestPermission(false);
+        // Ask for permission when user returned from a previous install, or when still unsubscribed (skipped onboarding).
+        if (gate.phase === "complete") {
+          const earlySub = await OneSignal.User.pushSubscription.getIdAsync();
+          if (gate.fromRestore || !earlySub) {
+            await OneSignal.Notifications.requestPermission(false);
+          }
         }
 
         const subId = await OneSignal.User.pushSubscription.getIdAsync();

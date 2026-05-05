@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
@@ -76,6 +76,10 @@ function CalendarBookingBlockImpl({
   t,
   translateBookingStatusLabel,
 }: CalendarBookingBlockProps) {
+  // Persist throttle timestamp across renders; a plain let-variable resets on every
+  // re-render triggered by setDragPosition, defeating the throttle entirely.
+  const lastDragUpdateMsRef = useRef(0);
+
   const isSmall = height < (preferences.compactMode ? 24 : 40);
   const isCancelled = booking.status === "cancelled";
   const hasNotes = !!booking.notes;
@@ -260,6 +264,7 @@ function CalendarBookingBlockImpl({
       .onStart((e) => {
         draggingRef.current = true;
         draggingBookingIdRef.current = booking.calendar_item_id;
+        lastDragUpdateMsRef.current = 0; // reset throttle so first update fires immediately
         setDraggingBooking(booking);
         if (Number.isFinite(e.absoluteX) && Number.isFinite(e.absoluteY)) {
           setDragPosition({ x: e.absoluteX - colWidth / 2, y: e.absoluteY - 24 });
@@ -269,12 +274,16 @@ function CalendarBookingBlockImpl({
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       });
 
+    const DRAG_THROTTLE_MS = 32; // ~30fps
+
     const pan = Gesture.Pan()
       .runOnJS(true)
       .onUpdate((e) => {
-        if (draggingRef.current) {
-          setDragPosition({ x: e.absoluteX - colWidth / 2, y: e.absoluteY - 24 });
-        }
+        if (!draggingRef.current) return;
+        const now = Date.now();
+        if (now - lastDragUpdateMsRef.current < DRAG_THROTTLE_MS) return;
+        lastDragUpdateMsRef.current = now;
+        setDragPosition({ x: e.absoluteX - colWidth / 2, y: e.absoluteY - 24 });
       })
       .onEnd((e) => {
         if (draggingRef.current && draggingBookingIdRef.current === booking.calendar_item_id) {

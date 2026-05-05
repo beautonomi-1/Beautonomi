@@ -48,6 +48,7 @@ type ProductsResponse = {
 type OrdersMetricsResponse = {
   orders?: { status: string; total_amount?: number | string }[];
   pagination?: { total?: number };
+  status_counts?: { pending?: number; confirmed?: number; processing?: number; [key: string]: number | undefined };
 };
 
 /** Flat payload from GET /api/provider/products/metrics (not nested under `metrics`). */
@@ -68,12 +69,16 @@ export default function ProductsEcommerceHubScreen() {
     "/api/provider/products/metrics"
   );
   const { data: pendingOrdersData, refresh: refreshPendingOrders } = useApi<OrdersMetricsResponse>(
-    "/api/provider/product-orders?status=pending&limit=5"
+    "/api/provider/product-orders?limit=1"
   );
 
   const products: Product[] = (data as ProductsResponse)?.products ?? [];
-  const pendingOrdersCount = (pendingOrdersData as OrdersMetricsResponse)?.pagination?.total
-    ?? (pendingOrdersData as OrdersMetricsResponse)?.orders?.length
+  // Use status_counts.pending from the API (always populated regardless of filter) so the metric
+  // correctly reflects the number of pending orders even when the orders list is paginated.
+  const pendingOrdersCount =
+    (pendingOrdersData as OrdersMetricsResponse)?.status_counts?.pending
+    ?? (pendingOrdersData as OrdersMetricsResponse)?.pagination?.total
+    ?? (pendingOrdersData as OrdersMetricsResponse)?.orders?.filter((o) => o.status === "pending").length
     ?? 0;
   const lowStockCount =
     metricsData?.lowStockProducts ??
@@ -136,12 +141,17 @@ export default function ProductsEcommerceHubScreen() {
             onPress={() => router.push("/(app)/(tabs)/more/orders-hub" as never)}
             style={{ flex: 1, backgroundColor: pendingOrdersCount > 0 ? "#FFF7ED" : "#F9FAFB", borderRadius: 14, padding: 14, alignItems: "center", borderWidth: pendingOrdersCount > 0 ? 1.5 : 1, borderColor: pendingOrdersCount > 0 ? "#FED7AA" : Colors.gray[200] }}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`${pendingOrdersCount} pending orders. Tap to view orders.`}
           >
             <Text style={{ fontSize: 22, fontWeight: "800", color: pendingOrdersCount > 0 ? "#C2410C" : Colors.gray[700] }}>
               {pendingOrdersCount}
             </Text>
             <Text style={{ fontSize: 11, color: pendingOrdersCount > 0 ? "#C2410C" : Colors.gray[500], fontWeight: "600", marginTop: 2 }}>
-              Pending{pendingOrdersCount > 0 ? " ⚡" : ""}
+              Pending orders{pendingOrdersCount > 0 ? " ⚡" : ""}
+            </Text>
+            <Text style={{ fontSize: 9, color: Colors.gray[400], marginTop: 1 }}>
+              Tap → Orders Hub
             </Text>
           </TouchableOpacity>
           {lowStockCount > 0 ? (

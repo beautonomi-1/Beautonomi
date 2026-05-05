@@ -113,6 +113,7 @@ export default function AppLayout() {
           <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="search" options={{ headerShown: false }} />
           <Stack.Screen name="notifications" options={{ headerShown: false }} />
+          <Stack.Screen name="announcements" options={{ headerShown: false }} />
           <Stack.Screen name="on-demand/incoming/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
         </Stack>

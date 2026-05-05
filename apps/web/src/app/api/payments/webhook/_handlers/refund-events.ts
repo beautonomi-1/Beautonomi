@@ -148,6 +148,40 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
         notes: `Auto-created by refund webhook handler`,
       });
     }
+
+    try {
+      const { sendToUser } = await import("@/lib/notifications/onesignal");
+      const { insertNotification } = await import("@/lib/notifications/insert-notification");
+      const { data: booking } = await supabase
+        .from("bookings")
+        .select("id, customer_id, booking_number")
+        .eq("id", txn.booking_id)
+        .maybeSingle();
+      const customerId = (booking as { customer_id?: string } | null)?.customer_id;
+      if (customerId) {
+        await sendToUser(
+          customerId,
+          {
+            title: "Refund Processed",
+            message: `Your refund${(booking as { booking_number?: string } | null)?.booking_number ? ` for booking ${(booking as { booking_number?: string }).booking_number}` : ""} has been processed.`,
+            data: { type: "refund_processed", booking_id: txn.booking_id },
+            url: txn.booking_id ? `/bookings/${txn.booking_id}` : "/bookings",
+          },
+          ["push"],
+          { appType: "customer" },
+        );
+        await insertNotification({
+          user_id: customerId,
+          type: "refund_processed",
+          title: "Refund Processed",
+          message: "Your refund has been processed.",
+          data: { booking_id: txn.booking_id },
+          action_url: txn.booking_id ? `/bookings/${txn.booking_id}` : "/bookings",
+        });
+      }
+    } catch (notifError) {
+      console.error("Failed to send refund processed booking notification:", notifError);
+    }
   } else {
     // Non-booking refund: check if this is a product order refund via metadata
     const metadata = (txn as any)?.metadata ?? {};
@@ -218,6 +252,43 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
         });
       }
     }
+
+    try {
+      const { sendToUser } = await import("@/lib/notifications/onesignal");
+      const { insertNotification } = await import("@/lib/notifications/insert-notification");
+      const metadata = (txn as any)?.metadata ?? {};
+      const productOrderId = metadata?.product_order_id ?? null;
+      if (productOrderId) {
+        const { data: order } = await (supabase.from("product_orders") as any)
+          .select("id, customer_id, order_number")
+          .eq("id", productOrderId)
+          .maybeSingle();
+        const customerId = (order as { customer_id?: string } | null)?.customer_id;
+        if (customerId) {
+          await sendToUser(
+            customerId,
+            {
+              title: "Refund Processed",
+              message: `Your refund${(order as { order_number?: string } | null)?.order_number ? ` for order ${(order as { order_number?: string }).order_number}` : ""} has been processed.`,
+              data: { type: "refund_processed", product_order_id: productOrderId },
+              url: "/product-orders",
+            },
+            ["push"],
+            { appType: "customer" },
+          );
+          await insertNotification({
+            user_id: customerId,
+            type: "refund_processed",
+            title: "Refund Processed",
+            message: "Your refund has been processed.",
+            data: { product_order_id: productOrderId },
+            action_url: "/product-orders",
+          });
+        }
+      }
+    } catch (notifError) {
+      console.error("Failed to send refund processed order notification:", notifError);
+    }
   }
 
   console.log(`Refund processed for transaction ${reference} — ${refundAmount}`);
@@ -251,6 +322,60 @@ async function handleRefundFailed(data: Record<string, unknown>, supabase: Supab
     },
     created_at: new Date().toISOString(),
   });
+
+  try {
+    const { data: originalTxn } = await supabase
+      .from("payment_transactions")
+      .select("booking_id, metadata")
+      .eq("reference", String(reference))
+      .maybeSingle();
+    const { sendToUser } = await import("@/lib/notifications/onesignal");
+
+    const bookingId = (originalTxn as { booking_id?: string | null } | null)?.booking_id ?? null;
+    const metadata = ((originalTxn as { metadata?: Record<string, unknown> } | null)?.metadata) ?? {};
+    if (bookingId) {
+      const { data: booking } = await supabase
+        .from("bookings")
+        .select("customer_id")
+        .eq("id", bookingId)
+        .maybeSingle();
+      const customerId = (booking as { customer_id?: string } | null)?.customer_id;
+      if (customerId) {
+        await sendToUser(
+          customerId,
+          {
+            title: "Refund Failed",
+            message: "Your refund could not be processed. Please contact support.",
+            data: { type: "refund_failed", booking_id: bookingId },
+            url: `/bookings/${bookingId}`,
+          },
+          ["push"],
+          { appType: "customer" },
+        );
+      }
+    } else if (metadata?.product_order_id) {
+      const { data: order } = await (supabase.from("product_orders") as any)
+        .select("customer_id, id")
+        .eq("id", metadata.product_order_id)
+        .maybeSingle();
+      const customerId = (order as { customer_id?: string } | null)?.customer_id;
+      if (customerId) {
+        await sendToUser(
+          customerId,
+          {
+            title: "Refund Failed",
+            message: "Your refund could not be processed. Please contact support.",
+            data: { type: "refund_failed", product_order_id: metadata.product_order_id },
+            url: "/product-orders",
+          },
+          ["push"],
+          { appType: "customer" },
+        );
+      }
+    }
+  } catch (notifError) {
+    console.error("Failed to send refund failed notification:", notifError);
+  }
 
   console.log(`Refund failed for transaction ${reference}: ${reason}`);
 }

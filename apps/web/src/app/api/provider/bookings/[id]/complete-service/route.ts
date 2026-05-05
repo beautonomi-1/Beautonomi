@@ -16,6 +16,8 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
+import { notifyReviewReminder } from "@/lib/notifications";
+import { insertNotification } from "@/lib/notifications/insert-notification";
 
 function resolveLoyaltyBaseAmount(booking: {
   subtotal?: number | null;
@@ -285,6 +287,31 @@ export async function POST(
         await sendServiceCompletedNotification(id);
       } catch (notifyErr) {
         console.error("[complete-service] notification failed:", notifyErr);
+      }
+
+      // Encourage post-booking reviews from both sides.
+      try {
+        await notifyReviewReminder(id);
+      } catch (reviewReminderErr) {
+        console.error("[complete-service] review reminder failed:", reviewReminderErr);
+      }
+
+      try {
+        const customerLabel =
+          typeof (updatedBooking as { customer_name?: string | null }).customer_name === "string" &&
+          (updatedBooking as { customer_name?: string | null }).customer_name?.trim()
+            ? String((updatedBooking as { customer_name?: string }).customer_name).trim()
+            : "this client";
+        await insertNotification({
+          user_id: user.id,
+          type: "review_request",
+          title: "Rate your client",
+          message: `Don't forget to rate ${customerLabel} for this booking.`,
+          data: { booking_id: id, deep_link: `/(app)/(tabs)/more/bookings/${id}` },
+          action_url: `/(app)/(tabs)/more/bookings/${id}`,
+        });
+      } catch (providerReminderErr) {
+        console.error("[complete-service] provider rating reminder failed:", providerReminderErr);
       }
     }
 

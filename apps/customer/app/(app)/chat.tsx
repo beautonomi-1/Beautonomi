@@ -46,11 +46,46 @@ type MessageAttachment = {
   type?: string;
   name?: string;
   offer_id?: string;
+  request_id?: string;
   currency?: string;
   price?: number;
   duration_minutes?: number;
   preferred_start_at?: string | null;
+  expiration_at?: string | null;
   withdrawn?: boolean;
+  status?: string;
+  booking_id?: string;
+};
+
+type OfferDetailData = {
+  id: string;
+  status: string;
+  price?: number;
+  currency?: string;
+  duration_minutes?: number;
+  expiration_at?: string | null;
+  notes?: string | null;
+  travel_fee?: number | null;
+  booking_id?: string | null;
+  request?: {
+    service_name?: string | null;
+    description?: string | null;
+    location_type?: string | null;
+    preferred_start_at?: string | null;
+    address_line1?: string | null;
+    address_line2?: string | null;
+    address_city?: string | null;
+    address_state?: string | null;
+    address_postal_code?: string | null;
+  } | null;
+};
+type PaymentMethodSummary = {
+  id: string;
+  card_type?: string;
+  last4?: string;
+  expiry_month?: number;
+  expiry_year?: number;
+  is_default?: boolean;
 };
 
 type MessagesListEnvelope = {
@@ -108,12 +143,13 @@ function parseRealtimeInsert(row: unknown): Message | null {
   };
 }
 
-function parseRealtimeUpdate(row: unknown): { id: string; is_read?: boolean; read_at?: string | null } | null {
+function parseRealtimeUpdate(row: unknown): { id: string; is_read?: boolean; read_at?: string | null; attachments?: Message["attachments"] } | null {
   if (!isRecord(row) || typeof row.id !== "string") return null;
   return {
     id: row.id,
     is_read: typeof row.is_read === "boolean" ? row.is_read : undefined,
     read_at: row.read_at === null ? null : typeof row.read_at === "string" ? row.read_at : undefined,
+    attachments: Array.isArray(row.attachments) ? (row.attachments as Message["attachments"]) : undefined,
   };
 }
 
@@ -194,6 +230,13 @@ export default function ChatScreen() {
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [conversationMeta, setConversationMeta] = useState<ConversationSummary | null>(null);
   const [acceptingOfferId, setAcceptingOfferId] = useState<string | null>(null);
+  const [savedMethods, setSavedMethods] = useState<PaymentMethodSummary[]>([]);
+  const [showSavedCardSheet, setShowSavedCardSheet] = useState(false);
+  const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
+  const [selectedPaymentOption, setSelectedPaymentOption] = useState<"full" | "deposit">("full");
+  const [offerDetailVisible, setOfferDetailVisible] = useState(false);
+  const [offerDetailLoading, setOfferDetailLoading] = useState(false);
+  const [offerDetailData, setOfferDetailData] = useState<OfferDetailData | null>(null);
   const initialScrollDone = useRef(false);
   const flatListRef = useRef<FlatList>(null);
   const { pickFromLibrary, pickFromCamera } = useImagePicker();
@@ -315,16 +358,6 @@ export default function ChatScreen() {
     refreshSession();
   }, [authLoading, user, refreshSession]);
 
-  // Scroll to bottom on initial load
-  useEffect(() => {
-    if (!loading && messages.length > 0 && !initialScrollDone.current) {
-      initialScrollDone.current = true;
-      requestAnimationFrame(() => {
-        flatListRef.current?.scrollToEnd({ animated: false });
-      });
-    }
-  }, [loading, messages.length]);
-
   // Mark conversation as read when viewing
   useEffect(() => {
     if (!id || !user) return;
@@ -391,7 +424,12 @@ export default function ChatScreen() {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === updated.id
-                ? { ...m, is_read: updated.is_read, read_at: updated.read_at ?? m.read_at }
+                ? {
+                    ...m,
+                    is_read: updated.is_read ?? m.is_read,
+                    read_at: updated.read_at ?? m.read_at,
+                    attachments: updated.attachments ?? m.attachments,
+                  }
                 : m
             )
           );
@@ -591,19 +629,43 @@ export default function ChatScreen() {
     );
   };
 
+  const pollForCustomOfferBooking = useCallback(async (offerId: string) => {
+    for (let i = 0; i < 15; i += 1) {
+      try {
+        const state = await api.get<{ booking_id?: string | null }>(`/api/me/custom-offers/${offerId}`);
+        const bookingId = (state.data as { booking_id?: string | null } | undefined)?.booking_id ?? null;
+        if (bookingId) {
+          router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
+          return;
+        }
+      } catch {
+        // ignore while polling
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    Alert.alert(
+      t("customer.chatScreen.offerActionFailedTitle"),
+      t("customer.chatScreen.offerActionPaymentFailed"),
+    );
+  }, [t]);
+
   const acceptCustomOffer = useCallback(
-    async (offerId: string, paymentOption: "full" | "deposit") => {
+    async (offerId: string, paymentOption: "full" | "deposit", paymentMethodId?: string) => {
       setAcceptingOfferId(offerId);
       try {
-        const res = await api.post<{ paymentUrl?: string; payment_url?: string }>(
+        const res = await api.post<{ paymentUrl?: string; payment_url?: string; charged?: boolean }>(
           `/api/me/custom-offers/${offerId}/accept`,
-          { payment_option: paymentOption }
+          { payment_option: paymentOption, payment_method_id: paymentMethodId }
         );
         if (res.error) {
           Alert.alert(
             t("customer.chatScreen.offerActionFailedTitle"),
             getApiErrorMessage(res.error, t("customer.chatScreen.offerActionPaymentFailed")),
           );
+          return;
+        }
+        if (res.data?.charged) {
+          await pollForCustomOfferBooking(offerId);
           return;
         }
         const url = res.data?.paymentUrl || res.data?.payment_url;
@@ -627,11 +689,34 @@ export default function ChatScreen() {
         setAcceptingOfferId(null);
       }
     },
-    [t],
+    [pollForCustomOfferBooking, t],
   );
 
+  const openOfferDetail = useCallback(async (offerId: string) => {
+    setOfferDetailData(null);
+    setOfferDetailVisible(true);
+    setOfferDetailLoading(true);
+    try {
+      const res = await api.get<OfferDetailData>(`/api/me/custom-offers/${offerId}`);
+      if (res.data) setOfferDetailData(res.data);
+    } catch {
+      // leave null — modal shows error state
+    } finally {
+      setOfferDetailLoading(false);
+    }
+  }, []);
+
   const openAcceptOfferOptions = useCallback(
-    (offerId: string) => {
+    async (offerId: string) => {
+      const methodsRes = await api.get<PaymentMethodSummary[]>("/api/me/payment-methods");
+      const methods = Array.isArray(methodsRes.data) ? methodsRes.data : [];
+      if (methods.length > 0) {
+        setSavedMethods(methods);
+        setSelectedOfferId(offerId);
+        setSelectedPaymentOption("full");
+        setShowSavedCardSheet(true);
+        return;
+      }
       Alert.alert(t("customer.chatScreen.acceptOfferTitle"), t("customer.chatScreen.acceptOfferBody"), [
         { text: t("common.cancel"), style: "cancel" },
         { text: t("customer.chatScreen.payDeposit"), onPress: () => void acceptCustomOffer(offerId, "deposit") },
@@ -640,6 +725,12 @@ export default function ChatScreen() {
     },
     [acceptCustomOffer, t]
   );
+
+  const handleSavedCardPay = useCallback((methodId: string) => {
+    if (!selectedOfferId) return;
+    setShowSavedCardSheet(false);
+    void acceptCustomOffer(selectedOfferId, selectedPaymentOption, methodId);
+  }, [acceptCustomOffer, selectedOfferId, selectedPaymentOption]);
 
   const formatTime = (iso: string) =>
     (() => {
@@ -874,6 +965,12 @@ export default function ChatScreen() {
               data={listItems}
               keyExtractor={(item) => item.key}
               contentContainerStyle={{ padding: contentPadding, paddingBottom: 8 }}
+              onContentSizeChange={() => {
+                if (!initialScrollDone.current && messages.length > 0) {
+                  initialScrollDone.current = true;
+                  flatListRef.current?.scrollToEnd({ animated: false });
+                }
+              }}
               onScroll={({ nativeEvent }) => {
                 if (nativeEvent.contentOffset.y < 80) {
                   loadOlder();
@@ -924,7 +1021,7 @@ export default function ChatScreen() {
                       .filter((a: Att) => {
                         if (typeof a === "string") return true;
                         const t = (a as Record<string, unknown>).type;
-                        return t !== "custom_offer" && t !== "custom_request";
+                        return t !== "custom_offer" && t !== "custom_request" && t !== "custom_offer_paid";
                       })
                       .map((a: Att) =>
                         normalizeAttachmentForPreview(typeof a === "string" ? a : (a as Record<string, unknown>)),
@@ -937,6 +1034,7 @@ export default function ChatScreen() {
                   : [];
                 const customOfferAttachment = attachmentRecords.find((a) => a.type === "custom_offer");
                 const customRequestAttachment = attachmentRecords.find((a) => a.type === "custom_request");
+                const customOfferPaidAttachment = attachmentRecords.find((a) => a.type === "custom_offer_paid");
                 const hasRenderableAttachments = attachmentItems.some((a) => a.expired || a.url);
                 return (
                   <View style={{ marginBottom: 12, alignItems: isMe ? "flex-end" : "flex-start" }}>
@@ -1083,32 +1181,46 @@ export default function ChatScreen() {
                           {msg.content}
                         </Text>
                       ) : null}
-                      {customOfferAttachment ? (
-                        <View
+                      {customOfferAttachment ? (() => {
+                        const isOfferExpired = customOfferAttachment.expired === true || customOfferAttachment.status === "expired";
+                        const isOfferWithdrawn = customOfferAttachment.withdrawn === true;
+                        const isOfferInactive = isOfferExpired || isOfferWithdrawn;
+                        return (
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          onPress={() => customOfferAttachment.offer_id && openOfferDetail(customOfferAttachment.offer_id)}
                           style={{
                             marginTop: msg.content ? 10 : 0,
                             borderRadius: 12,
                             padding: 12,
-                            backgroundColor: customOfferAttachment.withdrawn ? "rgba(107,114,128,0.24)" : "rgba(15,52,96,0.22)",
+                            backgroundColor: isOfferInactive ? "rgba(107,114,128,0.24)" : "rgba(15,52,96,0.22)",
                             borderWidth: 1,
-                            borderColor: customOfferAttachment.withdrawn ? "rgba(156,163,175,0.6)" : "rgba(255,255,255,0.18)",
+                            borderColor: isOfferInactive ? "rgba(156,163,175,0.6)" : "rgba(255,255,255,0.18)",
                           }}
                         >
                           <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[700], fontSize: 11, fontWeight: "700", letterSpacing: 0.6 }}>
-                            CUSTOM OFFER
+                            {t("customer.chatScreen.customOfferTitle")}
                           </Text>
                           <Text style={{ color: isMe ? Colors.white : Colors.gray[900], marginTop: 6, fontSize: 18, fontWeight: "700" }}>
                             {(customOfferAttachment.currency || "")} {typeof customOfferAttachment.price === "number" ? customOfferAttachment.price.toFixed(2) : "—"}
                           </Text>
                           <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[700], fontSize: 12, marginTop: 2 }}>
-                            {customOfferAttachment.duration_minutes ? `${customOfferAttachment.duration_minutes} min` : "Duration not set"}
+                            {customOfferAttachment.duration_minutes ? `${customOfferAttachment.duration_minutes} min` : t("customer.chatScreen.customOfferDurationFallback")}
                           </Text>
-                          {customOfferAttachment.withdrawn ? (
+                          {isOfferWithdrawn ? (
                             <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : "#B91C1C", fontSize: 12, marginTop: 8, fontWeight: "600" }}>
-                              This offer was withdrawn.
+                              {t("customer.chatScreen.customOfferWithdrawn")}
+                            </Text>
+                          ) : isOfferExpired ? (
+                            <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : "#B45309", fontSize: 12, marginTop: 8, fontWeight: "600" }}>
+                              {t("customer.chatScreen.customOfferExpired")}
                             </Text>
                           ) : null}
-                          {!isMe && customOfferAttachment.offer_id && !customOfferAttachment.withdrawn ? (
+                          {!isMe &&
+                          customOfferAttachment.offer_id &&
+                          !isOfferInactive &&
+                          customOfferAttachment.status !== "payment_pending" &&
+                          customOfferAttachment.status !== "paid" ? (
                             <TouchableOpacity
                               onPress={() => openAcceptOfferOptions(customOfferAttachment.offer_id!)}
                               disabled={acceptingOfferId === customOfferAttachment.offer_id}
@@ -1124,8 +1236,53 @@ export default function ChatScreen() {
                               {acceptingOfferId === customOfferAttachment.offer_id ? (
                                 <ActivityIndicator size="small" color={Colors.white} />
                               ) : (
-                                <Text style={{ color: Colors.white, fontSize: 13, fontWeight: "700" }}>Accept & Pay</Text>
+                                <Text style={{ color: Colors.white, fontSize: 13, fontWeight: "700" }}>{t("customer.chatScreen.customOfferAcceptPay")}</Text>
                               )}
+                            </TouchableOpacity>
+                          ) : null}
+                          {!isMe && customOfferAttachment.status === "payment_pending" ? (
+                            <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+                              <ActivityIndicator size="small" color={isMe ? Colors.white : Colors.primary} />
+                              <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[700], fontSize: 12, fontWeight: "600" }}>
+                                {t("customer.chatScreen.customOfferPaymentPending")}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {!isMe && customOfferAttachment.status === "paid" ? (
+                            <View style={{ marginTop: 10, alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "#DCFCE7" }}>
+                              <Text style={{ color: "#166534", fontSize: 12, fontWeight: "700" }}>
+                                {t("customer.chatScreen.customOfferPaid")}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {!isOfferInactive && customOfferAttachment.status !== "payment_pending" && customOfferAttachment.status !== "paid" ? (
+                            <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, marginTop: 8, textAlign: "right" }}>Tap for details</Text>
+                          ) : null}
+                        </TouchableOpacity>
+                        );
+                      })() : null}
+                      {customOfferPaidAttachment ? (
+                        <View
+                          style={{
+                            marginTop: msg.content ? 10 : 0,
+                            borderRadius: 12,
+                            padding: 10,
+                            backgroundColor: isMe ? "rgba(255,255,255,0.14)" : "#ECFDF5",
+                            borderWidth: 1,
+                            borderColor: isMe ? "rgba(255,255,255,0.3)" : "#A7F3D0",
+                          }}
+                        >
+                          <Text style={{ color: isMe ? Colors.white : "#065F46", fontSize: 12, fontWeight: "700" }}>
+                            Payment received - booking confirmed
+                          </Text>
+                          {customOfferPaidAttachment.booking_id ? (
+                            <TouchableOpacity
+                              onPress={() => router.push({ pathname: "/(app)/booking-detail", params: { id: customOfferPaidAttachment.booking_id! } })}
+                              style={{ marginTop: 8, alignSelf: "flex-start" }}
+                            >
+                              <Text style={{ color: isMe ? Colors.white : Colors.primary, fontSize: 12, fontWeight: "600" }}>
+                                {t("customer.chatScreen.customOfferPaidViewBooking")}
+                              </Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
@@ -1232,6 +1389,95 @@ export default function ChatScreen() {
         )}
       </KeyboardAvoidingView>
 
+      <Modal
+        visible={showSavedCardSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSavedCardSheet(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" }}
+          onPress={() => setShowSavedCardSheet(false)}
+        >
+          <Pressable
+            style={{
+              backgroundColor: Colors.white,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: 16,
+              paddingBottom: 20 + insets.bottom,
+              maxHeight: "70%",
+            }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{t("customer.chatScreen.acceptOfferTitle")}</Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 4 }}>{t("customer.chatScreen.acceptOfferBody")}</Text>
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+              <TouchableOpacity
+                onPress={() => setSelectedPaymentOption("deposit")}
+                style={{
+                  flex: 1,
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  borderWidth: 1,
+                  borderColor: selectedPaymentOption === "deposit" ? Colors.primary : Colors.gray[200],
+                  backgroundColor: selectedPaymentOption === "deposit" ? "#EFF6FF" : Colors.white,
+                }}
+              >
+                <Text style={{ textAlign: "center", color: selectedPaymentOption === "deposit" ? Colors.primary : Colors.gray[700], fontWeight: "600" }}>{t("customer.chatScreen.payDeposit")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setSelectedPaymentOption("full")}
+                style={{
+                  flex: 1,
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  borderWidth: 1,
+                  borderColor: selectedPaymentOption === "full" ? Colors.primary : Colors.gray[200],
+                  backgroundColor: selectedPaymentOption === "full" ? "#EFF6FF" : Colors.white,
+                }}
+              >
+                <Text style={{ textAlign: "center", color: selectedPaymentOption === "full" ? Colors.primary : Colors.gray[700], fontWeight: "600" }}>{t("customer.chatScreen.payInFull")}</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ fontSize: 13, color: Colors.gray[700], marginTop: 14, marginBottom: 8 }}>{t("customer.chatScreen.payWithSavedCard")}</Text>
+            {savedMethods.map((m) => (
+              <TouchableOpacity
+                key={m.id}
+                onPress={() => handleSavedCardPay(m.id)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: Colors.gray[200],
+                  borderRadius: 12,
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  marginBottom: 8,
+                  backgroundColor: Colors.white,
+                }}
+              >
+                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>
+                  {(m.card_type || "Card").toUpperCase()} •••• {m.last4 || "----"}
+                </Text>
+                <Text style={{ color: Colors.gray[600], fontSize: 12, marginTop: 2 }}>
+                  {m.expiry_month || "--"}/{m.expiry_year || "----"} {m.is_default ? "• Default" : ""}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              onPress={() => {
+                if (selectedOfferId) {
+                  setShowSavedCardSheet(false);
+                  void acceptCustomOffer(selectedOfferId, selectedPaymentOption);
+                }
+              }}
+              style={{ marginTop: 8, borderRadius: 10, paddingVertical: 12, backgroundColor: Colors.primary }}
+            >
+              <Text style={{ color: Colors.white, textAlign: "center", fontWeight: "700" }}>{t("customer.chatScreen.payWithNewCard")}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Image preview modal (attachments) */}
       <Modal
         visible={!!previewImageUrl}
@@ -1277,6 +1523,191 @@ export default function ChatScreen() {
               transition={150}
             />
           ) : null}
+        </Pressable>
+      </Modal>
+
+      {/* Custom Offer Detail Sheet */}
+      <Modal
+        visible={offerDetailVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setOfferDetailVisible(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}
+          onPress={() => setOfferDetailVisible(false)}
+        >
+          <Pressable
+            style={{
+              backgroundColor: Colors.white,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              paddingTop: 8,
+              paddingBottom: 36,
+              maxHeight: "88%",
+            }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* drag handle */}
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.gray[200], alignSelf: "center", marginBottom: 14 }} />
+            {/* header row */}
+            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 20, marginBottom: 18 }}>
+              <Text style={{ flex: 1, fontSize: 17, fontWeight: "700", color: Colors.gray[900] }}>
+                {t("customer.chatScreen.customOfferTitle")}
+              </Text>
+              <TouchableOpacity onPress={() => setOfferDetailVisible(false)} hitSlop={12}>
+                <Ionicons name="close" size={22} color={Colors.gray[500]} />
+              </TouchableOpacity>
+            </View>
+
+            {offerDetailLoading ? (
+              <View style={{ alignItems: "center", paddingVertical: 40 }}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+              </View>
+            ) : !offerDetailData ? (
+              <View style={{ alignItems: "center", paddingVertical: 40, paddingHorizontal: 20 }}>
+                <Text style={{ color: Colors.gray[500], textAlign: "center" }}>Could not load offer details.</Text>
+              </View>
+            ) : (() => {
+              const d = offerDetailData;
+              const req = d.request;
+              const isExpired = d.status === "expired";
+              const isWithdrawn = d.status === "withdrawn";
+              const isPaid = d.status === "paid";
+              const isPending = d.status === "pending";
+              const isPaymentPending = d.status === "payment_pending";
+
+              const formatDate = (iso: string | null | undefined) => {
+                if (!iso) return "—";
+                return new Date(iso).toLocaleString("en-ZA", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+              };
+
+              const statusBadge = isWithdrawn
+                ? { label: t("customer.chatScreen.customOfferWithdrawn").replace(".", ""), bg: "#FEF3C7", text: "#92400E" }
+                : isExpired
+                ? { label: t("customer.chatScreen.customOfferExpired").replace(".", ""), bg: "#F3F4F6", text: "#6B7280" }
+                : isPaid
+                ? { label: t("customer.chatScreen.customOfferPaid"), bg: "#DCFCE7", text: "#166534" }
+                : isPaymentPending
+                ? { label: t("customer.chatScreen.customOfferPaymentPending"), bg: "#DBEAFE", text: "#1D4ED8" }
+                : { label: "Pending", bg: "#EFF6FF", text: "#1E40AF" };
+
+              const locationLabel = req?.location_type === "at_home" ? "At home" : req?.location_type === "at_salon" ? "At salon" : req?.location_type ?? "—";
+              const addressParts = [req?.address_line1, req?.address_line2, req?.address_city, req?.address_state, req?.address_postal_code].filter(Boolean);
+
+              return (
+                <View style={{ paddingHorizontal: 20 }}>
+                  {/* Status badge */}
+                  <View style={{ alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: statusBadge.bg, marginBottom: 16 }}>
+                    <Text style={{ color: statusBadge.text, fontSize: 12, fontWeight: "700" }}>{statusBadge.label}</Text>
+                  </View>
+
+                  {/* Service name */}
+                  {req?.service_name ? (
+                    <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>{req.service_name}</Text>
+                  ) : null}
+
+                  {/* Price */}
+                  <Text style={{ fontSize: 28, fontWeight: "800", color: Colors.primary, marginBottom: 4 }}>
+                    {d.currency || ""} {typeof d.price === "number" ? d.price.toFixed(2) : "—"}
+                    {typeof d.travel_fee === "number" && d.travel_fee > 0
+                      ? <Text style={{ fontSize: 13, color: Colors.gray[500], fontWeight: "400" }}>{`  + ${d.currency} ${d.travel_fee.toFixed(2)} travel`}</Text>
+                      : null}
+                  </Text>
+
+                  {/* Description */}
+                  {req?.description ? (
+                    <Text style={{ color: Colors.gray[600], fontSize: 14, marginBottom: 14, lineHeight: 20 }}>{req.description}</Text>
+                  ) : null}
+
+                  {/* Detail rows */}
+                  <View style={{ gap: 10 }}>
+                    {d.duration_minutes ? (
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Ionicons name="time-outline" size={16} color={Colors.gray[500]} style={{ marginTop: 1 }} />
+                        <Text style={{ color: Colors.gray[700], fontSize: 14 }}>{d.duration_minutes} min</Text>
+                      </View>
+                    ) : null}
+                    {req?.preferred_start_at ? (
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Ionicons name="calendar-outline" size={16} color={Colors.gray[500]} style={{ marginTop: 1 }} />
+                        <Text style={{ color: Colors.gray[700], fontSize: 14 }}>{formatDate(req.preferred_start_at)}</Text>
+                      </View>
+                    ) : null}
+                    {d.expiration_at ? (
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Ionicons name="hourglass-outline" size={16} color={isExpired ? "#B45309" : Colors.gray[500]} style={{ marginTop: 1 }} />
+                        <Text style={{ color: isExpired ? "#B45309" : Colors.gray[700], fontSize: 14 }}>
+                          Offer expires: {formatDate(d.expiration_at)}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {req?.location_type ? (
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Ionicons name="location-outline" size={16} color={Colors.gray[500]} style={{ marginTop: 1 }} />
+                        <View>
+                          <Text style={{ color: Colors.gray[700], fontSize: 14 }}>{locationLabel}</Text>
+                          {addressParts.length > 0 ? (
+                            <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 2 }}>{addressParts.join(", ")}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ) : null}
+                    {d.notes ? (
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Ionicons name="document-text-outline" size={16} color={Colors.gray[500]} style={{ marginTop: 1 }} />
+                        <Text style={{ color: Colors.gray[700], fontSize: 14, flex: 1, lineHeight: 20 }}>{d.notes}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  {/* CTA */}
+                  {isPending && d.id ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setOfferDetailVisible(false);
+                        setTimeout(() => openAcceptOfferOptions(d.id), 300);
+                      }}
+                      style={{
+                        marginTop: 24,
+                        borderRadius: 12,
+                        backgroundColor: Colors.primary,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingVertical: 14,
+                      }}
+                    >
+                      <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>{t("customer.chatScreen.customOfferAcceptPay")}</Text>
+                    </TouchableOpacity>
+                  ) : isPaid && d.booking_id ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setOfferDetailVisible(false);
+                        setTimeout(() => router.push({ pathname: "/(app)/booking-detail", params: { id: d.booking_id! } }), 300);
+                      }}
+                      style={{
+                        marginTop: 24,
+                        borderRadius: 12,
+                        backgroundColor: "#166534",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingVertical: 14,
+                      }}
+                    >
+                      <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>{t("customer.chatScreen.customOfferPaidViewBooking")}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              );
+            })()}
+          </Pressable>
         </Pressable>
       </Modal>
     </>

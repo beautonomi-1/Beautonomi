@@ -96,6 +96,8 @@ export const adminQueryKeys = {
 
   broadcastHistory: (q: string) => [...adminQueryKeys.root, "broadcast", "history", q] as const,
 
+  broadcastDetail: (id: string) => [...adminQueryKeys.root, "broadcast", "detail", id] as const,
+
   mapboxConfig: () => [...adminQueryKeys.root, "mapbox", "config"] as const,
 
   serviceZones: (q: string) => [...adminQueryKeys.root, "service-zones", q] as const,

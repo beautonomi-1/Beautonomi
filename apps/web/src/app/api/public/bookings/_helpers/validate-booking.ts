@@ -1922,12 +1922,40 @@ export async function validateBooking(
   const effectiveDuration = groupTotalDurationMinutes != null && groupTotalDurationMinutes > totalDuration
     ? groupTotalDurationMinutes
     : totalDuration;
+
+  // Guard: zero-duration services produce bookingServicesData with scheduled_end_at === scheduled_start_at.
+  // The working-hours guard later adds the buffer on top of the zero-length segment, making it extend
+  // past closing time and returning a misleading CONFLICT 409 ("time slot taken"). Reject early with a
+  // clear VALIDATION_ERROR so the provider can fix their catalog.
+  if (effectiveDuration <= 0) {
+    return handleApiError(
+      new Error("Booking service has zero duration"),
+      "One or more selected services has no duration. Please remove it and try again, or contact the provider.",
+      "VALIDATION_ERROR",
+      400,
+    );
+  }
+
   const bookingEndFromServices = new Date(selectedDatetime.getTime() + effectiveDuration * 60000);
   // Hold flow: validate + lock used hold.end_at; create_booking_with_locking must use the same end or we get false 409s.
   // For group bookings, if participants extend the duration past the hold window, use the computed end instead.
   const bookingEnd = holdReservedEndAt && bookingEndFromServices <= holdReservedEndAt
     ? holdReservedEndAt
     : bookingEndFromServices;
+
+  // Guard: end must be strictly after start. Zero-duration services (duration_minutes = 0 in DB,
+  // or a corrupted cart) would produce bookingEnd === selectedDatetime which passes the DB
+  // constraint check as equal and later causes the RPC to surface "end_at must be after start_at"
+  // — a confusing message that the UI can misread as a conflict. Return a clear validation error
+  // early so the customer sees a helpful message instead of "time slot taken".
+  if (bookingEnd <= selectedDatetime) {
+    return handleApiError(
+      new Error("Booking end must be after start: service duration is zero or invalid"),
+      "One or more selected services has no duration. Please remove it and try again, or contact the provider.",
+      "VALIDATION_ERROR",
+      400,
+    );
+  }
 
   // ── Provider calendar blocks (time blocks, availability, staff off) ─────
   // Same sources as GET /api/public/providers/[slug]/availability; prevents bypass when draft skipped staff conflict paths.

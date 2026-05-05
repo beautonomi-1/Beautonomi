@@ -110,7 +110,7 @@ export function navigateFromNotification(n: Notification): void {
       router.push(u as never);
       return;
     }
-    router.push("/(app)/notifications" as never);
+    router.push("/(app)/announcements" as never);
     return;
   }
 
@@ -186,7 +186,7 @@ export function navigateFromNotification(n: Notification): void {
   }
 
   // ── Custom requests / offers ─────────────────────────────────────────────
-  if (data.request_id) {
+  if (data.request_id || data.custom_request_id || data.custom_offer_id) {
     router.push("/(app)/account-settings/custom-requests");
     return;
   }

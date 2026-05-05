@@ -217,7 +217,16 @@ export default function StepPayment({
   // Package catalog for the at-checkout picker (canonical pattern: package
   // can only be applied here, mirroring customer-app `book-checkout.tsx`).
   const [packageCatalog, setPackageCatalog] = useState<
-    Array<{ id: string; name: string; description?: string | null; price: number; currency: string; discount_percentage?: number | null }>
+    Array<{
+      id: string;
+      name: string;
+      description?: string | null;
+      price: number;
+      currency: string;
+      discount_percentage?: number | null;
+      /** Offering IDs (services) bundled in this package — used to show only packages relevant to cart. */
+      serviceOfferingIds: string[];
+    }>
   >([]);
   const [packageCatalogLoading, setPackageCatalogLoading] = useState(false);
   const { bundle } = useConfigBundle();
@@ -465,14 +474,22 @@ export default function StepPayment({
         const arr = Array.isArray(inner) ? (inner as Array<Record<string, unknown>>) : [];
         setPackageCatalog(
           arr
-            .map((p) => ({
-              id: String(p.id ?? ""),
-              name: String(p.name ?? "Package"),
-              description: (p.description as string | null | undefined) ?? null,
-              price: Number(p.price) || 0,
-              currency: String(p.currency ?? tenantCurrency),
-              discount_percentage: p.discount_percentage != null ? Number(p.discount_percentage) : null,
-            }))
+            .map((p) => {
+              const servicesRaw = Array.isArray(p.services) ? (p.services as Array<{ id?: string; type?: string }>) : [];
+              const serviceOfferingIds = servicesRaw
+                .filter((row) => !row.type || row.type === "service")
+                .map((row) => String(row.id ?? "").trim())
+                .filter(Boolean);
+              return {
+                id: String(p.id ?? ""),
+                name: String(p.name ?? "Package"),
+                description: (p.description as string | null | undefined) ?? null,
+                price: Number(p.price) || 0,
+                currency: String(p.currency ?? tenantCurrency),
+                discount_percentage: p.discount_percentage != null ? Number(p.discount_percentage) : null,
+                serviceOfferingIds,
+              };
+            })
             .filter((p) => p.id),
         );
       })
@@ -486,6 +503,24 @@ export default function StepPayment({
       cancelled = true;
     };
   }, [searchParams, bookingState.providerId, tenantCurrency]);
+
+  /** Only show packages that bundle at least one service currently in the cart. */
+  const packagesRelevantToBooking = useMemo(() => {
+    const selected = new Set(bookingState.selectedServices.map((s) => s.id));
+    return packageCatalog.filter((pkg) => {
+      const { serviceOfferingIds } = pkg;
+      if (!serviceOfferingIds.length) return false;
+      return serviceOfferingIds.some((oid) => selected.has(oid));
+    });
+  }, [packageCatalog, bookingState.selectedServices]);
+
+  useEffect(() => {
+    const id = bookingState.selectedPackage?.id;
+    if (!id) return;
+    if (!packagesRelevantToBooking.some((p) => p.id === id)) {
+      updateBookingState({ selectedPackage: undefined, customerPackageEntitlementId: null });
+    }
+  }, [bookingState.selectedPackage?.id, packagesRelevantToBooking, updateBookingState]);
 
   // Fetch provider online booking settings: tip suggestions, deposit requirements
   useEffect(() => {
@@ -925,9 +960,12 @@ export default function StepPayment({
         ]);
         const messageLooksLikeSlotConflict =
           /slot|time|overlap|unavailable|already booked|conflict|resource/i.test(error.message ?? "");
+        // VALIDATION_ERROR must never be shown as "time slot taken" — it means the request itself
+        // was malformed (e.g. zero-duration service, invalid time range). Show the real message.
         const isAvailabilityConflict =
-          slotConflictCodes.has(error.code) ||
-          (error.status === 409 && messageLooksLikeSlotConflict);
+          (slotConflictCodes.has(error.code) ||
+           (error.status === 409 && messageLooksLikeSlotConflict)) &&
+          error.code !== "VALIDATION_ERROR";
         if (isAvailabilityConflict) {
           updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
           toast.error(
@@ -1223,17 +1261,17 @@ export default function StepPayment({
           </div>
         )}
 
-        {/* Apply-a-package picker (canonical: only here, mirrors customer-app `book-checkout.tsx`) */}
-        {packageCatalog.length > 0 && (
+        {/* Redeem prepaid package — only packages that include a selected service (canonical: mirrors customer-app `book-checkout.tsx`) */}
+        {packagesRelevantToBooking.length > 0 && (
           <div className="p-4 bg-violet-50/60 border border-violet-200/70 rounded-lg space-y-3">
             <div className="flex items-center gap-2">
               <Gift className="w-5 h-5 text-violet-700 shrink-0" />
               <div>
                 <p className="text-sm font-medium text-gray-900">
-                  {bookingState.selectedPackage?.id ? "Package applied" : "Apply a package (optional)"}
+                  {bookingState.selectedPackage?.id ? "Package applied" : "Redeem a prepaid package (optional)"}
                 </p>
                 <p className="text-xs text-gray-600">
-                  Bundle pricing is applied at this step — pick one to use it for this booking.
+                  Only packages that include your selected service(s) are shown. Bundle pricing applies when you pick one.
                 </p>
               </div>
             </div>
@@ -1241,7 +1279,7 @@ export default function StepPayment({
               <p className="text-sm text-gray-500">Loading packages…</p>
             ) : (
               <div className="space-y-2">
-                {packageCatalog.map((pkg) => {
+                {packagesRelevantToBooking.map((pkg) => {
                   const selected = bookingState.selectedPackage?.id === pkg.id;
                   return (
                     <button

@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const { limit, offset } = getOffsetPaginationParams(request, { defaultLimit: 30, maxLimit: 100 });
     const unreadOnly = searchParams.get("unread_only") === "true";
+    const typeFilter = searchParams.get("type");
 
     let query = supabase
       .from("notifications")
@@ -23,6 +24,10 @@ export async function GET(request: NextRequest) {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
+
+    if (typeFilter?.trim()) {
+      query = query.eq("type", typeFilter.trim());
+    }
 
     if (unreadOnly) {
       query = query.eq("is_read", false);

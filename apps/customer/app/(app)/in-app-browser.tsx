@@ -3,7 +3,7 @@
  * so customers never leave the app.
  * Route: (app)/in-app-browser?url=<encoded>&title=...
  */
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, Linking } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { WebView } from "react-native-webview";
@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
+import { api } from "@/lib/api-client";
 
 export default function InAppBrowserScreen() {
   const router = useRouter();
@@ -21,6 +22,24 @@ export default function InAppBrowserScreen() {
   try { rawUrl = params.url ? decodeURIComponent(params.url) : ""; } catch { rawUrl = params.url ?? ""; }
   try { displayTitle = params.title ? decodeURIComponent(params.title) : "Link"; } catch { displayTitle = params.title ?? "Link"; }
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [lastWebUrl, setLastWebUrl] = useState(rawUrl);
+
+  const pollCustomOfferBooking = useCallback(async (offerId: string) => {
+    for (let i = 0; i < 15; i += 1) {
+      try {
+        const res = await api.get<{ booking_id?: string | null }>(`/api/me/custom-offers/${offerId}`);
+        const bookingId = (res.data as { booking_id?: string | null } | undefined)?.booking_id ?? null;
+        if (bookingId) {
+          router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } } as never);
+          return;
+        }
+      } catch {
+        // ignore while polling
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    router.replace("/(app)/account-settings/custom-requests" as never);
+  }, [router]);
 
   const isValid =
     rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
@@ -101,7 +120,19 @@ export default function InAppBrowserScreen() {
                     params: { id: bookingId },
                   } as never);
                 } else if (paymentType === "custom_offer") {
-                  router.replace("/(app)/account-settings/custom-requests" as never);
+                  const offerId = (() => {
+                    try {
+                      const parsed = new URL(lastWebUrl);
+                      return parsed.searchParams.get("offer_id");
+                    } catch {
+                      return null;
+                    }
+                  })();
+                  if (offerId) {
+                    void pollCustomOfferBooking(offerId);
+                  } else {
+                    router.replace("/(app)/account-settings/custom-requests" as never);
+                  }
                 } else if (paymentType === "wallet_topup") {
                   router.replace("/(app)/(tabs)/profile" as never);
                 } else {
@@ -111,6 +142,9 @@ export default function InAppBrowserScreen() {
             } catch {
               // ignore
             }
+          }}
+          onNavigationStateChange={(state) => {
+            if (state?.url) setLastWebUrl(state.url);
           }}
           onError={(e: any) => setLoadError(e.nativeEvent.description || "Failed to load")}
           onHttpError={(e: any) => setLoadError(`HTTP ${e.nativeEvent.statusCode}`)}

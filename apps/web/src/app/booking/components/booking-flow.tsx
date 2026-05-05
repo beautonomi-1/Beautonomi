@@ -1356,7 +1356,7 @@ export default function BookingFlow() {
 
       {/* Step Content — min-h-0 so flex child can shrink; inner scroll; pb reserves space for fixed BookingActionBar */}
       <main className="flex-1 min-h-0 overflow-hidden relative">
-        <AnimatePresence initial={false} custom={direction} mode="wait">
+        <AnimatePresence initial={false} custom={direction}>
           <motion.div
             key={currentStep}
             custom={direction}
