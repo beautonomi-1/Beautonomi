@@ -16,7 +16,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
-import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 
 type Notif = {
@@ -99,7 +99,7 @@ export default function ProviderAnnouncementDetailScreen() {
         <ScrollView
           contentContainerStyle={{
             padding: 16,
-            paddingBottom: STACK_CONTENT_PADDING_BOTTOM + insets.bottom,
+            paddingBottom: tabScreenScrollBottomPadding(insets.bottom),
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>

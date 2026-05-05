@@ -99,7 +99,7 @@ export async function POST(
         try {
           await sendToUser(customerId, {
             title: "Offer withdrawn",
-            body: "The provider has withdrawn their custom offer. You can still receive new offers for your request.",
+            message: "The provider has withdrawn their custom offer. You can still receive new offers for your request.",
             data: { custom_offer_id: offerId, custom_request_id: offerData.request_id },
           });
           await insertNotification({

@@ -88,11 +88,11 @@ export default function ProviderAnnouncementsScreen() {
       ) : (
         <FlatList
           data={rows}
-          keyExtractor={(it) => it.id}
+          keyExtractor={(it: Row) => it.id}
           contentContainerStyle={{
             paddingHorizontal: 16,
             paddingTop: 8,
-            paddingBottom: tabScreenScrollBottomPadding + insets.bottom,
+            paddingBottom: tabScreenScrollBottomPadding(insets.bottom),
           }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
@@ -106,7 +106,7 @@ export default function ProviderAnnouncementsScreen() {
               </Text>
             </View>
           }
-          renderItem={({ item }) => {
+          renderItem={({ item }: { item: Row }) => {
             const thumbUri = thumb(item.data);
             const isExpired = expired(item.data);
             return (
