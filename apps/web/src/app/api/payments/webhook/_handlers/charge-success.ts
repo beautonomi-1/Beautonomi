@@ -283,10 +283,10 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   // non-zero service_fee_amount (mirrors the || fix in /api/me/bookings/[id]).
   const serviceFeeAmount = Number(
     metadata?.service_fee_amount ??
-      (bookingData as Record<string, unknown>).platform_fee_amount ||
-      bookingData.service_fee_amount ||
-      bookingData.platform_service_fee ||
-      0,
+      ((bookingData as Record<string, unknown>).platform_fee_amount ||
+        bookingData.service_fee_amount ||
+        bookingData.platform_service_fee ||
+        0),
   );
 
   // Commission base must be proportional to the ACTUAL charged amount, not the
@@ -2894,10 +2894,10 @@ async function handleBookingRemainingSuccess(
   // Same || fallback pattern as the initial-payment path above.
   const serviceFeeAmount = Number(
     metadata?.service_fee_amount ??
-      (bookingData as Record<string, unknown>).platform_fee_amount ||
-      bookingData.service_fee_amount ||
-      bookingData.platform_service_fee ||
-      0,
+      ((bookingData as Record<string, unknown>).platform_fee_amount ||
+        bookingData.service_fee_amount ||
+        bookingData.platform_service_fee ||
+        0),
   );
   const bookingTotal = Number(bookingData.total_amount || 0);
   const fullCommissionBase = bookingTotal > 0
