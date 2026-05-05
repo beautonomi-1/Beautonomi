@@ -348,10 +348,12 @@ export async function GET(
     const subtotal = storedSubtotal != null && !Number.isNaN(storedSubtotal) ? storedSubtotal : linesSubtotal;
 
     const tax = Number(booking.tax_amount || 0);
-    const platformFee = Number((bookingRaw as Record<string, unknown>).platform_fee_amount ?? booking.service_fee_amount ?? 0);
+    // Use || (not ??) so a platform_fee_amount of 0 (DEFAULT on older rows) falls
+    // through to the legacy service_fee_amount column which holds the real value.
+    const platformFee = Number((bookingRaw as Record<string, unknown>).platform_fee_amount || booking.service_fee_amount || 0);
     const platformFeePercentage = Number(
-      (bookingRaw as Record<string, unknown>).platform_fee_percentage ??
-        (bookingRaw as Record<string, unknown>).service_fee_percentage ??
+      (bookingRaw as Record<string, unknown>).platform_fee_percentage ||
+        (bookingRaw as Record<string, unknown>).service_fee_percentage ||
         0,
     );
     const travelFee = Number(booking.travel_fee || 0);

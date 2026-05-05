@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { isCustomerShellPublicRoute } from "@/lib/navigation/customer-shell-public-routes";
 
 /**
- * AccountStatusGuard - Redirects suspended/deactivated users to appropriate pages
+ * AccountStatusGuard - Redirects suspended/deactivated users to appropriate pages.
+ *
+ * The check runs once per user session (keyed on user.id + retryKey), NOT on
+ * every route change. This prevents the "Checking account status…" loader from
+ * flashing on every tab/link click within the account-settings shell.
  */
 const ACCOUNT_STATUS_BLOCKING_PREFIXES = [
   "/account-settings",
@@ -33,6 +37,9 @@ export default function AccountStatusGuard({ children }: { children: React.React
   const [isChecking, setIsChecking] = useState(true);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  // Track which (userId, retryKey) pair we last ran a check for so we don't
+  // re-run on every route change within the same session.
+  const lastCheckedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isLoading || !user) {
@@ -45,6 +52,15 @@ export default function AccountStatusGuard({ children }: { children: React.React
       setIsChecking(false);
       return;
     }
+
+    // Only run when the user or retryKey has changed — NOT on every pathname change.
+    const checkKey = `${user.id}::${retryKey}`;
+    if (lastCheckedRef.current === checkKey) {
+      // Already checked for this user/session — render children immediately.
+      setIsChecking(false);
+      return;
+    }
+    lastCheckedRef.current = checkKey;
 
     const checkAccountStatus = async () => {
       try {
@@ -97,7 +113,9 @@ export default function AccountStatusGuard({ children }: { children: React.React
     setCheckError(null);
     setIsChecking(true);
     checkAccountStatus();
-  }, [user, isLoading, pathname, router, signOut, retryKey]);
+  // pathname intentionally excluded — the check is per-session, not per-route.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isLoading, retryKey]);
 
   // Public marketplace shell renders immediately. Authenticated account surfaces wait for account-status.
   if (!user && isCustomerShellPublicRoute(pathname)) {

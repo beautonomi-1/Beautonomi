@@ -41,22 +41,37 @@ export function mapGeocodeFeatureToAddressParts(
     place_name: feature.place_name,
   };
 
+  // Keep a secondary "suburb/neighborhood" value as city fallback for dense urban areas
+  // (common in SA where Mapbox emits neighborhood.* but omits place.*).
+  let neighborhoodOrLocality = "";
+
   for (const item of context) {
-    if (item.id.startsWith("place.")) {
+    if (item.id.startsWith("place.") || item.id.startsWith("city.")) {
       if (!addressParts.city) {
         addressParts.city = item.text;
       }
-    } else if (item.id.startsWith("district.")) {
+    } else if (item.id.startsWith("locality.")) {
+      // Locality is more specific than place — prefer it as city when present.
+      addressParts.city = item.text;
+    } else if (item.id.startsWith("neighborhood.") || item.id.startsWith("suburb.")) {
+      // Record as suburb candidate; use as city only if nothing else fills it.
+      if (!neighborhoodOrLocality) neighborhoodOrLocality = item.text;
+    } else if (item.id.startsWith("district.") || item.id.startsWith("municipality.")) {
       if (!addressParts.city) {
         addressParts.city = item.text;
       }
-    } else if (item.id.startsWith("region.")) {
+    } else if (item.id.startsWith("region.") || item.id.startsWith("province.")) {
       addressParts.state = item.text;
-    } else if (item.id.startsWith("postcode.")) {
+    } else if (item.id.startsWith("postcode.") || item.id.startsWith("postalcode.")) {
       addressParts.postal_code = item.text;
     } else if (item.id.startsWith("country.")) {
       addressParts.country = item.text;
     }
+  }
+
+  // If no city was found from place/locality/district, fall back to the neighborhood.
+  if (!addressParts.city && neighborhoodOrLocality) {
+    addressParts.city = neighborhoodOrLocality;
   }
 
   const placeParts = feature.place_name.split(",").map((p) => p.trim());
@@ -85,6 +100,16 @@ export function mapGeocodeFeatureToAddressParts(
       const possiblePostal = placeParts[3];
       if (/^[0-9A-Z\s-]+$/.test(possiblePostal) && possiblePostal.length <= 10) {
         addressParts.postal_code = possiblePostal;
+      }
+    }
+  }
+
+  // Last-resort postal code extraction: scan remaining place_name parts for a numeric-ish code.
+  if (!addressParts.postal_code) {
+    for (const part of placeParts.slice(1)) {
+      if (/^\d{4,6}$/.test(part.trim()) || /^[A-Z]{1,2}\d{1,2}[A-Z\d\s]{2,4}$/.test(part.trim())) {
+        addressParts.postal_code = part.trim();
+        break;
       }
     }
   }

@@ -201,11 +201,15 @@ export async function GET(
       travel_fee: Number((bookingData as Record<string, unknown>).travel_fee ?? 0),
       tax_amount: Number((bookingData as Record<string, unknown>).tax_amount ?? 0),
       tax_rate: Number((bookingData as Record<string, unknown>).tax_rate ?? 0),
-      platform_fee_amount: Number((bookingData as Record<string, unknown>).platform_fee_amount ?? (bookingData as Record<string, unknown>).service_fee_amount ?? 0),
-      platform_fee_percentage: Number((bookingData as Record<string, unknown>).platform_fee_percentage ?? (bookingData as Record<string, unknown>).service_fee_percentage ?? 0),
-      platform_service_fee: Number((bookingData as Record<string, unknown>).platform_fee_amount ?? (bookingData as Record<string, unknown>).platform_service_fee ?? (bookingData as Record<string, unknown>).service_fee_amount ?? 0),
-      service_fee_amount: Number((bookingData as Record<string, unknown>).platform_fee_amount ?? (bookingData as Record<string, unknown>).service_fee_amount ?? 0),
-      service_fee_percentage: Number((bookingData as Record<string, unknown>).platform_fee_percentage ?? (bookingData as Record<string, unknown>).service_fee_percentage ?? 0),
+      // Use || (not ??) so a stored 0 falls through to the legacy alias column.
+      // Bookings created before the platform_fee_* columns were added have
+      // platform_fee_amount = 0 (DEFAULT) while service_fee_amount holds the
+      // real value — ??(nullish) would return 0 and hide the fee line.
+      platform_fee_amount: Number((bookingData as Record<string, unknown>).platform_fee_amount || (bookingData as Record<string, unknown>).service_fee_amount || 0),
+      platform_fee_percentage: Number((bookingData as Record<string, unknown>).platform_fee_percentage || (bookingData as Record<string, unknown>).service_fee_percentage || 0),
+      platform_service_fee: Number((bookingData as Record<string, unknown>).platform_fee_amount || (bookingData as Record<string, unknown>).platform_service_fee || (bookingData as Record<string, unknown>).service_fee_amount || 0),
+      service_fee_amount: Number((bookingData as Record<string, unknown>).platform_fee_amount || (bookingData as Record<string, unknown>).service_fee_amount || 0),
+      service_fee_percentage: Number((bookingData as Record<string, unknown>).platform_fee_percentage || (bookingData as Record<string, unknown>).service_fee_percentage || 0),
       total_amount: Number(bookingData.total_amount ?? 0),
       total_paid: Number((bookingData as Record<string, unknown>).total_paid ?? 0),
       total_refunded: Number((bookingData as Record<string, unknown>).total_refunded ?? 0),

@@ -278,10 +278,14 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
   const tipAmount = Number(metadata?.tip_amount ?? bookingData.tip_amount ?? 0);
   const taxAmount = Number(metadata?.tax_amount ?? bookingData.tax_amount ?? 0);
   const travelFee = Number(metadata?.travel_fee ?? bookingData.travel_fee ?? 0);
+  // Prefer Paystack metadata (always populated by process-payment.ts). Fall back
+  // to DB columns using || so a legacy 0-default platform_fee_amount never masks a
+  // non-zero service_fee_amount (mirrors the || fix in /api/me/bookings/[id]).
   const serviceFeeAmount = Number(
     metadata?.service_fee_amount ??
-      bookingData.service_fee_amount ??
-      bookingData.platform_service_fee ??
+      (bookingData as Record<string, unknown>).platform_fee_amount ||
+      bookingData.service_fee_amount ||
+      bookingData.platform_service_fee ||
       0,
   );
 
@@ -2887,10 +2891,12 @@ async function handleBookingRemainingSuccess(
   const tipAmount = Number(metadata?.tip_amount ?? bookingData.tip_amount ?? 0);
   const taxAmount = Number(metadata?.tax_amount ?? bookingData.tax_amount ?? 0);
   const travelFee = Number(metadata?.travel_fee ?? bookingData.travel_fee ?? 0);
+  // Same || fallback pattern as the initial-payment path above.
   const serviceFeeAmount = Number(
     metadata?.service_fee_amount ??
-      bookingData.service_fee_amount ??
-      bookingData.platform_service_fee ??
+      (bookingData as Record<string, unknown>).platform_fee_amount ||
+      bookingData.service_fee_amount ||
+      bookingData.platform_service_fee ||
       0,
   );
   const bookingTotal = Number(bookingData.total_amount || 0);
