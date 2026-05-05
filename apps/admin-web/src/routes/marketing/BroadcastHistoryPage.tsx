@@ -271,7 +271,7 @@ export function BroadcastHistoryPage() {
                                     const m = detailBroadcast.metadata as Record<string, unknown>;
                                     return (
                                       <div className="space-y-1">
-                                        {m.media_url && (
+                                        {Boolean(m.media_url) && (
                                           <p>
                                             <span className="font-semibold">Media:</span> {String(m.media_type ?? "")} —{" "}
                                             <a
@@ -292,7 +292,7 @@ export function BroadcastHistoryPage() {
                                             )}
                                           </p>
                                         )}
-                                        {m.cta_label && m.cta_url && (
+                                        {Boolean(m.cta_label) && Boolean(m.cta_url) && (
                                           <p>
                                             <span className="font-semibold">CTA:</span> {String(m.cta_label)} →{" "}
                                             <a href={String(m.cta_url)} target="_blank" rel="noreferrer" className="text-indigo-700 underline">
@@ -300,12 +300,12 @@ export function BroadcastHistoryPage() {
                                             </a>
                                           </p>
                                         )}
-                                        {m.expires_at && (
+                                        {Boolean(m.expires_at) && (
                                           <p>
                                             <span className="font-semibold">Expires:</span> {String(m.expires_at)}
                                           </p>
                                         )}
-                                        {m.deep_link && (
+                                        {Boolean(m.deep_link) && (
                                           <p>
                                             <span className="font-semibold">Deep link:</span> {String(m.deep_link)}
                                           </p>
