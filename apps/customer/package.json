@@ -1,6 +1,6 @@
 {
   "name": "customer",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "main": "index.ts",
   "scripts": {
     "dev": "node ../../tooling/expo-dev/port-safe-expo-dev.js 8081 8083",

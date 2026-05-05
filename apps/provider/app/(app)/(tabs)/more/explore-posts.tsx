@@ -155,18 +155,20 @@ type PickedAsset = { uri: string; mimeType?: string; fileName?: string };
 export default function ExplorePostsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: windowWidth, isTablet } = useResponsive();
+  const { width: windowWidth, isTablet, screenPadding } = useResponsive();
   /** BottomSheet content uses paddingHorizontal: 20 — carousel must match or nested horizontal ScrollView gets zero height. */
   const exploreDetailSheetPadding = 20;
   const exploreDetailMediaWidth = Math.max(
     280,
     windowWidth - exploreDetailSheetPadding * 2,
   );
-  /** Instagram-style grid: 3 on phone, 4 on tablet; thin gutters */
+  /** Instagram-style grid: 3 on phone, 4 on tablet; thin gutters.
+   *  ScreenContainer applies paddingHorizontal: screenPadding so we subtract
+   *  both sides here — otherwise on tablet the 4th column overflows and clips. */
   const exploreGridGap = 2;
   const exploreGridColumns = isTablet ? 4 : 3;
   const exploreGridCellSize =
-    (windowWidth - exploreGridGap * (exploreGridColumns - 1)) / exploreGridColumns;
+    (windowWidth - screenPadding * 2 - exploreGridGap * (exploreGridColumns - 1)) / exploreGridColumns;
   const params = useLocalSearchParams<{ create?: string }>();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -1373,14 +1375,14 @@ export default function ExplorePostsScreen() {
                               height: "100%",
                               borderRadius: 12,
                               overflow: "hidden",
-                              backgroundColor: "#f3f4f6",
+                              backgroundColor: "#111111",
                             }}
                           >
                             {isVideoUrl(url) ? (
                               <Video
                                 source={{ uri: url }}
                                 style={StyleSheet.absoluteFillObject}
-                                resizeMode={ResizeMode.COVER}
+                                resizeMode={ResizeMode.CONTAIN}
                                 useNativeControls
                                 shouldPlay={false}
                                 isLooping
@@ -1389,7 +1391,7 @@ export default function ExplorePostsScreen() {
                               <Image
                                 source={{ uri: url }}
                                 style={twStyle("h-full w-full") as ExpoImageStyle}
-                                contentFit="cover"
+                                contentFit="contain"
                                 accessibilityLabel={`Post media ${idx + 1} of ${urls.length}`}
                               />
                             )}

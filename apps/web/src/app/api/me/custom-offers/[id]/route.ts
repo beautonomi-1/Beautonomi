@@ -4,7 +4,8 @@ import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } f
 
 /**
  * GET /api/me/custom-offers/[id]
- * Returns the offer for the current customer (for success page to poll for booking_id after payment).
+ * Returns full offer + request detail for the current customer.
+ * Used both for post-payment booking_id polling and for the in-chat detail sheet.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -14,26 +15,43 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { data: offerRow, error } = await supabase
       .from("custom_offers")
-      .select("id, status, booking_id, paid_at, request_id")
+      .select(`
+        id,
+        status,
+        booking_id,
+        paid_at,
+        request_id,
+        price,
+        currency,
+        duration_minutes,
+        expiration_at,
+        notes,
+        travel_fee,
+        staff_id,
+        request:custom_requests(
+          id,
+          customer_id,
+          service_name,
+          description,
+          location_type,
+          preferred_start_at,
+          address_line1,
+          address_line2,
+          address_city,
+          address_state,
+          address_postal_code
+        )
+      `)
       .eq("id", id)
       .single();
+
     if (error || !offerRow) return notFoundResponse("Offer not found");
 
-    const offer = offerRow as { id: string; status: string; booking_id?: string | null; paid_at?: string | null; request_id: string };
-    const { data: reqRow } = await supabase
-      .from("custom_requests")
-      .select("customer_id")
-      .eq("id", offer.request_id)
-      .single();
-    const req = reqRow as { customer_id: string } | null;
+    const offer = offerRow as any;
+    const req = offer.request as { customer_id: string } | null;
     if (!req || req.customer_id !== user.id) return notFoundResponse("Offer not found");
 
-    return successResponse({
-      id: offer.id,
-      status: offer.status,
-      booking_id: offer.booking_id ?? null,
-      paid_at: offer.paid_at ?? null,
-    });
+    return successResponse(offer);
   } catch (err) {
     return handleApiError(err, "Failed to fetch offer");
   }

@@ -25,7 +25,7 @@ import { Colors } from "@/constants/colors";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
-import { StaticMapImage } from "@/components/StaticMapImage";
+import { StaticMapImage, openInMaps } from "@/components/StaticMapImage";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -127,6 +127,12 @@ function getGoogleCalendarUrl(params: { title: string; description: string; loca
 }
 
 const COMPLETION_MODAL_STORAGE_KEY = "booking_completion_modal_seen_";
+type BookingReviewSummary = {
+  id: string;
+  booking_id?: string;
+  rating?: number;
+  comment?: string | null;
+};
 
 export default function BookingDetailScreen() {
   useScreenTracking("Booking Detail");
@@ -170,6 +176,7 @@ export default function BookingDetailScreen() {
   const [qrSecondsLeft, setQrSecondsLeft] = useState<number | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [payRemainingLoading, setPayRemainingLoading] = useState(false);
+  const [myReview, setMyReview] = useState<BookingReviewSummary | null>(null);
   const hasLoadedOnce = useRef(false);
   const referralPostedBookingIds = useRef<Set<string>>(new Set());
 
@@ -223,6 +230,34 @@ export default function BookingDetailScreen() {
   useEffect(() => {
     load();
   }, [id, load]);
+
+  useEffect(() => {
+    if (!id || !booking || booking.status !== "completed") {
+      setMyReview(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<{
+        review?: BookingReviewSummary | null;
+        reviews?: BookingReviewSummary[];
+      }>(`/api/me/reviews?booking_id=${encodeURIComponent(id)}`)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.error) {
+          setMyReview(null);
+          return;
+        }
+        const row = res.data?.review ?? (Array.isArray(res.data?.reviews) ? res.data.reviews[0] : null) ?? null;
+        setMyReview(row);
+      })
+      .catch(() => {
+        if (!cancelled) setMyReview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, booking]);
 
   // Referral conversion (same as web confirmation): once per booking id per session; ignore expected 400/404.
   useEffect(() => {
@@ -654,13 +689,6 @@ export default function BookingDetailScreen() {
     } finally {
       setPayRemainingLoading(false);
     }
-  };
-
-  const openInBrowser = () => {
-    const url = id
-      ? `${APP_URL}/account-settings/bookings/${id}`
-      : `${APP_URL}/account-settings/bookings`;
-    Linking.openURL(url);
   };
 
   const downloadReceiptNative = useCallback(async () => {
@@ -1338,6 +1366,11 @@ export default function BookingDetailScreen() {
                       latitude={pLat}
                       longitude={pLng}
                       {...(hasCustomerPin ? { secondaryLatitude: cLat, secondaryLongitude: cLng } : {})}
+                      fallbackQuery={
+                        hasCustomerPin
+                          ? `${cLat.toFixed(5)},${cLng.toFixed(5)}`
+                          : ""
+                      }
                       width={400}
                       height={180}
                       zoom={12}
@@ -1560,7 +1593,14 @@ export default function BookingDetailScreen() {
               <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{formatDate(booking.selected_datetime, booking.display_time_zone)}</Text>
               <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>{formatTime(booking.selected_datetime, booking.display_time_zone)}</Text>
               {provider?.business_name ? (
-                <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 8 }}>at {provider.business_name}</Text>
+                <>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 8 }}>at {provider.business_name}</Text>
+                  {typeof provider.rating_average === "number" && provider.rating_average > 0 ? (
+                    <Text style={{ fontSize: 13, color: "#b45309", marginTop: 4 }}>
+                      {`${provider.rating_average.toFixed(1)}★${provider.review_count ? ` · ${provider.review_count} reviews` : ""}`}
+                    </Text>
+                  ) : null}
+                </>
               ) : null}
             </View>
           </>
@@ -1822,26 +1862,47 @@ export default function BookingDetailScreen() {
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>
               {isAtHome ? "Provider location" : "Salon location"}
             </Text>
-            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-              <Ionicons name="location-outline" size={16} color={Colors.gray[600]} style={{ marginTop: 2 }} />
-              <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[600], flex: 1 }}>
-                {(location as { address?: string }).address ||
-                  [location.name, (location as { address_line1?: string }).address_line1, (location as { city?: string }).city].filter(Boolean).join(", ") ||
-                  "—"}
-              </Text>
-            </View>
-            {(location as { latitude?: number; longitude?: number }).latitude != null && (location as { longitude?: number }).longitude != null && (
-              <View style={{ marginTop: 8, overflow: "hidden", borderRadius: 12 }}>
-                <StaticMapImage
-                  latitude={Number((location as { latitude?: number }).latitude)}
-                  longitude={Number((location as { longitude?: number }).longitude)}
-                  width={400}
-                  height={150}
-                  zoom={15}
-                  style={{ borderRadius: 12 }}
-                />
-              </View>
-            )}
+            {(() => {
+              const formattedSalonAddr =
+                (location as { address?: string }).address ||
+                [location.name, (location as { address_line1?: string }).address_line1, (location as { city?: string }).city]
+                  .filter(Boolean)
+                  .join(", ") ||
+                "";
+              return (
+                <>
+                  <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                    <Ionicons name="location-outline" size={16} color={Colors.gray[600]} style={{ marginTop: 2 }} />
+                    <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[600], flex: 1 }}>
+                      {formattedSalonAddr || "—"}
+                    </Text>
+                  </View>
+                  {(location as { latitude?: number; longitude?: number }).latitude != null &&
+                  (location as { longitude?: number }).longitude != null ? (
+                    <View style={{ marginTop: 8, overflow: "hidden", borderRadius: 12 }}>
+                      <StaticMapImage
+                        latitude={Number((location as { latitude?: number }).latitude)}
+                        longitude={Number((location as { longitude?: number }).longitude)}
+                        fallbackQuery={formattedSalonAddr}
+                        width={400}
+                        height={150}
+                        zoom={15}
+                        style={{ borderRadius: 12 }}
+                      />
+                    </View>
+                  ) : formattedSalonAddr.trim() ? (
+                    <TouchableOpacity
+                      style={{ marginTop: 10, alignSelf: "flex-start" }}
+                      onPress={() => openInMaps({ query: formattedSalonAddr }).catch(() => {})}
+                      accessibilityRole="button"
+                      accessibilityLabel="Open address in Maps"
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Open in Maps</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
+              );
+            })()}
           </View>
         )}
 
@@ -1890,6 +1951,7 @@ export default function BookingDetailScreen() {
               const ac = a.access_codes as { gate?: string; buzzer?: string; door?: string } | null | undefined;
               const hasAc = ac && (Boolean(ac.gate?.trim()) || Boolean(ac.buzzer?.trim()) || Boolean(ac.door?.trim()));
               const lines = [line1, line2, [city, postal].filter(Boolean).join(" "), country].filter(Boolean);
+              const addressSingleLine = lines.join(", ");
               return (
                 <>
                   <Text style={{ fontSize: 14, color: Colors.gray[700], lineHeight: 22 }}>{lines.join("\n")}</Text>
@@ -1935,12 +1997,22 @@ export default function BookingDetailScreen() {
                       <StaticMapImage
                         latitude={Number(a.latitude)}
                         longitude={Number(a.longitude)}
+                        fallbackQuery={addressSingleLine}
                         width={400}
                         height={150}
                         zoom={15}
                         style={{ borderRadius: 12 }}
                       />
                     </View>
+                  ) : addressSingleLine.trim().length > 0 ? (
+                    <TouchableOpacity
+                      style={{ marginTop: 10, alignSelf: "flex-start" }}
+                      onPress={() => openInMaps({ query: addressSingleLine }).catch(() => {})}
+                      accessibilityRole="button"
+                      accessibilityLabel="Open address in Maps"
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Open in Maps</Text>
+                    </TouchableOpacity>
                   ) : null}
                 </>
               );
@@ -2087,17 +2159,36 @@ export default function BookingDetailScreen() {
         )}
 
         {booking.status === "completed" && (
-          <TouchableOpacity
-            onPress={() => {
-              haptic.light();
-              router.push({ pathname: "/(app)/review-write", params: { bookingId: booking.id } });
-            }}
-            style={{ paddingVertical: 16, borderWidth: 1, borderColor: Colors.primary, borderRadius: 12, alignItems: "center", marginBottom: 12 }}
-            accessibilityRole="button"
-            accessibilityLabel="Write a review"
-          >
-            <Text style={{ color: Colors.primary, fontWeight: "600" }}>Write a Review</Text>
-          </TouchableOpacity>
+          <View style={{ marginBottom: 12 }}>
+            {myReview ? (
+              <View style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 4 }}>Your review</Text>
+                {Number.isFinite(Number(myReview.rating)) ? (
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>
+                    {`${Number(myReview.rating).toFixed(1)}★`}
+                  </Text>
+                ) : null}
+                {typeof myReview.comment === "string" && myReview.comment.trim().length > 0 ? (
+                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{myReview.comment.trim()}</Text>
+                ) : (
+                  <Text style={{ fontSize: 13, color: Colors.gray[500] }}>No written comment added.</Text>
+                )}
+              </View>
+            ) : null}
+            <TouchableOpacity
+              onPress={() => {
+                haptic.light();
+                router.push({ pathname: "/(app)/review-write", params: { bookingId: booking.id } });
+              }}
+              style={{ paddingVertical: 16, borderWidth: 1, borderColor: Colors.primary, borderRadius: 12, alignItems: "center" }}
+              accessibilityRole="button"
+              accessibilityLabel={myReview ? "Edit your review" : "Write a review"}
+            >
+              <Text style={{ color: Colors.primary, fontWeight: "600" }}>
+                {myReview ? "Edit Review" : "Write a Review"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {booking.status === "completed" && provider?.slug && (
@@ -2181,6 +2272,12 @@ export default function BookingDetailScreen() {
                   (svc: any) =>
                     `• ${svc.offering_name || svc.service_name || svc.title || svc.name || "Service"} – ${booking.currency} ${Number(svc.price || 0).toFixed(2)}`
                 ),
+                ...(platformFeeAmount > 0
+                  ? [
+                      ``,
+                      `Platform fee${platformFeePercentage > 0 ? ` (${platformFeePercentage.toFixed(platformFeePercentage % 1 === 0 ? 0 : 1)}%)` : ""}: ${booking.currency} ${platformFeeAmount.toFixed(2)}`,
+                    ]
+                  : []),
                 ``,
                 `Total: ${booking.currency} ${Number(booking.total_amount || 0).toFixed(2)}`,
                 ``,
@@ -2209,16 +2306,8 @@ export default function BookingDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12 }}>
-          <TouchableOpacity
-            onPress={openInBrowser}
-            style={{ marginRight: 24 }}
-            accessibilityRole="link"
-            accessibilityLabel="Open full details in browser"
-          >
-            <Text style={{ fontSize: 14, color: Colors.gray[500], textDecorationLine: "underline" }}>Open in browser</Text>
-          </TouchableOpacity>
-          {helpUrl ? (
+        {helpUrl ? (
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12 }}>
             <TouchableOpacity
               onPress={() => Linking.openURL(helpUrl)}
               accessibilityRole="link"
@@ -2226,8 +2315,8 @@ export default function BookingDetailScreen() {
             >
               <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>Help</Text>
             </TouchableOpacity>
-          ) : null}
-        </View>
+          </View>
+        ) : null}
           </>
         )}
       </ScrollView>

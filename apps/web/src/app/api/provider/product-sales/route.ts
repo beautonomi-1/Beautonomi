@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   getProviderIdForUser,
   successResponse,
@@ -343,16 +344,31 @@ export async function POST(request: NextRequest) {
     const { error: insertErr } = await supabase.from("product_order_items").insert(itemsToInsert);
     if (insertErr) throw insertErr;
 
-    await recordProductOrderPayment({
-      supabase: supabase as never,
-      productOrderId: order.id,
-      reference: parsed.payment_reference?.trim() || `walk_in_pos_${order.id}`,
-      amountMajor: totalAmount,
-      feesMajor: 0,
-      source: "walk_in_pos",
-      provider: paymentProviderForLedger,
-      platformHeld: false,
-    });
+    // payment_transactions has no provider INSERT RLS (only service_role).
+    // Use the admin client so the ledger write is not blocked by RLS — the
+    // provider's identity and ownership were already validated above before the
+    // product_orders insert, so this is safe.
+    //
+    // The order is already fully created (payment_status=paid, status=delivered)
+    // at this point, so a ledger failure must NOT abort the response or the
+    // client will retry and create a duplicate order. Log and continue.
+    try {
+      await recordProductOrderPayment({
+        supabase: getSupabaseAdmin() as never,
+        productOrderId: order.id,
+        reference: parsed.payment_reference?.trim() || `walk_in_pos_${order.id}`,
+        amountMajor: totalAmount,
+        feesMajor: 0,
+        source: "walk_in_pos",
+        provider: paymentProviderForLedger,
+        platformHeld: false,
+      });
+    } catch (ledgerErr) {
+      console.error("[product-sales] recordProductOrderPayment failed (order already created)", {
+        orderId: order.id,
+        error: ledgerErr,
+      });
+    }
 
     await applyPosProductStockDecrements(supabase, posItems);
 

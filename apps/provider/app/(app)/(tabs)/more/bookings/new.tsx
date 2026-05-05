@@ -2161,44 +2161,7 @@ export default function NewBookingScreen() {
 
               {/* -------- DATE -------- */}
               <SectionLabel label="Date" required />
-              {isTablet ? (
-                <View style={[twStyle("mb-4"), { flexDirection: "row", flexWrap: "wrap" }]}>
-                  {dateOptions.map((d) => {
-                    const isActive = isSameDay(d, selectedDate);
-                    const isToday = isSameDay(d, today);
-                    return (
-                      <View key={d.toISOString()} style={{ width: `${100 / 7}%`, padding: 3 }}>
-                        <TouchableOpacity
-                          style={[twStyle(`items-center rounded-2xl px-2 py-2 ${
-                            isActive ? "bg-gray-900" : isToday ? "border border-emerald-200 bg-emerald-50" : "border border-gray-200 bg-white"
-                          }`), { width: "100%" }]}
-                          onPress={() => setSelectedDate(d)}
-                          accessibilityRole="radio"
-                          accessibilityState={{ checked: isActive }}
-                          accessibilityLabel={format(d, "EEEE, MMMM d")}
-                        >
-                          <Text
-                            style={twStyle(`text-[10px] font-semibold ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}
-                          >
-                            {isToday ? "Today" : format(d, "EEE")}
-                          </Text>
-                          <Text
-                            style={twStyle(`text-base font-bold ${
-                              isActive ? "text-white" : "text-gray-900"
-                            }`)}
-                          >
-                            {format(d, "d")}
-                          </Text>
-                          <Text style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : isToday ? "text-emerald-700" : "text-gray-500"}`)}>
-                            {format(d, "MMM")}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </View>
-              ) : (
-                <ScrollView
+              <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   style={twStyle("mb-4")}
@@ -2212,7 +2175,7 @@ export default function NewBookingScreen() {
                         key={d.toISOString()}
                         style={[twStyle(`items-center rounded-2xl px-3 py-2.5 ${
                           isActive ? "bg-gray-900" : isToday ? "border border-emerald-200 bg-emerald-50" : "border border-gray-200 bg-white"
-                        }`), { minWidth: 64, marginRight: 8 }]}
+                        }`), { minWidth: isTablet ? 76 : 64, marginRight: 8 }]}
                         onPress={() => setSelectedDate(d)}
                         accessibilityRole="radio"
                         accessibilityState={{ checked: isActive }}
@@ -2237,7 +2200,6 @@ export default function NewBookingScreen() {
                     );
                   })}
                 </ScrollView>
-              )}
 
               {/* -------- TIME -------- */}
               <SectionLabel label="Time" required />

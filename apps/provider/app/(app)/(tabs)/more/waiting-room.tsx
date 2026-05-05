@@ -134,6 +134,17 @@ export default function WaitingRoomScreen() {
     return `/api/provider/bookings?${params.toString()}`;
   }, [listRangeDates, selectedLocationId]);
 
+  /** When a salon is selected, at-home bookings are excluded by location_id — merge a dedicated at_home query. */
+  const atHomeBookingsUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    const dates = listRangeDates;
+    if (dates.start) params.set("start_date", dates.start);
+    if (dates.end) params.set("end_date", dates.end);
+    params.set("limit", "1000");
+    params.set("location_type", "at_home");
+    return `/api/provider/bookings?${params.toString()}`;
+  }, [listRangeDates]);
+
   const {
     data: rawBookings,
     loading: bookingsLoading,
@@ -141,12 +152,28 @@ export default function WaitingRoomScreen() {
     refresh: refreshBookings,
   } = useApi<TodayBookingRow[]>(bookingsRangeUrl);
 
+  const {
+    data: rawAtHomeBookings,
+    loading: atHomeBookingsLoading,
+    error: atHomeBookingsError,
+    refresh: refreshAtHomeBookings,
+  } = useApi<TodayBookingRow[]>(atHomeBookingsUrl, { enabled: selectedLocationId != null });
+
+  const mergedBookings = useMemo(() => {
+    const main = Array.isArray(rawBookings) ? rawBookings : [];
+    if (selectedLocationId == null) return main;
+    const extra = Array.isArray(rawAtHomeBookings) ? rawAtHomeBookings : [];
+    const seen = new Set(main.map((b) => b.id));
+    return [...main, ...extra.filter((b) => !seen.has(b.id))];
+  }, [rawBookings, rawAtHomeBookings, selectedLocationId]);
+
   const { execute: patchWaitingRoom } = useApiMutation("patch");
 
   const onRefresh = useCallback(() => {
     refreshWaiting();
     refreshBookings();
-  }, [refreshWaiting, refreshBookings]);
+    if (selectedLocationId != null) void refreshAtHomeBookings();
+  }, [refreshWaiting, refreshBookings, refreshAtHomeBookings, selectedLocationId]);
 
   useEffect(() => {
     return () => {
@@ -175,7 +202,7 @@ export default function WaitingRoomScreen() {
   const inServiceList = (entries ?? []).filter((e) => e.status === "in_service");
 
   const { pendingInRange, scheduleInRange, pendingCount } = useMemo(() => {
-    const list = Array.isArray(rawBookings) ? rawBookings : [];
+    const list = mergedBookings;
     const startYmd = listRangeDates.start;
     const endYmd = listRangeDates.end;
     const inSelectedRange = (b: TodayBookingRow) => {
@@ -199,16 +226,26 @@ export default function WaitingRoomScreen() {
       scheduleInRange: schedule,
       pendingCount: pending.length,
     };
-  }, [rawBookings, provider?.timezone, listRangeDates.start, listRangeDates.end]);
+  }, [mergedBookings, provider?.timezone, listRangeDates.start, listRangeDates.end]);
 
   const metricSummary = useMemo(() => {
-    const list = Array.isArray(rawBookings) ? rawBookings : [];
+    const list = mergedBookings;
     return {
       pendingCount: list.filter((b) => needsConfirmation(b.db_status)).length,
       bookedCount: list.filter((b) => !needsConfirmation(b.db_status) && isActiveScheduleBooking(b)).length,
       completedCount: list.filter((b) => b.status === "completed").length,
     };
-  }, [rawBookings]);
+  }, [mergedBookings]);
+
+  const { pendingSalon, pendingHome, scheduleSalon, scheduleHome } = useMemo(
+    () => ({
+      pendingSalon: pendingInRange.filter((b) => b.location_type !== "at_home"),
+      pendingHome: pendingInRange.filter((b) => b.location_type === "at_home"),
+      scheduleSalon: scheduleInRange.filter((b) => b.location_type !== "at_home"),
+      scheduleHome: scheduleInRange.filter((b) => b.location_type === "at_home"),
+    }),
+    [pendingInRange, scheduleInRange],
+  );
 
   const metricRangeLabel = METRIC_RANGES.find((range) => range.id === metricRange)?.label ?? "Today";
 
@@ -245,8 +282,9 @@ export default function WaitingRoomScreen() {
     [patchWaitingRoom, refreshWaiting],
   );
 
-  /** Today's schedule comes from the same endpoint as Calendar — primary load. */
-  const scheduleStillLoading = bookingsLoading && rawBookings === null;
+  /** Today's schedule — salon-scoped bookings + merged at_home rows when a location is selected */
+  const scheduleStillLoading =
+    bookingsLoading || (selectedLocationId != null ? atHomeBookingsLoading : false);
 
   if (scheduleStillLoading) {
     return (
@@ -259,7 +297,8 @@ export default function WaitingRoomScreen() {
     );
   }
 
-  const scheduleLoadError = Boolean(bookingsError && rawBookings === null);
+  const scheduleLoadError = Boolean(bookingsError && rawBookings === null) ||
+    Boolean(selectedLocationId != null && atHomeBookingsError);
 
   return (
     <ScreenContainer scrollable={false}>
@@ -269,7 +308,11 @@ export default function WaitingRoomScreen() {
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshControl={
-          <RefreshControl refreshing={waitingLoading || bookingsLoading} onRefresh={onRefresh} tintColor="#1a1f3c" />
+          <RefreshControl
+            refreshing={waitingLoading || bookingsLoading || (selectedLocationId != null ? atHomeBookingsLoading : false)}
+            onRefresh={onRefresh}
+            tintColor="#1a1f3c"
+          />
         }
       >
         {scheduleLoadError ? (
@@ -355,7 +398,11 @@ export default function WaitingRoomScreen() {
               <Text style={twStyle("text-center text-sm text-gray-500")}>None — you’re caught up.</Text>
             </View>
           ) : (
-            pendingInRange.map((b) => {
+            <>
+            {pendingSalon.length > 0 ? (
+              <Text style={twStyle("mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500")}>At salon</Text>
+            ) : null}
+            {pendingSalon.map((b) => {
               const t =
                 provider?.timezone?.trim()
                   ? formatInTimeZone(parseISO(b.scheduled_at), provider.timezone, "HH:mm")
@@ -388,7 +435,45 @@ export default function WaitingRoomScreen() {
                   <Ionicons name="chevron-forward" size={20} color="#92400E" />
                 </TouchableOpacity>
               );
-            })
+            })}
+            {pendingHome.length > 0 ? (
+              <>
+                <Text style={[twStyle("mb-2 mt-3 text-[10px] font-bold uppercase tracking-wider text-violet-700"), pendingSalon.length === 0 ? { marginTop: 0 } : undefined]}>House calls</Text>
+                {pendingHome.map((b) => {
+              const t =
+                provider?.timezone?.trim()
+                  ? formatInTimeZone(parseISO(b.scheduled_at), provider.timezone, "HH:mm")
+                  : format(parseISO(b.scheduled_at), "HH:mm");
+              const name = b.customers?.full_name ?? "Guest";
+              const svc = b.services?.[0];
+              const isHighlight = highlightTarget.length > 0 && b.id === highlightTarget;
+              return (
+                <TouchableOpacity
+                  key={b.id}
+                  onPress={() => openBooking(b)}
+                  style={[
+                    twStyle("mb-2 flex-row items-center rounded-xl border-2 border-violet-200 bg-violet-50/90 p-4"),
+                    isHighlight ? { borderColor: "#C026D3", backgroundColor: "#FAE8FF" } : null,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Pending house call ${name} at ${t}`}
+                >
+                  <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-violet-200")}>
+                    <Ionicons name="home" size={20} color="#5B21B6" />
+                  </View>
+                  <View style={twStyle("flex-1")}>
+                    <Text style={twStyle("font-semibold text-gray-900")}>{name}</Text>
+                    <Text style={twStyle("text-xs text-violet-900 font-medium")}>{t} · Tap to confirm</Text>
+                    {svc ? <Text style={twStyle("text-xs text-gray-600 mt-0.5")}>{serviceLine(svc)}</Text> : null}
+                    <Text style={twStyle("text-[10px] text-violet-700 font-semibold mt-1")}>HOUSE CALL</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#5B21B6" />
+                </TouchableOpacity>
+              );
+            })}
+              </>
+            ) : null}
+            </>
           )}
         </View>
 
@@ -402,7 +487,11 @@ export default function WaitingRoomScreen() {
               <Text style={twStyle("text-center text-sm text-gray-500")}>No other active appointments today.</Text>
             </View>
           ) : (
-            scheduleInRange.map((b) => {
+            <>
+            {scheduleSalon.length > 0 ? (
+              <Text style={twStyle("mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500")}>At salon</Text>
+            ) : null}
+            {scheduleSalon.map((b) => {
               const t =
                 provider?.timezone?.trim()
                   ? formatInTimeZone(parseISO(b.scheduled_at), provider.timezone, "HH:mm")
@@ -436,7 +525,46 @@ export default function WaitingRoomScreen() {
                   <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
                 </TouchableOpacity>
               );
-            })
+            })}
+            {scheduleHome.length > 0 ? (
+              <>
+                <Text style={[twStyle("mb-2 mt-3 text-[10px] font-bold uppercase tracking-wider text-violet-700"), scheduleSalon.length === 0 ? { marginTop: 0 } : undefined]}>House calls</Text>
+                {scheduleHome.map((b) => {
+              const t =
+                provider?.timezone?.trim()
+                  ? formatInTimeZone(parseISO(b.scheduled_at), provider.timezone, "HH:mm")
+                  : format(parseISO(b.scheduled_at), "HH:mm");
+              const name = b.customers?.full_name ?? "Guest";
+              const svc = b.services?.[0];
+              const isHighlight = highlightTarget.length > 0 && b.id === highlightTarget;
+              return (
+                <TouchableOpacity
+                  key={b.id}
+                  onPress={() => openBooking(b)}
+                  style={[
+                    twStyle("mb-2 flex-row items-center rounded-xl border border-violet-100 bg-violet-50/50 p-4"),
+                    isHighlight ? { borderColor: "#C026D3", borderWidth: 2, backgroundColor: "#FAE8FF" } : null,
+                  ]}
+                  accessibilityRole="button"
+                >
+                  <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-violet-100")}>
+                    <Ionicons name="home" size={18} color="#5B21B6" />
+                  </View>
+                  <View style={twStyle("flex-1")}>
+                    <Text style={twStyle("font-medium text-gray-900")}>{name}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>
+                      {t} · {b.status.replace(/_/g, " ")}
+                    </Text>
+                    {svc ? <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>{serviceLine(svc)}</Text> : null}
+                    <Text style={twStyle("text-[10px] text-violet-600 font-medium mt-1")}>At client location</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              );
+            })}
+              </>
+            ) : null}
+            </>
           )}
         </View>
 

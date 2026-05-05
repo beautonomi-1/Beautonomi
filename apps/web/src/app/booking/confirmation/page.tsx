@@ -29,6 +29,8 @@ interface BookingDetails {
   /** Line items for parity with checkout summary (from `/api/me/bookings/[id]`). */
   subtotal?: number;
   tax_amount?: number;
+  /** Customer-facing platform fee (same concept as legacy `service_fee_amount`). */
+  platform_fee_amount?: number;
   service_fee_amount?: number;
   travel_fee?: number;
   loyalty_discount_amount?: number;
@@ -582,8 +584,7 @@ export default function BookingConfirmationPage() {
               const tax = booking.tax_amount ?? 0;
               const taxRate = booking.tax_rate ?? 0;
               const svcFee =
-                Number((booking as { platform_fee_amount?: number }).platform_fee_amount ?? 0) ||
-                Number(booking.service_fee_amount ?? 0);
+                Number(booking.platform_fee_amount ?? 0) || Number(booking.service_fee_amount ?? 0);
               const loyalty = booking.loyalty_discount_amount ?? 0;
               const loyaltyPtsUsed = booking.loyalty_points_used ?? 0;
               const membership = booking.membership_discount_amount ?? 0;
@@ -602,7 +603,8 @@ export default function BookingConfirmationPage() {
                 coupon > 0 ||
                 tip > 0 ||
                 giftCard > 0;
-              if (!hasBreakdown) return null;
+              // Show summary when any line item exists, or when only a platform fee applies (e.g. subtotal 0 after discounts).
+              if (!hasBreakdown && !(svcFee > 0)) return null;
               return (
                 <div className="border-t pt-4 space-y-1.5 text-sm">
                   <h3 className="font-semibold text-gray-900 mb-2">Summary</h3>

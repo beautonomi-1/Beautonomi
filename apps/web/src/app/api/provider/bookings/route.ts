@@ -213,9 +213,12 @@ async function handleGetProviderBookings(request: NextRequest) {
       query = query.lte("scheduled_at", toIso);
     }
 
-    // Filter by location_id if provided
+    // Location: salon-scoped bookings use location_id; at-home bookings use location_type and have null location_id.
     const locationId = searchParams.get("location_id");
-    if (locationId) {
+    const locationTypeFilter = searchParams.get("location_type");
+    if (locationTypeFilter === "at_home") {
+      query = query.eq("location_type", "at_home");
+    } else if (locationId) {
       query = query.eq("location_id", locationId);
     }
 

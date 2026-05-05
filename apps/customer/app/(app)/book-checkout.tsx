@@ -709,7 +709,9 @@ export default function BookCheckoutScreen() {
     variants?: { id: string; retail_price: number }[];
   }[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<{ productId: string; productVariantId?: string | null; name: string; price: number; quantity: number; currency: string }[]>([]);
-  const [packagesList, setPackagesList] = useState<{ id: string; name: string; description?: string; price: number; currency: string }[]>([]);
+  const [packagesList, setPackagesList] = useState<
+    { id: string; name: string; description?: string; price: number; currency: string; service_ids: string[] }[]
+  >([]);
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(() =>
     initialPackageIdFromRoute?.trim() ? initialPackageIdFromRoute.trim() : null,
   );
@@ -1080,22 +1082,28 @@ export default function BookCheckoutScreen() {
         if (res.error) return;
         const raw = res.data as any;
         const arr = Array.isArray(raw) ? raw : raw?.data ?? [];
-        setPackagesList(Array.isArray(arr) ? arr.map((p: any) => ({ id: p.id, name: p.name || "Package", description: p.description, price: Number(p.price) || 0, currency: p.currency || getTenantDefaultCurrency() })) : []);
+        setPackagesList(
+          Array.isArray(arr)
+            ? arr.map((p: any) => {
+                const servicesRaw = Array.isArray(p.services) ? p.services : [];
+                const service_ids = servicesRaw
+                  .filter((row: { type?: string }) => !row.type || row.type === "service")
+                  .map((row: { id?: string }) => String(row?.id ?? "").trim())
+                  .filter(Boolean);
+                return {
+                  id: p.id,
+                  name: p.name || "Package",
+                  description: p.description,
+                  price: Number(p.price) || 0,
+                  currency: p.currency || getTenantDefaultCurrency(),
+                  service_ids,
+                };
+              })
+            : [],
+        );
       })
       .catch(() => setPackagesList([]));
   }, [effectiveProviderSlug, hold?.location_id]);
-
-  /** After packages load, keep route `package_id` only if that package is available (e.g. location-scoped list). */
-  useEffect(() => {
-    const id = initialPackageIdFromRoute?.trim();
-    if (!id) return;
-    if (packagesList.length === 0) return;
-    if (packagesList.some((p) => p.id === id)) {
-      setSelectedPackageId(id);
-    } else {
-      setSelectedPackageId(null);
-    }
-  }, [packagesList, initialPackageIdFromRoute]);
 
   const productCategoryPills = useMemo(() => {
     const named = new Set<string>();
@@ -1159,15 +1167,39 @@ export default function BookCheckoutScreen() {
     [filteredCheckoutProducts, checkoutVisibleProducts],
   );
 
+  const snapshotOfferingIds = hold?.booking_services_snapshot?.map((s) => s.offering_id ?? (s as { id?: string }).id).filter(Boolean) as string[] ?? [];
+
+  /** Only prepaid packages that include at least one service on this booking */
+  const packagesMatchingSelection = useMemo(() => {
+    const sel = new Set(snapshotOfferingIds);
+    return packagesList.filter((p) => {
+      if (!p.service_ids.length) return false;
+      return p.service_ids.some((id) => sel.has(id));
+    });
+  }, [packagesList, snapshotOfferingIds]);
+
+  /** After packages load, keep route `package_id` only if that package is available and matches selected services. */
+  useEffect(() => {
+    const id = initialPackageIdFromRoute?.trim();
+    if (!id) return;
+    if (packagesMatchingSelection.length === 0) return;
+    if (packagesMatchingSelection.some((p) => p.id === id)) {
+      setSelectedPackageId(id);
+    } else {
+      setSelectedPackageId(null);
+    }
+  }, [packagesMatchingSelection, initialPackageIdFromRoute]);
+
   const filteredCheckoutPackages = useMemo(() => {
     const q = checkoutPackageSearch.trim().toLowerCase();
-    if (!q) return packagesList;
-    return packagesList.filter(
+    const base = packagesMatchingSelection;
+    if (!q) return base;
+    return base.filter(
       (pkg) =>
         pkg.name.toLowerCase().includes(q) ||
         (pkg.description && String(pkg.description).toLowerCase().includes(q)),
     );
-  }, [packagesList, checkoutPackageSearch]);
+  }, [packagesMatchingSelection, checkoutPackageSearch]);
 
   const visibleCheckoutPackages = useMemo(
     () => filteredCheckoutPackages.slice(0, checkoutVisiblePackages),
@@ -1178,9 +1210,7 @@ export default function BookCheckoutScreen() {
     productsList.length >= CHECKOUT_MANY_PRODUCTS || filteredCheckoutProducts.length >= CHECKOUT_MANY_PRODUCTS;
   const showCheckoutCategoryFilter = productCategoryPills.length >= CHECKOUT_MANY_CATEGORY_PILLS;
   const showCheckoutPackageSearch =
-    packagesList.length >= CHECKOUT_MANY_PACKAGES || filteredCheckoutPackages.length >= CHECKOUT_MANY_PACKAGES;
-
-  const snapshotOfferingIds = hold?.booking_services_snapshot?.map((s) => s.offering_id ?? (s as { id?: string }).id).filter(Boolean) as string[] ?? [];
+    packagesMatchingSelection.length >= CHECKOUT_MANY_PACKAGES || filteredCheckoutPackages.length >= CHECKOUT_MANY_PACKAGES;
 
   const offeringPriceMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -2216,7 +2246,7 @@ export default function BookCheckoutScreen() {
             {/* ═══ Package Identity Banner (when booking via a package) ═══ */}
             {(() => {
               const activePkg = selectedPackageId
-                ? packagesList.find((p) => p.id === selectedPackageId) ?? null
+                ? packagesMatchingSelection.find((p) => p.id === selectedPackageId) ?? null
                 : null;
               if (!activePkg) return null;
               return (
@@ -2634,11 +2664,14 @@ export default function BookCheckoutScreen() {
               </View>
             )}
 
-            {/* Package selector — preselected when arriving from a package, optional otherwise */}
-            {packagesList.length > 0 && (
+            {/* Package selector — only packages that include at least one booked service */}
+            {packagesMatchingSelection.length > 0 && (
               <View style={{ marginBottom: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>
-                  {selectedPackageId ? "Package applied" : "Apply a package (optional)"}
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 4 }}>
+                  {selectedPackageId ? "Package applied" : "Redeem a prepaid package (optional)"}
+                </Text>
+                <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
+                  {t("booking.redeemPackageHint")}
                 </Text>
                 {showCheckoutPackageSearch && (
                   <TextInput

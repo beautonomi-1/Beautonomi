@@ -915,6 +915,26 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
       updated_at: new Date().toISOString(),
     })
     .eq("id", o.id);
+
+  try {
+    const { sendToUser } = await import("@/lib/notifications/onesignal");
+    await sendToUser(
+      o.customer_id,
+      {
+        title: "Order Payment Failed",
+        message: "Your product order payment did not go through. Please try again.",
+        data: {
+          type: "product_order_update",
+          product_order_id: o.id,
+        },
+        url: "/product-orders",
+      },
+      ["push"],
+      { appType: "customer" },
+    );
+  } catch (notifError) {
+    console.error("Error sending product-order payment failed notification:", notifError);
+  }
 }
 
 /**
@@ -1085,6 +1105,59 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
       { reference, metadata, message, gateway_response },
       supabase,
     );
+    return;
+  }
+
+  if (metadata?.payment_type === "booking_remaining") {
+    const { data: booking } = await supabase
+      .from("bookings")
+      .select("id, customer_id, booking_number, payment_status")
+      .eq("id", metadata.booking_id)
+      .maybeSingle();
+    if (!booking) {
+      console.error("Booking not found for booking_remaining charge.failed:", metadata.booking_id);
+      return;
+    }
+    const currentStatus = (booking as { payment_status?: string }).payment_status;
+    const nextPaymentStatus = currentStatus === "pending" ? "pending" : "partially_paid";
+    await supabase
+      .from("bookings")
+      .update({
+        payment_status: nextPaymentStatus,
+        payment_reference: reference,
+        payment_provider: "paystack",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", metadata.booking_id);
+
+    try {
+      const { sendToUser } = await import("@/lib/notifications/onesignal");
+      const { insertNotification } = await import("@/lib/notifications/insert-notification");
+      const bookingData = booking as { customer_id?: string; booking_number?: string; id?: string };
+      if (bookingData.customer_id) {
+        await sendToUser(
+          bookingData.customer_id,
+          {
+            title: "Balance Payment Failed",
+            message: `Your remaining balance payment for booking ${bookingData.booking_number ?? ""} failed. Please retry.`,
+            data: { type: "booking_update", booking_id: bookingData.id },
+            url: bookingData.id ? `/bookings/${bookingData.id}` : "/bookings",
+          },
+          ["push"],
+          { appType: "customer" },
+        );
+        await insertNotification({
+          user_id: bookingData.customer_id,
+          type: "booking_update",
+          title: "Balance Payment Failed",
+          message: "Your remaining balance payment failed. Tap to retry.",
+          data: { booking_id: bookingData.id },
+          action_url: bookingData.id ? `/bookings/${bookingData.id}` : "/bookings",
+        });
+      }
+    } catch (notifError) {
+      console.error("Error sending booking_remaining failure notification:", notifError);
+    }
     return;
   }
 
@@ -1267,7 +1340,19 @@ async function handleCustomOfferSuccess(
   );
 
   // Idempotency: if booking already created, just ensure status is paid
-  if (offer.status === "paid" && offer.booking_id) return;
+  if (offer.status === "paid") return;
+  if (offer.status === "withdrawn" || offer.status === "expired") {
+    console.warn(`[handleCustomOfferSuccess] offer ${offerId} is ${offer.status}; skipping booking creation`);
+    return;
+  }
+
+  const { data: existingOfferTx } = await adminSupabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("provider", "paystack")
+    .eq("reference", payload.reference)
+    .maybeSingle();
+  if (existingOfferTx) return;
 
   const amountInCurrency = convertFromSmallestUnit(payload.amount || 0);
   const feesInCurrency = convertFromSmallestUnit(payload.fees || 0);
@@ -1525,7 +1610,12 @@ async function handleCustomOfferSuccess(
     tenantId: (provForCurrency as { tenant_id?: string | null } | null)?.tenant_id ?? null,
     providerId: req.provider_id ?? null,
   });
-  const commissionBase = Number(meta.commission_base) > 0 ? Number(meta.commission_base) : Math.max(0, bookingSubtotal + travelFee - promotionDiscountAmount);
+  const rawCommissionBase = Number(meta.commission_base) > 0
+    ? Number(meta.commission_base)
+    : Math.max(0, bookingSubtotal + travelFee - promotionDiscountAmount);
+  const commissionBase = isDepositPayment && coTotalAmount > 0
+    ? Math.max(0, Math.round((amountInCurrency * (rawCommissionBase / coTotalAmount)) * 100) / 100)
+    : rawCommissionBase;
   const platformCommission = percentOf(commissionBase, commissionRate);
   const providerEarnings = subtractMoney(commissionBase, platformCommission);
 
@@ -1734,6 +1824,24 @@ async function handleCustomOfferSuccess(
             created_at: new Date().toISOString(),
           });
         }
+
+        const { data: offerMessages } = await adminSupabase
+          .from("messages")
+          .select("id, attachments")
+          .eq("conversation_id", convId)
+          .not("attachments", "is", null);
+        for (const msg of offerMessages || []) {
+          const attachments = (msg as { attachments?: unknown }).attachments;
+          if (!Array.isArray(attachments)) continue;
+          const updated = attachments.map((a: any) =>
+            a?.type === "custom_offer" && a?.offer_id === offerId
+              ? { ...a, status: "paid", booking_id: booking.id }
+              : a
+          );
+          if (JSON.stringify(updated) !== JSON.stringify(attachments)) {
+            await adminSupabase.from("messages").update({ attachments: updated }).eq("id", (msg as any).id);
+          }
+        }
       }
     }
   } catch {
@@ -1743,6 +1851,7 @@ async function handleCustomOfferSuccess(
   // Notify both parties (best-effort)
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
+    const { insertNotification } = await import("@/lib/notifications/insert-notification");
     const { data: providerRow } = await supabase
       .from("providers")
       .select("user_id")
@@ -1767,6 +1876,14 @@ async function handleCustomOfferSuccess(
         ["push"],
         { appType: "customer" },
       );
+      await insertNotification({
+        user_id: req.customer_id,
+        type: "custom_offer",
+        title: "Booking Confirmed",
+        message: "Your custom offer is paid and your booking is confirmed.",
+        data: baseData,
+        action_url: "/account-settings/bookings",
+      });
     }
     if (providerUserId) {
       await sendToUser(
@@ -1780,6 +1897,14 @@ async function handleCustomOfferSuccess(
         ["push"],
         { appType: "provider" },
       );
+      await insertNotification({
+        user_id: providerUserId,
+        type: "custom_offer",
+        title: "Custom Offer Paid",
+        message: "A client paid your custom offer. Booking confirmed.",
+        data: baseData,
+        action_url: bookingId ? `/provider/bookings/${bookingId}` : "/provider/bookings",
+      });
     }
   } catch {
     // ignore
@@ -1797,9 +1922,44 @@ async function handleCustomOfferFailed(
     .update({
       status: "pending",
       payment_url: null,
+      payment_reference: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", offerId);
+
+  try {
+    const { data: offerRow } = await supabase
+      .from("custom_offers")
+      .select("id, request:custom_requests(customer_id)")
+      .eq("id", offerId)
+      .maybeSingle();
+    const customerId = (offerRow as { request?: { customer_id?: string } } | null)?.request?.customer_id;
+    if (!customerId) return;
+
+    const { sendToUser } = await import("@/lib/notifications/onesignal");
+    const { insertNotification } = await import("@/lib/notifications/insert-notification");
+    await sendToUser(
+      customerId,
+      {
+        title: "Payment Failed",
+        message: "Your custom offer payment did not go through. Please try again.",
+        data: { type: "custom_offer", custom_offer_id: offerId },
+        url: "/account-settings/custom-requests",
+      },
+      ["push"],
+      { appType: "customer" },
+    );
+    await insertNotification({
+      user_id: customerId,
+      type: "custom_offer",
+      title: "Payment Failed",
+      message: "Your custom offer payment failed. Tap to try again.",
+      data: { custom_offer_id: offerId },
+      action_url: "/account-settings/custom-requests",
+    });
+  } catch (notifErr) {
+    console.error("Error notifying customer for custom offer payment failure:", notifErr);
+  }
 }
 
 // ─── Wallet Top-up ───────────────────────────────────────────────────────────

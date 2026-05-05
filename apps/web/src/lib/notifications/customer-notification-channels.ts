@@ -9,9 +9,9 @@ const DEFAULT_PREFS: Record<string, SectionPrefs> = {
   news_and_programs: { email: true, sms: true, push: false },
   feedback: { email: true, sms: false, push: false },
   travel_regulations: { email: true, sms: true, push: false },
-  account_activity: { email: true, sms: true, push: false },
+  account_activity: { email: true, sms: true, push: true },
   client_policies: { email: true, sms: false, push: false },
-  reminders: { email: true, sms: true, push: false },
+  reminders: { email: true, sms: true, push: true },
   subscription_renewal: { email: true, sms: false, push: false },
   messages: { email: true, sms: true, push: true },
 };

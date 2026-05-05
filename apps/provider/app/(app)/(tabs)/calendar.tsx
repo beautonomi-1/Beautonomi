@@ -1126,6 +1126,7 @@ function CalendarScreenBody() {
    */
   const [staffColHeaderHeight, setStaffColHeaderHeight] = useState(0);
   const [threeDayColHeaderHeight, setThreeDayColHeaderHeight] = useState(0);
+  const [weekColHeaderHeight, setWeekColHeaderHeight] = useState(0);
 
   const providerTz = provider?.timezone ?? null;
   const dateStr = calendarDateKey(selectedDate, providerTz);
@@ -1683,29 +1684,36 @@ function CalendarScreenBody() {
       out.push(availabilitySegmentToTimeBlock(seg));
     }
 
-    for (const seg of bookingHoldSegments ?? []) {
-      if (seg.date !== dayStr) continue;
-      if (!blockMatchesStaff(seg.team_member_id)) continue;
-      if (!blockMatchesLocation(seg.location_id)) continue;
-      const stLoose = normalizeCalendarTime(seg.start_time) ?? seg.start_time;
-      const etLoose = normalizeCalendarTime(seg.end_time) ?? seg.end_time;
-      const range = validateCalendarTimeRange(stLoose, etLoose);
-      if (!range.ok) continue;
-      out.push({
-        id: seg.id,
-        staff_id: seg.team_member_id,
-        block_type: "booking_hold",
-        title: seg.reason?.trim() || t("provider.calendarScreen.bookingHoldTitle"),
-        start_time: range.startTime,
-        end_time: range.endTime,
-        date: seg.date,
-        calendar_overlay_kind: "booking_hold",
-        hold_id: seg.hold_id ?? seg.id,
-        hold_expires_at: seg.hold_expires_at ?? null,
-      });
+    // Booking-hold ghost slots: active customer checkout sessions that reserve a time slot.
+    // Gated behind the "Show booking holds" preference (formerly "Processing & buffer") so
+    // providers who find the ghost overlays distracting can hide them.
+    if (preferences.showProcessingAndBuffer) {
+      for (const seg of bookingHoldSegments ?? []) {
+        if (seg.date !== dayStr) continue;
+        if (!blockMatchesStaff(seg.team_member_id)) continue;
+        if (!blockMatchesLocation(seg.location_id)) continue;
+        const stLoose = normalizeCalendarTime(seg.start_time) ?? seg.start_time;
+        const etLoose = normalizeCalendarTime(seg.end_time) ?? seg.end_time;
+        const range = validateCalendarTimeRange(stLoose, etLoose);
+        if (!range.ok) continue;
+        out.push({
+          id: seg.id,
+          staff_id: seg.team_member_id,
+          block_type: "booking_hold",
+          title: seg.reason?.trim() || t("provider.calendarScreen.bookingHoldTitle"),
+          start_time: range.startTime,
+          end_time: range.endTime,
+          date: seg.date,
+          calendar_overlay_kind: "booking_hold",
+          hold_id: seg.hold_id ?? seg.id,
+          hold_expires_at: seg.hold_expires_at ?? null,
+        });
+      }
     }
 
-    if (preferences.showProcessingAndBuffer && expandedApiTimeBlocks.length > 0) {
+    // Provider-created time blocks (e.g. "Lunch Break", recurring daily blocks) always show
+    // regardless of preferences — they are deliberate schedule blocks, not decorative overlays.
+    if (expandedApiTimeBlocks.length > 0) {
       for (const tb of expandedApiTimeBlocks) {
         if (tb.date !== dayStr) continue;
         if (!blockMatchesStaff(tb.staff_id)) continue;
@@ -2098,7 +2106,10 @@ function CalendarScreenBody() {
     gridContainerRef.current?.measureInWindow((gridX, gridY) => {
       // Vertical: gridContainer is inside the vertically-scrolled parent, so measureInWindow
       // already moves with contentOffset.y — do not add scrollY again.
-      const contentY = absoluteY - gridY;
+      // In multi-staff column day view, gridContainerRef sits ABOVE the per-staff headers;
+      // subtract their measured height so the drop maps to the actual time rows below.
+      const headerOffset = targetStaffColumns && targetStaffColumns.length > 1 ? staffColHeaderHeight : 0;
+      const contentY = absoluteY - gridY - headerOffset;
       // Horizontal: staff/3-day columns scroll inside a nested horizontal ScrollView; the
       // outer grid row's window X does not move with that scroll — add contentOffset.x.
       const scrollX = scrollOffsetRef.current.x;
@@ -3192,6 +3203,7 @@ function CalendarScreenBody() {
                         <View key={key}>
                           <View
                             style={{ width: dayColumnWidth, alignItems: "center", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingBottom: 4, backgroundColor: isToday ? TEAL_ACCENT + "30" : "#f9fafb" }}
+                            onLayout={(e) => { const h = e.nativeEvent.layout.height; if (h > 0) setWeekColHeaderHeight(h); }}
                           >
                             <Text style={{ fontSize: 10, color: Colors.gray[400] }}>{format(day, "EEE")}</Text>
                             <Text style={{ fontSize: 12, fontWeight: "700", color: isToday ? "#4f46e6" : Colors.gray[700] }}>{format(day, "d")}</Text>
@@ -3210,7 +3222,7 @@ function CalendarScreenBody() {
                     style={{
                       position: "absolute",
                       left: TIME_COL_WIDTH,
-                      top: 0,
+                      top: weekColHeaderHeight,
                       width: 7 * Math.max(MIN_WEEK_COL_WIDTH, availableWidth / 7),
                       height: totalGridHeight + GRID_TOP_PADDING,
                       pointerEvents: "none",

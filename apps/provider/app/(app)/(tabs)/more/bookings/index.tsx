@@ -35,6 +35,7 @@ import { twStyle } from "@/lib/twStyle";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import { Colors } from "@/constants/colors";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
+import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -624,6 +625,8 @@ export default function BookingsListScreen() {
           </TouchableOpacity>
         }
       />
+
+      <AnnouncementBanner />
 
       {/* ── Metrics snapshot strip (mobile parity with web) ── */}
       <View style={twStyle("mx-4 mt-1 mb-2")}>

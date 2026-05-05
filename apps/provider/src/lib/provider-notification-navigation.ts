@@ -22,6 +22,8 @@ export type ProviderNotificationNavPayload = {
     order_id?: string;
     on_demand_request_id?: string;
     ticket_id?: string;
+    custom_request_id?: string;
+    custom_offer_id?: string;
     [key: string]: unknown;
   };
 };
@@ -139,6 +141,25 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
     }
     const q = params.toString();
     router.push((q ? `/(app)/(tabs)/more/waiting-room?${q}` : "/(app)/(tabs)/more/waiting-room") as never);
+    return;
+  }
+
+  // ── Custom requests / offers ─────────────────────────────────────────────
+  const customRequestId =
+    (typeof data.custom_request_id === "string" && data.custom_request_id.trim()
+      ? data.custom_request_id.trim()
+      : getLinkParam(link, "custom_request_id") ||
+        getLinkParam(link, "request_id")) || "";
+  if (customRequestId) {
+    router.push(`/(app)/(tabs)/more/custom-requests/${customRequestId}` as never);
+    return;
+  }
+  if (
+    nTypeLc === "custom_offer" ||
+    nTypeLc === "custom_request" ||
+    nTypeLc.includes("custom_request")
+  ) {
+    router.push("/(app)/(tabs)/more/custom-requests" as never);
     return;
   }
 

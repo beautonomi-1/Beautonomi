@@ -10,6 +10,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { chargeAuthorization } from "@/lib/payments/paystack-complete";
 import { computeCustomOfferPricing } from "../../_helpers/custom-offer-pricing";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -37,6 +38,39 @@ interface RequestRow {
   status?: string;
 }
 
+async function patchOfferMessageAttachmentStatus(
+  adminSupabase: ReturnType<typeof getSupabaseAdmin>,
+  offerId: string,
+  status: "payment_pending" | "paid" | "expired",
+  bookingId?: string
+) {
+  try {
+    const { data: messages } = await adminSupabase
+      .from("messages")
+      .select("id, attachments")
+      .not("attachments", "is", null);
+    for (const msg of messages || []) {
+      const attachments = (msg as { attachments?: unknown }).attachments;
+      if (!Array.isArray(attachments)) continue;
+      const updated = attachments.map((a: any) =>
+        a?.type === "custom_offer" && a?.offer_id === offerId
+          ? {
+              ...a,
+              status,
+              ...(status === "expired" ? { expired: true } : {}),
+              ...(bookingId ? { booking_id: bookingId } : {}),
+            }
+          : a
+      );
+      if (JSON.stringify(updated) !== JSON.stringify(attachments)) {
+        await adminSupabase.from("messages").update({ attachments: updated }).eq("id", (msg as any).id);
+      }
+    }
+  } catch (err) {
+    console.warn("[custom-offers/accept] attachment patch failed:", err);
+  }
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
@@ -46,7 +80,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { id } = await params;
 
-    let body: { tip_amount?: number; promotion_code?: string; payment_option?: "full" | "deposit" } = {};
+    let body: {
+      tip_amount?: number;
+      promotion_code?: string;
+      payment_option?: "full" | "deposit";
+      payment_method_id?: string;
+    } = {};
     try {
       body = (await request.json()) || {};
     } catch {
@@ -121,7 +160,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Expiry check
     if (offer.expiration_at && new Date(offer.expiration_at).getTime() < Date.now()) {
       await adminSupabase.from("custom_offers").update({ status: "expired" }).eq("id", id);
-      return handleApiError(new Error("Offer has expired"), "Offer expired");
+      await patchOfferMessageAttachmentStatus(adminSupabase, id, "expired");
+      return errorResponse("This offer has expired.", "OFFER_EXPIRED", 410);
+    }
+
+    if (offer.status === "withdrawn") {
+      return errorResponse("This offer has been withdrawn.", "OFFER_WITHDRAWN", 400);
     }
 
     const travelFee = Number(offer.travel_fee ?? 0) >= 0 ? Number(offer.travel_fee ?? 0) : 0;
@@ -162,6 +206,89 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const email = (user as { email?: string }).email ?? "customer@example.com";
     const amountKobo = toCents(chargeAmount);
+
+    if (body.payment_method_id) {
+      const { data: paymentMethod, error: pmError } = await (supabase
+        .from("payment_methods") as any)
+        .select("*")
+        .eq("id", body.payment_method_id)
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .eq("provider", "paystack")
+        .single();
+
+      if (pmError || !paymentMethod) {
+        return errorResponse("Payment method not found.", "NOT_FOUND", 404);
+      }
+
+      const authorizationCode = paymentMethod.provider_payment_method_id as string | undefined;
+      if (!authorizationCode || !authorizationCode.startsWith("AUTH_")) {
+        return errorResponse("This payment method is not a valid Paystack authorization.", "INVALID_METHOD", 400);
+      }
+
+      const { error: pendingErr } = await adminSupabase
+        .from("custom_offers")
+        .update({
+          status: "payment_pending",
+          payment_reference: reference,
+          payment_url: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+      if (pendingErr) {
+        return handleApiError(new Error("Failed to save payment state"), "Unable to process payment.", "DB_ERROR", 500);
+      }
+
+      await patchOfferMessageAttachmentStatus(adminSupabase, id, "payment_pending");
+
+      const chargeResult = await chargeAuthorization(
+        authorizationCode,
+        email,
+        amountKobo,
+        {
+          custom_offer_id: id,
+          custom_request_id: offer.request_id,
+          tip_amount: result.tipAmount,
+          tax_amount: result.taxAmount,
+          tax_rate: result.taxRate,
+          travel_fee: result.travelFee,
+          service_fee_amount: result.serviceFeeAmount,
+          service_fee_percentage: result.serviceFeePercentage,
+          promotion_id: result.promotionId ?? "",
+          promotion_discount_amount: result.promotionDiscountAmount,
+          commission_base: result.commissionBase,
+          payment_option: paymentOption,
+          total_amount: result.totalAmount,
+          deposit_amount: paymentOption === "deposit" ? chargeAmount : 0,
+          deposit_percentage: providerRequiresDeposit ? depositPct : 0,
+          requires_deposit: providerRequiresDeposit,
+        },
+        { tenantId },
+      );
+
+      if (!chargeResult.status) {
+        await adminSupabase
+          .from("custom_offers")
+          .update({
+            status: "pending",
+            payment_url: null,
+            payment_reference: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", id);
+        return errorResponse(chargeResult.message || "Failed to charge card", "CHARGE_FAILED", 400);
+      }
+
+      return successResponse({
+        charged: true,
+        reference: chargeResult.data?.reference ?? reference,
+        deposit_required: providerRequiresDeposit,
+        deposit_percentage: providerRequiresDeposit ? depositPct : 0,
+        deposit_amount: paymentOption === "deposit" ? chargeAmount : 0,
+        payment_option: paymentOption,
+        total_amount: result.totalAmount,
+      });
+    }
 
     const init = await initializePaystackTransaction({
       email,
@@ -205,6 +332,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       console.error("[custom-offers/accept] failed to persist payment_pending:", updateError.message);
       return handleApiError(new Error("Failed to save payment state"), "Unable to process payment. Please try again.", "DB_ERROR", 500);
     }
+
+    await patchOfferMessageAttachmentStatus(adminSupabase, id, "payment_pending");
 
     return successResponse({
       paymentUrl,

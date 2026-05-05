@@ -9,6 +9,7 @@
 
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -16,6 +17,8 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { sendToUser } from "@/lib/notifications/onesignal";
+import { insertNotification } from "@/lib/notifications/insert-notification";
 
 export async function POST(
   request: NextRequest,
@@ -84,6 +87,86 @@ export async function POST(
 
     if (updateError) {
       throw updateError;
+    }
+
+    // Cascade: withdraw all still-actionable offers and notify each unique provider
+    try {
+      const adminSupabase = getSupabaseAdmin();
+
+      // Fetch pending/payment_pending offers so we know which providers to notify
+      const { data: activeOffers } = await adminSupabase
+        .from("custom_offers")
+        .select("id, provider_id")
+        .eq("request_id", id)
+        .in("status", ["pending", "payment_pending"]);
+
+      if (activeOffers && activeOffers.length > 0) {
+        const offerIds = (activeOffers as { id: string; provider_id?: string }[]).map((o) => o.id);
+
+        // Bulk-withdraw offers
+        await adminSupabase
+          .from("custom_offers")
+          .update({ status: "withdrawn", updated_at: new Date().toISOString() })
+          .in("id", offerIds);
+
+        // Patch chat message attachments for these offers
+        const { data: messages } = await adminSupabase
+          .from("messages")
+          .select("id, attachments")
+          .not("attachments", "is", null);
+
+        for (const msg of messages || []) {
+          const attachments = (msg as any).attachments;
+          if (!Array.isArray(attachments)) continue;
+          const updated = attachments.map((a: any) =>
+            a?.type === "custom_offer" && offerIds.includes(a?.offer_id)
+              ? { ...a, withdrawn: true }
+              : a
+          );
+          if (JSON.stringify(updated) !== JSON.stringify(attachments)) {
+            await adminSupabase.from("messages").update({ attachments: updated }).eq("id", (msg as any).id);
+          }
+        }
+
+        // Notify each unique provider whose offer was withdrawn
+        const providerIds = [...new Set(
+          (activeOffers as { id: string; provider_id?: string }[])
+            .map((o) => o.provider_id)
+            .filter(Boolean) as string[]
+        )];
+
+        // Resolve provider owner user IDs
+        for (const pid of providerIds) {
+          try {
+            const { data: provRow } = await adminSupabase
+              .from("providers")
+              .select("user_id")
+              .eq("id", pid)
+              .maybeSingle();
+
+            const provUserId = (provRow as any)?.user_id as string | undefined;
+            if (!provUserId) continue;
+
+            await sendToUser(provUserId, {
+              title: "Custom request cancelled",
+              body: "The customer has cancelled their custom request. Your offer has been automatically withdrawn.",
+              data: { custom_request_id: id },
+            });
+            await insertNotification({
+              user_id: provUserId,
+              type: "custom_request",
+              title: "Custom request cancelled",
+              message: "The customer has cancelled their custom request. Your offer has been automatically withdrawn.",
+              data: { custom_request_id: id },
+            });
+          } catch (notifyErr) {
+            console.warn("[cancel] failed to notify provider:", pid, notifyErr);
+          }
+        }
+      }
+    } catch (cascadeErr) {
+      // Non-fatal: log but don't block the cancellation response
+      console.warn("[cancel] cascade withdraw/notify failed:", cascadeErr);
     }
 
     return successResponse({ cancelled: true });

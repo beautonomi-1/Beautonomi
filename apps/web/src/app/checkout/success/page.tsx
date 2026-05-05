@@ -50,6 +50,7 @@ function CheckoutSuccessContent() {
   const offerId = searchParams?.get("offer_id");
 
   const [customOfferBookingId, setCustomOfferBookingId] = useState<string | null>(null);
+  const [customOfferPollingComplete, setCustomOfferPollingComplete] = useState(false);
 
   /** Local dev / no webhook: finalize payment via Paystack verify (records booking_payments + confirms booking). */
   const paystackVerifyStarted = useRef(false);
@@ -93,7 +94,11 @@ function CheckoutSuccessContent() {
   }, [isWaitlist, isCustomOffer, paystackReference, bookingId]);
 
   useEffect(() => {
-    if (!isCustomOffer || !offerId) return;
+    if (!isCustomOffer || !offerId) {
+      setCustomOfferPollingComplete(true);
+      return;
+    }
+    setCustomOfferPollingComplete(false);
     let attempts = 0;
     const interval = setInterval(async () => {
       attempts++;
@@ -108,14 +113,21 @@ function CheckoutSuccessContent() {
         const bid = data?.booking_id;
         if (bid) {
           setCustomOfferBookingId(bid);
+          setCustomOfferPollingComplete(true);
           clearInterval(interval);
+          return;
         }
       } catch {
         // ignore
       }
-      if (attempts >= POLL_MAX_ATTEMPTS) clearInterval(interval);
+      if (attempts >= POLL_MAX_ATTEMPTS) {
+        setCustomOfferPollingComplete(true);
+        clearInterval(interval);
+      }
     }, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+    };
   }, [isCustomOffer, offerId]);
 
   const resolvedBookingId = bookingId ?? customOfferBookingId;
@@ -245,6 +257,7 @@ function CheckoutSuccessContent() {
   useEffect(() => {
     const win = typeof window !== "undefined" ? window as Window & { ReactNativeWebView?: { postMessage: (data: string) => void } } : null;
     if (!win?.ReactNativeWebView?.postMessage) return;
+    if (isCustomOffer && !customOfferPollingComplete) return;
     const t = setTimeout(() => {
       win.ReactNativeWebView?.postMessage(
         JSON.stringify({
@@ -255,7 +268,7 @@ function CheckoutSuccessContent() {
       );
     }, 1500);
     return () => clearTimeout(t);
-  }, [paymentType, resolvedBookingId]);
+  }, [customOfferPollingComplete, isCustomOffer, paymentType, resolvedBookingId]);
 
   return (
     <div

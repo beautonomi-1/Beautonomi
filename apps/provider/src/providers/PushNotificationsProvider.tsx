@@ -75,7 +75,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
           router.push(u as never);
         }
       } else {
-        router.push("/(app)/notifications");
+        router.push("/(app)/announcements" as never);
       }
       return;
     }
@@ -474,8 +474,11 @@ function usePushRegistration() {
           );
         }
 
-        if (gate.phase === "complete" && gate.fromRestore) {
-          OneSignal.Notifications.requestPermission(false);
+        if (gate.phase === "complete") {
+          const earlySub = await OneSignal.User.pushSubscription.getIdAsync();
+          if (gate.fromRestore || !earlySub) {
+            await OneSignal.Notifications.requestPermission(false);
+          }
         }
 
         const subId = await OneSignal.User.pushSubscription.getIdAsync();

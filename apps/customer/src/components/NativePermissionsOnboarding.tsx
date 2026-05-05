@@ -150,9 +150,9 @@ export function NativePermissionsOnboarding() {
             <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 12 }}>
               Stay in the loop
             </Text>
-            <Text style={{ fontSize: 16, lineHeight: 24, color: Colors.gray[600] }}>
-              Turn on notifications for booking confirmations, reminders, messages from your provider, and important
-              account updates.
+            <Text style={{ fontSize: 16, lineHeight: 24, color: Colors.gray[600], marginBottom: 12 }}>
+              Get booking updates in real time — confirmations, reminders when your provider is on the way, messages,
+              and payment receipts. We recommend allowing notifications so you never miss a visit.
             </Text>
           </View>
         )}
@@ -250,11 +250,6 @@ export function NativePermissionsOnboarding() {
                 ) : (
                   <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Turn on notifications</Text>
                 )}
-              </TouchableOpacity>
-              <TouchableOpacity onPress={goNext} disabled={busy}>
-                <Text style={{ textAlign: "center", color: Colors.gray[500], fontSize: 15, paddingVertical: 8 }}>
-                  Not now
-                </Text>
               </TouchableOpacity>
             </>
           )}

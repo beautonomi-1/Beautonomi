@@ -34,7 +34,9 @@ export async function GET(
           slug,
           phone,
           email,
-          timezone
+          timezone,
+          rating_average,
+          review_count
         ),
         group_bookings!bookings_group_booking_id_fkey(ref_number),
         location:provider_locations(
@@ -158,7 +160,16 @@ export async function GET(
       address_country?: string; address_postal_code?: string; address_latitude?: number; address_longitude?: number;
       location?: { name?: string; address_line1?: string; address_line2?: string; city?: string; country?: string };
       special_requests?: string; group_booking_id?: string; group_bookings?: { ref_number?: string };
-      provider?: { id: string; business_name?: string; slug?: string; phone?: string; email?: string };
+      provider?: {
+        id: string;
+        business_name?: string;
+        slug?: string;
+        phone?: string;
+        email?: string;
+        timezone?: string | null;
+        rating_average?: number | null;
+        review_count?: number | null;
+      };
     };
     const bookingData = booking as BookingDataRow;
     const transformedBooking = {
@@ -320,6 +331,8 @@ export async function GET(
         phone: bookingData.provider.phone,
         email: bookingData.provider.email,
         timezone: (bookingData.provider as { timezone?: string | null }).timezone ?? null,
+        rating_average: Number((bookingData.provider as { rating_average?: number | null }).rating_average ?? 0) || null,
+        review_count: Number((bookingData.provider as { review_count?: number | null }).review_count ?? 0) || null,
       } : undefined,
       /** IANA zone for formatting `scheduled_at` (provider default). */
       display_time_zone: resolveBookingDisplayTimeZone(
