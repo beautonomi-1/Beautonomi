@@ -431,6 +431,10 @@ export default function GroupBookingsScreen() {
   });
   const [showEditPackagePicker, setShowEditPackagePicker] = useState(false);
   const [editingGroupContext, setEditingGroupContext] = useState<EditingGroupContext | null>(null);
+  // Track the slot that was in effect when the edit sheet opened so we can
+  // skip the availability pre-flight when only non-slot fields change.
+  const [editOriginalSlot, setEditOriginalSlot] = useState<{ date: string; time: string; duration: string } | null>(null);
+  const [verifyingEditSlot, setVerifyingEditSlot] = useState(false);
 
   // B10: create path — minimal form. Participants are added from the detail
   // sheet after the group is created, matching the existing "add participant"
@@ -593,11 +597,13 @@ export default function GroupBookingsScreen() {
     if (editSlotParams.serviceIds.length > 0) {
       q += `&service_ids=${encodeURIComponent(editSlotParams.serviceIds.join(","))}`;
     }
+    // Exclude the group being edited so it doesn't block its own current slot.
+    if (editingGroupId) q += `&exclude_group_booking_id=${encodeURIComponent(editingGroupId)}`;
     q += editingGroupContext?.locationType === "at_home"
       ? "&mode=mobile&travel_buffer=30"
       : "&mode=salon&travel_buffer=0";
     return q;
-  }, [showEdit, editSlotParams, editingGroupContext?.locationType]);
+  }, [showEdit, editSlotParams, editingGroupContext?.locationType, editingGroupId]);
 
   const { data: editSlotsData, loading: editSlotsLoading } = useApi<AvailableSlotsApiResponse>(
     editSlotsUrl,
@@ -805,15 +811,19 @@ export default function GroupBookingsScreen() {
 
   function openEdit(group: GroupBooking) {
     const pkgId = group.package_id ?? "";
+    const editDate = group.scheduled_date;
+    const editTime = group.scheduled_time?.substring(0, 5) ?? "";
+    const editDuration = String(group.duration_minutes);
     setEditForm({
-      date: group.scheduled_date,
-      time: group.scheduled_time?.substring(0, 5) ?? "",
-      duration: String(group.duration_minutes),
+      date: editDate,
+      time: editTime,
+      duration: editDuration,
       notes: group.notes ?? "",
       maxParticipants: String(group.max_participants ?? ""),
       packageId: pkgId,
       originalPackageId: pkgId,
     });
+    setEditOriginalSlot({ date: editDate, time: editTime, duration: editDuration });
     // B9: capture the id BEFORE clearing selectedGroup so the PATCH has a
     // real target even after the detail sheet closes.
     setEditingGroupId(group.id);
@@ -869,18 +879,29 @@ export default function GroupBookingsScreen() {
       Alert.alert("Invalid duration", "Duration must be greater than 0 minutes.");
       return;
     }
-    const availabilityError = await verifyGroupSlotAvailability({
-      date: editForm.date,
-      time: editForm.time,
-      durationMinutes: durationToCheck,
-      staffId: editingGroupContext?.staffId,
-      locationId: editingGroupContext?.locationId,
-      serviceId: editingGroupContext?.serviceId,
-      locationType: editingGroupContext?.locationType,
-    });
-    if (availabilityError) {
-      Alert.alert("Time not available", availabilityError);
-      return;
+    // Only run the pre-flight availability check when the slot actually moved.
+    // For notes / maxParticipants / package-only edits the server PATCH handles
+    // the movingSlot guard itself, so an extra round-trip here is wasteful.
+    const slotChanged =
+      !editOriginalSlot ||
+      editForm.date !== editOriginalSlot.date ||
+      editForm.time !== editOriginalSlot.time ||
+      String(editForm.duration) !== editOriginalSlot.duration;
+    if (slotChanged) {
+      setVerifyingEditSlot(true);
+      const availabilityError = await verifyGroupSlotAvailability({
+        date: editForm.date,
+        time: editForm.time,
+        durationMinutes: durationToCheck,
+        staffId: editingGroupContext?.staffId,
+        locationId: editingGroupContext?.locationId,
+        serviceId: editingGroupContext?.serviceId,
+        locationType: editingGroupContext?.locationType,
+      }).finally(() => setVerifyingEditSlot(false));
+      if (availabilityError) {
+        Alert.alert("Time not available", availabilityError);
+        return;
+      }
     }
 
     // §Provider-audit 2026-04 (packages round 4 — mobile edit parity):
@@ -909,6 +930,7 @@ export default function GroupBookingsScreen() {
     setShowEdit(false);
     setEditingGroupId(null);
     setEditingGroupContext(null);
+    setEditOriginalSlot(null);
     refresh();
   }
 
@@ -1034,6 +1056,13 @@ export default function GroupBookingsScreen() {
       service_id: args.serviceId,
       offering_id: args.serviceId,
       package_id: args.packageId || undefined,
+      // Tell the availability engine to ignore the parent group booking so
+      // participant bookings at the same time slot are not falsely blocked.
+      // allow_override is a safety net in case the exclude param is insufficient
+      // (e.g. provider double-booking is intentionally disabled globally).
+      group_booking_id: args.groupId,
+      exclude_group_booking_id: args.groupId,
+      allow_override: true,
       services: [
         {
           service_id: args.serviceId,
@@ -2077,6 +2106,8 @@ export default function GroupBookingsScreen() {
           setShowEdit(false);
           setEditingGroupId(null);
           setEditingGroupContext(null);
+          setEditOriginalSlot(null);
+          setVerifyingEditSlot(false);
         }}
         title="Edit Group Booking"
       >
@@ -2172,7 +2203,7 @@ export default function GroupBookingsScreen() {
           <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
             <View style={twStyle("mb-2 flex-row items-center justify-between")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>Time slot</Text>
-              {editSlotsLoading ? <ActivityIndicator size="small" color="#6b7280" /> : null}
+              {editSlotsLoading ? <ActivityIndicator size="small" color="#059669" /> : null}
             </View>
             {editSlotRows.length > 0 ? (
               <View style={twStyle("flex-row flex-wrap")}>
@@ -2183,22 +2214,25 @@ export default function GroupBookingsScreen() {
                       key={`edit-slot-${slot.time}`}
                       disabled={!slot.available}
                       onPress={() => setEditForm((p) => ({ ...p, time: slot.time }))}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: isActive, disabled: !slot.available }}
+                      accessibilityLabel={slot.available ? slot.time : `${slot.time} – unavailable`}
                       style={[
                         twStyle(
                           `mb-2 mr-2 rounded-full border px-3 py-1.5 ${
                             isActive
-                              ? "border-indigo-600 bg-indigo-50"
+                              ? "border-emerald-600 bg-emerald-600"
                               : slot.available
-                                ? "border-gray-200 bg-white"
-                                : "border-gray-100 bg-gray-100"
+                                ? "border-emerald-200 bg-white"
+                                : "border-gray-100 bg-gray-50"
                           }`,
                         ),
                       ]}
                     >
                       <Text
                         style={twStyle(
-                          `text-xs font-medium ${
-                            isActive ? "text-indigo-700" : slot.available ? "text-gray-700" : "text-gray-400"
+                          `text-xs font-semibold ${
+                            isActive ? "text-white" : slot.available ? "text-emerald-700" : "text-gray-300"
                           }`,
                         )}
                       >
@@ -2247,7 +2281,7 @@ export default function GroupBookingsScreen() {
             placeholderTextColor="#9ca3af"
             multiline
           />
-          <ActionButton label="Save Changes" onPress={handleSaveEdit} loading={updatingGroup} fullWidth />
+          <ActionButton label="Save Changes" onPress={handleSaveEdit} loading={verifyingEditSlot || updatingGroup} fullWidth />
         </ScrollView>
       </BottomSheet>
 
@@ -2876,7 +2910,7 @@ export default function GroupBookingsScreen() {
           <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
             <View style={twStyle("mb-2 flex-row items-center justify-between")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>Time slot *</Text>
-              {createSlotsLoading ? <ActivityIndicator size="small" color="#6b7280" /> : null}
+              {createSlotsLoading ? <ActivityIndicator size="small" color="#059669" /> : null}
             </View>
             {createSlotRows.length > 0 ? (
               <View style={twStyle("flex-row flex-wrap")}>
@@ -2887,22 +2921,25 @@ export default function GroupBookingsScreen() {
                       key={`create-slot-${slot.time}`}
                       disabled={!slot.available}
                       onPress={() => setCreateForm((p) => ({ ...p, time: slot.time }))}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: isActive, disabled: !slot.available }}
+                      accessibilityLabel={slot.available ? slot.time : `${slot.time} – unavailable`}
                       style={[
                         twStyle(
                           `mb-2 mr-2 rounded-full border px-3 py-1.5 ${
                             isActive
-                              ? "border-indigo-600 bg-indigo-50"
+                              ? "border-emerald-600 bg-emerald-600"
                               : slot.available
-                                ? "border-gray-200 bg-white"
-                                : "border-gray-100 bg-gray-100"
+                                ? "border-emerald-200 bg-white"
+                                : "border-gray-100 bg-gray-50"
                           }`,
                         ),
                       ]}
                     >
                       <Text
                         style={twStyle(
-                          `text-xs font-medium ${
-                            isActive ? "text-indigo-700" : slot.available ? "text-gray-700" : "text-gray-400"
+                          `text-xs font-semibold ${
+                            isActive ? "text-white" : slot.available ? "text-emerald-700" : "text-gray-300"
                           }`,
                         )}
                       >
@@ -2914,7 +2951,9 @@ export default function GroupBookingsScreen() {
               </View>
             ) : (
               <Text style={twStyle("text-xs text-gray-500")}>
-                No available slots for this date with current selection.
+                {createSlotsLoading
+                  ? "Loading available times…"
+                  : "No available slots for this date with current selection."}
               </Text>
             )}
           </View>

@@ -8,9 +8,23 @@ import type { Booking, CalendarBooking } from "@/components/calendar/calendar-bo
 /** Grid top padding — must match `CurrentTimeIndicator` and day column padding. */
 export const CALENDAR_GRID_TOP_PADDING = 8;
 
+/** True when the string already carries an explicit ISO-8601 offset or Zulu suffix. */
+function hasExplicitTimeZone(iso: string): boolean {
+  if (/Z$/i.test(iso)) return true;
+  // +hh:mm, -hh:mm, +hhmm, -hhmm at end of string
+  return /[+-]\d{2}:\d{2}(:\d{2})?$/.test(iso) || /[+-]\d{4}$/.test(iso);
+}
+
+/**
+ * Parse API datetime strings for calendar layout.
+ * Naive ISO strings (no zone) are treated as UTC so positioning matches
+ * `formatTimeInZone` / server TIMESTAMPTZ, not the device local zone.
+ */
 export function parseApiDateTime(value: unknown): Date | null {
-  if (typeof value !== "string" || !value) return null;
-  const parsed = parseISO(value);
+  if (typeof value !== "string" || !value.trim()) return null;
+  const trimmed = value.trim();
+  const normalised = hasExplicitTimeZone(trimmed) ? trimmed : `${trimmed}Z`;
+  const parsed = parseISO(normalised);
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 

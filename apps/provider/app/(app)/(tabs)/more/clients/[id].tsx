@@ -51,6 +51,12 @@ interface ClientCustomer {
   email_notifications_enabled?: boolean | null;
   sms_notifications_enabled?: boolean | null;
   default_address?: ClientDefaultAddress | null;
+  /** Platform-wide average from customer reviews */
+  rating_average?: number | null;
+  review_count?: number | null;
+  /** Average rating given to this customer across all provider bookings */
+  customer_booking_rating_avg?: number | null;
+  customer_booking_rating_count?: number | null;
   /**
    * §Release-audit 2026-04 — true when this customer is a real
    * self-registered Beautonomi user (not a walk-in placeholder). Server
@@ -63,14 +69,19 @@ interface ClientCustomer {
 
 interface HistoryItem {
   id: string;
-  type: "appointment" | "sale";
+  type: "appointment" | "sale" | "product_order" | "group" | "custom_offer";
   date: string;
   description: string;
   amount: number;
+  total_paid?: number;
   team_member_name?: string | null;
   status?: string;
+  payment_status?: string | null;
   booking_number?: string;
   scheduled_at?: string;
+  is_group_booking?: boolean;
+  group_booking_id?: string | null;
+  booking_source?: string | null;
 }
 
 interface ClientDetail {
@@ -553,10 +564,10 @@ export default function ClientDetailScreen() {
               </View>
             ) : null}
 
-            {/* Stats row — avg matches provider web /api/provider/ratings (this business, post-visit only). */}
+            {/* Stats row */}
             <View style={twStyle("mt-3 flex-row rounded-xl bg-gray-50 px-3 py-3")}>
               <View style={{ flex: 1 }}>
-                <Text style={twStyle("text-xs text-gray-400")}>Bookings</Text>
+                <Text style={twStyle("text-xs text-gray-400")}>Visits</Text>
                 <Text style={twStyle("text-base font-bold text-gray-900")}>
                   {client.total_bookings}
                 </Text>
@@ -564,22 +575,39 @@ export default function ClientDetailScreen() {
               <View style={twStyle("h-10 w-px bg-gray-200")} />
               <View style={{ flex: 1, paddingLeft: 12 }}>
                 <Text style={twStyle("text-xs text-gray-400")}>Total spent</Text>
-                <Text style={twStyle("text-base font-bold text-gray-900")}>
+                <Text style={twStyle("text-base font-bold text-gray-900")} numberOfLines={1} adjustsFontSizeToFit>
                   {formatCurrency(client.total_spent)}
                 </Text>
               </View>
               <View style={twStyle("h-10 w-px bg-gray-200")} />
               <View style={{ flex: 1, paddingLeft: 12 }}>
-                <Text style={twStyle("text-xs text-gray-400")}>Avg rating</Text>
+                <Text style={twStyle("text-xs text-gray-400")}>Rating</Text>
                 {ratingStatsLoading ? (
                   <Text style={twStyle("text-base font-bold text-gray-400")}>…</Text>
                 ) : providerBookingAvg != null ? (
-                  <Text style={twStyle("text-base font-bold text-gray-900")}>{providerBookingAvg}</Text>
+                  <View style={twStyle("flex-row items-center gap-0.5")}>
+                    <Ionicons name="star" size={13} color="#f59e0b" />
+                    <Text style={twStyle("text-base font-bold text-gray-900")}>{providerBookingAvg}</Text>
+                  </View>
+                ) : customer.customer_booking_rating_avg != null ? (
+                  <View style={twStyle("flex-row items-center gap-0.5")}>
+                    <Ionicons name="star" size={13} color="#f59e0b" />
+                    <Text style={twStyle("text-base font-bold text-gray-900")}>
+                      {Number(customer.customer_booking_rating_avg).toFixed(1)}
+                    </Text>
+                  </View>
+                ) : customer.rating_average != null ? (
+                  <View style={twStyle("flex-row items-center gap-0.5")}>
+                    <Ionicons name="star-outline" size={13} color="#9ca3af" />
+                    <Text style={twStyle("text-base font-bold text-gray-500")}>
+                      {Number(customer.rating_average).toFixed(1)}
+                    </Text>
+                  </View>
                 ) : (
                   <Text style={twStyle("text-base font-bold text-gray-400")}>—</Text>
                 )}
-                <Text style={twStyle("text-[10px] text-gray-400 mt-0.5")} numberOfLines={2}>
-                  Your post-visit ratings
+                <Text style={twStyle("text-[10px] text-gray-400 mt-0.5")} numberOfLines={1}>
+                  {providerBookingAvg != null ? "Your ratings" : "Platform avg"}
                 </Text>
               </View>
             </View>
@@ -812,7 +840,7 @@ export default function ClientDetailScreen() {
             </View>
           </View>
 
-          {/* ── Booking & sale history ── */}
+          {/* ── Client history — bookings, group sessions, custom offers, product orders, sales ── */}
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white overflow-hidden")}>
             <View style={twStyle("border-b border-gray-100 px-4 py-3")}>
               <Text style={twStyle("text-sm font-semibold text-gray-900")}>History</Text>
@@ -828,6 +856,12 @@ export default function ClientDetailScreen() {
             ) : (
               history.map((item) => {
                 const isAppointment = item.type === "appointment";
+                const isGroup = item.type === "group";
+                const isCustomOffer = item.type === "custom_offer";
+                const isProductOrder = item.type === "product_order";
+                const isSale = item.type === "sale";
+                const isNavigable = isAppointment || isGroup || isCustomOffer;
+
                 const statusColor = item.status
                   ? STATUS_COLORS[item.status] ?? "text-gray-600"
                   : "text-gray-600";
@@ -835,54 +869,89 @@ export default function ClientDetailScreen() {
                   ? STATUS_BG[item.status] ?? "bg-gray-50"
                   : "bg-gray-50";
 
+                const iconName = isGroup
+                  ? "people"
+                  : isCustomOffer
+                    ? "sparkles"
+                    : isProductOrder
+                      ? "bag"
+                      : isSale
+                        ? "receipt"
+                        : "calendar";
+                const iconBg = isGroup
+                  ? "bg-pink-50"
+                  : isCustomOffer
+                    ? "bg-violet-50"
+                    : isProductOrder
+                      ? "bg-amber-50"
+                      : isSale
+                        ? "bg-emerald-50"
+                        : "bg-indigo-50";
+                const iconColor = isGroup
+                  ? "#ec4899"
+                  : isCustomOffer
+                    ? "#7c3aed"
+                    : isProductOrder
+                      ? "#f59e0b"
+                      : isSale
+                        ? "#10b981"
+                        : "#6366f1";
+
+                const typeLabel = isGroup
+                  ? "Group"
+                  : isCustomOffer
+                    ? "Custom"
+                    : isProductOrder
+                      ? "Products"
+                      : isSale
+                        ? "Walk-in"
+                        : null;
+
                 return (
                   <TouchableOpacity
                     key={`${item.type}-${item.id}`}
                     onPress={() => {
-                      if (isAppointment) {
+                      if (isGroup || isCustomOffer || isAppointment) {
                         router.push(`/(app)/(tabs)/bookings/${item.id}` as never);
                       }
                     }}
-                    disabled={!isAppointment}
-                    activeOpacity={isAppointment ? 0.7 : 1}
+                    disabled={!isNavigable}
+                    activeOpacity={isNavigable ? 0.7 : 1}
                     style={twStyle(
                       "flex-row items-center border-b border-gray-50 px-4 py-3 last:border-b-0"
                     )}
                   >
                     <View
                       style={twStyle(
-                        `mr-3 h-10 w-10 items-center justify-center rounded-xl ${
-                          isAppointment ? "bg-indigo-50" : "bg-emerald-50"
-                        }`
+                        `mr-3 h-10 w-10 items-center justify-center rounded-xl ${iconBg}`
                       )}
                     >
-                      <Ionicons
-                        name={isAppointment ? "calendar" : "receipt"}
-                        size={19}
-                        color={isAppointment ? "#6366f1" : "#10b981"}
-                      />
+                      <Ionicons name={iconName as any} size={19} color={iconColor} />
                     </View>
                     <View style={twStyle("flex-1 min-w-0")}>
-                      <Text
-                        style={twStyle("text-sm font-medium text-gray-900")}
-                        numberOfLines={1}
-                      >
-                        {item.description}
-                      </Text>
+                      <View style={twStyle("flex-row items-center gap-1.5 flex-wrap")}>
+                        <Text
+                          style={twStyle("text-sm font-medium text-gray-900")}
+                          numberOfLines={1}
+                        >
+                          {item.description}
+                        </Text>
+                        {typeLabel ? (
+                          <View style={twStyle(`rounded-full px-1.5 py-0.5 ${iconBg}`)}>
+                            <Text style={[twStyle("text-[10px] font-semibold"), { color: iconColor }]}>
+                              {typeLabel}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
                       <View style={twStyle("mt-0.5 flex-row flex-wrap items-center gap-x-2")}>
                         <Text style={twStyle("text-xs text-gray-500")}>
                           {formatDate(item.scheduled_at ?? item.date, "MMM d, yyyy")}
                           {item.scheduled_at ? ` · ${formatTime(item.scheduled_at)}` : ""}
                         </Text>
                         {item.status ? (
-                          <View
-                            style={[
-                              twStyle(`rounded-full px-2 py-0.5 ${statusBg}`),
-                            ]}
-                          >
-                            <Text
-                              style={twStyle(`text-xs font-medium capitalize ${statusColor}`)}
-                            >
+                          <View style={twStyle(`rounded-full px-2 py-0.5 ${statusBg}`)}>
+                            <Text style={twStyle(`text-xs font-medium capitalize ${statusColor}`)}>
                               {item.status.replace(/_/g, " ")}
                             </Text>
                           </View>
@@ -898,10 +967,12 @@ export default function ClientDetailScreen() {
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                         {formatCurrency(item.amount)}
                       </Text>
-                      {isAppointment ? (
+                      {isNavigable ? (
                         <Ionicons name="chevron-forward" size={14} color="#d1d5db" style={{ marginTop: 4 }} />
                       ) : (
-                        <Text style={twStyle("text-xs text-gray-400 mt-1")}>Sale</Text>
+                        <Text style={twStyle("text-xs text-gray-400 mt-1")}>
+                          {isSale ? "Walk-in" : "Order"}
+                        </Text>
                       )}
                     </View>
                   </TouchableOpacity>

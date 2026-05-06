@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -21,6 +21,12 @@ import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
+import { useAuth } from "@/providers/AuthProvider";
+import { useSavedCards } from "@/hooks/useSavedCards";
+import { usePaystackPayment } from "@/hooks/usePaystackPayment";
+import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
+import { PaymentSuccessOverlay } from "@/components/payment/PaymentSuccessOverlay";
+import { GiftCardPaymentConfirmSheet } from "@/components/payment/GiftCardPaymentConfirmSheet";
 
 const AMOUNTS = [100, 250, 500, 1000, 2500, 5000];
 
@@ -36,6 +42,7 @@ export default function GiftCardPurchaseScreen() {
     [t],
   );
   const router = useRouter();
+  const { user } = useAuth();
   const { provider_id, provider_name } = useLocalSearchParams<{ provider_id?: string; provider_name?: string }>();
   const tenantCurrency = getTenantDefaultCurrency();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
@@ -44,71 +51,27 @@ export default function GiftCardPurchaseScreen() {
   const [customAmount, setCustomAmount] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
+  const { cards: savedCards, defaultCard } = useSavedCards(!!user);
+  const { payWithSavedCard } = usePaystackPayment();
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [useNewCard, setUseNewCard] = useState(false);
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState("Processing payment…");
+  const [successState, setSuccessState] = useState<"issued" | "pending" | null>(null);
 
   const finalAmount = customAmount ? parseFloat(customAmount) || 0 : amount;
   const total = finalAmount * quantity;
 
-  const purchase = async () => {
-    if (finalAmount <= 0 || loading) return;
-    setLoading(true);
-    try {
-      const beforeCards = await api.get<{ gift_cards?: { id?: string }[] }>("/api/me/gift-cards").catch(() => null);
-      const existingGiftCardIds = new Set(
-        (beforeCards?.data?.gift_cards ?? [])
-          .map((card) => card.id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0),
-      );
-      const body: Record<string, unknown> = { amount: finalAmount, quantity, currency: tenantCurrency };
-      if (provider_id) body.provider_id = provider_id;
-      if (Platform.OS !== "web") {
-        body.callback_url = ExpoLinking.createURL("account-settings/payments");
-      }
-      const res = await api.post<{ order_id: string; payment_url: string; reference: string }>(
-        "/api/public/gift-cards/purchase",
-        body
-      );
-      if (res.error) {
-        Alert.alert(errTitle, getApiErrorMessage(res.error, gc("startPurchaseError")));
-        return;
-      }
-      const data = res.data as any;
-      const paymentUrl = data?.payment_url ?? data?.data?.payment_url;
-      if (!paymentUrl) {
-        Alert.alert(errTitle, gc("paymentLinkUnavailable"));
-        return;
-      }
-      let reference =
-        typeof data?.reference === "string"
-          ? data.reference
-          : typeof data?.data?.reference === "string"
-            ? data.data.reference
-            : null;
-      if (Platform.OS !== "web") {
-        const returnUrl = ExpoLinking.createURL("account-settings/payments");
-        const browserResult = await WebBrowser.openAuthSessionAsync(paymentUrl, returnUrl);
-        if (browserResult.type === "success" && browserResult.url) {
-          try {
-            const parsed = ExpoLinking.parse(browserResult.url);
-            const query = parsed.queryParams ?? {};
-            const returnedRef = query.reference ?? query.trxref;
-            reference = Array.isArray(returnedRef)
-              ? returnedRef[0] ?? reference
-              : typeof returnedRef === "string" && returnedRef.trim()
-                ? returnedRef.trim()
-                : reference;
-          } catch {
-            // Keep the server-issued reference fallback.
-          }
-        }
-      } else {
-        await WebBrowser.openBrowserAsync(paymentUrl, {
-          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-        });
-      }
-      if (reference) {
-        await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
-      }
-      let issued = false;
+  useEffect(() => {
+    if (savedCards.length > 0 && defaultCard?.id) {
+      setUseNewCard(false);
+    } else if (savedCards.length === 0) {
+      setUseNewCard(true);
+    }
+  }, [savedCards.length, defaultCard?.id]);
+
+  const pollNewGiftCard = useCallback(
+    async (existingGiftCardIds: Set<string>): Promise<boolean> => {
       for (let attempt = 0; attempt < 10; attempt++) {
         const cards = await api.get<{ gift_cards?: { id?: string }[] }>("/api/me/gift-cards").catch(() => null);
         const list = cards?.data?.gift_cards;
@@ -116,23 +79,177 @@ export default function GiftCardPurchaseScreen() {
           Array.isArray(list) &&
           list.some((card) => typeof card.id === "string" && !existingGiftCardIds.has(card.id))
         ) {
-          issued = true;
-          break;
+          return true;
         }
         if (attempt < 9) {
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
       }
-      Alert.alert(
-        issued ? gc("giftCardReadyTitle") : gc("paymentPendingTitle"),
-        issued ? gc("giftCardReadyBody") : gc("paymentPendingBody"),
-        [{ text: t("common.ok"), onPress: () => router.back() }],
-      );
-    } catch (e) {
-      Alert.alert(errTitle, getApiErrorMessage(e, gc("purchaseFailed")));
-    } finally {
-      setLoading(false);
+      return false;
+    },
+    [],
+  );
+
+  const executePurchase = useCallback(
+    async (withSavedCard: boolean) => {
+      if (finalAmount <= 0) return;
+      if (!user?.email?.trim()) {
+        Alert.alert(errTitle, gc("signInToPurchase") || "Please sign in to buy a gift card.");
+        return;
+      }
+
+      const savedCardId = withSavedCard ? defaultCard?.id ?? savedCards[0]?.id : null;
+      if (withSavedCard && !savedCardId) {
+        Alert.alert(errTitle, gc("noSavedCard") || "No saved card found. Pay with a new card instead.");
+        return;
+      }
+
+      setLoading(true);
+      setProcessingPayment(true);
+      setProcessingMessage(gc("preparingPayment") || "Preparing payment…");
+      try {
+        const beforeCards = await api.get<{ gift_cards?: { id?: string }[] }>("/api/me/gift-cards").catch(() => null);
+        const existingGiftCardIds = new Set(
+          (beforeCards?.data?.gift_cards ?? [])
+            .map((card) => card.id)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        );
+        const body: Record<string, unknown> = { amount: finalAmount, quantity, currency: tenantCurrency };
+        if (provider_id) body.provider_id = provider_id;
+        if (Platform.OS !== "web") {
+          body.callback_url = ExpoLinking.createURL("account-settings/payments");
+        }
+        const res = await api.post<{ order_id?: string; payment_url?: string; reference?: string; data?: { order_id?: string; payment_url?: string; reference?: string } }>(
+          "/api/public/gift-cards/purchase",
+          body,
+        );
+        if (res.error) {
+          Alert.alert(errTitle, getApiErrorMessage(res.error, gc("startPurchaseError")));
+          return;
+        }
+        const raw = res.data as Record<string, unknown> | undefined;
+        const nested = raw?.data && typeof raw.data === "object" ? (raw.data as Record<string, unknown>) : null;
+        const orderId =
+          (typeof raw?.order_id === "string" && raw.order_id) ||
+          (nested && typeof nested.order_id === "string" && nested.order_id) ||
+          "";
+        const paymentUrl =
+          (typeof raw?.payment_url === "string" && raw.payment_url) ||
+          (nested && typeof nested.payment_url === "string" && nested.payment_url) ||
+          "";
+        let reference =
+          (typeof raw?.reference === "string" && raw.reference) ||
+          (nested && typeof nested.reference === "string" && nested.reference) ||
+          null;
+
+        if (!orderId) {
+          Alert.alert(errTitle, gc("paymentLinkUnavailable"));
+          return;
+        }
+
+        if (withSavedCard && savedCardId) {
+          setProcessingMessage(gc("processingPayment") || "Processing payment…");
+          const charge = await payWithSavedCard({
+            payment_method_id: savedCardId,
+            amount: total,
+            email: user.email!,
+            currency: tenantCurrency,
+            metadata: {
+              gift_card_order_id: orderId,
+              type: "gift_card_order",
+            },
+          });
+          if (!charge.success) {
+            Alert.alert(
+              errTitle,
+              gc("savedCardChargeFailed") || "We could not charge your saved card. Try paying with a new card.",
+            );
+            return;
+          }
+          const ref = typeof charge.reference === "string" ? charge.reference.trim() : "";
+          if (ref) {
+            setProcessingMessage(gc("confirmingPayment") || "Confirming your payment…");
+            await api.get(`/api/paystack/verify?reference=${encodeURIComponent(ref)}`).catch(() => {});
+          }
+          const issued = await pollNewGiftCard(existingGiftCardIds);
+          setSuccessState(issued ? "issued" : "pending");
+          return;
+        }
+
+        if (!paymentUrl) {
+          Alert.alert(errTitle, gc("paymentLinkUnavailable"));
+          return;
+        }
+
+        setProcessingMessage(gc("openingPaymentPage") || "Opening payment page…");
+        if (Platform.OS !== "web") {
+          const returnUrl = ExpoLinking.createURL("account-settings/payments");
+          const browserResult = await WebBrowser.openAuthSessionAsync(paymentUrl, returnUrl);
+          if (browserResult.type === "success" && browserResult.url) {
+            try {
+              const parsed = ExpoLinking.parse(browserResult.url);
+              const query = parsed.queryParams ?? {};
+              const returnedRef = query.reference ?? query.trxref;
+              reference = Array.isArray(returnedRef)
+                ? returnedRef[0] ?? reference
+                : typeof returnedRef === "string" && returnedRef.trim()
+                  ? returnedRef.trim()
+                  : reference;
+            } catch {
+              /* keep server reference */
+            }
+          }
+        } else {
+          await WebBrowser.openBrowserAsync(paymentUrl, {
+            presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+          });
+        }
+
+        setProcessingMessage(gc("confirmingPayment") || "Confirming your payment…");
+        if (reference) {
+          await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
+        }
+        const issued = await pollNewGiftCard(existingGiftCardIds);
+        setSuccessState(issued ? "issued" : "pending");
+      } catch (e) {
+        Alert.alert(errTitle, getApiErrorMessage(e, gc("purchaseFailed")));
+      } finally {
+        setLoading(false);
+        setProcessingPayment(false);
+      }
+    },
+    [
+      finalAmount,
+      quantity,
+      tenantCurrency,
+      provider_id,
+      user,
+      errTitle,
+      gc,
+      pollNewGiftCard,
+      payWithSavedCard,
+      defaultCard?.id,
+      savedCards,
+      total,
+    ],
+  );
+
+  const onPayPress = () => {
+    if (finalAmount <= 0 || loading || processingPayment) return;
+    if (!user) {
+      Alert.alert(errTitle, gc("signInToPurchase") || "Please sign in to buy a gift card.");
+      return;
     }
+    if (savedCards.length > 0) {
+      setShowConfirm(true);
+    } else {
+      void executePurchase(false);
+    }
+  };
+
+  const onConfirmSheet = () => {
+    setShowConfirm(false);
+    void executePurchase(!useNewCard);
   };
 
   return (
@@ -142,6 +259,35 @@ export default function GiftCardPurchaseScreen() {
           title: provider_name ? gc("screenTitleWithProvider", { providerName: String(provider_name) }) : gc("screenTitleBuy"),
           headerBackTitle: t("common.back"),
         }}
+      />
+      <PaymentProcessingOverlay visible={processingPayment} message={processingMessage} />
+      <PaymentSuccessOverlay
+        visible={successState !== null}
+        title={successState === "issued" ? gc("giftCardReadyTitle") : gc("paymentPendingTitle")}
+        subtitle={successState === "issued" ? gc("giftCardReadyBody") : gc("paymentPendingBody")}
+        status={successState === "issued" ? "success" : "pending"}
+        amountPaid={total}
+        currency={tenantCurrency}
+        summaryRows={[
+          { icon: "gift-outline", label: gc("quantityLabel"), value: String(quantity) },
+          { icon: "cash-outline", label: gc("totalLabel"), value: formatMoney(total, tenantCurrency) },
+        ]}
+        footerHint={gc("successFooterHint") || "Tap continue when you are ready to leave this screen."}
+        onDismiss={() => {
+          setSuccessState(null);
+          router.back();
+        }}
+      />
+      <GiftCardPaymentConfirmSheet
+        visible={showConfirm}
+        totalLabel={formatMoney(total, tenantCurrency)}
+        summaryLine={gc("confirmSummary", { quantity: String(quantity) }) || `${quantity} gift card(s) · ${formatMoney(finalAmount, tenantCurrency)} each`}
+        savedCards={savedCards}
+        defaultCard={defaultCard}
+        useNewCard={useNewCard}
+        onUseNewCardChange={setUseNewCard}
+        onConfirm={onConfirmSheet}
+        onCancel={() => setShowConfirm(false)}
       />
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.white }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
@@ -170,7 +316,7 @@ export default function GiftCardPurchaseScreen() {
             placeholder={gc("amountPlaceholder")}
             placeholderTextColor={Colors.gray[400]}
             value={customAmount}
-            onChangeText={(t) => { setCustomAmount(t); if (t) setAmount(0); }}
+            onChangeText={(tx) => { setCustomAmount(tx); if (tx) setAmount(0); }}
             keyboardType="number-pad"
           />
           <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{gc("quantityLabel")}</Text>
@@ -187,8 +333,8 @@ export default function GiftCardPurchaseScreen() {
             <Text style={{ color: Colors.gray[600] }}>{gc("totalLabel")}</Text>
             <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{formatMoney(total, tenantCurrency)}</Text>
           </View>
-          <TouchableOpacity onPress={purchase} disabled={finalAmount <= 0 || loading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: finalAmount <= 0 || loading ? 0.5 : 1 }}>
-            {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>{gc("payWithCard")}</Text>}
+          <TouchableOpacity onPress={onPayPress} disabled={finalAmount <= 0 || loading || processingPayment} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: finalAmount <= 0 || loading || processingPayment ? 0.5 : 1 }}>
+            {loading && !processingPayment ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>{gc("payWithCard")}</Text>}
           </TouchableOpacity>
           <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 16 }}>{gc("paymentRedirectHint")}</Text>
         </ScrollView>

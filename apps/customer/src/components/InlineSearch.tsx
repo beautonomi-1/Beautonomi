@@ -70,14 +70,14 @@ export function InlineSearch({ onSearch, contextCategorySlug, fillParent }: Inli
   }, []);
 
   const fetchSuggestions = useCallback(async (text: string) => {
-    if (text.length < 2) {
+    if (text.trim().length < 1) {
       setSuggestions([]);
       return;
     }
     setLoading(true);
     try {
       const res = await api.get<{ suggestions?: Suggestion[] }>(
-        `/api/public/search/suggestions?q=${encodeURIComponent(text)}&limit=8`
+        `/api/public/search/suggestions?q=${encodeURIComponent(text.trim())}&limit=10`
       );
       const raw = res.data as any;
       const list = raw?.suggestions ?? raw?.data?.suggestions ?? [];
@@ -93,7 +93,7 @@ export function InlineSearch({ onSearch, contextCategorySlug, fillParent }: Inli
     (text: string) => {
       setQuery(text);
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      const delay = text.length >= 2 ? 180 : 350;
+      const delay = text.trim().length >= 1 ? 180 : 350;
       debounceRef.current = setTimeout(() => fetchSuggestions(text), delay);
     },
     [fetchSuggestions],

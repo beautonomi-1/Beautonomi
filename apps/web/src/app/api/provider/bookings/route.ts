@@ -175,7 +175,11 @@ async function handleGetProviderBookings(request: NextRequest) {
         )
       `
       )
-      .eq("provider_id", providerId);
+      .eq("provider_id", providerId)
+      // Participant bookings linked to a group are represented by the synthetic
+      // group:uuid row built from group_bookings below. Excluding them here
+      // prevents each participant from appearing twice in the merged list.
+      .is("group_booking_id", null);
 
     // Apply filters
     const customerId = searchParams.get("customer_id");
@@ -447,6 +451,8 @@ async function handleGetProviderBookings(request: NextRequest) {
           return Array.isArray(gb) ? gb[0]?.ref_number ?? null : gb?.ref_number ?? null;
         })(),
         provider_form_responses: booking.provider_form_responses ?? null,
+        // Booking channel — used for Walk-in / Provider / Online / Custom labeling in UI
+        booking_source: (booking as { booking_source?: string | null }).booking_source || null,
       };
     });
 
@@ -609,6 +615,8 @@ async function handleGetProviderBookings(request: NextRequest) {
         is_group_booking: true,
         group_booking_ref: group.ref_number || null,
         provider_form_responses: null,
+        // Channel tag so UI can render a "Group" chip without guessing
+        booking_source: "group_booking",
       };
     });
 
@@ -1159,6 +1167,14 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // "allow double booking" setting.
     const bodyOverride = body.allow_override === true || body.allow_override_slot === true;
     const allowOverride = bodyOverride || await canOverrideDoubleBooking(supabaseAdmin, providerId);
+    // When a participant booking is created for an existing group booking, the
+    // group itself now occupies the slot in the availability grid. Callers can
+    // pass exclude_group_booking_id so the grid ignores the parent group and
+    // doesn't falsely block participant bookings at the same time.
+    const excludeGroupBookingId: string | undefined =
+      typeof body.exclude_group_booking_id === "string" && body.exclude_group_booking_id.length > 0
+        ? body.exclude_group_booking_id
+        : undefined;
     const useRpcPath = staffId != null && !allowOverride;
 
     // Active customer holds block the window (same as public validate-booking).
@@ -1232,6 +1248,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
         staffIdsCsv: staffIdsCsvForGrid,
         locationId,
         excludeBookingId: undefined,
+        excludeGroupBookingId,
         mode,
         travelBufferRaw,
         minNoticeMinutes: 0,

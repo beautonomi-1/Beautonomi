@@ -64,7 +64,8 @@ function getSuggestionIcon(type: SearchSuggestion["type"]): keyof typeof Ionicon
   }
 }
 
-const DEBOUNCE_MS = 300;
+const DEBOUNCE_MS = 280;
+const MIN_QUERY_LEN = 1;
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -76,7 +77,7 @@ export default function SearchScreen() {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const q = query.trim();
-    if (q.length < 2) {
+    if (q.length < MIN_QUERY_LEN) {
       setDebouncedQuery("");
       return;
     }
@@ -87,8 +88,8 @@ export default function SearchScreen() {
   }, [query]);
 
   const searchPath =
-    debouncedQuery.length >= 2
-      ? `/api/provider/search?q=${encodeURIComponent(debouncedQuery)}&limit=10`
+    debouncedQuery.length >= MIN_QUERY_LEN
+      ? `/api/provider/search?q=${encodeURIComponent(debouncedQuery)}&limit=12`
       : "";
   const { data: response, loading } = useApi<SearchResponse>(searchPath, {
     enabled: searchPath.length > 0,
@@ -96,7 +97,7 @@ export default function SearchScreen() {
   const suggestions = response?.suggestions ?? [];
 
   const handleSearch = useCallback(() => {
-    if (query.trim().length >= 2) setDebouncedQuery(query.trim());
+    if (query.trim().length >= MIN_QUERY_LEN) setDebouncedQuery(query.trim());
   }, [query]);
 
   const handleSelect = useCallback(
@@ -108,8 +109,7 @@ export default function SearchScreen() {
     [router]
   );
 
-  const showEmpty = debouncedQuery.length >= 2 && !loading && suggestions.length === 0;
-  const showHint = query.length > 0 && query.length < 2;
+  const showEmpty = debouncedQuery.length >= MIN_QUERY_LEN && !loading && suggestions.length === 0;
 
   return (
     <ScreenContainer scrollable={false}>
@@ -122,11 +122,6 @@ export default function SearchScreen() {
           onSubmitEditing={handleSearch}
           returnKeyType="search"
         />
-        {showHint && (
-          <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[500] }}>
-            Type at least 2 characters to search
-          </Text>
-        )}
       </View>
 
       {showEmpty && (
@@ -180,7 +175,7 @@ export default function SearchScreen() {
         />
       )}
 
-      {loading && debouncedQuery.length >= 2 && (
+      {loading && debouncedQuery.length >= MIN_QUERY_LEN && (
         <View style={{ paddingVertical: 32, alignItems: "center" }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Searching...</Text>
         </View>

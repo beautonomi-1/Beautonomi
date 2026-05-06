@@ -27,6 +27,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
 import { Skeleton } from "@/components/Skeleton";
+import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import * as WebBrowser from "expo-web-browser";
 import * as ExpoLinking from "expo-linking";
@@ -581,6 +582,8 @@ export default function BookCheckoutScreen() {
     currency?: string;
   } | null>(null);
   const [consuming, setConsuming] = useState(false);
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState("Processing payment…");
   const consumeInFlightRef = useRef(false);
   /** Tracks whether the initial hold load has completed — suppresses the focus re-check on first mount. */
   const holdLoadedRef = useRef(false);
@@ -1980,6 +1983,8 @@ export default function BookCheckoutScreen() {
       };
 
       if (paymentUrl && paymentMethod === "card") {
+        setProcessingPayment(true);
+        setProcessingMessage(t("checkout.openingPaymentPage", "Opening payment page…"));
         let returnedPaymentReference: string | null = data?.payment_reference ?? null;
         if (Platform.OS !== "web") {
           const authResult = await WebBrowser.openAuthSessionAsync(
@@ -2005,6 +2010,7 @@ export default function BookCheckoutScreen() {
             presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
           });
         }
+        setProcessingMessage(t("checkout.confirmingPayment", "Confirming payment…"));
         if (saveCard) refreshCards();
         if (returnedPaymentReference) {
           await api
@@ -2059,6 +2065,7 @@ export default function BookCheckoutScreen() {
         }
 
         if (!paymentConfirmed) {
+          setProcessingPayment(false);
           Alert.alert(
             t("checkout.paymentPendingPollTitle"),
             t("checkout.paymentPendingPollBody"),
@@ -2070,6 +2077,7 @@ export default function BookCheckoutScreen() {
           return;
         }
 
+        setProcessingPayment(false);
         const amountPaid = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
         trackBookingConfirmed(confirmedBookingId ?? hold_id, paymentMethod, total);
         trackPaymentSuccess(confirmedBookingId ?? hold_id, amountPaid);
@@ -2083,6 +2091,7 @@ export default function BookCheckoutScreen() {
         navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
       }
     } catch (e) {
+      setProcessingPayment(false);
       setError(getApiErrorMessage(e, "Failed to complete"));
     } finally {
       consumeInFlightRef.current = false;
@@ -3721,6 +3730,8 @@ export default function BookCheckoutScreen() {
           </View>
         </KeyboardAvoidingView>
       </View>
+
+      <PaymentProcessingOverlay visible={processingPayment} message={processingMessage} />
 
       {/* ── BOOKING CONFIRMED SUCCESS OVERLAY ── */}
       {bookingConfirmedData && (

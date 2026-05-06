@@ -2402,9 +2402,20 @@ export default function BookingDetailScreen() {
               ) : null}
             </View>
             <View style={twStyle("flex-row items-center")}>
+              {b.is_group_booking && (
+                <View style={[twStyle("flex-row items-center gap-1 rounded-full bg-pink-100 px-2 py-1"), { marginRight: 6 }]}>
+                  <Ionicons name="people-outline" size={12} color="#be185d" />
+                  <Text style={twStyle("text-xs font-medium text-pink-800")}>Group</Text>
+                </View>
+              )}
               {b.booking_source === "walk_in" && (
                 <View style={[twStyle("rounded-full bg-green-100 px-2 py-1"), { marginRight: 6 }]}>
                   <Text style={twStyle("text-xs font-medium text-green-800")}>Walk-in</Text>
+                </View>
+              )}
+              {b.booking_source === "provider" && !b.is_group_booking && (
+                <View style={[twStyle("rounded-full bg-indigo-100 px-2 py-1"), { marginRight: 6 }]}>
+                  <Text style={twStyle("text-xs font-medium text-indigo-800")}>Provider</Text>
                 </View>
               )}
               <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(b.status)}`)}>
@@ -2453,7 +2464,17 @@ export default function BookingDetailScreen() {
             <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
               <Text style={twStyle("text-[11px] font-semibold uppercase text-gray-500")}>Type</Text>
               <Text style={twStyle("mt-0.5 text-sm font-semibold text-gray-900")}>
-                {b.is_group_booking ? "Group" : recurringDetails ? "Recurring" : b.booking_source === "walk_in" ? "Walk-in" : isAtHome ? "House call" : "Salon"}
+                {b.is_group_booking
+                  ? "Group"
+                  : recurringDetails
+                    ? "Recurring"
+                    : b.booking_source === "walk_in"
+                      ? "Walk-in"
+                      : b.booking_source === "provider"
+                        ? "Provider"
+                        : isAtHome
+                          ? "House call"
+                          : "Salon"}
               </Text>
             </View>
             <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>

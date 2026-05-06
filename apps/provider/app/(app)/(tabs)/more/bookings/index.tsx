@@ -270,34 +270,72 @@ export default function BookingsListScreen() {
 
   const dateParams = useMemo(() => buildDateParams(dateRange), [dateRange]);
 
-  const queryParts: string[] = [];
-  if (dateParams.start_date) queryParts.push(`start_date=${dateParams.start_date}`);
-  if (dateParams.end_date) queryParts.push(`end_date=${dateParams.end_date}`);
-  if (statusFilter) queryParts.push(`status=${encodeURIComponent(statusFilter)}`);
-  if (selectedLocationId) queryParts.push(`location_id=${encodeURIComponent(selectedLocationId)}`);
-  if (debouncedSearch.length > 0) queryParts.push(`search=${encodeURIComponent(debouncedSearch)}`);
-  // §Launch-audit 2026-04: default remains appointment order (soonest
-  // first). Optional "Booked" switches to `created_at` desc so recent
-  // intake appears on top — matches GET /api/me/bookings sort_by.
-  if (listSort === "booked_at") {
-    queryParts.push("sort=created_at");
-    queryParts.push("order=desc");
-  } else {
-    queryParts.push("sort=scheduled_at");
-    queryParts.push("order=asc");
-  }
-  const url = `/api/provider/bookings?${queryParts.join("&")}`;
+  const bookingsListQueryParts = useMemo(() => {
+    const parts: string[] = [];
+    if (dateParams.start_date) parts.push(`start_date=${dateParams.start_date}`);
+    if (dateParams.end_date) parts.push(`end_date=${dateParams.end_date}`);
+    if (statusFilter) parts.push(`status=${encodeURIComponent(statusFilter)}`);
+    if (debouncedSearch.length > 0) parts.push(`search=${encodeURIComponent(debouncedSearch)}`);
+    // §Launch-audit 2026-04: default remains appointment order (soonest
+    // first). Optional "Booked" switches to `created_at` desc so recent
+    // intake appears on top — matches GET /api/me/bookings sort_by.
+    if (listSort === "booked_at") {
+      parts.push("sort=created_at");
+      parts.push("order=desc");
+    } else {
+      parts.push("sort=scheduled_at");
+      parts.push("order=asc");
+    }
+    return parts;
+  }, [dateParams.start_date, dateParams.end_date, statusFilter, debouncedSearch, listSort]);
+
+  const url = useMemo(() => {
+    const parts = [...bookingsListQueryParts];
+    if (selectedLocationId) parts.push(`location_id=${encodeURIComponent(selectedLocationId)}`);
+    return `/api/provider/bookings?${parts.join("&")}`;
+  }, [bookingsListQueryParts, selectedLocationId]);
+
+  const atHomeListUrl = useMemo(() => {
+    if (!selectedLocationId) return "";
+    const parts = [...bookingsListQueryParts, "location_type=at_home"];
+    return `/api/provider/bookings?${parts.join("&")}`;
+  }, [bookingsListQueryParts, selectedLocationId]);
 
   const { data, loading, error, refresh } = usePagedProviderBookings<Booking>(url, { timeoutMs: 60_000 });
+  const {
+    data: atHomeData,
+    loading: atHomeLoading,
+    error: atHomeError,
+    refresh: refreshAtHome,
+  } = usePagedProviderBookings<Booking>(atHomeListUrl, {
+    enabled: Boolean(selectedLocationId && atHomeListUrl),
+    timeoutMs: 60_000,
+  });
+
+  const mergedBookingsData = useMemo(() => {
+    const main = Array.isArray(data) ? data : [];
+    if (!selectedLocationId) return main;
+    const extra = Array.isArray(atHomeData) ? atHomeData : [];
+    const seen = new Set(main.map((b) => b.id));
+    return [...main, ...extra.filter((b) => !seen.has(b.id))];
+  }, [data, atHomeData, selectedLocationId]);
+
+  const listLoading = loading || (Boolean(selectedLocationId) && atHomeLoading);
+  const listError = error ?? (selectedLocationId ? atHomeError : null);
+
+  const refreshAllBookings = useCallback(async () => {
+    await refresh();
+    if (selectedLocationId) await refreshAtHome();
+  }, [refresh, refreshAtHome, selectedLocationId]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refresh();
+      await refreshAllBookings();
     } finally {
       setRefreshing(false);
     }
-  }, [refresh]);
+  }, [refreshAllBookings]);
 
   // §Cross-app audit 2026-04 (bookings list freshness): previously the
   // calendar screen subscribed to `postgres_changes` on `bookings`, so a
@@ -315,16 +353,16 @@ export default function BookingsListScreen() {
   useFocusEffect(
     useCallback(() => {
       setBookingsListFocused(true);
-      refresh();
+      void refreshAllBookings();
       return () => setBookingsListFocused(false);
-    }, [refresh]),
+    }, [refreshAllBookings]),
   );
 
   // Keep a stable ref to the latest refresh so the realtime effect doesn't
   // need to re-subscribe every time refresh changes identity (which happens
   // on every data fetch, causing "cannot add postgres_changes after subscribe").
-  const refreshRef = useRef(refresh);
-  useEffect(() => { refreshRef.current = refresh; }, [refresh]);
+  const refreshRef = useRef(refreshAllBookings);
+  useEffect(() => { refreshRef.current = refreshAllBookings; }, [refreshAllBookings]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
@@ -380,7 +418,7 @@ export default function BookingsListScreen() {
   }, [bookingsListFocused, provider?.id]);
 
   const filtered = useMemo(() => {
-    const allBookings: Booking[] = Array.isArray(data) ? data : [];
+    const allBookings: Booking[] = mergedBookingsData;
     const q = search.trim().toLowerCase();
     if (!q) return allBookings;
     return allBookings.filter((b) => {
@@ -389,13 +427,13 @@ export default function BookingsListScreen() {
       const service = (b.services?.[0]?.name ?? b.services?.[0]?.offering_name ?? "").toLowerCase();
       return name.includes(q) || num.includes(q) || service.includes(q);
     });
-  }, [data, search]);
+  }, [mergedBookingsData, search]);
 
   // §Mobile-parity 2026-04: stats snapshot computed across the full
   // returned result set. Independent of the list's date range so the
   // numbers still make sense when the list is filtered.
   const statsSnapshot = useMemo(() => {
-    const allBookings: Booking[] = Array.isArray(data) ? data : [];
+    const allBookings: Booking[] = mergedBookingsData;
     const now = new Date();
     let start = 0;
     let end = Number.POSITIVE_INFINITY;
@@ -429,7 +467,7 @@ export default function BookingsListScreen() {
       }
     }
     return { count, revenue, pendingCount, inProgressCount };
-  }, [data, statsRange]);
+  }, [mergedBookingsData, statsRange]);
 
   const statsRangeLabel = useMemo(() => {
     if (statsRange === "today") return "Today";
@@ -537,9 +575,20 @@ export default function BookingsListScreen() {
                     <Text style={twStyle("text-xs font-medium text-blue-700")}>Repeats</Text>
                   </View>
                 )}
+                {b.is_group_booking && (
+                  <View style={twStyle("flex-row items-center gap-1 rounded-full bg-pink-50 px-2 py-1")}>
+                    <Ionicons name="people-outline" size={12} color="#db2777" />
+                    <Text style={twStyle("text-xs font-medium text-pink-700")}>Group</Text>
+                  </View>
+                )}
                 {b.booking_source === "walk_in" && (
                   <View style={twStyle("rounded-full bg-emerald-50 px-2 py-1")}>
                     <Text style={twStyle("text-xs font-medium text-emerald-700")}>Walk-in</Text>
+                  </View>
+                )}
+                {b.booking_source === "provider" && !b.is_group_booking && (
+                  <View style={twStyle("rounded-full bg-indigo-50 px-2 py-1")}>
+                    <Text style={twStyle("text-xs font-medium text-indigo-700")}>Provider</Text>
                   </View>
                 )}
                 {payment ? (
@@ -585,7 +634,7 @@ export default function BookingsListScreen() {
     [router, currency],
   );
 
-  if (loading && !data) {
+  if (listLoading && mergedBookingsData.length === 0) {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Bookings" showBack />
@@ -596,12 +645,12 @@ export default function BookingsListScreen() {
     );
   }
 
-  if (error && !data) {
+  if (listError && mergedBookingsData.length === 0) {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Bookings" showBack />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
-          <ErrorState message={error} onRetry={refresh} />
+          <ErrorState message={listError} onRetry={() => void refreshAllBookings()} />
         </View>
       </ScreenContainer>
     );

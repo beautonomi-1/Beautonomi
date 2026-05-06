@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
     const locationId = locationIdRaw && locationIdRaw.length > 0 ? locationIdRaw : null;
     const excludeBookingId = sp.get("exclude_booking_id")?.trim() || undefined;
     const excludeHoldId = sp.get("exclude_hold_id")?.trim() || undefined;
+    const excludeGroupBookingId = sp.get("exclude_group_booking_id")?.trim() || undefined;
 
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       return errorResponse("date is required (YYYY-MM-DD)", "VALIDATION_ERROR", 400);
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
       locationId,
       excludeBookingId,
       excludeHoldId,
+      excludeGroupBookingId,
       mode,
       travelBufferRaw,
       minNoticeMinutes,

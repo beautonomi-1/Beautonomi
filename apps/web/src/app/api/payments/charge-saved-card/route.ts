@@ -39,10 +39,12 @@ const chargeSavedCardSchema = z
     const hasBooking =
       (typeof m.booking_id === "string" && String(m.booking_id).trim().length > 0) ||
       (typeof m.bookingId === "string" && String(m.bookingId).trim().length > 0);
-    if (!hasProductOrder && !hasBooking && (val.amount == null || val.amount <= 0)) {
+    const hasGiftCardOrder =
+      typeof m.gift_card_order_id === "string" && String(m.gift_card_order_id).trim().length > 0;
+    if (!hasProductOrder && !hasBooking && !hasGiftCardOrder && (val.amount == null || val.amount <= 0)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "amount is required unless charging for a product order or booking",
+        message: "amount is required unless charging for a product order, booking, or gift card order",
         path: ["amount"],
       });
     }
@@ -119,6 +121,10 @@ export async function POST(request: NextRequest) {
       typeof meta.product_order_id === "string" && meta.product_order_id.trim()
         ? meta.product_order_id.trim()
         : null;
+    const giftCardOrderIdFromMeta =
+      typeof meta.gift_card_order_id === "string" && meta.gift_card_order_id.trim()
+        ? meta.gift_card_order_id.trim()
+        : null;
 
     if (productOrderIdFromMeta) {
       const { data: poRow, error: poErr } = await (supabase.from("product_orders") as any)
@@ -148,6 +154,31 @@ export async function POST(request: NextRequest) {
       (typeof meta.booking_id === "string" && meta.booking_id) ||
       (typeof meta.bookingId === "string" && meta.bookingId) ||
       null;
+
+    if (giftCardOrderIdFromMeta && !productOrderIdFromMeta) {
+      const { data: gcoRow, error: gcoErr } = await (supabase.from("gift_card_orders") as any)
+        .select("id, tenant_id, purchaser_user_id, status, total_amount, currency")
+        .eq("id", giftCardOrderIdFromMeta)
+        .maybeSingle();
+      if (gcoErr || !gcoRow) {
+        return notFoundResponse("Gift card order not found");
+      }
+      if (!resourceTenantMatchesHostTenant(tenantId, (gcoRow as { tenant_id?: string | null }).tenant_id)) {
+        return errorResponse(
+          "This purchase belongs to a different market.",
+          "TENANT_MISMATCH",
+          403,
+        );
+      }
+      if ((gcoRow as { purchaser_user_id?: string }).purchaser_user_id !== user.id) {
+        return errorResponse("You do not have permission to pay for this order", "FORBIDDEN", 403);
+      }
+      const gcoStatus = String((gcoRow as { status?: string }).status ?? "").toLowerCase();
+      if (gcoStatus !== "pending") {
+        return errorResponse("This gift card order is no longer awaiting payment", "CONFLICT", 409);
+      }
+    }
+
     if (bookingIdFromMeta && !productOrderIdFromMeta) {
       const { data: bookingRow, error: bookingErr } = await supabase
         .from("bookings")
@@ -180,6 +211,16 @@ export async function POST(request: NextRequest) {
         return errorResponse(resolved.message, resolved.code, resolved.status);
       }
       amountInSmallestUnit = resolved.amountSmallestUnit;
+    } else if (giftCardOrderIdFromMeta && !productOrderIdFromMeta) {
+      const { data: gcoAmount } = await (supabase.from("gift_card_orders") as any)
+        .select("total_amount")
+        .eq("id", giftCardOrderIdFromMeta)
+        .maybeSingle();
+      const total = Number((gcoAmount as { total_amount?: number } | null)?.total_amount ?? 0);
+      if (!Number.isFinite(total) || total <= 0) {
+        return errorResponse("Invalid gift card order amount", "INVALID_ORDER", 400);
+      }
+      amountInSmallestUnit = convertToSmallestUnit(total);
     } else if (bookingIdFromMeta) {
       const resolved = await resolveBookingPaystackAmount(supabase, bookingIdFromMeta, user.id);
       if (resolved.ok === false) {

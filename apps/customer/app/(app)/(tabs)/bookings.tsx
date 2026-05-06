@@ -9,6 +9,7 @@ import {
 import { FlashList } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -155,9 +156,26 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
           {booking.currency} {booking.total_amount?.toFixed(2)}
         </Text>
         <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>#{booking.booking_number}</Text>
-        {booking.is_group_booking && booking.group_booking_ref && (
-          <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>Group: {booking.group_booking_ref}</Text>
-        )}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+          {booking.is_group_booking && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#fdf2f8", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
+              <Ionicons name="people-outline" size={12} color="#db2777" />
+              <Text style={{ fontSize: 11, fontWeight: "600", color: "#db2777" }}>
+                {booking.group_booking_ref ? `Group · ${booking.group_booking_ref}` : "Group booking"}
+              </Text>
+            </View>
+          )}
+          {!booking.is_group_booking && booking.booking_source === "walk_in" && (
+            <View style={{ backgroundColor: "#f0fdf4", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: "#166534" }}>Walk-in</Text>
+            </View>
+          )}
+          {!booking.is_group_booking && booking.booking_source === "online" && booking.special_requests?.startsWith("Custom order:") && (
+            <View style={{ backgroundColor: "#eff6ff", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: "#1d4ed8" }}>Custom offer</Text>
+            </View>
+          )}
+        </View>
       </View>
 
       <TouchableOpacity
@@ -296,7 +314,36 @@ export default function BookingsScreen() {
       <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
       <View style={[contentContainerStyle, { backgroundColor: Colors.white, paddingTop: contentPadding, paddingBottom: 8 }]}>
         <View style={{ paddingHorizontal: contentPadding }}>
-          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>Bookings</Text>
+          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 12 }}>Bookings</Text>
+          <TouchableOpacity
+            onPress={() => {
+              haptic.selection();
+              router.push("/(app)/account-settings/custom-requests" as never);
+            }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginBottom: 16,
+              paddingVertical: 12,
+              paddingHorizontal: 14,
+              backgroundColor: Colors.gray[50],
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: Colors.gray[200],
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Custom requests and offers"
+            accessibilityHint="Open quotes and custom service requests from providers"
+          >
+            <Ionicons name="briefcase-outline" size={22} color={Colors.primary} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>Custom requests & offers</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
+                Review quotes and respond to providers
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+          </TouchableOpacity>
           <View style={{ flexDirection: "row" }}>
             {tabs.map((t) => (
               <TouchableOpacity

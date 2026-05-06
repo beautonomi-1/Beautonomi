@@ -7,6 +7,11 @@ import { buildAdReachKey, runAdsAuction, recordAdImpressions } from "@/lib/ads/a
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
 import type { SearchFilters, SearchResult } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  buildIlikeOrClause,
+  expandSearchTokens,
+  fuzzyTextRelevanceScore,
+} from "@/lib/search/fuzzy-rank";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -140,32 +145,44 @@ export async function GET(request: Request) {
     // Home/search discovery must keep showing active providers to customers.
 
     let textMatchedProviderIds: string[] = [];
+    let textQueryForRanking: string | undefined;
     if (queryText && queryText.trim()) {
       const searchTerm = sanitizeSearchTerm(queryText);
       if (searchTerm) {
+        textQueryForRanking = searchTerm;
+        const tokens = expandSearchTokens(searchTerm);
+        const offeringOr = buildIlikeOrClause(["title", "description"], tokens);
+        const providerCatOr = buildIlikeOrClause(["name", "slug"], tokens);
+        const globalCatOr = buildIlikeOrClause(["name", "slug"], tokens);
         const [offeringMatches, providerCategoryMatches, globalCategoryMatches] = await Promise.all([
-          supabase
-            .from("offerings")
-            .select("provider_id, providers!inner(tenant_id, status)")
-            .eq("is_active", true)
-            .eq("providers.tenant_id", tenantId)
-            .eq("providers.status", "active")
-            .or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
-            .limit(300),
-          supabase
-            .from("provider_categories")
-            .select("provider_id, providers!inner(tenant_id, status)")
-            .eq("is_active", true)
-            .eq("providers.tenant_id", tenantId)
-            .eq("providers.status", "active")
-            .or(`name.ilike.%${searchTerm}%,slug.ilike.%${searchTerm}%`)
-            .limit(300),
-          supabase
-            .from("global_service_categories")
-            .select("id")
-            .eq("is_active", true)
-            .or(`name.ilike.%${searchTerm}%,slug.ilike.%${searchTerm}%`)
-            .limit(50),
+          offeringOr
+            ? supabase
+                .from("offerings")
+                .select("provider_id, providers!inner(tenant_id, status)")
+                .eq("is_active", true)
+                .eq("providers.tenant_id", tenantId)
+                .eq("providers.status", "active")
+                .or(offeringOr)
+                .limit(300)
+            : Promise.resolve({ data: [] as { provider_id?: string }[] }),
+          providerCatOr
+            ? supabase
+                .from("provider_categories")
+                .select("provider_id, providers!inner(tenant_id, status)")
+                .eq("is_active", true)
+                .eq("providers.tenant_id", tenantId)
+                .eq("providers.status", "active")
+                .or(providerCatOr)
+                .limit(300)
+            : Promise.resolve({ data: [] as { provider_id?: string }[] }),
+          globalCatOr
+            ? supabase
+                .from("global_service_categories")
+                .select("id")
+                .eq("is_active", true)
+                .or(globalCatOr)
+                .limit(50)
+            : Promise.resolve({ data: [] as { id?: string }[] }),
         ]);
 
         const categoryIds = uniqueStrings((globalCategoryMatches.data ?? []).map((row: any) => row.id));
@@ -201,14 +218,18 @@ export async function GET(request: Request) {
         ]).slice(0, 300);
 
         const providerTextPredicates = [
-          `business_name.ilike.%${searchTerm}%`,
-          `slug.ilike.%${searchTerm}%`,
-          `description.ilike.%${searchTerm}%`,
+          ...tokens.flatMap((tok) => [
+            `business_name.ilike.%${tok}%`,
+            `slug.ilike.%${tok}%`,
+            `description.ilike.%${tok}%`,
+          ]),
         ];
         if (textMatchedProviderIds.length > 0) {
           providerTextPredicates.push(`id.in.(${textMatchedProviderIds.join(",")})`);
         }
-        query = query.or(providerTextPredicates.join(","));
+        if (providerTextPredicates.length > 0) {
+          query = query.or(providerTextPredicates.join(","));
+        }
       }
     }
 
@@ -541,12 +562,19 @@ export async function GET(request: Request) {
         break;
       case "relevance":
       default:
-        transformedProviders = [...transformedProviders].sort(
-          (a: any, b: any) =>
+        transformedProviders = [...transformedProviders].sort((a: any, b: any) => {
+          if (textQueryForRanking && textQueryForRanking.trim()) {
+            const tq = textQueryForRanking;
+            const textB = fuzzyTextRelevanceScore(tq, b.business_name ?? "", b.city ?? "");
+            const textA = fuzzyTextRelevanceScore(tq, a.business_name ?? "", a.city ?? "");
+            if (textB !== textA) return textB - textA;
+          }
+          return (
             Number(Boolean(b.is_featured)) - Number(Boolean(a.is_featured)) ||
             (b.rating ?? 0) - (a.rating ?? 0) ||
-            (b.review_count ?? 0) - (a.review_count ?? 0),
-        );
+            (b.review_count ?? 0) - (a.review_count ?? 0)
+          );
+        });
         break;
     }
 
