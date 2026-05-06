@@ -7,7 +7,7 @@ import {
   Linking,
   ActivityIndicator,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { Video, ResizeMode } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
@@ -36,6 +36,7 @@ function getDataPayload(n: Notif | null): Record<string, unknown> {
 
 export default function ProviderAnnouncementDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { adjustUnreadCount, refresh } = useNotificationsCount();
   const [row, setRow] = useState<Notif | null>(null);
@@ -81,9 +82,18 @@ export default function ProviderAnnouncementDetailScreen() {
   const ctaUrl = typeof data.cta_url === "string" ? data.cta_url.trim() : "";
   const annType = String(data.announcement_type ?? "general");
 
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push("/(app)/announcements" as never);
+    }
+  }, [router]);
+
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Announcement" showBack />
+      <Stack.Screen options={{ headerShown: false }} />
+      <ScreenHeader title="Announcement" showBack onBack={handleBack} />
       {loading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color={Colors.primary} />

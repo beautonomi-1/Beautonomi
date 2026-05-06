@@ -438,6 +438,8 @@ export async function GET(
       recurrence_frequency: recurringSeries?.frequency || null,
       recurrence_last_booking_date: recurringSeries?.last_booking_date || null,
       recurrence_occurrences: recurringSeries?.occurrences || null,
+      // Booking channel — used for Walk-in / Provider / Online / Custom labeling in UI
+      booking_source: (bookingData as { booking_source?: string | null }).booking_source || null,
       // Group booking: for calendar/sidebar (ref + participants). FK join can return array or single.
       is_group_booking: Boolean(bookingData.is_group_booking),
       group_booking_id: bookingData.group_booking_id || null,

@@ -21,16 +21,24 @@ export async function GET(request: NextRequest) {
 
     const [
       pendingBookings,
+      pendingGroupBookings,
       activeProductOrders,
       unreadConversations,
       waitingRoom,
       openReturnRequests,
+      pendingCustomRequests,
     ] = await Promise.all([
       supabase
         .from("bookings")
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
         .in("status", ["pending", "pending_payment"]),
+      // Group bookings in pending state count towards the provider's pending badge
+      supabase
+        .from("group_bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", providerId)
+        .in("status", ["pending"]),
       (supabase.from("product_orders") as any)
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
@@ -53,9 +61,14 @@ export async function GET(request: NextRequest) {
         .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
         .in("status", ["pending", "approved", "item_received", "escalated"]),
+      supabase
+        .from("custom_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("provider_id", providerId)
+        .eq("status", "pending"),
     ]);
 
-    for (const result of [pendingBookings, activeProductOrders, unreadConversations, waitingRoom]) {
+    for (const result of [pendingBookings, pendingGroupBookings, activeProductOrders, unreadConversations, waitingRoom, pendingCustomRequests]) {
       if (result.error) throw result.error;
     }
 
@@ -69,7 +82,7 @@ export async function GET(request: NextRequest) {
     }
 
     const counts = {
-      pending_bookings: pendingBookings.count ?? 0,
+      pending_bookings: (pendingBookings.count ?? 0) + (pendingGroupBookings.count ?? 0),
       active_product_orders: activeProductOrders.count ?? 0,
       unread_messages: (unreadConversations.data ?? []).reduce(
         (sum: number, row: { unread_count_provider?: number | null }) => sum + Number(row.unread_count_provider ?? 0),
@@ -77,6 +90,7 @@ export async function GET(request: NextRequest) {
       ),
       waiting_room: waitingRoom.count ?? 0,
       open_return_requests: openReturnsCount,
+      pending_custom_requests: pendingCustomRequests.count ?? 0,
     };
 
     return successResponse({
@@ -86,7 +100,8 @@ export async function GET(request: NextRequest) {
         counts.active_product_orders +
         counts.unread_messages +
         counts.waiting_room +
-        counts.open_return_requests,
+        counts.open_return_requests +
+        counts.pending_custom_requests,
     });
   } catch (error) {
     return handleApiError(error, "Failed to load provider navigation counters");

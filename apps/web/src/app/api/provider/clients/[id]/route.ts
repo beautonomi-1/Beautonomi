@@ -254,12 +254,16 @@ export async function GET(
         total_paid,
         total_refunded,
         location_type,
-        notes
+        notes,
+        booking_source,
+        is_group_booking,
+        group_booking_id,
+        special_requests
       `)
       .eq("provider_id", providerId)
       .eq("customer_id", customerId)
       .order("scheduled_at", { ascending: false })
-      .limit(100); // Increased limit to show more history
+      .limit(100);
 
     if (appointmentsError) {
       console.error("Error fetching appointments for client history:", {
@@ -377,7 +381,6 @@ export async function GET(
       appointments.forEach((apt: any) => {
         // Get staff name from booking_services (staff_id is in booking_services, not bookings)
         const bookingServicesForApt = servicesByBooking.get(apt.id) || [];
-        // Try to get staff from the first service that has a staff_id
         let teamMember = null;
         for (const bs of bookingServicesForApt) {
           if (bs.staff_id && staffMap.has(bs.staff_id)) {
@@ -385,16 +388,28 @@ export async function GET(
             break;
           }
         }
-        
+
+        // Skip participant rows that belong to a group — the group itself
+        // appears as its own history entry below (avoids duplicates).
+        if (apt.group_booking_id && !apt.is_group_booking) return;
+
+        const isCustomOffer =
+          apt.booking_source === "online" &&
+          typeof apt.special_requests === "string" &&
+          apt.special_requests.startsWith("Custom order:");
+
         history.push({
           id: apt.id,
-          type: "appointment",
+          type: apt.is_group_booking ? "group" : isCustomOffer ? "custom_offer" : "appointment",
           date: apt.scheduled_at || apt.completed_at,
-          description: `Appointment ${apt.booking_number || apt.id}`,
+          description: apt.is_group_booking
+            ? `Group booking ${apt.booking_number || apt.id}`
+            : isCustomOffer
+              ? `Custom offer ${apt.booking_number || apt.id}`
+              : `Appointment ${apt.booking_number || apt.id}`,
           amount: apt.total_amount || 0,
           team_member_name: teamMember?.name || null,
           status: apt.status,
-          // Detailed booking information
           booking_number: apt.booking_number,
           scheduled_at: apt.scheduled_at,
           completed_at: apt.completed_at,
@@ -416,6 +431,9 @@ export async function GET(
           total_refunded: apt.total_refunded || 0,
           location_type: apt.location_type,
           notes: apt.notes,
+          booking_source: apt.booking_source || null,
+          is_group_booking: apt.is_group_booking || false,
+          group_booking_id: apt.group_booking_id || null,
           services: servicesByBooking.get(apt.id) || [],
           addons: addonsByBooking.get(apt.id) || [],
           products: productsByBooking.get(apt.id) || [],
@@ -423,7 +441,44 @@ export async function GET(
       });
     }
 
-    // Get sales (if sales table exists) using admin client
+    // Get product orders (standalone product purchases not tied to a booking)
+    try {
+      const { data: productOrders } = await supabaseAdmin
+        .from("product_orders")
+        .select(`
+          id,
+          order_number,
+          created_at,
+          status,
+          total_amount,
+          total_paid,
+          payment_status
+        `)
+        .eq("provider_id", providerId)
+        .eq("customer_id", customerId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (productOrders) {
+        productOrders.forEach((order: any) => {
+          history.push({
+            id: order.id,
+            type: "product_order",
+            date: order.created_at,
+            description: `Product order ${order.order_number || order.id}`,
+            amount: order.total_amount || 0,
+            total_paid: order.total_paid || 0,
+            payment_status: order.payment_status,
+            status: order.status,
+            team_member_name: null,
+          });
+        });
+      }
+    } catch {
+      // product_orders table might not exist
+    }
+
+    // Get sales (walk-in POS sales)
     try {
       const { data: sales } = await supabaseAdmin
         .from("sales")
@@ -446,19 +501,29 @@ export async function GET(
             id: sale.id,
             type: "sale",
             date: sale.created_at,
-            description: `Sale ${sale.sale_number || sale.id}`,
+            description: `Walk-in sale ${sale.sale_number || sale.id}`,
             amount: sale.total_amount || 0,
             team_member_name: sale.provider_staff?.name || null,
           });
         });
       }
-    } catch (error) {
+    } catch {
       // Sales table might not exist, ignore
-      console.warn("Sales table not available:", error);
     }
 
-    // Sort history by date
+    // Sort history by date descending
     history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // Compute total_spent from actual paid bookings when provider_clients row is
+    // absent or the trigger hasn't fired yet (e.g. walk-in clients).
+    const computedTotalSpent =
+      appointments?.reduce(
+        (sum: number, apt: any) =>
+          apt.payment_status === "paid" || apt.payment_status === "partially_paid"
+            ? sum + (apt.total_paid || apt.total_amount || 0)
+            : sum,
+        0,
+      ) ?? 0;
 
     const defaultAddrMap = await fetchDefaultAddressesForUsers(supabaseAdmin, [customerId]);
     // §Release-audit 2026-04 — expose `is_registered` so the provider UI
@@ -511,7 +576,7 @@ export async function GET(
       is_favorite: client?.is_favorite || false,
       last_service_date: client?.last_service_date || null,
       total_bookings: client?.total_bookings || appointments?.length || 0,
-      total_spent: client?.total_spent || 0,
+      total_spent: client?.total_spent || computedTotalSpent,
       created_at: client?.created_at || customer.created_at,
       history,
     });

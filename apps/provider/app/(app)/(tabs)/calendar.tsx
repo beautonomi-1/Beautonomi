@@ -830,22 +830,46 @@ function MonthOverviewModal({
     () => `/api/provider/bookings?start_date=${start}&end_date=${end}${locationParam}`,
     [start, end, locationParam],
   );
-  const { data: mbBookings, loading, error: monthCountsError, refresh: refreshMonthCounts } = usePagedProviderBookings<Booking>(
+  const monthAtHomeBookingsPath = useMemo(
+    () => `/api/provider/bookings?start_date=${start}&end_date=${end}&location_type=at_home`,
+    [start, end],
+  );
+  const monthOverviewLocationScoped = locationParam.includes("location_id");
+  const { data: mbBookings, loading: mbMainLoading, error: monthCountsError, refresh: refreshMonthCounts } = usePagedProviderBookings<Booking>(
     monthBookingsPath,
     { enabled: visible, timeoutMs: 60_000 },
   );
+  const { data: mbBookingsAtHome, loading: mbAtHomeLoading, refresh: refreshMonthAtHomeCounts } = usePagedProviderBookings<Booking>(
+    monthAtHomeBookingsPath,
+    { enabled: visible && monthOverviewLocationScoped, timeoutMs: 60_000 },
+  );
+
+  const mbBookingsMerged = useMemo(() => {
+    const main = mbBookings ?? [];
+    if (!monthOverviewLocationScoped) return main;
+    const extra = mbBookingsAtHome ?? [];
+    const seen = new Set(main.map((b) => b.id));
+    return [...main, ...extra.filter((b) => !seen.has(b.id))];
+  }, [mbBookings, mbBookingsAtHome, monthOverviewLocationScoped]);
+
+  const loading = mbMainLoading || (monthOverviewLocationScoped && mbAtHomeLoading);
+
+  const refreshMonthCountsCombined = useCallback(async () => {
+    await refreshMonthCounts();
+    if (monthOverviewLocationScoped) await refreshMonthAtHomeCounts();
+  }, [refreshMonthCounts, refreshMonthAtHomeCounts, monthOverviewLocationScoped]);
 
   const countByDate = useMemo(() => {
     const m = new Map<string, number>();
-    if (!mbBookings?.length) return m;
-    for (const b of mbBookings) {
+    if (!mbBookingsMerged?.length) return m;
+    for (const b of mbBookingsMerged) {
       const d = parseApiDateTime(b.scheduled_at);
       if (!d) continue;
       const key = calendarDateKey(d, timeZone);
       m.set(key, (m.get(key) ?? 0) + 1);
     }
     return m;
-  }, [mbBookings, timeZone]);
+  }, [mbBookingsMerged, timeZone]);
 
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const firstDayOfWeek = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
@@ -888,7 +912,7 @@ function MonthOverviewModal({
           )}
           {monthCountsError && !loading && (
             <TouchableOpacity
-              onPress={refreshMonthCounts}
+              onPress={() => void refreshMonthCountsCombined()}
               style={{ marginBottom: 8, borderRadius: 10, borderWidth: 1, borderColor: "#FED7AA", backgroundColor: "#FFF7ED", padding: 8 }}
               accessibilityRole="button"
               accessibilityLabel={t("provider.calendarScreen.monthOverviewCountsErrorA11y")}
@@ -1167,16 +1191,47 @@ function CalendarScreenBody() {
     () => `/api/provider/bookings?start_date=${startDate}&end_date=${endDate}${locationParam}`,
     [startDate, endDate, locationParam],
   );
+  const calendarAtHomeBookingsPath = useMemo(
+    () => `/api/provider/bookings?start_date=${startDate}&end_date=${endDate}&location_type=at_home`,
+    [startDate, endDate],
+  );
   const {
-    data: bookings,
-    loading,
-    error: fetchError,
-    refresh,
+    data: mainCalendarBookings,
+    loading: mainBookingsLoading,
+    error: mainBookingsError,
+    refresh: refreshMainCalendarBookings,
     mutate: mutateBookings,
   } = usePagedProviderBookings<Booking>(calendarBookingsPath, {
     enabled: isFocused,
     timeoutMs: 60_000,
   });
+  const {
+    data: atHomeCalendarBookings,
+    loading: atHomeBookingsLoading,
+    error: atHomeBookingsError,
+    refresh: refreshAtHomeCalendarBookings,
+  } = usePagedProviderBookings<Booking>(calendarAtHomeBookingsPath, {
+    enabled: isFocused && locationFilter !== "all",
+    timeoutMs: 60_000,
+  });
+
+  const bookings = useMemo(() => {
+    const main = Array.isArray(mainCalendarBookings) ? mainCalendarBookings : [];
+    if (locationFilter === "all") return main;
+    const extra = Array.isArray(atHomeCalendarBookings) ? atHomeCalendarBookings : [];
+    const seen = new Set(main.map((b) => b.id));
+    return [...main, ...extra.filter((b) => !seen.has(b.id))];
+  }, [mainCalendarBookings, atHomeCalendarBookings, locationFilter]);
+
+  const loading = mainBookingsLoading || (locationFilter !== "all" && atHomeBookingsLoading);
+  const fetchError = mainBookingsError || (locationFilter !== "all" ? atHomeBookingsError : null);
+
+  const refresh = useCallback(async () => {
+    await Promise.all([
+      refreshMainCalendarBookings(),
+      ...(locationFilter !== "all" ? [refreshAtHomeCalendarBookings()] : []),
+    ]);
+  }, [refreshMainCalendarBookings, refreshAtHomeCalendarBookings, locationFilter]);
 
   const teamUrl = locationFilter !== "all" ? `/api/provider/team?location_id=${encodeURIComponent(locationFilter)}` : "/api/provider/team";
   const { data: staff } = useApi<StaffMember[]>(teamUrl, { enabled: isFocused, staleTimeMs: 30_000 });
@@ -1257,8 +1312,13 @@ function CalendarScreenBody() {
         blocked_time_type_name?: string;
         recurring_pattern?: unknown;
       };
-      const st = normalizeCalendarTime(String(raw.start_time ?? "00:00")) ?? "00:00";
-      const et = normalizeCalendarTime(String(raw.end_time ?? "00:00")) ?? "00:00";
+      const rawSt = String(raw.start_time ?? "00:00").trim();
+      const rawEt = String(raw.end_time ?? "00:00").trim();
+      // PostgreSQL `TIME` often returns `HH:MM:SS`; normaliser expects `H:M` / `HH:MM`.
+      const stCore = rawSt.length >= 5 ? rawSt.slice(0, 5) : rawSt;
+      const etCore = rawEt.length >= 5 ? rawEt.slice(0, 5) : rawEt;
+      const st = normalizeCalendarTime(stCore) ?? "00:00";
+      const et = normalizeCalendarTime(etCore) ?? "00:00";
       return {
         id: raw.id,
         staff_id: raw.staff_id ?? raw.team_member_id ?? null,

@@ -63,6 +63,8 @@ type ProviderNavCounts = {
   unread_messages: number;
   waiting_room: number;
   open_return_requests?: number;
+  /** Custom service requests awaiting provider quote / response */
+  pending_custom_requests?: number;
   critical_total: number;
 };
 
@@ -196,7 +198,8 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
 /** Top shortcuts (customer app pattern: 2x2 quick actions above the fold) */
 const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; route: string; color: string }[] = [
   { icon: "book-outline", label: "Bookings", route: "/(app)/(tabs)/more/bookings", color: "#6366f1" },
-  { icon: "ban-outline", label: "Time blocks", route: "/(app)/(tabs)/more/time-blocks", color: "#d97706" },
+  { icon: "storefront-outline", label: "Front Desk", route: "/(app)/(tabs)/more/waiting-room", color: "#d97706" },
+  { icon: "chatbox-ellipses-outline", label: "Custom requests", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316" },
   { icon: "layers-outline", label: "Catalogue", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899" },
   { icon: "megaphone-outline", label: "Buy ads", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
   { icon: "card-outline", label: "Memberships", route: "/(app)/(tabs)/more/membership-plans", color: "#7c3aed" },
@@ -306,6 +309,12 @@ export default function MoreScreen() {
       }
       if (route.includes("engagement-hub") || route.includes("messaging")) {
         return Number(navCounts?.unread_messages ?? 0);
+      }
+      if (route.includes("custom-requests")) {
+        return Number(navCounts?.pending_custom_requests ?? 0);
+      }
+      if (route.includes("waiting-room")) {
+        return Number(navCounts?.waiting_room ?? 0);
       }
       return 0;
     },

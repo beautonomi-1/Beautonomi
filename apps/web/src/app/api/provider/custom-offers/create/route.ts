@@ -289,7 +289,7 @@ export async function POST(request: NextRequest) {
 
     // Notify customer (best-effort)
     try {
-      const { sendToUser: _sendToUser, sendTemplateNotification, getNotificationTemplate } = await import("@/lib/notifications/onesignal");
+      const { sendToUser, sendTemplateNotification, getNotificationTemplate } = await import("@/lib/notifications/onesignal");
       
       // Try to use notification template
       const template = await getNotificationTemplate("customer_custom_offer");
@@ -310,8 +310,24 @@ export async function POST(request: NextRequest) {
           { appType: "customer" }
         );
       } else {
-        // Fallback: Log warning if template doesn't exist
-        console.warn("Notification template 'customer_custom_offer' not found, skipping notification");
+        const providerName =
+          (await supabase.from("providers").select("business_name").eq("id", providerId).single()).data?.business_name ||
+          "A provider";
+        await sendToUser(
+          body.customer_id,
+          {
+            title: "Custom offer received",
+            message: `${providerName} sent you a custom service offer. Open the app to review and accept.`,
+            data: {
+              type: "custom_offer",
+              request_id: (createdRequest as any).id,
+              offer_id: (offer as any).id,
+            },
+            url: `/account-settings/custom-requests?request_id=${(createdRequest as any).id}`,
+          },
+          ["push"],
+          { appType: "customer" },
+        );
       }
 
       // Create in-app notification record

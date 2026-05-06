@@ -28,6 +28,8 @@ import { formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
+import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
+import { PaymentSuccessOverlay, type PaymentSuccessSummaryRow } from "@/components/payment/PaymentSuccessOverlay";
 
 const PRIMARY = Colors.primary;
 
@@ -124,6 +126,16 @@ export default function ProductCheckoutScreen() {
   const [shippingConfig, setShippingConfig] = useState<ShippingConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState("Processing payment…");
+  const [orderSuccessData, setOrderSuccessData] = useState<{
+    orderNumber?: string;
+    total: number;
+    currency: string;
+    items: string;
+    status: "success" | "pending";
+    subtitle?: string;
+  } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"paystack" | "card_on_delivery">("paystack");
   const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
   const [useWallet, setUseWallet] = useState(false);
@@ -352,6 +364,8 @@ export default function ProductCheckoutScreen() {
     }
 
     setPlacing(true);
+    setProcessingPayment(true);
+    setProcessingMessage(pc("placingOrder") || "Placing your order…");
     await refreshSession().catch(() => {});
 
     // 1. Create the order (payment_status = "pending" or "paid" if wallet covers full amount)
@@ -366,6 +380,7 @@ export default function ProductCheckoutScreen() {
 
     if (result.error) {
       setPlacing(false);
+      setProcessingPayment(false);
       Alert.alert(pc("orderFailedTitle"), getApiErrorMessage(result.error, pc("orderFailedBody")));
       return;
     }
@@ -379,34 +394,61 @@ export default function ProductCheckoutScreen() {
       trackProductOrderPlaced(order.id, order.order_number, total, paymentMethod, fulfillment);
     }
 
+    const itemsSummary =
+      providerItems.length === 0
+        ? ""
+        : providerItems
+            .map((i) => `${i.quantity}× ${i.product?.name ?? "Item"}`)
+            .slice(0, 4)
+            .join(", ") + (providerItems.length > 4 ? "…" : "");
+
     // Paid fully with wallet – no Paystack
     if (paidWithWallet) {
       setPlacing(false);
-      Alert.alert(pc("orderPlacedTitle"), pc("orderPlacedWalletBody", { orderNumber: String(order?.order_number ?? "") }), [
-        { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
-      ]);
+      setProcessingPayment(false);
+      setOrderSuccessData({
+        orderNumber: order?.order_number,
+        total,
+        currency: fb,
+        items: itemsSummary,
+        status: "success",
+        subtitle: pc("orderPlacedWalletBody", { orderNumber: String(order?.order_number ?? "") }),
+      });
       return;
     }
 
     // For card_on_delivery, no online payment needed
     if (paymentMethod === "card_on_delivery") {
       setPlacing(false);
-      Alert.alert(pc("orderPlacedTitle"), pc("orderPlacedCardOnDeliveryBody", { orderNumber: String(order?.order_number ?? "") }), [
-        { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
-      ]);
+      setProcessingPayment(false);
+      setOrderSuccessData({
+        orderNumber: order?.order_number,
+        total,
+        currency: fb,
+        items: itemsSummary,
+        status: "success",
+        subtitle: pc("orderPlacedCardOnDeliveryBody", { orderNumber: String(order?.order_number ?? "") }),
+      });
       return;
     }
 
     if (!order) {
       setPlacing(false);
+      setProcessingPayment(false);
       Alert.alert(errTitle, pc("orderConfirmFailedBody"));
       return;
     }
     if (!customerEmail) {
       setPlacing(false);
-      Alert.alert(pc("orderPlacedTitle"), pc("orderPlacedNoEmailBody", { orderNumber: String(order.order_number) }), [
-        { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
-      ]);
+      setProcessingPayment(false);
+      setOrderSuccessData({
+        orderNumber: order.order_number,
+        total,
+        currency: fb,
+        items: itemsSummary,
+        status: "success",
+        subtitle: pc("orderPlacedNoEmailBody", { orderNumber: String(order.order_number) }),
+      });
       return;
     }
 
@@ -417,6 +459,7 @@ export default function ProductCheckoutScreen() {
       selectedCardId &&
       savedCards.some((c) => c.id === selectedCardId)
     ) {
+      setProcessingMessage(pc("processingPayment") || "Processing payment…");
       const cardCharge = await payWithSavedCard({
         payment_method_id: selectedCardId,
         amount: amountDue,
@@ -426,16 +469,26 @@ export default function ProductCheckoutScreen() {
           type: "product_order",
         },
       });
-      setPlacing(false);
       void refreshSavedCards();
       if (cardCharge.success) {
         await fetchCart();
         haptic.success();
-        Alert.alert(pc("paymentSuccessTitle"), pc("paymentSuccessConfirmedBody", { orderNumber: String(order.order_number) }), [
-          { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
-        ]);
+        setPlacing(false);
+        setProcessingPayment(false);
+        setOrderSuccessData({
+          orderNumber: order.order_number,
+          total: amountDue,
+          currency: fb,
+          items: itemsSummary,
+          status: "success",
+          subtitle: pc("paymentSuccessConfirmedBody", { orderNumber: String(order.order_number) }),
+        });
         return;
       }
+      setPlacing(false);
+      setProcessingPayment(false);
+      Alert.alert(errTitle, pc("savedCardChargeFailed") || "We could not charge your saved card. Try paying with a new card or another method.");
+      return;
     }
 
     // 2. Initialize Paystack payment for remaining amount (amount in kobo/cents)
@@ -459,6 +512,7 @@ export default function ProductCheckoutScreen() {
     setPlacing(false);
 
     if (paystackRes.error || !paystackRes.data?.authorization_url) {
+      setProcessingPayment(false);
       Alert.alert(pc("orderCreatedPayFailedTitle"), pc("orderCreatedPayFailedBody", { orderNumber: String(order.order_number) }), [
         { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
       ]);
@@ -469,7 +523,9 @@ export default function ProductCheckoutScreen() {
     // callback page, because the web callback depends on web cookies while the app
     // authenticates API calls with a Bearer token.
     const url = paystackRes.data.authorization_url;
+    setProcessingMessage(pc("openingPaymentPage") || "Opening payment page…");
     if (Platform.OS === "web") {
+      setProcessingPayment(false);
       window.location.href = url;
     } else {
       if (paystackReturnPath) {
@@ -480,6 +536,7 @@ export default function ProductCheckoutScreen() {
         });
       }
 
+      setProcessingMessage(pc("confirmingPayment") || "Confirming your payment…");
       const reference = paystackRes.data.reference;
       if (reference) {
         await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
@@ -499,21 +556,31 @@ export default function ProductCheckoutScreen() {
         }
       }
 
+      setProcessingPayment(false);
       if (paid) {
         await fetchCart();
         haptic.success();
-        Alert.alert(pc("paymentSuccessTitle"), pc("paymentSuccessConfirmedBody", { orderNumber: String(order.order_number) }), [
-          { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
-        ]);
+        setOrderSuccessData({
+          orderNumber: order.order_number,
+          total: amountDue,
+          currency: fb,
+          items: itemsSummary,
+          status: "success",
+          subtitle: pc("paymentSuccessConfirmedBody", { orderNumber: String(order.order_number) }),
+        });
       } else {
-        Alert.alert(pc("paymentPendingTitle"), pc("paymentPendingCheckoutBody"), [
-          { text: pc("viewOrdersCta"), onPress: () => router.replace("/(app)/product-orders" as any) },
-          { text: t("common.ok"), style: "cancel" },
-        ]);
+        setOrderSuccessData({
+          orderNumber: order.order_number,
+          total: amountDue,
+          currency: fb,
+          items: itemsSummary,
+          status: "pending",
+          subtitle: pc("paymentPendingCheckoutBody"),
+        });
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- orders/paymentMethod from context
-  }, [provider_id, fulfillment, selectedAddress, selectedLocation, providerItems.length, orders.createOrder, orders.fetchOrderDetail, router, user, total, useWallet, useNewCard, selectedCardId, savedCards, payWithSavedCard, refreshSavedCards, refreshSession, fetchCart, pc, errTitle, t, paymentMethod]);
+  }, [provider_id, fulfillment, selectedAddress, selectedLocation, providerItems, orders.createOrder, orders.fetchOrderDetail, router, user, total, useWallet, useNewCard, selectedCardId, savedCards, payWithSavedCard, refreshSavedCards, refreshSession, fetchCart, pc, errTitle, t, paymentMethod, fb]);
 
   if (loading) {
     return (
@@ -593,6 +660,30 @@ export default function ProductCheckoutScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
+      <PaymentProcessingOverlay visible={processingPayment} message={processingMessage} />
+      <PaymentSuccessOverlay
+        visible={orderSuccessData !== null}
+        title={orderSuccessData?.status === "pending" ? pc("paymentPendingTitle") : pc("orderPlacedTitle")}
+        subtitle={orderSuccessData?.subtitle}
+        status={orderSuccessData?.status === "pending" ? "pending" : "success"}
+        summaryRows={(() => {
+          if (!orderSuccessData) return undefined;
+          const rows: PaymentSuccessSummaryRow[] = [
+            { icon: "receipt-outline", label: pc("orderNumberLabel") || "Order", value: orderSuccessData.orderNumber ?? "—" },
+          ];
+          if (orderSuccessData.items) {
+            rows.push({ icon: "bag-outline", label: pc("itemsLabel") || "Items", value: orderSuccessData.items });
+          }
+          return rows;
+        })()}
+        amountPaid={orderSuccessData?.total}
+        currency={orderSuccessData?.currency}
+        footerHint={pc("orderSuccessFooterHint") || "Tap continue to view your orders."}
+        onDismiss={() => {
+          setOrderSuccessData(null);
+          router.replace("/(app)/product-orders" as any);
+        }}
+      />
       {/* Header */}
       <View
         style={{

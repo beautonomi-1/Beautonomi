@@ -11,6 +11,11 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  buildIlikeOrClause,
+  expandSearchTokens,
+  fuzzyTextRelevanceScore,
+} from "@/lib/search/fuzzy-rank";
 
 export interface ProviderSearchSuggestion {
   type: "client" | "appointment" | "service";
@@ -72,11 +77,24 @@ export async function GET(request: NextRequest) {
       20
     );
 
-    if (q.length < 2) {
+    if (q.length < 1) {
       return successResponse({ suggestions: [] });
     }
 
-    const searchTerm = `%${q.toLowerCase()}%`;
+    const tokens = expandSearchTokens(q);
+    const userOr =
+      tokens.length > 0
+        ? tokens
+            .flatMap((tok) => {
+              const t = `%${tok}%`;
+              return [
+                `full_name.ilike.${t}`,
+                `email.ilike.${t}`,
+                `phone.ilike.${t}`,
+              ];
+            })
+            .join(",")
+        : "";
     const suggestions: ProviderSearchSuggestion[] = [];
 
     // 1. Search clients (provider_clients + users)
@@ -92,14 +110,14 @@ export async function GET(request: NextRequest) {
         providerClients.map((c) => [c.customer_id, c.id])
       );
 
-      const { data: customers } = await supabaseAdmin
-        .from("users")
-        .select("id, full_name, email, phone")
-        .in("id", customerIds)
-        .or(
-          `full_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`
-        )
-        .limit(limit);
+      const { data: customers } = userOr
+        ? await supabaseAdmin
+            .from("users")
+            .select("id, full_name, email, phone")
+            .in("id", customerIds)
+            .or(userOr)
+            .limit(Math.min(limit * 3, 60))
+        : { data: null as null };
 
       if (customers) {
         for (const c of customers) {
@@ -149,27 +167,31 @@ export async function GET(request: NextRequest) {
       });
     };
 
-    const { data: bookings } = await supabaseAdmin
-      .from("bookings")
-      .select(BOOKING_SELECT)
-      .eq("provider_id", providerId)
-      .or(`booking_number.ilike.${searchTerm}`)
-      .order("scheduled_start_at", { ascending: false })
-      .limit(limit);
+    const bookingOr =
+      tokens.length > 0
+        ? tokens.map((tok) => `booking_number.ilike.%${tok}%`).join(",")
+        : "";
+    const { data: bookings } = bookingOr
+      ? await supabaseAdmin
+          .from("bookings")
+          .select(BOOKING_SELECT)
+          .eq("provider_id", providerId)
+          .or(bookingOr)
+          .order("scheduled_start_at", { ascending: false })
+          .limit(Math.min(limit * 2, 40))
+      : { data: null as null };
 
     if (bookings) {
       for (const b of bookings) pushBookingSuggestion(b as unknown as Record<string, unknown>);
     }
 
     // If we didn't find bookings by number, try by customer name
-    if (bookings?.length === 0) {
+    if (bookings?.length === 0 && userOr) {
       const { data: matchingCustomers } = await supabaseAdmin
         .from("users")
         .select("id")
-        .or(
-          `full_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`
-        )
-        .limit(5);
+        .or(userOr)
+        .limit(8);
 
       if (matchingCustomers && matchingCustomers.length > 0) {
         const customerIds = matchingCustomers.map((c) => (c as any).id);
@@ -188,13 +210,16 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Search services (offerings)
-    const { data: services } = await supabaseAdmin
-      .from("offerings")
-      .select("id, title, description, price, duration_minutes")
-      .eq("provider_id", providerId)
-      .eq("is_active", true)
-      .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
-      .limit(limit);
+    const serviceOr = buildIlikeOrClause(["title", "description"], tokens);
+    const { data: services } = serviceOr
+      ? await supabaseAdmin
+          .from("offerings")
+          .select("id, title, description, price, duration_minutes")
+          .eq("provider_id", providerId)
+          .eq("is_active", true)
+          .or(serviceOr)
+          .limit(Math.min(limit * 2, 40))
+      : { data: null as null };
 
     if (services) {
       for (const s of services) {
@@ -222,6 +247,13 @@ export async function GET(request: NextRequest) {
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
+    });
+
+    unique.sort((a, b) => {
+      const sa = fuzzyTextRelevanceScore(q, a.title, a.subtitle ?? "");
+      const sb = fuzzyTextRelevanceScore(q, b.title, b.subtitle ?? "");
+      if (sb !== sa) return sb - sa;
+      return a.title.localeCompare(b.title);
     });
 
     return successResponse({
