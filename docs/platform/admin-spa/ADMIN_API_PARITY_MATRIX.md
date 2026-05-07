@@ -119,7 +119,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 35 | `/admin/reports/yoco-reconciliation` | W2 | finance | N | `GET /api/admin/reports/yoco-reconciliation` | |
 | 36 | `/admin/users` | W3 | users_trust | Y | `GET /api/admin/users`, `POST .../bulk`, `PUT .../role`, `PATCH ...`, `DELETE ...`, export | |
 | 37 | `/admin/users/[id]` | W3 | users_trust | N | `GET .../users/:id`, bookings, password, impersonate, export, `GET .../wallet-transactions` | Modal + page variants |
-| 38 | `/admin/verifications` | W3 | users_trust | Y | `GET /api/admin/verifications` (+ actions) | |
+| 38 | `/admin/verifications` | W3 | users_trust | Y | `GET /api/admin/verifications` (+ actions); detail: `GET/PATCH .../verifications/:id`, `GET .../view`, `POST /api/admin/users/:id/identity-verification/reset` ([`VerificationDetailPage`](../../apps/admin-web/src/routes/users/VerificationDetailPage.tsx)) | |
 | 39 | `/admin/audit-logs` | W3 | users_trust | Y | `GET /api/admin/audit-logs`, export | |
 | 40 | `/admin/content` | W3 | content_catalog | Y | Broad: catalog/content endpoints (many `GET/POST/PATCH/DELETE` under `/api/admin/content`, `/api/admin/catalog`, media) | Highest API surface area |
 | 41 | `/admin/content/learning` | W3 | content_catalog | Y | Learning center admin APIs | |

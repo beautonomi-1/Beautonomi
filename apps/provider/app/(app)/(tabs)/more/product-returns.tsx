@@ -225,7 +225,7 @@ export function ProductReturnsContent() {
                 <Text style={twStyle("mb-1 text-sm text-gray-600")}>Reason: {detail.reason.replace(/_/g, " ")}</Text>
               ) : null}
               {detail.description ? (
-                <Text style={twStyle("mb-3 text-sm text-gray-500 italic")}>"{detail.description}"</Text>
+                <Text style={twStyle("mb-3 text-sm text-gray-500 italic")}>{`"${detail.description}"`}</Text>
               ) : null}
               {detail.refund_amount != null && (
                 <Text style={twStyle("mb-3 text-sm font-medium text-gray-900")}>
