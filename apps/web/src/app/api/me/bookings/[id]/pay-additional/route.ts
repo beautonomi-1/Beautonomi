@@ -1,5 +1,6 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
   requireRoleInApi,
@@ -105,7 +106,7 @@ export async function POST(
       return errorResponse("User email is required for payment", "VALIDATION_ERROR", 400);
     }
 
-    const reference = generateTransactionReference("additional", `${id}:${charge_id}`);
+    const reference = generateTransactionReference("additional", charge_id);
     const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/account-settings/bookings/${encodeURIComponent(id)}/payment-callback?charge_id=${encodeURIComponent(charge_id)}`;
 
     const paystackData = await initializePaystackTransaction({
@@ -124,8 +125,10 @@ export async function POST(
 
     const paymentUrl = paystackData?.data?.authorization_url || null;
 
+    const admin = getSupabaseAdmin();
+
     // Create a payments row for tracking (do NOT overwrite booking.payment_reference)
-    await (supabase.from("payments") as any).insert({
+    await (admin.from("payments") as any).insert({
       booking_id: id,
       user_id: bookingData.customer_id,
       provider_id: bookingData.provider_id,
@@ -145,7 +148,7 @@ export async function POST(
     });
 
     // Create booking event
-    await supabase
+    await admin
       .from("booking_events")
       .insert({
         booking_id: id,

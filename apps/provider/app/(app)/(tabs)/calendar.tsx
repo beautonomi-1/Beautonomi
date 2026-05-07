@@ -35,8 +35,6 @@ import {
   differenceInMinutes,
 } from "date-fns";
 import * as Clipboard from "expo-clipboard";
-import { APP_URL } from "@/config/public-env";
-import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { usePagedProviderBookings } from "@/hooks/usePagedProviderBookings";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -1589,19 +1587,6 @@ function CalendarScreenBody() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [buildShareText]);
 
-  const handleOpenWebCalendar = useCallback(() => {
-    const base = APP_URL?.replace(/\/$/, "");
-    if (!base) {
-      Alert.alert(
-        t("provider.calendarScreen.appUrlNotConfiguredTitle"),
-        t("provider.calendarScreen.appUrlNotConfiguredMessage"),
-      );
-      return;
-    }
-    const d = calendarDateKey(selectedDate, provider?.timezone ?? null);
-    pushInAppBrowser(router, `${base}/provider/calendar?date=${encodeURIComponent(d)}`, t("provider.calendarScreen.browserTitle"));
-  }, [provider?.timezone, router, selectedDate, t]);
-
   const openNewBookingFromCalendar = useCallback(() => {
     const selectedStaffId = staffList[selectedStaffIndex]?.id;
     const href = newBookingScreenHrefFromCalendarDay(selectedDate, {
@@ -1659,7 +1644,6 @@ function CalendarScreenBody() {
       void handleCopySchedule();
     };
     const runMonth = () => setMonthOverviewVisible(true);
-    const runWeb = () => handleOpenWebCalendar();
     const runExpress = () => router.push("/(app)/(tabs)/more/express-booking" as never);
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
@@ -1669,7 +1653,6 @@ function CalendarScreenBody() {
             t("provider.calendarScreen.shareSchedule"),
             t("provider.calendarScreen.copySchedule"),
             t("provider.calendarScreen.monthOverview"),
-            t("provider.calendarScreen.fullCalendarBrowser"),
             t("provider.calendarScreen.utilityMenu.expressBooking"),
           ],
           cancelButtonIndex: 0,
@@ -1679,8 +1662,7 @@ function CalendarScreenBody() {
           if (idx === 1) runShare();
           else if (idx === 2) runCopy();
           else if (idx === 3) runMonth();
-          else if (idx === 4) runWeb();
-          else if (idx === 5) runExpress();
+          else if (idx === 4) runExpress();
         },
       );
     } else {
@@ -1688,14 +1670,12 @@ function CalendarScreenBody() {
         { text: t("provider.calendarScreen.shareSchedule"), onPress: runShare },
         { text: t("provider.calendarScreen.copySchedule"), onPress: runCopy },
         { text: t("provider.calendarScreen.monthOverview"), onPress: runMonth },
-        { text: t("provider.calendarScreen.fullCalendarBrowser"), onPress: runWeb },
         { text: t("provider.calendarScreen.utilityMenu.expressBooking"), onPress: runExpress },
         { text: t("provider.calendarScreen.close"), style: "cancel" },
       ]);
     }
   }, [
     handleCopySchedule,
-    handleOpenWebCalendar,
     handleShareSchedule,
     router,
     t,

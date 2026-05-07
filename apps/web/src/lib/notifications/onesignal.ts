@@ -117,6 +117,14 @@ function applyOneSignalTargeting(
       ? chans[0]
       : null;
 
+  // Modern path: if we have explicit player IDs and we are ONLY sending a push,
+  // target those exact subscriptions directly to guarantee delivery. This bypasses
+  // any flaky external_id mapping in OneSignal.
+  if (singleChannel === "push" && playerIds.length > 0) {
+    notification.include_subscription_ids = playerIds;
+    return;
+  }
+
   // Modern path: external IDs + single channel. Reaches every subscribed
   // device for that user without needing a registered subscription_id.
   if (extIds.length > 0 && singleChannel) {
@@ -130,6 +138,11 @@ function applyOneSignalTargeting(
     notification.include_external_user_ids = extIds;
     if (chans.length > 0) {
       notification.channel_for_external_user_ids = chans;
+    }
+    // Include known player IDs as a legacy fallback so push delivery succeeds 
+    // even if external_id mapping is incomplete.
+    if (playerIds.length > 0) {
+      notification.include_player_ids = playerIds;
     }
     return;
   }
@@ -891,6 +904,14 @@ export async function sendTemplateNotification(
     contents: { en: body },
     data: { template_key: templateKey, ...variables },
   };
+
+  if (channelsToSend.includes("push")) {
+    // Set default high-priority alerting parameters for iOS and Android
+    notificationPayload.ios_sound = "default";
+    notificationPayload.priority = 10;
+    // Wake up the device
+    notificationPayload.content_available = true;
+  }
 
   if (channelsToSend.includes("email")) {
     notificationPayload.email_subject = emailSubject;

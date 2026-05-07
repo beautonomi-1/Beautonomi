@@ -68,6 +68,30 @@ export function useCalendarPreferences() {
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoad = useRef(true);
 
+  const reloadPreferences = useCallback(async () => {
+    let serverPrefs: Partial<CalendarPreferences> | null = null;
+    try {
+      const res = await api.get<CalendarPreferences>("/api/provider/settings/calendar-preferences");
+      if (res.data && !res.error) {
+        serverPrefs = res.data;
+      }
+    } catch {}
+
+    if (serverPrefs) {
+      const merged = { ...DEFAULT_PREFERENCES, ...serverPrefs };
+      setPreferences(merged);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged)).catch(() => {});
+    } else {
+      const raw = await AsyncStorage.getItem(STORAGE_KEY).catch(() => null);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as Partial<CalendarPreferences>;
+          setPreferences({ ...DEFAULT_PREFERENCES, ...parsed });
+        } catch {}
+      }
+    }
+  }, []);
+
   // Load: try server first, fall back to AsyncStorage
   useEffect(() => {
     let cancelled = false;
@@ -148,5 +172,5 @@ export function useCalendarPreferences() {
     [preferences],
   );
 
-  return { preferences: preferencesResolved, updatePreference, resetToDefaults, loaded };
+  return { preferences: preferencesResolved, updatePreference, resetToDefaults, loaded, reloadPreferences };
 }

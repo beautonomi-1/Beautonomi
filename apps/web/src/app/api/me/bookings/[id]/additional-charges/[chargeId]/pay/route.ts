@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
@@ -126,8 +127,10 @@ export async function POST(
       console.error("Failed to update charge status to approved:", updateError);
     }
 
+    const admin = getSupabaseAdmin();
+
     // Create booking event
-    const { error: eventError } = await supabase
+    const { error: eventError } = await admin
       .from("booking_events")
       .insert({
         booking_id: bookingId,

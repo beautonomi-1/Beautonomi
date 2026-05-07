@@ -86,7 +86,7 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
     items: [
       { icon: "globe-outline", label: "Online Booking", subtitle: "Booking link & settings", route: "/(app)/(tabs)/more/settings/online-booking", color: "#6366f1" },
       { icon: "link-outline", label: "Booking Link", subtitle: "Share & embed your booking URL", route: "/(app)/(tabs)/more/settings/booking-link", color: "#3b82f6" },
-      { icon: "flash-outline", label: "Share with clients", subtitle: "Quick link, QR & short links for WhatsApp & Instagram", route: "/(app)/(tabs)/more/express-booking", color: "#f59e0b" },
+      { icon: "flash-outline", label: "Booking Links", subtitle: "Quick link, QR & short links for WhatsApp & Instagram", route: "/(app)/(tabs)/more/express-booking", color: "#f59e0b" },
       { icon: "eye-outline", label: "Customer Visibility", subtitle: "Control what clients see", route: "/(app)/(tabs)/more/settings/customer-visibility", color: "#8b5cf6" },
     ],
   },

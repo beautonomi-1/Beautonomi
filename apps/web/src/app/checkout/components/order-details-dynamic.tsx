@@ -629,8 +629,9 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
               )}
               {charge.status === "approved" && (
                 <Button
-                  size="sm"
-                  className="w-full mt-2"
+                  size="rounded"
+                  variant="secondary"
+                  className="w-full mt-3 h-10 text-sm font-semibold"
                   onClick={async () => {
                     try {
                       const res = await fetcher.post<{ data: any; error: null }>(`/api/me/bookings/${bookingId}/pay-additional`, {

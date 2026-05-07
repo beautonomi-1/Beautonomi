@@ -276,7 +276,8 @@ export default function StepServiceSelection({
       
       // Get offering id from URL (same param names as /book/[slug]?service=)
       const urlParams = new URLSearchParams(window.location.search);
-      const urlOfferingId = (urlParams.get("serviceId") || urlParams.get("service") || "").trim();
+      const urlOfferingId = (urlParams.get("serviceId") || urlParams.get("service") || urlParams.get("services") || "").trim();
+      const firstOfferingId = urlOfferingId ? urlOfferingId.split(',')[0].trim() : "";
 
       console.log(`[Service Selection] Loading services for providerSlug: ${providerSlug}, mode: ${mode}, serviceId: ${urlOfferingId || "none"}`);
 
@@ -312,8 +313,8 @@ export default function StepServiceSelection({
       setCategories(uniqueCategories);
       // Deep link (?service= / ?serviceId=): show the tab that contains the linked offering
       const preferredCategory =
-        urlOfferingId && servicesData.length > 0
-          ? servicesData.find((s) => s.id === urlOfferingId)?.category
+        firstOfferingId && servicesData.length > 0
+          ? servicesData.find((s) => s.id === firstOfferingId)?.category
           : null;
       if (preferredCategory && uniqueCategories.includes(preferredCategory)) {
         setActiveCategory(preferredCategory);
@@ -321,8 +322,8 @@ export default function StepServiceSelection({
         setActiveCategory(uniqueCategories[0]);
       }
 
-      if (urlOfferingId) {
-        const rowForScroll = servicesData.find((s) => s.id === urlOfferingId);
+      if (firstOfferingId) {
+        const rowForScroll = servicesData.find((s) => s.id === firstOfferingId);
         if (rowForScroll) {
           requestScrollToBaseService(rowForScroll.id);
         }
@@ -331,8 +332,9 @@ export default function StepServiceSelection({
       // If URL has a service/variant ID, eagerly load variants for ALL services
       // with variants in parallel so pre-selection resolves quickly.
       const urlParams2 = new URLSearchParams(window.location.search);
-      const urlOfferingId2 = (urlParams2.get("serviceId") || urlParams2.get("service") || "").trim();
-      if (urlOfferingId2 && servicesData.some((s) => s.hasVariants)) {
+      const urlOfferingId2 = (urlParams2.get("serviceId") || urlParams2.get("service") || urlParams2.get("services") || "").trim();
+      const firstOfferingId2 = urlOfferingId2 ? urlOfferingId2.split(',')[0].trim() : "";
+      if (firstOfferingId2 && servicesData.some((s) => s.hasVariants)) {
         servicesData.filter((s) => s.hasVariants).forEach((s) => loadVariants(s.id));
       }
     } catch (error) {

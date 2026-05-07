@@ -57,7 +57,9 @@ export function validateStep(
       break;
     }
     case 14:
-      if (!formData.selected_plan_id?.trim()) errors.push("Please select a subscription plan");
+      if (!formData.selected_plan_id?.trim() && !formData.no_plans_available) {
+        errors.push("Please select a subscription plan");
+      }
       break;
     default:
       break;
