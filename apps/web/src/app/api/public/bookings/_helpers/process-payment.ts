@@ -122,6 +122,15 @@ export async function processPayment(
   let giftCardAmountApplied = 0;
   let giftCardId: string | null = null;
 
+  if (paymentMethod === "giftcard" && !giftCardCode) {
+    return handleApiError(
+      new Error("Gift card code required"),
+      "Enter a valid gift card code to pay with a gift card.",
+      "VALIDATION_ERROR",
+      400,
+    );
+  }
+
   if (giftCardCode && amountToCollect > 0) {
     const giftCardsEnabled = await isGiftCardsEnabledForTenant(flagTenantId);
     if (!giftCardsEnabled) {
@@ -220,6 +229,19 @@ export async function processPayment(
     } catch (e: any) {
       return handleApiError(e, e?.message || "Wallet payment failed", "WALLET_ERROR", 400);
     }
+  }
+
+  // Gift-card payment method must settle the full collectible via gift. Never return
+  // paymentUrl=null while a remainder exists — the client would navigate as if checkout succeeded.
+  // `public/bookings` calls `releaseBookingSlotAfterPaymentFailure` when this returns an error,
+  // which voids any reserved gift card and reverses wallet debits.
+  if (paymentMethod === "giftcard" && amountToCollect > 0) {
+    return handleApiError(
+      new Error("Gift card does not cover the full booking amount"),
+      "This gift card does not cover the full amount. Use card payment to combine a gift card with a card.",
+      "INSUFFICIENT_GIFT_CARD_BALANCE",
+      400,
+    );
   }
 
   // ── Fully covered by gift card / wallet → mark paid immediately ──────────

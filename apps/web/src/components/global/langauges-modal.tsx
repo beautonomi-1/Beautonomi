@@ -4,15 +4,18 @@ import { X } from "lucide-react";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { fetcher } from "@/lib/http/fetcher";
 
 interface Language {
   name: string;
   region: string;
 }
 
+/** ISO row from `/api/public/preference-options?type=currency` (tenant-scoped, iso_currencies-backed). */
 interface Currency {
+  iso: string;
   name: string;
-  code: string;
+  detail: string;
 }
 
 const languages: Language[] = [
@@ -111,60 +114,6 @@ const languages: Language[] = [
   { name: "繁體中文", region: "台灣" }
   ];
   
-  const currencies: Currency[] = [
-    { name: "United States dollar", code: "USD – $" },
-    { name: "Australian dollar", code: "AUD – $" },
-    { name: "Brazilian real", code: "BRL – R$" },
-    { name: "Bulgarian lev", code: "BGN – лв." },
-    { name: "Canadian dollar", code: "CAD – $" },
-    { name: "Chilean peso", code: "CLP – $" },
-    { name: "Chinese yuan", code: "CNY – ¥" },
-    { name: "Colombian peso", code: "COP – $" },
-    { name: "Costa Rican colon", code: "CRC – ₡" },
-    { name: "Croatian kuna", code: "HRK – kn" },
-    { name: "Czech koruna", code: "CZK – Kč" },
-    { name: "Danish krone", code: "DKK – kr" },
-    { name: "Egyptian pound", code: "EGP – ج.م" },
-    { name: "Emirati dirham", code: "AED – د.إ" },
-    { name: "Euro", code: "EUR – €" },
-    { name: "Hong Kong dollar", code: "HKD – $" },
-    { name: "Hungarian forint", code: "HUF – Ft" },
-    { name: "Indian rupee", code: "INR – ₹" },
-    { name: "Indonesian rupiah", code: "IDR – Rp" },
-    { name: "Israeli new shekel", code: "ILS – ₪" },
-    { name: "Japanese yen", code: "JPY – ¥" },
-    { name: "Kenyan shilling", code: "KES – KSh" },
-    { name: "Malaysian ringgit", code: "MYR – RM" },
-    { name: "Mexican peso", code: "MXN – $" },
-    { name: "Moroccan dirham", code: "MAD" },
-    { name: "New Taiwan dollar", code: "TWD – $" },
-    { name: "New Zealand dollar", code: "NZD – $" },
-    { name: "Norwegian krone", code: "NOK – kr" },
-    { name: "Peruvian sol", code: "PEN – S/" },
-    { name: "Philippine peso", code: "PHP – ₱" },
-    { name: "Polish złoty", code: "PLN – zł" },
-    { name: "Pound sterling", code: "GBP – £" },
-    { name: "Qatari riyal", code: "QAR – ر.ق" },
-    { name: "Romanian leu", code: "RON – lei" },
-    { name: "Saudi Arabian riyal", code: "SAR – SR" },
-    { name: "Singapore dollar", code: "SGD – $" },
-    {
-      name:
-        new Intl.DisplayNames(undefined, { type: "currency" }).of(LAST_RESORT_CURRENCY) ??
-        "South African rand",
-      code: `${LAST_RESORT_CURRENCY} – R`,
-    },
-    { name: "South Korean won", code: "KRW – ₩" },
-    { name: "Swedish krona", code: "SEK – kr" },
-    { name: "Swiss franc", code: "CHF" },
-    { name: "Thai baht", code: "THB – ฿" },
-    { name: "Turkish lira", code: "TRY – ₺" },
-    { name: "Ugandan shilling", code: "UGX – USh" },
-    { name: "Ukrainian hryvnia", code: "UAH – ₴" },
-    { name: "Uruguayan peso", code: "UYU – $U" },
-    { name: "Vietnamese dong", code:"VND – ₫"}
-  ];
-
   interface LanguageModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -174,11 +123,61 @@ const languages: Language[] = [
     const [translation, setTranslation] = useState(false);
     const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(null);
     const [selectedCurrency, setSelectedCurrency] = useState<Currency | null>(null);
+    const [currencies, setCurrencies] = useState<Currency[]>([]);
     const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
       queueMicrotask(() => setIsMounted(true));
     }, []);
+
+    useEffect(() => {
+      if (!open) return;
+      let cancelled = false;
+      void (async () => {
+        try {
+          const res = await fetcher.get<{
+            data?: Array<{ code: string; name: string; metadata?: Record<string, unknown> }>;
+          }>("/api/public/preference-options?type=currency");
+          const rows = Array.isArray(res?.data) ? res.data : [];
+          if (cancelled) return;
+          const mapped: Currency[] = rows.map((r) => {
+            const sym =
+              r.metadata && typeof r.metadata === "object" && "symbol" in r.metadata
+                ? String((r.metadata as { symbol?: unknown }).symbol ?? "").trim()
+                : "";
+            return {
+              iso: String(r.code).toUpperCase(),
+              name: r.name,
+              detail: sym ? `${String(r.code).toUpperCase()} · ${sym}` : String(r.code).toUpperCase(),
+            };
+          });
+          setCurrencies(mapped.length > 0 ? mapped : [
+            {
+              iso: LAST_RESORT_CURRENCY,
+              name:
+                new Intl.DisplayNames(undefined, { type: "currency" }).of(LAST_RESORT_CURRENCY) ??
+                LAST_RESORT_CURRENCY,
+              detail: LAST_RESORT_CURRENCY,
+            },
+          ]);
+        } catch {
+          if (!cancelled) {
+            setCurrencies([
+              {
+                iso: LAST_RESORT_CURRENCY,
+                name:
+                  new Intl.DisplayNames(undefined, { type: "currency" }).of(LAST_RESORT_CURRENCY) ??
+                  LAST_RESORT_CURRENCY,
+                detail: LAST_RESORT_CURRENCY,
+              },
+            ]);
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [open]);
   
     const renderLanguageGrid = (
       items: Language[],
@@ -215,7 +214,7 @@ const languages: Language[] = [
           <div
             key={index}
             className={`h-auto p-2 rounded-lg cursor-pointer ${
-              selectedItem && selectedItem.code === item.code
+              selectedItem && selectedItem.iso === item.iso
                 ? 'border border-secondary'
                 : 'border-none'
             }`}
@@ -223,7 +222,7 @@ const languages: Language[] = [
           >
             <div className="text-left">
               <div className="font-light text-sm text-secondary">{item.name}</div>
-              <div className="font-light text-sm text-destructive">{item.code}</div>
+              <div className="font-light text-sm text-destructive">{item.detail}</div>
             </div>
           </div>
         ))}

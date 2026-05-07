@@ -71,6 +71,10 @@ interface BookingsRow {
   is_group_booking: boolean | null;
   guest_name: string | null;
   group_booking_id: UUID | null;
+  /** Public checkout hold (`booking_holds.id`) — persisted for payment-time overlap exclusion. */
+  hold_id: UUID | null;
+  /** When set, booking originated from a paid custom offer (webhook). */
+  custom_offer_id: UUID | null;
   address_line1: string | null;
   address_line2: string | null;
   address_city: string | null;

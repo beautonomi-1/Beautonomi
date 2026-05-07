@@ -98,14 +98,32 @@ export function contentYOffsetToHourMinute(args: {
 }
 
 export function getTopOffset(
-  dateStr: string,
+  timeStr: string,
   startHour: number,
   slotHeight: number,
-  timeZone?: string | null,
 ): number {
-  const d = parseApiDateTime(dateStr);
-  if (!d) return 0;
-  const { h, m } = getHourMinuteForInstantInZone(d, timeZone);
+  if (!timeStr) return 0;
+
+  let h = 0;
+  let m = 0;
+
+  if (timeStr.includes("T")) {
+    const timePart = timeStr.split("T")[1];
+    if (timePart) {
+      const match = timePart.match(/^(\d{2}):(\d{2})/);
+      if (match) {
+        h = parseInt(match[1], 10);
+        m = parseInt(match[2], 10);
+      }
+    }
+  } else {
+    const match = timeStr.match(/^(\d{2}):(\d{2})/);
+    if (match) {
+      h = parseInt(match[1], 10);
+      m = parseInt(match[2], 10);
+    }
+  }
+
   const slot = Number.isFinite(slotHeight) && slotHeight > 0 ? slotHeight : 60;
   const safeStart = Number.isFinite(startHour) ? startHour : 0;
   const hourN = Number.isFinite(h) ? h : 0;

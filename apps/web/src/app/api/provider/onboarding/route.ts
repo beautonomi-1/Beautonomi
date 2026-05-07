@@ -294,6 +294,7 @@ export async function POST(request: NextRequest) {
         phone: owner_phone || legacyPhone || "",
         email: owner_email || legacyEmail || "",
         status: autoApprove ? "active" : "pending_approval", // Auto-approve if enabled, otherwise pending
+        onboarding_state: autoApprove ? "activated" : "ready_for_activation",
         // New onboarding metadata fields
         team_size: team_size || null,
         yoco_machine: yoco_machine || null,

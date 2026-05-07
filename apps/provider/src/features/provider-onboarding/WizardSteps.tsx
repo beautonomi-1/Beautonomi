@@ -1241,9 +1241,11 @@ function Step14Plan() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     (async () => {
       try {
         const res = await api.get<PlanRow[] | { plans?: PlanRow[] }>("/api/public/pricing/plans");
+        if (!active) return;
         const raw = res.data as PlanRow[] | { plans?: PlanRow[] } | null | undefined;
         const list = Array.isArray(raw)
           ? raw
@@ -1251,16 +1253,40 @@ function Step14Plan() {
             ? (raw as { plans: PlanRow[] }).plans
             : [];
         setPlans(list);
+        
+        if (list.length === 0) {
+          updateFormData({ no_plans_available: true, selected_plan_id: undefined, selected_plan_name: undefined });
+        } else if (!formData.selected_plan_id?.trim()) {
+          // Auto-select first plan if none selected
+          updateFormData({ 
+            selected_plan_id: list[0].id, 
+            selected_plan_name: list[0].name,
+            no_plans_available: false 
+          });
+        } else {
+          updateFormData({ no_plans_available: false });
+        }
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     })();
-  }, []);
+    return () => { active = false; };
+  }, [formData.selected_plan_id, updateFormData]);
 
   if (loading) {
     return (
       <View style={twStyle("py-8 items-center")}>
         <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (plans.length === 0) {
+    return (
+      <View style={twStyle("py-8 items-center")}>
+        <Text style={twStyle("text-base text-gray-500 text-center")}>
+          No subscription plans available right now. You can continue to the next step.
+        </Text>
       </View>
     );
   }

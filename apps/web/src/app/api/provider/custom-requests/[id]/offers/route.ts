@@ -1,7 +1,16 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  handleApiError,
+  notFoundResponse,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -35,6 +44,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       (await resolveTenantIdWithZaFallback(request));
     const lastResortCurrency =
       (await getTenantRegionConfig(effectiveTenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
+    if (!(await isFeatureEnabledServer(FEATURE_FLAG_KEYS.PROVIDER_CUSTOM_OFFERS, effectiveTenantId))) {
+      return errorResponse(
+        "Custom offers are disabled for this market or your workspace. If this is unexpected, contact support — you can enable them from admin feature flags (commerce.provider_custom_offers).",
+        "CUSTOM_OFFERS_DISABLED",
+        403,
+      );
+    }
 
     const { id } = await params;
     const parsed = createOfferSchema.parse(await request.json());
@@ -156,6 +173,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             attachments: [
               {
                 type: "custom_offer",
+                status: "pending",
                 request_id: id,
                 offer_id: (offer as { id: string }).id,
                 price: body.price,

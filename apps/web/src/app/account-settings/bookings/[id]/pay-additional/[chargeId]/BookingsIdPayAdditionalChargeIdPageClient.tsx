@@ -231,7 +231,9 @@ export default function PayAdditionalChargePage() {
               <Button
                 onClick={handlePayNow}
                 disabled={isProcessing || charge.status === 'paid'}
-                className="w-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white py-6 text-lg font-semibold"
+                variant="secondary"
+                size="rounded"
+                className="w-full text-lg font-semibold h-14 mt-4"
               >
                 {isProcessing ? (
                   "Processing..."

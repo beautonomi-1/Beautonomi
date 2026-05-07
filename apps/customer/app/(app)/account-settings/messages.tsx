@@ -27,7 +27,7 @@ export default function MessagesScreen() {
     });
     const res = await api.post(`/api/me/conversations/${conversationId}/read`, {});
     if (res.error) {
-      setError(getApiErrorMessage(res.error, "Failed to mark conversation as read"));
+      setError(getApiErrorMessage(res.error, ch("errorMarkReadFailed")));
       void load();
     }
   };
@@ -40,7 +40,7 @@ export default function MessagesScreen() {
     });
     if (res.error) {
       setData(previous);
-      setError(getApiErrorMessage(res.error, "Failed to delete conversation"));
+      setError(getApiErrorMessage(res.error, ch("errorDeleteFailed")));
     }
   };
 
@@ -49,7 +49,7 @@ export default function MessagesScreen() {
     setError(null);
     try {
       const res = await api.get<any>("/api/me/conversations");
-      if (res.error) setError(getApiErrorMessage(res.error, "Failed to load"));
+      if (res.error) setError(getApiErrorMessage(res.error, ch("errorLoadFailed")));
       else {
         const raw = res.data;
         const list = Array.isArray(raw) ? raw : raw?.data ?? raw?.conversations ?? [];
@@ -75,7 +75,7 @@ export default function MessagesScreen() {
         setData(onePerProvider);
       }
     } catch (e) {
-      setError(getApiErrorMessage(e, "Failed to load"));
+      setError(getApiErrorMessage(e, ch("errorLoadFailed")));
     } finally {
       setLoading(false);
     }

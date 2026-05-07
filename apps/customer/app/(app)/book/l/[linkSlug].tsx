@@ -5,6 +5,7 @@ import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { productCartToQueryParam } from "@/lib/express-booking/prefill";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 export type ExpressPrefill = {
   addon_ids?: string[];
@@ -33,12 +34,13 @@ type ExpressLinkResponse = {
  * Resolves `GET /api/public/express-link/:slug` and navigates to the same book params as web `/book/l/[linkSlug]`.
  */
 export default function ExpressBookLinkScreen() {
+  const { t } = useTranslation();
   const { linkSlug, embed } = useLocalSearchParams<{ linkSlug: string; embed?: string }>();
   const [error, setError] = useState<string | null>(null);
 
   const resolve = useCallback(async () => {
     if (!linkSlug) {
-      setError("Invalid booking link");
+      setError(t("customer.expressBookLink.invalidLink"));
       return;
     }
     setError(null);
@@ -48,13 +50,13 @@ export default function ExpressBookLinkScreen() {
         { timeout: 60000 }
       );
       if (res.error) {
-        setError(getApiErrorMessage(res.error, "Failed to load booking link"));
+        setError(getApiErrorMessage(res.error, t("customer.expressBookLink.loadFailed")));
         return;
       }
       const raw = res.data as ExpressLinkResponse | null | undefined;
       const data = raw && typeof raw === "object" && "provider_slug" in raw ? raw : null;
       if (!data?.provider_slug) {
-        setError("Booking link not found");
+        setError(t("customer.expressBookLink.notFound"));
         return;
       }
 
@@ -96,9 +98,9 @@ export default function ExpressBookLinkScreen() {
 
       router.replace({ pathname: "/(app)/book", params });
     } catch (e) {
-      setError(getApiErrorMessage(e, "Failed to load booking link"));
+      setError(getApiErrorMessage(e, t("customer.expressBookLink.loadFailed")));
     }
-  }, [linkSlug, embed]);
+  }, [linkSlug, embed, t]);
 
   useEffect(() => {
     void resolve();
@@ -122,9 +124,9 @@ export default function ExpressBookLinkScreen() {
             onPress={() => router.replace("/(app)/(tabs)/search")}
             style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.primary }}
             accessibilityRole="button"
-            accessibilityLabel="Find a provider"
+            accessibilityLabel={t("customer.expressBookLink.findProviderA11y")}
           >
-            <Text style={{ color: Colors.primary, fontWeight: "600" }}>Find a provider</Text>
+            <Text style={{ color: Colors.primary, fontWeight: "600" }}>{t("customer.expressBookLink.findProvider")}</Text>
           </TouchableOpacity>
         </View>
       </>

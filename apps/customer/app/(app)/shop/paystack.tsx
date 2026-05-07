@@ -3,11 +3,23 @@ import { View, ActivityIndicator, Text } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
+import { emitCartUpdated } from "@/lib/cart-events";
 
 function pickRef(params: Record<string, string | string[] | undefined>): string {
   const raw = params.reference ?? params.trxref;
   const v = typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : "";
   return typeof v === "string" ? v.trim() : "";
+}
+
+function unwrapVerifyStatus(body: unknown): string | null {
+  let cur: unknown = body;
+  for (let depth = 0; depth < 5 && cur && typeof cur === "object"; depth++) {
+    const o = cur as Record<string, unknown>;
+    const st = o.status;
+    if (typeof st === "string" && st.trim()) return st.trim();
+    cur = o.data;
+  }
+  return null;
 }
 
 function extractProductOrderId(body: unknown): string | null {
@@ -48,8 +60,12 @@ export default function ShopPaystackReturnScreen() {
         }
         const orderId = extractProductOrderId(res.data as unknown);
         if (orderId) {
+          emitCartUpdated();
           router.replace({ pathname: "/(app)/product-order-detail", params: { id: orderId } } as never);
           return;
+        }
+        if (unwrapVerifyStatus(res.data as unknown) === "success") {
+          emitCartUpdated();
         }
       } catch {
         // ignore

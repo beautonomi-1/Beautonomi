@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { ScrollView as CalendarGridScrollView, Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useSharedValue } from "react-native-reanimated";
 import { api } from "@/lib/api-client";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -34,8 +35,6 @@ import {
   differenceInMinutes,
 } from "date-fns";
 import * as Clipboard from "expo-clipboard";
-import { APP_URL } from "@/config/public-env";
-import { pushInAppBrowser } from "@/lib/in-app-web";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { usePagedProviderBookings } from "@/hooks/usePagedProviderBookings";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -98,6 +97,7 @@ import {
   getAllowedTransitionTargets,
   labelForDbStatus,
   optimisticBookingFieldsForDbTarget,
+  filterInProgressWhenAtHomeVerificationPending,
 } from "@/lib/provider-booking-status-transitions";
 import {
   dayMinuteRanges,
@@ -189,6 +189,7 @@ function normalizeAvailabilityBlocksToSegments(
   raw: AvailabilityBlockApi[],
   tz?: string | null,
 ): AvailabilitySegment[] {
+  const safeTz = tz || "UTC";
   const result: AvailabilitySegment[] = [];
   const pad = (n: number) => n.toString().padStart(2, "0");
   for (const block of raw) {
@@ -199,14 +200,14 @@ function normalizeAvailabilityBlocksToSegments(
     let cursor = new Date(start.getTime());
     while (cursor < end) {
       // Use provider TZ to determine the calendar date of the cursor instant
-      const wc = wallClockInTimeZone(cursor, tz);
+      const wc = wallClockInTimeZone(cursor, safeTz);
       const dateStr = `${String(wc.year).padStart(4, "0")}-${pad(wc.month)}-${pad(wc.day)}`;
 
       // Compute start-of-next-day boundary in UTC by advancing the cursor to
       // midnight+1ms of the provider's next wall-clock day.
       // Advance by up to 25 hours (covers all DST transitions) and check date
       const tryNext = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
-      const tryWc = wallClockInTimeZone(tryNext, tz);
+      const tryWc = wallClockInTimeZone(tryNext, safeTz);
       // Snap to midnight of the next calendar day in provider TZ by binary-search
       // approximation: advance from cursor until the wall date increments.
       let boundary = tryNext;
@@ -216,8 +217,8 @@ function normalizeAvailabilityBlocksToSegments(
       }
       // Clamp to end
       const segmentEnd = end < boundary ? end : boundary;
-      const startWc = wallClockInTimeZone(cursor, tz);
-      const endWc = wallClockInTimeZone(segmentEnd < end ? segmentEnd : end, tz);
+      const startWc = wallClockInTimeZone(cursor, safeTz);
+      const endWc = wallClockInTimeZone(segmentEnd < end ? segmentEnd : end, safeTz);
       const startTime = `${pad(startWc.hour)}:${pad(startWc.minute)}`;
       // If segmentEnd === boundary (midnight of next day) show "24:00" style → use "00:00" of next
       const endTime = segmentEnd >= end
@@ -578,7 +579,19 @@ function bookingDbStatus(booking: Booking | CalendarBooking): string {
 }
 
 function bookingActionTargets(booking: Booking | CalendarBooking): string[] {
-  return getAllowedTransitionTargets(bookingDbStatus(booking));
+  const targets = getAllowedTransitionTargets(bookingDbStatus(booking));
+  const rawLoc = booking.location_type;
+  const atHome =
+    rawLoc === "at_home" ||
+    (rawLoc == null && !booking.location_id && !!booking.address?.line1?.trim());
+  return filterInProgressWhenAtHomeVerificationPending({
+    targets,
+    atHome,
+    arrivalVerified: booking.arrival_otp_verified === true || booking.qr_code_verified === true,
+    arrivalOtpPending: booking.arrival_otp_pending === true,
+    qrArrivalPending: booking.qr_arrival_pending === true,
+    currentStage: booking.current_stage,
+  });
 }
 
 function currentWallClockTimeInZone(timeZone?: string | null): string {
@@ -1135,7 +1148,8 @@ function CalendarScreenBody() {
   const draggingRef = useRef(false);
   const draggingBookingIdRef = useRef<string | null>(null);
   const [draggingBooking, setDraggingBooking] = useState<CalendarBooking | null>(null);
-  const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
+  const dragPositionX = useSharedValue(-1000);
+  const dragPositionY = useSharedValue(-1000);
   /** In-context preview after tapping an appointment (avoids switching away from Calendar tab). */
   const [quickSheetBooking, setQuickSheetBooking] = useState<CalendarBooking | null>(null);
 
@@ -1573,19 +1587,6 @@ function CalendarScreenBody() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [buildShareText]);
 
-  const handleOpenWebCalendar = useCallback(() => {
-    const base = APP_URL?.replace(/\/$/, "");
-    if (!base) {
-      Alert.alert(
-        t("provider.calendarScreen.appUrlNotConfiguredTitle"),
-        t("provider.calendarScreen.appUrlNotConfiguredMessage"),
-      );
-      return;
-    }
-    const d = calendarDateKey(selectedDate, provider?.timezone ?? null);
-    pushInAppBrowser(router, `${base}/provider/calendar?date=${encodeURIComponent(d)}`, t("provider.calendarScreen.browserTitle"));
-  }, [provider?.timezone, router, selectedDate, t]);
-
   const openNewBookingFromCalendar = useCallback(() => {
     const selectedStaffId = staffList[selectedStaffIndex]?.id;
     const href = newBookingScreenHrefFromCalendarDay(selectedDate, {
@@ -1643,7 +1644,6 @@ function CalendarScreenBody() {
       void handleCopySchedule();
     };
     const runMonth = () => setMonthOverviewVisible(true);
-    const runWeb = () => handleOpenWebCalendar();
     const runExpress = () => router.push("/(app)/(tabs)/more/express-booking" as never);
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
@@ -1653,7 +1653,6 @@ function CalendarScreenBody() {
             t("provider.calendarScreen.shareSchedule"),
             t("provider.calendarScreen.copySchedule"),
             t("provider.calendarScreen.monthOverview"),
-            t("provider.calendarScreen.fullCalendarBrowser"),
             t("provider.calendarScreen.utilityMenu.expressBooking"),
           ],
           cancelButtonIndex: 0,
@@ -1663,8 +1662,7 @@ function CalendarScreenBody() {
           if (idx === 1) runShare();
           else if (idx === 2) runCopy();
           else if (idx === 3) runMonth();
-          else if (idx === 4) runWeb();
-          else if (idx === 5) runExpress();
+          else if (idx === 4) runExpress();
         },
       );
     } else {
@@ -1672,14 +1670,12 @@ function CalendarScreenBody() {
         { text: t("provider.calendarScreen.shareSchedule"), onPress: runShare },
         { text: t("provider.calendarScreen.copySchedule"), onPress: runCopy },
         { text: t("provider.calendarScreen.monthOverview"), onPress: runMonth },
-        { text: t("provider.calendarScreen.fullCalendarBrowser"), onPress: runWeb },
         { text: t("provider.calendarScreen.utilityMenu.expressBooking"), onPress: runExpress },
         { text: t("provider.calendarScreen.close"), style: "cancel" },
       ]);
     }
   }, [
     handleCopySchedule,
-    handleOpenWebCalendar,
     handleShareSchedule,
     router,
     t,
@@ -1977,16 +1973,6 @@ function CalendarScreenBody() {
       pendingBookingActionIds.has(booking.id) ||
       pendingRescheduleBookingIds.has(booking.id)
     ) {
-      return;
-    }
-    const groupId = typeof booking.group_booking_id === "string" ? booking.group_booking_id : null;
-    if (booking.is_group_booking && groupId) {
-      router.push(
-        {
-          pathname: "/(app)/(tabs)/more/group-bookings",
-          params: { open_group_id: groupId },
-        } as never,
-      );
       return;
     }
     setQuickSheetBooking(booking);
@@ -2532,7 +2518,8 @@ function CalendarScreenBody() {
     dropContext?: CalendarBookingDropContext | null,
   ) {
     const walkInLabel = t("provider.calendarScreen.walkIn");
-    const top = GRID_TOP_PADDING + getTopOffset(booking.scheduled_at, startHour, SLOT_HEIGHT, provider?.timezone ?? null);
+    const timeStr = formatTimeInZone(booking.scheduled_at, provider?.timezone);
+    const top = GRID_TOP_PADDING + getTopOffset(timeStr, startHour, SLOT_HEIGHT);
     const height = getBlockHeight(booking, SLOT_HEIGHT, preferences.compactMode);
     const colors = getBlockColors(booking, preferences.colorBy, staffList);
     const paymentLabel = getCalendarPaymentLabel(booking, t);
@@ -2577,7 +2564,8 @@ function CalendarScreenBody() {
         draggingRef={draggingRef}
         draggingBookingIdRef={draggingBookingIdRef}
         setDraggingBooking={setDraggingBooking}
-        setDragPosition={setDragPosition}
+        dragPositionX={dragPositionX}
+        dragPositionY={dragPositionY}
         t={t}
         translateBookingStatusLabel={translateBookingStatusLabel}
       />
@@ -3308,9 +3296,10 @@ function CalendarScreenBody() {
       )}
 
       {/* Drag ghost: follows finger when dragging a booking */}
-      {draggingBooking && dragPosition && (
+      {draggingBooking && (
         <CalendarDragGhost
-          dragPosition={dragPosition}
+          dragPositionX={dragPositionX}
+          dragPositionY={dragPositionY}
           width={dayColumnWidth}
           draggingBooking={draggingBooking}
           walkInLabel={t("provider.calendarScreen.walkIn")}
@@ -3808,7 +3797,13 @@ function CalendarScreenBody() {
         providerTimezone={providerTz}
         onClose={() => setQuickSheetBooking(null)}
         onViewFullDetails={(bookingId) => {
-          router.push(`/(app)/(tabs)/more/bookings/${bookingId}` as never);
+          if (quickSheetBooking?.is_group_booking && quickSheetBooking.group_booking_id) {
+            router.push(
+              `/(app)/(tabs)/more/group-bookings?open_group_id=${quickSheetBooking.group_booking_id}` as never,
+            );
+          } else {
+            router.push(`/(app)/(tabs)/more/bookings/${bookingId}` as never);
+          }
         }}
         translateBookingStatusLabel={translateBookingStatusLabel}
         t={t}

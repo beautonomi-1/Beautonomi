@@ -222,6 +222,33 @@ export async function GET(request: NextRequest) {
         });
       }
 
+      if (metadata?.membership_order_id) {
+        const admin = getSupabaseAdmin();
+        const membershipOrderId = String(metadata.membership_order_id);
+        const { data: membershipOrderLookup } = await admin
+          .from("membership_orders")
+          .select("user_id")
+          .eq("id", membershipOrderId)
+          .maybeSingle();
+        if (!membershipOrderLookup) {
+          return notFoundResponse("Membership order not found");
+        }
+        if ((membershipOrderLookup as { user_id?: string | null }).user_id !== user.id) {
+          return errorResponse(
+            "You can only confirm your own membership purchases.",
+            "FORBIDDEN",
+            403,
+          );
+        }
+        await processSuccessfulPayment(data.data, admin);
+        return successResponse({
+          status: "success",
+          type: "membership_order",
+          membershipOrderId,
+          message: "Membership payment confirmed",
+        });
+      }
+
       if (metadata?.kind === "card_verification") {
         await processSuccessfulPayment(data.data, getSupabaseAdmin());
         return successResponse({

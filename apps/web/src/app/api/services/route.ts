@@ -28,7 +28,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type"); // "salon" or "mobile"
     const providerSlug = searchParams.get("providerSlug");
-    const serviceIdFromBooking = searchParams.get("serviceId"); // New: serviceId from booking flow
+    const serviceIdFromBookingRaw = searchParams.get("serviceId") || searchParams.get("services"); // support both
+    const serviceIdsFromBooking = serviceIdFromBookingRaw ? serviceIdFromBookingRaw.split(",").map(id => id.trim()).filter(Boolean) : [];
+    const serviceIdFromBooking = serviceIdsFromBooking.length > 0 ? serviceIdsFromBooking[0] : null;
 
     if (!providerSlug && !serviceIdFromBooking) {
       console.warn("[Services API] No providerSlug or serviceId provided, returning empty array.");
@@ -94,11 +96,28 @@ export async function GET(request: NextRequest) {
           return resolvedTenantId ? query.eq("tenant_id", resolvedTenantId) : query;
         }
         
-        // First try: exact match with decoded slug, active status, tenant-scoped
-        const q1 = applyTenantScope(
-          supabase.from("providers").select("id, slug, status").eq("slug", decodedSlug).eq("status", "active")
-        );
-        const { data: providerData, error: decodeError } = await q1.single();
+        const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+        let providerData = null;
+        let decodeError = null;
+
+        if (isUUID(decodedSlug)) {
+          const qUuid = applyTenantScope(
+            supabase.from("providers").select("id, slug, status").eq("id", decodedSlug).eq("status", "active")
+          );
+          const resUuid = await qUuid.single();
+          providerData = resUuid.data;
+          decodeError = resUuid.error;
+        }
+        
+        if (!providerData) {
+          // First try: exact match with decoded slug, active status, tenant-scoped
+          const q1 = applyTenantScope(
+            supabase.from("providers").select("id, slug, status").eq("slug", decodedSlug).eq("status", "active")
+          );
+          const res1 = await q1.single();
+          providerData = res1.data;
+          decodeError = res1.error;
+        }
         
         console.log(`[Services API] First lookup result:`, { providerData, error: decodeError });
         
@@ -158,7 +177,7 @@ export async function GET(request: NextRequest) {
         if (lastResortService && !lastResortError && lastResortService.provider_id) {
           console.log(`[Services API] Found service directly, provider_id: ${lastResortService.provider_id}`);
           // Use this service as the only result
-          if (lastResortService.is_active && lastResortService.online_booking_enabled !== false) {
+          if (lastResortService.is_active) {
             const services = [{
               id: lastResortService.id,
               title: lastResortService.title,
@@ -328,7 +347,11 @@ export async function GET(request: NextRequest) {
       }
 
       // Include if online_booking_enabled is true or not set (null/undefined)
+      // Express link exception: if this is one of the explicitly requested services, keep it
       if (o.online_booking_enabled === false) {
+        if (serviceIdsFromBooking.includes(o.id) || o.id === resolvedServiceId) {
+          return true;
+        }
         return false;
       }
 

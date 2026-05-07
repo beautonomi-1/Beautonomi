@@ -27,6 +27,8 @@ interface ReturnRequest {
   id: string;
   status: string;
   reason?: string | null;
+  description?: string | null;
+  product_name?: string | null;
   refund_amount?: number | string | null;
   quantity?: number;
   created_at: string;
@@ -61,7 +63,7 @@ export function ProductReturnsContent() {
   // §Provider-audit 2026-04 (C3): web lets the provider pick the return
   // method at approval time. Mobile previously hardcoded `drop_off`, which
   // broke couriers that use pickup. Expose the same two-option chooser.
-  const [returnMethod, setReturnMethod] = useState<"drop_off" | "courier">("drop_off");
+  const [returnMethod, setReturnMethod] = useState<"drop_off" | "courier" | "not_required">("drop_off");
 
   const url = `/api/provider/returns?limit=50${statusFilter ? `&status=${statusFilter}` : ""}`;
   const { data, loading, error, refresh } = useApi<ReturnsListResponse>(url);
@@ -183,11 +185,14 @@ export function ProductReturnsContent() {
                 <Text style={twStyle("font-semibold text-gray-900")} numberOfLines={1}>
                   {r.order?.order_number ?? r.id.slice(0, 8)}
                 </Text>
-                <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
+                <Text style={twStyle("mt-0.5 text-sm text-gray-700")} numberOfLines={1}>
+                  {r.product_name}
+                </Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                   {r.customer?.full_name ?? "Customer"}
                   {r.refund_amount != null ? ` · ${formatCurrency(Number(r.refund_amount))}` : ""}
                 </Text>
-                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{r.status}</Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{r.status.replace(/_/g, " ")}</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
             </TouchableOpacity>
@@ -210,11 +215,17 @@ export function ProductReturnsContent() {
             <>
               <View style={twStyle("mb-3 flex-row flex-wrap")}>
                 <View style={[twStyle("rounded-full bg-gray-100 px-2.5 py-1"), { marginRight: 8, marginBottom: 8 }]}>
-                  <Text style={twStyle("text-xs font-medium text-gray-700")}>{detail.status}</Text>
+                  <Text style={twStyle("text-xs font-medium text-gray-700")}>{detail.status.replace(/_/g, " ")}</Text>
                 </View>
               </View>
+              <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>
+                {detail.product_name} {detail.quantity && detail.quantity > 1 ? `(x${detail.quantity})` : ""}
+              </Text>
               {detail.reason ? (
-                <Text style={twStyle("mb-3 text-sm text-gray-600")}>Reason: {detail.reason}</Text>
+                <Text style={twStyle("mb-1 text-sm text-gray-600")}>Reason: {detail.reason.replace(/_/g, " ")}</Text>
+              ) : null}
+              {detail.description ? (
+                <Text style={twStyle("mb-3 text-sm text-gray-500 italic")}>{`"${detail.description}"`}</Text>
               ) : null}
               {detail.refund_amount != null && (
                 <Text style={twStyle("mb-3 text-sm font-medium text-gray-900")}>
@@ -229,6 +240,7 @@ export function ProductReturnsContent() {
                     {([
                       { value: "drop_off", label: "Drop off" },
                       { value: "courier", label: "Ship back" },
+                      { value: "not_required", label: "Not required" },
                     ] as const).map((opt) => {
                       const selected = returnMethod === opt.value;
                       return (

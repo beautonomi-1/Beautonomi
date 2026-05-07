@@ -486,7 +486,7 @@ export default function ExpressBookingScreen() {
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
-        title="Share with clients"
+        title="Booking Links"
         showBack
         subtitle="Copy or share for WhatsApp, Instagram, SMS"
       />
@@ -539,10 +539,10 @@ export default function ExpressBookingScreen() {
                 <Ionicons name="flash" size={28} color="#6366f1" />
               </View>
               <Text style={{ marginTop: 12, fontSize: 18, fontWeight: "700", color: "#312e81" }}>
-                Share Your Booking Link
+                General Booking Link
               </Text>
               <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: "#4338ca" }}>
-                One link for your booking page — easy to paste in chats or your bio
+                The main link for your booking page — easy to paste in chats or your bio
               </Text>
             </View>
 

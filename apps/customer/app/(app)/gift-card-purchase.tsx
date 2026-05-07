@@ -43,7 +43,7 @@ export default function GiftCardPurchaseScreen() {
   );
   const router = useRouter();
   const { user } = useAuth();
-  const { provider_id, provider_name } = useLocalSearchParams<{ provider_id?: string; provider_name?: string }>();
+  const { provider_name } = useLocalSearchParams<{ provider_name?: string }>();
   const tenantCurrency = getTenantDefaultCurrency();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
@@ -115,7 +115,6 @@ export default function GiftCardPurchaseScreen() {
             .filter((id): id is string => typeof id === "string" && id.length > 0),
         );
         const body: Record<string, unknown> = { amount: finalAmount, quantity, currency: tenantCurrency };
-        if (provider_id) body.provider_id = provider_id;
         if (Platform.OS !== "web") {
           body.callback_url = ExpoLinking.createURL("account-settings/payments");
         }
@@ -222,7 +221,6 @@ export default function GiftCardPurchaseScreen() {
       finalAmount,
       quantity,
       tenantCurrency,
-      provider_id,
       user,
       errTitle,
       gc,

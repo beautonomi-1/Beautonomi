@@ -44,6 +44,27 @@ import {
 import type { SavedPaymentMethod } from "@/types/api";
 import { APP_URL } from "@/config/public-env";
 import { webTermsOfServiceUrl } from "@/lib/legal-web";
+import {
+  bookingCheckoutLineDisplayName,
+  labelForVariantOptionValues,
+  type CheckoutProductVariant,
+  variantOptionTypeLabel,
+} from "@/lib/booking-checkout-products";
+
+/** Unwrap nested API envelope from GET /api/paystack/verify (booking path). */
+function bookingPaidFromPaystackVerifyBody(body: unknown): boolean {
+  let cur: unknown = body;
+  for (let depth = 0; depth < 6 && cur && typeof cur === "object"; depth++) {
+    const o = cur as Record<string, unknown>;
+    const status = o.status;
+    const ps = o.payment_status;
+    if (status === "success" && (ps === "paid" || ps === "partially_paid")) {
+      return true;
+    }
+    cur = o.data;
+  }
+  return false;
+}
 
 /* ─── Types ─── */
 
@@ -158,6 +179,24 @@ interface AddonOption {
   currency?: string;
   duration_minutes?: number;
   is_recommended?: boolean;
+}
+
+interface CheckoutCatalogProduct {
+  id: string;
+  name: string;
+  description?: string | null;
+  category?: string | null;
+  retail_price: number;
+  currency: string;
+  hasVariants: boolean;
+  defaultVariantId: string | null;
+  defaultVariantPrice?: number;
+  variants?: CheckoutProductVariant[];
+  /** Mirrors web `variantOptionTypes` — strings or `{ name }` from DB JSON. */
+  variantOptionTypes: Array<string | { name: string }>;
+  track_stock_quantity: boolean;
+  /** Aggregate stock (variant sum or parent); used when `!hasVariants`. */
+  quantity: number;
 }
 
 /* ─── Helpers ─── */
@@ -489,7 +528,7 @@ function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
         <TouchableOpacity
           onPress={() => { haptic.light(); Alert.alert(t("checkout.saveCard"), saveCardInfo); }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityLabel="Info about saving card"
+          accessibilityLabel={t("checkout.saveCardInfoA11y")}
         >
           <Ionicons name="information-circle-outline" size={20} color={Colors.primary} />
         </TouchableOpacity>
@@ -583,7 +622,7 @@ export default function BookCheckoutScreen() {
   } | null>(null);
   const [consuming, setConsuming] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [processingMessage, setProcessingMessage] = useState("Processing payment…");
+  const [processingMessage, setProcessingMessage] = useState(() => t("checkout.processingPayment"));
   const consumeInFlightRef = useRef(false);
   /** Tracks whether the initial hold load has completed — suppresses the focus re-check on first mount. */
   const holdLoadedRef = useRef(false);
@@ -608,23 +647,13 @@ export default function BookCheckoutScreen() {
             const httpStatus = getHttpErrorStatus(res.error);
             const errCode = (res.error as { code?: string })?.code ?? "";
             if (httpStatus === 410 || httpStatus === 404 || errCode === "HOLD_INACTIVE") {
-              setError(
-                t(
-                  "checkout.holdExpiredFallback",
-                  "Your reserved slot is no longer available. Please go back and select a new time.",
-                ),
-              );
+              setError(t("checkout.holdExpiredFallback"));
             }
             // Other errors (network, timeout) are non-blocking
           } else if (res.data) {
             const holdStatusVal = (res.data as { hold_status?: string }).hold_status;
             if (holdStatusVal && holdStatusVal !== "active" && holdStatusVal !== "consuming") {
-              setError(
-                t(
-                  "checkout.holdExpiredFallback",
-                  "Your reserved slot is no longer available. Please go back and select a new time.",
-                ),
-              );
+              setError(t("checkout.holdExpiredFallback"));
             }
           }
         } catch {
@@ -699,18 +728,9 @@ export default function BookCheckoutScreen() {
   const [subscribeRecurring, setSubscribeRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">("weekly");
   const [groupParticipants, setGroupParticipants] = useState<{ id: string; name: string; phone?: string; notes?: string; service_ids: string[] }[]>([]);
-  const [productsList, setProductsList] = useState<{
-    id: string;
-    name: string;
-    description?: string | null;
-    category?: string | null;
-    retail_price: number;
-    currency: string;
-    hasVariants?: boolean;
-    defaultVariantId?: string | null;
-    defaultVariantPrice?: number;
-    variants?: { id: string; retail_price: number }[];
-  }[]>([]);
+  const [productsList, setProductsList] = useState<CheckoutCatalogProduct[]>([]);
+  /** Which variant row is being edited per product card (parity with web booking-products). */
+  const [selectedVariantIdByProduct, setSelectedVariantIdByProduct] = useState<Record<string, string>>({});
   const [selectedProducts, setSelectedProducts] = useState<{ productId: string; productVariantId?: string | null; name: string; price: number; quantity: number; currency: string }[]>([]);
   const [packagesList, setPackagesList] = useState<
     { id: string; name: string; description?: string; price: number; currency: string; service_ids: string[] }[]
@@ -994,12 +1014,31 @@ export default function BookCheckoutScreen() {
                 // For variant products, pre-resolve the first in-stock variant
                 let defaultVariantId: string | null = null;
                 let defaultVariantPrice: number | undefined;
-                if (p.hasVariants && Array.isArray(p.variants) && p.variants.length > 0) {
-                  const sorted = [...p.variants].sort(
-                    (a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
-                  );
+                const trackStock = Boolean(p.track_stock_quantity);
+                const rawVars = Array.isArray(p.variants) ? p.variants : [];
+                const variants: CheckoutProductVariant[] = rawVars.map((v: any) => {
+                  const ov = v.option_values;
+                  const option_values =
+                    ov && typeof ov === "object" && !Array.isArray(ov)
+                      ? (Object.fromEntries(
+                          Object.entries(ov as Record<string, unknown>).map(([k, val]) => [
+                            k,
+                            String(val ?? ""),
+                          ]),
+                        ) as Record<string, string>)
+                      : undefined;
+                  return {
+                    id: v.id,
+                    retail_price: Number(v.retail_price) || 0,
+                    quantity: Number(v.quantity ?? 0) || 0,
+                    option_values,
+                    sort_order: Number(v.sort_order) || 0,
+                  };
+                });
+                if (p.hasVariants && variants.length > 0) {
+                  const sorted = [...variants].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
                   const firstInStock =
-                    sorted.find((v: any) => (v.quantity ?? 0) > 0) ?? sorted[0];
+                    trackStock ? sorted.find((v) => v.quantity > 0) ?? sorted[0] : sorted[0];
                   defaultVariantId = firstInStock?.id ?? null;
                   defaultVariantPrice = firstInStock ? Number(firstInStock.retail_price) : undefined;
                 }
@@ -1010,6 +1049,10 @@ export default function BookCheckoutScreen() {
                     : catRaw != null
                       ? String(catRaw).trim() || null
                       : null;
+                const voRaw = p.variantOptionTypes ?? p.variant_option_types;
+                const variantOptionTypes = Array.isArray(voRaw)
+                  ? (voRaw as Array<string | { name: string }>)
+                  : [];
                 return {
                   id: p.id,
                   name: p.name || "Product",
@@ -1017,12 +1060,13 @@ export default function BookCheckoutScreen() {
                   category: categoryStr,
                   retail_price: defaultVariantPrice ?? (Number(p.price ?? p.retail_price) || 0),
                   currency: p.currency || getTenantDefaultCurrency(),
-                  hasVariants: Boolean(p.hasVariants),
+                  hasVariants: Boolean(p.hasVariants) && variants.length > 0,
                   defaultVariantId,
                   defaultVariantPrice,
-                  variants: Array.isArray(p.variants)
-                    ? p.variants.map((v: any) => ({ id: v.id, retail_price: Number(v.retail_price) || 0 }))
-                    : undefined,
+                  variants: variants.length > 0 ? variants : undefined,
+                  variantOptionTypes,
+                  track_stock_quantity: trackStock,
+                  quantity: Number(p.quantity ?? 0) || 0,
                 };
               })
             : []
@@ -1030,6 +1074,20 @@ export default function BookCheckoutScreen() {
       })
       .catch(() => setProductsList([]));
   }, [effectiveProviderSlug]);
+
+  // Default variant per product card when catalog loads (web parity).
+  useEffect(() => {
+    if (productsList.length === 0) return;
+    setSelectedVariantIdByProduct((prev) => {
+      const next = { ...prev };
+      for (const p of productsList) {
+        if (p.hasVariants && p.defaultVariantId && next[p.id] == null) {
+          next[p.id] = p.defaultVariantId;
+        }
+      }
+      return next;
+    });
+  }, [productsList]);
 
   useEffect(() => {
     if (productPrefillFromLinkAppliedRef.current || !effectiveProviderSlug || productsList.length === 0) return;
@@ -1054,7 +1112,7 @@ export default function BookCheckoutScreen() {
             return {
               productId: p.id,
               productVariantId: variantId,
-              name: p.name,
+              name: bookingCheckoutLineDisplayName(p.name, variantId, p.variants),
               price: variantPrice ?? (Number(p.retail_price) || 0),
               quantity: q,
               currency: p.currency || getTenantDefaultCurrency(),
@@ -1064,6 +1122,13 @@ export default function BookCheckoutScreen() {
         if (merged.length > 0 && !cancelled) {
           productPrefillFromLinkAppliedRef.current = true;
           setSelectedProducts(merged);
+          setSelectedVariantIdByProduct((prev) => {
+            const next = { ...prev };
+            for (const row of merged) {
+              if (row.productVariantId) next[row.productId] = row.productVariantId;
+            }
+            return next;
+          });
         }
       } catch {
         // ignore
@@ -1358,7 +1423,7 @@ export default function BookCheckoutScreen() {
       );
       if (res.error) {
         setAppliedPromoDiscount(0);
-        setPromoError(getApiErrorMessage(res.error, "Invalid or expired promo code"));
+        setPromoError(getApiErrorMessage(res.error, t("checkout.promoInvalid")));
         return;
       }
       const data = res.data as any;
@@ -1369,15 +1434,15 @@ export default function BookCheckoutScreen() {
         haptic.success();
       } else {
         setAppliedPromoDiscount(0);
-        setPromoError(payload?.message ?? "Invalid or expired promo code");
+        setPromoError(payload?.message ?? t("checkout.promoInvalid"));
       }
     } catch (e) {
       setAppliedPromoDiscount(0);
-      setPromoError(getApiErrorMessage(e, "Could not validate promo code"));
+      setPromoError(getApiErrorMessage(e, t("checkout.promoValidateFailed")));
     } finally {
       setPromoValidating(false);
     }
-  }, [promotionCode, hold?.provider_id, hold?.location_type, hold?.location_id, prePromoTotal]);
+  }, [promotionCode, hold?.provider_id, hold?.location_type, hold?.location_id, prePromoTotal, t]);
 
   const applyPromoCodeRef = useRef(applyPromoCode);
   applyPromoCodeRef.current = applyPromoCode;
@@ -1438,7 +1503,7 @@ export default function BookCheckoutScreen() {
           setMembershipPlanName(
             typeof match.plan_name === "string" && match.plan_name.trim()
               ? match.plan_name.trim()
-              : "Member discount",
+              : t("checkout.memberDiscountFallback"),
           );
         } else {
           setMembershipDiscountPercent(0);
@@ -1451,7 +1516,7 @@ export default function BookCheckoutScreen() {
     return () => {
       cancelled = true;
     };
-  }, [user, hold?.provider_id]);
+  }, [user, hold?.provider_id, t]);
 
   useEffect(() => {
     if (!user) {
@@ -1495,7 +1560,7 @@ export default function BookCheckoutScreen() {
     if (!user) return;
     const raw = parseInt(loyaltyPointsInput.trim(), 10);
     if (!Number.isFinite(raw) || raw <= 0) {
-      setLoyaltyError("Enter how many points to use");
+      setLoyaltyError(t("checkout.loyaltyPointsEnterAmount"));
       return;
     }
     setLoyaltyValidating(true);
@@ -1515,7 +1580,7 @@ export default function BookCheckoutScreen() {
       if (res.error) {
         setLoyaltyPointsApplied(0);
         setLoyaltyDiscountAmount(0);
-        setLoyaltyError(res.error.message || "Could not apply loyalty points");
+        setLoyaltyError(res.error.message || t("checkout.loyaltyApplyFailed"));
         return;
       }
       const top = res.data as { data?: Record<string, unknown> } | Record<string, unknown> | null;
@@ -1525,14 +1590,14 @@ export default function BookCheckoutScreen() {
       const payload = rawPayload ?? {};
       const calc = payload.calculation as { points_to_redeem: number; discount_amount: number } | undefined;
       if (!calc) {
-        setLoyaltyError("Could not calculate loyalty");
+        setLoyaltyError(t("checkout.loyaltyCalculateFailed"));
         return;
       }
       const { points_to_redeem, discount_amount } = calc;
       const minPts =
         (payload.config as { min_redemption_points?: number } | undefined)?.min_redemption_points ?? minRedemptionPoints;
       if (points_to_redeem < minPts) {
-        setLoyaltyError(`At least ${minPts} redeemable points on this booking (after % cap).`);
+        setLoyaltyError(t("checkout.loyaltyMinPointsRedeemable", { minPts: String(minPts) }));
         setLoyaltyPointsApplied(0);
         setLoyaltyDiscountAmount(0);
         return;
@@ -1549,7 +1614,7 @@ export default function BookCheckoutScreen() {
     } catch (e) {
       setLoyaltyPointsApplied(0);
       setLoyaltyDiscountAmount(0);
-      setLoyaltyError(getApiErrorMessage(e as Error, "Failed to apply loyalty points"));
+      setLoyaltyError(getApiErrorMessage(e as Error, t("checkout.loyaltyApplyFailedGeneric")));
     } finally {
       setLoyaltyValidating(false);
     }
@@ -1566,7 +1631,7 @@ export default function BookCheckoutScreen() {
       );
       if (res.error) {
         setGiftCardValid(null);
-        setGiftCardError(res.error.message || "Could not validate gift card");
+        setGiftCardError(res.error.message || t("checkout.giftCardValidateFailed"));
         setGiftCardValidating(false);
         return;
       }
@@ -1576,15 +1641,15 @@ export default function BookCheckoutScreen() {
         haptic.success();
       } else {
         setGiftCardValid(null);
-        setGiftCardError(data?.message ?? "Invalid or expired gift card");
+        setGiftCardError(data?.message ?? t("checkout.giftCardInvalid"));
       }
     } catch {
       setGiftCardValid(null);
-      setGiftCardError("Could not validate gift card");
+      setGiftCardError(t("checkout.giftCardValidateFailed"));
     } finally {
       setGiftCardValidating(false);
     }
-  }, [giftCardCode]);
+  }, [giftCardCode, t]);
 
   const navigateToBooking = useCallback((bookingId?: string, previousBookingId?: string, bookingStatus?: string) => {
     haptic.success();
@@ -1683,7 +1748,7 @@ export default function BookCheckoutScreen() {
   const handleRequestNow = useCallback(async () => {
     if (!hold_id || !hold || !user) return;
     if (hold.expires_at && getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
-      setError("This time slot has expired. Please go back and select a new time.");
+      setError(t("checkout.slotExpiredMessage"));
       return;
     }
     if (cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && !cancellationPolicyAccepted) {
@@ -1728,19 +1793,19 @@ export default function BookCheckoutScreen() {
       );
       if (res.error) {
         haptic.error();
-        setError(getApiErrorMessage(res.error, "Failed to submit request"));
+        setError(getApiErrorMessage(res.error, t("checkout.requestSubmitFailed")));
         return;
       }
       const requestId = (res.data as { id?: string } | null)?.id;
       if (!requestId) {
-        setError("Invalid response from server");
+        setError(t("checkout.invalidServerResponse"));
         return;
       }
       haptic.success();
       router.replace({ pathname: "/(app)/on-demand/waiting", params: { requestId } });
     } catch (e) {
       haptic.error();
-      setError(getApiErrorMessage(e, "Request failed"));
+      setError(getApiErrorMessage(e, t("checkout.requestFailedGeneric")));
     } finally {
       setRequestingNow(false);
     }
@@ -1759,21 +1824,21 @@ export default function BookCheckoutScreen() {
     }
 
     if (hold.expires_at && getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
-      setError("This time slot has expired. Please go back and select a new time.");
+      setError(t("checkout.slotExpiredMessage"));
       return;
     }
 
     if (paymentMethod === "giftcard" && (!giftCardCode.trim() || !giftCardValid)) {
-      setError("Please enter and apply a valid gift card code.");
+      setError(t("checkout.giftCardEnterValid"));
       return;
     }
 
     if (paymentMethod === "card" && !paystackEnabled) {
-      setError("Online card payment is unavailable for this market.");
+      setError(t("checkout.cardUnavailableMarket"));
       return;
     }
     if (paymentMethod === "wallet" && !walletEnabled) {
-      setError("Wallet payment is unavailable for this market.");
+      setError(t("checkout.walletUnavailableMarket"));
       return;
     }
 
@@ -1785,7 +1850,7 @@ export default function BookCheckoutScreen() {
         String(bookingCustomValues[name] ?? "").trim() === ""
     );
     if (missingCustom.length > 0) {
-      setError("Please fill in all required additional details.");
+      setError(t("checkout.requiredDetailsMissing"));
       return;
     }
     for (const form of providerForms) {
@@ -1793,7 +1858,7 @@ export default function BookCheckoutScreen() {
         if (!field.is_required) continue;
         const val = providerFormValues[form.id]?.[field.id];
         if (val === undefined || val === null || String(val).trim() === "") {
-          setError(`Please complete: ${form.title} — ${field.name}`);
+          setError(t("checkout.providerFormFieldRequired", { formTitle: form.title, fieldName: field.name }));
           return;
         }
       }
@@ -1802,6 +1867,12 @@ export default function BookCheckoutScreen() {
     if (cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && !cancellationPolicyAccepted) {
       haptic.error();
       setError(t("checkout.acceptCancellationPolicyRequired"));
+      return;
+    }
+
+    if (isGroupBooking && !groupParticipants.some((p) => p.name.trim().length > 0)) {
+      haptic.error();
+      setError(t("checkout.groupParticipantRequired"));
       return;
     }
 
@@ -1889,9 +1960,7 @@ export default function BookCheckoutScreen() {
         const errCode = (res.error as { code?: string }).code;
         if (errStatus === 401) {
           if (user) {
-            setError(
-              "We couldn't verify your signed-in session for checkout. Please try again; if it repeats, close and reopen the app so your session can refresh.",
-            );
+            setError(t("checkout.sessionVerifyFailed"));
             return;
           }
           router.replace({
@@ -1911,53 +1980,40 @@ export default function BookCheckoutScreen() {
           const serverMsg = (res.error as { message?: string }).message?.trim();
           const msg403 =
             errCode === "SUBSCRIPTION_LIMIT_EXCEEDED"
-              ? "You've reached your booking limit. Please upgrade your plan."
+              ? t("checkout.bookingLimitReached")
               : errCode === "MARKET_SWITCH_REQUIRED"
-                ? "This provider is in a different market. Please update your location."
+                ? t("checkout.differentMarketProvider")
                 : errCode === "HOLD_OWNERSHIP"
                   ? serverMsg && serverMsg.length > 0
                     ? serverMsg
-                    : "This booking slot has already been claimed. Please go back and pick a new time."
+                    : t("checkout.slotAlreadyClaimed")
                   : serverMsg && serverMsg.length > 0
                     ? serverMsg
-                    : "You don't have permission to complete this booking.";
+                    : t("checkout.noPermissionCompleteBooking");
           setError(msg403);
           return;
         }
         if (errStatus === 409 && errCode === "HOLD_IN_FLIGHT") {
           setError(
-            (res.error as { message?: string }).message?.trim() ||
-              t(
-                "checkout.holdInFlight",
-                "This booking is already being processed. Please wait a moment, then try again.",
-              ),
+            (res.error as { message?: string }).message?.trim() || t("checkout.holdInFlight"),
           );
           return;
         }
         if (errCode === "HOLD_INACTIVE") {
           setError(
-            (res.error as { message?: string }).message?.trim() ||
-              t(
-                "checkout.holdInactiveFallback",
-                "This time reservation is no longer active (expired or cancelled). Go back and pick another time.",
-              ),
+            (res.error as { message?: string }).message?.trim() || t("checkout.holdInactiveFallback"),
           );
           return;
         }
         if (errStatus === 410 || errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED") {
-          setError(t("checkout.holdExpiredFallback", "Your hold has expired. Please go back and select a new time."));
+          setError(t("checkout.holdExpiredFallback"));
           return;
         }
         if (errStatus === 409 || errCode === "CONFLICT") {
-          setError(
-            t(
-              "checkout.slotConflictFallback",
-              "That time slot is no longer available. Go back to the calendar and try again — or pick a different time.",
-            ),
-          );
+          setError(t("checkout.slotConflictFallback"));
           return;
         }
-        setError(getApiErrorMessage(res.error, "Failed to complete booking"));
+        setError(getApiErrorMessage(res.error, t("checkout.failedCompleteBooking")));
         return;
       }
 
@@ -1968,23 +2024,60 @@ export default function BookCheckoutScreen() {
       const paymentUrl = data?.payment_url;
 
       const recurringSub = data?.recurring_subscription;
-      const notifyRecurringSubscription = () => {
+      const notifyRecurringSubscription = (opts?: { bookingIdForSeriesCheck?: string }) => {
         if (!subscribeRecurring) return;
         if (recurringSub?.created) {
           Alert.alert(t("checkout.recurringScheduleSavedTitle"), t("checkout.recurringScheduleSavedBody"));
-        } else if (recurringSub?.pending) {
+          return;
+        }
+        if (recurringSub?.pending && opts?.bookingIdForSeriesCheck) {
+          const bidForSeriesPoll = opts.bookingIdForSeriesCheck;
+          void (async () => {
+            const bid = bidForSeriesPoll;
+            let foundSeries = false;
+            for (let i = 0; i < 8; i += 1) {
+              const b = await api
+                .get<{
+                  recurring_series_id?: string | null;
+                  recurring_subscription_id?: string | null;
+                }>(`/api/me/bookings/${encodeURIComponent(bid)}`)
+                .catch(() => null);
+              const row = b?.data as { recurring_series_id?: string; recurring_subscription_id?: string } | undefined;
+              if (
+                (typeof row?.recurring_series_id === "string" && row.recurring_series_id.trim()) ||
+                (typeof row?.recurring_subscription_id === "string" && row.recurring_subscription_id.trim())
+              ) {
+                foundSeries = true;
+                break;
+              }
+              if (i < 7) await new Promise((r) => setTimeout(r, 1500));
+            }
+            if (foundSeries) {
+              Alert.alert(t("checkout.recurringScheduleSavedTitle"), t("checkout.recurringScheduleSavedBody"));
+            } else {
+              Alert.alert(
+                t("checkout.recurringScheduleAfterPaymentTitle"),
+                t("checkout.recurringScheduleAfterPaymentBody"),
+              );
+            }
+          })();
+          return;
+        }
+        if (recurringSub?.pending) {
           Alert.alert(
             t("checkout.recurringScheduleAfterPaymentTitle"),
             t("checkout.recurringScheduleAfterPaymentBody"),
           );
-        } else if (recurringSub && recurringSub.created === false && recurringSub.message) {
+          return;
+        }
+        if (recurringSub && recurringSub.created === false && recurringSub.message) {
           Alert.alert(t("checkout.recurringScheduleGenericTitle"), recurringSub.message);
         }
       };
 
       if (paymentUrl && paymentMethod === "card") {
         setProcessingPayment(true);
-        setProcessingMessage(t("checkout.openingPaymentPage", "Opening payment page…"));
+        setProcessingMessage(t("checkout.openingPaymentPage"));
         let returnedPaymentReference: string | null = data?.payment_reference ?? null;
         if (Platform.OS !== "web") {
           const authResult = await WebBrowser.openAuthSessionAsync(
@@ -2010,18 +2103,21 @@ export default function BookCheckoutScreen() {
             presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
           });
         }
-        setProcessingMessage(t("checkout.confirmingPayment", "Confirming payment…"));
+        setProcessingMessage(t("checkout.confirmingPayment"));
         if (saveCard) refreshCards();
+        let paymentConfirmed = false;
         if (returnedPaymentReference) {
-          await api
-            .get(`/api/paystack/verify?reference=${encodeURIComponent(returnedPaymentReference)}`)
-            .catch(() => {});
+          const verifyRes = await api
+            .get<unknown>(`/api/paystack/verify?reference=${encodeURIComponent(returnedPaymentReference)}`)
+            .catch(() => null);
+          if (verifyRes && !verifyRes.error && bookingPaidFromPaystackVerifyBody(verifyRes.data)) {
+            paymentConfirmed = true;
+          }
         }
 
         let confirmedBookingId = bookingId;
         let confirmedBookingStatus: string | undefined;
-        let paymentConfirmed = false;
-        if (bookingId) {
+        if (!paymentConfirmed && bookingId) {
           // §Final-audit 2026-04: poll BOTH `status` and `payment_status`
           // to avoid false-positive confirms (booking can flip to
           // `confirmed` via a non-payment path) and false-negatives
@@ -2066,14 +2162,22 @@ export default function BookCheckoutScreen() {
 
         if (!paymentConfirmed) {
           setProcessingPayment(false);
-          Alert.alert(
-            t("checkout.paymentPendingPollTitle"),
-            t("checkout.paymentPendingPollBody"),
-            [
-              { text: t("checkout.viewBookingsCta"), onPress: () => router.replace("/(app)/(tabs)/bookings" as never) },
-              { text: t("common.ok"), style: "cancel" },
-            ],
-          );
+          if (bookingId) {
+            const amountPaidPending = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
+            trackBookingConfirmed(bookingId, paymentMethod, total);
+            trackPaymentSuccess(bookingId, amountPaidPending);
+            notifyRecurringSubscription({ bookingIdForSeriesCheck: bookingId });
+            navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined, "pending_payment");
+          } else {
+            Alert.alert(
+              t("checkout.paymentPendingPollTitle"),
+              t("checkout.paymentPendingPollBody"),
+              [
+                { text: t("checkout.viewBookingsCta"), onPress: () => router.replace("/(app)/(tabs)/bookings" as never) },
+                { text: t("common.ok"), style: "cancel" },
+              ],
+            );
+          }
           return;
         }
 
@@ -2081,18 +2185,18 @@ export default function BookCheckoutScreen() {
         const amountPaid = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
         trackBookingConfirmed(confirmedBookingId ?? hold_id, paymentMethod, total);
         trackPaymentSuccess(confirmedBookingId ?? hold_id, amountPaid);
-        notifyRecurringSubscription();
+        notifyRecurringSubscription({ bookingIdForSeriesCheck: confirmedBookingId ?? bookingId });
         navigateToBooking(confirmedBookingId, routeRescheduleBookingId ?? undefined, confirmedBookingStatus);
       } else {
         if (selectedCardId && !useNewCard && savedCards.length > 0) refreshCards();
         trackBookingConfirmed(bookingId ?? hold_id, paymentMethod, total);
         trackPaymentSuccess(bookingId ?? hold_id, total);
-        notifyRecurringSubscription();
+        notifyRecurringSubscription({ bookingIdForSeriesCheck: bookingId ?? undefined });
         navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
       }
     } catch (e) {
       setProcessingPayment(false);
-      setError(getApiErrorMessage(e, "Failed to complete"));
+      setError(getApiErrorMessage(e, t("checkout.failedComplete")));
     } finally {
       consumeInFlightRef.current = false;
       setConsuming(false);
@@ -2608,42 +2712,318 @@ export default function BookCheckoutScreen() {
                       </Text>
                     )}
                     {visibleCheckoutProductRows.map((prod) => {
-                      const cur = selectedProducts.find((s) => s.productId === prod.id);
+                      const chosenVid =
+                        selectedVariantIdByProduct[prod.id] ?? prod.defaultVariantId ?? null;
+                      const vRow =
+                        prod.hasVariants && chosenVid
+                          ? prod.variants?.find((v) => v.id === chosenVid)
+                          : undefined;
+                      const lineVariantKey = prod.hasVariants ? chosenVid : null;
+                      const cur = selectedProducts.find(
+                        (s) =>
+                          s.productId === prod.id &&
+                          String(s.productVariantId ?? "") === String(lineVariantKey ?? ""),
+                      );
                       const qty = cur?.quantity ?? 0;
+                      const unitPrice =
+                        prod.hasVariants && vRow
+                          ? vRow.retail_price
+                          : prod.retail_price;
+                      const track = prod.track_stock_quantity;
+                      const stock =
+                        prod.hasVariants && vRow ? vRow.quantity : prod.quantity;
+                      const isOut = track && stock <= 0;
+                      const atMax = track && qty > 0 && qty >= stock;
+
                       return (
-                        <View key={prod.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: "#F9FAFB", borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: "#E5E7EB" }}>
-                          <View style={{ flex: 1, marginRight: 8 }}>
-                            {prod.category?.trim() ? (
-                              <Text style={{ fontSize: 10, fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }} numberOfLines={1}>
-                                {prod.category.trim()}
+                        <View
+                          key={prod.id}
+                          style={{
+                            paddingVertical: 10,
+                            paddingHorizontal: 12,
+                            backgroundColor: "#F9FAFB",
+                            borderRadius: 12,
+                            marginBottom: 8,
+                            borderWidth: 1,
+                            borderColor: "#E5E7EB",
+                          }}
+                        >
+                          {prod.category?.trim() ? (
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: "700",
+                                color: "#9CA3AF",
+                                textTransform: "uppercase",
+                                letterSpacing: 0.5,
+                                marginBottom: 2,
+                              }}
+                              numberOfLines={1}
+                            >
+                              {prod.category.trim()}
+                            </Text>
+                          ) : null}
+                          <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>{prod.name}</Text>
+                          <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
+                            {formatCurrency(unitPrice, prod.currency)}
+                            {track && stock > 0 ? (
+                              <Text style={{ fontSize: 11, color: "#9CA3AF" }}>
+                                {` · ${t("booking.productInStock", { count: stock })}`}
                               </Text>
                             ) : null}
-                            <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>{prod.name}</Text>
-                            <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{formatCurrency(prod.retail_price, prod.currency)}</Text>
-                          </View>
-                          <View style={{ flexDirection: "row", alignItems: "center" }}>
-                            <TouchableOpacity
-                              onPress={() => {
-                                haptic.selection();
-                                if (qty <= 0) return;
-                                if (qty === 1) setSelectedProducts((prev) => prev.filter((s) => s.productId !== prod.id));
-                                else setSelectedProducts((prev) => prev.map((s) => (s.productId === prod.id ? { ...s, quantity: s.quantity - 1 } : s)));
-                              }}
-                              style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#E5E7EB", alignItems: "center", justifyContent: "center" }}
-                            >
-                              <Ionicons name="remove" size={18} color="#374151" />
-                            </TouchableOpacity>
-                            <Text style={{ minWidth: 28, textAlign: "center", fontSize: 14, fontWeight: "600", color: "#111827" }}>{qty}</Text>
-                            <TouchableOpacity
-                              onPress={() => {
-                                haptic.selection();
-                                if (qty === 0) setSelectedProducts((prev) => [...prev, { productId: prod.id, productVariantId: prod.defaultVariantId ?? null, name: prod.name, price: prod.retail_price, quantity: 1, currency: prod.currency }]);
-                                else setSelectedProducts((prev) => prev.map((s) => (s.productId === prod.id ? { ...s, quantity: s.quantity + 1 } : s)));
-                              }}
-                              style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" }}
-                            >
-                              <Ionicons name="add" size={18} color={Colors.primary} />
-                            </TouchableOpacity>
+                          </Text>
+
+                          {prod.hasVariants && prod.variants && prod.variants.length > 0 && prod.variantOptionTypes.length > 0 ? (
+                            <View style={{ marginTop: 10 }}>
+                              {prod.variantOptionTypes.map((rawOpt) => {
+                                const optTypeName = variantOptionTypeLabel(rawOpt);
+                                if (!optTypeName) return null;
+                                const uniqueVals = Array.from(
+                                  new Set(
+                                    prod
+                                      .variants!.map((v) => v.option_values?.[optTypeName])
+                                      .filter((x): x is string => Boolean(x)),
+                                  ),
+                                );
+                                if (uniqueVals.length === 0) return null;
+                                return (
+                                  <View key={optTypeName} style={{ marginBottom: 10 }}>
+                                    <Text
+                                      style={{
+                                        fontSize: 11,
+                                        fontWeight: "600",
+                                        color: "#6B7280",
+                                        marginBottom: 6,
+                                        textTransform: "capitalize",
+                                      }}
+                                    >
+                                      {optTypeName}
+                                    </Text>
+                                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                                      {uniqueVals.map((val) => {
+                                        const matchingVariant = prod.variants!.find(
+                                          (v) => v.option_values?.[optTypeName] === val,
+                                        );
+                                        const isChosen = chosenVid
+                                          ? prod.variants!.find((v) => v.id === chosenVid)?.option_values?.[
+                                              optTypeName
+                                            ] === val
+                                          : matchingVariant?.id === prod.variants![0]?.id;
+                                        const variantOos =
+                                          track && (matchingVariant?.quantity ?? 0) === 0;
+                                        return (
+                                          <TouchableOpacity
+                                            key={`${optTypeName}-${val}`}
+                                            disabled={variantOos}
+                                            onPress={() => {
+                                              haptic.selection();
+                                              const target = prod.variants!.find(
+                                                (v) => v.option_values?.[optTypeName] === val,
+                                              );
+                                              if (target) {
+                                                setSelectedVariantIdByProduct((prev) => ({
+                                                  ...prev,
+                                                  [prod.id]: target.id,
+                                                }));
+                                              }
+                                            }}
+                                            style={{
+                                              paddingHorizontal: 12,
+                                              paddingVertical: 6,
+                                              borderRadius: 999,
+                                              borderWidth: 1,
+                                              borderColor: isChosen ? Colors.primary : "#E5E7EB",
+                                              backgroundColor: isChosen ? Colors.primaryLight : "#FFF",
+                                              marginRight: 8,
+                                              marginBottom: 6,
+                                              opacity: variantOos ? 0.4 : 1,
+                                            }}
+                                          >
+                                            <Text
+                                              style={{
+                                                fontSize: 12,
+                                                fontWeight: "500",
+                                                color: isChosen ? Colors.primary : "#374151",
+                                              }}
+                                            >
+                                              {val}
+                                            </Text>
+                                          </TouchableOpacity>
+                                        );
+                                      })}
+                                    </View>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          ) : prod.hasVariants && prod.variants && prod.variants.length > 0 ? (
+                            <View style={{ marginTop: 10 }}>
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: "600",
+                                  color: "#6B7280",
+                                  marginBottom: 6,
+                                }}
+                              >
+                                {t("booking.productVariantOptionsHeading")}
+                              </Text>
+                              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                  {prod.variants.map((v) => {
+                                    const lab =
+                                      labelForVariantOptionValues(v.option_values) ||
+                                      t("booking.productVariantFallback");
+                                    const isChosen = chosenVid === v.id;
+                                    const variantOos = track && (v.quantity ?? 0) === 0;
+                                    return (
+                                      <TouchableOpacity
+                                        key={v.id}
+                                        disabled={variantOos}
+                                        onPress={() => {
+                                          haptic.selection();
+                                          setSelectedVariantIdByProduct((prev) => ({
+                                            ...prev,
+                                            [prod.id]: v.id,
+                                          }));
+                                        }}
+                                        style={{
+                                          paddingHorizontal: 12,
+                                          paddingVertical: 6,
+                                          borderRadius: 999,
+                                          borderWidth: 1,
+                                          borderColor: isChosen ? Colors.primary : "#E5E7EB",
+                                          backgroundColor: isChosen ? Colors.primaryLight : "#FFF",
+                                          marginRight: 8,
+                                          opacity: variantOos ? 0.4 : 1,
+                                        }}
+                                      >
+                                        <Text
+                                          style={{
+                                            fontSize: 12,
+                                            fontWeight: "500",
+                                            color: isChosen ? Colors.primary : "#374151",
+                                          }}
+                                        >
+                                          {lab}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </View>
+                              </ScrollView>
+                            </View>
+                          ) : null}
+
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              justifyContent: "flex-end",
+                              marginTop: 8,
+                            }}
+                          >
+                            {isOut ? (
+                              <Text style={{ fontSize: 13, color: "#9CA3AF", fontWeight: "600" }}>
+                                {t("booking.productOutOfStock")}
+                              </Text>
+                            ) : (
+                              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    haptic.selection();
+                                    if (qty <= 0) return;
+                                    setSelectedProducts((prev) => {
+                                      const key = String(lineVariantKey ?? "");
+                                      const matchesLine = (s: (typeof prev)[number]) =>
+                                        s.productId === prod.id &&
+                                        String(s.productVariantId ?? "") === key;
+                                      const line = prev.find(matchesLine);
+                                      if (!line || line.quantity <= 0) return prev;
+                                      if (line.quantity === 1) return prev.filter((s) => !matchesLine(s));
+                                      return prev.map((s) =>
+                                        matchesLine(s) ? { ...s, quantity: s.quantity - 1 } : s,
+                                      );
+                                    });
+                                  }}
+                                  style={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: 8,
+                                    backgroundColor: "#E5E7EB",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    opacity: qty <= 0 ? 0.5 : 1,
+                                  }}
+                                  disabled={qty <= 0}
+                                >
+                                  <Ionicons name="remove" size={18} color="#374151" />
+                                </TouchableOpacity>
+                                <Text
+                                  style={{
+                                    minWidth: 28,
+                                    textAlign: "center",
+                                    fontSize: 14,
+                                    fontWeight: "600",
+                                    color: "#111827",
+                                  }}
+                                >
+                                  {qty}
+                                </Text>
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    haptic.selection();
+                                    if (isOut || atMax) return;
+                                    if (qty === 0) {
+                                      const vidForLine = prod.hasVariants
+                                        ? chosenVid ?? prod.defaultVariantId
+                                        : null;
+                                      const priceAdd =
+                                        prod.hasVariants && prod.variants?.find((x) => x.id === vidForLine)
+                                          ? prod.variants.find((x) => x.id === vidForLine)!.retail_price
+                                          : prod.retail_price;
+                                      setSelectedProducts((prev) => [
+                                        ...prev,
+                                        {
+                                          productId: prod.id,
+                                          productVariantId: vidForLine ?? null,
+                                          name: bookingCheckoutLineDisplayName(
+                                            prod.name,
+                                            vidForLine,
+                                            prod.variants,
+                                          ),
+                                          price: priceAdd,
+                                          quantity: 1,
+                                          currency: prod.currency,
+                                        },
+                                      ]);
+                                    } else {
+                                      setSelectedProducts((prev) => {
+                                        const key = String(lineVariantKey ?? "");
+                                        const matchesLine = (s: (typeof prev)[number]) =>
+                                          s.productId === prod.id &&
+                                          String(s.productVariantId ?? "") === key;
+                                        return prev.map((s) =>
+                                          matchesLine(s) ? { ...s, quantity: s.quantity + 1 } : s,
+                                        );
+                                      });
+                                    }
+                                  }}
+                                  disabled={isOut || atMax}
+                                  style={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: 8,
+                                    backgroundColor: Colors.primaryLight,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    opacity: isOut || atMax ? 0.45 : 1,
+                                  }}
+                                >
+                                  <Ionicons name="add" size={18} color={Colors.primary} />
+                                </TouchableOpacity>
+                              </View>
+                            )}
                           </View>
                         </View>
                       );
@@ -2796,28 +3176,28 @@ export default function BookCheckoutScreen() {
             {/* ═══ Payment summary (always show line items + running totals) ═══ */}
             <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16 }}>
               <Text style={{ fontSize: 13, fontWeight: "700", color: "#374151", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.6 }}>
-                Payment summary
+                {t("checkout.paymentSummaryHeading")}
               </Text>
               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                <Text style={{ fontSize: 13, color: "#6B7280" }}>Your services</Text>
+                <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.yourServices")}</Text>
                 <Text style={{ fontSize: 13, color: "#111827", fontWeight: "600" }}>{formatCurrency(primarySubtotal, currency)}</Text>
               </View>
               {groupParticipantsSubtotal > 0 && (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                  <Text style={{ fontSize: 13, color: "#6B7280" }}>Group / additional guests</Text>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.groupAdditionalGuests")}</Text>
                   <Text style={{ fontSize: 13, color: "#111827", fontWeight: "600" }}>{formatCurrency(groupParticipantsSubtotal, currency)}</Text>
                 </View>
               )}
               {addonsList
                 .filter((a) => selectedAddonIds.includes(a.id))
                 .map((addon) => {
-                  const label = addon.name ?? addon.title ?? "Add-on";
+                  const label = addon.name ?? addon.title ?? t("booking.addonLabel");
                   const price = Number(addon.price) || 0;
                   const addonCurrency = addon.currency ?? currency;
                   return (
                     <View key={addon.id} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
                       <Text style={{ fontSize: 13, color: "#6B7280" }} numberOfLines={2}>
-                        Add-on · {label}
+                        {t("checkout.addonLine", { label })}
                       </Text>
                       <Text style={{ fontSize: 13, color: "#111827" }}>{formatCurrency(price, addonCurrency)}</Text>
                     </View>
@@ -2826,8 +3206,8 @@ export default function BookCheckoutScreen() {
               {selectedProducts.map((p) => (
                 <View key={`${p.productId}-${p.productVariantId ?? "x"}`} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
                   <Text style={{ fontSize: 13, color: "#6B7280" }} numberOfLines={2}>
-                    Product · {p.name}
-                    {p.quantity > 1 ? ` ×${p.quantity}` : ""}
+                    {t("checkout.productLine", { name: p.name })}
+                    {p.quantity > 1 ? t("checkout.productQuantitySuffix", { count: p.quantity }) : ""}
                   </Text>
                   <Text style={{ fontSize: 13, color: "#111827" }}>{formatCurrency(p.price * p.quantity, p.currency)}</Text>
                 </View>
@@ -2849,7 +3229,7 @@ export default function BookCheckoutScreen() {
                   borderTopColor: "#E5E7EB",
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Subtotal (before discounts & tax)</Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>{t("checkout.subtotalBeforeDiscountsTax")}</Text>
                 <Text style={{ fontSize: 13, fontWeight: "700", color: "#111827" }}>{formatCurrency(prePromoTotal, currency)}</Text>
               </View>
               {effectivePromoDiscount > 0 && (
@@ -2866,8 +3246,8 @@ export default function BookCheckoutScreen() {
                         ? Math.round(membershipDiscountPercent)
                         : 0;
                       return membershipPlanName
-                        ? `${membershipPlanName} (${pct}%)`
-                        : `Member discount (${pct}%)`;
+                        ? t("checkout.memberDiscountNamed", { plan: membershipPlanName, percent: pct })
+                        : t("checkout.memberDiscountGeneric", { percent: pct });
                     })()}
                   </Text>
                   <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(membershipDiscountAmount, currency)}</Text>
@@ -2875,18 +3255,20 @@ export default function BookCheckoutScreen() {
               )}
               {loyaltyDiscountAmount > 0 && (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                  <Text style={{ fontSize: 13, color: "#059669" }}>Loyalty</Text>
+                  <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.loyaltyLabel")}</Text>
                   <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(loyaltyDiscountAmount, currency)}</Text>
                 </View>
               )}
               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                <Text style={{ fontSize: 13, color: "#6B7280" }}>After discounts</Text>
+                <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.afterDiscounts")}</Text>
                 <Text style={{ fontSize: 13, color: "#111827", fontWeight: "600" }}>{formatCurrency(subtotalAfterLoyalty, currency)}</Text>
               </View>
               {taxRatePercent > 0 && (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                   <Text style={{ fontSize: 13, color: "#6B7280" }}>
-                    Tax ({taxRatePercent}%){isTaxInclusive ? " — included in prices" : ""}
+                    {isTaxInclusive
+                      ? t("checkout.taxLineInclusive", { percent: taxRatePercent })
+                      : t("checkout.taxLineAdditive", { percent: taxRatePercent })}
                   </Text>
                   <Text style={{ fontSize: 13, color: "#6B7280" }}>
                     {isTaxInclusive ? formatCurrency(taxAmount, currency) : `+${formatCurrency(taxAmount, currency)}`}
@@ -2895,7 +3277,7 @@ export default function BookCheckoutScreen() {
               )}
               {serviceFeeAmount > 0 && sfConfig?.show && (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                  <Text style={{ fontSize: 13, color: "#6B7280" }}>Platform fee</Text>
+                  <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.platformFee")}</Text>
                   <Text style={{ fontSize: 13, color: "#6B7280" }}>+{formatCurrency(serviceFeeAmount, currency)}</Text>
                 </View>
               )}
@@ -2935,12 +3317,14 @@ export default function BookCheckoutScreen() {
                   <>
                     <View style={{ height: 1, backgroundColor: "#E5E7EB", marginVertical: 10, borderStyle: "dashed" }} />
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#059669" }}>Wallet credit applied</Text>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.walletCreditApplied")}</Text>
                       <Text style={{ fontSize: 13, color: "#059669", fontWeight: "600" }}>-{formatCurrency(walletApplied, currency)}</Text>
                     </View>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#F3F4F6", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}>
                       <Text style={{ fontSize: 14, fontWeight: "700", color: "#111827" }}>
-                        {paystackRemainder <= 0 ? "Covered by wallet" : "You pay via card"}
+                        {paystackRemainder <= 0
+                          ? t("checkout.walletCoversCardAmount")
+                          : t("checkout.walletCardPayAmount")}
                       </Text>
                       <Text style={{ fontSize: 16, fontWeight: "800", color: "#111827" }}>
                         {formatCurrency(paystackRemainder, currency)}
@@ -2948,7 +3332,7 @@ export default function BookCheckoutScreen() {
                     </View>
                     {paystackRemainder <= 0 && (
                       <Text style={{ fontSize: 11, color: "#059669", marginTop: 4, textAlign: "center" }}>
-                        Your wallet fully covers this booking — no card charge needed
+                        {t("checkout.walletCoversFullNoCard")}
                       </Text>
                     )}
                   </>
@@ -2989,7 +3373,7 @@ export default function BookCheckoutScreen() {
                   }))}
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text style={{ fontSize: 13, color: "#6B7280", minWidth: 54 }}>Custom</Text>
+                  <Text style={{ fontSize: 13, color: "#6B7280", minWidth: 54 }}>{t("checkout.customTip")}</Text>
                   <TextInput
                     value={tipCustomInput}
                     onChangeText={(v) => {
@@ -3012,7 +3396,7 @@ export default function BookCheckoutScreen() {
                       color: "#111827",
                     }}
                     placeholderTextColor="#9CA3AF"
-                    accessibilityLabel="Custom tip amount"
+                    accessibilityLabel={t("checkout.customTipA11y")}
                   />
                 </View>
               </View>

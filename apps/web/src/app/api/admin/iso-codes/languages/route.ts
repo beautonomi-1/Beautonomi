@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, requireAdminSectionAny } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
-import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
+import { ADMIN_SECTION_INTEGRATIONS_DEV, ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 
 // ISO 639-1 Language Code validation
 const languageSchema = z.object({
@@ -22,7 +22,7 @@ const languageSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    await requireAdminSectionAny([ADMIN_SECTION_INTEGRATIONS_DEV, ADMIN_SECTION_PLATFORM_CONFIG], request);
     const supabase = getSupabaseAdmin();
 
     const { data: languages, error } = await supabase

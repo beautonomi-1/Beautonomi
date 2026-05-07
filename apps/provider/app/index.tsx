@@ -5,7 +5,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { GateLoadingScreen } from "@/components/GateLoadingScreen";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
-import { getHttpErrorStatus } from "@/lib/api-error";
+import { getHttpErrorStatus, isTransientApiFailure } from "@/lib/api-error";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { Colors } from "@/constants/colors";
 import { APP_URL, isScreenshotMode } from "@/config/public-env";
@@ -25,6 +25,10 @@ const PROFILE_CHECK_DELAY_MS = 0;
 const AUTH_RETRY_DELAY_MS = 0;
 const PORTAL_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
 const PROFILE_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
+/** Extra GET /api/me/portal attempts when the failure is offline/transient (RN status_code 0). */
+const PORTAL_TRANSIENT_RETRY_MAX = 4;
+/** GET /api/me/role retries inside fetchRoleFallback before surfacing an error. */
+const ROLE_FALLBACK_RETRY_MAX = 3;
 
 /**
  * §Release-audit 2026-04: classify why the portal check failed so the error
@@ -185,13 +189,24 @@ export default function Index() {
     // provider access" screen on fresh Bearer sessions where public.users hadn't
     // been materialised yet — the server-side self-heal in /api/me/portal should
     // cover the common case, but this is defence-in-depth for older deploys.
-    const fetchRoleFallback = (reason: PortalErrorKind) => {
+    const fetchRoleFallback = (reason: PortalErrorKind, roleAttempt = 0) => {
       api
         .get<{ role?: string }>("/api/me/role")
         .then((res) => {
           if (cancelled || portalTimedOut) return;
           if (res.error || !res.data?.role) {
             const status = getHttpErrorStatus(res.error);
+            if (
+              res.error &&
+              isTransientApiFailure(res.error) &&
+              roleAttempt < ROLE_FALLBACK_RETRY_MAX - 1
+            ) {
+              setTimeout(
+                () => fetchRoleFallback(reason, roleAttempt + 1),
+                400 + roleAttempt * 450,
+              );
+              return;
+            }
             if (status === 401 || status === 403) {
               enterError("unauthorized");
               return;
@@ -213,11 +228,22 @@ export default function Index() {
           applyPortalResult(derived);
         })
         .catch(() => {
+          if (
+            !cancelled &&
+            !portalTimedOut &&
+            roleAttempt < ROLE_FALLBACK_RETRY_MAX - 1
+          ) {
+            setTimeout(
+              () => fetchRoleFallback(reason, roleAttempt + 1),
+              400 + roleAttempt * 450,
+            );
+            return;
+          }
           if (!cancelled && !portalTimedOut) enterError(reason);
         });
     };
 
-    const fetchPortal = (attempt: number) => {
+    const fetchPortal = (authAttempt: number, transientAttempt = 0) => {
       api
         .get<{ portal?: string; role?: string }>("/api/me/portal")
         .then((res) => {
@@ -226,15 +252,39 @@ export default function Index() {
           // before the Bearer session is ready, which falsely showed Wrong app for providers.
           if (res.error) {
             const status = getHttpErrorStatus(res.error);
-            if ((status === 401 || status === 403) && attempt < 4) {
-              setTimeout(() => fetchPortal(attempt + 1), 350 * (attempt + 1));
+            if ((status === 401 || status === 403) && authAttempt < 4) {
+              setTimeout(
+                () => fetchPortal(authAttempt + 1, 0),
+                350 * (authAttempt + 1),
+              );
+              return;
+            }
+            if (
+              isTransientApiFailure(res.error) &&
+              transientAttempt < PORTAL_TRANSIENT_RETRY_MAX
+            ) {
+              setTimeout(
+                () => fetchPortal(authAttempt, transientAttempt + 1),
+                280 + transientAttempt * 320,
+              );
               return;
             }
             if (isSentryEnabled()) {
-              captureAuthMessage("provider_index_portal_exhausted", "warning", {
-                status: status ?? null,
-                attempts: attempt + 1,
-              });
+              const exhaustedTransient =
+                isTransientApiFailure(res.error) &&
+                transientAttempt >= PORTAL_TRANSIENT_RETRY_MAX;
+              if (exhaustedTransient) {
+                authFlowBreadcrumb("provider_index.portal_exhausted_transient", {
+                  transient_rounds: transientAttempt + 1,
+                  auth_attempts: authAttempt + 1,
+                });
+              } else {
+                captureAuthMessage("provider_index_portal_exhausted", "warning", {
+                  status: status ?? null,
+                  auth_attempts: authAttempt + 1,
+                  transient_rounds: transientAttempt + 1,
+                });
+              }
             }
             fetchRoleFallback(status === 401 || status === 403 ? "unauthorized" : "network");
             return;
@@ -247,13 +297,24 @@ export default function Index() {
           applyPortalResult(portal);
         })
         .catch(() => {
+          if (
+            !cancelled &&
+            !portalTimedOut &&
+            transientAttempt < PORTAL_TRANSIENT_RETRY_MAX
+          ) {
+            setTimeout(
+              () => fetchPortal(authAttempt, transientAttempt + 1),
+              280 + transientAttempt * 320,
+            );
+            return;
+          }
           if (!cancelled && !portalTimedOut) fetchRoleFallback("network");
         });
     };
 
     const t = setTimeout(() => {
       if (cancelled) return;
-      fetchPortal(0);
+      fetchPortal(0, 0);
     }, PROFILE_CHECK_DELAY_MS);
 
     return () => {

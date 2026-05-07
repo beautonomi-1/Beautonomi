@@ -34,9 +34,19 @@ export interface Booking {
   services: BookingService[];
   customers: { full_name: string; phone: string } | null;
   locations: { id: string; name: string } | null;
+  /** Salon branch; null/missing for at-home rows from some API shapes. */
+  location_id?: string | null;
+  /** At-home address hint when `location_type` is ambiguous. */
+  address?: { line1?: string | null } | null;
   is_group_booking?: boolean;
   group_booking_id?: string | null;
   group_booking_ref?: string | null;
+  /** At-home lifecycle / verification (when returned by provider booking APIs). */
+  current_stage?: string | null;
+  arrival_otp_verified?: boolean;
+  qr_code_verified?: boolean;
+  arrival_otp_pending?: boolean;
+  qr_arrival_pending?: boolean;
 }
 
 export type CalendarBooking = Booking & {

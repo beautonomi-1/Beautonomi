@@ -266,6 +266,22 @@ export function CalendarPreferencesModal({
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
+            <TouchableOpacity
+              style={twStyle("mt-4 mb-2 items-center rounded-xl bg-indigo-600 py-3")}
+              onPress={() => {
+                onClose();
+                // Navigate to settings route
+                import("expo-router").then(({ router }) => {
+                  router.push("/(app)/(tabs)/more/settings/calendar-preferences");
+                });
+              }}
+              accessibilityRole="button"
+            >
+              <Text style={twStyle("text-sm font-semibold text-white")}>
+                {t("provider.calendarScreen.fullCalendarBrowser")}
+              </Text>
+            </TouchableOpacity>
+
             {/* ──────────── DISPLAY ──────────── */}
             <SectionHeader title={t(`${p}.displaySection`)} icon="eye-outline" />
 

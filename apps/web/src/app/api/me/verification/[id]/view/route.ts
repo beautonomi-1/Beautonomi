@@ -40,10 +40,26 @@ export async function GET(
       );
     }
 
+    if (
+      !verification.document_url ||
+      typeof verification.document_url !== "string" ||
+      !verification.document_url.trim()
+    ) {
+      return NextResponse.json(
+        {
+          error: "No document file",
+          code: "NO_DOCUMENT_FILE",
+          message:
+            "This verification has no uploaded file (for example, automated Sumsub checks). There is nothing to preview here.",
+        },
+        { status: 422 }
+      );
+    }
+
     // Extract file path from document_url
     // URL format: https://[project].supabase.co/storage/v1/object/public/verification-documents/[path]
     // or: https://[project].supabase.co/storage/v1/object/sign/verification-documents/[path]?token=...
-    let filePath = verification.document_url;
+    let filePath = verification.document_url as string;
     
     // If it's a public URL, extract the path
     if (filePath.includes('/storage/v1/object/public/')) {

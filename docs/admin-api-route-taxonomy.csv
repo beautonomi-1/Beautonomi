@@ -312,6 +312,7 @@ path,class,note
 /api/admin/user-reports/summary,T,"uses resolveAdminApiTenantId"
 /api/admin/users/[id]/bookings,T,"uses resolveAdminApiTenantId"
 /api/admin/users/[id]/export,T,"uses resolveAdminApiTenantId"
+/api/admin/users/[id]/identity-verification/reset,T,"uses resolveAdminApiTenantId"
 /api/admin/users/[id]/impersonate,T,"review: likely tenant-scoped ops"
 /api/admin/users/[id]/loyalty,T,"uses resolveAdminApiTenantId"
 /api/admin/users/[id]/password,T,"review: likely tenant-scoped ops"

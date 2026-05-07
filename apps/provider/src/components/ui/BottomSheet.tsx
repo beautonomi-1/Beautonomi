@@ -124,10 +124,8 @@ export function BottomSheet({
     opacity: backdropOpacity.value,
   }));
 
-  if (!visible) return null;
-
   return (
-    <Modal visible transparent animationType="none" onRequestClose={closeSheet}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={closeSheet}>
       <GestureRoot style={{ flex: 1 }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}

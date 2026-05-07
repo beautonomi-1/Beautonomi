@@ -84,6 +84,10 @@ export async function createBookingRecord(
     bookingData.is_group_booking = true;
   }
 
+  if (validatedDraft.hold_id) {
+    bookingData.hold_id = validatedDraft.hold_id;
+  }
+
   // ── Atomic insert via RPC (+ optional entitlement redeem in same DB transaction) ──
   const entitlementId = validatedDraft.customer_package_entitlement_id ?? null;
   const { data: bookingId, error: bookingError } = await adminSupabase.rpc(

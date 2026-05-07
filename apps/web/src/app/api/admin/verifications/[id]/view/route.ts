@@ -36,8 +36,21 @@ export async function GET(
       return notFoundResponse("Verification not found");
     }
 
+    const docUrl = verification.document_url;
+    if (!docUrl || typeof docUrl !== "string" || !docUrl.trim()) {
+      return NextResponse.json(
+        {
+          error: "No document file",
+          code: "NO_DOCUMENT_FILE",
+          message:
+            "This verification has no uploaded file (for example, Sumsub). Open the user in Sumsub or use automated review data.",
+        },
+        { status: 422 }
+      );
+    }
+
     // Extract file path from document_url
-    let filePath = verification.document_url;
+    let filePath = docUrl;
     
     // If it's a public URL, extract the path
     if (filePath.includes('/storage/v1/object/public/')) {

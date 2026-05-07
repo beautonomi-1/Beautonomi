@@ -40,7 +40,7 @@ async function _revalidateBookingSlotBeforePaymentInner(
       .order("scheduled_start_at", { ascending: true }),
     supabase
       .from("bookings")
-      .select("provider_id, location_id")
+      .select("provider_id, location_id, hold_id")
       .eq("id", bookingId)
       .maybeSingle(),
   ]);
@@ -63,7 +63,30 @@ async function _revalidateBookingSlotBeforePaymentInner(
 
   const overallStart = new Date(first.scheduled_start_at);
   const overallEnd = new Date(last.scheduled_end_at);
-  const providerId = (booking as any)?.provider_id as string | undefined;
+  const bookingRow = booking as { provider_id?: string; location_id?: string | null; hold_id?: string | null } | null;
+  const providerId = bookingRow?.provider_id as string | undefined;
+  /** Exclude the hold tied to this booking so pre-payment checks never false-positive on the customer's own lease. */
+  let excludeHoldId: string | undefined =
+    typeof bookingRow?.hold_id === "string" && bookingRow.hold_id.length > 0 ? bookingRow.hold_id : undefined;
+  if (!excludeHoldId && providerId) {
+    const { data: holdRows } = await supabase
+      .from("booking_holds")
+      .select("id, metadata")
+      .eq("provider_id", providerId)
+      .in("hold_status", ["active", "consuming"])
+      .limit(25);
+    const linked = (holdRows ?? []).find((h: { id?: string; metadata?: unknown }) => {
+      const m = h?.metadata;
+      return (
+        m &&
+        typeof m === "object" &&
+        !Array.isArray(m) &&
+        (m as { booking_id?: string }).booking_id === bookingId
+      );
+    });
+    const hid = linked?.id;
+    if (typeof hid === "string" && hid.length > 0) excludeHoldId = hid;
+  }
 
   // Check other customers' active holds against the full booking window
   if (providerId) {
@@ -74,7 +97,7 @@ async function _revalidateBookingSlotBeforePaymentInner(
         providerId,
         overallStart,
         overallEnd,
-        { dbStaffId: sid },
+        { dbStaffId: sid ?? null, excludeHoldId },
       );
       if (holdOverlap) {
         console.warn(
@@ -143,7 +166,7 @@ async function _revalidateBookingSlotBeforePaymentInner(
       const segEnd = new Date(row.scheduled_end_at);
       const { blocked, reason } = await isProviderCalendarWindowBlocked(supabase, {
         providerId,
-        locationId: (booking as any)?.location_id ?? undefined,
+        locationId: bookingRow?.location_id ?? undefined,
         staffId: staffKey,
         startAt: segStart,
         endAt: segEnd,

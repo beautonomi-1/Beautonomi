@@ -328,6 +328,13 @@ export default function CustomOfferModal({
       onSuccess?.();
       handleClose();
     } catch (err) {
+      if (err instanceof FetchError && err.code === "CUSTOM_OFFERS_DISABLED") {
+        toast.error(
+          "Custom offers are turned off for this workspace or market. Ask your admin to enable commerce.provider_custom_offers, or contact support.",
+          { duration: 12_000 },
+        );
+        return;
+      }
       const errorMessage =
         err instanceof FetchError
           ? err.message

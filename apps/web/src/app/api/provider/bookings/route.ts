@@ -1062,6 +1062,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
       );
     }
 
+    const groupBookingIdRaw = (body as { group_booking_id?: unknown }).group_booking_id;
+    const normalizedGroupBookingId =
+      typeof groupBookingIdRaw === "string" && /^[0-9a-f-]{36}$/i.test(groupBookingIdRaw.trim())
+        ? groupBookingIdRaw.trim()
+        : null;
+
     // Prepare booking data - only include columns that exist in the bookings table
     // Note: services and addons are stored in separate tables (booking_services, booking_addons)
     const bookingData: any = {
@@ -1120,6 +1126,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
       service_fee_amount: platformFeeAmount,
       service_fee_paid_by: isWalkIn ? null : (body.platform_fee_paid_by ?? body.service_fee_paid_by ?? 'customer'),
       referral_source_id: referralSourceId,
+      ...(normalizedGroupBookingId
+        ? { group_booking_id: normalizedGroupBookingId, is_group_booking: true }
+        : {}),
       ...(providerFormResponses ? { provider_form_responses: providerFormResponses } : {}),
     };
 
@@ -1178,12 +1187,17 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const useRpcPath = staffId != null && !allowOverride;
 
     // Active customer holds block the window (same as public validate-booking).
+    const holdIdForExclude =
+      typeof (body as { hold_id?: unknown }).hold_id === "string" &&
+      String((body as { hold_id: string }).hold_id).trim().length > 0
+        ? String((body as { hold_id: string }).hold_id).trim()
+        : undefined;
     const holdOverlap = await checkActiveHoldOverlap(
       supabaseAdmin as any,
       providerId,
       startAt,
       endAt,
-      { dbStaffId: staffId }
+      { dbStaffId: staffId, ...(holdIdForExclude ? { excludeHoldId: holdIdForExclude } : {}) },
     );
     if (holdOverlap) {
       return errorResponse(

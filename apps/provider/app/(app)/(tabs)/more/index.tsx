@@ -198,6 +198,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
 /** Top shortcuts (customer app pattern: 2x2 quick actions above the fold) */
 const QUICK_ACTIONS: { icon: keyof typeof Ionicons.glyphMap; label: string; route: string; color: string }[] = [
   { icon: "book-outline", label: "Bookings", route: "/(app)/(tabs)/more/bookings", color: "#6366f1" },
+  { icon: "flash-outline", label: "Express booking", route: "/(app)/(tabs)/more/express-booking", color: "#f59e0b" },
   { icon: "storefront-outline", label: "Front Desk", route: "/(app)/(tabs)/more/waiting-room", color: "#d97706" },
   { icon: "chatbox-ellipses-outline", label: "Custom requests", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316" },
   { icon: "layers-outline", label: "Catalogue", route: "/(app)/(tabs)/more/catalogue", color: "#ec4899" },

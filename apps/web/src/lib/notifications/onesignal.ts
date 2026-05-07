@@ -119,6 +119,9 @@ function applyOneSignalTargeting(
 
   // Modern path: external IDs + single channel. Reaches every subscribed
   // device for that user without needing a registered subscription_id.
+  // Must run before subscription-ID targeting: mixing subscription IDs with
+  // external-ID sends is invalid for OneSignal v9/v10, and we prefer alias
+  // fan-out whenever we know the user's UUID (see docblock above).
   if (extIds.length > 0 && singleChannel) {
     notification.include_aliases = { external_id: extIds };
     notification.target_channel = singleChannel;
@@ -130,6 +133,11 @@ function applyOneSignalTargeting(
     notification.include_external_user_ids = extIds;
     if (chans.length > 0) {
       notification.channel_for_external_user_ids = chans;
+    }
+    // Include known player IDs as a legacy fallback so push delivery succeeds 
+    // even if external_id mapping is incomplete.
+    if (playerIds.length > 0) {
+      notification.include_player_ids = playerIds;
     }
     return;
   }
@@ -892,6 +900,14 @@ export async function sendTemplateNotification(
     data: { template_key: templateKey, ...variables },
   };
 
+  if (channelsToSend.includes("push")) {
+    // Set default high-priority alerting parameters for iOS and Android
+    notificationPayload.ios_sound = "default";
+    notificationPayload.priority = 10;
+    // Wake up the device
+    notificationPayload.content_available = true;
+  }
+
   if (channelsToSend.includes("email")) {
     notificationPayload.email_subject = emailSubject;
     notificationPayload.email_body = emailBody;
@@ -920,7 +936,7 @@ export async function sendTemplateNotification(
     // Pull well-known context IDs out of template variables
     const inAppData: Record<string, unknown> = { template_key: templateKey };
     const WELL_KNOWN_VARS = [
-      "booking_id", "conversation_id", "order_id", "request_id",
+      "booking_id", "conversation_id", "order_id", "request_id", "offer_id",
       "review_id", "dispute_id", "payment_id", "ticket_id", "campaign_id",
       "booking_number", "provider_name", "customer_name",
     ];

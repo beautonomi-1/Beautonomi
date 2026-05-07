@@ -1,6 +1,6 @@
 import { memo, useRef } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Text, View } from "react-native";
+import { Gesture, GestureDetector, TouchableOpacity } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import type { TFunction } from "@beautonomi/i18n";
@@ -40,7 +40,8 @@ export interface CalendarBookingBlockProps {
   draggingRef: React.MutableRefObject<boolean>;
   draggingBookingIdRef: React.MutableRefObject<string | null>;
   setDraggingBooking: (b: CalendarBooking | null) => void;
-  setDragPosition: (p: { x: number; y: number } | null) => void;
+  dragPositionX: { value: number };
+  dragPositionY: { value: number };
   t: TFunction;
   translateBookingStatusLabel: (t: TFunction, status: string) => string;
 }
@@ -72,13 +73,14 @@ function CalendarBookingBlockImpl({
   draggingRef,
   draggingBookingIdRef,
   setDraggingBooking,
-  setDragPosition,
+  dragPositionX,
+  dragPositionY,
   t,
   translateBookingStatusLabel,
 }: CalendarBookingBlockProps) {
-  // Persist throttle timestamp across renders; a plain let-variable resets on every
-  // re-render triggered by setDragPosition, defeating the throttle entirely.
-  const lastDragUpdateMsRef = useRef(0);
+  // We no longer need to throttle drag position updates because Reanimated shared values
+  // do not trigger React re-renders on every update.
+  const touchOffsetRef = useRef({ x: 0, y: 0 });
 
   const isSmall = height < (preferences.compactMode ? 24 : 40);
   const isCancelled = booking.status === "cancelled";
@@ -100,8 +102,7 @@ function CalendarBookingBlockImpl({
 
   const overflowButton = canOpenActionMenu ? (
     <TouchableOpacity
-      onPress={(e) => {
-        e?.stopPropagation?.();
+      onPress={() => {
         onLongPress();
       }}
       hitSlop={{ top: isSmall ? 12 : 10, bottom: isSmall ? 12 : 10, left: 12, right: 12 }}
@@ -264,35 +265,34 @@ function CalendarBookingBlockImpl({
       .onStart((e) => {
         draggingRef.current = true;
         draggingBookingIdRef.current = booking.calendar_item_id;
-        lastDragUpdateMsRef.current = 0; // reset throttle so first update fires immediately
+        touchOffsetRef.current = { x: e.x, y: e.y };
         setDraggingBooking(booking);
         if (Number.isFinite(e.absoluteX) && Number.isFinite(e.absoluteY)) {
-          setDragPosition({ x: e.absoluteX - colWidth / 2, y: e.absoluteY - 24 });
+          dragPositionX.value = e.absoluteX - colWidth / 2;
+          dragPositionY.value = e.absoluteY - touchOffsetRef.current.y;
         } else {
-          setDragPosition(null);
+          dragPositionX.value = -1000;
+          dragPositionY.value = -1000;
         }
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       });
-
-    const DRAG_THROTTLE_MS = 32; // ~30fps
 
     const pan = Gesture.Pan()
       .runOnJS(true)
       .onUpdate((e) => {
         if (!draggingRef.current) return;
-        const now = Date.now();
-        if (now - lastDragUpdateMsRef.current < DRAG_THROTTLE_MS) return;
-        lastDragUpdateMsRef.current = now;
-        setDragPosition({ x: e.absoluteX - colWidth / 2, y: e.absoluteY - 24 });
+        dragPositionX.value = e.absoluteX - colWidth / 2;
+        dragPositionY.value = e.absoluteY - touchOffsetRef.current.y;
       })
       .onEnd((e) => {
         if (draggingRef.current && draggingBookingIdRef.current === booking.calendar_item_id) {
-          onDrop(e.absoluteX, e.absoluteY);
+          onDrop(e.absoluteX, e.absoluteY - touchOffsetRef.current.y);
         }
         draggingRef.current = false;
         draggingBookingIdRef.current = null;
         setDraggingBooking(null);
-        setDragPosition(null);
+        dragPositionX.value = -1000;
+        dragPositionY.value = -1000;
       });
 
     const composed = Gesture.Simultaneous(longPress, pan);

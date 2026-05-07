@@ -622,6 +622,7 @@ export default function BookingDetailScreen() {
       arrivalVerified: row.arrival_otp_verified === true || row.qr_code_verified === true,
       arrivalOtpPending: row.arrival_otp_pending === true,
       qrArrivalPending: row.qr_arrival_pending === true,
+      currentStage: row.current_stage,
     });
   }, [rawAllowedStatusTargets, canCancelAppointments, canEditAppointments, resolvedBooking, data]);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1621,7 +1622,7 @@ export default function BookingDetailScreen() {
       }
       setOptimisticBookingStatus(null);
       await refresh();
-      setShowRateClientSheet(true);
+      // The useEffect will automatically show the completion modal if it hasn't been seen yet.
       return;
     }
 
@@ -2209,7 +2210,7 @@ export default function BookingDetailScreen() {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer scrollable={false}>
       <AutoYocoCollectGate
         shouldRun={
           providerParamTruthy(collectYoco) &&
@@ -3723,7 +3724,9 @@ export default function BookingDetailScreen() {
               <TouchableOpacity
                 onPress={() => {
                   dismissProviderCompletionModal(true);
-                  setShowRateClientSheet(true);
+                  setTimeout(() => {
+                    setShowRateClientSheet(true);
+                  }, 400);
                 }}
                 style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
                 activeOpacity={0.8}

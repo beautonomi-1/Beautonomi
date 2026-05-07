@@ -60,6 +60,8 @@ export async function validateAndPriceGroupPackage(params: {
   fallbackServiceId?: string | null;
   productRows: GroupProductLike[];
   participantTotal: number;
+  /** See {@link validateProviderCatalogPackageMatch} — used when creating a group shell before participants. */
+  allowEmptyServices?: boolean;
 }): Promise<
   | { ok: true; packageDiscount: number }
   | { ok: false; message: string; code: string }
@@ -76,6 +78,7 @@ export async function validateAndPriceGroupPackage(params: {
     locationId: params.locationId,
     services: groupParticipantServiceRows(params.participantRows, params.fallbackServiceId),
     products: normalizeGroupProductRows(params.productRows),
+    allowEmptyServices: params.allowEmptyServices,
   });
 
   if (validation.ok === false) return validation;

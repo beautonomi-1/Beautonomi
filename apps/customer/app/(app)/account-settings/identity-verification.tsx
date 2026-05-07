@@ -39,11 +39,24 @@ const DOCUMENT_TYPE_OPTIONS = [
   { value: "identity", labelKey: "docTypeIdentity" },
 ] as const;
 
+interface VerificationSubmission {
+  id: string;
+  document_type: string;
+  country: string;
+  status: string;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  has_document_file: boolean;
+}
+
 interface VerificationStatus {
   verified: boolean;
   status: string;
   submitted_at?: string;
   sumsub_available: boolean;
+  can_submit_verification?: boolean;
+  submissions?: VerificationSubmission[];
   manual_verification?: {
     id: string;
     status: string;
@@ -97,13 +110,17 @@ export default function IdentityVerificationScreen() {
         setStatusData(null);
         return;
       }
-      const d = res.data as any;
+      const d = res.data as Record<string, unknown> | null;
       setStatusData({
-        verified: d?.verified ?? false,
-        status: d?.status ?? "none",
-        submitted_at: d?.submitted_at,
-        sumsub_available: d?.sumsub_available ?? false,
-        manual_verification: d?.manual_verification ?? null,
+        verified: Boolean(d?.verified),
+        status: (d?.status as string) ?? "none",
+        submitted_at: d?.submitted_at as string | undefined,
+        sumsub_available: Boolean(d?.sumsub_available),
+        can_submit_verification: Boolean(d?.can_submit_verification),
+        submissions: Array.isArray(d?.submissions)
+          ? (d.submissions as VerificationSubmission[])
+          : [],
+        manual_verification: (d?.manual_verification as VerificationStatus["manual_verification"]) ?? null,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : iv("loadFailed"));
@@ -215,35 +232,79 @@ export default function IdentityVerificationScreen() {
   };
 
   const isVerified = statusData?.verified;
+  const canSubmit = statusData?.can_submit_verification ?? false;
+  const submissions = statusData?.submissions ?? [];
   const isUnderReview =
     statusData?.status === "pending" ||
-    statusData?.manual_verification?.status === "pending";
+    statusData?.status === "in_progress" ||
+    statusData?.manual_verification?.status === "pending" ||
+    submissions.some((s) =>
+      ["pending", "in_progress", "submitted", "under_review"].includes(s.status),
+    );
   const sumsubAvailable = statusData?.sumsub_available ?? false;
 
-  // ─── Verified screen ────────────────────────────────────────────────────
-  if (isVerified) {
-    return (
-      <ScreenFrame loading={false} error={null}>
-        <View style={{ padding: 20, alignItems: "center" }}>
-          <View
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: 32,
-              backgroundColor: "#D1FAE5",
-              alignItems: "center",
-              justifyContent: "center",
-              marginBottom: 16,
-            }}
-          >
-            <Ionicons name="shield-checkmark" size={32} color="#059669" />
-          </View>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>{iv("verifiedTitle")}</Text>
-          <Text style={{ fontSize: 14, color: Colors.gray[600], textAlign: "center" }}>{iv("verifiedBody")}</Text>
-        </View>
-      </ScreenFrame>
-    );
-  }
+  const statusLabel = useCallback(
+    (s: string) => {
+      const key =
+        {
+          pending: "status_pending",
+          approved: "status_approved",
+          rejected: "status_rejected",
+          in_progress: "status_in_progress",
+          submitted: "status_submitted",
+          under_review: "status_under_review",
+          none: "status_none",
+        }[s] ?? "status_unknown";
+      return iv(key);
+    },
+    [iv],
+  );
+
+  const docTypeLabel = useCallback(
+    (documentType: string) => {
+      if (documentType === "sumsub") return iv("docTypeSumsub");
+      const opt = DOCUMENT_TYPE_OPTIONS.find((o) => o.value === documentType);
+      return opt ? iv(opt.labelKey) : documentType;
+    },
+    [iv],
+  );
+
+  const formatWhen = useCallback((iso: string | null | undefined) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    } catch {
+      return iso;
+    }
+  }, []);
+
+  const openSubmissionDocument = useCallback(
+    async (row: VerificationSubmission) => {
+      if (!row.has_document_file) {
+        Alert.alert(iv("submissionsSectionTitle"), iv("noDocumentFile"));
+        return;
+      }
+      haptic.light();
+      try {
+        const res = await api.get<{ signed_url?: string }>(
+          `/api/me/verification/${encodeURIComponent(row.id)}/view`,
+        );
+        if (res.error) {
+          Alert.alert(errTitle, res.error.message || iv("openDocumentFailed"));
+          return;
+        }
+        const url = res.data?.signed_url;
+        if (!url) {
+          Alert.alert(errTitle, iv("openDocumentFailed"));
+          return;
+        }
+        await Linking.openURL(url);
+      } catch (e) {
+        Alert.alert(errTitle, e instanceof Error ? e.message : iv("openDocumentFailed"));
+      }
+    },
+    [errTitle, iv],
+  );
 
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
@@ -252,8 +313,35 @@ export default function IdentityVerificationScreen() {
         contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
         keyboardShouldPersistTaps="handled"
       >
+        {isVerified && (
+          <View style={{ alignItems: "center", marginBottom: 24 }}>
+            <View
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 32,
+                backgroundColor: "#D1FAE5",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 16,
+              }}
+            >
+              <Ionicons name="shield-checkmark" size={32} color="#059669" />
+            </View>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>
+              {iv("verifiedTitle")}
+            </Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], textAlign: "center", marginBottom: 8 }}>
+              {iv("verifiedBody")}
+            </Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[500], textAlign: "center", lineHeight: 18 }}>
+              {iv("verifiedHistoryHint")}
+            </Text>
+          </View>
+        )}
+
         {/* Under review banner */}
-        {isUnderReview && (
+        {!isVerified && isUnderReview && (
           <View
             style={{
               backgroundColor: "#FEF3C7",
@@ -267,8 +355,67 @@ export default function IdentityVerificationScreen() {
           </View>
         )}
 
-        {/* SumSub automated option — shown when available AND not already under review */}
-        {sumsubAvailable && !isUnderReview && (
+        <View style={{ marginBottom: 24 }}>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>
+            {iv("submissionsSectionTitle")}
+          </Text>
+          <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12, lineHeight: 18 }}>
+            {iv("submissionsSectionSubtitle")}
+          </Text>
+          {submissions.length === 0 ? (
+            <Text style={{ fontSize: 14, color: Colors.gray[500], fontStyle: "italic" }}>{iv("submissionsEmpty")}</Text>
+          ) : (
+            submissions.map((row) => (
+              <View
+                key={row.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: Colors.gray[200],
+                  borderRadius: RADIUS_CARD,
+                  padding: 14,
+                  marginBottom: 10,
+                  backgroundColor: Colors.white,
+                }}
+              >
+                <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 20 }}>
+                  {iv("submissionMeta", {
+                    type: docTypeLabel(row.document_type),
+                    country: row.country || "—",
+                    when: formatWhen(row.submitted_at),
+                  })}
+                </Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>
+                  {statusLabel(row.status)}
+                </Text>
+                {row.rejection_reason ? (
+                  <Text style={{ fontSize: 12, color: "#B45309", marginTop: 6 }}>
+                    {iv("rejectedReason", { reason: row.rejection_reason })}
+                  </Text>
+                ) : null}
+                {row.has_document_file ? (
+                  <TouchableOpacity
+                    onPress={() => void openSubmissionDocument(row)}
+                    style={{
+                      alignSelf: "flex-start",
+                      marginTop: 10,
+                      paddingVertical: 8,
+                      paddingHorizontal: 14,
+                      borderRadius: RADIUS_BUTTON,
+                      backgroundColor: Colors.gray[100],
+                    }}
+                    accessibilityLabel={iv("viewDocument")}
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{iv("viewDocument")}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* SumSub automated option — shown when available AND user may submit */}
+        {canSubmit && sumsubAvailable && (
           <View style={{ marginBottom: 24 }}>
             <TouchableOpacity
               onPress={openSumsub}
@@ -304,7 +451,7 @@ export default function IdentityVerificationScreen() {
         )}
 
         {/* Info banner when SumSub not available */}
-        {!sumsubAvailable && !isUnderReview && (
+        {canSubmit && !sumsubAvailable && (
           <View
             style={{
               backgroundColor: "#EFF6FF",
@@ -320,8 +467,8 @@ export default function IdentityVerificationScreen() {
           </View>
         )}
 
-        {/* Manual upload form — always shown unless already under review */}
-        {!isUnderReview && (
+        {/* Manual upload form */}
+        {canSubmit && (
           <>
             <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{iv("documentType")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16, gap: 8 }}>

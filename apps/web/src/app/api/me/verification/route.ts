@@ -50,16 +50,42 @@ export async function GET(request: NextRequest) {
 
     // Derive a combined status
     const userStatus = userData.identity_verification_status ?? "none";
-    const mostRecentManual = (verifications ?? []).find(
-      (v) => v.document_type !== "sumsub"
-    );
+    const list = verifications ?? [];
+    const mostRecentManual = list.find((v) => v.document_type !== "sumsub");
+
+    /** Blocks new uploads while automated or manual review is still in flight */
+    const blockingStatuses = new Set([
+      "pending",
+      "in_progress",
+      "submitted",
+      "under_review",
+    ]);
+    const userBlocking = blockingStatuses.has(userStatus);
+    const recordBlocking = list.some((v) => blockingStatuses.has(v.status));
+    const can_submit_verification =
+      !(userData.identity_verified ?? false) && !userBlocking && !recordBlocking;
+
+    /** Safe list for clients — use GET /api/me/verification/[id]/view for file access */
+    const submissions = list.map((v) => ({
+      id: v.id,
+      document_type: v.document_type,
+      country: v.country,
+      status: v.status,
+      submitted_at: v.submitted_at,
+      reviewed_at: v.reviewed_at,
+      rejection_reason: v.rejection_reason ?? null,
+      has_document_file: Boolean(v.document_url && String(v.document_url).trim()),
+    }));
 
     return successResponse({
       verified: userData.identity_verified || false,
       status: userStatus,
       submitted_at: userData.identity_verification_submitted_at,
       reviewed_at: userData.identity_verification_reviewed_at,
-      verifications: verifications || [],
+      /** Full rows for admin/debug; prefer `submissions` in new clients */
+      verifications: list,
+      submissions,
+      can_submit_verification,
       // Whether SumSub automated verification is available
       sumsub_available: sumsubAvailable,
       // Most recent manual document submission

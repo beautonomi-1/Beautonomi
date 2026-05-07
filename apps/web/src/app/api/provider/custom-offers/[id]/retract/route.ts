@@ -3,8 +3,8 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
-import { sendToUser } from "@/lib/notifications/onesignal";
-import { insertNotification } from "@/lib/notifications/insert-notification";
+import { sendTemplateNotification } from "@/lib/notifications/onesignal";
+import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 
 /**
  * POST /api/provider/custom-offers/[id]/retract
@@ -52,22 +52,7 @@ export async function POST(
       .update({ status: "withdrawn", updated_at: new Date().toISOString() })
       .eq("id", offerId);
 
-    // Find messages that reference this offer and set withdrawn on the attachment
-    const { data: messages } = await supabaseAdmin
-      .from("messages")
-      .select("id, attachments")
-      .not("attachments", "is", null);
-
-    for (const msg of messages || []) {
-      const attachments = (msg as any).attachments;
-      if (!Array.isArray(attachments)) continue;
-      const updated = attachments.map((a: any) =>
-        a.type === "custom_offer" && a.offer_id === offerId ? { ...a, withdrawn: true } : a
-      );
-      if (JSON.stringify(updated) !== JSON.stringify(attachments)) {
-        await supabaseAdmin.from("messages").update({ attachments: updated }).eq("id", (msg as any).id);
-      }
-    }
+    await patchCustomOfferMessageAttachments(supabaseAdmin, offerId, { status: "withdrawn" });
 
     // Reset the parent request back to "pending" if no other active offers remain
     if (offerData.request_id) {
@@ -97,18 +82,26 @@ export async function POST(
       const customerId = (reqRow as any)?.customer_id as string | undefined;
       if (customerId) {
         try {
-          await sendToUser(customerId, {
-            title: "Offer withdrawn",
-            message: "The provider has withdrawn their custom offer. You can still receive new offers for your request.",
-            data: { custom_offer_id: offerId, custom_request_id: offerData.request_id },
-          });
-          await insertNotification({
-            user_id: customerId,
-            type: "custom_offer",
-            title: "Offer withdrawn",
-            message: "The provider has withdrawn their custom offer. You can still receive new offers for your request.",
-            data: { custom_offer_id: offerId, custom_request_id: offerData.request_id },
-          });
+          let providerName = "The provider";
+          const { data: pnRow } = await supabaseAdmin
+            .from("providers")
+            .select("business_name")
+            .eq("id", providerId)
+            .maybeSingle();
+          const bn = (pnRow as { business_name?: string } | null)?.business_name;
+          if (bn && bn.trim()) providerName = bn.trim();
+
+          await sendTemplateNotification(
+            "customer_custom_offer_withdrawn",
+            [customerId],
+            {
+              provider_name: providerName,
+              offer_id: offerId,
+              request_id: offerData.request_id ?? "",
+            },
+            ["push", "email"],
+            { appType: "customer" },
+          );
         } catch (notifyErr) {
           console.warn("[retract] failed to notify customer:", notifyErr);
         }
