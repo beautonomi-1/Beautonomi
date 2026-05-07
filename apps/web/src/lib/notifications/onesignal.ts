@@ -117,16 +117,11 @@ function applyOneSignalTargeting(
       ? chans[0]
       : null;
 
-  // Modern path: if we have explicit player IDs and we are ONLY sending a push,
-  // target those exact subscriptions directly to guarantee delivery. This bypasses
-  // any flaky external_id mapping in OneSignal.
-  if (singleChannel === "push" && playerIds.length > 0) {
-    notification.include_subscription_ids = playerIds;
-    return;
-  }
-
   // Modern path: external IDs + single channel. Reaches every subscribed
   // device for that user without needing a registered subscription_id.
+  // Must run before subscription-ID targeting: mixing subscription IDs with
+  // external-ID sends is invalid for OneSignal v9/v10, and we prefer alias
+  // fan-out whenever we know the user's UUID (see docblock above).
   if (extIds.length > 0 && singleChannel) {
     notification.include_aliases = { external_id: extIds };
     notification.target_channel = singleChannel;
