@@ -45,10 +45,9 @@ type ProductsResponse = {
   total?: number;
 };
 
-type OrdersMetricsResponse = {
-  orders?: { status: string; total_amount?: number | string }[];
-  pagination?: { total?: number };
-  status_counts?: { pending?: number; confirmed?: number; processing?: number; [key: string]: number | undefined };
+type ProviderNavCounts = {
+  active_product_orders?: number;
+  open_return_requests?: number;
 };
 
 /** Flat payload from GET /api/provider/products/metrics (not nested under `metrics`). */
@@ -68,18 +67,15 @@ export default function ProductsEcommerceHubScreen() {
   const { data: metricsData, refresh: refreshMetrics } = useApi<ProductMetricsPayload>(
     "/api/provider/products/metrics"
   );
-  const { data: pendingOrdersData, refresh: refreshPendingOrders } = useApi<OrdersMetricsResponse>(
-    "/api/provider/product-orders?limit=1"
+  const { data: navCounts, refresh: refreshNavCounts } = useApi<ProviderNavCounts>(
+    "/api/provider/nav-counts",
+    { staleTimeMs: 15_000 }
   );
 
   const products: Product[] = (data as ProductsResponse)?.products ?? [];
-  // Use status_counts.pending from the API (always populated regardless of filter) so the metric
-  // correctly reflects the number of pending orders even when the orders list is paginated.
-  const pendingOrdersCount =
-    (pendingOrdersData as OrdersMetricsResponse)?.status_counts?.pending
-    ?? (pendingOrdersData as OrdersMetricsResponse)?.pagination?.total
-    ?? (pendingOrdersData as OrdersMetricsResponse)?.orders?.filter((o) => o.status === "pending").length
-    ?? 0;
+  const activeOrdersCount = navCounts?.active_product_orders ?? 0;
+  const openReturnsCount = navCounts?.open_return_requests ?? 0;
+  const totalNeedAction = activeOrdersCount + openReturnsCount;
   const lowStockCount =
     metricsData?.lowStockProducts ??
     products.filter((p) => {
@@ -90,11 +86,11 @@ export default function ProductsEcommerceHubScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refresh(), refreshMetrics(), refreshPendingOrders()]);
+      await Promise.all([refresh(), refreshMetrics(), refreshNavCounts()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refresh, refreshMetrics, refreshPendingOrders]);
+  }, [refresh, refreshMetrics, refreshNavCounts]);
 
   if (loading && !data) {
     return (
@@ -139,16 +135,16 @@ export default function ProductsEcommerceHubScreen() {
           </View>
           <TouchableOpacity
             onPress={() => router.push("/(app)/(tabs)/more/orders-hub" as never)}
-            style={{ flex: 1, backgroundColor: pendingOrdersCount > 0 ? "#FFF7ED" : "#F9FAFB", borderRadius: 14, padding: 14, alignItems: "center", borderWidth: pendingOrdersCount > 0 ? 1.5 : 1, borderColor: pendingOrdersCount > 0 ? "#FED7AA" : Colors.gray[200] }}
+            style={{ flex: 1, backgroundColor: totalNeedAction > 0 ? "#FFF7ED" : "#F9FAFB", borderRadius: 14, padding: 14, alignItems: "center", borderWidth: totalNeedAction > 0 ? 1.5 : 1, borderColor: totalNeedAction > 0 ? "#FED7AA" : Colors.gray[200] }}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel={`${pendingOrdersCount} pending orders. Tap to view orders.`}
+            accessibilityLabel={`${totalNeedAction} items need attention. Tap to view orders and returns.`}
           >
-            <Text style={{ fontSize: 22, fontWeight: "800", color: pendingOrdersCount > 0 ? "#C2410C" : Colors.gray[700] }}>
-              {pendingOrdersCount}
+            <Text style={{ fontSize: 22, fontWeight: "800", color: totalNeedAction > 0 ? "#C2410C" : Colors.gray[700] }}>
+              {totalNeedAction}
             </Text>
-            <Text style={{ fontSize: 11, color: pendingOrdersCount > 0 ? "#C2410C" : Colors.gray[500], fontWeight: "600", marginTop: 2 }}>
-              Pending orders{pendingOrdersCount > 0 ? " ⚡" : ""}
+            <Text style={{ fontSize: 11, color: totalNeedAction > 0 ? "#C2410C" : Colors.gray[500], fontWeight: "600", marginTop: 2, textAlign: "center" }}>
+              Needs action{totalNeedAction > 0 ? " ⚡" : ""}
             </Text>
             <Text style={{ fontSize: 9, color: Colors.gray[400], marginTop: 1 }}>
               Tap → Orders Hub
@@ -201,7 +197,7 @@ export default function ProductsEcommerceHubScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/orders-hub" as never)}
-              style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: pendingOrdersCount > 0 ? "#FED7AA" : Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
+              style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: totalNeedAction > 0 ? "#FED7AA" : Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}
             >
               <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ccfbf1" }}>
@@ -209,13 +205,13 @@ export default function ProductsEcommerceHubScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Orders & returns</Text>
-                <Text style={{ fontSize: 12, color: pendingOrdersCount > 0 ? "#C2410C" : Colors.gray[500] }}>
-                  {pendingOrdersCount > 0 ? `${pendingOrdersCount} need attention` : "Fulfill orders & refunds"}
+                <Text style={{ fontSize: 12, color: totalNeedAction > 0 ? "#C2410C" : Colors.gray[500] }}>
+                  {totalNeedAction > 0 ? `${activeOrdersCount} orders, ${openReturnsCount} returns` : "Fulfill orders & refunds"}
                 </Text>
               </View>
-              {pendingOrdersCount > 0 && (
+              {totalNeedAction > 0 && (
                 <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center", marginRight: 4 }}>
-                  <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>{pendingOrdersCount > 9 ? "9+" : pendingOrdersCount}</Text>
+                  <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>{totalNeedAction > 9 ? "9+" : totalNeedAction}</Text>
                 </View>
               )}
               <Ionicons name="chevron-forward" size={20} color="#9ca3af" />

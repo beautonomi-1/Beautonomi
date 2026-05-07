@@ -15,6 +15,7 @@ import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import type { ExplorePost } from "@/types/api";
+import { useTranslation } from "@beautonomi/i18n";
 
 type CollectionData = {
   id: string;
@@ -28,6 +29,7 @@ const COLUMN_GAP = 8;
 const COL_COUNT = 2;
 
 export default function ExploreCollectionScreen() {
+  const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { contentPadding, contentMaxWidth } = useResponsive();
   const { width } = useWindowDimensions();
@@ -61,7 +63,7 @@ export default function ExploreCollectionScreen() {
         setRefreshing(false);
       }
     },
-    [id]
+    [id, t]
   );
 
   useEffect(() => {
@@ -71,9 +73,9 @@ export default function ExploreCollectionScreen() {
   if (!id) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff", padding: 24 }}>
-        <Text style={{ color: Colors.gray[500] }}>Collection not found</Text>
+        <Text style={{ color: Colors.gray[500] }}>{t("customer.exploreCollection.notFound")}</Text>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
-          <Text style={{ color: Colors.primary, fontWeight: "600" }}>Go back</Text>
+          <Text style={{ color: Colors.primary, fontWeight: "600" }}>{t("customer.exploreCollection.goBack")}</Text>
         </TouchableOpacity>
       </View>
     );

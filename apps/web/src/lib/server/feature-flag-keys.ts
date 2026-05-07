@@ -6,6 +6,8 @@ export const FEATURE_FLAG_KEYS = {
   PAYMENT_PAYSTACK: "payment_paystack",
   PAYMENT_WALLET: "payment_wallet",
   GIFT_CARDS: "gift_cards",
+  /** When disabled (tenant or global row), providers cannot create/send custom offers. */
+  PROVIDER_CUSTOM_OFFERS: "commerce.provider_custom_offers",
 } as const;
 
 export type PaymentRelatedFeatureKey =

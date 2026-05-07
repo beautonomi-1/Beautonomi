@@ -920,7 +920,7 @@ export async function sendTemplateNotification(
     // Pull well-known context IDs out of template variables
     const inAppData: Record<string, unknown> = { template_key: templateKey };
     const WELL_KNOWN_VARS = [
-      "booking_id", "conversation_id", "order_id", "request_id",
+      "booking_id", "conversation_id", "order_id", "request_id", "offer_id",
       "review_id", "dispute_id", "payment_id", "ticket_id", "campaign_id",
       "booking_number", "provider_name", "customer_name",
     ];

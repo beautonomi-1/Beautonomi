@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, requireAdminSectionAny } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
-import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
+import { ADMIN_SECTION_INTEGRATIONS_DEV, ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 
 // ISO 4217 Currency Code validation
 const currencySchema = z.object({
@@ -23,7 +23,10 @@ const currencySchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    const { user } = await requireAdminSectionAny(
+      [ADMIN_SECTION_INTEGRATIONS_DEV, ADMIN_SECTION_PLATFORM_CONFIG],
+      request
+    );
     if (!user) {
       return unauthorizedResponse("Authentication required");
     }

@@ -16,9 +16,13 @@ import { adminToast } from "@/lib/adminToast";
 
 type VerificationDetail = Record<string, unknown> & {
   id?: string;
+  user_id?: string;
+  document_type?: string;
+  country?: string;
   status?: string;
-  document_url?: string;
+  document_url?: string | null;
   rejection_reason?: string | null;
+  submitted_at?: string | null;
   user?: { full_name?: string; email?: string; phone?: string | null };
 };
 
@@ -45,6 +49,21 @@ export function VerificationDetailPage() {
       adminToast.success(vars.status === "approved" ? "Verification approved" : "Verification rejected");
     },
     onError: (e: Error) => adminToast.error(`Review failed: ${e.message}`),
+  });
+
+  const resetIdentity = useMutation({
+    mutationFn: async (userId: string) => {
+      return adminApi.postJson<{ message?: string }>(
+        `/api/admin/users/${encodeURIComponent(userId)}/identity-verification/reset`,
+        {},
+      );
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.verificationDetail(id) });
+      await qc.invalidateQueries({ queryKey: ["admin", "verifications"] });
+      adminToast.success("Customer can submit identity verification again.");
+    },
+    onError: (e: Error) => adminToast.error(`Reset failed: ${e.message}`),
   });
 
   const openDocument = async () => {
@@ -81,6 +100,7 @@ export function VerificationDetailPage() {
   const row = q.data;
   const status = String(row?.status ?? "");
   const pending = status === "pending" || status === "submitted" || status === "under_review";
+  const subjectUserId = typeof row?.user_id === "string" ? row.user_id : "";
 
   return (
     <div className="space-y-6">
@@ -97,6 +117,17 @@ export function VerificationDetailPage() {
           <p>
             <span className="text-gray-500">User:</span>{" "}
             <span className="font-medium">{String(row?.user?.full_name ?? "—")}</span>
+            {subjectUserId ? (
+              <>
+                {" "}
+                <Link
+                  to={adminSpaTo(`/admin/users/${encodeURIComponent(subjectUserId)}`)}
+                  className="font-medium text-primary hover:underline"
+                >
+                  View profile
+                </Link>
+              </>
+            ) : null}
           </p>
           <p>
             <span className="text-gray-500">Email:</span> {String(row?.user?.email ?? "—")}
@@ -104,6 +135,21 @@ export function VerificationDetailPage() {
           <p>
             <span className="text-gray-500">Status:</span> {status || "—"}
           </p>
+          {row?.document_type ? (
+            <p>
+              <span className="text-gray-500">Document type:</span> {String(row.document_type)}
+            </p>
+          ) : null}
+          {row?.country ? (
+            <p>
+              <span className="text-gray-500">Country:</span> {String(row.country)}
+            </p>
+          ) : null}
+          {row?.submitted_at ? (
+            <p>
+              <span className="text-gray-500">Submitted:</span> {String(row.submitted_at)}
+            </p>
+          ) : null}
         </div>
         {row?.document_url ? (
           <div>
@@ -115,6 +161,38 @@ export function VerificationDetailPage() {
               Open verification document
             </button>
             {docMsg ? <p className="mt-2 text-sm text-amber-700">{docMsg}</p> : null}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-600">
+            No uploaded file on this record (for example Sumsub automated verification). Use Sumsub or reset below so the
+            customer can re-verify.
+          </p>
+        )}
+        {subjectUserId ? (
+          <div className="border-t border-gray-100 pt-4">
+            <p className="text-sm font-medium text-gray-900">Re-verification</p>
+            <p className="mt-1 text-sm text-gray-600">
+              Clears the user&apos;s identity flags and closes any in-flight verification rows so they can submit again.
+              History rows remain for audit.
+            </p>
+            <button
+              type="button"
+              className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-50"
+              disabled={resetIdentity.isPending}
+              onClick={() => {
+                if (
+                  typeof window !== "undefined" &&
+                  !window.confirm(
+                    "Reset this user's identity verification state? They will be able to upload or run Sumsub again.",
+                  )
+                ) {
+                  return;
+                }
+                resetIdentity.mutate(subjectUserId);
+              }}
+            >
+              {resetIdentity.isPending ? "Resetting…" : "Reset identity verification"}
+            </button>
           </div>
         ) : null}
         {pending ? (

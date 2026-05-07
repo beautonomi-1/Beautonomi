@@ -1,9 +1,9 @@
 "use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { providerPortalFetch } from "@/lib/http/fetcher";
+import { providerPortalFetch, fetcher } from "@/lib/http/fetcher";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sheet,
@@ -116,16 +116,9 @@ export function AddClientDialog({
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const tenantRegionCode = bundle?.meta?.tenant_region?.code ?? "ZA";
-  const currencyOptions = useMemo(
-    () =>
-      [
-        { value: LAST_RESORT_CURRENCY, label: currencySelectLabel(LAST_RESORT_CURRENCY) },
-        { value: "USD", label: currencySelectLabel("USD") },
-        { value: "EUR", label: currencySelectLabel("EUR") },
-        { value: "GBP", label: currencySelectLabel("GBP") },
-      ] as const,
-    []
-  );
+  const [currencyOptions, setCurrencyOptions] = useState<{ value: string; label: string }[]>(() => [
+    { value: tenantCurrency, label: currencySelectLabel(tenantCurrency) },
+  ]);
   const [isLoading, setIsLoading] = useState(false);
   const [defaultCountry, setDefaultCountry] = useState<string | undefined>(() => defaultCountryCode);
   const prevOpenRef = useRef(false);
@@ -133,6 +126,23 @@ export function AddClientDialog({
   useEffect(() => {
     setDefaultCountry(defaultCountryCode);
   }, [defaultCountryCode]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const json = await fetcher.get<{ data?: Array<{ code: string; name: string }> }>(
+          "/api/public/preference-options?type=currency",
+          { cache: "no-store" },
+        );
+        const rows = json?.data;
+        if (Array.isArray(rows) && rows.length > 0) {
+          setCurrencyOptions(rows.map((r) => ({ value: r.code, label: r.name })));
+        }
+      } catch {
+        setCurrencyOptions([{ value: tenantCurrency, label: currencySelectLabel(tenantCurrency) }]);
+      }
+    })();
+  }, [tenantCurrency]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [formData, setFormData] = useState<Client>({
     first_name: "",

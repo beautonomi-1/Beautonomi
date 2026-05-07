@@ -19,6 +19,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { sendToUser } from "@/lib/notifications/onesignal";
 import { insertNotification } from "@/lib/notifications/insert-notification";
+import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 
 export async function POST(
   request: NextRequest,
@@ -109,23 +110,8 @@ export async function POST(
           .update({ status: "withdrawn", updated_at: new Date().toISOString() })
           .in("id", offerIds);
 
-        // Patch chat message attachments for these offers
-        const { data: messages } = await adminSupabase
-          .from("messages")
-          .select("id, attachments")
-          .not("attachments", "is", null);
-
-        for (const msg of messages || []) {
-          const attachments = (msg as any).attachments;
-          if (!Array.isArray(attachments)) continue;
-          const updated = attachments.map((a: any) =>
-            a?.type === "custom_offer" && offerIds.includes(a?.offer_id)
-              ? { ...a, withdrawn: true }
-              : a
-          );
-          if (JSON.stringify(updated) !== JSON.stringify(attachments)) {
-            await adminSupabase.from("messages").update({ attachments: updated }).eq("id", (msg as any).id);
-          }
+        for (const oid of offerIds) {
+          await patchCustomOfferMessageAttachments(adminSupabase, oid, { status: "withdrawn" });
         }
 
         // Notify each unique provider whose offer was withdrawn

@@ -133,6 +133,8 @@ function CheckoutSuccessContent() {
   const resolvedBookingId = bookingId ?? customOfferBookingId;
   const showBookingLink = !!(resolvedBookingId || bookingNumber);
   const paymentType = searchParams?.get("payment_type");
+  const customOfferTimedOut =
+    isCustomOffer && !!offerId && customOfferPollingComplete && !resolvedBookingId;
 
   const [bookingData, setBookingData] = useState<{
     selected_datetime: string;
@@ -650,6 +652,20 @@ function CheckoutSuccessContent() {
           className="rounded-3xl border p-5 space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200"
           style={{ background: "#fff", borderColor: "rgba(0,0,0,0.06)", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}
         >
+          {customOfferTimedOut ? (
+            <div
+              className="rounded-2xl border px-4 py-3 text-sm leading-relaxed"
+              style={{
+                borderColor: "rgba(245, 158, 11, 0.45)",
+                background: "rgba(254, 243, 199, 0.65)",
+                color: "#92400e",
+              }}
+              role="status"
+            >
+              <strong>Still confirming.</strong> Payments sometimes take a minute. Open{" "}
+              <strong>Custom requests</strong> from your account to check status, or pull to refresh in the app.
+            </div>
+          ) : null}
           {showBookingLink && (
             <Link
               href="/account-settings/bookings"

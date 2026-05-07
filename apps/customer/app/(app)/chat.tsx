@@ -28,7 +28,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { chatFlatListPerf } from "@/lib/flatListPerformance";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { useTranslation } from "@beautonomi/i18n";
+import { useTranslation, i18n } from "@beautonomi/i18n";
 
 interface Message {
   id: string;
@@ -134,7 +134,8 @@ function parseRealtimeInsert(row: unknown): Message | null {
   return {
     id: row.id,
     sender_id: row.sender_id,
-    sender_name: typeof row.sender_name === "string" ? row.sender_name : "Provider",
+    sender_name:
+      typeof row.sender_name === "string" ? row.sender_name : i18n.t("customer.chatScreen.defaultSenderNameProvider"),
     content: typeof row.content === "string" ? row.content : "",
     attachments: Array.isArray(row.attachments) ? (row.attachments as Message["attachments"]) : [],
     created_at: row.created_at,
@@ -230,6 +231,7 @@ export default function ChatScreen() {
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [conversationMeta, setConversationMeta] = useState<ConversationSummary | null>(null);
   const [acceptingOfferId, setAcceptingOfferId] = useState<string | null>(null);
+  const [decliningOfferId, setDecliningOfferId] = useState<string | null>(null);
   const [savedMethods, setSavedMethods] = useState<PaymentMethodSummary[]>([]);
   const [showSavedCardSheet, setShowSavedCardSheet] = useState(false);
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
@@ -270,7 +272,7 @@ export default function ChatScreen() {
 
         const res = await api.get<unknown>(`/api/me/messages?${queryParams}`);
         if (res.error) {
-          if (!cursor) setResolveError(getApiErrorMessage(res.error, "Could not load messages"));
+          if (!cursor) setResolveError(getApiErrorMessage(res.error, t("customer.chatScreen.loadMessagesFailed")));
           return;
         }
 
@@ -290,16 +292,14 @@ export default function ChatScreen() {
         // empty thread on network failures. Surface a retryable error.
         if (!cursor) {
           setMessages([]);
-          setResolveError(
-            err instanceof Error ? err.message : "Could not load messages",
-          );
+          setResolveError(err instanceof Error ? err.message : t("customer.chatScreen.loadMessagesFailed"));
         }
       } finally {
         setLoading(false);
         setLoadingMore(false);
       }
     },
-    [id]
+    [id, t]
   );
 
   // Resolve provider_id to conversation id (get-or-create) when opening from provider profile
@@ -314,20 +314,20 @@ export default function ChatScreen() {
         });
         if (cancelled) return;
         if (res.error || !res.data?.id) {
-          setResolveError(res.error?.message ?? "Could not start conversation");
+          setResolveError(res.error?.message ?? t("customer.chatScreen.couldNotStartConversation"));
           setLoading(false);
           return;
         }
         router.replace({ pathname: "/(app)/chat", params: { id: res.data.id } });
       } catch (e) {
         if (!cancelled) {
-          setResolveError(e instanceof Error ? e.message : "Could not start conversation");
+          setResolveError(e instanceof Error ? e.message : t("customer.chatScreen.couldNotStartConversation"));
           setLoading(false);
         }
       }
     })();
     return () => { cancelled = true; };
-  }, [user, id, providerId, bookingIdParam]);
+  }, [user, id, providerId, bookingIdParam, t]);
 
   // §UI-audit 2026-04: when `id` changes (e.g. opening a second thread
   // via a push-notification deep link without unmounting this screen),
@@ -347,9 +347,9 @@ export default function ChatScreen() {
   useEffect(() => {
     if (user && !id && !providerId) {
       setLoading(false);
-      setResolveError("Conversation not found");
+      setResolveError(t("customer.chatScreen.conversationNotFound"));
     }
-  }, [user, id, providerId]);
+  }, [user, id, providerId, t]);
 
   // Re-sync session when opening chat (e.g. after navigating from another provider) so we don't show "Log in" if session exists in storage
   useEffect(() => {
@@ -470,8 +470,8 @@ export default function ChatScreen() {
     const optimisticMsg: Message = {
       id: optimisticId,
       sender_id: user?.id || "",
-      sender_name: user?.user_metadata?.full_name || "You",
-      content: text || (attachments?.length ? "📎 Attachment" : ""),
+      sender_name: user?.user_metadata?.full_name || t("customer.chatScreen.senderNameYou"),
+      content: text || (attachments?.length ? t("customer.chatScreen.optimisticAttachmentLabel") : ""),
       attachments: attachments,
       created_at: new Date().toISOString(),
       is_read: false,
@@ -635,6 +635,7 @@ export default function ChatScreen() {
         const state = await api.get<{ booking_id?: string | null }>(`/api/me/custom-offers/${offerId}`);
         const bookingId = (state.data as { booking_id?: string | null } | undefined)?.booking_id ?? null;
         if (bookingId) {
+          await loadMessages();
           router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
           return;
         }
@@ -647,7 +648,40 @@ export default function ChatScreen() {
       t("customer.chatScreen.offerActionFailedTitle"),
       t("customer.chatScreen.offerActionPaymentFailed"),
     );
-  }, [t]);
+  }, [loadMessages, t]);
+
+  const declineCustomOffer = useCallback(
+    async (offerId: string) => {
+      Alert.alert(
+        t("customer.chatScreen.declineOfferTitle"),
+        t("customer.chatScreen.declineOfferBody"),
+        [
+          { text: t("common.cancel"), style: "cancel" },
+          {
+            text: t("customer.chatScreen.declineOfferConfirm"),
+            style: "destructive",
+            onPress: async () => {
+              setDecliningOfferId(offerId);
+              try {
+                const res = await api.post(`/api/me/custom-offers/${offerId}/decline`, {});
+                if (res.error) {
+                  Alert.alert(
+                    t("customer.chatScreen.offerActionFailedTitle"),
+                    getApiErrorMessage(res.error, t("customer.chatScreen.declineOfferFailed")),
+                  );
+                  return;
+                }
+                await loadMessages();
+              } finally {
+                setDecliningOfferId(null);
+              }
+            },
+          },
+        ],
+      );
+    },
+    [loadMessages, t],
+  );
 
   const acceptCustomOffer = useCallback(
     async (offerId: string, paymentOption: "full" | "deposit", paymentMethodId?: string) => {
@@ -735,7 +769,7 @@ export default function ChatScreen() {
   const formatTime = (iso: string) =>
     (() => {
       const parsed = new Date(iso);
-      if (!Number.isFinite(parsed.getTime())) return "—";
+      if (!Number.isFinite(parsed.getTime())) return t("customer.chatScreen.emDash");
       return parsed.toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
@@ -743,18 +777,21 @@ export default function ChatScreen() {
       });
     })();
 
-  const formatDateLabel = (iso: string) => {
-    const d = new Date(iso);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const dDay = new Date(d);
-    dDay.setHours(0, 0, 0, 0);
-    if (dDay.getTime() === today.getTime()) return "Today";
-    if (dDay.getTime() === yesterday.getTime()) return "Yesterday";
-    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-  };
+  const formatDateLabel = useCallback(
+    (iso: string) => {
+      const d = new Date(iso);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const dDay = new Date(d);
+      dDay.setHours(0, 0, 0, 0);
+      if (dDay.getTime() === today.getTime()) return t("customer.chatScreen.today");
+      if (dDay.getTime() === yesterday.getTime()) return t("customer.chatScreen.yesterday");
+      return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    },
+    [t],
+  );
 
   const currentUserId = user?.id ?? null;
 
@@ -779,7 +816,7 @@ export default function ChatScreen() {
       out.push({ type: "message", key: m.id, message: m });
     }
     return out;
-  }, [currentUserId, messages]);
+  }, [currentUserId, messages, formatDateLabel]);
 
   // §UI-audit 2026-04: previously the header title was hardcoded to
   // "Chat" whenever an `id` was present, which meant after a deep-link
@@ -1069,7 +1106,9 @@ export default function ChatScreen() {
                                     marginBottom: gap,
                                   }}
                                 >
-                                  {att.name ? `${att.name} — ` : ""}File no longer available (retention policy).
+                                  {att.name
+                                    ? t("customer.chatScreen.attachmentExpiredNamed", { name: att.name })
+                                    : t("customer.chatScreen.attachmentExpired")}
                                 </Text>
                               );
                             }
@@ -1080,7 +1119,7 @@ export default function ChatScreen() {
                                   activeOpacity={0.85}
                                   onPress={() => setPreviewImageUrl(att.url)}
                                   accessibilityRole="imagebutton"
-                                  accessibilityLabel="Open image preview"
+                                  accessibilityLabel={t("customer.chatScreen.a11yOpenImagePreview")}
                                   style={{ marginBottom: gap }}
                                 >
                                   <Image
@@ -1103,7 +1142,7 @@ export default function ChatScreen() {
                                   key={key}
                                   onPress={() => openUrlOrAlert(att.url)}
                                   accessibilityRole="button"
-                                  accessibilityLabel="Open video"
+                                  accessibilityLabel={t("customer.chatScreen.a11yOpenVideo")}
                                   style={{
                                     flexDirection: "row",
                                     alignItems: "center",
@@ -1131,7 +1170,7 @@ export default function ChatScreen() {
                                     }}
                                     numberOfLines={2}
                                   >
-                                    {att.name || "Video — tap to open"}
+                                    {att.name || t("customer.chatScreen.attachmentVideoTap")}
                                   </Text>
                                 </TouchableOpacity>
                               );
@@ -1141,7 +1180,7 @@ export default function ChatScreen() {
                                 key={key}
                                 onPress={() => openUrlOrAlert(att.url)}
                                 accessibilityRole="button"
-                                accessibilityLabel="Open attachment"
+                                accessibilityLabel={t("customer.chatScreen.a11yOpenAttachment")}
                                 style={{
                                   flexDirection: "row",
                                   alignItems: "center",
@@ -1169,7 +1208,7 @@ export default function ChatScreen() {
                                   }}
                                   numberOfLines={2}
                                 >
-                                  {att.name || "Attachment — tap to open"}
+                                  {att.name || t("customer.chatScreen.attachmentDocumentTap")}
                                 </Text>
                               </TouchableOpacity>
                             );
@@ -1182,9 +1221,24 @@ export default function ChatScreen() {
                         </Text>
                       ) : null}
                       {customOfferAttachment ? (() => {
-                        const isOfferExpired = customOfferAttachment.expired === true || customOfferAttachment.status === "expired";
-                        const isOfferWithdrawn = customOfferAttachment.withdrawn === true;
-                        const isOfferInactive = isOfferExpired || isOfferWithdrawn;
+                        const isOfferExpired =
+                          customOfferAttachment.expired === true || customOfferAttachment.status === "expired";
+                        const isOfferWithdrawn =
+                          customOfferAttachment.withdrawn === true || customOfferAttachment.status === "withdrawn";
+                        const isOfferDeclined = customOfferAttachment.status === "declined";
+                        const isOfferInactive = isOfferExpired || isOfferWithdrawn || isOfferDeclined;
+                        const expAt = customOfferAttachment.expiration_at;
+                        const expLabel =
+                          expAt && !isOfferInactive
+                            ? (() => {
+                                const d = new Date(expAt);
+                                if (!Number.isFinite(d.getTime())) return null;
+                                return t("customer.chatScreen.customOfferExpiresAt", {
+                                  date: d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }),
+                                  time: d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+                                });
+                              })()
+                            : null;
                         return (
                         <TouchableOpacity
                           activeOpacity={0.85}
@@ -1202,14 +1256,30 @@ export default function ChatScreen() {
                             {t("customer.chatScreen.customOfferTitle")}
                           </Text>
                           <Text style={{ color: isMe ? Colors.white : Colors.gray[900], marginTop: 6, fontSize: 18, fontWeight: "700" }}>
-                            {(customOfferAttachment.currency || "")} {typeof customOfferAttachment.price === "number" ? customOfferAttachment.price.toFixed(2) : "—"}
+                            {(customOfferAttachment.currency || "")}{" "}
+                            {typeof customOfferAttachment.price === "number"
+                              ? customOfferAttachment.price.toFixed(2)
+                              : t("customer.chatScreen.emDash")}
                           </Text>
                           <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[700], fontSize: 12, marginTop: 2 }}>
-                            {customOfferAttachment.duration_minutes ? `${customOfferAttachment.duration_minutes} min` : t("customer.chatScreen.customOfferDurationFallback")}
+                            {customOfferAttachment.duration_minutes
+                              ? t("customer.chatScreen.durationMinutesShort", {
+                                  count: customOfferAttachment.duration_minutes,
+                                })
+                              : t("customer.chatScreen.customOfferDurationFallback")}
                           </Text>
+                          {expLabel ? (
+                            <Text style={{ color: isMe ? "rgba(255,255,255,0.75)" : "#92400E", fontSize: 11, marginTop: 6, fontWeight: "600" }}>
+                              {expLabel}
+                            </Text>
+                          ) : null}
                           {isOfferWithdrawn ? (
                             <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : "#B91C1C", fontSize: 12, marginTop: 8, fontWeight: "600" }}>
                               {t("customer.chatScreen.customOfferWithdrawn")}
+                            </Text>
+                          ) : isOfferDeclined ? (
+                            <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : "#9D174D", fontSize: 12, marginTop: 8, fontWeight: "600" }}>
+                              {t("customer.chatScreen.customOfferDeclined")}
                             </Text>
                           ) : isOfferExpired ? (
                             <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : "#B45309", fontSize: 12, marginTop: 8, fontWeight: "600" }}>
@@ -1221,24 +1291,46 @@ export default function ChatScreen() {
                           !isOfferInactive &&
                           customOfferAttachment.status !== "payment_pending" &&
                           customOfferAttachment.status !== "paid" ? (
-                            <TouchableOpacity
-                              onPress={() => openAcceptOfferOptions(customOfferAttachment.offer_id!)}
-                              disabled={acceptingOfferId === customOfferAttachment.offer_id}
-                              style={{
-                                marginTop: 10,
-                                borderRadius: 10,
-                                backgroundColor: Colors.primary,
-                                alignItems: "center",
-                                justifyContent: "center",
-                                paddingVertical: 10,
-                              }}
-                            >
-                              {acceptingOfferId === customOfferAttachment.offer_id ? (
-                                <ActivityIndicator size="small" color={Colors.white} />
-                              ) : (
-                                <Text style={{ color: Colors.white, fontSize: 13, fontWeight: "700" }}>{t("customer.chatScreen.customOfferAcceptPay")}</Text>
-                              )}
-                            </TouchableOpacity>
+                            <View style={{ marginTop: 10, gap: 8 }}>
+                              <TouchableOpacity
+                                onPress={() => openAcceptOfferOptions(customOfferAttachment.offer_id!)}
+                                disabled={acceptingOfferId === customOfferAttachment.offer_id}
+                                style={{
+                                  borderRadius: 10,
+                                  backgroundColor: Colors.primary,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  paddingVertical: 10,
+                                }}
+                              >
+                                {acceptingOfferId === customOfferAttachment.offer_id ? (
+                                  <ActivityIndicator size="small" color={Colors.white} />
+                                ) : (
+                                  <Text style={{ color: Colors.white, fontSize: 13, fontWeight: "700" }}>{t("customer.chatScreen.customOfferAcceptPay")}</Text>
+                                )}
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => void declineCustomOffer(customOfferAttachment.offer_id!)}
+                                disabled={decliningOfferId === customOfferAttachment.offer_id}
+                                style={{
+                                  borderRadius: 10,
+                                  borderWidth: 1,
+                                  borderColor: isMe ? "rgba(255,255,255,0.45)" : Colors.gray[300],
+                                  backgroundColor: isMe ? "rgba(255,255,255,0.08)" : Colors.white,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  paddingVertical: 10,
+                                }}
+                              >
+                                {decliningOfferId === customOfferAttachment.offer_id ? (
+                                  <ActivityIndicator size="small" color={isMe ? Colors.white : Colors.gray[700]} />
+                                ) : (
+                                  <Text style={{ color: isMe ? "rgba(255,255,255,0.95)" : Colors.gray[800], fontSize: 13, fontWeight: "700" }}>
+                                    {t("customer.chatScreen.declineOfferCta")}
+                                  </Text>
+                                )}
+                              </TouchableOpacity>
+                            </View>
                           ) : null}
                           {!isMe && customOfferAttachment.status === "payment_pending" ? (
                             <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -1256,7 +1348,9 @@ export default function ChatScreen() {
                             </View>
                           ) : null}
                           {!isOfferInactive && customOfferAttachment.status !== "payment_pending" && customOfferAttachment.status !== "paid" ? (
-                            <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, marginTop: 8, textAlign: "right" }}>Tap for details</Text>
+                            <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, marginTop: 8, textAlign: "right" }}>
+                              {t("customer.chatScreen.customOfferTapForDetails")}
+                            </Text>
                           ) : null}
                         </TouchableOpacity>
                         );
@@ -1273,7 +1367,7 @@ export default function ChatScreen() {
                           }}
                         >
                           <Text style={{ color: isMe ? Colors.white : "#065F46", fontSize: 12, fontWeight: "700" }}>
-                            Payment received - booking confirmed
+                            {t("customer.chatScreen.paymentReceivedBookingConfirmed")}
                           </Text>
                           {customOfferPaidAttachment.booking_id ? (
                             <TouchableOpacity
@@ -1299,14 +1393,14 @@ export default function ChatScreen() {
                           }}
                         >
                           <Text style={{ color: isMe ? Colors.white : Colors.gray[900], fontSize: 12, fontWeight: "700" }}>
-                            Custom request
+                            {t("customer.chatScreen.customRequestLabel")}
                           </Text>
                           <TouchableOpacity
                             onPress={() => router.push("/(app)/account-settings/custom-requests")}
                             style={{ marginTop: 8, alignSelf: "flex-start" }}
                           >
                             <Text style={{ color: isMe ? Colors.white : Colors.primary, fontSize: 12, fontWeight: "600" }}>
-                              Open Custom Requests
+                              {t("customer.chatScreen.openCustomRequests")}
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -1456,10 +1550,11 @@ export default function ChatScreen() {
                 }}
               >
                 <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>
-                  {(m.card_type || "Card").toUpperCase()} •••• {m.last4 || "----"}
+                  {(m.card_type || t("customer.paymentsScreen.card")).toUpperCase()} •••• {m.last4 || "----"}
                 </Text>
                 <Text style={{ color: Colors.gray[600], fontSize: 12, marginTop: 2 }}>
-                  {m.expiry_month || "--"}/{m.expiry_year || "----"} {m.is_default ? "• Default" : ""}
+                  {m.expiry_month || "--"}/{m.expiry_year || "----"}{" "}
+                  {m.is_default ? t("customer.chatScreen.paymentMethodDefaultBadge") : ""}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -1495,7 +1590,7 @@ export default function ChatScreen() {
             padding: 24,
           }}
           accessibilityRole="button"
-          accessibilityLabel="Close image preview"
+          accessibilityLabel={t("customer.chatScreen.a11yCloseImagePreview")}
         >
           <TouchableOpacity
             onPress={() => setPreviewImageUrl(null)}
@@ -1510,7 +1605,7 @@ export default function ChatScreen() {
               justifyContent: "center",
               backgroundColor: "rgba(255,255,255,0.1)",
             }}
-            accessibilityLabel="Close"
+            accessibilityLabel={t("common.close")}
             accessibilityRole="button"
           >
             <Ionicons name="close" size={24} color="#fff" />
@@ -1578,7 +1673,7 @@ export default function ChatScreen() {
               const isPaymentPending = d.status === "payment_pending";
 
               const formatDate = (iso: string | null | undefined) => {
-                if (!iso) return "—";
+                if (!iso) return t("customer.chatScreen.emDash");
                 return new Date(iso).toLocaleString("en-ZA", {
                   weekday: "short",
                   day: "numeric",
@@ -1597,9 +1692,14 @@ export default function ChatScreen() {
                 ? { label: t("customer.chatScreen.customOfferPaid"), bg: "#DCFCE7", text: "#166534" }
                 : isPaymentPending
                 ? { label: t("customer.chatScreen.customOfferPaymentPending"), bg: "#DBEAFE", text: "#1D4ED8" }
-                : { label: "Pending", bg: "#EFF6FF", text: "#1E40AF" };
+                : { label: t("customer.chatScreen.offerStatusPending"), bg: "#EFF6FF", text: "#1E40AF" };
 
-              const locationLabel = req?.location_type === "at_home" ? "At home" : req?.location_type === "at_salon" ? "At salon" : req?.location_type ?? "—";
+              const locationLabel =
+                req?.location_type === "at_home"
+                  ? t("customer.chatScreen.locationAtHome")
+                  : req?.location_type === "at_salon"
+                    ? t("customer.chatScreen.locationAtSalon")
+                    : req?.location_type ?? t("customer.chatScreen.emDash");
               const addressParts = [req?.address_line1, req?.address_line2, req?.address_city, req?.address_state, req?.address_postal_code].filter(Boolean);
 
               return (
@@ -1616,10 +1716,16 @@ export default function ChatScreen() {
 
                   {/* Price */}
                   <Text style={{ fontSize: 28, fontWeight: "800", color: Colors.primary, marginBottom: 4 }}>
-                    {d.currency || ""} {typeof d.price === "number" ? d.price.toFixed(2) : "—"}
-                    {typeof d.travel_fee === "number" && d.travel_fee > 0
-                      ? <Text style={{ fontSize: 13, color: Colors.gray[500], fontWeight: "400" }}>{`  + ${d.currency} ${d.travel_fee.toFixed(2)} travel`}</Text>
-                      : null}
+                    {d.currency || ""} {typeof d.price === "number" ? d.price.toFixed(2) : t("customer.chatScreen.emDash")}
+                    {typeof d.travel_fee === "number" && d.travel_fee > 0 ? (
+                      <Text style={{ fontSize: 13, color: Colors.gray[500], fontWeight: "400" }}>
+                        {" "}
+                        {t("customer.chatScreen.travelFeeSuffix", {
+                          currency: d.currency ?? "",
+                          amount: d.travel_fee.toFixed(2),
+                        })}
+                      </Text>
+                    ) : null}
                   </Text>
 
                   {/* Description */}
@@ -1632,7 +1738,9 @@ export default function ChatScreen() {
                     {d.duration_minutes ? (
                       <View style={{ flexDirection: "row", gap: 10 }}>
                         <Ionicons name="time-outline" size={16} color={Colors.gray[500]} style={{ marginTop: 1 }} />
-                        <Text style={{ color: Colors.gray[700], fontSize: 14 }}>{d.duration_minutes} min</Text>
+                        <Text style={{ color: Colors.gray[700], fontSize: 14 }}>
+                          {t("customer.chatScreen.durationMinutesShort", { count: d.duration_minutes })}
+                        </Text>
                       </View>
                     ) : null}
                     {req?.preferred_start_at ? (
@@ -1645,7 +1753,7 @@ export default function ChatScreen() {
                       <View style={{ flexDirection: "row", gap: 10 }}>
                         <Ionicons name="hourglass-outline" size={16} color={isExpired ? "#B45309" : Colors.gray[500]} style={{ marginTop: 1 }} />
                         <Text style={{ color: isExpired ? "#B45309" : Colors.gray[700], fontSize: 14 }}>
-                          Offer expires: {formatDate(d.expiration_at)}
+                          {t("customer.chatScreen.offerExpiresInline", { datetime: formatDate(d.expiration_at) })}
                         </Text>
                       </View>
                     ) : null}

@@ -121,6 +121,8 @@ export const adminQueryKeys = {
   addons: (q: string) => [...adminQueryKeys.root, "addons", q] as const,
 
   isoCodes: (tab: string) => [...adminQueryKeys.root, "iso-codes", tab] as const,
+  /** Prefix — invalidate all ISO tab queries (currencies, languages, timezones, …). */
+  isoCodesAll: () => [...adminQueryKeys.root, "iso-codes"] as const,
 
   finance: {
     all: () => [...adminQueryKeys.root, "finance"] as const,

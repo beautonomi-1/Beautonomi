@@ -264,6 +264,8 @@ export async function POST(request: NextRequest) {
       fallbackServiceId: service_id || null,
       productRows: normalizedProducts,
       participantTotal,
+      // Provider mobile creates the group row first, then POSTs participants — package lines validate then.
+      allowEmptyServices: true,
     });
     if (groupPackagePricing.ok === false) {
       return errorResponse(groupPackagePricing.message, groupPackagePricing.code, 400);
@@ -280,8 +282,12 @@ export async function POST(request: NextRequest) {
         scheduledAtDate,
         effectiveDuration + (location_type === "at_home" ? 30 : 0),
       );
+      const holdIdRaw = (body as { hold_id?: unknown }).hold_id;
+      const excludeHoldId =
+        typeof holdIdRaw === "string" && /^[0-9a-f-]{36}$/i.test(holdIdRaw.trim()) ? holdIdRaw.trim() : undefined;
       const holdOverlap = await checkActiveHoldOverlap(admin, providerId, scheduledAtDate, holdEnd, {
         dbStaffId: staff_id ? String(staff_id) : null,
+        ...(excludeHoldId ? { excludeHoldId } : {}),
       });
       if (holdOverlap) {
         return errorResponse(

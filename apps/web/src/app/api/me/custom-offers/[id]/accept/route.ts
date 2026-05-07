@@ -16,6 +16,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { toCents, percentOf } from "@beautonomi/utils";
+import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 
 interface OfferRow {
   id: string;
@@ -38,36 +39,40 @@ interface RequestRow {
   status?: string;
 }
 
-async function patchOfferMessageAttachmentStatus(
-  adminSupabase: ReturnType<typeof getSupabaseAdmin>,
-  offerId: string,
-  status: "payment_pending" | "paid" | "expired",
-  bookingId?: string
-) {
+/** Best-effort template notification when an offer is marked expired during accept. */
+async function notifyCustomerCustomOfferExpiredBestEffort(args: {
+  customerId: string;
+  providerId?: string;
+  offerId: string;
+  requestId?: string;
+}): Promise<void> {
   try {
-    const { data: messages } = await adminSupabase
-      .from("messages")
-      .select("id, attachments")
-      .not("attachments", "is", null);
-    for (const msg of messages || []) {
-      const attachments = (msg as { attachments?: unknown }).attachments;
-      if (!Array.isArray(attachments)) continue;
-      const updated = attachments.map((a: any) =>
-        a?.type === "custom_offer" && a?.offer_id === offerId
-          ? {
-              ...a,
-              status,
-              ...(status === "expired" ? { expired: true } : {}),
-              ...(bookingId ? { booking_id: bookingId } : {}),
-            }
-          : a
-      );
-      if (JSON.stringify(updated) !== JSON.stringify(attachments)) {
-        await adminSupabase.from("messages").update({ attachments: updated }).eq("id", (msg as any).id);
-      }
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+    let providerName = "your provider";
+    if (args.providerId) {
+      const admin = getSupabaseAdmin();
+      const { data: prow } = await admin
+        .from("providers")
+        .select("business_name")
+        .eq("id", args.providerId)
+        .maybeSingle();
+      const bn = (prow as { business_name?: string } | null)?.business_name;
+      if (bn && bn.trim()) providerName = bn.trim();
     }
-  } catch (err) {
-    console.warn("[custom-offers/accept] attachment patch failed:", err);
+    await sendTemplateNotification(
+      "customer_custom_offer_expired",
+      [args.customerId],
+      {
+        provider_name: providerName,
+        offer_id: args.offerId,
+        request_id: args.requestId ?? "",
+      },
+      ["push", "email"],
+      { appType: "customer" },
+    );
+  } catch (e) {
+    console.warn("[accept/expire] notify customer failed:", e);
   }
 }
 
@@ -143,8 +148,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return successResponse({ paymentUrl: offer.payment_url, alreadyAccepted: true });
     }
 
+    if (offer.status === "declined") {
+      return errorResponse("This offer was declined.", "OFFER_DECLINED", 400);
+    }
+
+    if (offer.status === "expired") {
+      return errorResponse("This offer has expired.", "OFFER_EXPIRED", 410);
+    }
+
     // If payment already initialized, return existing URL to prevent duplicate Paystack sessions
     if (offer.status === "payment_pending" && offer.payment_url) {
+      if (offer.expiration_at && new Date(offer.expiration_at).getTime() < Date.now()) {
+        const adminEarly = getSupabaseAdmin();
+        await adminEarly.from("custom_offers").update({ status: "expired", updated_at: new Date().toISOString() }).eq("id", id);
+        await patchCustomOfferMessageAttachments(adminEarly, id, { status: "expired" });
+        void notifyCustomerCustomOfferExpiredBestEffort({
+          customerId: user.id,
+          providerId: req?.provider_id,
+          offerId: id,
+          requestId: req?.id,
+        });
+        return errorResponse("This offer has expired.", "OFFER_EXPIRED", 410);
+      }
       return successResponse({ paymentUrl: offer.payment_url, alreadyAccepted: false });
     }
 
@@ -159,8 +184,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Expiry check
     if (offer.expiration_at && new Date(offer.expiration_at).getTime() < Date.now()) {
-      await adminSupabase.from("custom_offers").update({ status: "expired" }).eq("id", id);
-      await patchOfferMessageAttachmentStatus(adminSupabase, id, "expired");
+      await adminSupabase.from("custom_offers").update({ status: "expired", updated_at: new Date().toISOString() }).eq("id", id);
+      await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "expired" });
+      void notifyCustomerCustomOfferExpiredBestEffort({
+        customerId: user.id,
+        providerId: req?.provider_id,
+        offerId: id,
+        requestId: req?.id,
+      });
       return errorResponse("This offer has expired.", "OFFER_EXPIRED", 410);
     }
 
@@ -239,7 +270,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         return handleApiError(new Error("Failed to save payment state"), "Unable to process payment.", "DB_ERROR", 500);
       }
 
-      await patchOfferMessageAttachmentStatus(adminSupabase, id, "payment_pending");
+      await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "payment_pending" });
 
       const chargeResult = await chargeAuthorization(
         authorizationCode,
@@ -276,6 +307,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             updated_at: new Date().toISOString(),
           })
           .eq("id", id);
+        await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "pending" });
         return errorResponse(chargeResult.message || "Failed to charge card", "CHARGE_FAILED", 400);
       }
 
@@ -333,7 +365,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return handleApiError(new Error("Failed to save payment state"), "Unable to process payment. Please try again.", "DB_ERROR", 500);
     }
 
-    await patchOfferMessageAttachmentStatus(adminSupabase, id, "payment_pending");
+    await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "payment_pending" });
 
     return successResponse({
       paymentUrl,

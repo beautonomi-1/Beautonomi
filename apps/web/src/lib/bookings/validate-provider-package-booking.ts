@@ -29,12 +29,26 @@ export async function validateProviderCatalogPackageMatch(params: {
     product_variant_id?: string | null;
     quantity: number;
   }>;
+  /**
+   * When true, a package that includes service entitlements may be validated with an empty
+   * `services` list (e.g. provider app creates `group_bookings` first, then attaches participants).
+   * Product entitlements stay strict — add products on the same request or validate again after.
+   */
+  allowEmptyServices?: boolean;
 }): Promise<
   | { ok: true; pkg: { price: number | null; discount_percentage: number | null } }
   | { ok: false; message: string; code: string }
 > {
-  const { supabaseAdmin, providerId, packageId, locationType, locationId, services, products } =
-    params;
+  const {
+    supabaseAdmin,
+    providerId,
+    packageId,
+    locationType,
+    locationId,
+    services,
+    products,
+    allowEmptyServices = false,
+  } = params;
 
   const { data: pkg, error: pkgError } = await supabaseAdmin
     .from("service_packages")
@@ -103,7 +117,7 @@ export async function validateProviderCatalogPackageMatch(params: {
     };
   }
 
-  if (hasPkgOfferingLines && services.length === 0) {
+  if (hasPkgOfferingLines && services.length === 0 && !allowEmptyServices) {
     return {
       ok: false,
       message: "This package includes services; add the included services to the booking.",
@@ -111,7 +125,7 @@ export async function validateProviderCatalogPackageMatch(params: {
     };
   }
 
-  if (hasPkgOfferingLines) {
+  if (hasPkgOfferingLines && !(allowEmptyServices && services.length === 0)) {
     const svcRows = services
       .map((s) => ({ offering_id: s.offering_id ?? "" }))
       .filter((s) => s.offering_id.length > 0);

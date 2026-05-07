@@ -76,10 +76,14 @@ export function filterInProgressWhenAtHomeVerificationPending(args: {
   arrivalVerified: boolean;
   arrivalOtpPending: boolean;
   qrArrivalPending: boolean;
+  currentStage?: string | null;
 }): string[] {
-  const { targets, atHome, arrivalVerified, arrivalOtpPending, qrArrivalPending } = args;
-  if (atHome && !arrivalVerified && (arrivalOtpPending || qrArrivalPending)) {
-    return targets.filter((t) => t !== "in_progress");
+  const { targets, atHome, arrivalVerified, arrivalOtpPending, qrArrivalPending, currentStage } = args;
+  if (atHome) {
+    const needsVerification = !arrivalVerified && (arrivalOtpPending || qrArrivalPending);
+    if (needsVerification || currentStage !== "provider_arrived") {
+      return targets.filter((t) => t !== "in_progress");
+    }
   }
   return [...targets];
 }

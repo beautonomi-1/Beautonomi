@@ -12,8 +12,22 @@ describe("calendar-layout", () => {
     expect(addCalendarDaysToDateKey("2026-01-28", 8)).toBe("2026-02-05");
   });
 
-  it("getTopOffset returns 0 for unparseable scheduled_at", () => {
-    expect(getTopOffset("", 8, 60, null)).toBe(0);
+  describe("getTopOffset", () => {
+    it("returns 0 for unparseable scheduled_at", () => {
+      expect(getTopOffset("", 8, 60)).toBe(0);
+    });
+
+    it("correctly parses HH:mm format", () => {
+      expect(getTopOffset("09:30", 8, 60)).toBe(90); // 1.5 hours * 60 = 90
+    });
+
+    it("correctly parses ISO string time part", () => {
+      expect(getTopOffset("2026-05-07T14:15:00.000Z", 8, 60)).toBe(375); // 6.25 hours * 60 = 375
+    });
+
+    it("handles startHour correctly", () => {
+      expect(getTopOffset("10:00", 9, 60)).toBe(60); // 1 hour * 60 = 60
+    });
   });
 
   it("getBlockHeight falls back when durations missing", () => {

@@ -7,6 +7,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import type { Booking } from "@/types/api";
 import { fetchAllBookingsPages } from "@/features/bookings/fetchAllBookingsPages";
+import { useTranslation } from "@beautonomi/i18n";
 
 function parseValidDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value) return null;
@@ -42,6 +43,7 @@ function sortPresetToParams(p: SortPreset): { sort_by: string; sort_dir: string 
 
 export default function AccountBookingsScreen() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const [tab, setTab] = useState<"upcoming" | "past" | "cancelled">("upcoming");
@@ -71,14 +73,14 @@ export default function AccountBookingsScreen() {
       });
       if (gen !== requestGeneration.current) return;
       if (res.error) {
-        setError(res.error.message || "Failed to load");
+        setError(res.error.message || t("customer.accountBookingsScreen.loadFailed"));
         setBookings([]);
       } else {
         setBookings(res.data ?? []);
       }
     } catch (e) {
       if (gen !== requestGeneration.current) return;
-      setError(e instanceof Error ? e.message : "Failed");
+      setError(e instanceof Error ? e.message : t("customer.accountBookingsScreen.loadFailed"));
       setBookings([]);
     } finally {
       if (gen === requestGeneration.current) {
@@ -86,7 +88,7 @@ export default function AccountBookingsScreen() {
         setRefreshing(false);
       }
     }
-  }, [tab, sortPreset]);
+  }, [tab, sortPreset, t]);
 
   useEffect(() => { load(); }, [load]);
 

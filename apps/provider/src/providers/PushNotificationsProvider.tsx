@@ -18,7 +18,8 @@ import { useNativePermissionsOnboardingGate } from "@/providers/NativePermission
 import { ONE_SIGNAL_APP_ID } from "@/config/public-env";
 import { api } from "@/lib/api-client";
 import { getOneSignalAppId } from "@/lib/third-party-config";
-import { captureError } from "@/lib/sentry";
+import { captureError, addBreadcrumb } from "@/lib/sentry";
+import { isTransientApiFailure } from "@/lib/api-error";
 
 /** Keys from sendTemplateNotification(..., { appType: "provider" }); payload uses template_key, not type. */
 const PROVIDER_BOOKING_TEMPLATE_KEYS = new Set([
@@ -400,10 +401,18 @@ function usePushRegistration() {
           },
         );
         if (res.error) {
-          captureError(new Error(`Device registration rejected: ${res.error.message}`), {
-            scope: "push_notifications:device_register",
-            code: res.error.code,
-          });
+          if (isTransientApiFailure(res.error)) {
+            addBreadcrumb(
+              "Device register skipped (transient network)",
+              "push_notifications",
+              { code: res.error.code },
+            );
+          } else {
+            captureError(new Error(`Device registration rejected: ${res.error.message}`), {
+              scope: "push_notifications:device_register",
+              code: res.error.code,
+            });
+          }
         } else {
           registeredRef.current = true;
         }

@@ -1,12 +1,19 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { getTenantScopedCurrencyPreferenceOptions } from "@/lib/preferences/tenant-currency-options";
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer();
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type'); // 'language', 'currency', or 'timezone'
+    const type = searchParams.get("type"); // 'language', 'currency', or 'timezone'
+
+    if (type === "currency") {
+      const rows = await getTenantScopedCurrencyPreferenceOptions(request);
+      return successResponse(rows);
+    }
+
+    const supabase = await getSupabaseServer();
 
     let query = supabase
       .from('preference_options')

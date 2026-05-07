@@ -19,6 +19,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useCart } from "@/features/shop/useCart";
+import { emitCartUpdated } from "@/lib/cart-events";
 import { useProductOrders } from "@/features/shop/useProductOrders";
 import { useAuth } from "@/providers/AuthProvider";
 import { haptic } from "@/lib/haptics";
@@ -421,6 +422,8 @@ export default function ProductCheckoutScreen() {
     if (paymentMethod === "card_on_delivery") {
       setPlacing(false);
       setProcessingPayment(false);
+      await fetchCart().catch(() => {});
+      emitCartUpdated();
       setOrderSuccessData({
         orderNumber: order?.order_number,
         total,
@@ -441,6 +444,8 @@ export default function ProductCheckoutScreen() {
     if (!customerEmail) {
       setPlacing(false);
       setProcessingPayment(false);
+      await fetchCart().catch(() => {});
+      emitCartUpdated();
       setOrderSuccessData({
         orderNumber: order.order_number,
         total,
@@ -472,6 +477,7 @@ export default function ProductCheckoutScreen() {
       void refreshSavedCards();
       if (cardCharge.success) {
         await fetchCart();
+        emitCartUpdated();
         haptic.success();
         setPlacing(false);
         setProcessingPayment(false);
@@ -559,6 +565,7 @@ export default function ProductCheckoutScreen() {
       setProcessingPayment(false);
       if (paid) {
         await fetchCart();
+        emitCartUpdated();
         haptic.success();
         setOrderSuccessData({
           orderNumber: order.order_number,
@@ -569,6 +576,8 @@ export default function ProductCheckoutScreen() {
           subtitle: pc("paymentSuccessConfirmedBody", { orderNumber: String(order.order_number) }),
         });
       } else {
+        await fetchCart().catch(() => {});
+        emitCartUpdated();
         setOrderSuccessData({
           orderNumber: order.order_number,
           total: amountDue,

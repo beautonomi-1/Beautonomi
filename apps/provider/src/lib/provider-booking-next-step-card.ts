@@ -42,6 +42,19 @@ export function getBookingNextStepCard(
       color: "#7c3aed",
     };
   }
+  if (
+    options.isAtHome &&
+    booking.current_stage === "provider_arrived" &&
+    (booking.arrival_otp_verified || booking.qr_code_verified) &&
+    (status === "confirmed" || status === "booked")
+  ) {
+    return {
+      title: "Ready for service",
+      description: "Client arrival confirmed. Use Change Status to start the service.",
+      icon: "play-circle-outline",
+      color: "#2563eb",
+    };
+  }
   if (status === "waiting") {
     return {
       title: "Client is waiting",

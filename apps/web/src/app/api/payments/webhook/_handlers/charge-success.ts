@@ -33,6 +33,7 @@ import {
 import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
+import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -1424,6 +1425,7 @@ async function handleCustomOfferSuccess(
     booking_number: "",
     customer_id: req.customer_id,
     provider_id: req.provider_id,
+    custom_offer_id: offerId,
     status: "confirmed",
     location_type: req.location_type || "at_salon",
     location_id: req.location_type === "at_salon" && offer.location_id ? offer.location_id : null,
@@ -1565,6 +1567,11 @@ async function handleCustomOfferSuccess(
     })
     .eq("id", offerId);
 
+  await patchCustomOfferMessageAttachments(adminSupabase, offerId, {
+    status: "paid",
+    bookingId: booking.id,
+  });
+
   // Create payments row so booking has a consistent payment record (reports, portal)
   await adminSupabase.from("payments").insert({
     booking_id: booking.id,
@@ -1650,7 +1657,7 @@ async function handleCustomOfferSuccess(
       fees: feesInCurrency,
       commission: platformCommission,
       net: platformCommission,
-      description: `Custom order payment`,
+      description: `Custom order payment [custom_offer:${offerId}]`,
       created_at: new Date().toISOString(),
     },
     {
@@ -1662,7 +1669,7 @@ async function handleCustomOfferSuccess(
       fees: 0,
       commission: 0,
       net: providerEarnings,
-      description: `Provider earnings (custom order)`,
+      description: `Provider earnings (custom order) [custom_offer:${offerId}]`,
       created_at: new Date().toISOString(),
     },
   ]);
@@ -1680,7 +1687,7 @@ async function handleCustomOfferSuccess(
       fees: 0,
       commission: 0,
       net: serviceFeeAmount,
-      description: `Platform fee (custom order)`,
+      description: `Platform fee (custom order) [custom_offer:${offerId}]`,
       created_at: new Date().toISOString(),
     });
   }
@@ -1694,7 +1701,7 @@ async function handleCustomOfferSuccess(
       fees: 0,
       commission: 0,
       net: tipAmount,
-      description: `Tip (custom order)`,
+      description: `Tip (custom order) [custom_offer:${offerId}]`,
       created_at: new Date().toISOString(),
     });
   }
@@ -1708,7 +1715,7 @@ async function handleCustomOfferSuccess(
       fees: 0,
       commission: 0,
       net: 0,
-      description: `Tax (custom order)`,
+      description: `Tax (custom order) [custom_offer:${offerId}]`,
       created_at: new Date().toISOString(),
     });
   }
@@ -1722,7 +1729,7 @@ async function handleCustomOfferSuccess(
       fees: 0,
       commission: 0,
       net: travelFee,
-      description: `Travel fee (custom order)`,
+      description: `Travel fee (custom order) [custom_offer:${offerId}]`,
       created_at: new Date().toISOString(),
     });
   }
@@ -1736,7 +1743,7 @@ async function handleCustomOfferSuccess(
       fees: 0,
       commission: 0,
       net: -promotionDiscountAmount,
-      description: `Promotion discount (custom order)`,
+      description: `Promotion discount (custom order) [custom_offer:${offerId}]`,
       created_at: new Date().toISOString(),
     });
   }
@@ -1829,23 +1836,6 @@ async function handleCustomOfferSuccess(
           });
         }
 
-        const { data: offerMessages } = await adminSupabase
-          .from("messages")
-          .select("id, attachments")
-          .eq("conversation_id", convId)
-          .not("attachments", "is", null);
-        for (const msg of offerMessages || []) {
-          const attachments = (msg as { attachments?: unknown }).attachments;
-          if (!Array.isArray(attachments)) continue;
-          const updated = attachments.map((a: any) =>
-            a?.type === "custom_offer" && a?.offer_id === offerId
-              ? { ...a, status: "paid", booking_id: booking.id }
-              : a
-          );
-          if (JSON.stringify(updated) !== JSON.stringify(attachments)) {
-            await adminSupabase.from("messages").update({ attachments: updated }).eq("id", (msg as any).id);
-          }
-        }
       }
     }
   } catch {
@@ -1869,13 +1859,17 @@ async function handleCustomOfferSuccess(
       booking_id: bookingId,
     };
     if (req.customer_id) {
+      const customerBookingUrl = bookingId
+        ? `/account-settings/bookings/${bookingId}`
+        : "/account-settings/bookings";
+      const customerOfferContext = `/account-settings/custom-requests?offer=${encodeURIComponent(offerId)}`;
       await sendToUser(
         req.customer_id,
         {
           title: "Custom Order Paid",
           message: "Your custom order has been paid and a booking has been created.",
           data: baseData,
-          url: "/account-settings/bookings",
+          url: customerBookingUrl,
         },
         ["push"],
         { appType: "customer" },
@@ -1885,8 +1879,8 @@ async function handleCustomOfferSuccess(
         type: "custom_offer",
         title: "Booking Confirmed",
         message: "Your custom offer is paid and your booking is confirmed.",
-        data: baseData,
-        action_url: "/account-settings/bookings",
+        data: { ...baseData, custom_requests_url: customerOfferContext },
+        action_url: customerBookingUrl,
       });
     }
     if (providerUserId) {
@@ -1922,7 +1916,9 @@ async function handleCustomOfferFailed(
   const offerId = payload.metadata.custom_offer_id as string;
   if (!offerId) return;
 
-  await supabase.from("custom_offers")
+  const admin = getSupabaseAdmin();
+  await admin
+    .from("custom_offers")
     .update({
       status: "pending",
       payment_url: null,
@@ -1930,6 +1926,8 @@ async function handleCustomOfferFailed(
       updated_at: new Date().toISOString(),
     })
     .eq("id", offerId);
+
+  await patchCustomOfferMessageAttachments(admin, offerId, { status: "pending" });
 
   try {
     const { data: offerRow } = await supabase

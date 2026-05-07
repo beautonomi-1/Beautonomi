@@ -4,7 +4,7 @@
  * Route: (app)/in-app-browser?url=<encoded>&title=...
  */
 import { useCallback, useState } from "react";
-import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, Linking } from "react-native";
+import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, Linking, Alert } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,8 +12,10 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function InAppBrowserScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ url?: string; title?: string }>();
@@ -38,8 +40,12 @@ export default function InAppBrowserScreen() {
       }
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
-    router.replace("/(app)/account-settings/custom-requests" as never);
-  }, [router]);
+    Alert.alert(
+      t("checkout.customOfferPollTimeoutTitle"),
+      t("checkout.customOfferPollTimeoutBody"),
+      [{ text: t("common.ok"), onPress: () => router.replace("/(app)/account-settings/custom-requests" as never) }],
+    );
+  }, [router, t]);
 
   const isValid =
     rawUrl.startsWith("https://") || rawUrl.startsWith("http://");

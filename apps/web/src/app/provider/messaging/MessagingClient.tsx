@@ -52,11 +52,13 @@ export function MessagingClient({
   initialError,
   initialConversationId,
   fromServer,
+  offerId,
 }: {
   initialConversations: unknown[] | null;
   initialError: string | null;
   initialConversationId: string | null;
   fromServer: boolean;
+  offerId?: string | null;
 }) {
   const searchParams = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>(() => {
@@ -350,6 +352,7 @@ export function MessagingClient({
                 onBack={handleBack}
                 onConversationUpdate={loadConversations}
                 messagesEndpoint="/api/provider/conversations"
+                initialOfferId={offerId}
               />
             ) : (
               <div className="flex flex-col h-full bg-[#f0f2f5] items-center justify-center px-4">

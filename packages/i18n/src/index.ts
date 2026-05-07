@@ -4,21 +4,27 @@ import en from "./locales/en.json";
 import zu from "./locales/zu.json";
 import af from "./locales/af.json";
 import st from "./locales/st.json";
+import xh from "./locales/xh.json";
+import nso from "./locales/nso.json";
+import tn from "./locales/tn.json";
+import ts from "./locales/ts.json";
+import ve from "./locales/ve.json";
+import ss from "./locales/ss.json";
 
 export const defaultNS = "translation";
 
-/** Stub locales reuse English strings until dedicated locale files ship (fallbackLng still applies for partials). */
+/** Bundled locales; `xh`–`ss` currently ship English copy — translate in-place (fallbackLng fills any gaps). */
 export const resources = {
   en: { translation: en },
   zu: { translation: zu },
   af: { translation: af },
   st: { translation: st },
-  xh: { translation: en },
-  nso: { translation: en },
-  tn: { translation: en },
-  ts: { translation: en },
-  ve: { translation: en },
-  ss: { translation: en },
+  xh: { translation: xh },
+  nso: { translation: nso },
+  tn: { translation: tn },
+  ts: { translation: ts },
+  ve: { translation: ve },
+  ss: { translation: ss },
 } as const;
 
 export const supportedLanguages = [

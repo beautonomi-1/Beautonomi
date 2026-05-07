@@ -341,9 +341,15 @@ export function CustomOfferSheet({
         if (!Number.isNaN(fee) && fee >= 0) payload.travel_fee = fee;
       }
       const res = await api.post("/api/provider/custom-offers/create", payload);
-      if ((res as { error?: { message?: string } }).error) {
-        const msg = (res as { error: { message?: string } }).error.message ?? "Failed to send custom offer";
-        Alert.alert("Error", msg);
+      if ((res as { error?: { message?: string; code?: string } }).error) {
+        const err = (res as { error: { message?: string; code?: string } }).error;
+        const msg = err.message ?? "Failed to send custom offer";
+        const title = err.code === "CUSTOM_OFFERS_DISABLED" ? "Custom offers unavailable" : "Error";
+        const body =
+          err.code === "CUSTOM_OFFERS_DISABLED"
+            ? `${msg}\n\nYour admin can enable the feature flag commerce.provider_custom_offers for this market.`
+            : msg;
+        Alert.alert(title, body);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

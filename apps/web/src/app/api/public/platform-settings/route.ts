@@ -96,9 +96,11 @@ export async function GET(request: Request) {
         settings?.localization?.default_language || tenantRegionConfig?.defaultLanguage || "en",
       timezone:
         settings?.localization?.timezone || tenantRegionConfig?.defaultTimezone || "Africa/Johannesburg",
-      supported_currencies:
-        settings?.localization?.supported_currencies ||
-        [tenantRegionConfig?.defaultCurrency || LAST_RESORT_CURRENCY, "USD", "EUR"],
+      supported_currencies: (() => {
+        const fromSettings = settings?.localization?.supported_currencies;
+        if (Array.isArray(fromSettings) && fromSettings.length > 0) return fromSettings;
+        return [tenantRegionConfig?.defaultCurrency || LAST_RESORT_CURRENCY];
+      })(),
       supported_languages: supportedLanguages,
       languages_meta: languages_meta.length ? languages_meta : undefined,
       currency_info: currencyInfo || {
@@ -132,7 +134,7 @@ export async function GET(request: Request) {
           default_currency: fallbackCurrency,
           default_language: "en",
           timezone: "Africa/Johannesburg",
-          supported_currencies: [fallbackCurrency, "USD", "EUR"],
+          supported_currencies: [fallbackCurrency],
           supported_languages: [...DEFAULT_SUPPORTED_LANGUAGE_CODES],
           languages_meta: undefined,
           currency_info: {

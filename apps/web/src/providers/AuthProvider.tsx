@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { User, UserRole } from "@/types/beautonomi";
@@ -80,11 +88,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isLoadingRef = useRef(false);
   const sessionRef = useRef<Session | null>(null);
 
-  // Initial state from cache so refs are set on first render (prevents logout when tab switches / remount)
+  /** Read persisted auth for client-only restore (must not run during SSR initial state). */
   function getInitialAuthFromCache(): { user: User | null; session: Session | null; role: UserRole | null } {
-    if (typeof window === 'undefined') return { user: null, session: null, role: null };
+    if (typeof window === "undefined") return { user: null, session: null, role: null };
     try {
-      const cached = localStorage.getItem('beautonomi_auth_cache');
+      const cached = localStorage.getItem("beautonomi_auth_cache");
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed.timestamp && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
@@ -101,10 +109,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { user: null, session: null, role: null };
   }
 
-  const cached = getInitialAuthFromCache();
-  const [user, setUser] = useState<User | null>(cached.user);
-  const [session, setSession] = useState<Session | null>(cached.session);
-  const [role, setRole] = useState<UserRole | null>(cached.role);
+  /**
+   * §Hydration (React #418): Server always renders `user/session/role` as null. Seeding `useState`
+   * from `localStorage` on the client made the first client render differ from server HTML.
+   * Restore cache in `useLayoutEffect` so the hydrating render matches, then apply cache before paint.
+   */
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [role, setRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -113,9 +125,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const _pathname = usePathname();
   const supabase = getSupabaseClient();
 
-  // Sync refs with initial cache so onAuthStateChange(!newSession) doesn't clear state before refs update
-  if (cached.user && !userRef.current) userRef.current = cached.user;
-  if (cached.session && !sessionRef.current) sessionRef.current = cached.session;
+  useLayoutEffect(() => {
+    const cached = getInitialAuthFromCache();
+    if (cached.user && !userRef.current) userRef.current = cached.user;
+    if (cached.session && !sessionRef.current) sessionRef.current = cached.session;
+    if (cached.user) setUser(cached.user);
+    if (cached.session) setSession(cached.session);
+    if (cached.role != null) setRole(cached.role);
+  }, []);
   
   // Save to cache whenever state changes - use localStorage for persistence
   useEffect(() => {

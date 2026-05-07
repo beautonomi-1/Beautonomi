@@ -89,35 +89,10 @@ function buildI18nAlignedLanguageOptions(apiRows: PickerOption[]): PickerOption[
   return merged.map((m) => ({ value: m.code, label: m.name }));
 }
 
-/**
- * §UI-audit 2026-05: previously this fallback list invented African currency
- * options (KES / NGN / GHS / EGP) regardless of the tenant's region — so users
- * on the South African market saw currencies they couldn't actually transact
- * in. The new fallback only lists widely-recognised global currencies; the
- * tenant default currency is added back in `buildCurrencyFallbackOptions`
- * once the config bundle has resolved.
- */
-const GLOBAL_CURRENCY_FALLBACK: PickerOption[] = [
-  { value: LAST_RESORT_CURRENCY, label: currencySelectLabel(LAST_RESORT_CURRENCY) },
-  { value: "USD", label: currencySelectLabel("USD") },
-  { value: "EUR", label: currencySelectLabel("EUR") },
-  { value: "GBP", label: currencySelectLabel("GBP") },
-];
-
-function buildCurrencyFallbackOptions(tenantDefault: string | null | undefined): PickerOption[] {
-  const out: PickerOption[] = [];
-  const seen = new Set<string>();
-  const td = tenantDefault?.trim().toUpperCase();
-  if (td) {
-    out.push({ value: td, label: currencySelectLabel(td) });
-    seen.add(td);
-  }
-  for (const opt of GLOBAL_CURRENCY_FALLBACK) {
-    if (seen.has(opt.value)) continue;
-    seen.add(opt.value);
-    out.push(opt);
-  }
-  return out;
+/** Only when the API is unreachable — single tenant default code (no invented ISO list). */
+function buildMinimalCurrencyFallback(tenantDefault: string | null | undefined): PickerOption[] {
+  const td = (tenantDefault?.trim() || LAST_RESORT_CURRENCY).toUpperCase();
+  return [{ value: td, label: currencySelectLabel(td) }];
 }
 
 const TIMEZONE_OPTIONS: PickerOption[] = [
@@ -279,7 +254,7 @@ export default function PreferencesScreen() {
     })),
   );
   const [currencyOptions, setCurrencyOptions] = useState<PickerOption[]>(() =>
-    buildCurrencyFallbackOptions(getTenantDefaultCurrency()),
+    buildMinimalCurrencyFallback(getTenantDefaultCurrency()),
   );
   const [timezoneOptions, setTimezoneOptions] = useState<PickerOption[]>(TIMEZONE_OPTIONS);
 
@@ -353,14 +328,12 @@ export default function PreferencesScreen() {
       const curFromApi = mapPreferenceRowsToPicker(coercePreferenceOptionRows(curRes.data));
       const tenantDefault =
         bundle?.meta?.tenant_region?.default_currency ?? getTenantDefaultCurrency();
+      const mappedCur = curFromApi.map((o) => ({
+        value: o.value,
+        label: o.label || currencySelectLabel(o.value),
+      }));
       setCurrencyOptions(
-        preferApiOrFallback(
-          curFromApi.map((o) => ({
-            value: o.value,
-            label: o.label || currencySelectLabel(o.value),
-          })),
-          buildCurrencyFallbackOptions(tenantDefault),
-        ),
+        mappedCur.length > 0 ? mappedCur : buildMinimalCurrencyFallback(tenantDefault),
       );
 
       setTimezoneOptions(
@@ -368,7 +341,7 @@ export default function PreferencesScreen() {
       );
 
       if (profileRes.error) {
-        setError(getApiErrorMessage(profileRes.error, "Failed to load preferences"));
+        setError(getApiErrorMessage(profileRes.error, t("customer.preferencesScreen.loadFailed")));
         return;
       }
       const rawProfile = profileRes.data as UserProfile | { data?: UserProfile } | null | undefined;
@@ -384,11 +357,11 @@ export default function PreferencesScreen() {
         });
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load preferences");
+      setError(e instanceof Error ? e.message : t("customer.preferencesScreen.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [bundle?.meta?.tenant_region?.default_currency]);
+  }, [bundle?.meta?.tenant_region?.default_currency, t]);
 
   useEffect(() => {
     void load();

@@ -46,6 +46,8 @@ export default function SuppressConsoleWarnings() {
          lowerMessage.includes("signal is aborted without reason") ||
          lowerMessage.includes("request was cancelled") ||
          (lowerMessage.includes("fetchtimeouterror") && lowerMessage.includes("cancelled"))) ||
+        // Navigation / cache API: concurrent prefetch or soft-nav can steal the lock (Chrome)
+        (lowerMessage.includes("lock broken") && lowerMessage.includes("steal")) ||
         // Browser uses Google as network location provider for navigator.geolocation (not our API call)
         (lowerMessage.includes("network location provider") && lowerMessage.includes("googleapis")) ||
         // Next.js LCP image suggestion (noise in dev when using external images)
@@ -126,6 +128,8 @@ export default function SuppressConsoleWarnings() {
       const isSupabaseAuthLockError =
         errorMessage.includes('Lock ') &&
         errorMessage.includes('was released because another request stole it');
+      const isNavigationLockSteal =
+        lowerMessage.includes("lock broken") && lowerMessage.includes("steal");
       
       // Suppress AbortErrors and FetchTimeoutError from cancelled requests
       // These are expected when requests are cancelled during component unmounts or navigation
@@ -137,7 +141,7 @@ export default function SuppressConsoleWarnings() {
       const isCancelledRequest = lowerMessage.includes('request was cancelled') ||
           (error instanceof Error && error.name === 'FetchTimeoutError' && errorMessage.includes('cancelled'));
       
-      if (isAbortError || isCancelledRequest || isSupabaseAuthLockError) {
+      if (isAbortError || isCancelledRequest || isSupabaseAuthLockError || isNavigationLockSteal) {
         event.preventDefault(); // Prevent default error logging
         return;
       }

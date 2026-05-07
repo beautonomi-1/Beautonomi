@@ -40,6 +40,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { haptic } from "@/lib/haptics";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
 import * as Clipboard from "expo-clipboard";
+import * as ExpoLinking from "expo-linking";
 import type {
   PublicProviderDetail,
   PublicProfilePromotion,
@@ -1134,7 +1135,7 @@ export default function PartnerProfileScreen() {
   const load = useCallback(async () => {
     if (!effectiveSlug) {
       setLoading(false);
-      setError("Provider not found — missing profile link.");
+      setError(pp("missingProfileLink"));
       return;
     }
     setLoading(true);
@@ -1156,7 +1157,7 @@ export default function PartnerProfileScreen() {
         api.get<ProviderServicesResponse>(`/api/public/providers/${encodeURIComponent(effectiveSlug)}/services`),
       ]);
       if (provRes.error) {
-        setError(provRes.error.message || "Provider not found");
+        setError(provRes.error.message || pp("providerNotFound"));
         setProvider(null);
       } else {
         setProvider(provRes.data);
@@ -1166,7 +1167,7 @@ export default function PartnerProfileScreen() {
         if (svcRes.data?.categories?.[0]) setActiveCategory(svcRes.data.categories[0].id);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : pp("loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -1178,6 +1179,7 @@ export default function PartnerProfileScreen() {
     selectedAddress?.longitude,
     coords?.latitude,
     coords?.longitude,
+    pp,
   ]);
 
   useEffect(() => { load(); }, [load]);
@@ -1438,7 +1440,7 @@ export default function PartnerProfileScreen() {
           text: pp("subscribeCta"),
           onPress: async () => {
             try {
-              const res = await api.post<{ payment?: { authorization_url: string } }>("/api/me/membership/subscribe", {
+              const res = await api.post("/api/me/membership/subscribe", {
                 membership_id: plan.id,
                 provider_id: provider.id,
                 source: "customer_app_partner_profile",
@@ -1451,21 +1453,105 @@ export default function PartnerProfileScreen() {
                 return;
               }
 
-              const data = res.data as Record<string, unknown> | undefined;
-              const paymentInfo = data?.payment as { authorization_url?: string } | undefined;
-              const url = paymentInfo?.authorization_url;
+              const raw = res.data as Record<string, unknown> | undefined;
+              const nested =
+                raw?.data && typeof raw.data === "object" ? (raw.data as Record<string, unknown>) : null;
+              const orderStatus =
+                (typeof raw?.status === "string" && raw.status) ||
+                (nested && typeof nested.status === "string" && nested.status) ||
+                "";
+              const subscribeReference =
+                (typeof raw?.reference === "string" && raw.reference.trim()) ||
+                (nested && typeof nested.reference === "string" && nested.reference.trim()) ||
+                "";
+              const paymentInfo = (raw?.payment ?? nested?.payment) as { authorization_url?: string } | undefined;
+              const url =
+                typeof paymentInfo?.authorization_url === "string" ? paymentInfo.authorization_url.trim() : "";
 
-              if (url) {
+              const pollSalonMembership = async (): Promise<boolean> => {
+                for (let i = 0; i < 15; i += 1) {
+                  const mRes = await api.get<{
+                    provider_memberships?: {
+                      provider_id: string;
+                      id: string;
+                      plan_id: string;
+                      plan_name: string;
+                      expires_at: string | null;
+                    }[];
+                  }>("/api/me/membership");
+                  if (!mRes.error) {
+                    const mine = (mRes.data?.provider_memberships ?? []).find((r) => r.provider_id === provider.id);
+                    if (mine) {
+                      setSalonMembership({
+                        id: mine.id,
+                        plan_id: mine.plan_id,
+                        plan_name: mine.plan_name,
+                        expires_at: mine.expires_at ?? null,
+                      });
+                      return true;
+                    }
+                  }
+                  if (i < 14) {
+                    await new Promise((r) => setTimeout(r, 2000));
+                  }
+                }
+                return false;
+              };
+
+              if (orderStatus === "paid") {
+                const ok = await pollSalonMembership();
+                haptic.success();
+                Alert.alert(
+                  ok ? pp("membershipConfirmedTitle") : pp("membershipPendingTitle"),
+                  ok ? pp("membershipConfirmedBody") : pp("membershipPendingBody"),
+                );
+                return;
+              }
+
+              if (!url) {
+                haptic.error();
+                Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), pp("paymentLinkError"));
+                return;
+              }
+
+              let paystackRef = subscribeReference;
+
+              if (Platform.OS !== "web") {
+                const WebBrowser = await import("expo-web-browser");
+                const returnUrl = ExpoLinking.createURL("membership-paystack");
+                const result = await WebBrowser.openAuthSessionAsync(url, returnUrl);
+                if (result.type === "cancel") {
+                  haptic.error();
+                  return;
+                }
+                if (result.type === "success" && result.url) {
+                  try {
+                    const parsed = ExpoLinking.parse(result.url);
+                    const q = parsed.queryParams ?? {};
+                    const returnedRef = q.reference ?? q.trxref;
+                    const refStr = Array.isArray(returnedRef) ? returnedRef[0] : returnedRef;
+                    if (typeof refStr === "string" && refStr.trim()) paystackRef = refStr.trim();
+                  } catch {
+                    /* keep subscribe reference */
+                  }
+                }
+              } else {
                 const WebBrowser = await import("expo-web-browser");
                 await WebBrowser.openBrowserAsync(url, {
                   presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
                 });
-                haptic.success();
-                Alert.alert(pp("completePaymentTitle"), pp("completePaymentBody"));
-              } else {
-                haptic.error();
-                Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), pp("paymentLinkError"));
               }
+
+              if (paystackRef) {
+                await api.get(`/api/paystack/verify?reference=${encodeURIComponent(paystackRef)}`).catch(() => {});
+              }
+
+              const activated = await pollSalonMembership();
+              haptic.success();
+              Alert.alert(
+                activated ? pp("membershipConfirmedTitle") : pp("membershipPendingTitle"),
+                activated ? pp("membershipConfirmedBody") : pp("membershipPendingBody"),
+              );
             } catch {
               Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), t("customer.mobile.screens.maintenance.genericError"));
             }

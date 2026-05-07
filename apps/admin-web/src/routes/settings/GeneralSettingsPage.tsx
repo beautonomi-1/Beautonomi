@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -8,7 +8,7 @@ import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
-import { Mail, Smartphone } from "lucide-react";
+import { Globe, Mail, Smartphone } from "lucide-react";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -28,9 +28,38 @@ type BrandingForm = {
 
 type LocalizationForm = {
   default_language: string;
+  supported_languages: string[];
   default_currency: string;
+  supported_currencies: string[];
   timezone: string;
 };
+
+type IsoCurrencyRow = { code: string; name: string; symbol?: string | null; is_active?: boolean };
+type IsoLanguageRow = { code: string; name: string; native_name?: string | null; is_active?: boolean };
+type IsoTimezoneRow = { code: string; name: string; is_active?: boolean };
+
+function normalizeLocalizationForSave(loc: LocalizationForm): LocalizationForm {
+  const langs = new Set(
+    loc.supported_languages.map((c) => c.trim().toLowerCase()).filter(Boolean),
+  );
+  langs.add(loc.default_language.trim().toLowerCase());
+  const curs = new Set(
+    loc.supported_currencies.map((c) => c.trim().toUpperCase()).filter(Boolean),
+  );
+  curs.add(loc.default_currency.trim().toUpperCase());
+  return {
+    ...loc,
+    default_language: loc.default_language.trim().toLowerCase(),
+    default_currency: loc.default_currency.trim().toUpperCase(),
+    timezone: loc.timezone.trim(),
+    supported_languages: Array.from(langs).sort(),
+    supported_currencies: Array.from(curs).sort(),
+  };
+}
+
+function filterActive<T extends { is_active?: boolean }>(rows: T[]): T[] {
+  return rows.filter((r) => r.is_active !== false);
+}
 
 type FeaturesForm = {
   auto_approve_providers: boolean;
@@ -110,6 +139,56 @@ export function GeneralSettingsPage() {
     enabled: allowed,
   });
 
+  const isoQueries = useQueries({
+    queries: [
+      {
+        queryKey: adminQueryKeys.isoCodes("currencies"),
+        queryFn: () =>
+          adminApi.getJson<IsoCurrencyRow[]>("/api/admin/iso-codes/currencies", {
+            timeoutMs: 60_000,
+          }),
+        enabled: allowed,
+      },
+      {
+        queryKey: adminQueryKeys.isoCodes("languages"),
+        queryFn: () =>
+          adminApi.getJson<IsoLanguageRow[]>("/api/admin/iso-codes/languages", {
+            timeoutMs: 60_000,
+          }),
+        enabled: allowed,
+      },
+      {
+        queryKey: adminQueryKeys.isoCodes("timezones"),
+        queryFn: () =>
+          adminApi.getJson<IsoTimezoneRow[]>("/api/admin/iso-codes/timezones", {
+            timeoutMs: 60_000,
+          }),
+        enabled: allowed,
+      },
+    ],
+  });
+
+  const activeCurrencies = useMemo(() => {
+    const raw = isoQueries[0].data;
+    const rows = Array.isArray(raw) ? filterActive(raw) : [];
+    return [...rows].sort((a, b) => a.code.localeCompare(b.code));
+  }, [isoQueries[0].data]);
+
+  const activeLanguages = useMemo(() => {
+    const raw = isoQueries[1].data;
+    const rows = Array.isArray(raw) ? filterActive(raw) : [];
+    return [...rows].sort((a, b) => (a.name || a.code).localeCompare(b.name || b.code));
+  }, [isoQueries[1].data]);
+
+  const activeTimezones = useMemo(() => {
+    const raw = isoQueries[2].data;
+    const rows = Array.isArray(raw) ? filterActive(raw) : [];
+    return [...rows].sort((a, b) => a.name.localeCompare(b.name));
+  }, [isoQueries[2].data]);
+
+  const isoLoading = isoQueries.some((iq) => iq.isLoading);
+  const isoError = isoQueries.find((iq) => iq.error)?.error;
+
   const [branding, setBranding] = useState<BrandingForm>({
     site_name: "",
     logo_url: "",
@@ -119,7 +198,9 @@ export function GeneralSettingsPage() {
   });
   const [localization, setLocalization] = useState<LocalizationForm>({
     default_language: "en",
+    supported_languages: [],
     default_currency: "ZAR",
+    supported_currencies: [],
     timezone: "Africa/Johannesburg",
   });
   const [features, setFeatures] = useState<FeaturesForm>({
@@ -164,6 +245,8 @@ export function GeneralSettingsPage() {
   });
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [supportedLangFilter, setSupportedLangFilter] = useState("");
+  const [supportedCurrencyFilter, setSupportedCurrencyFilter] = useState("");
 
   useEffect(() => {
     if (!q.data) return;
@@ -179,7 +262,9 @@ export function GeneralSettingsPage() {
     });
     setLocalization({
       default_language: l.default_language ?? "en",
+      supported_languages: Array.isArray(l.supported_languages) ? l.supported_languages : [],
       default_currency: l.default_currency ?? "ZAR",
+      supported_currencies: Array.isArray(l.supported_currencies) ? l.supported_currencies : [],
       timezone: l.timezone ?? "Africa/Johannesburg",
     });
     setFeatures({
@@ -250,14 +335,64 @@ export function GeneralSettingsPage() {
     }
   }, [q.data]);
 
+  const activeCurrencyCodes = useMemo(
+    () => new Set(activeCurrencies.map((c) => c.code.toUpperCase())),
+    [activeCurrencies],
+  );
+  const activeLanguageCodes = useMemo(
+    () => new Set(activeLanguages.map((l) => l.code.toLowerCase())),
+    [activeLanguages],
+  );
+
+  const orphanSupportedLanguages = useMemo(
+    () =>
+      localization.supported_languages.filter(
+        (c) => !activeLanguageCodes.has(c.trim().toLowerCase()),
+      ),
+    [localization.supported_languages, activeLanguageCodes],
+  );
+  const orphanSupportedCurrencies = useMemo(
+    () =>
+      localization.supported_currencies.filter(
+        (c) => !activeCurrencyCodes.has(c.trim().toUpperCase()),
+      ),
+    [localization.supported_currencies, activeCurrencyCodes],
+  );
+
+  const filteredLanguagesForGrid = useMemo(() => {
+    const q = supportedLangFilter.trim().toLowerCase();
+    if (!q) return activeLanguages;
+    return activeLanguages.filter(
+      (l) =>
+        l.code.toLowerCase().includes(q) ||
+        (l.name ?? "").toLowerCase().includes(q) ||
+        (l.native_name ?? "").toLowerCase().includes(q),
+    );
+  }, [activeLanguages, supportedLangFilter]);
+
+  const filteredCurrenciesForGrid = useMemo(() => {
+    const q = supportedCurrencyFilter.trim().toLowerCase();
+    if (!q) return activeCurrencies;
+    return activeCurrencies.filter(
+      (c) =>
+        c.code.toLowerCase().includes(q) ||
+        (c.name ?? "").toLowerCase().includes(q) ||
+        (c.symbol ?? "").toLowerCase().includes(q),
+    );
+  }, [activeCurrencies, supportedCurrencyFilter]);
+
   const saveMut = useMutation({
     mutationFn: () => {
       // Merge changed sections into the existing settings
       const existing = q.data ?? {};
+      const locSaved = normalizeLocalizationForSave(localization);
       const merged: FullSettings = {
         ...existing,
         branding: { ...((existing.branding as Record<string, unknown>) ?? {}), ...branding },
-        localization: { ...((existing.localization as Record<string, unknown>) ?? {}), ...localization },
+        localization: {
+          ...((existing.localization as Record<string, unknown>) ?? {}),
+          ...locSaved,
+        },
         features: { ...((existing.features as Record<string, unknown>) ?? {}), ...features },
         social_auth: {
           ...((existing.social_auth as Record<string, unknown>) ?? {}),
@@ -293,6 +428,7 @@ export function GeneralSettingsPage() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.settings() });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.isoCodesAll() });
       setOnesignal((p) => ({ ...p, rest_api_key: "", rest_api_key_provider: "" }));
       setTwilio((p) => ({ ...p, auth_token: "" }));
       setSaved(true);
@@ -379,30 +515,320 @@ export function GeneralSettingsPage() {
       </AdminPanel>
 
       <AdminPanel>
-        <h3 className="mb-4 text-sm font-semibold text-gray-900">Localisation</h3>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">Localisation</h3>
+          <Link
+            to={adminSpaTo("/admin/iso-codes")}
+            className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
+          >
+            <Globe className="h-3.5 w-3.5 shrink-0 text-indigo-600" aria-hidden />
+            Manage ISO reference data
+          </Link>
+        </div>
+        <p className="mb-4 text-xs text-gray-600">
+          Supported languages and currencies control what appears in customer preference pickers and checkout. Defaults must stay
+          inside the supported lists — they are added automatically when you save.
+        </p>
+        {isoError && (
+          <div className="mb-4 flex flex-col gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Could not load ISO lists ({isoError instanceof Error ? isoError.message : "error"}). Try again, or manage codes in
+              ISO reference data.
+            </span>
+            <button
+              type="button"
+              className="shrink-0 rounded bg-amber-900 px-2 py-1 text-xs font-medium text-white hover:bg-amber-800"
+              onClick={() => void Promise.all(isoQueries.map((iq) => iq.refetch()))}
+            >
+              Retry ISO load
+            </button>
+          </div>
+        )}
+        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
             <label className="mb-0.5 block text-xs font-medium text-gray-700">Default language</label>
-            <select
-              value={localization.default_language}
-              onChange={(e) => setLocalization((p) => ({ ...p, default_language: e.target.value }))}
-              className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="en">English</option>
-              <option value="af">Afrikaans</option>
-              <option value="zu">Zulu</option>
-              <option value="xh">Xhosa</option>
-              <option value="st">Sotho</option>
-              <option value="fr">French</option>
-              <option value="pt">Portuguese</option>
-            </select>
+            {isoLoading ? (
+              <div className="w-full animate-pulse rounded border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-400">
+                Loading…
+              </div>
+            ) : (
+              <select
+                value={localization.default_language}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setLocalization((p) => ({
+                    ...p,
+                    default_language: v,
+                    supported_languages: p.supported_languages.some((x) => x.toLowerCase() === v.toLowerCase())
+                      ? p.supported_languages
+                      : [...p.supported_languages, v],
+                  }));
+                }}
+                className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {!activeLanguageCodes.has(localization.default_language.trim().toLowerCase()) &&
+                  localization.default_language.trim() !== "" && (
+                    <option value={localization.default_language}>
+                      {localization.default_language} (saved)
+                    </option>
+                  )}
+                {activeLanguages.map((lang) => (
+                  <option key={lang.code} value={lang.code}>
+                    {lang.name} ({lang.code})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
-          {inp("Default currency (ISO 4217)", localization.default_currency, (v) =>
-            setLocalization((p) => ({ ...p, default_currency: v.toUpperCase() }))
-          )}
-          {inp("Timezone (IANA)", localization.timezone, (v) =>
-            setLocalization((p) => ({ ...p, timezone: v }))
-          )}
+          <div>
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">Default currency (ISO 4217)</label>
+            {isoLoading ? (
+              <div className="w-full animate-pulse rounded border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-400">
+                Loading…
+              </div>
+            ) : (
+              <select
+                value={localization.default_currency}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setLocalization((p) => ({
+                    ...p,
+                    default_currency: v,
+                    supported_currencies: p.supported_currencies.some((x) => x.toUpperCase() === v.toUpperCase())
+                      ? p.supported_currencies
+                      : [...p.supported_currencies, v],
+                  }));
+                }}
+                className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {!activeCurrencyCodes.has(localization.default_currency.trim().toUpperCase()) &&
+                  localization.default_currency.trim() !== "" && (
+                    <option value={localization.default_currency}>
+                      {localization.default_currency} (saved)
+                    </option>
+                  )}
+                {activeCurrencies.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} — {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div>
+            <label className="mb-0.5 block text-xs font-medium text-gray-700">Timezone (IANA)</label>
+            {isoLoading ? (
+              <div className="w-full animate-pulse rounded border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-400">
+                Loading…
+              </div>
+            ) : (
+              <select
+                value={localization.timezone}
+                onChange={(e) => setLocalization((p) => ({ ...p, timezone: e.target.value }))}
+                className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {!activeTimezones.some((t) => t.code === localization.timezone) &&
+                  localization.timezone.trim() !== "" && (
+                    <option value={localization.timezone}>{localization.timezone} (saved)</option>
+                  )}
+                {activeTimezones.map((tz) => (
+                  <option key={tz.code} value={tz.code}>
+                    {tz.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div>
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
+              <span className="text-xs font-medium text-gray-700">Supported languages</span>
+              <span className="text-[11px] text-gray-500">Active ISO languages only; default cannot be unchecked.</span>
+            </div>
+            {!isoLoading && (
+              <input
+                type="search"
+                value={supportedLangFilter}
+                onChange={(e) => setSupportedLangFilter(e.target.value)}
+                placeholder="Filter by code or name…"
+                autoComplete="off"
+                className="mb-2 w-full rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            )}
+            {isoLoading ? (
+              <div className="max-h-56 animate-pulse rounded border border-gray-200 bg-gray-100 px-3 py-8 text-center text-sm text-gray-400">
+                Loading…
+              </div>
+            ) : (
+              <div className="max-h-56 overflow-y-auto rounded border border-gray-200 p-2">
+                <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                  {activeLanguages.length === 0 ? (
+                    <p className="col-span-full py-4 text-center text-sm text-gray-500">
+                      No active languages in ISO reference data.
+                    </p>
+                  ) : filteredLanguagesForGrid.length === 0 ? (
+                    <p className="col-span-full py-4 text-center text-sm text-gray-500">
+                      No languages match this filter.
+                    </p>
+                  ) : null}
+                  {filteredLanguagesForGrid.map((lang) => {
+                    const code = lang.code.toLowerCase();
+                    const checked = localization.supported_languages.some((x) => x.toLowerCase() === code);
+                    const isDefault = localization.default_language.trim().toLowerCase() === code;
+                    return (
+                      <label
+                        key={lang.code}
+                        className={`flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm ${isDefault ? "bg-indigo-50" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+                          checked={checked || isDefault}
+                          disabled={isDefault}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            setLocalization((p) => {
+                              const set = new Set(p.supported_languages.map((x) => x.toLowerCase()));
+                              if (on) set.add(code);
+                              else set.delete(code);
+                              return {
+                                ...p,
+                                supported_languages: Array.from(set).sort(),
+                              };
+                            });
+                          }}
+                        />
+                        <span className="text-gray-800">
+                          {lang.name}{" "}
+                          <span className="text-gray-500">({lang.code})</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {orphanSupportedLanguages.length > 0 && (
+              <p className="mt-2 text-[11px] text-amber-800">
+                Saved codes not in the active ISO list:{" "}
+                {orphanSupportedLanguages.map((c, i) => (
+                  <span key={c}>
+                    {i > 0 ? ", " : ""}
+                    <button
+                      type="button"
+                      className="font-mono text-indigo-700 underline"
+                      onClick={() =>
+                        setLocalization((p) => ({
+                          ...p,
+                          supported_languages: p.supported_languages.filter(
+                            (x) => x.toLowerCase() !== c.toLowerCase(),
+                          ),
+                        }))
+                      }
+                    >
+                      {c} ×
+                    </button>
+                  </span>
+                ))}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
+              <span className="text-xs font-medium text-gray-700">Supported currencies</span>
+              <span className="text-[11px] text-gray-500">Checkout and preference pickers use this ∩ active ISO currencies.</span>
+            </div>
+            {!isoLoading && (
+              <input
+                type="search"
+                value={supportedCurrencyFilter}
+                onChange={(e) => setSupportedCurrencyFilter(e.target.value)}
+                placeholder="Filter by code, name, or symbol…"
+                autoComplete="off"
+                className="mb-2 w-full rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            )}
+            {isoLoading ? (
+              <div className="max-h-56 animate-pulse rounded border border-gray-200 bg-gray-100 px-3 py-8 text-center text-sm text-gray-400">
+                Loading…
+              </div>
+            ) : (
+              <div className="max-h-56 overflow-y-auto rounded border border-gray-200 p-2">
+                <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                  {activeCurrencies.length === 0 ? (
+                    <p className="col-span-full py-4 text-center text-sm text-gray-500">
+                      No active currencies in ISO reference data.
+                    </p>
+                  ) : filteredCurrenciesForGrid.length === 0 ? (
+                    <p className="col-span-full py-4 text-center text-sm text-gray-500">
+                      No currencies match this filter.
+                    </p>
+                  ) : null}
+                  {filteredCurrenciesForGrid.map((c) => {
+                    const code = c.code.toUpperCase();
+                    const checked = localization.supported_currencies.some((x) => x.toUpperCase() === code);
+                    const isDefault = localization.default_currency.trim().toUpperCase() === code;
+                    return (
+                      <label
+                        key={c.code}
+                        className={`flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm ${isDefault ? "bg-indigo-50" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+                          checked={checked || isDefault}
+                          disabled={isDefault}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            setLocalization((p) => {
+                              const set = new Set(p.supported_currencies.map((x) => x.toUpperCase()));
+                              if (on) set.add(code);
+                              else set.delete(code);
+                              return {
+                                ...p,
+                                supported_currencies: Array.from(set).sort(),
+                              };
+                            });
+                          }}
+                        />
+                        <span className="font-mono text-gray-800">
+                          {c.code}
+                          <span className="ml-1 font-sans text-gray-600">{c.name}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {orphanSupportedCurrencies.length > 0 && (
+              <p className="mt-2 text-[11px] text-amber-800">
+                Saved codes not in the active ISO list:{" "}
+                {orphanSupportedCurrencies.map((c, i) => (
+                  <span key={c}>
+                    {i > 0 ? ", " : ""}
+                    <button
+                      type="button"
+                      className="font-mono text-indigo-700 underline"
+                      onClick={() =>
+                        setLocalization((p) => ({
+                          ...p,
+                          supported_currencies: p.supported_currencies.filter(
+                            (x) => x.toUpperCase() !== c.toUpperCase(),
+                          ),
+                        }))
+                      }
+                    >
+                      {c} ×
+                    </button>
+                  </span>
+                ))}
+              </p>
+            )}
+          </div>
         </div>
       </AdminPanel>
 
