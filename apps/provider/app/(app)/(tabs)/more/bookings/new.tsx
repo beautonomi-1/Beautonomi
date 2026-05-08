@@ -336,7 +336,19 @@ const DEFAULT_MOBILE_TRAVEL_BUFFER_MINUTES = 30;
 
 export default function NewBookingScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ date?: string; time?: string; status?: string; defaultStatus?: string; clientId?: string; client_id?: string; walk_in?: string; staff_id?: string; location_id?: string; recurring?: string }>();
+  const params = useLocalSearchParams<{
+    date?: string;
+    time?: string;
+    status?: string;
+    defaultStatus?: string;
+    clientId?: string;
+    client_id?: string;
+    walk_in?: string;
+    staff_id?: string;
+    location_id?: string;
+    recurring?: string;
+    location_type?: string;
+  }>();
   const { isTablet } = useResponsive();
   const { selectedLocationId: providerLocationId, provider: providerProfile } = useProvider();
   const profileTimezone = providerProfile?.timezone ?? null;
@@ -480,7 +492,12 @@ export default function NewBookingScreen() {
 
   // --- Appointment type ---
   const [isWalkIn, setIsWalkIn] = useState(params.walk_in === "true");
-  const [locationType, setLocationType] = useState<"at_salon" | "at_home">("at_salon");
+  const [locationType, setLocationType] = useState<"at_salon" | "at_home">(() =>
+    params.location_type === "at_home" ? "at_home" : "at_salon",
+  );
+  useEffect(() => {
+    if (params.location_type === "at_home") setLocationType("at_home");
+  }, [params.location_type]);
   const [addressSearchValue, setAddressSearchValue] = useState("");
   const [addressLine1, setAddressLine1] = useState("");
   const [addressLine2, setAddressLine2] = useState("");

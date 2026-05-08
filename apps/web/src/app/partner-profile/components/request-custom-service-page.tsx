@@ -37,6 +37,11 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [locationType, setLocationType] = useState<"at_home" | "at_salon">("at_salon");
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [addressCity, setAddressCity] = useState("");
+  const [addressState, setAddressState] = useState("");
+  const [addressPostalCode, setAddressPostalCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Combine uploaded images and manually entered URLs
@@ -122,6 +127,11 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
   };
 
   const submit = async () => {
+    if (locationType === "at_home" && (!addressLine1.trim() || !addressCity.trim())) {
+      toast.error("Please provide at least a street address and city for at-home services");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       
@@ -143,7 +153,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
         return;
       }
       
-      const res = await fetcher.post<{ data: any }>("/api/me/custom-requests", {
+      const payload: any = {
         provider_id: providerId,
         description,
         budget_min: budgetMin ? Number(budgetMin) : null,
@@ -152,7 +162,17 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
         duration_minutes: Number(durationMinutes || 60),
         image_urls: imageUrls,
         location_type: locationType,
-      });
+      };
+
+      if (locationType === "at_home") {
+        payload.address_line1 = addressLine1;
+        payload.address_line2 = addressLine2;
+        payload.address_city = addressCity;
+        payload.address_state = addressState;
+        payload.address_postal_code = addressPostalCode;
+      }
+
+      const res = await fetcher.post<{ data: any }>("/api/me/custom-requests", payload);
       toast.success("Custom request sent");
       router.push("/account-settings/custom-requests");
       return res.data;
@@ -405,6 +425,44 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                   At Home
                 </button>
               </div>
+              
+              {locationType === "at_home" && (
+                <div className="space-y-4 pt-4">
+                  <Label className="text-sm font-semibold text-gray-900">Your Address</Label>
+                  <Input 
+                    value={addressLine1} 
+                    onChange={(e) => setAddressLine1(e.target.value)} 
+                    placeholder="Street address" 
+                    className="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
+                  />
+                  <Input 
+                    value={addressLine2} 
+                    onChange={(e) => setAddressLine2(e.target.value)} 
+                    placeholder="Unit / Suite (optional)" 
+                    className="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
+                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <Input 
+                      value={addressCity} 
+                      onChange={(e) => setAddressCity(e.target.value)} 
+                      placeholder="City" 
+                      className="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
+                    />
+                    <Input 
+                      value={addressPostalCode} 
+                      onChange={(e) => setAddressPostalCode(e.target.value)} 
+                      placeholder="Postal code" 
+                      className="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
+                    />
+                  </div>
+                  <Input 
+                    value={addressState} 
+                    onChange={(e) => setAddressState(e.target.value)} 
+                    placeholder="Province / state" 
+                    className="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Divider */}

@@ -69,7 +69,7 @@ export function buildProviderRoute(params: SingularLinkParams): { pathname: stri
     return { pathname: "/(app)/(tabs)/dashboard" };
   }
   if (screen === "calendar" || path === "calendar") {
-    return { pathname: "/(app)/(tabs)/calendar" };
+    return { pathname: "/(app)/(tabs)/bookings" };
   }
   if (screen === "bookings" || path === "bookings") {
     const id = q.id ?? q.booking_id ?? "";

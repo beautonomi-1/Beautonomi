@@ -59,6 +59,9 @@ export async function GET(
       `)
       .eq("provider_id", providerData.id)
       .eq("is_active", true)
+      .eq("online_booking_enabled", true)
+      .neq("service_type", "addon")
+      .order("display_order")
       .order("title");
 
     if (offeringsError) {

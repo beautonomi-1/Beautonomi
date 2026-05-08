@@ -370,7 +370,7 @@ export default function NotificationsScreen() {
   );
 
   return (
-    <ScreenContainer scrollable={false}>
+    <ScreenContainer scrollable={false} edges={["top"]}>
       <ScreenHeader
         title="Notifications"
         showBack

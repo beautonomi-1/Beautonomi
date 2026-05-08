@@ -530,6 +530,26 @@ export default function OnlineBookingFlowNew({
     setStep("category");
   };
 
+  /**
+   * Auto-skip the venue step when an express link has prefilled services + category.
+   * Without this, customers following an express link always see the venue selection
+   * screen even though location type is already determined from the link.
+   */
+  useEffect(() => {
+    if (step !== "venue") return;
+    if (!serviceDeepLinkParam) return;
+    if (isLoading) return;
+    if (bookingData.selectedServices.length === 0) return;
+    if (!bookingData.selectedCategory) return;
+    setStep("services");
+  }, [
+    step,
+    serviceDeepLinkParam,
+    isLoading,
+    bookingData.selectedServices.length,
+    bookingData.selectedCategory,
+  ]);
+
   /** If async prefill completes while user is still on category, jump to services. */
   useEffect(() => {
     if (step !== "category") return;
@@ -1568,6 +1588,7 @@ export default function OnlineBookingFlowNew({
               selectedResources={bookingData.selectedResourceIds}
               onResourceChange={(ids) => setBookingData((prev) => ({ ...prev, selectedResourceIds: ids }))}
               durationMinutes={bookingData.totalDurationMinutes || 60}
+              onNoResources={() => setStep("intake")}
             />
             <div className="flex justify-end">
               <button

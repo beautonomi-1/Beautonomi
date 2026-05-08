@@ -142,6 +142,7 @@ export default function ChatScreen() {
   const [offerDetailLoading, setOfferDetailLoading] = useState(false);
   const [offerDetailData, setOfferDetailData] = useState<ProviderOfferDetail | null>(null);
   const flatListRef = useRef<FlatList>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   // §UI-audit 2026-04: `initialScrollDone` used to be a module-level
   // mutable object shared across every mount, so switching between two
   // threads with the same message count never re-ran scroll-to-bottom.
@@ -278,7 +279,13 @@ export default function ChatScreen() {
           const updated = payload.new as RealtimeMessageRow;
           setRealtimeMessages((prev) =>
             prev.map((msg) =>
-              updated.id && msg.id === updated.id ? { ...msg, read_at: updated.read_at ?? null } : msg
+              updated.id && msg.id === updated.id ? { 
+                ...msg, 
+                read_at: updated.read_at ?? null,
+                attachments: Array.isArray(updated.attachments) && updated.attachments.length > 0
+                  ? (updated.attachments as Message["attachments"])
+                  : msg.attachments
+              } : msg
             )
           );
           void refreshRef.current();
@@ -706,6 +713,11 @@ export default function ChatScreen() {
                   flatListRef.current?.scrollToEnd({ animated: false });
                 }
               }}
+              onScroll={({ nativeEvent }) => {
+                const isNearBottom = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height - nativeEvent.contentOffset.y < 200;
+                setShowScrollToBottom(!isNearBottom);
+              }}
+              scrollEventThrottle={200}
               ListEmptyComponent={
                 <View style={twStyle("py-12 items-center")}>
                   <Ionicons
@@ -927,6 +939,34 @@ export default function ChatScreen() {
                 );
               }}
             />
+
+            {/* Scroll to Bottom Button */}
+            {showScrollToBottom && (
+              <TouchableOpacity
+                onPress={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                style={{
+                  position: "absolute",
+                  bottom: 76 + insets.bottom,
+                  right: 16,
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: Colors.white,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 4,
+                  elevation: 4,
+                  zIndex: 10,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Scroll to bottom"
+              >
+                <Ionicons name="chevron-down" size={24} color={Colors.gray[600]} />
+              </TouchableOpacity>
+            )}
 
             {/* §UI-audit 2026-04: bottom safe-area is now part of the
                 input row itself (inside KeyboardAvoidingView) so the

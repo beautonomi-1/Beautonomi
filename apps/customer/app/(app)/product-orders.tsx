@@ -122,6 +122,14 @@ function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => voi
               {totalLabel}
             </Text>
           </View>
+          {order.returns && order.returns.length > 0 && (
+            <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+              <Ionicons name="arrow-undo-outline" size={14} color="#EF4444" />
+              <Text style={{ fontSize: 12, color: "#EF4444", marginLeft: 4, fontWeight: "600" }}>
+                Return {order.returns[0].status}
+              </Text>
+            </View>
+          )}
           {order.tracking_number && (
             <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
               <Ionicons name="location-outline" size={14} color="#3B82F6" />

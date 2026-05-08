@@ -205,13 +205,6 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="calendar"
-        options={{
-          title: t("provider.calendar"),
-          tabBarIcon: ({ focused }) => <TabIcon name={focused ? "calendar" : "calendar-outline"} focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
         name="clients"
         options={{
           title: t("provider.clients"),

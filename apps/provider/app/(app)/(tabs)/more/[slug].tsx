@@ -47,7 +47,7 @@ const SLUG_TO_NATIVE_ROUTE: Record<string, string> = {
 
 function slugToTitle(slug: string): string {
   const map: Record<string, string> = {
-    "bookings-calendar-hub": "Bookings & calendar",
+    "bookings-calendar-hub": "Bookings",
     "resources-forms-hub": "Resources & forms",
     "custom-requests": "Custom requests",
     "routes": "Routes",

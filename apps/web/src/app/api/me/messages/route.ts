@@ -278,7 +278,7 @@ async function sendMessageNotification(
         {
           title: isCustomer ? "New Message from Customer" : "New Message from Provider",
           message: messagePreview,
-          data: { type: "new_message", conversation_id: conv.id, message_id: messageId },
+          data: { type: "new_message", conversation_id: conv.id, message_id: messageId, url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`, deep_link: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}` },
           url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
         },
         ["push"],

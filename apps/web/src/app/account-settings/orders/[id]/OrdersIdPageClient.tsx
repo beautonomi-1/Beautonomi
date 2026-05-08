@@ -65,6 +65,15 @@ interface ProductOrder {
     postal_code?: string | null;
     phone: string | null;
   } | null;
+  returns?: {
+    id: string;
+    status: string;
+    reason: string;
+    description?: string | null;
+    refund_amount?: number | null;
+    created_at: string;
+    updated_at: string;
+  }[] | null;
 }
 
 function absoluteTrackingUrl(raw: string | null | undefined): string {
@@ -295,6 +304,49 @@ export default function OrderDetailPage() {
             </div>
           )}
         </div>
+
+        {/* Returns */}
+        {order.returns && order.returns.length > 0 && (
+          <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="mb-4 font-semibold text-gray-900">Returns & Refunds</h2>
+            <div className="space-y-4">
+              {order.returns.map((ret) => {
+                const isApproved = ret.status === "approved";
+                const isRefunded = ret.status === "refunded";
+                const isRejected = ret.status === "rejected";
+                const isPending = ret.status === "pending";
+                
+                let badgeClass = "bg-gray-100 text-gray-600";
+                if (isApproved || isRefunded) badgeClass = "bg-green-100 text-green-700";
+                else if (isRejected) badgeClass = "bg-red-100 text-red-700";
+                else if (isPending) badgeClass = "bg-yellow-100 text-yellow-700";
+
+                return (
+                  <div key={ret.id} className="border-b border-gray-50 pb-4 last:border-0 last:pb-0">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="font-semibold text-gray-700">Return Request</p>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${badgeClass}`}>
+                        {ret.status}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      <p><span className="font-medium text-gray-700">Reason:</span> {ret.reason.replace(/_/g, " ")}</p>
+                      {ret.description && (
+                        <p className="mt-1"><span className="font-medium text-gray-700">Details:</span> {ret.description}</p>
+                      )}
+                      {ret.refund_amount != null && (
+                        <p className="mt-1"><span className="font-medium text-gray-700">Refund Amount:</span> {sym} {Number(ret.refund_amount).toFixed(2)}</p>
+                      )}
+                      <p className="mt-2 text-xs text-gray-400">
+                        Requested on {new Date(ret.created_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Items */}
         <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">

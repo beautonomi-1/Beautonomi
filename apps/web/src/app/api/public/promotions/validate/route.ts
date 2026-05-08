@@ -49,10 +49,9 @@ export async function POST(request: NextRequest) {
       .from("providers")
       .select("id")
       .eq("id", provider_id)
-      .eq("tenant_id", tenantId)
       .maybeSingle();
     if (!providerOk) {
-      return badRequestResponse("Invalid provider for this site");
+      return badRequestResponse("Invalid provider");
     }
 
     const result = await validatePromoCode(supabase, {

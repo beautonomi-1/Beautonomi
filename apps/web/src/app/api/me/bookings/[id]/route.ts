@@ -95,7 +95,15 @@ export async function GET(
           requested_at,
           paid_at
         ),
-        service_packages:package_id(id, name)
+        service_packages:package_id(id, name),
+        custom_offer:custom_offers!bookings_custom_offer_id_fkey(
+          id,
+          notes,
+          request:custom_requests(
+            id,
+            description
+          )
+        )
       `)
       .eq("id", id)
       .single();

@@ -35,6 +35,7 @@ type Suggestion = {
   image_url?: string | null;
   /** Service category name returned alongside service suggestions. */
   category?: string;
+  distance_km?: number;
 };
 
 export default function SearchScreen() {
@@ -147,8 +148,20 @@ export default function SearchScreen() {
     setSuggestionsError(null);
     setNoSuggestionMatches(false);
     try {
+      const searchParams = new URLSearchParams();
+      searchParams.set("q", qTrim);
+      searchParams.set("limit", "10");
+      if (
+        selectedAddress &&
+        typeof selectedAddress.latitude === "number" &&
+        typeof selectedAddress.longitude === "number"
+      ) {
+        searchParams.set("lat", String(selectedAddress.latitude));
+        searchParams.set("lng", String(selectedAddress.longitude));
+      }
+
       const res = await api.get<{ suggestions?: Suggestion[]; data?: { suggestions?: Suggestion[] } }>(
-        `/api/public/search/suggestions?q=${encodeURIComponent(qTrim)}&limit=10`
+        `/api/public/search/suggestions?${searchParams.toString()}`
       );
       if (res.error) {
         const msg = getApiErrorMessage(res.error, t("customer.searchScreen.searchFailed"));
@@ -176,7 +189,7 @@ export default function SearchScreen() {
     } finally {
       setSuggestionsLoading(false);
     }
-  }, [t]);
+  }, [t, selectedAddress]);
 
   const onQueryChange = useCallback(
     (text: string) => {
@@ -314,34 +327,54 @@ export default function SearchScreen() {
                     {/* §UI-audit 2026-05: providers now show their thumbnail
                         in suggestions so users recognise the right business
                         before tapping; non-provider rows keep the icon. */}
-                    {s.type === "provider" && s.image_url ? (
-                      <Image
-                        source={{ uri: s.image_url }}
-                        style={{ width: 32, height: 32, borderRadius: 16, marginRight: 10, backgroundColor: Colors.gray[100] }}
-                        contentFit="cover"
-                        cachePolicy="memory-disk"
-                      />
+                    {s.type === "provider" ? (
+                      s.image_url ? (
+                        <Image
+                          source={{ uri: s.image_url }}
+                          style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12, backgroundColor: Colors.gray[100], borderWidth: 1, borderColor: Colors.gray[200] }}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                        />
+                      ) : (
+                        <View
+                          style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 20,
+                            marginRight: 12,
+                            backgroundColor: "#FDF2F8", // pink-50 to match web
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderWidth: 1,
+                            borderColor: "#FCE7F3", // pink-100 to match web
+                          }}
+                        >
+                          <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.primary }}>
+                            {s.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )
                     ) : (
                       <View
                         style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 16,
-                          marginRight: 10,
+                          width: 40,
+                          height: 40,
+                          borderRadius: 20,
+                          marginRight: 12,
                           backgroundColor: Colors.gray[100],
                           alignItems: "center",
                           justifyContent: "center",
+                          borderWidth: 1,
+                          borderColor: Colors.gray[200],
                         }}
                       >
                         <Ionicons
                           name={
-                            s.type === "provider"
-                              ? "storefront-outline"
-                              : s.type === "category"
-                                ? "pricetag-outline"
-                                : "cut-outline"
+                            s.type === "category"
+                              ? "pricetag-outline"
+                              : "cut-outline"
                           }
-                          size={16}
+                          size={18}
                           color={Colors.gray[500]}
                         />
                       </View>
@@ -353,6 +386,11 @@ export default function SearchScreen() {
                       {s.type === "service" && s.category ? (
                         <Text style={{ color: Colors.gray[500], fontSize: 12 }} numberOfLines={1}>
                           {s.category}
+                        </Text>
+                      ) : null}
+                      {s.type === "provider" && s.distance_km != null ? (
+                        <Text style={{ color: Colors.gray[500], fontSize: 12 }} numberOfLines={1}>
+                          {s.distance_km < 1 ? "< 1 km away" : `${s.distance_km.toFixed(1)} km away`}
                         </Text>
                       ) : null}
                     </View>

@@ -3231,6 +3231,21 @@ export default function BookingDetailScreen() {
                 )}
               </View>
             ))}
+            {b.custom_offer && (
+              <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-3 mt-1")}>
+                <Text style={twStyle("text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2")}>Custom Offer Details</Text>
+                {b.custom_offer.request?.description && (
+                  <Text style={twStyle("text-sm text-gray-600 mb-1")}>
+                    <Text style={twStyle("font-medium text-gray-800")}>Request:</Text> {b.custom_offer.request.description}
+                  </Text>
+                )}
+                {b.custom_offer.notes && (
+                  <Text style={twStyle("text-sm text-gray-600")}>
+                    <Text style={twStyle("font-medium text-gray-800")}>Notes:</Text> {b.custom_offer.notes}
+                  </Text>
+                )}
+              </View>
+            )}
           </View>
         )}
 

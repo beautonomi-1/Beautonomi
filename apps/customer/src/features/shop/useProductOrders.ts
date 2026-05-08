@@ -68,6 +68,15 @@ export interface ProductOrder {
     phone: string | null;
     working_hours: Record<string, unknown>;
   } | null;
+  returns?: {
+    id: string;
+    status: string;
+    reason: string;
+    description?: string | null;
+    refund_amount?: number | null;
+    created_at: string;
+    updated_at: string;
+  }[] | null;
 }
 
 export interface OrderItem {

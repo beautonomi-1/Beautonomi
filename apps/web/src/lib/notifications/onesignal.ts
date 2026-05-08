@@ -586,10 +586,15 @@ export async function sendToUser(
   if (normalizedChannels.includes("sms")) {
     notificationPayload.sms_body = payload.message;
   }
-  if (payload.url) notificationPayload.url = payload.url;
+  if (payload.url) {
+    notificationPayload.url = payload.url;
+    (notificationPayload.data as Record<string, unknown>).url = payload.url;
+    (notificationPayload.data as Record<string, unknown>).deep_link = payload.url;
+  }
   if (payload.image) notificationPayload.big_picture = payload.image;
   if (playerIds.length > 0 && normalizedChannels.includes("push")) {
     notificationPayload.include_player_ids = playerIds;
+    notificationPayload.ios_interruption_level = "time_sensitive";
   }
   const passthrough = payload as Record<string, unknown>;
   if (passthrough.priority !== undefined) notificationPayload.priority = passthrough.priority;
@@ -645,10 +650,15 @@ export async function sendToUsers(
   if (normalizedChannels.includes("sms")) {
     notificationPayload.sms_body = payload.message;
   }
-  if (payload.url) notificationPayload.url = payload.url;
+  if (payload.url) {
+    notificationPayload.url = payload.url;
+    (notificationPayload.data as Record<string, unknown>).url = payload.url;
+    (notificationPayload.data as Record<string, unknown>).deep_link = payload.url;
+  }
   if (payload.image) notificationPayload.big_picture = payload.image;
   if (playerIds.length > 0 && normalizedChannels.includes("push")) {
     notificationPayload.include_player_ids = playerIds;
+    notificationPayload.ios_interruption_level = "time_sensitive";
   }
   if (typeof payload.subtitle === "string" && payload.subtitle.trim()) {
     notificationPayload.subtitle = { en: payload.subtitle.trim() };
@@ -700,8 +710,15 @@ export async function sendToSegment(
   if (normalizedChannels.includes("sms")) {
     notificationPayload.sms_body = payload.message;
   }
-  if (payload.url) notificationPayload.url = payload.url;
+  if (payload.url) {
+    notificationPayload.url = payload.url;
+    (notificationPayload.data as Record<string, unknown>).url = payload.url;
+    (notificationPayload.data as Record<string, unknown>).deep_link = payload.url;
+  }
   if (payload.image) notificationPayload.big_picture = payload.image;
+  if (normalizedChannels.includes("push")) {
+    notificationPayload.ios_interruption_level = "time_sensitive";
+  }
 
   return await sendOneSignalNotification(notificationPayload, options);
 }
@@ -906,6 +923,7 @@ export async function sendTemplateNotification(
     notificationPayload.priority = 10;
     // Wake up the device
     notificationPayload.content_available = true;
+    notificationPayload.ios_interruption_level = "time_sensitive";
   }
 
   if (channelsToSend.includes("email")) {
@@ -915,7 +933,11 @@ export async function sendTemplateNotification(
   if (channelsToSend.includes("sms")) {
     notificationPayload.sms_body = smsBody;
   }
-  if (templateUrl) notificationPayload.url = templateUrl;
+  if (templateUrl) {
+    notificationPayload.url = templateUrl;
+    (notificationPayload.data as Record<string, unknown>).url = templateUrl;
+    (notificationPayload.data as Record<string, unknown>).deep_link = templateUrl;
+  }
   if (templateImage) notificationPayload.big_picture = templateImage;
   if (template.onesignal_template_id) {
     notificationPayload.template_id = template.onesignal_template_id;
@@ -974,15 +996,15 @@ export async function sendTemplateNotification(
     );
   }
 
-  // When appType is set, target only devices for that app (player_ids + correct app config).
+  // Always target devices (player_ids + correct app config) when we have userIds.
   // Use admin for user_devices reads — webhooks and provider routes have no customer JWT for RLS.
-  if (options?.appType && userIds.length > 0) {
+  if (userIds.length > 0) {
     const supabase = options?.supabaseClient ?? getSupabaseAdmin();
     let query = supabase
       .from("user_devices")
       .select("onesignal_player_id")
       .in("user_id", userIds);
-    if (options.appType === "provider") {
+    if (options?.appType === "provider") {
       query = query.eq("app_type", "provider");
     } else {
       query = query.or("app_type.eq.customer,app_type.is.null");

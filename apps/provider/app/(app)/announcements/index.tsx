@@ -76,7 +76,7 @@ export default function ProviderAnnouncementsScreen() {
   }, [load]);
 
   return (
-    <ScreenContainer scrollable={false}>
+    <ScreenContainer scrollable={false} edges={["top"]}>
       <Stack.Screen options={{ headerShown: false }} />
       <ScreenHeader title="Announcements" showBack />
       {loading ? (

@@ -1153,7 +1153,9 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                               ...destructive.map((st) => ({
                                 text: st === "cancelled" ? "Cancel order" : "Mark refunded",
                                 style: "destructive" as const,
-                                onPress: () => handleStatusTap(activeOrder.id, st),
+                                onPress: () => {
+                                  setTimeout(() => handleStatusTap(activeOrder.id, st), Platform.OS === "ios" ? 500 : 0);
+                                },
                               })),
                               { text: "Close", style: "cancel" },
                             ],

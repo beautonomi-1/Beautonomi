@@ -631,7 +631,7 @@ export default function ProductCheckoutScreen() {
     );
   }
 
-  if (!providerCart?.items?.length) {
+  if (!providerCart?.items?.length && !orderSuccessData && !processingPayment) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
         <View

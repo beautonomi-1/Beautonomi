@@ -4,7 +4,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getEffectiveTaxRate } from "@/lib/platform-tax-settings";
+import { getEffectiveTaxRate, getPlatformDefaultTaxRate } from "@/lib/platform-tax-settings";
 import { percentOf, sumMoney, roundCurrency } from "@beautonomi/utils";
 
 export interface CustomOfferPricingInput {
@@ -55,7 +55,7 @@ export async function computeCustomOfferPricing(
   // Load provider for tax, tips, fee config
   const { data: provider } = await supabase
     .from("providers")
-    .select("tax_rate_percent, tips_enabled, customer_fee_config_id")
+    .select("tax_rate_percent, tax_inclusive, tips_enabled, customer_fee_config_id")
     .eq("id", providerId)
     .single();
 
@@ -104,9 +104,38 @@ export async function computeCustomOfferPricing(
   const discountAmount = promotionDiscountAmount;
 
   // Tax: provider rate or platform default
-  const taxRate = await getEffectiveTaxRate(providerId, (provider as any)?.tax_rate_percent ?? null);
-  const taxAmount =
-    taxRate > 0 ? roundCurrency(percentOf(subtotalAfterDiscount, taxRate)) : 0;
+  const rawProviderTaxRate = (provider as any)?.tax_rate_percent;
+  let taxRate: number;
+  let taxIncluded = false;
+  if (rawProviderTaxRate == null) {
+    taxRate = await getPlatformDefaultTaxRate();
+    try {
+      const { data: taxRefRow } = await supabase
+        .from("reference_data")
+        .select("metadata")
+        .eq("type", "tax_rate")
+        .eq("is_active", true)
+        .order("display_order", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (taxRefRow?.metadata && typeof taxRefRow.metadata === "object") {
+        const meta = taxRefRow.metadata as Record<string, unknown>;
+        if (meta.included === true) taxIncluded = true;
+      }
+    } catch {}
+  } else {
+    taxRate = Math.max(0, Number(rawProviderTaxRate));
+    taxIncluded = Boolean((provider as any)?.tax_inclusive ?? false);
+  }
+
+  let taxAmount = 0;
+  if (taxRate > 0) {
+    if (taxIncluded) {
+      taxAmount = roundCurrency(subtotalAfterDiscount - subtotalAfterDiscount / (1 + taxRate / 100));
+    } else {
+      taxAmount = roundCurrency(percentOf(subtotalAfterDiscount, taxRate));
+    }
+  }
 
   // Platform Fee: provider fee config or platform settings
   let serviceFeeAmount = 0;
@@ -159,8 +188,13 @@ export async function computeCustomOfferPricing(
     }
   }
 
-  const totalAmount = sumMoney(subtotalAfterDiscount, taxAmount, serviceFeeAmount, tipAmount);
-  const commissionBase = subtotalAfterDiscount;
+  const totalAmount = taxIncluded
+    ? sumMoney(subtotalAfterDiscount, serviceFeeAmount, tipAmount)
+    : sumMoney(subtotalAfterDiscount, taxAmount, serviceFeeAmount, tipAmount);
+
+  // Commission base should NOT include travel fee, consistent with regular bookings
+  const prePromoCommissionBase = Math.max(0, offerPrice);
+  const commissionBase = Math.max(0, prePromoCommissionBase - promotionDiscountAmount);
 
   return {
     ok: true,

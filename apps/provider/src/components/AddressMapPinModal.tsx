@@ -88,6 +88,9 @@ function buildMapboxPinPickerHtml(opts: {
     function publish() {
       var ll = marker.getLngLat();
       window.__pinLngLat = { lat: ll.lat, lng: ll.lng };
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pin_update', lat: ll.lat, lng: ll.lng }));
+      }
     }
     marker.on('dragend', publish);
     map.on('click', function (e) {
@@ -117,6 +120,10 @@ export function AddressMapPinModal({
   const [token, setToken] = useState<string | null>(null);
   const [styleUrl, setStyleUrl] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+
+  const fetchAddressTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [currentAddressName, setCurrentAddressName] = useState<string | null>(null);
+  const [isFetchingAddress, setIsFetchingAddress] = useState(false);
 
   const centerLng = initialCoordinate?.longitude ?? FALLBACK_LNG;
   const centerLat = initialCoordinate?.latitude ?? FALLBACK_LAT;
@@ -174,7 +181,27 @@ export function AddressMapPinModal({
     (ev: { nativeEvent: { data: string } }) => {
       try {
         const d = JSON.parse(ev.nativeEvent.data) as { type?: string; lat?: number; lng?: number };
-        if (d.type === "pin" && typeof d.lat === "number" && typeof d.lng === "number") {
+        if (d.type === "pin_update" && typeof d.lat === "number" && typeof d.lng === "number") {
+          if (fetchAddressTimeout.current) clearTimeout(fetchAddressTimeout.current);
+          fetchAddressTimeout.current = setTimeout(async () => {
+            if (!token) return;
+            setIsFetchingAddress(true);
+            try {
+              const res = await fetch(`https://api.mapbox.com/search/geocode/v6/reverse?longitude=${d.lng}&latitude=${d.lat}&access_token=${token}`);
+              const json = await res.json();
+              const place = json.features?.[0];
+              if (place) {
+                setCurrentAddressName(place.properties.full_address || place.properties.name || "Unknown Location");
+              } else {
+                setCurrentAddressName("Unknown Location");
+              }
+            } catch {
+              setCurrentAddressName("Unknown Location");
+            } finally {
+              setIsFetchingAddress(false);
+            }
+          }, 400);
+        } else if (d.type === "pin" && typeof d.lat === "number" && typeof d.lng === "number") {
           setConfirming(true);
           try {
             onPickCoordinates(d.lat, d.lng);
@@ -187,7 +214,7 @@ export function AddressMapPinModal({
         /* ignore non-JSON */
       }
     },
-    [onPickCoordinates, onClose],
+    [onPickCoordinates, onClose, token],
   );
 
   return (
@@ -234,7 +261,11 @@ export function AddressMapPinModal({
           >
             <Ionicons name="close" size={26} color={Colors.gray[800]} />
           </TouchableOpacity>
-          <Text style={styles.hint}>Tap map or drag pin</Text>
+          <View style={{ flex: 1, marginHorizontal: 8 }}>
+            <Text style={styles.hint} numberOfLines={1} adjustsFontSizeToFit>
+              {isFetchingAddress ? "Locating..." : currentAddressName || "Tap map or drag pin"}
+            </Text>
+          </View>
           <View style={{ width: 44 }} />
         </SafeAreaView>
 

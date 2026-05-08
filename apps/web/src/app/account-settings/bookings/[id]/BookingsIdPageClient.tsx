@@ -477,6 +477,21 @@ export default function BookingDetailPage() {
             <p className="text-sm text-gray-500">No services</p>
           )}
         </div>
+        {booking.custom_offer && (
+          <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">Custom Offer Details</h3>
+            {booking.custom_offer.request?.description && (
+              <p className="text-sm text-slate-600 mb-1">
+                <span className="font-medium text-slate-800">Your request:</span> {booking.custom_offer.request.description}
+              </p>
+            )}
+            {booking.custom_offer.notes && (
+              <p className="text-sm text-slate-600">
+                <span className="font-medium text-slate-800">Provider notes:</span> {booking.custom_offer.notes}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Products */}

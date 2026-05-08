@@ -172,6 +172,14 @@ async function handleGetProviderBookings(request: NextRequest) {
           total_price,
           products:products!booking_products_product_id_fkey(id, name, retail_price),
           product_variant:product_variants(id, option_values)
+        ),
+        custom_offer:custom_offers!bookings_custom_offer_id_fkey(
+          id,
+          notes,
+          request:custom_requests(
+            id,
+            description
+          )
         )
       `
       )
@@ -423,6 +431,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         payment_method: null, // payment_method_id is the actual column
         special_requests: booking.special_requests || null,
         loyalty_points_earned: booking.loyalty_points_earned || 0,
+        custom_offer: booking.custom_offer || null,
         created_at: booking.created_at,
         updated_at: booking.updated_at,
         // Include current_stage for Mangomint-style status/color (client_arrived → WAITING, etc.)

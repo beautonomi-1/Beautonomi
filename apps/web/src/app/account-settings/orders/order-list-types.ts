@@ -17,4 +17,5 @@ export interface ProductOrder {
   tracking_number: string | null;
   items: OrderItem[];
   provider: { id: string; business_name: string; slug: string };
+  returns?: { id: string; status: string }[] | null;
 }

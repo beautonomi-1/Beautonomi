@@ -71,6 +71,7 @@ const createHoldSchema = z.object({
     .nullable(),
   guest_fingerprint_hash: z.string().optional().nullable(),
   previous_hold_id: z.string().uuid().optional().nullable(),
+  exclude_booking_id: z.string().uuid().optional().nullable(),
   resource_ids: z.array(z.string().uuid()).optional(),
   /** Must match the travel buffer used by availability for at-home slots. */
   availability_travel_buffer_minutes: z.coerce.number().int().min(0).max(360).optional(),
@@ -223,6 +224,7 @@ export async function POST(request: NextRequest) {
           address,
           guest_fingerprint_hash,
           previous_hold_id,
+          exclude_booking_id,
           resource_ids,
           availability_travel_buffer_minutes,
           package_id: bodyPackageId,
@@ -582,7 +584,8 @@ export async function POST(request: NextRequest) {
           supabase as SupabaseClient,
           provider_id,
           bookingServicesSnapshot,
-          offeringBufferMinutesById
+          offeringBufferMinutesById,
+          exclude_booking_id || undefined
         );
         if (conflictResult.hasConflict) {
           return bookingHoldSlotUnavailableResponse("CONFLICT_SNAPSHOT");

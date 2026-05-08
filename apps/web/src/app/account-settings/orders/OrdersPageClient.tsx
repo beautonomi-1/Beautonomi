@@ -156,6 +156,11 @@ export default function OrderHistoryPage({
                           R{Number(order.total_amount).toFixed(2)}
                         </span>
                       </div>
+                      {order.returns && order.returns.length > 0 && (
+                        <p className="mt-2 text-xs font-semibold text-red-600">
+                          Return {order.returns[0].status}
+                        </p>
+                      )}
                       {order.tracking_number && (
                         <p className="mt-2 text-xs text-blue-600">
                           Tracking: {order.tracking_number}

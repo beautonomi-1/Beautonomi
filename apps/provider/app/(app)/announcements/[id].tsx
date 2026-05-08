@@ -91,7 +91,7 @@ export default function ProviderAnnouncementDetailScreen() {
   }, [router]);
 
   return (
-    <ScreenContainer scrollable={false}>
+    <ScreenContainer scrollable={false} edges={["top"]}>
       <Stack.Screen options={{ headerShown: false }} />
       <ScreenHeader title="Announcement" showBack onBack={handleBack} />
       {loading ? (

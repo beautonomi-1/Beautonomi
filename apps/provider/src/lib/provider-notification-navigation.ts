@@ -45,24 +45,6 @@ function getUuidAfterSegment(link: string, segment: string): string {
   return match?.[1] ?? "";
 }
 
-function calendarHrefFromNotification(link: string, data: ProviderNotificationNavPayload["data"]): string {
-  const params = new URLSearchParams();
-  const bookingId =
-    (typeof data?.booking_id === "string" ? data.booking_id.trim() : "") ||
-    getLinkParam(link, "booking_id") ||
-    getLinkParam(link, "booking");
-  const date =
-    getLinkParam(link, "date") ||
-    getLinkParam(link, "start_date") ||
-    getLinkParam(link, "day");
-
-  if (date) params.set("date", date);
-  if (bookingId) params.set("booking_id", bookingId);
-
-  const query = params.toString();
-  return query ? `/(app)/(tabs)/calendar?${query}` : "/(app)/(tabs)/calendar";
-}
-
 /**
  * Map notification link/data to provider app route and navigate.
  * Shared by the header dropdown and any legacy entry points.
@@ -96,7 +78,16 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
   }
 
   if (link.includes("calendar")) {
-    router.push(calendarHrefFromNotification(link, data) as never);
+    const calendarBookingId =
+      (typeof data.booking_id === "string" ? data.booking_id.trim() : "") ||
+      getLinkParam(link, "booking_id") ||
+      getLinkParam(link, "booking") ||
+      "";
+    if (calendarBookingId) {
+      router.push(`/(app)/(tabs)/bookings/${calendarBookingId}` as never);
+    } else {
+      router.push("/(app)/(tabs)/bookings" as never);
+    }
     return;
   }
 
