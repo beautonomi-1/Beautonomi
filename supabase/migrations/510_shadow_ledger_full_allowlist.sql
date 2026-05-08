@@ -87,7 +87,7 @@ BEGIN
 
   IF p_row.transaction_type NOT IN (
     'payment','refund','tip','payout','cancellation_fee','provider_earnings',
-    'service_fee','tax','travel_fee','wallet_payment','gift_card_payment',
+    'service_fee','tax','travel_fee','wallet_payment','wallet_topup','gift_card_payment',
     'loyalty_redemption','promotion_discount','manual_adjustment',
     'walk_in_additional_charge','provider_subscription_payment',
     'gift_card_sale','membership_sale','provider_ads_payment',
@@ -170,6 +170,11 @@ BEGIN
     VALUES
       (v_entry_id, v_wallet_acct,  'debit',  abs(v_gross), v_currency, abs(v_gross), 'ZAR'),
       (v_entry_id, v_payable_acct, 'credit', abs(v_gross), v_currency, abs(v_gross), 'ZAR');
+  ELSIF p_row.transaction_type = 'wallet_topup' THEN
+    INSERT INTO public.journal_lines (entry_id, account_id, side, raw_amount, raw_currency, reporting_amount, reporting_currency)
+    VALUES
+      (v_entry_id, v_cash_acct,   'debit',  abs(v_gross), v_currency, abs(v_gross), 'ZAR'),
+      (v_entry_id, v_wallet_acct, 'credit', abs(v_gross), v_currency, abs(v_gross), 'ZAR');
   ELSIF p_row.transaction_type = 'gift_card_payment' THEN
     INSERT INTO public.journal_lines (entry_id, account_id, side, raw_amount, raw_currency, reporting_amount, reporting_currency)
     VALUES
@@ -291,7 +296,7 @@ AS $$
 BEGIN
   IF NEW.transaction_type NOT IN (
     'payment','refund','tip','payout','cancellation_fee','provider_earnings',
-    'service_fee','tax','travel_fee','wallet_payment','gift_card_payment',
+    'service_fee','tax','travel_fee','wallet_payment','wallet_topup','gift_card_payment',
     'loyalty_redemption','gift_card_liability_reduction','promotion_discount',
     'manual_adjustment','walk_in_additional_charge','provider_subscription_payment',
     'gift_card_sale','membership_sale','provider_ads_payment',
