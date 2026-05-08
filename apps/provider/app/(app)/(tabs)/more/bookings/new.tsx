@@ -336,7 +336,7 @@ const DEFAULT_MOBILE_TRAVEL_BUFFER_MINUTES = 30;
 
 export default function NewBookingScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ date?: string; time?: string; status?: string; defaultStatus?: string; clientId?: string; client_id?: string; walk_in?: string; staff_id?: string; location_id?: string }>();
+  const params = useLocalSearchParams<{ date?: string; time?: string; status?: string; defaultStatus?: string; clientId?: string; client_id?: string; walk_in?: string; staff_id?: string; location_id?: string; recurring?: string }>();
   const { isTablet } = useResponsive();
   const { selectedLocationId: providerLocationId, provider: providerProfile } = useProvider();
   const profileTimezone = providerProfile?.timezone ?? null;
@@ -535,7 +535,7 @@ export default function NewBookingScreen() {
   const [paymentOption, setPaymentOption] = useState<"full" | "deposit">("full");
   const [depositPercentage, setDepositPercentage] = useState<number>(30);
   const [referralSourceId, setReferralSourceId] = useState<string>("");
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(() => params.recurring === "true");
   const [recurrencePattern, setRecurrencePattern] = useState<RecurrencePattern>("weekly");
   const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
   const [recurrenceOccurrences, setRecurrenceOccurrences] = useState("");

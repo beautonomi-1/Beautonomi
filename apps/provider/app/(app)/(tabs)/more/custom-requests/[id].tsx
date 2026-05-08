@@ -323,6 +323,7 @@ export default function CustomRequestDetailScreen() {
     request?.address_country,
     request?.address_postal_code,
     providerFromContext?.id,
+    request,
   ]);
 
   useEffect(() => {

@@ -1,4 +1,12 @@
-import { useState, useCallback, useMemo, useRef, useEffect, type ElementRef } from "react";
+import {
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useEffect,
+  type ElementRef,
+  type ReactNode,
+} from "react";
 import {
   View,
   Text,
@@ -47,6 +55,9 @@ import { CalendarBookingBlock } from "@/components/calendar/CalendarBookingBlock
 import { CalendarDayGridColumn } from "@/components/calendar/CalendarDayGridColumn";
 import { CalendarDragGhost } from "@/components/calendar/CalendarDragGhost";
 import { CalendarBookingQuickSheet } from "@/components/calendar/CalendarBookingQuickSheet";
+import { CalendarDetailSheet } from "@/features/calendar/sheets/CalendarDetailSheet";
+import { TimeBlockSheet } from "@/features/calendar/sheets/TimeBlockSheet";
+import { CancelBookingSheet } from "@/features/calendar/sheets/CancelBookingSheet";
 import { CurrentTimeIndicator } from "@/components/calendar/CurrentTimeIndicator";
 import {
   CALENDAR_GRID_TOP_PADDING,
@@ -74,9 +85,14 @@ import {
   formatTime,
   formatTimeInZone,
   capitalizeFirst,
+  formatCurrency,
 } from "@/lib/format";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ProviderCalendarScreen } from "@/features/calendar/screens/ProviderCalendarScreen";
+import type { CalendarV2ChromeContext, CalendarV2Segment } from "@/features/calendar/types/calendar";
+import { WalkInPanel } from "@/features/calendar/screens/WalkInPanel";
+import { CalendarInsightsPanel } from "@/features/calendar/screens/CalendarInsightsPanel";
 import { trackCalendarView } from "@/lib/analytics";
 import { useCalendarBookingsRealtime } from "@/hooks/useCalendarBookingsRealtime";
 import { useAuth } from "@/providers/AuthProvider";
@@ -92,6 +108,7 @@ import {
   validateCalendarTimeRange,
 } from "@/lib/provider-calendar-parity";
 import { newBookingScreenHrefFromCalendarDay } from "@/lib/new-booking-nav-defaults";
+import { parseCalendarDateParam } from "@/lib/calendar-parse";
 import {
   dbTargetToPatchStatusField,
   getAllowedTransitionTargets,
@@ -455,6 +472,11 @@ function translateOverlayBlockType(t: TFunction, blockType: string): string {
 type LayoutMode = "columns" | "single";
 type ViewMode = "day" | "3day" | "week";
 
+export interface CalendarScreenBodyProps {
+  renderCalendarV2Chrome?: (ctx: CalendarV2ChromeContext) => ReactNode;
+  calendarV2Segment?: CalendarV2Segment;
+}
+
 const BLOCK_TYPES = [
   { value: "break", icon: "cafe-outline" as const },
   { value: "lunch", icon: "restaurant-outline" as const },
@@ -536,34 +558,6 @@ function getBlockColors(
  */
 function timeStringToMinutes(t: string | undefined | null): number {
   return sharedTimeStringToMinutes(t ?? null) ?? 0;
-}
-
-/**
- * Parse `?date=` deep links. When `providerTimezone` is set, `YYYY-MM-DD` is interpreted as that
- * zone's wall calendar date (aligned with `formatDateKeyInTimeZone`), not the device's local date.
- */
-function parseCalendarDateParam(value: string, providerTimezone?: string | null): Date | null {
-  const trimmed = value.trim();
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
-  if (match && providerTimezone) {
-    try {
-      const iso = buildZonedIsoForWallClock(trimmed, "12:00", providerTimezone);
-      const d = parseISO(iso);
-      return Number.isFinite(d.getTime()) ? d : null;
-    } catch {
-      /* fall through */
-    }
-  }
-  if (match) {
-    const y = Number(match[1]);
-    const m = Number(match[2]);
-    const d = Number(match[3]);
-    if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)) {
-      return new Date(y, m - 1, d);
-    }
-  }
-  const parsed = new Date(trimmed);
-  return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
 function calendarDateKey(day: Date, timeZone?: string | null): string {
@@ -1005,7 +999,7 @@ function MonthOverviewModal({
  * today's bookings / jump to Today) so a transient render error never
  * looks like the whole app broke.
  */
-function CalendarCrashFallback({ onReset }: { onReset: () => void }) {
+export function CalendarCrashFallback({ onReset }: { onReset: () => void }) {
   const { t } = useTranslation();
   return (
     <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
@@ -1038,12 +1032,15 @@ export default function CalendarScreen() {
       onReset={() => setResetKey((k) => k + 1)}
       fallback={<CalendarCrashFallback onReset={() => setResetKey((k) => k + 1)} />}
     >
-      <CalendarScreenBody />
+      <ProviderCalendarScreen LegacyBody={CalendarScreenBody} />
     </ErrorBoundary>
   );
 }
 
-function CalendarScreenBody() {
+export function CalendarScreenBody({
+  renderCalendarV2Chrome,
+  calendarV2Segment,
+}: CalendarScreenBodyProps = {}) {
   const { t } = useTranslation();
   const router = useRouter();
   // §Provider-launch (audit 2026-04): accept `?date=YYYY-MM-DD` +
@@ -1187,10 +1184,10 @@ function CalendarScreenBody() {
   }, []);
 
   // TZ-aware "today" key — matches the provider's wall-clock date, not the device's.
-  const providerTodayKey = useMemo(
-    () => formatDateKeyInTimeZone(new Date(), providerTz),
-    [providerTz, selectedDate, providerTodayTick],
-  );
+  const providerTodayKey = useMemo(() => {
+    void providerTodayTick;
+    return formatDateKeyInTimeZone(new Date(), providerTz);
+  }, [providerTz, providerTodayTick]);
   const isProviderToday = useCallback(
     (d: Date) => formatDateKeyInTimeZone(d, providerTz) === providerTodayKey,
     [providerTz, providerTodayKey],
@@ -1493,7 +1490,7 @@ function CalendarScreenBody() {
     );
     scrollRef.current?.scrollTo({ y: offset, animated: false });
     hasScrolledToNow.current = true;
-  }, [preferences.scrollToNow, startHour, SLOT_HEIGHT, provider?.timezone]);
+  }, [preferences.scrollToNow, startHour, SLOT_HEIGHT, GRID_TOP_PADDING, provider?.timezone]);
 
   useEffect(() => {
     hasScrolledToNow.current = false;
@@ -1609,6 +1606,18 @@ function CalendarScreenBody() {
       }) as never,
     );
   }, [locationFilter, provider?.timezone, router, selectedDate, selectedStaffIndex, staffFilter, staffList]);
+
+  const openRecurringBookingFromCalendar = useCallback(() => {
+    const selectedStaffId = staffList[selectedStaffIndex]?.id;
+    const href = newBookingScreenHrefFromCalendarDay(selectedDate, {
+      status: preferences.defaultNewAppointmentStatus,
+      timeZone: provider?.timezone ?? null,
+      ...(locationFilter !== "all" ? { locationId: locationFilter } : {}),
+      ...(staffFilter !== "all" ? { staffId: staffFilter } : selectedStaffId ? { staffId: selectedStaffId } : {}),
+    });
+    const urlWithRecurring = `${href}${href.includes("?") ? "&" : "?"}recurring=true`;
+    router.push(urlWithRecurring as never);
+  }, [locationFilter, preferences.defaultNewAppointmentStatus, provider?.timezone, router, selectedDate, selectedStaffIndex, staffFilter, staffList]);
 
   const openGroupBookingFromCalendar = useCallback(() => {
     const selectedStaffId = staffList[selectedStaffIndex]?.id;
@@ -1909,6 +1918,46 @@ function CalendarScreenBody() {
     }).length;
   }, [bookings]);
 
+  const paymentAttentionCount = useMemo(
+    () => filteredBookings.filter((b) => b.status !== "cancelled" && paymentNeedsAttention(b)).length,
+    [filteredBookings],
+  );
+
+  const scheduledValueLabel = useMemo(() => {
+    const tz = provider?.timezone ?? null;
+    const dayKey = calendarDateKey(selectedDate, tz);
+    let sum = 0;
+    let currency = provider?.currency ?? "USD";
+    for (const b of filteredBookings) {
+      if (b.status === "cancelled") continue;
+      const d = parseApiDateTime(b.scheduled_at);
+      if (!d) continue;
+      if (calendarDateKey(d, tz) !== dayKey) continue;
+      sum += Number(b.total_amount ?? 0);
+      if (b.currency) currency = b.currency;
+    }
+    if (sum <= 0) return null;
+    return formatCurrency(sum, currency);
+  }, [filteredBookings, selectedDate, provider?.timezone, provider?.currency]);
+
+  const nextUpcomingLabel = useMemo(() => {
+    const tz = provider?.timezone ?? null;
+    const dayKey = calendarDateKey(selectedDate, tz);
+    const now = new Date();
+    const candidates = filteredBookings
+      .filter((b) => b.status !== "cancelled")
+      .map((b) => ({ b, d: parseApiDateTime(b.scheduled_at) }))
+      .filter((x): x is { b: CalendarBooking; d: Date } => !!x.d && calendarDateKey(x.d, tz) === dayKey && x.d >= now)
+      .sort((a, b) => a.d.getTime() - b.d.getTime());
+    const first = candidates[0];
+    if (!first) return null;
+    const name =
+      first.b.customers?.full_name?.trim() ||
+      first.b.calendar_service_name ||
+      t("provider.calendarScreen.apptSingle");
+    return `${formatTimeInZone(first.b.scheduled_at, tz)} · ${name}`;
+  }, [filteredBookings, selectedDate, provider?.timezone, t]);
+
   const navigateDate = useCallback((direction: number) => {
     const amount = viewMode === "week" ? 7 : viewMode === "3day" ? 3 : 1;
     hasScrolledToNow.current = false;
@@ -1985,6 +2034,12 @@ function CalendarScreenBody() {
     ) {
       return;
     }
+    // If V2 is active, the Detail Sheet handles all actions inline.
+    if (renderCalendarV2Chrome) {
+      handleTapBooking(booking);
+      return;
+    }
+
     const availableActions = bookingActionTargets(booking);
     const actionLabels = availableActions.map((dbTarget) =>
       getStatusActionLabel(t, dbTargetToPatchStatusField(dbTarget)),
@@ -2471,6 +2526,76 @@ function CalendarScreenBody() {
 
   const waitingCount = waitingRoom?.count ?? 0;
 
+  const v2ChromeContext = useMemo((): CalendarV2ChromeContext | null => {
+    if (!renderCalendarV2Chrome) return null;
+    return {
+      providerTimezone: providerTz,
+      businessName: provider?.business_name ?? "",
+      selectedDate,
+      weekStart,
+      viewMode,
+      setSelectedDate,
+      setViewMode,
+      navigateDate,
+      todayBookingCount,
+      pendingOnSelectedDay,
+      pendingAttentionCount,
+      urgentPendingCount,
+      waitingRoomCount: waitingCount,
+      nextUpcomingLabel,
+      scheduledValueLabel,
+      paymentAttentionCount,
+      isProviderToday,
+      onRefresh: handleRefresh,
+      onOpenDatePicker: () => setDatePickerVisible(true),
+      onOpenUtilityMenu: openCalendarActionsMenu,
+      onOpenPreferences: () => setPrefsVisible(true),
+      onOpenMonthOverview: () => setMonthOverviewVisible(true),
+      onShareSchedule: handleShareSchedule,
+      onCopySchedule: handleCopySchedule,
+      offersMobileServices: provider?.offers_mobile_services ?? false,
+      onNewBooking: openNewBookingFromCalendar,
+      onWalkIn: openWalkInBookingFromCalendar,
+      onGroup: openGroupBookingFromCalendar,
+      onBlock: openTimeBlockFormFromCalendar,
+      onWaitingRoom: () => router.push("/(app)/(tabs)/more/waiting-room" as never),
+      onRecurring: openRecurringBookingFromCalendar,
+      onSale: () => router.push("/(app)/(tabs)/more/walk-in-sale" as never),
+    };
+  }, [
+    renderCalendarV2Chrome,
+    providerTz,
+    provider?.business_name,
+    provider?.offers_mobile_services,
+    selectedDate,
+    weekStart,
+    viewMode,
+    todayBookingCount,
+    pendingOnSelectedDay,
+    pendingAttentionCount,
+    urgentPendingCount,
+    waitingCount,
+    nextUpcomingLabel,
+    scheduledValueLabel,
+    paymentAttentionCount,
+    isProviderToday,
+    handleRefresh,
+    handleShareSchedule,
+    handleCopySchedule,
+    openNewBookingFromCalendar,
+    openWalkInBookingFromCalendar,
+    openGroupBookingFromCalendar,
+    openTimeBlockFormFromCalendar,
+    openRecurringBookingFromCalendar,
+    openCalendarActionsMenu,
+    router,
+    navigateDate,
+  ]);
+
+  const useV2Chrome = Boolean(renderCalendarV2Chrome && v2ChromeContext);
+  const effectiveV2Segment: CalendarV2Segment = calendarV2Segment ?? "schedule";
+  const hideScheduleGrid = Boolean(renderCalendarV2Chrome && effectiveV2Segment !== "schedule");
+
   const { width: screenWidth } = useWindowDimensions();
   const TIME_COL_WIDTH = isTablet ? TIME_COL_WIDTH_TABLET : TIME_COL_WIDTH_PHONE;
   const MIN_STAFF_COL_WIDTH = isTablet ? MIN_STAFF_COL_WIDTH_TABLET : MIN_STAFF_COL_WIDTH_PHONE;
@@ -2678,6 +2803,9 @@ function CalendarScreenBody() {
 
   return (
     <ScreenContainer scrollable={false} noPadding>
+      {renderCalendarV2Chrome && v2ChromeContext ? renderCalendarV2Chrome(v2ChromeContext) : null}
+      {!useV2Chrome ? (
+        <>
       {/* ─── Dark Header (matches web portal) ─── */}
       <View style={{ backgroundColor: DARK_HEADER, paddingBottom: 8, paddingTop: 8 }}>
         <View style={tabletContentStyle}>
@@ -2907,6 +3035,8 @@ function CalendarScreenBody() {
         onWaiting={() => router.push("/(app)/(tabs)/more/waiting-room" as never)}
         t={t}
       />
+        </>
+      ) : null}
 
       {/* ─── Layout Toggle + Staff Filter (matches web "Staff View" bar) ─── */}
       {viewMode === "day" && staffList.length > 1 && staffFilter === "all" && (
@@ -3042,7 +3172,13 @@ function CalendarScreenBody() {
       )}
 
       {/* ─── Calendar grid — ALWAYS shown, never blocked by empty state ─── */}
-      {loading && !bookings ? (
+      {hideScheduleGrid ? (
+        effectiveV2Segment === "queue" ? (
+          <WalkInPanel waitingCount={waitingCount} />
+        ) : (
+          <CalendarInsightsPanel />
+        )
+      ) : loading && !bookings ? (
         <CalendarSkeleton />
       ) : fetchError && !bookings ? (
         <ErrorState
@@ -3664,100 +3800,151 @@ function CalendarScreenBody() {
       </Modal>
 
       {/* ─── Time Block Creation Sheet ─── */}
-      <BottomSheet
-        visible={showTimeBlockForm}
-        onClose={() => setShowTimeBlockForm(false)}
-        title={t("provider.calendarScreen.timeBlockSheet.title")}
-      >
-        <View>
-          <Text style={{ marginBottom: 8, fontSize: 14, color: Colors.gray[500] }}>
-            {format(selectedDate, "EEEE, MMMM d, yyyy")}
-          </Text>
+      {renderCalendarV2Chrome ? (
+        <TimeBlockSheet
+          visible={showTimeBlockForm}
+          initialForm={{
+            ...timeBlockForm,
+            date: format(selectedDate, "yyyy-MM-dd"),
+            start_time: timeBlockForm.startTime,
+            end_time: timeBlockForm.endTime,
+            block_type: timeBlockForm.type,
+            staff_id: timeBlockForm.staffId,
+          }}
+          staffList={staffList}
+          onClose={() => setShowTimeBlockForm(false)}
+          onSave={async (form) => {
+            setTimeBlockForm({
+              title: form.title,
+              startTime: form.start_time,
+              endTime: form.end_time,
+              type: form.block_type as any,
+              staffId: form.staff_id,
+            });
+            // We use the existing state but trigger the create logic
+            const res = await api.post("/api/provider/time-blocks", form);
+            if (res.error) {
+              return { error: (res.error as any).message || String(res.error) };
+            }
+            await refreshCalendarOverlays();
+            setShowTimeBlockForm(false);
+            return { error: null };
+          }}
+        />
+      ) : (
+        <BottomSheet
+          visible={showTimeBlockForm}
+          onClose={() => setShowTimeBlockForm(false)}
+          title={t("provider.calendarScreen.timeBlockSheet.title")}
+        >
+          <View>
+            <Text style={{ marginBottom: 8, fontSize: 14, color: Colors.gray[500] }}>
+              {format(selectedDate, "EEEE, MMMM d, yyyy")}
+            </Text>
 
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.blockType")}</Text>
-          <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
-            {BLOCK_TYPES.map((bt) => (
-              <TouchableOpacity
-                key={bt.value}
-                style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, marginBottom: 8, backgroundColor: timeBlockForm.type === bt.value ? "#4f46e6" : Colors.gray[100] }}
-                onPress={() => setTimeBlockForm((p) => ({ ...p, type: bt.value }))}
-              >
-                <Ionicons
-                  name={bt.icon}
-                  size={14}
-                  color={timeBlockForm.type === bt.value ? "#fff" : "#6b7280"}
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={{ fontSize: 12, fontWeight: "500", color: timeBlockForm.type === bt.value ? Colors.white : Colors.gray[700] }}>
-                  {t(`provider.calendarScreen.timeBlockTypes.${bt.value}`)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.titleField")}</Text>
-          <TextInput
-            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-            value={timeBlockForm.title}
-            onChangeText={(t) => setTimeBlockForm((p) => ({ ...p, title: t }))}
-            placeholder={capitalizeFirst(timeBlockForm.type)}
-            placeholderTextColor="#9ca3af"
-          />
-
-          <View style={{ marginBottom: 12, flexDirection: "row" }}>
-            <View style={{ flex: 1, marginRight: 12 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.startTime")}</Text>
-              <TextInput
-                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                value={timeBlockForm.startTime}
-                onChangeText={(t) => setTimeBlockForm((p) => ({ ...p, startTime: t }))}
-                placeholder="HH:MM"
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.endTime")}</Text>
-              <TextInput
-                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                value={timeBlockForm.endTime}
-                onChangeText={(t) => setTimeBlockForm((p) => ({ ...p, endTime: t }))}
-                placeholder="HH:MM"
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
-          </View>
-
-          {staffList.length > 0 && (
-            <>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.staffOptional")}</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ flexDirection: "row" }}>
+            <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.blockType")}</Text>
+            <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
+              {BLOCK_TYPES.map((bt) => (
                 <TouchableOpacity
-                  style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, backgroundColor: !timeBlockForm.staffId ? "#4f46e6" : Colors.gray[100] }}
-                  onPress={() => setTimeBlockForm((p) => ({ ...p, staffId: "" }))}
+                  key={bt.value}
+                  style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, marginBottom: 8, backgroundColor: timeBlockForm.type === bt.value ? "#4f46e6" : Colors.gray[100] }}
+                  onPress={() => setTimeBlockForm((p) => ({ ...p, type: bt.value }))}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: "500", color: !timeBlockForm.staffId ? Colors.white : Colors.gray[700] }}>
-                    All Staff
+                  <Ionicons
+                    name={bt.icon}
+                    size={14}
+                    color={timeBlockForm.type === bt.value ? "#fff" : "#6b7280"}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={{ fontSize: 12, fontWeight: "500", color: timeBlockForm.type === bt.value ? Colors.white : Colors.gray[700] }}>
+                    {t(`provider.calendarScreen.timeBlockTypes.${bt.value}`)}
                   </Text>
                 </TouchableOpacity>
-                {staffList.map((member) => (
+              ))}
+            </View>
+
+            <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.titleField")}</Text>
+            <TextInput
+              style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+              value={timeBlockForm.title}
+              onChangeText={(txt) => setTimeBlockForm((p) => ({ ...p, title: txt }))}
+              placeholder={capitalizeFirst(timeBlockForm.type)}
+              placeholderTextColor="#9ca3af"
+            />
+
+            <View style={{ marginBottom: 12, flexDirection: "row" }}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.startTime")}</Text>
+                <TextInput
+                  style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+                  value={timeBlockForm.startTime}
+                  onChangeText={(txt) => setTimeBlockForm((p) => ({ ...p, startTime: txt }))}
+                  placeholder="HH:MM"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.endTime")}</Text>
+                <TextInput
+                  style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+                  value={timeBlockForm.endTime}
+                  onChangeText={(txt) => setTimeBlockForm((p) => ({ ...p, endTime: txt }))}
+                  placeholder="HH:MM"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+            </View>
+
+            {staffList.length > 0 && (
+              <>
+                <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{t("provider.calendarScreen.timeBlockSheet.staffOptional")}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ flexDirection: "row" }}>
                   <TouchableOpacity
-                    key={member.id}
-                    style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, backgroundColor: timeBlockForm.staffId === member.id ? "#4f46e6" : Colors.gray[100] }}
-                    onPress={() => setTimeBlockForm((p) => ({ ...p, staffId: member.id }))}
+                    style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, backgroundColor: !timeBlockForm.staffId ? "#4f46e6" : Colors.gray[100] }}
+                    onPress={() => setTimeBlockForm((p) => ({ ...p, staffId: "" }))}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: "500", color: timeBlockForm.staffId === member.id ? Colors.white : Colors.gray[700] }}>
-                      {member.name}
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: !timeBlockForm.staffId ? Colors.white : Colors.gray[700] }}>
+                      All Staff
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </>
-          )}
+                  {staffList.map((member) => (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, backgroundColor: timeBlockForm.staffId === member.id ? "#4f46e6" : Colors.gray[100] }}
+                      onPress={() => setTimeBlockForm((p) => ({ ...p, staffId: member.id }))}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: "500", color: timeBlockForm.staffId === member.id ? Colors.white : Colors.gray[700] }}>
+                        {member.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            )}
 
-          <ActionButton label={t("provider.calendarScreen.timeBlockSheet.submit")} onPress={handleCreateTimeBlock} loading={creatingBlock} fullWidth />
-        </View>
-      </BottomSheet>
-      {cancelReasonBookingId && (
+            <ActionButton label={t("provider.calendarScreen.timeBlockSheet.submit")} onPress={handleCreateTimeBlock} loading={creatingBlock} fullWidth />
+          </View>
+        </BottomSheet>
+      )}
+      {renderCalendarV2Chrome ? (
+        <CancelBookingSheet
+          visible={cancelReasonBookingId != null}
+          bookingId={cancelReasonBookingId}
+          customerName=""
+          onClose={() => setCancelReasonBookingId(null)}
+          onConfirm={async (bookingId, reason) => {
+            const finalReason = reason.trim() || "No reason provided";
+            setCancelReasonBookingId(null);
+            // applyBookingStatus directly sets status. We map it nicely.
+            try {
+              await applyBookingStatus(bookingId, "cancelled", finalReason);
+              return { error: null };
+            } catch (err: any) {
+              return { error: err.message || "Error" };
+            }
+          }}
+        />
+      ) : cancelReasonBookingId && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setCancelReasonBookingId(null)}>
           <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" }} onPress={() => setCancelReasonBookingId(null)}>
             <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, marginHorizontal: 24, width: 320 }}>
@@ -3791,23 +3978,51 @@ function CalendarScreenBody() {
         </Modal>
       )}
 
-      <CalendarBookingQuickSheet
-        visible={quickSheetBooking != null}
-        booking={quickSheetBooking}
-        providerTimezone={providerTz}
-        onClose={() => setQuickSheetBooking(null)}
-        onViewFullDetails={(bookingId) => {
-          if (quickSheetBooking?.is_group_booking && quickSheetBooking.group_booking_id) {
-            router.push(
-              `/(app)/(tabs)/more/group-bookings?open_group_id=${quickSheetBooking.group_booking_id}` as never,
-            );
-          } else {
-            router.push(`/(app)/(tabs)/more/bookings/${bookingId}` as never);
-          }
-        }}
-        translateBookingStatusLabel={translateBookingStatusLabel}
-        t={t}
-      />
+      {renderCalendarV2Chrome ? (
+        <CalendarDetailSheet
+          visible={quickSheetBooking != null}
+          booking={quickSheetBooking}
+          providerTimezone={providerTz}
+          offersMobileServices={provider?.offers_mobile_services}
+          onClose={() => setQuickSheetBooking(null)}
+          onApplyStatus={async (bookingId, dbTarget, reason) => {
+            const res = await changeBookingStatus(bookingId, dbTarget);
+            return { error: res ?? null }; // changeBookingStatus returns string | undefined
+          }}
+          onReschedule={() => {
+            if (quickSheetBooking) {
+              handleLongPressBooking(quickSheetBooking); // fallback, or we wire reschedule directly
+            }
+          }}
+          onRequestPayment={() => {
+            if (quickSheetBooking) {
+              const b = quickSheetBooking;
+              router.push(
+                `/(app)/(tabs)/more/bookings/${b.calendar_parent_booking_id?.trim() ? b.calendar_parent_booking_id : b.id}?focusPayment=1` as never,
+              );
+            }
+          }}
+          t={t}
+        />
+      ) : (
+        <CalendarBookingQuickSheet
+          visible={quickSheetBooking != null}
+          booking={quickSheetBooking}
+          providerTimezone={providerTz}
+          onClose={() => setQuickSheetBooking(null)}
+          onViewFullDetails={(bookingId) => {
+            if (quickSheetBooking?.is_group_booking && quickSheetBooking.group_booking_id) {
+              router.push(
+                `/(app)/(tabs)/more/group-bookings?open_group_id=${quickSheetBooking.group_booking_id}` as never,
+              );
+            } else {
+              router.push(`/(app)/(tabs)/more/bookings/${bookingId}` as never);
+            }
+          }}
+          translateBookingStatusLabel={translateBookingStatusLabel}
+          t={t}
+        />
+      )}
     </ScreenContainer>
   );
 }
