@@ -132,6 +132,7 @@ export default function WhatsAppChat({
   const [selectedOfferIdForPayment, setSelectedOfferIdForPayment] = useState<string | null>(null);
   const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
   const [decliningOfferId, setDecliningOfferId] = useState<string | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -381,6 +382,7 @@ export default function WhatsAppChat({
     const threshold = 100; // pixels from bottom
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
     isNearBottomRef.current = isNearBottom;
+    setShowScrollToBottom(!isNearBottom);
     return isNearBottom;
   };
 
@@ -1108,9 +1110,21 @@ export default function WhatsAppChat({
                           )}
                           {/* Customer: Payment in progress */}
                           {!isProviderChat && isPaymentPending && (
-                            <div className="flex items-center gap-2 mt-3 text-xs text-yellow-200/80">
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              Payment in progress…
+                            <div className="flex flex-col gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center gap-2 text-xs text-yellow-200/80 mb-1">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                Payment in progress…
+                              </div>
+                              <Button
+                                size="sm"
+                                className="w-full bg-primary hover:bg-primary-hover text-white text-xs font-medium border border-transparent"
+                                onClick={() => {
+                                  setSelectedOfferIdForPayment(att.offer_id!);
+                                  setPaymentOptionOpen(true);
+                                }}
+                              >
+                                Resume Payment
+                              </Button>
                             </div>
                           )}
                           {/* Customer: View Booking when paid */}
@@ -1316,6 +1330,19 @@ export default function WhatsAppChat({
           ); })()}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Scroll to Bottom Button */}
+      {showScrollToBottom && (
+        <button
+          onClick={() => scrollToBottom(true)}
+          className="absolute bottom-[90px] right-4 z-30 w-10 h-10 bg-white rounded-full shadow-lg border border-gray-200 flex items-center justify-center text-[#667781] hover:text-[#111b21] hover:bg-gray-50 transition-all hover:scale-105 active:scale-95"
+          aria-label="Scroll to bottom"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+        </button>
+      )}
 
       {/* File Previews */}
       {selectedFiles.length > 0 && (

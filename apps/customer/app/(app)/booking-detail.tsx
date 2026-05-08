@@ -1809,6 +1809,21 @@ export default function BookingDetailScreen() {
                 </View>
               );
             })}
+            {booking.custom_offer && (
+              <View style={{ marginTop: 8, padding: 12, backgroundColor: "#F8FAFC", borderRadius: 8, borderWidth: 1, borderColor: "#E2E8F0" }}>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: "#334155", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>Custom Offer Details</Text>
+                {booking.custom_offer.request?.description && (
+                  <Text style={{ fontSize: 13, color: "#475569", marginBottom: booking.custom_offer.notes ? 8 : 0 }}>
+                    <Text style={{ fontWeight: "600" }}>Your request:</Text> {booking.custom_offer.request.description}
+                  </Text>
+                )}
+                {booking.custom_offer.notes && (
+                  <Text style={{ fontSize: 13, color: "#475569" }}>
+                    <Text style={{ fontWeight: "600" }}>Provider notes:</Text> {booking.custom_offer.notes}
+                  </Text>
+                )}
+              </View>
+            )}
           </View>
         )}
 

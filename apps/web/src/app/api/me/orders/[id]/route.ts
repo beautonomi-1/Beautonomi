@@ -46,6 +46,9 @@ export async function GET(
         provider:providers (
           id, business_name, slug, thumbnail_url
         ),
+        returns:product_return_requests (
+          id, status, reason, description, refund_amount, created_at, updated_at
+        ),
         delivery_address:user_addresses (
           id, label, address_line1, address_line2, city, state, postal_code, country
         ),

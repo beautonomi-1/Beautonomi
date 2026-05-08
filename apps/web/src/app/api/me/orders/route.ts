@@ -72,6 +72,9 @@ export async function GET(request: NextRequest) {
         ),
         provider:providers (
           id, business_name, slug
+        ),
+        returns:product_return_requests (
+          id, status
         )
       `,
         { count: "exact" },

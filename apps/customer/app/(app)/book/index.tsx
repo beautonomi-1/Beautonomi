@@ -1357,7 +1357,14 @@ export default function BookScreen() {
 
       // Restore all key state from snapshot so navigating back to home tab and
       // returning to the booking flow preserves progress through the steps.
-      setStep(snap.step);
+      // If a specific step was requested via navigation (e.g. from checkout),
+      // honor it and clear the param so it doesn't get stuck.
+      if (stepParam && validSteps.includes(stepParam as Step)) {
+        setStep(stepParam as Step);
+        router.setParams({ step: "" });
+      } else {
+        setStep(snap.step);
+      }
       setSelectedServices(snap.selectedServices);
       setSelectedStaff(snap.selectedStaff);
       setSelectedDate(snap.selectedDate);
@@ -1369,7 +1376,7 @@ export default function BookScreen() {
       if (snap.step === "time" && snap.selectedDate && !loadingSlots && slots.length === 0) {
         loadSlots();
       }
-    }, [provider, loadingSlots, slots.length, loadSlots])
+    }, [provider, loadingSlots, slots.length, loadSlots, stepParam])
   );
 
   useEffect(() => {
@@ -1803,6 +1810,7 @@ export default function BookScreen() {
           location_id: locationType === "at_salon" ? selectedLocation?.id : null,
           address,
           previous_hold_id: excludeHoldIdForSlots || null,
+          exclude_booking_id: reschedule_booking_id || null,
           guest_fingerprint_hash: fingerprint,
           preferred_staff_ids: preferredStaffIds,
           ...(locationType === "at_home" ? { availability_travel_buffer_minutes: atHomeTravelBufferMinutes } : {}),

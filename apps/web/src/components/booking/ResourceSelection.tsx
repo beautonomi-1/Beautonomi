@@ -31,6 +31,11 @@ interface ResourceSelectionProps {
   /** Duration in minutes for the booking; used to compute end_at for availability check */
   durationMinutes?: number;
   className?: string;
+  /**
+   * Called after the resource list loads and zero resources are found.
+   * Use to auto-advance past this step when resources aren't configured.
+   */
+  onNoResources?: () => void;
 }
 
 export default function ResourceSelection({
@@ -42,6 +47,7 @@ export default function ResourceSelection({
   onResourceChange,
   durationMinutes = 60,
   className,
+  onNoResources,
 }: ResourceSelectionProps) {
   const [resources, setResources] = useState<Resource[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -66,9 +72,14 @@ export default function ResourceSelection({
         `/api/public/providers/${providerId}/resources?service_ids=${serviceIds.join(",")}`
       );
       const list = response.resources ?? response.data ?? [];
-      setResources(Array.isArray(list) ? list : []);
+      const loaded = Array.isArray(list) ? list : [];
+      setResources(loaded);
+      if (loaded.length === 0) {
+        onNoResources?.();
+      }
     } catch {
       setResources([]);
+      onNoResources?.();
     } finally {
       setIsLoading(false);
     }
@@ -80,9 +91,21 @@ export default function ResourceSelection({
 
     try {
       const dateStr = formatLocalDateYYYYMMDD(day);
-      const timeStr = typeof selectedTimeSlot === "string" && selectedTimeSlot.length >= 5
-        ? selectedTimeSlot.slice(0, 5)
-        : selectedTimeSlot;
+      // selectedTimeSlot may be an ISO datetime string ("2026-05-08T10:00:00.000Z") or
+      // a plain "HH:MM" string. Extract HH:MM in either case.
+      const timeStr = (() => {
+        if (!selectedTimeSlot) return selectedTimeSlot;
+        if (selectedTimeSlot.includes("T") || selectedTimeSlot.includes("Z")) {
+          const d = new Date(selectedTimeSlot);
+          if (Number.isFinite(d.getTime())) {
+            const hh = String(d.getHours()).padStart(2, "0");
+            const mm = String(d.getMinutes()).padStart(2, "0");
+            return `${hh}:${mm}`;
+          }
+        }
+        // Already "HH:MM[:SS]" format — take first 5 chars
+        return selectedTimeSlot.length >= 5 ? selectedTimeSlot.slice(0, 5) : selectedTimeSlot;
+      })();
       const response = await fetcher.post<{ available: Record<string, boolean> }>(
         `/api/public/providers/${providerId}/availability/resources/check`,
         {

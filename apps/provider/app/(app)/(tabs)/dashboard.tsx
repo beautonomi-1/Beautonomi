@@ -1078,7 +1078,7 @@ export default function DashboardScreen() {
       <SectionHeader
         title="Upcoming (Next 7 Days)"
         actionLabel="See All"
-        onAction={() => router.push("/(app)/(tabs)/calendar" as never)}
+        onAction={() => router.push("/(app)/(tabs)/bookings" as never)}
       />
       {upcomingError && !upcomingBookings ? (
         <TouchableOpacity onPress={refreshFallbackUpcoming} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
@@ -1228,7 +1228,7 @@ export default function DashboardScreen() {
       <SectionHeader
         title="Today's Appointments"
         actionLabel="See All"
-        onAction={() => router.push("/(app)/(tabs)/calendar" as never)}
+        onAction={() => router.push("/(app)/(tabs)/bookings" as never)}
       />
       {todayBookingsError && !todayBookings ? (
         <TouchableOpacity onPress={refreshFallbackTodayBookings} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>

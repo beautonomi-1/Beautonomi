@@ -50,21 +50,36 @@ export function StaticMapImage({
         const stylePath = config.style_url
           ? (config.style_url.match(/mapbox:\/\/styles\/(.+)/)?.[1] ?? "mapbox/streets-v12")
           : "mapbox/streets-v12";
+        const lat = Number(latitude);
+        const lng = Number(longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          setUri(null);
+          setLoading(false);
+          return;
+        }
+
+        const secLat = secondaryLatitude != null ? Number(secondaryLatitude) : undefined;
+        const secLng = secondaryLongitude != null ? Number(secondaryLongitude) : undefined;
+
         const hasSecondary =
-          secondaryLatitude != null &&
-          secondaryLongitude != null &&
-          Number.isFinite(secondaryLatitude) &&
-          Number.isFinite(secondaryLongitude) &&
-          !(Math.abs(secondaryLatitude - latitude) < 1e-6 && Math.abs(secondaryLongitude - longitude) < 1e-6);
+          secLat != null &&
+          secLng != null &&
+          Number.isFinite(secLat) &&
+          Number.isFinite(secLng) &&
+          !(Math.abs(secLat - lat) < 1e-6 && Math.abs(secLng - lng) < 1e-6);
+
+        const w = Math.round(Number(width) || 400);
+        const h = Math.round(Number(height) || 200);
+
         let url: string;
         if (hasSecondary) {
-          const pinA = `pin-l+FF0077(${longitude},${latitude})`;
-          const pinB = `pin-l+2563EB(${secondaryLongitude},${secondaryLatitude})`;
-          url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pinA},${pinB}/auto/${width}x${height}@2x?access_token=${config.token}`;
+          const pinA = `pin-l+FF0077(${lng},${lat})`;
+          const pinB = `pin-l+2563EB(${secLng},${secLat})`;
+          url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pinA},${pinB}/auto/${w}x${h}@2x?access_token=${config.token}`;
         } else {
-          const pin = `pin-l+FF0077(${longitude},${latitude})`;
-          const center = `${longitude},${latitude},${zoom}`;
-          url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pin}/${center}/${width}x${height}@2x?access_token=${config.token}`;
+          const pin = `pin-l+FF0077(${lng},${lat})`;
+          const center = `${lng},${lat},${zoom}`;
+          url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pin}/${center}/${w}x${h}@2x?access_token=${config.token}`;
         }
         setUri(url);
       } catch {

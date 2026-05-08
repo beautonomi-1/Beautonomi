@@ -567,6 +567,17 @@ export async function GET(request: Request) {
             const tq = textQueryForRanking;
             const textB = fuzzyTextRelevanceScore(tq, b.business_name ?? "", b.city ?? "");
             const textA = fuzzyTextRelevanceScore(tq, a.business_name ?? "", a.city ?? "");
+            
+            if (Math.abs(textB - textA) < 100) {
+              if (a.distance_km != null && b.distance_km != null) {
+                if (a.distance_km !== b.distance_km) return a.distance_km - b.distance_km;
+              } else if (a.distance_km != null) {
+                return -1;
+              } else if (b.distance_km != null) {
+                return 1;
+              }
+            }
+
             if (textB !== textA) return textB - textA;
           }
           return (

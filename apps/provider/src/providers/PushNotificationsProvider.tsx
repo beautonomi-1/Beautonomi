@@ -161,7 +161,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
     }
 
     if (templateKey === "provider_break_scheduled") {
-      router.push("/(app)/(tabs)/calendar");
+      router.push("/(app)/(tabs)/more/time-blocks");
       return;
     }
 

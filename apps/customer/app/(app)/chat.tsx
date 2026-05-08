@@ -241,6 +241,7 @@ export default function ChatScreen() {
   const [offerDetailData, setOfferDetailData] = useState<OfferDetailData | null>(null);
   const initialScrollDone = useRef(false);
   const flatListRef = useRef<FlatList>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const { pickFromLibrary, pickFromCamera } = useImagePicker();
   const { t } = useTranslation();
 
@@ -630,7 +631,7 @@ export default function ChatScreen() {
   };
 
   const pollForCustomOfferBooking = useCallback(async (offerId: string) => {
-    for (let i = 0; i < 15; i += 1) {
+    for (let i = 0; i < 30; i += 1) {
       try {
         const state = await api.get<{ booking_id?: string | null }>(`/api/me/custom-offers/${offerId}`);
         const bookingId = (state.data as { booking_id?: string | null } | undefined)?.booking_id ?? null;
@@ -642,13 +643,13 @@ export default function ChatScreen() {
       } catch {
         // ignore while polling
       }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
     }
     Alert.alert(
       t("customer.chatScreen.offerActionFailedTitle"),
-      t("customer.chatScreen.offerActionPaymentFailed"),
+      "Your payment was received, but there is a delay confirming your booking. Please check your bookings later.",
     );
-  }, [loadMessages, t]);
+  }, [loadMessages, t, router]);
 
   const declineCustomOffer = useCallback(
     async (offerId: string) => {
@@ -1012,6 +1013,8 @@ export default function ChatScreen() {
                 if (nativeEvent.contentOffset.y < 80) {
                   loadOlder();
                 }
+                const isNearBottom = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height - nativeEvent.contentOffset.y < 200;
+                setShowScrollToBottom(!isNearBottom);
               }}
               scrollEventThrottle={200}
               ListHeaderComponent={
@@ -1420,6 +1423,34 @@ export default function ChatScreen() {
                 );
               }}
             />
+
+            {/* Scroll to Bottom Button */}
+            {showScrollToBottom && (
+              <TouchableOpacity
+                onPress={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                style={{
+                  position: "absolute",
+                  bottom: 76 + insets.bottom,
+                  right: 16,
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: Colors.white,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 4,
+                  elevation: 4,
+                  zIndex: 10,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Scroll to bottom"
+              >
+                <Ionicons name="chevron-down" size={24} color={Colors.gray[600]} />
+              </TouchableOpacity>
+            )}
 
             {/* Input bar — respects the iOS home indicator via `insets.bottom`. */}
             <View

@@ -12,7 +12,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 
 const QUICK_ACTION_ITEMS: { label: string; route: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { label: "New Appointment", route: "/(app)/(tabs)/calendar", icon: "calendar-outline" },
+  { label: "New Appointment", route: "/(app)/(tabs)/bookings/new", icon: "calendar-outline" },
   { label: "New Client", route: "/(app)/(tabs)/clients", icon: "person-add-outline" },
   { label: "New Sale", route: "/(app)/(tabs)/more/walk-in-sale", icon: "cart-outline" },
   { label: "Explore post", route: "/(app)/(tabs)/more/explore-posts", icon: "camera-outline" },

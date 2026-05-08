@@ -591,6 +591,68 @@ export default function ProductOrderDetailScreen() {
           ) : null}
         </View>
 
+        {/* Returns */}
+        {order.returns && order.returns.length > 0 ? (
+          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
+              Returns & Refunds
+            </Text>
+            {order.returns.map((ret) => {
+              const isApproved = ret.status === "approved";
+              const isRefunded = ret.status === "refunded";
+              const isRejected = ret.status === "rejected";
+              const isPending = ret.status === "pending";
+              
+              let statusColor = "#6B7280";
+              let bgColor = "#F3F4F6";
+              let iconName = "time-outline";
+              
+              if (isApproved || isRefunded) {
+                statusColor = "#059669";
+                bgColor = "#D1FAE5";
+                iconName = "checkmark-circle-outline";
+              } else if (isRejected) {
+                statusColor = "#DC2626";
+                bgColor = "#FEE2E2";
+                iconName = "close-circle-outline";
+              } else if (isPending) {
+                statusColor = "#D97706";
+                bgColor = "#FEF3C7";
+              }
+
+              return (
+                <View key={ret.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>Return Request</Text>
+                    <View style={{ backgroundColor: bgColor, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, flexDirection: "row", alignItems: "center" }}>
+                      <Ionicons name={iconName as any} size={14} color={statusColor} style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: statusColor, textTransform: "capitalize" }}>
+                        {ret.status}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 4 }}>
+                    <Text style={{ fontWeight: "600" }}>Reason:</Text> {ret.reason.replace(/_/g, " ")}
+                  </Text>
+                  {ret.description ? (
+                    <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 4 }}>
+                      <Text style={{ fontWeight: "600" }}>Details:</Text> {ret.description}
+                    </Text>
+                  ) : null}
+                  {ret.refund_amount ? (
+                    <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>
+                      <Text style={{ fontWeight: "600" }}>Refund Amount:</Text> {fmt(ret.refund_amount)}
+                    </Text>
+                  ) : null}
+                  <Text style={{ fontSize: 12, color: "#9CA3AF", marginTop: 8 }}>
+                    Requested on {formatDate(ret.created_at)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
         {/* Items */}
         <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>

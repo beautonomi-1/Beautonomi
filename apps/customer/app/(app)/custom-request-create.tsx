@@ -82,6 +82,11 @@ export default function CustomRequestCreateScreen() {
   const [budgetMax, setBudgetMax] = useState("");
   const [duration, setDuration] = useState("60");
   const [locationType, setLocationType] = useState<"at_salon" | "at_home">("at_salon");
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [addressCity, setAddressCity] = useState("");
+  const [addressState, setAddressState] = useState("");
+  const [addressPostalCode, setAddressPostalCode] = useState("");
   const [serviceCategoryId, setServiceCategoryId] = useState<string | null>(null);
   const [categories, setCategories] = useState<GlobalCategory[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
@@ -197,6 +202,13 @@ export default function CustomRequestCreateScreen() {
       Alert.alert(cr("descriptionRequiredTitle"), cr("descriptionRequiredBody"));
       return;
     }
+    if (locationType === "at_home" && (!addressLine1.trim() || !addressCity.trim())) {
+      Alert.alert(
+        t("customer.mobile.screens.authLogin.errorTitle"),
+        "Please provide at least a street address and city for at-home services."
+      );
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await api.post("/api/me/custom-requests", {
@@ -208,6 +220,11 @@ export default function CustomRequestCreateScreen() {
         preferred_start_at: preferredStartAt,
         duration_minutes: parseInt(duration, 10) || 60,
         location_type: locationType,
+        address_line1: locationType === "at_home" ? addressLine1 : undefined,
+        address_line2: locationType === "at_home" ? addressLine2 : undefined,
+        address_city: locationType === "at_home" ? addressCity : undefined,
+        address_state: locationType === "at_home" ? addressState : undefined,
+        address_postal_code: locationType === "at_home" ? addressPostalCode : undefined,
         image_urls: imageUrls,
       });
       if (res.error) {
@@ -325,6 +342,20 @@ export default function CustomRequestCreateScreen() {
             <Text style={{ textAlign: "center", fontWeight: "500", color: locationType === "at_home" ? Colors.primary : Colors.gray[700] }}>{cr("atHome")}</Text>
           </TouchableOpacity>
         </View>
+        
+        {locationType === "at_home" && (
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>{cr("addressLabel", { defaultValue: "Your address" })}</Text>
+            <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 }} placeholder={cr("addressLine1", { defaultValue: "Street address" })} placeholderTextColor={Colors.gray[400]} value={addressLine1} onChangeText={setAddressLine1} />
+            <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 }} placeholder={cr("addressLine2", { defaultValue: "Unit / Suite (optional)" })} placeholderTextColor={Colors.gray[400]} value={addressLine2} onChangeText={setAddressLine2} />
+            <View style={{ flexDirection: "row", marginBottom: 8 }}>
+              <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginRight: 8 }} placeholder={cr("addressCity", { defaultValue: "City" })} placeholderTextColor={Colors.gray[400]} value={addressCity} onChangeText={setAddressCity} />
+              <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder={cr("addressPostalCode", { defaultValue: "Postal Code" })} placeholderTextColor={Colors.gray[400]} value={addressPostalCode} onChangeText={setAddressPostalCode} />
+            </View>
+            <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder={cr("addressState", { defaultValue: "Province / State" })} placeholderTextColor={Colors.gray[400]} value={addressState} onChangeText={setAddressState} />
+          </View>
+        )}
+
         <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>{cr("preferredDateTimeLabel")}</Text>
         <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 8 }}>
           {cr("slotsHint")}

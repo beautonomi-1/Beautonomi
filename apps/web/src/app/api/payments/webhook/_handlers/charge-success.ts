@@ -1623,7 +1623,7 @@ async function handleCustomOfferSuccess(
   });
   const rawCommissionBase = Number(meta.commission_base) > 0
     ? Number(meta.commission_base)
-    : Math.max(0, bookingSubtotal + travelFee - promotionDiscountAmount);
+    : Math.max(0, bookingSubtotal - promotionDiscountAmount);
   const commissionBase = isDepositPayment && coTotalAmount > 0
     ? Math.max(0, Math.round((amountInCurrency * (rawCommissionBase / coTotalAmount)) * 100) / 100)
     : rawCommissionBase;

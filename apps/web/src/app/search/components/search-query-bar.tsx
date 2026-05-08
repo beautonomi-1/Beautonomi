@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Search, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ export type SearchSuggestion = {
   category?: string;
   slug?: string;
   image_url?: string | null;
+  distance_km?: number;
 };
 
 type SearchQueryBarProps = {
@@ -34,6 +35,7 @@ export function SearchQueryBarWithSuggestions({
   onApply,
 }: SearchQueryBarProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -58,10 +60,18 @@ export function SearchQueryBarWithSuggestions({
     }
     setLoading(true);
     try {
+      const sp = new URLSearchParams();
+      sp.set("q", trimmed);
+      sp.set("limit", "12");
+      const lat = searchParams?.get("lat");
+      const lng = searchParams?.get("lng");
+      if (lat) sp.set("lat", lat);
+      if (lng) sp.set("lng", lng);
+
       const res = await fetcher.get<{
         data?: { suggestions?: SearchSuggestion[] };
         suggestions?: SearchSuggestion[];
-      }>(`/api/public/search/suggestions?q=${encodeURIComponent(trimmed)}&limit=12`);
+      }>(`/api/public/search/suggestions?${sp.toString()}`);
       const raw = res as { data?: { suggestions?: SearchSuggestion[] }; suggestions?: SearchSuggestion[] };
       const list = raw?.data?.suggestions ?? raw?.suggestions ?? [];
       setSuggestions(Array.isArray(list) ? list : []);
@@ -71,7 +81,7 @@ export function SearchQueryBarWithSuggestions({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -163,24 +173,29 @@ export function SearchQueryBarWithSuggestions({
                   onClick={() => applySuggestion(s)}
                 >
                   {s.type === "provider" ? (
-                    <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-pink-50 text-xs font-semibold text-primary ring-1 ring-pink-100">
+                    <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-pink-50 text-sm font-semibold text-primary ring-1 ring-pink-100">
                       {s.image_url ? (
-                        <Image src={s.image_url} alt="" fill sizes="36px" className="object-cover" />
+                        <Image src={s.image_url} alt="" fill sizes="40px" className="object-cover" />
                       ) : (
                         s.name.slice(0, 1).toUpperCase()
                       )}
                     </span>
                   ) : (
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100">
-                      <Search className="h-4 w-4 text-gray-400" />
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 ring-1 ring-gray-200">
+                      <Search className="h-4 w-4 text-gray-500" />
                     </span>
                   )}
                   <span className="min-w-0">
                     <span className="block truncate font-medium text-gray-900">{s.name}</span>
-                    <span className="block text-xs text-gray-500 capitalize">
+                    <span className="block text-xs text-gray-500 capitalize mt-0.5">
                       {s.type === "service" && s.category ? `${s.category} · ` : ""}
                       {s.type === "service" ? "Service" : s.type === "provider" ? "Provider" : "Category"}
                     </span>
+                    {s.type === "provider" && s.distance_km != null ? (
+                      <span className="block text-xs text-gray-500 mt-0.5">
+                        {s.distance_km < 1 ? "< 1 km away" : `${s.distance_km.toFixed(1)} km away`}
+                      </span>
+                    ) : null}
                   </span>
                 </button>
               </li>

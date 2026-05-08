@@ -28,7 +28,7 @@ function resolveScreenshotHref(path: string, query: Record<string, string>): Hre
     case "tabs/dashboard":
       return "/(app)/(tabs)/dashboard";
     case "tabs/calendar":
-      return "/(app)/(tabs)/calendar";
+      return "/(app)/(tabs)/bookings";
     case "tabs/clients":
       return "/(app)/(tabs)/clients";
     case "tabs/more":

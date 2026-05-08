@@ -140,7 +140,8 @@ export async function checkBookingSnapshotSegmentConflicts(
   supabase: SupabaseClient,
   providerId: string,
   snapshot: SnapshotLineForConflict[],
-  offeringBufferMinutesById: Map<string, number>
+  offeringBufferMinutesById: Map<string, number>,
+  excludeBookingId?: string
 ): Promise<ConflictCheckResult> {
   for (const line of snapshot) {
     const segStart = new Date(line.scheduled_start_at);
@@ -152,7 +153,8 @@ export async function checkBookingSnapshotSegmentConflicts(
         line.staff_id,
         segStart,
         segEnd,
-        buf
+        buf,
+        excludeBookingId
       );
       if (r.hasConflict) return r;
     } else {
@@ -161,7 +163,8 @@ export async function checkBookingSnapshotSegmentConflicts(
         providerId,
         segStart,
         segEnd,
-        buf
+        buf,
+        excludeBookingId
       );
       if (r.hasConflict) return r;
     }

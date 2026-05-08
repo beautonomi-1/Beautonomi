@@ -519,12 +519,17 @@ export default function CustomRequestDetailScreen() {
               </Text>
             )}
           </View>
-          {request.preferred_start_at && (
-            <Text style={twStyle("mt-1 text-sm text-gray-600")}>
-              Preferred: {formatDateTimeSafe(request.preferred_start_at)}
-            </Text>
-          )}
-        </View>
+            {request.preferred_start_at && (
+              <Text style={twStyle("mt-1 text-sm text-gray-600")}>
+                Preferred: {formatDateTimeSafe(request.preferred_start_at)}
+              </Text>
+            )}
+            {request.location_type === "at_home" && (request.address_line1 || request.address_city) && (
+              <Text style={twStyle("mt-1 text-sm text-gray-600")}>
+                Address: {[request.address_line1, request.address_line2, request.address_city, request.address_state, request.address_postal_code, request.address_country].filter(Boolean).join(", ")}
+              </Text>
+            )}
+          </View>
 
         {request.attachments && request.attachments.length > 0 ? (
           <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-white p-4")}>

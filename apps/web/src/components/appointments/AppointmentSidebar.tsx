@@ -4018,6 +4018,22 @@ export function AppointmentSidebar({
                 </div>
               )}
 
+              {mode === "view" && selectedAppointment?.custom_offer && (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <h4 className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Custom Offer Details</h4>
+                  {selectedAppointment.custom_offer.request?.description && (
+                    <p className="text-[13px] text-slate-600 mb-1">
+                      <span className="font-medium text-slate-800">Request:</span> {selectedAppointment.custom_offer.request.description}
+                    </p>
+                  )}
+                  {selectedAppointment.custom_offer.notes && (
+                    <p className="text-[13px] text-slate-600">
+                      <span className="font-medium text-slate-800">Notes:</span> {selectedAppointment.custom_offer.notes}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Products List */}
               {formData.products.length > 0 && (
                 <div className="space-y-2">

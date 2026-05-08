@@ -2010,7 +2010,8 @@ export default function BookCheckoutScreen() {
           return;
         }
         if (errStatus === 409 || errCode === "CONFLICT") {
-          setError(t("checkout.slotConflictFallback"));
+          const serverMsg = (res.error as { message?: string })?.message?.trim();
+          setError(serverMsg || t("checkout.slotConflictFallback"));
           return;
         }
         setError(getApiErrorMessage(res.error, t("checkout.failedCompleteBooking")));

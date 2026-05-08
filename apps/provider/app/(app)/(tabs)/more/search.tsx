@@ -27,10 +27,6 @@ interface SearchResponse {
 /** Map web provider URL to app route (path + params). */
 function urlToAppRoute(url: string): string {
   try {
-    if (url.startsWith("/provider/calendar")) {
-      const rest = url.replace("/provider/calendar", "");
-      return `/(app)/(tabs)/calendar${rest || ""}`;
-    }
     if (url.startsWith("/provider/clients")) {
       return "/(app)/(tabs)/clients";
     }

@@ -266,7 +266,8 @@ export async function POST(
             {
               title: "New Message from Provider",
               message: messagePreview,
-              data: { type: "new_message", conversation_id: id, message_id: message.id },
+              data: { type: "new_message", conversation_id: id, message_id: message.id, url: `/account-settings/messages?conversation=${id}`, deep_link: `/account-settings/messages?conversation=${id}` },
+              url: `/account-settings/messages?conversation=${id}`,
             },
             ["push"],
             { appType: "customer" }

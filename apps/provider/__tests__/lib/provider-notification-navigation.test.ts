@@ -35,7 +35,7 @@ describe("navigateFromProviderNotification", () => {
     expect(router.push).toHaveBeenCalledWith("/(app)/on-demand/incoming/req-123");
   });
 
-  it("preserves calendar notification date and booking focus params", () => {
+  it("routes legacy calendar links with booking id to booking detail", () => {
     const router = { push: jest.fn() };
 
     navigateFromProviderNotification(router as never, {
@@ -43,9 +43,7 @@ describe("navigateFromProviderNotification", () => {
       link: "/provider/calendar?date=2026-05-02&booking_id=booking-123",
     });
 
-    expect(router.push).toHaveBeenCalledWith(
-      "/(app)/(tabs)/calendar?date=2026-05-02&booking_id=booking-123",
-    );
+    expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/bookings/booking-123");
   });
 
   it("routes pending bookings to Front Desk with highlight params", () => {
@@ -61,7 +59,7 @@ describe("navigateFromProviderNotification", () => {
     );
   });
 
-  it("keeps data booking ids on calendar links instead of opening booking detail", () => {
+  it("routes legacy calendar links with data booking id to booking detail", () => {
     const router = { push: jest.fn() };
 
     navigateFromProviderNotification(router as never, {
@@ -70,9 +68,7 @@ describe("navigateFromProviderNotification", () => {
       data: { booking_id: "booking-456" },
     });
 
-    expect(router.push).toHaveBeenCalledWith(
-      "/(app)/(tabs)/calendar?date=2026-05-02&booking_id=booking-456",
-    );
+    expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/bookings/booking-456");
   });
 
   it("routes provider group booking links to the group booking sheet", () => {

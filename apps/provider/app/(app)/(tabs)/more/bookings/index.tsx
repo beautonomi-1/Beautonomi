@@ -1,33 +1,48 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   FlatList,
+  SectionList,
   RefreshControl,
   AppState,
+  Animated,
+  ActivityIndicator,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import AnimatedRe, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import {
   format,
+  addDays,
   startOfDay,
   endOfDay,
   startOfWeek,
   endOfWeek,
   startOfMonth,
   endOfMonth,
+  isSameDay,
+  isToday,
+  isTomorrow,
 } from "date-fns";
 import { usePagedProviderBookings } from "@/hooks/usePagedProviderBookings";
 import { useProvider } from "@/providers/ProviderContext";
-import { supabase } from "@/lib/supabase/client";
+import { useApi } from "@/hooks/useApi";
+import { useBookingsRealtime } from "@/hooks/useBookingsRealtime";
+import { useBookingStatusActions } from "@/hooks/useBookingStatusActions";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -73,9 +88,46 @@ interface Booking {
   is_recurring?: boolean;
   recurring_series_id?: string | null;
   booking_source?: string | null;
+  custom_offer?: any;
   customers?: BookingCustomer | null;
   services?: BookingService[];
 }
+
+interface TimeBlockRow {
+  id: string;
+  name: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  team_member_name: string | null;
+  blocked_time_type_name: string | null;
+  blocked_time_type_color: string | null;
+  is_recurring: boolean;
+  is_active: boolean;
+}
+
+interface AvailabilityBlockRow {
+  id: string;
+  start_at: string;
+  end_at: string;
+  block_type: string;
+}
+
+type ScheduleItem =
+  | { kind: "booking"; booking: Booking }
+  | { kind: "block"; block: TimeBlockRow };
+
+type ViewMode = "day" | "overview";
+
+type BookingsListSection = { title: string; data: ScheduleItem[] };
+
+type QuickActionTile = {
+  label: string;
+  sub: string;
+  icon: ComponentProps<typeof Ionicons>["name"];
+  route: string;
+  accent?: boolean;
+};
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -181,8 +233,9 @@ function formatScheduledAt(value: string | null | undefined): string {
     weekday: "short",
     month: "short",
     day: "numeric",
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
+    hour12: true,
   });
 }
 
@@ -191,10 +244,64 @@ function formatBookingTime(value: string | null | undefined): string {
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
   return parsed.toLocaleTimeString(undefined, {
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
+    hour12: true,
   });
 }
+
+function formatHHMM(time: string): string {
+  const [h = "0", m = "0"] = time.split(":");
+  const d = new Date();
+  d.setHours(Number(h), Number(m), 0, 0);
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
+function normalizeBookingStatus(s: string): string {
+  const x = (s || "").trim().toLowerCase();
+  if (x === "booked") return "confirmed";
+  if (x === "started") return "in_progress";
+  return x;
+}
+
+function avatarColor(name: string): string {
+  const palette = ["#6366f1", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b", "#3b82f6", "#10b981"];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return palette[Math.abs(h) % palette.length];
+}
+
+function initialsFromName(name: string): string {
+  const p = name.trim().split(/\s+/).filter(Boolean);
+  if (p.length === 0) return "?";
+  if (p.length === 1) return p[0].slice(0, 2).toUpperCase();
+  return `${p[0][0] ?? ""}${p[p.length - 1][0] ?? ""}`.toUpperCase();
+}
+
+function getCardCta(
+  status: string,
+  scheduledAt: string | null,
+): { label: string; target: string; bg: string } | null {
+  const s = normalizeBookingStatus(status);
+  const todayAppt = scheduledAt ? isSameDay(new Date(scheduledAt), new Date()) : false;
+  if (s === "pending") return { label: "Confirm", target: "confirmed", bg: "#16a34a" };
+  if (s === "pending_payment") return null;
+  if ((s === "confirmed" || s === "waiting") && todayAppt) {
+    return { label: s === "waiting" ? "Check in" : "Check in", target: "checked_in", bg: "#2563eb" };
+  }
+  if (s === "checked_in") return { label: "Start", target: "in_progress", bg: "#6366f1" };
+  if (s === "in_progress") return { label: "Complete", target: "completed", bg: "#374151" };
+  return null;
+}
+
+const BLOCK_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  break: "cafe-outline",
+  lunch: "restaurant-outline",
+  meeting: "people-outline",
+  personal: "person-outline",
+  unavailable: "ban-outline",
+  maintenance: "construct-outline",
+};
 
 function formatBookingDay(value: string | null | undefined): string {
   if (!value) return "Unscheduled";
@@ -224,6 +331,234 @@ function serviceSummary(services: BookingService[] | undefined): string {
   return extra > 0 ? `${first} +${extra} more` : first;
 }
 
+function ScheduleBlockRow({ block, onPress }: { block: TimeBlockRow; onPress: () => void }) {
+  const accent = block.blocked_time_type_color ?? "#d1d5db";
+  const typeKey = (block.blocked_time_type_name ?? "").toLowerCase();
+  const iconName = BLOCK_ICONS[typeKey] ?? "ban-outline";
+  const label = block.name || block.blocked_time_type_name || "Blocked";
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      style={[
+        twStyle("mb-2 flex-row items-center overflow-hidden rounded-xl bg-gray-50"),
+        { borderLeftWidth: 4, borderLeftColor: accent, minHeight: 52 },
+      ]}
+    >
+      <View style={twStyle("flex-1 flex-row items-center px-3 py-2.5")}>
+        <Ionicons name={iconName} size={16} color={accent} style={{ marginRight: 10 }} />
+        <View style={{ flex: 1 }}>
+          <Text style={twStyle("text-sm font-semibold text-gray-700")} numberOfLines={1}>
+            {label}
+          </Text>
+          <View style={twStyle("mt-0.5 flex-row flex-wrap items-center gap-2")}>
+            <Text style={twStyle("text-xs text-gray-400")}>
+              {formatHHMM(block.start_time)} – {formatHHMM(block.end_time)}
+            </Text>
+            {block.team_member_name ? (
+              <Text style={twStyle("text-xs text-gray-400")}>· {block.team_member_name}</Text>
+            ) : null}
+          </View>
+        </View>
+        {block.is_recurring ? (
+          <View style={twStyle("ml-2 rounded-full bg-gray-200 px-1.5 py-0.5")}>
+            <Ionicons name="repeat-outline" size={10} color="#6b7280" />
+          </View>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+interface BookingScheduleRowProps {
+  b: Booking;
+  currency: string;
+  pendingIds: Set<string>;
+  nextUpcomingId: string | null;
+  onOpen: (booking: Booking) => void;
+  onApplyStatus: (id: string, target: string, msg: string) => void;
+}
+
+function BookingScheduleRow({
+  b,
+  currency,
+  pendingIds,
+  nextUpcomingId,
+  onOpen,
+  onApplyStatus,
+}: BookingScheduleRowProps) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const customerName = b.customers?.full_name || "Customer";
+  const serviceName = serviceSummary(b.services);
+  const scheduled = formatScheduledAt(b.scheduled_at);
+  const scheduledDay = formatBookingDay(b.scheduled_at);
+  const scheduledTime = formatBookingTime(b.scheduled_at);
+  const ns = normalizeBookingStatus(b.status);
+  const st = STATUS_STYLE[ns] ?? STATUS_STYLE[b.status] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
+  const payment = getPaymentLabel(b);
+  const paymentColors =
+    payment?.tone === "paid"
+      ? { bg: "#dcfce7", text: "#166534" }
+      : payment?.tone === "partial"
+        ? { bg: "#ffedd5", text: "#9a3412" }
+        : { bg: "#fef3c7", text: "#92400e" };
+  const staffName = b.services?.find((s) => s.staff_name)?.staff_name ?? null;
+  const totalDuration = b.services?.reduce((n, s) => n + (s.duration_minutes ?? 0), 0) ?? 0;
+  const cta = getCardCta(b.status, b.scheduled_at);
+  const isNext = b.id === nextUpcomingId;
+  const col = avatarColor(customerName);
+  const ini = initialsFromName(customerName);
+
+  return (
+    <AnimatedRe.View style={animStyle}>
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onOpen(b);
+        }}
+        onPressIn={() => {
+          scale.value = withSpring(0.975, { damping: 20 });
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 20 });
+        }}
+        style={[
+          twStyle("mb-2.5 overflow-hidden rounded-2xl border border-gray-100 bg-white p-4"),
+          {
+            shadowOpacity: isNext ? 0.12 : 0.04,
+            shadowRadius: isNext ? 8 : 4,
+            shadowOffset: { width: 0, height: 2 },
+            borderTopWidth: isNext ? 2 : 1,
+            borderTopColor: isNext ? "#6366f1" : "#f3f4f6",
+          },
+        ]}
+        accessibilityLabel={`Booking for ${customerName}`}
+        accessibilityRole="button"
+      >
+        <View style={[twStyle("absolute bottom-0 left-0 top-0 w-1 rounded-l-2xl"), { backgroundColor: st.bg }]} />
+        <View style={twStyle("flex-row items-start pl-1")}>
+          <View style={twStyle("mr-3 items-center")}>
+            <View
+              style={[
+                twStyle("h-10 w-10 items-center justify-center rounded-full"),
+                { backgroundColor: col },
+              ]}
+            >
+              <Text style={twStyle("text-xs font-bold text-white")}>{ini}</Text>
+            </View>
+            <Text style={twStyle("mt-1 max-w-[52px] text-center text-[10px] text-gray-500")} numberOfLines={2}>
+              {scheduledDay.split(",")[0]} · {scheduledTime}
+            </Text>
+          </View>
+          <View style={twStyle("min-w-0 flex-1 pr-2")}>
+            <Text style={twStyle("text-base font-semibold text-gray-900")} numberOfLines={1}>
+              {customerName}
+            </Text>
+            <Text style={twStyle("mt-0.5 text-sm text-gray-600")} numberOfLines={1}>
+              {serviceName}
+            </Text>
+            {staffName ? (
+              <View style={twStyle("mt-0.5 flex-row items-center gap-1")}>
+                <Ionicons name="person-circle-outline" size={13} color="#6b7280" />
+                <Text style={twStyle("text-xs text-gray-500")} numberOfLines={1}>
+                  {staffName}
+                </Text>
+              </View>
+            ) : null}
+            <View style={twStyle("mt-1.5 flex-row items-center gap-2")}>
+              <Ionicons name="calendar-outline" size={13} color="#6b7280" />
+              <Text style={twStyle("text-xs text-gray-500")}>{scheduled}</Text>
+            </View>
+            <View style={twStyle("mt-2 flex-row flex-wrap items-center gap-2")}>
+              {totalDuration > 0 ? (
+                <View style={twStyle("flex-row items-center gap-1 rounded-full bg-gray-100 px-2 py-1")}>
+                  <Ionicons name="time-outline" size={12} color="#6b7280" />
+                  <Text style={twStyle("text-xs text-gray-500")}>{totalDuration} min</Text>
+                </View>
+              ) : null}
+              {b.location_type ? (
+                <View style={twStyle("flex-row items-center gap-1 rounded-full bg-gray-100 px-2 py-1")}>
+                  <Ionicons
+                    name={b.location_type === "at_home" ? "home-outline" : "business-outline"}
+                    size={12}
+                    color="#6b7280"
+                  />
+                  <Text style={twStyle("text-xs text-gray-500")}>
+                    {b.location_type === "at_home" ? "House call" : "At salon"}
+                  </Text>
+                </View>
+              ) : null}
+              {(b.is_recurring || b.recurring_series_id) && (
+                <View style={twStyle("flex-row items-center gap-1 rounded-full bg-blue-50 px-2 py-1")}>
+                  <Ionicons name="repeat-outline" size={12} color="#2563eb" />
+                  <Text style={twStyle("text-xs font-medium text-blue-700")}>Repeats</Text>
+                </View>
+              )}
+              {b.is_group_booking && (
+                <View style={twStyle("flex-row items-center gap-1 rounded-full bg-pink-50 px-2 py-1")}>
+                  <Ionicons name="people-outline" size={12} color="#db2777" />
+                  <Text style={twStyle("text-xs font-medium text-pink-700")}>Group</Text>
+                </View>
+              )}
+              {b.booking_source === "walk_in" && (
+                <View style={twStyle("rounded-full bg-emerald-50 px-2 py-1")}>
+                  <Text style={twStyle("text-xs font-medium text-emerald-700")}>Walk-in</Text>
+                </View>
+              )}
+              {b.custom_offer && (
+                <View style={twStyle("flex-row items-center gap-1 rounded-full bg-purple-50 px-2 py-1")}>
+                  <Ionicons name="pricetag-outline" size={12} color="#9333ea" />
+                  <Text style={twStyle("text-xs font-medium text-purple-700")}>Custom Offer</Text>
+                </View>
+              )}
+              {payment ? (
+                <View style={[twStyle("rounded-full px-2 py-1"), { backgroundColor: paymentColors.bg }]}>
+                  <Text style={[twStyle("text-xs font-medium"), { color: paymentColors.text }]}>{payment.label}</Text>
+                </View>
+              ) : null}
+              {b.total_amount != null && b.total_amount > 0 && (
+                <Text style={twStyle("text-xs font-semibold text-gray-700")}>
+                  {formatCurrency(b.total_amount, currency)}
+                </Text>
+              )}
+              {b.booking_number ? (
+                <Text style={twStyle("text-xs text-gray-400")}>#{b.booking_number}</Text>
+              ) : null}
+            </View>
+            {cta ? (
+              <TouchableOpacity
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  void onApplyStatus(b.id, cta.target, `${cta.label} saved`);
+                }}
+                style={[twStyle("mt-2 self-start rounded-full px-3 py-1.5"), { backgroundColor: cta.bg }]}
+                accessibilityRole="button"
+                accessibilityLabel={cta.label}
+              >
+                {pendingIds.has(b.id) ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={twStyle("text-xs font-semibold text-white")}>{cta.label}</Text>
+                )}
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <View style={twStyle("items-end gap-1")}>
+            <View style={[twStyle("rounded-full px-2.5 py-1"), { backgroundColor: st.bg }]}>
+              <Text style={[twStyle("text-xs font-medium"), { color: st.text }]}>
+                {formatBookingStatusLabel(b.status)}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
+          </View>
+        </View>
+      </TouchableOpacity>
+    </AnimatedRe.View>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  Screen                                                             */
 /* ------------------------------------------------------------------ */
@@ -242,6 +577,23 @@ export default function BookingsListScreen() {
   const [statusFilter, setStatusFilter] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const [listSort, setListSort] = useState<BookingsListSort>("appointment");
+  const [viewMode, setViewMode] = useState<ViewMode>("day");
+  const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()));
+  const [newBookingFlash, setNewBookingFlash] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const flashY = useSharedValue(-64);
+  const toastY = useSharedValue(100);
+  const flashAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: flashY.value }],
+    opacity: flashY.value < -50 ? 0 : 1,
+  }));
+  const toastAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: toastY.value }],
+  }));
+
+  useEffect(() => {
+    if (listSort === "booked_at") setViewMode("overview");
+  }, [listSort]);
 
   // §Mobile-parity 2026-04: snapshot metrics strip at the top of the
   // bookings tab, filterable by time period independent of the list's
@@ -268,7 +620,8 @@ export default function BookingsListScreen() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const dateParams = useMemo(() => buildDateParams(dateRange), [dateRange]);
+  const effectiveDateRange: DateRange = viewMode === "day" ? "month" : dateRange;
+  const dateParams = useMemo(() => buildDateParams(effectiveDateRange), [effectiveDateRange]);
 
   const bookingsListQueryParts = useMemo(() => {
     const parts: string[] = [];
@@ -301,16 +654,37 @@ export default function BookingsListScreen() {
     return `/api/provider/bookings?${parts.join("&")}`;
   }, [bookingsListQueryParts, selectedLocationId]);
 
-  const { data, loading, error, refresh } = usePagedProviderBookings<Booking>(url, { timeoutMs: 60_000 });
+  const { data, loading, error, refresh, mutate: mutateMain } = usePagedProviderBookings<Booking>(url, {
+    timeoutMs: 60_000,
+  });
   const {
     data: atHomeData,
     loading: atHomeLoading,
     error: atHomeError,
     refresh: refreshAtHome,
+    mutate: mutateAtHome,
   } = usePagedProviderBookings<Booking>(atHomeListUrl, {
     enabled: Boolean(selectedLocationId && atHomeListUrl),
     timeoutMs: 60_000,
   });
+
+  const timeBlocksUrl = useMemo(() => {
+    const from = format(startOfMonth(selectedDate), "yyyy-MM-dd");
+    const to = format(endOfMonth(selectedDate), "yyyy-MM-dd");
+    const loc = selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : "";
+    return `/api/provider/time-blocks?date_from=${from}&date_to=${to}${loc}`;
+  }, [selectedDate, selectedLocationId]);
+
+  const { data: timeBlocksRaw, refresh: refreshTimeBlocks } = useApi<TimeBlockRow[]>(timeBlocksUrl, {
+    staleTimeMs: 300_000,
+  });
+  const { data: availabilityBlocksRaw, refresh: refreshAvailability } = useApi<AvailabilityBlockRow[]>(
+    "/api/provider/availability-blocks",
+    { staleTimeMs: 600_000 },
+  );
+  const { data: navCounts } = useApi<{ waiting_room: number }>("/api/provider/nav-counts", { staleTimeMs: 15_000 });
+
+  const timeBlocks = useMemo(() => (Array.isArray(timeBlocksRaw) ? timeBlocksRaw : []), [timeBlocksRaw]);
 
   const mergedBookingsData = useMemo(() => {
     const main = Array.isArray(data) ? data : [];
@@ -328,14 +702,90 @@ export default function BookingsListScreen() {
     if (selectedLocationId) await refreshAtHome();
   }, [refresh, refreshAtHome, selectedLocationId]);
 
+  const refreshOverlays = useCallback(async () => {
+    await refreshTimeBlocks();
+    await refreshAvailability();
+  }, [refreshTimeBlocks, refreshAvailability]);
+
+  const mutateMerged = useCallback(
+    (next: Booking[] | null) => {
+      if (next === null) return;
+      const byId = new Map(next.map((b) => [b.id, b]));
+      if (data) mutateMain(data.map((b) => byId.get(b.id) ?? b));
+      if (atHomeData) mutateAtHome(atHomeData.map((b) => byId.get(b.id) ?? b));
+    },
+    [data, atHomeData, mutateMain, mutateAtHome],
+  );
+
+  const { applyStatus, pendingIds } = useBookingStatusActions({
+    bookings: mergedBookingsData,
+    mutate: mutateMerged,
+    refresh: refreshAllBookings,
+  });
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await refreshAllBookings();
+      await refreshOverlays();
     } finally {
       setRefreshing(false);
     }
-  }, [refreshAllBookings]);
+  }, [refreshAllBookings, refreshOverlays]);
+
+  const pumpLive = useCallback(() => {
+    setIsLive(true);
+    setTimeout(() => setIsLive(false), 1200);
+  }, []);
+
+  useBookingsRealtime(
+    provider?.id,
+    bookingsListFocused,
+    async () => {
+      await refreshAllBookings();
+      pumpLive();
+    },
+    refreshOverlays,
+    () => setNewBookingFlash(true),
+  );
+
+  useEffect(() => {
+    if (newBookingFlash) {
+      flashY.value = withSpring(0, { damping: 16 });
+      const t = setTimeout(() => {
+        flashY.value = withTiming(-64, { duration: 280 });
+        setTimeout(() => setNewBookingFlash(false), 300);
+      }, 3500);
+      return () => clearTimeout(t);
+    } else {
+      flashY.value = -64;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newBookingFlash]);
+
+  useEffect(() => {
+    if (toast) {
+      toastY.value = withSpring(0, { damping: 18 });
+      const t = setTimeout(() => {
+        toastY.value = withTiming(100, { duration: 280 });
+        setTimeout(() => setToast(null), 300);
+      }, 2500);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]);
+
+  const skeletonOpacity = useRef(new Animated.Value(0.45)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonOpacity, { toValue: 0.9, duration: 700, useNativeDriver: true }),
+        Animated.timing(skeletonOpacity, { toValue: 0.45, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [skeletonOpacity]);
 
   // §Cross-app audit 2026-04 (bookings list freshness): previously the
   // calendar screen subscribed to `postgres_changes` on `bookings`, so a
@@ -373,49 +823,50 @@ export default function BookingsListScreen() {
     return () => sub.remove();
   }, [bookingsListFocused]);
 
-  /**
-   * Unique suffix per subscription so `supabase.channel(name)` never reuses a channel
-   * that is already subscribed (fixes "cannot add postgres_changes callbacks … after
-   * subscribe()" under React Strict Mode / fast remount). Matches dashboard pattern of
-   * scoping subs to focus — unsubscribe when navigating to booking detail.
-   */
-  const bookingsRealtimeGenRef = useRef(0);
+  const closedDateKeys = useMemo(() => {
+    const keys = new Set<string>();
+    const raw = Array.isArray(availabilityBlocksRaw) ? availabilityBlocksRaw : [];
+    for (const ab of raw) {
+      let cursor = startOfDay(new Date(ab.start_at));
+      const endD = startOfDay(new Date(ab.end_at));
+      if (!Number.isFinite(cursor.getTime()) || !Number.isFinite(endD.getTime())) continue;
+      while (cursor <= endD) {
+        keys.add(format(cursor, "yyyy-MM-dd"));
+        cursor = addDays(cursor, 1);
+      }
+    }
+    return keys;
+  }, [availabilityBlocksRaw]);
 
-  useEffect(() => {
-    if (!bookingsListFocused || !provider?.id) return;
-    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleRefresh = () => {
-      if (refreshTimer) return;
-      refreshTimer = setTimeout(() => {
-        refreshTimer = null;
-        refreshRef.current();
-      }, 400);
-    };
+  const stripDays = useMemo(
+    () => Array.from({ length: 60 }, (_, i) => addDays(startOfDay(new Date()), i - 30)),
+    [],
+  );
 
-    const topic = `bookings-list:${provider.id}:${++bookingsRealtimeGenRef.current}`;
-    const channel = supabase
-      .channel(topic)
-      .on(
-        "postgres_changes" as never,
-        {
-          event: "*",
-          schema: "public",
-          table: "bookings",
-          filter: `provider_id=eq.${provider.id}`,
-        },
-        () => {
-          scheduleRefresh();
-          setIsLive(true);
-          setTimeout(() => setIsLive(false), 1200);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      if (refreshTimer) clearTimeout(refreshTimer);
-      supabase.removeChannel(channel);
-    };
-  }, [bookingsListFocused, provider?.id]);
+  const dateStripInfo = useMemo(() => {
+    const map = new Map<string, { bookings: number; hasPending: boolean; blocks: number; isClosed: boolean }>();
+    for (const b of mergedBookingsData) {
+      if (!b.scheduled_at) continue;
+      const key = format(new Date(b.scheduled_at), "yyyy-MM-dd");
+      const prev = map.get(key) ?? { bookings: 0, hasPending: false, blocks: 0, isClosed: false };
+      map.set(key, {
+        bookings: prev.bookings + 1,
+        hasPending: prev.hasPending || ["pending", "pending_payment"].includes(normalizeBookingStatus(b.status)),
+        blocks: prev.blocks,
+        isClosed: prev.isClosed,
+      });
+    }
+    for (const tb of timeBlocks) {
+      if (!tb.is_active) continue;
+      const prev = map.get(tb.date) ?? { bookings: 0, hasPending: false, blocks: 0, isClosed: false };
+      map.set(tb.date, { ...prev, blocks: prev.blocks + 1 });
+    }
+    for (const key of closedDateKeys) {
+      const prev = map.get(key) ?? { bookings: 0, hasPending: false, blocks: 0, isClosed: false };
+      map.set(key, { ...prev, isClosed: true });
+    }
+    return map;
+  }, [mergedBookingsData, timeBlocks, closedDateKeys]);
 
   const filtered = useMemo(() => {
     const allBookings: Booking[] = mergedBookingsData;
@@ -428,6 +879,115 @@ export default function BookingsListScreen() {
       return name.includes(q) || num.includes(q) || service.includes(q);
     });
   }, [mergedBookingsData, search]);
+
+  const nextUpcomingId = useMemo(() => {
+    const now = Date.now();
+    const terminal = new Set(["cancelled", "canceled", "completed", "no_show"]);
+    const sorted = [...mergedBookingsData]
+      .filter((b) => b.scheduled_at && !terminal.has(normalizeBookingStatus(b.status)))
+      .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime());
+    return sorted.find((b) => new Date(b.scheduled_at!).getTime() > now)?.id ?? null;
+  }, [mergedBookingsData]);
+
+  const dayBookings = useMemo(() => {
+    if (viewMode !== "day") return filtered;
+    return filtered.filter((b) => b.scheduled_at && isSameDay(new Date(b.scheduled_at), selectedDate));
+  }, [filtered, viewMode, selectedDate]);
+
+  const dayBlocksForSelected = useMemo(() => {
+    const key = format(selectedDate, "yyyy-MM-dd");
+    return timeBlocks.filter((t) => t.date === key && t.is_active);
+  }, [timeBlocks, selectedDate]);
+
+  const daySchedule = useMemo(() => {
+    const items: ScheduleItem[] = [...dayBookings.map((b) => ({ kind: "booking" as const, booking: b }))];
+    for (const block of dayBlocksForSelected) {
+      items.push({ kind: "block", block });
+    }
+    const sortKey = (it: ScheduleItem) => {
+      if (it.kind === "booking") {
+        if (!it.booking.scheduled_at) return Number.POSITIVE_INFINITY;
+        return new Date(it.booking.scheduled_at).getTime();
+      }
+      const [h = 0, m = 0] = it.block.start_time.split(":").map(Number);
+      const d = new Date(selectedDate);
+      d.setHours(h, m, 0, 0);
+      return d.getTime();
+    };
+    return items.sort((a, b) => sortKey(a) - sortKey(b));
+  }, [dayBookings, dayBlocksForSelected, selectedDate]);
+
+  const listSections: BookingsListSection[] = useMemo(() => {
+    const toBookingItems = (rows: Booking[]): ScheduleItem[] =>
+      rows.map((b) => ({ kind: "booking" as const, booking: b }));
+
+    if (viewMode === "overview" || listSort === "booked_at") {
+      return [{ title: "", data: toBookingItems(filtered) }];
+    }
+    const hourOf = (it: ScheduleItem) => {
+      if (it.kind === "booking") {
+        if (!it.booking.scheduled_at) return 0;
+        return new Date(it.booking.scheduled_at).getHours();
+      }
+      const [h = 0] = it.block.start_time.split(":").map(Number);
+      return h;
+    };
+    const buckets = [
+      { title: "Morning", from: 0, to: 12 },
+      { title: "Afternoon", from: 12, to: 17 },
+      { title: "Evening", from: 17, to: 24 },
+    ];
+    const sections = buckets
+      .map(({ title, from, to }) => ({
+        title,
+        data: daySchedule.filter((it) => {
+          const h = hourOf(it);
+          return h >= from && h < to;
+        }),
+      }))
+      .filter((s) => s.data.length > 0);
+    return sections.length ? sections : [{ title: "", data: [] as ScheduleItem[] }];
+  }, [viewMode, listSort, filtered, daySchedule]);
+
+  const selectedDateKey = format(selectedDate, "yyyy-MM-dd");
+  const isDayClosed = closedDateKeys.has(selectedDateKey);
+
+  const daySummary = useMemo(() => {
+    const dayB = mergedBookingsData.filter(
+      (b) => b.scheduled_at && format(new Date(b.scheduled_at), "yyyy-MM-dd") === selectedDateKey,
+    );
+    const active = dayB.filter((b) => !["cancelled", "canceled", "no_show"].includes(normalizeBookingStatus(b.status)));
+    const blockCount = timeBlocks.filter((t) => t.date === selectedDateKey && t.is_active).length;
+    const pending = dayB.filter((b) => ["pending", "pending_payment"].includes(normalizeBookingStatus(b.status))).length;
+    const closed = closedDateKeys.has(selectedDateKey);
+    const nextUp = dayB
+      .filter((b) => b.scheduled_at && new Date(b.scheduled_at).getTime() > Date.now())
+      .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime())[0];
+    return {
+      label: isToday(selectedDate) ? "Today" : isTomorrow(selectedDate) ? "Tomorrow" : format(selectedDate, "EEE, MMM d"),
+      count: active.length,
+      revenue: active.reduce((n, b) => n + Number(b.total_amount || 0), 0),
+      pending,
+      blockCount,
+      isClosed: closed,
+      hasBookingsOnClosed: closed && dayB.length > 0,
+      nextUp,
+    };
+  }, [mergedBookingsData, selectedDateKey, timeBlocks, closedDateKeys, selectedDate]);
+
+  const handleApplyStatus = useCallback(
+    async (bookingId: string, target: string, successMessage: string) => {
+      const r = await applyStatus(bookingId, target);
+      if (r.error) {
+        setToast({ message: r.error, type: "error" });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } else {
+        setToast({ message: successMessage, type: "success" });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    },
+    [applyStatus],
+  );
 
   // §Mobile-parity 2026-04: stats snapshot computed across the full
   // returned result set. Independent of the list's date range so the
@@ -454,10 +1014,12 @@ export default function BookingsListScreen() {
     let revenue = 0;
     let pendingCount = 0;
     let inProgressCount = 0;
+    let completedCount = 0;
     for (const b of allBookings) {
       const s = (b.status || "").toLowerCase();
       if (s === "pending" || s === "pending_payment") pendingCount += 1;
       if (s === "in_progress" || s === "started") inProgressCount += 1;
+      if (s === "completed") completedCount += 1;
       const ts = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
       if (ts >= start && ts < end) {
         count += 1;
@@ -466,7 +1028,7 @@ export default function BookingsListScreen() {
         }
       }
     }
-    return { count, revenue, pendingCount, inProgressCount };
+    return { count, revenue, pendingCount, inProgressCount, completedCount };
   }, [mergedBookingsData, statsRange]);
 
   const statsRangeLabel = useMemo(() => {
@@ -487,159 +1049,75 @@ export default function BookingsListScreen() {
     }
   }, [dateRange]);
 
-  const bookingKeyExtractor = useCallback((b: Booking) => b.id, []);
+  const openBooking = useCallback(
+    (b: Booking) => {
+      if (b.is_group_booking && b.group_booking_id) {
+        router.push({
+          pathname: "/(app)/(tabs)/more/group-bookings",
+          params: { open_group_id: b.group_booking_id },
+        } as never);
+        return;
+      }
+      router.push(`/(app)/(tabs)/bookings/${b.id}` as never);
+    },
+    [router],
+  );
 
-  const renderBookingItem = useCallback(
-    ({ item: b }: { item: Booking }) => {
-      const customerName = b.customers?.full_name || "Customer";
-      const serviceName = serviceSummary(b.services);
-      const scheduled = formatScheduledAt(b.scheduled_at);
-      const scheduledDay = formatBookingDay(b.scheduled_at);
-      const scheduledTime = formatBookingTime(b.scheduled_at);
-      const st = STATUS_STYLE[b.status] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
-      const payment = getPaymentLabel(b);
-      const paymentColors =
-        payment?.tone === "paid"
-          ? { bg: "#dcfce7", text: "#166534" }
-          : payment?.tone === "partial"
-            ? { bg: "#ffedd5", text: "#9a3412" }
-            : { bg: "#fef3c7", text: "#92400e" };
+  const sectionKeyExtractor = useCallback((item: ScheduleItem, index: number) => {
+    if (item.kind === "booking") return item.booking.id;
+    return `block-${item.block.id}-${index}`;
+  }, []);
 
+  const renderScheduleItem = useCallback(
+    ({ item }: { item: ScheduleItem }) => {
+      if (item.kind === "block") {
+        return (
+          <ScheduleBlockRow
+            block={item.block}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              router.push("/(app)/(tabs)/more/time-blocks" as never);
+            }}
+          />
+        );
+      }
       return (
-        <TouchableOpacity
-          onPress={() => {
-            if (b.is_group_booking && b.group_booking_id) {
-              router.push(
-                {
-                  pathname: "/(app)/(tabs)/more/group-bookings",
-                  params: { open_group_id: b.group_booking_id },
-                } as never,
-              );
-              return;
-            }
-            router.push(`/(app)/(tabs)/bookings/${b.id}` as never);
-          }}
-          style={twStyle(
-            "mb-2.5 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
-          )}
-          activeOpacity={0.7}
-          accessibilityLabel={`Booking for ${customerName}`}
-          accessibilityRole="button"
-        >
-          <View style={twStyle("flex-row items-start justify-between")}>
-            <View style={twStyle("mr-3 w-16 items-center rounded-2xl bg-gray-900 px-2 py-2.5")}>
-              <Text style={twStyle("text-[11px] font-semibold uppercase text-white/70")} numberOfLines={1}>
-                {scheduledDay.split(" ")[0] ?? ""}
-              </Text>
-              <Text style={twStyle("mt-0.5 text-sm font-bold text-white")} numberOfLines={1}>
-                {scheduledTime}
-              </Text>
-            </View>
-
-            <View style={twStyle("flex-1 pr-3")}>
-              <Text
-                style={twStyle("text-base font-semibold text-gray-900")}
-                numberOfLines={1}
-              >
-                {customerName}
-              </Text>
-              <Text
-                style={twStyle("mt-0.5 text-sm text-gray-600")}
-                numberOfLines={1}
-              >
-                {serviceName}
-                {b.services?.[0]?.staff_name
-                  ? ` · ${b.services[0].staff_name}`
-                  : ""}
-              </Text>
-              <View style={twStyle("mt-1.5 flex-row items-center gap-2")}>
-                <Ionicons name="calendar-outline" size={13} color="#6b7280" />
-                <Text style={twStyle("text-xs text-gray-500")}>{scheduled}</Text>
-              </View>
-              <View style={twStyle("mt-2 flex-row flex-wrap items-center gap-2")}>
-                {b.location_type && (
-                  <View style={twStyle("flex-row items-center gap-1 rounded-full bg-gray-100 px-2 py-1")}>
-                    <Ionicons
-                      name={b.location_type === "at_home" ? "home-outline" : "business-outline"}
-                      size={12}
-                      color="#6b7280"
-                    />
-                    <Text style={twStyle("text-xs text-gray-500")}>
-                      {b.location_type === "at_home" ? "House call" : "At salon"}
-                    </Text>
-                  </View>
-                )}
-                {(b.is_recurring || b.recurring_series_id) && (
-                  <View style={twStyle("flex-row items-center gap-1 rounded-full bg-blue-50 px-2 py-1")}>
-                    <Ionicons name="repeat-outline" size={12} color="#2563eb" />
-                    <Text style={twStyle("text-xs font-medium text-blue-700")}>Repeats</Text>
-                  </View>
-                )}
-                {b.is_group_booking && (
-                  <View style={twStyle("flex-row items-center gap-1 rounded-full bg-pink-50 px-2 py-1")}>
-                    <Ionicons name="people-outline" size={12} color="#db2777" />
-                    <Text style={twStyle("text-xs font-medium text-pink-700")}>Group</Text>
-                  </View>
-                )}
-                {b.booking_source === "walk_in" && (
-                  <View style={twStyle("rounded-full bg-emerald-50 px-2 py-1")}>
-                    <Text style={twStyle("text-xs font-medium text-emerald-700")}>Walk-in</Text>
-                  </View>
-                )}
-                {b.booking_source === "provider" && !b.is_group_booking && (
-                  <View style={twStyle("rounded-full bg-indigo-50 px-2 py-1")}>
-                    <Text style={twStyle("text-xs font-medium text-indigo-700")}>Provider</Text>
-                  </View>
-                )}
-                {payment ? (
-                  <View style={[twStyle("rounded-full px-2 py-1"), { backgroundColor: paymentColors.bg }]}>
-                    <Text style={[twStyle("text-xs font-medium"), { color: paymentColors.text }]}>
-                      {payment.label}
-                    </Text>
-                  </View>
-                ) : null}
-                {b.total_amount != null && b.total_amount > 0 && (
-                  <Text style={twStyle("text-xs font-semibold text-gray-700")}>
-                    {formatCurrency(b.total_amount, currency)}
-                  </Text>
-                )}
-                {b.booking_number && (
-                  <Text style={twStyle("text-xs text-gray-400")}>#{b.booking_number}</Text>
-                )}
-              </View>
-            </View>
-
-            <View style={twStyle("items-end gap-1.5")}>
-              <View
-                style={[
-                  twStyle("rounded-full px-2.5 py-1"),
-                  { backgroundColor: st.bg },
-                ]}
-              >
-                <Text
-                  style={[
-                    twStyle("text-xs font-medium"),
-                    { color: st.text },
-                  ]}
-                >
-                  {formatBookingStatusLabel(b.status)}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
-            </View>
-          </View>
-        </TouchableOpacity>
+        <BookingScheduleRow
+          b={item.booking}
+          currency={currency}
+          pendingIds={pendingIds}
+          nextUpcomingId={nextUpcomingId}
+          onOpen={openBooking}
+          onApplyStatus={handleApplyStatus}
+        />
       );
     },
-    [router, currency],
+    [currency, pendingIds, nextUpcomingId, openBooking, handleApplyStatus, router],
   );
 
   if (listLoading && mergedBookingsData.length === 0) {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Bookings" showBack />
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
-          <LoadingState />
+        <View style={{ paddingHorizontal: screenPadding, paddingTop: 16, gap: 12 }}>
+          {[0, 1, 2, 3].map((k) => (
+            <Animated.View
+              key={k}
+              style={[
+                twStyle("rounded-2xl bg-gray-100 p-4"),
+                { opacity: skeletonOpacity, height: 96 },
+              ]}
+            >
+              <View style={twStyle("flex-row items-center gap-3")}>
+                <View style={twStyle("h-10 w-10 rounded-full bg-gray-200")} />
+                <View style={{ flex: 1, gap: 8 }}>
+                  <View style={twStyle("h-3.5 rounded-full bg-gray-200")} />
+                  <View style={[twStyle("h-3 rounded-full bg-gray-200"), { width: "55%" }]} />
+                  <View style={[twStyle("h-3 rounded-full bg-gray-200"), { width: "70%" }]} />
+                </View>
+              </View>
+            </Animated.View>
+          ))}
         </View>
       </ScreenContainer>
     );
@@ -661,7 +1139,7 @@ export default function BookingsListScreen() {
       <ScreenHeader
         title="Bookings"
         showBack
-        subtitle={`${dateRangeLabel} · ${filtered.length}`}
+        subtitle={`${viewMode === "day" ? daySummary.label : dateRangeLabel} · ${filtered.length}`}
         rightAction={
           <TouchableOpacity
             onPress={() => router.push("/(app)/(tabs)/more/bookings/new" as never)}
@@ -677,7 +1155,223 @@ export default function BookingsListScreen() {
 
       <AnnouncementBanner />
 
-      {/* ── Metrics snapshot strip (mobile parity with web) ── */}
+      <AnimatedRe.View
+        style={[
+          twStyle("mx-4 mt-2 flex-row items-center rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5"),
+          flashAnimStyle,
+        ]}
+        pointerEvents={newBookingFlash ? "auto" : "none"}
+      >
+        <Ionicons name="calendar-outline" size={18} color="#4f46e5" style={{ marginRight: 8 }} />
+        <Text style={twStyle("flex-1 text-sm font-semibold text-indigo-900")}>New booking received</Text>
+        <TouchableOpacity
+          onPress={() => {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setNewBookingFlash(false);
+          }}
+          accessibilityLabel="Dismiss"
+        >
+          <Ionicons name="close" size={20} color="#4f46e5" />
+        </TouchableOpacity>
+      </AnimatedRe.View>
+
+      <View style={{ marginTop: 8, marginBottom: 6 }}>
+        <FlatList<QuickActionTile>
+          {...horizontalFlatListPerf}
+          horizontal
+          data={[
+            { label: "New", sub: "Booking", icon: "calendar-outline", route: "/(app)/(tabs)/more/bookings/new", accent: true },
+            { label: "Walk-in", sub: "Queue", icon: "walk-outline", route: "/(app)/(tabs)/more/waiting-room" },
+            { label: "Group", sub: "Booking", icon: "people-outline", route: "/(app)/(tabs)/more/group-bookings" },
+            ...(provider?.offers_mobile_services
+              ? [
+                  {
+                    label: "House Call",
+                    sub: "Mobile",
+                    icon: "car-outline",
+                    route: "/(app)/(tabs)/more/bookings/new?location_type=at_home",
+                  } satisfies QuickActionTile,
+                ]
+              : []),
+            { label: "Sale", sub: "Walk-in", icon: "bag-handle-outline", route: "/(app)/(tabs)/more/walk-in-sale" },
+            { label: "Block", sub: "Time", icon: "ban-outline", route: "/(app)/(tabs)/more/time-blocks" },
+          ]}
+          keyExtractor={(it: QuickActionTile) => it.label}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: screenPadding, gap: 8 }}
+          renderItem={({ item }: { item: QuickActionTile }) => (
+            <TouchableOpacity
+              onPress={() => {
+                void Haptics.selectionAsync();
+                router.push(item.route as never);
+              }}
+              style={[
+                twStyle("min-h-[56px] min-w-[104px] flex-row items-center rounded-[14px] border border-gray-100 px-3 py-2.5"),
+                item.accent ? { backgroundColor: "#eef2ff", borderColor: "#c7d2fe" } : { backgroundColor: "#f9fafb" },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.label} ${item.sub}`}
+            >
+              <View style={twStyle("mr-2 h-[30px] w-[30px] items-center justify-center rounded-full bg-white")}>
+                <Ionicons name={item.icon} size={16} color={item.accent ? Colors.primary : "#374151"} />
+              </View>
+              <View>
+                <Text style={twStyle("text-xs font-extrabold text-gray-900")}>{item.label}</Text>
+                <Text style={twStyle("text-[10px] text-gray-500")}>{item.sub}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+
+      <View style={[twStyle("mx-4 mb-2 flex-row rounded-xl border border-gray-200 bg-white p-1")]}>
+        {(["day", "overview"] as const).map((m) => {
+          const active = viewMode === m;
+          return (
+            <TouchableOpacity
+              key={m}
+              onPress={() => {
+                void Haptics.selectionAsync();
+                setViewMode(m);
+              }}
+              style={twStyle(`flex-1 rounded-lg py-2 ${active ? "bg-gray-900" : ""}`)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+            >
+              <Text
+                style={twStyle(`text-center text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`)}
+              >
+                {m === "day" ? "Day" : "Overview"}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {viewMode === "day" ? (
+        <>
+          <FlatList<Date>
+            horizontal
+            data={stripDays}
+            keyExtractor={(d: Date) => d.toISOString()}
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={30}
+            initialNumToRender={40}
+            getItemLayout={(_item: Date | ArrayLike<Date> | null | undefined, index: number) => ({
+              length: 62,
+              offset: 62 * index,
+              index,
+            })}
+            contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 8 }}
+            renderItem={({ item: day }: { item: Date }) => {
+              const key = format(day, "yyyy-MM-dd");
+              const info = dateStripInfo.get(key);
+              const selected = isSameDay(day, selectedDate);
+              const todayCell = isToday(day);
+              const dotColor = info?.hasPending ? "#f59e0b" : "#6366f1";
+              return (
+                <TouchableOpacity
+                  onPress={() => {
+                    void Haptics.selectionAsync();
+                    setSelectedDate(startOfDay(day));
+                  }}
+                  style={[
+                    { width: 56, alignItems: "center", borderRadius: 14, paddingVertical: 10, marginRight: 6 },
+                    selected ? { backgroundColor: "#6366f1" } : {},
+                    !selected && todayCell ? { borderWidth: 1.5, borderColor: "#6366f1" } : {},
+                    info?.isClosed && !selected ? { backgroundColor: "#f3f4f6" } : {},
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                >
+                  <Text
+                    style={twStyle(`text-[11px] font-semibold ${selected ? "text-white" : "text-gray-500"}`)}
+                  >
+                    {format(day, "EEE")}
+                  </Text>
+                  <Text
+                    style={twStyle(`mt-0.5 text-[17px] font-bold ${selected ? "text-white" : info?.isClosed ? "text-gray-400" : "text-gray-900"}`)}
+                  >
+                    {format(day, "d")}
+                  </Text>
+                  {info?.isClosed && !selected ? (
+                    <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>×</Text>
+                  ) : null}
+                  {info && info.bookings + info.blocks > 0 && !selected ? (
+                    <View style={twStyle("mt-1 flex-row items-center gap-0.5")}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dotColor }} />
+                      {info.bookings + info.blocks > 1 ? (
+                        <Text style={[twStyle("text-[8px] font-bold"), { color: dotColor }]}>
+                          {info.bookings + info.blocks > 9 ? "9+" : info.bookings + info.blocks}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : info && info.blocks > 0 && info.bookings === 0 && !selected ? (
+                    <View style={twStyle("mt-1 h-1.5 w-1.5 rounded-full bg-gray-400")} />
+                  ) : null}
+                </TouchableOpacity>
+              );
+            }}
+          />
+          <View style={twStyle("mx-4 mb-2 rounded-xl border border-gray-200 bg-white p-3")}>
+            <View style={twStyle("flex-row items-start justify-between")}>
+              <View>
+                <Text style={twStyle("text-lg font-bold text-gray-900")}>{daySummary.label}</Text>
+                <Text style={twStyle("text-sm text-gray-500")}>
+                  {daySummary.count} appointment{daySummary.count === 1 ? "" : "s"}
+                  {daySummary.blockCount > 0 ? ` · ${daySummary.blockCount} blocked` : ""}
+                </Text>
+              </View>
+              <Text style={twStyle("text-base font-bold text-gray-900")}>
+                {formatCurrency(daySummary.revenue, currency)}
+              </Text>
+            </View>
+            {daySummary.pending > 0 ? (
+              <View style={twStyle("mt-2 self-start rounded-full bg-amber-50 px-2 py-1")}>
+                <Text style={twStyle("text-xs font-semibold text-amber-800")}>{daySummary.pending} pending</Text>
+              </View>
+            ) : null}
+            {(navCounts?.waiting_room ?? 0) > 0 ? (
+              <TouchableOpacity
+                onPress={() => router.push("/(app)/(tabs)/more/waiting-room" as never)}
+                style={twStyle("mt-2 flex-row items-center gap-1 self-start rounded-full border border-amber-200 bg-amber-50 px-2 py-1")}
+              >
+                <Ionicons name="hourglass-outline" size={12} color="#b45309" />
+                <Text style={twStyle("text-xs font-semibold text-amber-700")}>
+                  {navCounts?.waiting_room} in queue
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {daySummary.nextUp && isToday(selectedDate) && daySummary.nextUp.scheduled_at ? (
+              <Text style={twStyle("mt-2 text-xs font-semibold text-indigo-600")}>
+                Next: {formatBookingTime(daySummary.nextUp.scheduled_at)} ·{" "}
+                {daySummary.nextUp.customers?.full_name ?? "Customer"}
+              </Text>
+            ) : null}
+          </View>
+          {daySummary.isClosed ? (
+            <View
+              style={[
+                twStyle("mx-4 mb-2 flex-row items-center rounded-xl border border-gray-200 px-3 py-3"),
+                { backgroundColor: daySummary.hasBookingsOnClosed ? "#fffbeb" : "#f3f4f6", borderLeftWidth: 4, borderLeftColor: "#d1d5db" },
+              ]}
+            >
+              <Ionicons name="ban-outline" size={18} color="#9ca3af" style={{ marginRight: 10 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={twStyle("text-sm font-semibold text-gray-700")}>
+                  {daySummary.hasBookingsOnClosed ? "Closed day — bookings still scheduled" : "Closed"}
+                </Text>
+                <TouchableOpacity onPress={() => router.push("/(app)/(tabs)/more/settings/closed-periods" as never)}>
+                  <Text style={twStyle("mt-0.5 text-xs text-indigo-600")}>View closed periods</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+        </>
+      ) : null}
+
+      {/* ── Metrics snapshot strip (overview only) ── */}
+      {viewMode === "overview" ? (
       <View style={twStyle("mx-4 mt-1 mb-2")}>
         <View style={twStyle("flex-row items-center justify-between mb-2")}>
           <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-white p-1")}>
@@ -719,7 +1413,10 @@ export default function BookingsListScreen() {
         </View>
         <View style={twStyle("flex-row gap-2")}>
           <View style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white p-2.5")}>
-            <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-gray-500")}>{statsRangeLabel}</Text>
+            <View style={twStyle("flex-row items-center gap-1")}>
+              <Ionicons name="calendar-outline" size={12} color="#6b7280" />
+              <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-gray-500")}>{statsRangeLabel}</Text>
+            </View>
             <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.count}</Text>
           </View>
           <View
@@ -730,14 +1427,17 @@ export default function BookingsListScreen() {
                 : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
             ]}
           >
-            <Text
-              style={[
-                twStyle("text-[10px] font-semibold uppercase tracking-wide"),
-                { color: statsSnapshot.pendingCount > 0 ? "#b45309" : "#6b7280" },
-              ]}
-            >
-              Pending
-            </Text>
+            <View style={twStyle("flex-row items-center gap-1")}>
+              <Ionicons name="time-outline" size={12} color={statsSnapshot.pendingCount > 0 ? "#b45309" : "#6b7280"} />
+              <Text
+                style={[
+                  twStyle("text-[10px] font-semibold uppercase tracking-wide"),
+                  { color: statsSnapshot.pendingCount > 0 ? "#b45309" : "#6b7280" },
+                ]}
+              >
+                Pending
+              </Text>
+            </View>
             <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.pendingCount}</Text>
           </View>
           <View
@@ -748,14 +1448,17 @@ export default function BookingsListScreen() {
                 : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
             ]}
           >
-            <Text
-              style={[
-                twStyle("text-[10px] font-semibold uppercase tracking-wide"),
-                { color: statsSnapshot.inProgressCount > 0 ? "#6d28d9" : "#6b7280" },
-              ]}
-            >
-              Active
-            </Text>
+            <View style={twStyle("flex-row items-center gap-1")}>
+              <Ionicons name="flash-outline" size={12} color={statsSnapshot.inProgressCount > 0 ? "#6d28d9" : "#6b7280"} />
+              <Text
+                style={[
+                  twStyle("text-[10px] font-semibold uppercase tracking-wide"),
+                  { color: statsSnapshot.inProgressCount > 0 ? "#6d28d9" : "#6b7280" },
+                ]}
+              >
+                Active
+              </Text>
+            </View>
             <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.inProgressCount}</Text>
           </View>
           <View
@@ -764,15 +1467,28 @@ export default function BookingsListScreen() {
               { backgroundColor: "#fff0f7", borderColor: "#fbcfe8" },
             ]}
           >
-            <Text style={[twStyle("text-[10px] font-semibold uppercase tracking-wide"), { color: "#be185d" }]}>
-              Revenue
-            </Text>
+            <View style={twStyle("flex-row items-center gap-1")}>
+              <Ionicons name="cash-outline" size={12} color="#be185d" />
+              <Text style={[twStyle("text-[10px] font-semibold uppercase tracking-wide"), { color: "#be185d" }]}>
+                Revenue
+              </Text>
+            </View>
             <Text style={twStyle("mt-0.5 text-[15px] font-bold text-gray-900")} numberOfLines={1}>
               {formatCurrency(statsSnapshot.revenue, currency)}
             </Text>
           </View>
         </View>
+        <View style={twStyle("mt-2 flex-row gap-2")}>
+          <View style={twStyle("flex-1 flex-row items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5")}>
+            <Ionicons name="checkmark-circle-outline" size={20} color="#059669" />
+            <View>
+              <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-emerald-800")}>Completed</Text>
+              <Text style={twStyle("text-lg font-bold text-gray-900")}>{statsSnapshot.completedCount}</Text>
+            </View>
+          </View>
+        </View>
       </View>
+      ) : null}
 
       {/* ── Search bar ── */}
       <View style={[twStyle("mx-4 mb-2"), { paddingHorizontal: 0 }]}>
@@ -797,39 +1513,40 @@ export default function BookingsListScreen() {
         </View>
       </View>
 
-      {/* ── Date range chips ── */}
-      <View style={{ marginBottom: 6 }}>
-        <FlatList<{ label: string; value: DateRange }>
-          {...horizontalFlatListPerf}
-          horizontal
-          data={DATE_RANGE_OPTIONS}
-          keyExtractor={(o: { label: string; value: DateRange }) => o.value}
-          contentContainerStyle={{ paddingHorizontal: screenPadding, gap: 8 }}
-          showsHorizontalScrollIndicator={false}
-          renderItem={({ item: opt }: { item: { label: string; value: DateRange } }) => {
-            const active = dateRange === opt.value;
-            return (
-              <TouchableOpacity
-                onPress={() => setDateRange(opt.value)}
-                style={[
-                  twStyle(
-                    `rounded-full px-3.5 py-2 ${active ? "bg-indigo-600" : "border border-gray-200 bg-white"}`
-                  ),
-                  // §UI-audit 2026-04: 36px was below HIG's 44pt guidance.
-                  { minHeight: 44, justifyContent: "center" },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Filter by ${opt.label}`}
-                accessibilityState={{ selected: active }}
-              >
-                <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`)}>
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          }}
-        />
-      </View>
+      {/* ── Date range chips (overview only; day mode uses the strip) ── */}
+      {viewMode === "overview" ? (
+        <View style={{ marginBottom: 6 }}>
+          <FlatList<{ label: string; value: DateRange }>
+            {...horizontalFlatListPerf}
+            horizontal
+            data={DATE_RANGE_OPTIONS}
+            keyExtractor={(o: { label: string; value: DateRange }) => o.value}
+            contentContainerStyle={{ paddingHorizontal: screenPadding, gap: 8 }}
+            showsHorizontalScrollIndicator={false}
+            renderItem={({ item: opt }: { item: { label: string; value: DateRange } }) => {
+              const active = dateRange === opt.value;
+              return (
+                <TouchableOpacity
+                  onPress={() => setDateRange(opt.value)}
+                  style={[
+                    twStyle(
+                      `rounded-full px-3.5 py-2 ${active ? "bg-indigo-600" : "border border-gray-200 bg-white"}`,
+                    ),
+                    { minHeight: 44, justifyContent: "center" },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Filter by ${opt.label}`}
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`)}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      ) : null}
 
       {/* ── Sort: appointment time vs date booked ── */}
       <View style={{ marginBottom: 6 }}>
@@ -907,45 +1624,83 @@ export default function BookingsListScreen() {
       </View>
 
       {/* ── List ── */}
-      <FlatList<Booking>
-        data={filtered}
-        keyExtractor={bookingKeyExtractor}
-        renderItem={renderBookingItem}
-        extraData={`${url}:${filtered.length}:${refreshing}`}
-        removeClippedSubviews={false}
-        initialNumToRender={12}
-        windowSize={7}
-        contentContainerStyle={{
-          paddingHorizontal: screenPadding,
-          paddingBottom: listBottomPadding,
-        }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={Colors.primary}
-            colors={[Colors.primary]}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <EmptyState
-            icon="calendar-outline"
-            title={search || statusFilter ? "No bookings match" : "No bookings found"}
-            description={
-              search || statusFilter
-                ? "Try adjusting your search or filters."
-                : "Create a new booking to get started."
-            }
-            actionLabel={!search && !statusFilter ? "New booking" : undefined}
-            onAction={
-              !search && !statusFilter
-                ? () => router.push("/(app)/(tabs)/more/bookings/new" as never)
-                : undefined
-            }
-          />
-        }
-      />
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <SectionList<ScheduleItem>
+          sections={listSections}
+          keyExtractor={sectionKeyExtractor}
+          renderItem={renderScheduleItem}
+          renderSectionHeader={({ section }: { section: BookingsListSection }) =>
+            section.title ? (
+              <View style={twStyle("pt-2 pb-1")}>
+                <Text style={twStyle("text-[11px] font-extrabold uppercase tracking-wide text-gray-400")}>
+                  {section.title}
+                </Text>
+              </View>
+            ) : null
+          }
+          stickySectionHeadersEnabled={false}
+          extraData={`${filtered.length}:${refreshing}:${viewMode}:${listSort}`}
+          removeClippedSubviews={false}
+          initialNumToRender={12}
+          windowSize={7}
+          contentContainerStyle={{
+            paddingHorizontal: screenPadding,
+            paddingBottom: listBottomPadding,
+            flexGrow: 1,
+          }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={Colors.primary}
+              colors={[Colors.primary]}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <EmptyState
+              icon="calendar-outline"
+              title={search || statusFilter ? "No bookings match" : "Nothing scheduled"}
+              description={
+                search || statusFilter
+                  ? "Try adjusting your search or filters."
+                  : viewMode === "day"
+                    ? "No appointments or blocks for this day."
+                    : "Create a new booking to get started."
+              }
+              actionLabel={!search && !statusFilter && viewMode === "overview" ? "New booking" : undefined}
+              onAction={
+                !search && !statusFilter && viewMode === "overview"
+                  ? () => router.push("/(app)/(tabs)/more/bookings/new" as never)
+                  : undefined
+              }
+            />
+          }
+        />
+      </View>
+
+      <AnimatedRe.View
+        style={[
+          twStyle("absolute left-0 right-0 z-50 mx-4 flex-row items-center rounded-xl px-4 py-3"),
+          {
+            bottom: listBottomPadding + 4,
+            backgroundColor: toast?.type === "error" ? "#dc2626" : "#059669",
+          },
+          toastAnimStyle,
+        ]}
+        pointerEvents={toast ? "auto" : "none"}
+        accessibilityLiveRegion="polite"
+      >
+        <Ionicons
+          name={toast?.type === "error" ? "alert-circle-outline" : "checkmark-circle-outline"}
+          size={18}
+          color="#fff"
+          style={{ marginRight: 8 }}
+        />
+        <Text style={twStyle("flex-1 text-sm font-semibold text-white")}>
+          {toast?.message ?? ""}
+        </Text>
+      </AnimatedRe.View>
     </ScreenContainer>
   );
 }

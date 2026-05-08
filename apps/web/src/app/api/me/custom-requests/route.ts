@@ -14,6 +14,12 @@ const createSchema = z.object({
   preferred_start_at: z.string().nullable().optional(),
   duration_minutes: z.number().int().min(15).max(8 * 60).default(60),
   image_urls: z.array(z.string().url()).max(6).optional().default([]),
+  address_line1: z.string().optional(),
+  address_line2: z.string().optional(),
+  address_city: z.string().optional(),
+  address_state: z.string().optional(),
+  address_postal_code: z.string().optional(),
+  address_country: z.string().optional(),
 }).refine((data) => {
   // Ensure budget_max >= budget_min if both are provided (matches database constraint)
   if (data.budget_min != null && data.budget_max != null) {
@@ -100,6 +106,12 @@ export async function POST(request: NextRequest) {
         budget_max: body.budget_max ?? null,
         preferred_start_at: preferredIso,
         duration_minutes: body.duration_minutes,
+        address_line1: body.address_line1 || null,
+        address_line2: body.address_line2 || null,
+        address_city: body.address_city || null,
+        address_state: body.address_state || null,
+        address_postal_code: body.address_postal_code || null,
+        address_country: body.address_country || null,
         status: "pending",
         expires_at: expiresAt.toISOString(),
         created_at: new Date().toISOString(),

@@ -1838,7 +1838,8 @@ export async function validateBooking(
         supabaseAdmin,
         draft.provider_id,
         snapshotLines,
-        offeringBufferMinutesById
+        offeringBufferMinutesById,
+        (draft as any).reschedule_booking_id
       );
       conflictResult = {
         hasConflict: segConflict.hasConflict,

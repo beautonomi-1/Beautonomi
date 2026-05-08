@@ -124,8 +124,6 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
   {
     title: "Integrations",
     items: [
-      { icon: "calendar-outline", label: "Calendar Integration", subtitle: "Google, Apple & Outlook sync", route: "/(app)/(tabs)/more/settings/calendar-integration", color: "#6366f1" },
-      { icon: "options-outline", label: "Calendar Preferences", subtitle: "Display & time grid options", route: "/(app)/(tabs)/more/settings/calendar-preferences", color: "#3b82f6" },
       { icon: "shield-checkmark-outline", label: "Staff Permissions", subtitle: "Per-staff access control", route: "/(app)/(tabs)/more/settings/staff-permissions", color: "#22c55e" },
       { icon: "analytics-outline", label: "Service Zone Analytics", subtitle: "At-home zone performance", route: "/(app)/(tabs)/more/settings/service-zones-analytics", color: "#0891b2" },
       { icon: "mail-outline", label: "Email Integration", subtitle: "SendGrid or Mailchimp", route: "/(app)/(tabs)/more/settings/email-integration", color: "#3b82f6" },
@@ -152,8 +150,7 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
   {
     title: "More",
     items: [
-      { icon: "link-outline", label: "Calendar links", subtitle: "Booking page URLs & embed", route: "/(app)/(tabs)/more/settings/booking-link", color: "#6366f1" },
-      { icon: "options-outline", label: "Calendar display", subtitle: "Colors, icons, time grid", route: "/(app)/(tabs)/more/settings/calendar-preferences", color: "#3b82f6" },
+      { icon: "link-outline", label: "Booking link", subtitle: "Booking page URLs & embed", route: "/(app)/(tabs)/more/settings/booking-link", color: "#6366f1" },
       { icon: "receipt-outline", label: "Receipt sequencing", subtitle: "Receipt numbers & format", route: "/(app)/(tabs)/more/settings/receipt-sequencing", color: "#0d9488" },
       { icon: "megaphone-outline", label: "Ads", subtitle: "Ad campaigns & spend", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
       { icon: "share-social-outline", label: "Marketing integrations", subtitle: "Connect marketing tools", route: "/(app)/(tabs)/more/settings/marketing-integrations", color: "#ec4899" },

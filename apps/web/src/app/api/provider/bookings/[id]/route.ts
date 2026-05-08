@@ -261,7 +261,15 @@ export async function GET(
           products:products!booking_products_product_id_fkey(id, name, retail_price),
           product_variant:product_variants(id, option_values)
         ),
-        additional_charges(id, amount, status)
+        additional_charges(id, amount, status),
+        custom_offer:custom_offers!bookings_custom_offer_id_fkey(
+          id,
+          notes,
+          request:custom_requests(
+            id,
+            description
+          )
+        )
       `
       )
       .eq("id", id)
@@ -419,6 +427,7 @@ export async function GET(
       payment_status: (bookingData.payment_status ?? "pending") as BookingResponse["payment_status"],
       payment_method: null, // payment_method_id is the actual column
       special_requests: bookingData.special_requests || null,
+      custom_offer: bookingData.custom_offer || null,
       loyalty_points_earned: bookingData.loyalty_points_earned || 0,
       current_stage: (bookingData.current_stage ?? null) as BookingResponse["current_stage"],
       created_at: bookingData.created_at,
@@ -1234,6 +1243,14 @@ export async function PATCH(
             total_price,
             products:products!booking_products_product_id_fkey(id, name, retail_price),
             product_variant:product_variants(id, option_values)
+          ),
+          custom_offer:custom_offers!bookings_custom_offer_id_fkey(
+            id,
+            notes,
+            request:custom_requests(
+              id,
+              description
+            )
           )
         `
         )
@@ -1306,6 +1323,14 @@ export async function PATCH(
             unit_price,
             total_price,
             products:products!booking_products_product_id_fkey(id, name, retail_price)
+          ),
+          custom_offer:custom_offers!bookings_custom_offer_id_fkey(
+            id,
+            notes,
+            request:custom_requests(
+              id,
+              description
+            )
           )
         `
         )
@@ -1925,6 +1950,7 @@ export async function PATCH(
       completed_at: bookingData.completed_at || null,
       cancelled_at: bookingData.cancelled_at || null,
       cancellation_reason: bookingData.cancellation_reason || null,
+      custom_offer: bookingData.custom_offer || null,
       services: (bookingData.booking_services ?? []).map((bs) => {
         const offering = Array.isArray(bs.offerings) ? bs.offerings[0] : bs.offerings;
         const staffObj = Array.isArray(bs.staff) ? bs.staff[0] : bs.staff;
