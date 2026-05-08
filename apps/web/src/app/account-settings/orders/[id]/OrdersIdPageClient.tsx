@@ -7,6 +7,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  customerCanStartProductReturnRequest,
+  isWithinProductReturnWindow,
+  PRODUCT_RETURN_WINDOW_DAYS,
+} from "@/lib/ecommerce/product-return-eligibility";
 
 interface ProductOrder {
   id: string;
@@ -73,6 +78,15 @@ interface ProductOrder {
     refund_amount?: number | null;
     created_at: string;
     updated_at: string;
+    order_item_id?: string | null;
+    product_name?: string | null;
+    quantity?: number | null;
+    provider_notes?: string | null;
+    approved_at?: string | null;
+    rejected_at?: string | null;
+    item_received_at?: string | null;
+    refunded_at?: string | null;
+    escalated_at?: string | null;
   }[] | null;
 }
 
@@ -318,7 +332,8 @@ export default function OrderDetailPage() {
                 const isReceived = ret.status === "item_received";
                 const isEscalated = ret.status === "escalated";
                 const isCancelled = ret.status === "cancelled";
-                
+                const isResolvedAdmin = ret.status === "resolved_by_admin";
+
                 let badgeClass = "bg-gray-100 text-gray-600";
                 if (isApproved || isRefunded || isReceived) badgeClass = "bg-green-100 text-green-700";
                 else if (isRejected || isEscalated) badgeClass = "bg-red-100 text-red-700";
@@ -331,6 +346,7 @@ export default function OrderDetailPage() {
                 else if (isRejected) title = "Return Rejected";
                 else if (isEscalated) title = "Return Escalated";
                 else if (isCancelled) title = "Return Cancelled";
+                else if (isResolvedAdmin) title = "Resolved by Beautonomi";
 
                 return (
                   <div key={ret.id} className="border-b border-gray-50 pb-4 last:border-0 last:pb-0">
@@ -341,16 +357,61 @@ export default function OrderDetailPage() {
                       </span>
                     </div>
                     <div className="text-sm text-gray-600">
+                      {(ret.product_name || ret.order_item_id) && (
+                        <p>
+                          <span className="font-medium text-gray-700">Item:</span>{" "}
+                          {ret.product_name || "Line item"}
+                          {ret.quantity != null && ret.quantity > 1 ? ` × ${ret.quantity}` : ""}
+                        </p>
+                      )}
                       <p><span className="font-medium text-gray-700">Reason:</span> {ret.reason.replace(/_/g, " ")}</p>
                       {ret.description && (
                         <p className="mt-1"><span className="font-medium text-gray-700">Details:</span> {ret.description}</p>
                       )}
+                      {ret.provider_notes && (
+                        <p className="mt-1 text-gray-700">
+                          <span className="font-medium">Provider:</span> {ret.provider_notes}
+                        </p>
+                      )}
                       {ret.refund_amount != null && (
                         <p className="mt-1"><span className="font-medium text-gray-700">Refund Amount:</span> {sym} {Number(ret.refund_amount).toFixed(2)}</p>
                       )}
-                      <p className="mt-2 text-xs text-gray-400">
-                        Requested on {new Date(ret.created_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
-                      </p>
+                      <ul className="mt-2 space-y-0.5 text-xs text-gray-500">
+                        <li>
+                          Requested{" "}
+                          {new Date(ret.created_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                        </li>
+                        {ret.approved_at && (
+                          <li>
+                            Approved{" "}
+                            {new Date(ret.approved_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                          </li>
+                        )}
+                        {ret.item_received_at && (
+                          <li>
+                            Item received{" "}
+                            {new Date(ret.item_received_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                          </li>
+                        )}
+                        {ret.refunded_at && (
+                          <li>
+                            Refunded{" "}
+                            {new Date(ret.refunded_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                          </li>
+                        )}
+                        {ret.rejected_at && (
+                          <li>
+                            Rejected{" "}
+                            {new Date(ret.rejected_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                          </li>
+                        )}
+                        {ret.escalated_at && (
+                          <li>
+                            Escalated{" "}
+                            {new Date(ret.escalated_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                          </li>
+                        )}
+                      </ul>
                     </div>
                   </div>
                 );
@@ -521,12 +582,19 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        {/* Request Return */}
-        {(order.status === "delivered" || order.status === "ready_for_collection") && (
+        {/* Request Return — same rules as customer app: window + no blocking return for a line item */}
+        {(order.status === "delivered" || order.status === "ready_for_collection") &&
+          customerCanStartProductReturnRequest({
+            status: order.status,
+            delivered_at: order.delivered_at,
+            created_at: order.created_at,
+            items: order.items ?? [],
+            returns: order.returns,
+          }) && (
           <div className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="mb-2 font-semibold text-gray-900">Need to return an item?</h2>
             <p className="mb-4 text-sm text-gray-500">
-              You can request a return within 14 days of delivery. Items must be unused and in original condition.
+              You can request a return within {PRODUCT_RETURN_WINDOW_DAYS} days of delivery. Items must be unused and in original condition.
             </p>
             <Link
               href={`/account-settings/orders/${order.id}/return`}
@@ -539,6 +607,12 @@ export default function OrderDetailPage() {
             </Link>
           </div>
         )}
+        {(order.status === "delivered" || order.status === "ready_for_collection") &&
+          !isWithinProductReturnWindow(order.delivered_at, order.created_at) && (
+            <div className="mt-6 rounded-2xl border border-amber-100 bg-amber-50 p-6 text-sm text-amber-900">
+              The {PRODUCT_RETURN_WINDOW_DAYS}-day return window from delivery has passed. For help, contact support from your profile.
+            </div>
+          )}
       </div>
     </div>
   );

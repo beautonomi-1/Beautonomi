@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (giftCardIds.size === 0) {
-      return NextResponse.json({ gift_cards: [] });
+      return successResponse({ gift_cards: [] });
     }
 
     const ids = Array.from(giftCardIds);
@@ -63,14 +63,8 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({
-      gift_cards: giftCards || [],
-    });
-  } catch (error: any) {
-    console.error("Error fetching user gift cards:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch gift cards" },
-      { status: 500 }
-    );
+    return successResponse({ gift_cards: giftCards || [] });
+  } catch (error: unknown) {
+    return handleApiError(error, "Failed to fetch gift cards");
   }
 }

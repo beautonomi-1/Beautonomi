@@ -29,6 +29,8 @@ export default function StepPromotions({
   const { user } = useAuth();
   const [couponCode, setCouponCode] = useState("");
   const [giftCardCode, setGiftCardCode] = useState("");
+  type SavedGc = { id: string; code: string; balance: number; currency: string; is_active?: boolean; expires_at?: string | null };
+  const [savedGiftCards, setSavedGiftCards] = useState<SavedGc[]>([]);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [isValidating, setIsValidating] = useState(false);
   const [loyaltyBalance, setLoyaltyBalance] = useState(0);
@@ -39,6 +41,11 @@ export default function StepPromotions({
   // booking-flow.tsx is the single authoritative place that calculates taxAmount,
   // serviceFeeAmount, and serviceFeePercentage and stores them in bookingState.
   // This step must only update promotion amounts; the parent recalculates fees.
+
+  const bookingCurrency =
+    bookingState.selectedServices[0]?.currency?.trim() ||
+    bookingState.selectedProducts[0]?.currency?.trim() ||
+    tenantCurrency;
 
   /** Services + add-ons + products + travel — must match payment step `getSubtotalAfterDiscounts` inputs (excludes tax & Platform Fee). */
   const cartTotal =
@@ -88,6 +95,42 @@ export default function StepPromotions({
       loadLoyaltyBalance();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setSavedGiftCards([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await fetcher.get<unknown>("/api/me/gift-cards", { staleTimeMs: 0 });
+        const inner =
+          raw && typeof raw === "object" && "data" in (raw as object)
+            ? (raw as { data?: { gift_cards?: SavedGc[] } }).data
+            : (raw as { gift_cards?: SavedGc[] });
+        const list = inner?.gift_cards ?? [];
+        if (!cancelled && Array.isArray(list)) {
+          const now = Date.now();
+          const usable = list.filter((c) => {
+            if (!c?.code) return false;
+            if (c.is_active === false) return false;
+            if (Number(c.balance) <= 0) return false;
+            const cur = (c.currency || tenantCurrency).trim();
+            if (cur !== bookingCurrency.trim()) return false;
+            if (c.expires_at && new Date(c.expires_at).getTime() < now) return false;
+            return true;
+          });
+          setSavedGiftCards(usable);
+        }
+      } catch {
+        if (!cancelled) setSavedGiftCards([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, bookingCurrency, tenantCurrency]);
 
   const loadLoyaltyBalance = async () => {
     try {
@@ -159,25 +202,27 @@ export default function StepPromotions({
     }
   };
 
-  const handleGiftCardApply = async () => {
-    if (!giftCardCode.trim()) return;
+  const handleGiftCardApply = async (codeOverride?: string) => {
+    const raw = (codeOverride ?? giftCardCode).trim();
+    if (!raw) return;
 
     setIsValidating(true);
     try {
       const response = await fetcher.post<{
         data: { valid: boolean; amount: number; message?: string };
       }>("/api/promotions/validate", {
-        code: giftCardCode,
+        code: raw,
         cartTotal: cartTotal,
         clientId: user?.id,
         type: "gift_card",
       });
 
       if (response.data.valid) {
+        setGiftCardCode(raw);
         updateBookingState({
           promotions: {
             ...bookingState.promotions,
-            giftCardCode: giftCardCode,
+            giftCardCode: raw,
             giftCardAmount: response.data.amount,
           },
         });
@@ -344,6 +389,28 @@ export default function StepPromotions({
           <Gift className="w-4 h-4" />
           Gift Card
         </Label>
+        {user && savedGiftCards.length > 0 && !bookingState.promotions.giftCardCode && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3 space-y-2">
+            <p className="text-xs font-semibold text-gray-800">Your Beautonomi gift credit</p>
+            <div className="flex flex-col gap-2">
+              {savedGiftCards.map((gc) => (
+                <button
+                  key={gc.id}
+                  type="button"
+                  onClick={() => void handleGiftCardApply(gc.code)}
+                  disabled={isValidating}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-3 py-2.5 text-left hover:bg-gray-50 disabled:opacity-50 touch-target"
+                >
+                  <span className="font-mono text-sm text-gray-900 break-all">{gc.code}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="text-sm text-gray-600">{formatCurrency(gc.balance, gc.currency)}</span>
+                    <span className="text-sm font-semibold text-primary">Apply</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {bookingState.promotions.giftCardCode ? (
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
             <div>
@@ -366,15 +433,17 @@ export default function StepPromotions({
           <div className="flex gap-2">
             <Input
               value={giftCardCode}
-              onChange={(e) => setGiftCardCode(e.target.value)}
-              placeholder="Enter 12-digit gift card code"
-              maxLength={12}
-              className="flex-1 touch-target"
+              onChange={(e) => setGiftCardCode(e.target.value.toUpperCase())}
+              placeholder="e.g. GC-XXXXXXXX (from email or Payments)"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              className="flex-1 touch-target font-mono text-sm"
               disabled={isValidating}
             />
             <Button
-              onClick={handleGiftCardApply}
-              disabled={!giftCardCode.trim() || isValidating || giftCardCode.length !== 12}
+              onClick={() => void handleGiftCardApply()}
+              disabled={!giftCardCode.trim() || isValidating || giftCardCode.trim().length < 6}
               className="bg-primary hover:bg-primary-hover touch-target"
             >
               {isValidating ? "..." : "Apply"}

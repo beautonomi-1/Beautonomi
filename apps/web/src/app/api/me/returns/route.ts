@@ -11,8 +11,12 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-team";
 import { z } from "zod";
+import {
+  PRODUCT_RETURN_BLOCKING_STATUSES,
+  PRODUCT_RETURN_WINDOW_DAYS,
+} from "@/lib/ecommerce/product-return-eligibility";
 
-const RETURN_WINDOW_DAYS = 14;
+const RETURN_WINDOW_DAYS = PRODUCT_RETURN_WINDOW_DAYS;
 
 const createReturnSchema = z.object({
   order_id: z.string().uuid(),
@@ -129,20 +133,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check for existing pending return on same order
-    const { data: existing } = await supabase.from("product_return_requests")
-      .select("id")
+    // Prevent duplicate returns: per line item vs full-order (see product-return-eligibility.ts).
+    const { data: existingReturns, error: existingErr } = await supabase
+      .from("product_return_requests")
+      .select("id, status, order_item_id")
       .eq("order_id", parsed.order_id)
-      .eq("customer_id", user.id)
-      .in("status", ["pending", "approved", "item_received"])
-      .maybeSingle();
+      .eq("customer_id", user.id);
 
-    if (existing) {
-      return errorResponse(
-        "You already have an active return request for this order",
-        "DUPLICATE",
-        409,
+    if (existingErr) throw existingErr;
+
+    const blocking = (existingReturns ?? []).filter((r) =>
+      PRODUCT_RETURN_BLOCKING_STATUSES.includes(String(r.status)),
+    );
+
+    if (parsed.order_item_id) {
+      const itemId = parsed.order_item_id;
+      const conflicts = blocking.some(
+        (r) => r.order_item_id === null || r.order_item_id === itemId,
       );
+      if (conflicts) {
+        return errorResponse(
+          "A return has already been submitted for this item, or the full order is already in a return.",
+          "DUPLICATE_RETURN",
+          409,
+        );
+      }
+    } else {
+      if (blocking.length > 0) {
+        return errorResponse(
+          "A return request is already in progress or completed for this order.",
+          "DUPLICATE_RETURN",
+          409,
+        );
+      }
     }
 
     // Get order item details for snapshot

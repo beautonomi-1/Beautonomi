@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { FaApple, FaGoogle } from "react-icons/fa6";
 import { CiMail } from "react-icons/ci";
-import { X, AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import { X, AlertCircle, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -25,7 +25,13 @@ import {
 import { useAuth } from "@/providers/AuthProvider";
 import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 import { useAmplitude } from "@/hooks/useAmplitude";
-import { signIn as signInAuth, signUp as signUpAuth, signInWithOAuth, resendVerificationEmail } from "@/lib/supabase/auth";
+import {
+  signIn as signInAuth,
+  signUp as signUpAuth,
+  signInWithOAuth,
+  resendVerificationEmail,
+  buildEmailConfirmationRedirectUrl,
+} from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -115,6 +121,8 @@ export default function LoginModal({
   const [error, setError] = useState<string | null>(null);
   const [showPasswordField, setShowPasswordField] = useState(false);
   const [showResendVerification, setShowResendVerification] = useState(false);
+  /** After email/password signup when Supabase requires confirmation — replaces the form with a clear next step. */
+  const [awaitingEmailVerification, setAwaitingEmailVerification] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
@@ -205,6 +213,7 @@ export default function LoginModal({
       setFullName("");
       setPhoneFull("");
       setShowResendVerification(false);
+      setAwaitingEmailVerification(false);
       setShowPassword(false);
       setOtpSent(false);
       setOtpCode("");
@@ -316,6 +325,7 @@ export default function LoginModal({
           fullName: fullName?.trim(),
           phone: phoneFull ? (normalizeFullPhoneToE164(phoneFull) ?? phoneFull.replace(/\s/g, "").trim()) : undefined,
           role: userRole,
+          emailRedirectTo: buildEmailConfirmationRedirectUrl({ redirectContext, redirectUrl }),
         });
 
         // Check if we have a session (user is logged in)
@@ -398,19 +408,19 @@ export default function LoginModal({
               if (signupSource) sessionStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource);
               sessionStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage);
             }
-            // Don't close modal or redirect - user needs to verify email first
-            toast.success(
-              "Account created! Please check your email to verify your account. You'll be able to log in after verification.",
-              { duration: 6000 }
-            );
-            
-            // Switch to login mode and show resend verification option
+            // Dedicated UI — do not leave user on the signup/password step (feels broken).
+            setPassword("");
             setIsSignup(false);
+            setShowPasswordField(false);
             setShowResendVerification(true);
-            setShowPasswordField(true);
-            
-            // Don't redirect - let user verify email first
-            // The modal will stay open so they can resend verification if needed
+            setError(null);
+            setAwaitingEmailVerification(true);
+            toast.success(
+              redirectContext === "provider"
+                ? "Check your email — verify your account, then sign in here to continue."
+                : "Check your email to verify your account, then sign in.",
+              { duration: 4500 },
+            );
           }
         } else {
           // Unexpected case - user wasn't created
@@ -564,7 +574,10 @@ export default function LoginModal({
 
     setIsResendingVerification(true);
     try {
-      await resendVerificationEmail(email.trim());
+      await resendVerificationEmail(
+        email.trim(),
+        buildEmailConfirmationRedirectUrl({ redirectContext, redirectUrl }),
+      );
       toast.success("Verification email sent! Please check your inbox and spam folder.");
       setShowResendVerification(false);
     } catch (error: unknown) {
@@ -880,11 +893,20 @@ export default function LoginModal({
           </DialogDescription>
         </DialogHeader>
         <div className="px-5 sm:px-6 pb-6 sm:pb-8 pt-0">
-          <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">Welcome to Beautonomi</h2>
-          <p className="text-[13px] text-gray-500 mb-7 sm:mb-8">Log in or sign up to continue</p>
+          {showEmailForm && awaitingEmailVerification ? (
+            <>
+              <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">Check your email</h2>
+              <p className="text-[13px] text-gray-500 mb-7 sm:mb-8">Confirm your address to continue</p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">Welcome to Beautonomi</h2>
+              <p className="text-[13px] text-gray-500 mb-7 sm:mb-8">Log in or sign up to continue</p>
+            </>
+          )}
           
           {/* Error Message */}
-          {error && (
+          {error && !awaitingEmailVerification && (
             <div className="mb-5 p-4 bg-red-50/90 border border-red-100 rounded-2xl">
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -1025,8 +1047,81 @@ export default function LoginModal({
             </>
           )}
 
+          {showEmailForm && awaitingEmailVerification && (
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-7 sm:px-6 sm:py-8">
+              <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
+                <CheckCircle2 className="h-8 w-8 text-emerald-600" aria-hidden />
+              </div>
+              <p className="text-center text-[15px] font-semibold text-gray-900 mb-2">Almost there</p>
+              <p className="text-center text-[13px] leading-relaxed text-gray-600 mb-4">
+                We sent a verification link to:
+              </p>
+              <p className="text-center text-sm font-semibold text-gray-900 break-all mb-5 px-1">{email.trim()}</p>
+              <p className="text-[13px] leading-relaxed text-gray-600 mb-6">
+                {redirectContext === "provider" ? (
+                  <>
+                    Open the email and tap <strong className="font-semibold text-gray-800">Confirm</strong>. Then return here
+                    and <strong className="font-semibold text-gray-800">sign in</strong> with the same email and password to open your provider
+                    dashboard.
+                  </>
+                ) : (
+                  <>
+                    Open the email and confirm your address. Then sign in below with your email and password.
+                  </>
+                )}
+              </p>
+              <div className="flex flex-col gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full rounded-2xl border-emerald-200 bg-white min-h-[48px] text-[15px] font-semibold touch-manipulation"
+                  onClick={() => void handleResendVerification()}
+                  disabled={isResendingVerification || !email.trim()}
+                  aria-busy={isResendingVerification}
+                >
+                  {isResendingVerification ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin inline" aria-hidden />
+                      Sending…
+                    </>
+                  ) : (
+                    "Resend verification email"
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover text-white min-h-[48px] text-[15px] font-semibold touch-manipulation shadow-lg shadow-pink-200/40"
+                  onClick={() => {
+                    setAwaitingEmailVerification(false);
+                    setIsSignup(false);
+                    setShowPasswordField(false);
+                    setPassword("");
+                    setError(null);
+                    setShowResendVerification(false);
+                  }}
+                >
+                  I&apos;ve verified — Sign in
+                </Button>
+                <button
+                  type="button"
+                  className="w-full py-3 text-[15px] text-gray-600 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100"
+                  onClick={() => {
+                    setAwaitingEmailVerification(false);
+                    setIsSignup(true);
+                    setShowPasswordField(false);
+                    setPassword("");
+                    setError(null);
+                    setShowResendVerification(false);
+                  }}
+                >
+                  Wrong email? Go back and edit
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Email Form (shown when "Continue with email" is clicked) */}
-          {showEmailForm && (
+          {showEmailForm && !awaitingEmailVerification && (
             <>
               {/* Back to phone/social - clear escape hatch */}
               <button
@@ -1034,6 +1129,7 @@ export default function LoginModal({
                 onClick={() => {
                   setShowEmailForm(false);
                   setShowPasswordField(false);
+                  setAwaitingEmailVerification(false);
                   setError(null);
                   setEmailOtpMode(false);
                   setEmailOtpSent(false);

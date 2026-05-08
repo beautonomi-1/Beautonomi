@@ -10,6 +10,8 @@ export interface PaymentSuccessSummaryRow {
   icon: IoniconName;
   label: string;
   value: string;
+  /** Press-and-hold to copy (e.g. gift card codes). */
+  valueSelectable?: boolean;
 }
 
 export interface PaymentSuccessOverlayProps {
@@ -66,7 +68,7 @@ export function PaymentSuccessOverlay({
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.summaryLabel}>{row.label}</Text>
-                    <Text style={styles.summaryValue}>{row.value}</Text>
+                    <Text style={styles.summaryValue} selectable={row.valueSelectable}>{row.value}</Text>
                   </View>
                 </View>
               ))}

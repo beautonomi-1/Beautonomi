@@ -137,7 +137,10 @@ export async function POST(request: NextRequest) {
     if (orderError || !order) throw orderError || new Error("Failed to create order");
 
     const reference = generateTransactionReference("giftcard", order.id);
-    const callbackUrl = parsed.data.callback_url || `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success`;
+    const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+    const callbackUrl =
+      parsed.data.callback_url?.trim() ||
+      (appBase ? `${appBase}/gift-card/purchase/success` : `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success`);
 
     let paystackData: Awaited<ReturnType<typeof initializePaystackTransaction>>;
     try {

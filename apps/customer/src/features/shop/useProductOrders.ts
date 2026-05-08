@@ -76,6 +76,7 @@ export interface ProductOrder {
     refund_amount?: number | null;
     created_at: string;
     updated_at: string;
+    order_item_id?: string | null;
   }[] | null;
 }
 

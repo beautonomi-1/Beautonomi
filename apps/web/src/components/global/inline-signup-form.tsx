@@ -15,9 +15,15 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FaApple, FaGoogle } from "react-icons/fa6";
 import { CiMail } from "react-icons/ci";
-import { AlertCircle, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, CheckCircle2, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
-import { signIn as signInAuth, signUp as signUpAuth, signInWithOAuth, resendVerificationEmail } from "@/lib/supabase/auth";
+import {
+  signIn as signInAuth,
+  signUp as signUpAuth,
+  signInWithOAuth,
+  resendVerificationEmail,
+  buildEmailConfirmationRedirectUrl,
+} from "@/lib/supabase/auth";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
@@ -68,6 +74,8 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   const [error, setError] = useState<string | null>(null);
   const [showPasswordField, setShowPasswordField] = useState(false);
   const [showResendVerification, setShowResendVerification] = useState(false);
+  /** Same UX as LoginModal — replaces signup steps after email-confirmation-required signup. */
+  const [awaitingEmailVerification, setAwaitingEmailVerification] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -127,6 +135,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   }, [user?.id]);
 
   const handleEmailContinue = () => {
+    setAwaitingEmailVerification(false);
     setError(null);
     if (!fullName?.trim()) {
       setError("Full name is required");
@@ -204,6 +213,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
         fullName: fullName?.trim(),
         phone: phone?.trim() && isCompleteE164(phone) ? phone.trim() : undefined,
         role: userRole,
+        emailRedirectTo: buildEmailConfirmationRedirectUrl({ redirectContext, redirectUrl }),
       });
 
       if (signupResult?.session) {
@@ -275,12 +285,17 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
             if (signupSource) sessionStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource);
             sessionStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage);
           }
-          toast.success(
-            "Account created! Please check your email to verify your account. You'll be able to log in after verification.",
-            { duration: 6000 }
-          );
+          setPassword("");
+          setShowPasswordField(false);
           setShowResendVerification(true);
-          setShowPasswordField(true);
+          setError(null);
+          setAwaitingEmailVerification(true);
+          toast.success(
+            redirectContext === "provider"
+              ? "Check your email — verify your account, then sign in to continue."
+              : "Check your email to verify your account, then sign in.",
+            { duration: 4500 },
+          );
         }
       } else {
         throw new Error("Failed to create account. Please try again.");
@@ -321,7 +336,10 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
 
     setIsResendingVerification(true);
     try {
-      await resendVerificationEmail(email.trim());
+      await resendVerificationEmail(
+        email.trim(),
+        buildEmailConfirmationRedirectUrl({ redirectContext, redirectUrl }),
+      );
       toast.success("Verification email sent! Please check your inbox and spam folder.");
       setShowResendVerification(false);
     } catch (error: any) {
@@ -372,12 +390,21 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     }
   };
 
+  const signInHref = redirectContext === "provider" ? "/provider" : "/login";
+
   return (
     <div className="w-full">
-      <h2 className="text-xl sm:text-2xl font-bold mb-6 sm:mb-8">Welcome to Beautonomi</h2>
+      {showEmailForm && awaitingEmailVerification ? (
+        <>
+          <h2 className="text-xl sm:text-2xl font-bold mb-2">Check your email</h2>
+          <p className="text-sm text-gray-500 mb-6 sm:mb-8">Confirm your address to continue</p>
+        </>
+      ) : (
+        <h2 className="text-xl sm:text-2xl font-bold mb-6 sm:mb-8">Welcome to Beautonomi</h2>
+      )}
       
       {/* Error Message */}
-      {error && (
+      {error && !awaitingEmailVerification && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
           <div className="flex items-start gap-2">
             <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -431,8 +458,77 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
         </>
       )}
 
+      {showEmailForm && awaitingEmailVerification && (
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-7 sm:px-6 sm:py-8 mb-6">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
+            <CheckCircle2 className="h-8 w-8 text-emerald-600" aria-hidden />
+          </div>
+          <p className="text-center text-[15px] font-semibold text-gray-900 mb-2">Almost there</p>
+          <p className="text-center text-[13px] leading-relaxed text-gray-600 mb-4">
+            We sent a verification link to:
+          </p>
+          <p className="text-center text-sm font-semibold text-gray-900 break-all mb-5 px-1">{email.trim()}</p>
+          <p className="text-[13px] leading-relaxed text-gray-600 mb-6">
+            {redirectContext === "provider" ? (
+              <>
+                Open the email and tap <strong className="font-semibold text-gray-800">Confirm</strong>. Then sign in with the same email and password — open{" "}
+                <Link href="/provider" className="font-semibold text-primary underline">
+                  Provider sign in
+                </Link>{" "}
+                from the Beautonomi home page.
+              </>
+            ) : (
+              <>
+                Open the email and confirm your address. Then{" "}
+                <Link href="/login" className="font-semibold text-primary underline">
+                  sign in
+                </Link>{" "}
+                with your email and password.
+              </>
+            )}
+          </p>
+          <div className="flex flex-col gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full rounded-2xl border-emerald-200 bg-white min-h-[48px] text-[15px] font-semibold"
+              onClick={() => void handleResendVerification()}
+              disabled={isResendingVerification || !email.trim()}
+            >
+              {isResendingVerification ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin inline" aria-hidden />
+                  Sending…
+                </>
+              ) : (
+                "Resend verification email"
+              )}
+            </Button>
+            <Button
+              className="inline-flex w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover text-white min-h-[48px] text-[15px] font-semibold shadow-lg shadow-pink-200/40"
+              asChild
+            >
+              <Link href={signInHref}>I&apos;ve verified — Sign in</Link>
+            </Button>
+            <button
+              type="button"
+              className="w-full py-3 text-[15px] text-gray-600 hover:text-gray-900 font-medium rounded-xl active:bg-gray-100"
+              onClick={() => {
+                setAwaitingEmailVerification(false);
+                setShowPasswordField(false);
+                setPassword("");
+                setError(null);
+                setShowResendVerification(false);
+              }}
+            >
+              Wrong email? Go back and edit
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Email Form */}
-      {showEmailForm && (
+      {showEmailForm && !awaitingEmailVerification && (
         <>
           {/* Step 1: Email Input */}
           {!showPasswordField && (
@@ -690,6 +786,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
             className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
             onClick={() => {
               setShowEmailForm(true);
+              setAwaitingEmailVerification(false);
               setError(null);
             }}
             disabled={isLoading}

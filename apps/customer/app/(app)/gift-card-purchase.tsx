@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -25,7 +25,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
-import { PaymentSuccessOverlay } from "@/components/payment/PaymentSuccessOverlay";
+import { PaymentSuccessOverlay, type PaymentSuccessSummaryRow } from "@/components/payment/PaymentSuccessOverlay";
 import { GiftCardPaymentConfirmSheet } from "@/components/payment/GiftCardPaymentConfirmSheet";
 
 const AMOUNTS = [100, 250, 500, 1000, 2500, 5000];
@@ -59,6 +59,7 @@ export default function GiftCardPurchaseScreen() {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [processingMessage, setProcessingMessage] = useState("Processing payment…");
   const [successState, setSuccessState] = useState<"issued" | "pending" | null>(null);
+  const [issuedGiftCardCodes, setIssuedGiftCardCodes] = useState<string[]>([]);
 
   const finalAmount = customAmount ? parseFloat(customAmount) || 0 : amount;
   const total = finalAmount * quantity;
@@ -71,22 +72,33 @@ export default function GiftCardPurchaseScreen() {
     }
   }, [savedCards.length, defaultCard?.id]);
 
-  const pollNewGiftCard = useCallback(
-    async (existingGiftCardIds: Set<string>): Promise<boolean> => {
+  const pollNewGiftCards = useCallback(
+    async (
+      existingGiftCardIds: Set<string>,
+    ): Promise<{ found: boolean; codes: string[] }> => {
       for (let attempt = 0; attempt < 10; attempt++) {
-        const cards = await api.get<{ gift_cards?: { id?: string }[] }>("/api/me/gift-cards").catch(() => null);
+        const cards = await api.get<{ gift_cards?: { id?: string; code?: string }[] }>("/api/me/gift-cards").catch(
+          () => null,
+        );
         const list = cards?.data?.gift_cards;
-        if (
-          Array.isArray(list) &&
-          list.some((card) => typeof card.id === "string" && !existingGiftCardIds.has(card.id))
-        ) {
-          return true;
+        if (Array.isArray(list)) {
+          const newRows = list.filter(
+            (card) =>
+              typeof card.id === "string" &&
+              typeof card.code === "string" &&
+              card.code.trim().length > 0 &&
+              !existingGiftCardIds.has(card.id),
+          );
+          if (newRows.length > 0) {
+            const codes = newRows.map((c) => c.code!.trim()).sort((a, b) => a.localeCompare(b));
+            return { found: true, codes };
+          }
         }
         if (attempt < 9) {
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
       }
-      return false;
+      return { found: false, codes: [] };
     },
     [],
   );
@@ -105,6 +117,7 @@ export default function GiftCardPurchaseScreen() {
         return;
       }
 
+      setIssuedGiftCardCodes([]);
       setLoading(true);
       setProcessingPayment(true);
       setProcessingMessage(gc("preparingPayment") || "Preparing payment…");
@@ -174,8 +187,9 @@ export default function GiftCardPurchaseScreen() {
             setProcessingMessage(gc("confirmingPayment") || "Confirming your payment…");
             await api.get(`/api/paystack/verify?reference=${encodeURIComponent(ref)}`).catch(() => {});
           }
-          const issued = await pollNewGiftCard(existingGiftCardIds);
-          setSuccessState(issued ? "issued" : "pending");
+          const pollResult = await pollNewGiftCards(existingGiftCardIds);
+          setIssuedGiftCardCodes(pollResult.codes);
+          setSuccessState(pollResult.found ? "issued" : "pending");
           return;
         }
 
@@ -212,8 +226,9 @@ export default function GiftCardPurchaseScreen() {
         if (reference) {
           await api.get(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`).catch(() => {});
         }
-        const issued = await pollNewGiftCard(existingGiftCardIds);
-        setSuccessState(issued ? "issued" : "pending");
+        const pollResult = await pollNewGiftCards(existingGiftCardIds);
+        setIssuedGiftCardCodes(pollResult.codes);
+        setSuccessState(pollResult.found ? "issued" : "pending");
       } catch (e) {
         Alert.alert(errTitle, getApiErrorMessage(e, gc("purchaseFailed")));
       } finally {
@@ -228,7 +243,7 @@ export default function GiftCardPurchaseScreen() {
       user,
       errTitle,
       gc,
-      pollNewGiftCard,
+      pollNewGiftCards,
       payWithSavedCard,
       defaultCard?.id,
       savedCards,
@@ -254,6 +269,24 @@ export default function GiftCardPurchaseScreen() {
     void executePurchase(!useNewCard);
   };
 
+  const giftSuccessSummaryRows = useMemo((): PaymentSuccessSummaryRow[] => {
+    const qtyTotalRows: PaymentSuccessSummaryRow[] = [
+      { icon: "gift-outline", label: gc("quantityLabel"), value: String(quantity) },
+      { icon: "cash-outline", label: gc("totalLabel"), value: formatMoney(total, tenantCurrency) },
+    ];
+    if (issuedGiftCardCodes.length === 0) return qtyTotalRows;
+    const codeRows: PaymentSuccessSummaryRow[] = issuedGiftCardCodes.map((code, i) => ({
+      icon: "pricetag-outline",
+      label:
+        issuedGiftCardCodes.length > 1
+          ? gc("codeRowLabelNumbered", { number: String(i + 1) })
+          : gc("codeRowLabel"),
+      value: code,
+      valueSelectable: true,
+    }));
+    return [...codeRows, ...qtyTotalRows];
+  }, [issuedGiftCardCodes, quantity, total, tenantCurrency, gc]);
+
   return (
     <>
       <Stack.Screen
@@ -266,17 +299,21 @@ export default function GiftCardPurchaseScreen() {
       <PaymentSuccessOverlay
         visible={successState !== null}
         title={successState === "issued" ? gc("giftCardReadyTitle") : gc("paymentPendingTitle")}
-        subtitle={successState === "issued" ? gc("giftCardReadyBody") : gc("paymentPendingBody")}
+        subtitle={
+          successState === "issued"
+            ? issuedGiftCardCodes.length > 0
+              ? gc("giftCardReadyBodyWithCodes")
+              : gc("giftCardReadyBody")
+            : gc("paymentPendingBody")
+        }
         status={successState === "issued" ? "success" : "pending"}
         amountPaid={total}
         currency={tenantCurrency}
-        summaryRows={[
-          { icon: "gift-outline", label: gc("quantityLabel"), value: String(quantity) },
-          { icon: "cash-outline", label: gc("totalLabel"), value: formatMoney(total, tenantCurrency) },
-        ]}
+        summaryRows={giftSuccessSummaryRows}
         footerHint={gc("successFooterHint") || "Tap continue when you are ready to leave this screen."}
         onDismiss={() => {
           setSuccessState(null);
+          setIssuedGiftCardCodes([]);
           router.back();
         }}
       />
