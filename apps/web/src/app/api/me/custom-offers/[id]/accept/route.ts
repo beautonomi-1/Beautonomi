@@ -90,6 +90,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       promotion_code?: string;
       payment_option?: "full" | "deposit";
       payment_method_id?: string;
+      /** Native app Paystack return URL (Expo linking). When set, used as Paystack `callback_url` instead of web checkout success. */
+      callback_url?: string;
     } = {};
     try {
       body = (await request.json()) || {};
@@ -233,7 +235,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const reference = `co_${id}_${Date.now()}`;
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
-    const callbackUrl = `${appUrl}/checkout/success?payment_type=custom_offer&offer_id=${encodeURIComponent(id)}`;
+    const webSuccessUrl = `${appUrl}/checkout/success?payment_type=custom_offer&offer_id=${encodeURIComponent(id)}`;
+    const rawCallback =
+      typeof body.callback_url === "string" && body.callback_url.trim().length > 0
+        ? body.callback_url.trim()
+        : "";
+    /** Hosted checkout must return to the app; Paystack accepts http(s) and custom schemes from initialize. */
+    const callbackUrl =
+      rawCallback.length > 0 && rawCallback.length <= 2048 ? rawCallback : webSuccessUrl;
 
     const email = (user as { email?: string }).email ?? "customer@example.com";
     const amountKobo = toCents(chargeAmount);

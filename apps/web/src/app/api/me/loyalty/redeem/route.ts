@@ -70,18 +70,37 @@ export async function POST(request: NextRequest) {
     }
 
     // Get redemption rate
-    const { data: activeRule } = await supabase
-      .from("loyalty_rules")
-      .select("redemption_rate, currency")
+    let activeRule = null;
+    let redemptionRate = 100;
+    let currencyConfig = null;
+
+    const { data: newConfig } = await supabase
+      .from("loyalty_point_config")
+      .select("redemption_rate")
       .eq("is_active", true)
-      .order("effective_from", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    const redemptionRate = Number(activeRule?.redemption_rate) || 100;
+    if (newConfig) {
+      redemptionRate = Number(newConfig.redemption_rate) || 100;
+    } else {
+      const { data: legacyRule } = await supabase
+        .from("loyalty_rules")
+        .select("redemption_rate, currency")
+        .eq("is_active", true)
+        .order("effective_from", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      activeRule = legacyRule;
+      redemptionRate = Number(legacyRule?.redemption_rate) || 100;
+      currencyConfig = legacyRule?.currency;
+    }
+
     const tenantFallback =
       redeemTenantId ? (await getTenantRegionConfig(redeemTenantId))?.defaultCurrency : null;
-    const currency = activeRule?.currency || tenantFallback || LAST_RESORT_CURRENCY;
+    const currency = currencyConfig || tenantFallback || LAST_RESORT_CURRENCY;
     const redemptionValue = validated.points / redemptionRate;
 
     const redeemWalletTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {

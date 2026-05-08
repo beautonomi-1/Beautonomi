@@ -305,6 +305,7 @@ export default function ReviewsScreen() {
         onClose={() => { setRespondReview(null); setResponseText(""); }}
         title={respondReview?.provider_response ? "Edit your reply" : "Respond to review"}
         subtitle={respondReview ? (respondReview.customer?.full_name || "Customer") : ""}
+        snapHeight="full"
       >
         {respondReview?.comment ? (
           <View style={{ marginBottom: 16, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
@@ -321,6 +322,7 @@ export default function ReviewsScreen() {
           onChangeText={setResponseText}
           multiline
           maxLength={1000}
+          textAlignVertical="top"
         />
         <Text style={{ marginBottom: 16, fontSize: 12, color: Colors.gray[500] }}>{responseText.length}/1000</Text>
         <ActionButton

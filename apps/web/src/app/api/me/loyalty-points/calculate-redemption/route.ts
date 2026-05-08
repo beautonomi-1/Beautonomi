@@ -20,13 +20,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Get loyalty config
-    const { data: config } = await supabase
+    let { data: config } = await supabase
       .from("loyalty_point_config")
       .select("*")
       .eq("is_active", true)
       .order("created_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
+
+    // Fallback to legacy loyalty_rules if no ledger config
+    if (!config) {
+      const { data: legacyRule } = await supabase
+        .from("loyalty_rules")
+        .select("*")
+        .eq("is_active", true)
+        .order("effective_from", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (legacyRule) {
+        config = {
+          redemption_rate: legacyRule.redemption_rate,
+          min_redemption_points: legacyRule.min_redemption_points ?? 50,
+          max_redemption_percentage: legacyRule.max_redemption_percentage ?? 100,
+        };
+      }
+    }
 
     if (!config) {
       return badRequestResponse("Loyalty points system not configured");

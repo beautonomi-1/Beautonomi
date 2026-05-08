@@ -86,4 +86,41 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     p_reference_type: "wallet_topup",
     p_tenant_id: topupWalletTenantId,
   });
+
+  // Record the actual payment receipt for reconciliation
+  await supabase.from("payment_transactions").insert({
+    booking_id: null,
+    reference: payload.reference,
+    amount: amountInCurrency,
+    fees: 0,
+    net_amount: amountInCurrency,
+    status: "success",
+    provider: "paystack",
+    transaction_type: "wallet_topup",
+    metadata: payload.metadata,
+    created_at: new Date().toISOString(),
+  });
+
+  // Record in finance_transactions so the double-entry shadow ledger posts DR Cash / CR Wallet Liability
+  const { data: existingFinanceTx } = await supabase
+    .from("finance_transactions")
+    .select("id")
+    .eq("transaction_type", "wallet_topup")
+    .eq("description", `Wallet topup: ${topupId}`)
+    .maybeSingle();
+
+  if (!existingFinanceTx) {
+    await supabase.from("finance_transactions").insert({
+      booking_id: null,
+      provider_id: null,
+      tenant_id: topupWalletTenantId,
+      transaction_type: "wallet_topup",
+      amount: amountInCurrency,
+      fees: 0,
+      commission: 0,
+      net: amountInCurrency,
+      description: `Wallet topup: ${topupId}`,
+      created_at: new Date().toISOString(),
+    });
+  }
 }

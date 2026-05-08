@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -37,9 +37,9 @@ export async function GET(request: NextRequest) {
       return successResponse([]);
     }
 
-    // Use server client (same as partner profile endpoint which works)
-    // This ensures consistent behavior with the partner profile page
-    const supabase = await getSupabaseServer();
+    // Use admin client (bypasses RLS) to ensure consistent behavior with the public provider profile API
+    // which loads regardless of the provider's active status (for previews during onboarding).
+    const supabase = getSupabaseAdmin();
     if (!supabase) {
       console.error("[Services API] Database connection not available");
       const response = successResponse([]);

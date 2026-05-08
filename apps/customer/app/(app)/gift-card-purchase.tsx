@@ -50,6 +50,7 @@ export default function GiftCardPurchaseScreen() {
   const [amount, setAmount] = useState<number>(250);
   const [customAmount, setCustomAmount] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [recipientEmail, setRecipientEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const { cards: savedCards, defaultCard } = useSavedCards(!!user);
   const { payWithSavedCard } = usePaystackPayment();
@@ -115,6 +116,9 @@ export default function GiftCardPurchaseScreen() {
             .filter((id): id is string => typeof id === "string" && id.length > 0),
         );
         const body: Record<string, unknown> = { amount: finalAmount, quantity, currency: tenantCurrency };
+        if (recipientEmail.trim()) {
+          body.recipient_email = recipientEmail.trim();
+        }
         if (Platform.OS !== "web") {
           body.callback_url = ExpoLinking.createURL("account-settings/payments");
         }
@@ -327,6 +331,16 @@ export default function GiftCardPurchaseScreen() {
               <Text style={{ fontSize: 20, color: Colors.gray[700] }}>+</Text>
             </TouchableOpacity>
           </View>
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Recipient Email (Optional)</Text>
+          <TextInput
+            style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 24 }}
+            placeholder="Send directly to a friend"
+            placeholderTextColor={Colors.gray[400]}
+            value={recipientEmail}
+            onChangeText={setRecipientEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
           <View style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 24 }}>
             <Text style={{ color: Colors.gray[600] }}>{gc("totalLabel")}</Text>
             <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{formatMoney(total, tenantCurrency)}</Text>

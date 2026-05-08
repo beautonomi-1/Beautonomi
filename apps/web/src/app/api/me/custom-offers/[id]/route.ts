@@ -31,6 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         request:custom_requests(
           id,
           customer_id,
+          provider_id,
           service_name,
           description,
           location_type,
@@ -47,11 +48,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     if (error || !offerRow) return notFoundResponse("Offer not found");
 
-    const offer = offerRow as any;
-    const req = offer.request as { customer_id: string } | null;
+    const offer = offerRow as Record<string, unknown> & {
+      request?: { customer_id?: string; provider_id?: string | null } | null;
+    };
+    const req = offer.request;
     if (!req || req.customer_id !== user.id) return notFoundResponse("Offer not found");
 
-    return successResponse(offer);
+    let provider_deposit: { requires_deposit?: boolean | null; deposit_percentage?: number | null } | null = null;
+    if (req.provider_id) {
+      const { data: prow } = await supabase
+        .from("providers")
+        .select("requires_deposit, deposit_percentage")
+        .eq("id", req.provider_id)
+        .maybeSingle();
+      provider_deposit = prow as typeof provider_deposit;
+    }
+
+    return successResponse({ ...offer, provider_deposit });
   } catch (err) {
     return handleApiError(err, "Failed to fetch offer");
   }

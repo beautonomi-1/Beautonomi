@@ -24,7 +24,9 @@ export default function WalletPage({
   const [isLoading, setIsLoading] = useState(() => !initialWallet);
   const skipHydrateLoadOnce = useRef(Boolean(initialWallet));
   const [topupAmount, setTopupAmount] = useState<string>("");
+  const [giftCardCode, setGiftCardCode] = useState<string>("");
   const [isToppingUp, setIsToppingUp] = useState(false);
+  const [isRedeeming, setIsRedeeming] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const load = async () => {
@@ -92,6 +94,29 @@ export default function WalletPage({
     }
   };
 
+  const redeemGiftCard = async () => {
+    if (!giftCardCode.trim()) {
+      toast.error("Enter a gift card code");
+      return;
+    }
+    try {
+      setIsRedeeming(true);
+      const res = await fetcher.post<{ data: { amount: number; currency: string; message: string } }>(
+        "/api/me/wallet/redeem-gift-card",
+        { code: giftCardCode }
+      );
+      toast.success(res?.data?.message || "Gift card redeemed successfully");
+      setGiftCardCode("");
+      await refresh();
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to redeem gift card";
+      toast.error(message);
+      console.error("Error redeeming gift card:", e);
+    } finally {
+      setIsRedeeming(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50/50 pb-20 md:pb-0">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8">
@@ -128,45 +153,78 @@ export default function WalletPage({
                 <div
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
                 >
-                  <h2 className="text-xl font-semibold tracking-tighter text-gray-900 mb-6">Top up</h2>
+                  <h2 className="text-xl font-semibold tracking-tighter text-gray-900 mb-6">Top up / Redeem Gift Card</h2>
                   
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="amount" className="text-sm font-medium text-gray-700 mb-2 block">
-                        Amount
-                      </Label>
-                      <Input
-                        id="amount"
-                        type="number"
-                        min="1"
-                        step="0.01"
-                        value={topupAmount}
-                        onChange={(e) => setTopupAmount(e.target.value)}
-                        placeholder="Enter amount"
-                        inputMode="decimal"
-                        className="w-full backdrop-blur-sm bg-white/60 border-white/40 text-base"
-                      />
+                  <div className="space-y-6">
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="amount" className="text-sm font-medium text-gray-700 mb-2 block">
+                          Top up amount
+                        </Label>
+                        <Input
+                          id="amount"
+                          type="number"
+                          min="1"
+                          step="0.01"
+                          value={topupAmount}
+                          onChange={(e) => setTopupAmount(e.target.value)}
+                          placeholder="Enter amount"
+                          inputMode="decimal"
+                          className="w-full backdrop-blur-sm bg-white/60 border-white/40 text-base"
+                        />
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={startTopup}
+                        disabled={isToppingUp || !topupAmount || Number(topupAmount) <= 0}
+                        className="w-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {isToppingUp ? (
+                          <span>Processing…</span>
+                        ) : (
+                          <>
+                            <ArrowUpRight className="w-5 h-5" />
+                            <span>Top up with Card</span>
+                          </>
+                        )}
+                      </button>
                     </div>
-                    
-                    <button
-                      type="button"
-                      onClick={startTopup}
-                      disabled={isToppingUp || !topupAmount || Number(topupAmount) <= 0}
-                      className="w-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                      {isToppingUp ? (
-                        <span>Processing…</span>
-                      ) : (
-                        <>
-                          <ArrowUpRight className="w-5 h-5" />
-                          <span>Top up</span>
-                        </>
-                      )}
-                    </button>
-                    
-                    <p className="text-xs text-gray-500 font-light mt-2">
-                      You'll be redirected to complete the top up with your card.
-                    </p>
+
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                        <div className="w-full border-t border-gray-200" />
+                      </div>
+                      <div className="relative flex justify-center">
+                        <span className="bg-white/60 px-2 text-sm text-gray-500">or</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="giftcard" className="text-sm font-medium text-gray-700 mb-2 block">
+                          Redeem Gift Card
+                        </Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="giftcard"
+                            type="text"
+                            value={giftCardCode}
+                            onChange={(e) => setGiftCardCode(e.target.value)}
+                            placeholder="Enter code"
+                            className="w-full backdrop-blur-sm bg-white/60 border-white/40 text-base"
+                          />
+                          <button
+                            type="button"
+                            onClick={redeemGiftCard}
+                            disabled={isRedeeming || !giftCardCode.trim()}
+                            className="whitespace-nowrap bg-zinc-900 hover:bg-zinc-800 text-white px-6 py-2 rounded-xl font-semibold transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isRedeeming ? "Redeeming…" : "Redeem"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

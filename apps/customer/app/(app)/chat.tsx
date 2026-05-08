@@ -79,15 +79,6 @@ type OfferDetailData = {
     address_postal_code?: string | null;
   } | null;
 };
-type PaymentMethodSummary = {
-  id: string;
-  card_type?: string;
-  last4?: string;
-  expiry_month?: number;
-  expiry_year?: number;
-  is_default?: boolean;
-};
-
 type MessagesListEnvelope = {
   messages?: unknown[];
   next_cursor?: string;
@@ -230,12 +221,7 @@ export default function ChatScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [conversationMeta, setConversationMeta] = useState<ConversationSummary | null>(null);
-  const [acceptingOfferId, setAcceptingOfferId] = useState<string | null>(null);
   const [decliningOfferId, setDecliningOfferId] = useState<string | null>(null);
-  const [savedMethods, setSavedMethods] = useState<PaymentMethodSummary[]>([]);
-  const [showSavedCardSheet, setShowSavedCardSheet] = useState(false);
-  const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
-  const [selectedPaymentOption, setSelectedPaymentOption] = useState<"full" | "deposit">("full");
   const [offerDetailVisible, setOfferDetailVisible] = useState(false);
   const [offerDetailLoading, setOfferDetailLoading] = useState(false);
   const [offerDetailData, setOfferDetailData] = useState<OfferDetailData | null>(null);
@@ -630,27 +616,6 @@ export default function ChatScreen() {
     );
   };
 
-  const pollForCustomOfferBooking = useCallback(async (offerId: string) => {
-    for (let i = 0; i < 30; i += 1) {
-      try {
-        const state = await api.get<{ booking_id?: string | null }>(`/api/me/custom-offers/${offerId}`);
-        const bookingId = (state.data as { booking_id?: string | null } | undefined)?.booking_id ?? null;
-        if (bookingId) {
-          await loadMessages();
-          router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
-          return;
-        }
-      } catch {
-        // ignore while polling
-      }
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-    }
-    Alert.alert(
-      t("customer.chatScreen.offerActionFailedTitle"),
-      "Your payment was received, but there is a delay confirming your booking. Please check your bookings later.",
-    );
-  }, [loadMessages, t, router]);
-
   const declineCustomOffer = useCallback(
     async (offerId: string) => {
       Alert.alert(
@@ -684,49 +649,6 @@ export default function ChatScreen() {
     [loadMessages, t],
   );
 
-  const acceptCustomOffer = useCallback(
-    async (offerId: string, paymentOption: "full" | "deposit", paymentMethodId?: string) => {
-      setAcceptingOfferId(offerId);
-      try {
-        const res = await api.post<{ paymentUrl?: string; payment_url?: string; charged?: boolean }>(
-          `/api/me/custom-offers/${offerId}/accept`,
-          { payment_option: paymentOption, payment_method_id: paymentMethodId }
-        );
-        if (res.error) {
-          Alert.alert(
-            t("customer.chatScreen.offerActionFailedTitle"),
-            getApiErrorMessage(res.error, t("customer.chatScreen.offerActionPaymentFailed")),
-          );
-          return;
-        }
-        if (res.data?.charged) {
-          await pollForCustomOfferBooking(offerId);
-          return;
-        }
-        const url = res.data?.paymentUrl || res.data?.payment_url;
-        if (!url) {
-          Alert.alert(t("customer.chatScreen.offerActionFailedTitle"), t("customer.chatScreen.offerActionNoLink"));
-          return;
-        }
-        router.push({
-          pathname: "/(app)/in-app-browser",
-          params: {
-            url: encodeURIComponent(url),
-            title: t("customer.chatScreen.inAppBrowserPaymentTitle"),
-          },
-        });
-      } catch (e) {
-        Alert.alert(
-          t("customer.chatScreen.offerActionFailedTitle"),
-          e instanceof Error ? e.message : t("customer.chatScreen.offerActionPaymentFailed"),
-        );
-      } finally {
-        setAcceptingOfferId(null);
-      }
-    },
-    [pollForCustomOfferBooking, t],
-  );
-
   const openOfferDetail = useCallback(async (offerId: string) => {
     setOfferDetailData(null);
     setOfferDetailVisible(true);
@@ -742,30 +664,14 @@ export default function ChatScreen() {
   }, []);
 
   const openAcceptOfferOptions = useCallback(
-    async (offerId: string) => {
-      const methodsRes = await api.get<PaymentMethodSummary[]>("/api/me/payment-methods");
-      const methods = Array.isArray(methodsRes.data) ? methodsRes.data : [];
-      if (methods.length > 0) {
-        setSavedMethods(methods);
-        setSelectedOfferId(offerId);
-        setSelectedPaymentOption("full");
-        setShowSavedCardSheet(true);
-        return;
-      }
-      Alert.alert(t("customer.chatScreen.acceptOfferTitle"), t("customer.chatScreen.acceptOfferBody"), [
-        { text: t("common.cancel"), style: "cancel" },
-        { text: t("customer.chatScreen.payDeposit"), onPress: () => void acceptCustomOffer(offerId, "deposit") },
-        { text: t("customer.chatScreen.payInFull"), onPress: () => void acceptCustomOffer(offerId, "full") },
-      ]);
+    (oid: string) => {
+      router.push({
+        pathname: "/(app)/custom-offer-checkout",
+        params: { offer_id: oid },
+      } as never);
     },
-    [acceptCustomOffer, t]
+    [router],
   );
-
-  const handleSavedCardPay = useCallback((methodId: string) => {
-    if (!selectedOfferId) return;
-    setShowSavedCardSheet(false);
-    void acceptCustomOffer(selectedOfferId, selectedPaymentOption, methodId);
-  }, [acceptCustomOffer, selectedOfferId, selectedPaymentOption]);
 
   const formatTime = (iso: string) =>
     (() => {
@@ -1297,7 +1203,6 @@ export default function ChatScreen() {
                             <View style={{ marginTop: 10, gap: 8 }}>
                               <TouchableOpacity
                                 onPress={() => openAcceptOfferOptions(customOfferAttachment.offer_id!)}
-                                disabled={acceptingOfferId === customOfferAttachment.offer_id}
                                 style={{
                                   borderRadius: 10,
                                   backgroundColor: Colors.primary,
@@ -1306,11 +1211,7 @@ export default function ChatScreen() {
                                   paddingVertical: 10,
                                 }}
                               >
-                                {acceptingOfferId === customOfferAttachment.offer_id ? (
-                                  <ActivityIndicator size="small" color={Colors.white} />
-                                ) : (
-                                  <Text style={{ color: Colors.white, fontSize: 13, fontWeight: "700" }}>{t("customer.chatScreen.customOfferAcceptPay")}</Text>
-                                )}
+                                <Text style={{ color: Colors.white, fontSize: 13, fontWeight: "700" }}>{t("customer.chatScreen.customOfferAcceptPay")}</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => void declineCustomOffer(customOfferAttachment.offer_id!)}
@@ -1513,96 +1414,6 @@ export default function ChatScreen() {
           </>
         )}
       </KeyboardAvoidingView>
-
-      <Modal
-        visible={showSavedCardSheet}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowSavedCardSheet(false)}
-      >
-        <Pressable
-          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" }}
-          onPress={() => setShowSavedCardSheet(false)}
-        >
-          <Pressable
-            style={{
-              backgroundColor: Colors.white,
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              padding: 16,
-              paddingBottom: 20 + insets.bottom,
-              maxHeight: "70%",
-            }}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{t("customer.chatScreen.acceptOfferTitle")}</Text>
-            <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 4 }}>{t("customer.chatScreen.acceptOfferBody")}</Text>
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-              <TouchableOpacity
-                onPress={() => setSelectedPaymentOption("deposit")}
-                style={{
-                  flex: 1,
-                  borderRadius: 10,
-                  paddingVertical: 10,
-                  borderWidth: 1,
-                  borderColor: selectedPaymentOption === "deposit" ? Colors.primary : Colors.gray[200],
-                  backgroundColor: selectedPaymentOption === "deposit" ? "#EFF6FF" : Colors.white,
-                }}
-              >
-                <Text style={{ textAlign: "center", color: selectedPaymentOption === "deposit" ? Colors.primary : Colors.gray[700], fontWeight: "600" }}>{t("customer.chatScreen.payDeposit")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setSelectedPaymentOption("full")}
-                style={{
-                  flex: 1,
-                  borderRadius: 10,
-                  paddingVertical: 10,
-                  borderWidth: 1,
-                  borderColor: selectedPaymentOption === "full" ? Colors.primary : Colors.gray[200],
-                  backgroundColor: selectedPaymentOption === "full" ? "#EFF6FF" : Colors.white,
-                }}
-              >
-                <Text style={{ textAlign: "center", color: selectedPaymentOption === "full" ? Colors.primary : Colors.gray[700], fontWeight: "600" }}>{t("customer.chatScreen.payInFull")}</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={{ fontSize: 13, color: Colors.gray[700], marginTop: 14, marginBottom: 8 }}>{t("customer.chatScreen.payWithSavedCard")}</Text>
-            {savedMethods.map((m) => (
-              <TouchableOpacity
-                key={m.id}
-                onPress={() => handleSavedCardPay(m.id)}
-                style={{
-                  borderWidth: 1,
-                  borderColor: Colors.gray[200],
-                  borderRadius: 12,
-                  paddingVertical: 10,
-                  paddingHorizontal: 12,
-                  marginBottom: 8,
-                  backgroundColor: Colors.white,
-                }}
-              >
-                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>
-                  {(m.card_type || t("customer.paymentsScreen.card")).toUpperCase()} •••• {m.last4 || "----"}
-                </Text>
-                <Text style={{ color: Colors.gray[600], fontSize: 12, marginTop: 2 }}>
-                  {m.expiry_month || "--"}/{m.expiry_year || "----"}{" "}
-                  {m.is_default ? t("customer.chatScreen.paymentMethodDefaultBadge") : ""}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              onPress={() => {
-                if (selectedOfferId) {
-                  setShowSavedCardSheet(false);
-                  void acceptCustomOffer(selectedOfferId, selectedPaymentOption);
-                }
-              }}
-              style={{ marginTop: 8, borderRadius: 10, paddingVertical: 12, backgroundColor: Colors.primary }}
-            >
-              <Text style={{ color: Colors.white, textAlign: "center", fontWeight: "700" }}>{t("customer.chatScreen.payWithNewCard")}</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       {/* Image preview modal (attachments) */}
       <Modal

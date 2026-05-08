@@ -269,6 +269,32 @@ export async function GET(request: NextRequest) {
         });
       }
 
+      // Custom offer Paystack hosted checkout (metadata has custom_offer_id, not booking_id yet)
+      if (metadata?.custom_offer_id) {
+        const offerId = String(metadata.custom_offer_id);
+        const admin = getSupabaseAdmin();
+        const { data: coRow } = await supabase
+          .from("custom_offers")
+          .select("id, request:custom_requests(customer_id)")
+          .eq("id", offerId)
+          .maybeSingle();
+        const custId = (coRow as { request?: { customer_id?: string } | null } | null)?.request?.customer_id;
+        if (!coRow || custId !== user.id) {
+          return errorResponse(
+            "You can only verify payments for your own custom offers.",
+            "FORBIDDEN",
+            403,
+          );
+        }
+        await processSuccessfulPayment(data.data, admin);
+        return successResponse({
+          status: "success",
+          type: "custom_offer",
+          customOfferId: offerId,
+          message: "Payment verified successfully",
+        });
+      }
+
       // Handle booking payments
       const bookingId = metadata.bookingId || metadata.booking_id;
 

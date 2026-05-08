@@ -60,7 +60,8 @@ export function BottomSheet({
   showHandle = true,
 }: BottomSheetProps) {
   const insets = useSafeAreaInsets();
-  const [keyboardInset, setKeyboardInset] = useState(0);
+  /** Android modals do not lift like iOS KAV; pad scroll content so the focused field stays reachable. */
+  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
   const translateY = useSharedValue(SCREEN_HEIGHT);
   const backdropOpacity = useSharedValue(0);
   const sheetHeight = SNAP_HEIGHTS[snapHeight];
@@ -83,24 +84,27 @@ export function BottomSheet({
       backdropOpacity.value = 0;
       translateY.value = withSpring(0, { damping: 20, stiffness: 90 });
       backdropOpacity.value = withTiming(1, { duration: 250 });
-    } else {
-      setKeyboardInset(0);
     }
   }, [visible, translateY, backdropOpacity]);
 
   useEffect(() => {
-    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    if (Platform.OS !== "android") return;
+    const showEvt = "keyboardDidShow";
+    const hideEvt = "keyboardDidHide";
     const subShow = Keyboard.addListener(showEvt, (e) => {
       const h = e.endCoordinates?.height;
-      setKeyboardInset(typeof h === "number" && Number.isFinite(h) ? h : 0);
+      setAndroidKeyboardInset(typeof h === "number" && Number.isFinite(h) ? h : 0);
     });
-    const subHide = Keyboard.addListener(hideEvt, () => setKeyboardInset(0));
+    const subHide = Keyboard.addListener(hideEvt, () => setAndroidKeyboardInset(0));
     return () => {
       subShow.remove();
       subHide.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (!visible) setAndroidKeyboardInset(0);
+  }, [visible]);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -127,11 +131,7 @@ export function BottomSheet({
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={closeSheet}>
       <GestureRoot style={{ flex: 1 }}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior="padding"
-          keyboardVerticalOffset={Platform.OS === "ios" ? Math.max(insets.top, 12) + 8 : Math.max(insets.bottom, 12)}
-        >
+        <View style={{ flex: 1 }}>
           <Animated.View style={[{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }, backdropAnimatedStyle]}>
             <Pressable
               style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }}
@@ -141,22 +141,30 @@ export function BottomSheet({
             />
           </Animated.View>
 
-          {/* Animated sheet - explicit opaque background for form content */}
-          <Animated.View
-            style={[
-              { position: "absolute", bottom: 0, left: 0, right: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
-              {
-                maxHeight: sheetHeight,
-                backgroundColor: "#ffffff",
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: -4 },
-                shadowOpacity: 0.1,
-                shadowRadius: 16,
-                elevation: 16,
-              },
-              sheetAnimatedStyle,
-            ]}
+          {/* Keyboard avoidance applies to the sheet only (not the backdrop), so the form stays above the keyboard. */}
+          <KeyboardAvoidingView
+            style={{ flex: 1, justifyContent: "flex-end" }}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            keyboardVerticalOffset={0}
           >
+            {/* Animated sheet - explicit opaque background for form content */}
+            <Animated.View
+              style={[
+                {
+                  width: "100%",
+                  borderTopLeftRadius: 24,
+                  borderTopRightRadius: 24,
+                  maxHeight: sheetHeight,
+                  backgroundColor: "#ffffff",
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: -4 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 16,
+                  elevation: 16,
+                },
+                sheetAnimatedStyle,
+              ]}
+            >
             {/* Drag handle */}
             {showHandle && (
               <GestureDetector gesture={panGesture}>
@@ -189,7 +197,7 @@ export function BottomSheet({
               style={{ flex: 1, backgroundColor: "#ffffff" }}
               contentContainerStyle={{
                 padding: 20,
-                paddingBottom: 40 + keyboardInset + (Platform.OS === "android" ? insets.bottom : 0),
+                paddingBottom: 40 + insets.bottom + (Platform.OS === "android" ? androidKeyboardInset : 0),
                 backgroundColor: "#ffffff",
               }}
               keyboardShouldPersistTaps="handled"
@@ -202,7 +210,8 @@ export function BottomSheet({
 
             <SafeAreaView edges={["bottom"]} />
           </Animated.View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </GestureRoot>
     </Modal>
   );

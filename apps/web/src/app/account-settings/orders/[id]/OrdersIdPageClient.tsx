@@ -315,16 +315,27 @@ export default function OrderDetailPage() {
                 const isRefunded = ret.status === "refunded";
                 const isRejected = ret.status === "rejected";
                 const isPending = ret.status === "pending";
+                const isReceived = ret.status === "item_received";
+                const isEscalated = ret.status === "escalated";
+                const isCancelled = ret.status === "cancelled";
                 
                 let badgeClass = "bg-gray-100 text-gray-600";
-                if (isApproved || isRefunded) badgeClass = "bg-green-100 text-green-700";
-                else if (isRejected) badgeClass = "bg-red-100 text-red-700";
+                if (isApproved || isRefunded || isReceived) badgeClass = "bg-green-100 text-green-700";
+                else if (isRejected || isEscalated) badgeClass = "bg-red-100 text-red-700";
                 else if (isPending) badgeClass = "bg-yellow-100 text-yellow-700";
+
+                let title = "Return Request";
+                if (isRefunded) title = "Refund Processed";
+                else if (isApproved) title = "Return Approved";
+                else if (isReceived) title = "Item Received";
+                else if (isRejected) title = "Return Rejected";
+                else if (isEscalated) title = "Return Escalated";
+                else if (isCancelled) title = "Return Cancelled";
 
                 return (
                   <div key={ret.id} className="border-b border-gray-50 pb-4 last:border-0 last:pb-0">
                     <div className="mb-2 flex items-center justify-between">
-                      <p className="font-semibold text-gray-700">Return Request</p>
+                      <p className="font-semibold text-gray-700">{title}</p>
                       <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${badgeClass}`}>
                         {ret.status}
                       </span>
