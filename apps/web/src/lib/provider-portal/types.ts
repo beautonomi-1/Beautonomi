@@ -297,6 +297,12 @@ export interface Appointment {
   provider_form_responses?: Record<string, Record<string, unknown>> | null;
   /** Platform booking custom fields (from `custom_field_values` when loaded). */
   custom_field_values?: Record<string, string | number | boolean | null> | null;
+  /** When booking is tied to a custom offer (detail payloads join custom_requests). */
+  custom_offer?: {
+    id?: string;
+    notes?: string | null;
+    request?: { id?: string; description?: string | null } | null;
+  } | null;
 }
 
 /**

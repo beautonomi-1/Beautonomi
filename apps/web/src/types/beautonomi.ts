@@ -472,6 +472,12 @@ export interface Booking {
   package_name?: string | null;
   /** Provider summary, populated in detail views */
   provider?: { id?: string; business_name?: string; slug?: string; phone?: string; email?: string } | null;
+  /** Populated when booking originated from a custom offer (detail endpoints join custom_requests). */
+  custom_offer?: {
+    id?: string;
+    notes?: string | null;
+    request?: { id?: string; description?: string | null } | null;
+  } | null;
 }
 
 export interface BookingAddress {

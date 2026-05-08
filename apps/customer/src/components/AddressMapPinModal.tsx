@@ -122,7 +122,7 @@ export function AddressMapPinModal({
   const [styleUrl, setStyleUrl] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  const fetchAddressTimeout = useRef<NodeJS.Timeout | null>(null);
+  const fetchAddressTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [currentAddressName, setCurrentAddressName] = useState<string | null>(null);
   const [isFetchingAddress, setIsFetchingAddress] = useState(false);
 

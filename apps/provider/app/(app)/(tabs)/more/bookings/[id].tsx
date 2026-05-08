@@ -298,6 +298,11 @@ type BookingDetail = {
   booking_source?: string | null;
   /** Points earned for this booking (when completed); from provider_point_transactions */
   provider_points_earned?: number | null;
+  custom_offer?: {
+    id?: string;
+    notes?: string | null;
+    request?: { id?: string; description?: string | null } | null;
+  } | null;
 };
 
 type AppointmentProductOrderResponse = {

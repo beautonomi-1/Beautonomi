@@ -14,6 +14,8 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -713,8 +715,9 @@ export default function ChatScreen() {
                   flatListRef.current?.scrollToEnd({ animated: false });
                 }
               }}
-              onScroll={({ nativeEvent }) => {
-                const isNearBottom = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height - nativeEvent.contentOffset.y < 200;
+              onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+                const { contentSize, layoutMeasurement, contentOffset } = e.nativeEvent;
+                const isNearBottom = contentSize.height - layoutMeasurement.height - contentOffset.y < 200;
                 setShowScrollToBottom(!isNearBottom);
               }}
               scrollEventThrottle={200}
