@@ -14,6 +14,7 @@ import {
   Linking,
 } from "react-native";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as DocumentPicker from "expo-document-picker";
@@ -192,6 +193,25 @@ function attachmentDisplaysAsInlineImage(att: NormalizedAttachment): boolean {
 }
 
 const PAGE_SIZE = 50;
+
+function formatCustomOfferPreferredStart(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return null;
+  const datePart = d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  const timePart = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return `${datePart} · ${timePart}`;
+}
+
+function customOfferGradientColors(opts: {
+  isWithdrawn: boolean;
+  isExpired: boolean;
+  isPaid: boolean;
+}): readonly [string, string, string] {
+  if (opts.isWithdrawn || opts.isExpired) return ["#94a3b8", "#64748b", "#475569"];
+  if (opts.isPaid) return ["#047857", "#065f46", "#064e3b"];
+  return ["#1a1a2e", "#16213e", "#0f3460"];
+}
 
 export default function ChatScreen() {
   useScreenTracking("Chat");
@@ -1135,7 +1155,12 @@ export default function ChatScreen() {
                         const isOfferWithdrawn =
                           customOfferAttachment.withdrawn === true || customOfferAttachment.status === "withdrawn";
                         const isOfferDeclined = customOfferAttachment.status === "declined";
-                        const isOfferInactive = isOfferExpired || isOfferWithdrawn || isOfferDeclined;
+                        const isOfferPaid =
+                          customOfferAttachment.status === "paid" || !!customOfferAttachment.booking_id;
+                        const isPaymentPending = customOfferAttachment.status === "payment_pending";
+                        const isOfferInactive =
+                          isOfferExpired || isOfferWithdrawn || isOfferDeclined || isOfferPaid;
+                        const cardMuted = isOfferWithdrawn || isOfferExpired;
                         const expAt = customOfferAttachment.expiration_at;
                         const expLabel =
                           expAt && !isOfferInactive
@@ -1148,115 +1173,305 @@ export default function ChatScreen() {
                                 });
                               })()
                             : null;
+                        const preferredLabel = formatCustomOfferPreferredStart(customOfferAttachment.preferred_start_at);
+                        const gradientColors = customOfferGradientColors({
+                          isWithdrawn: isOfferWithdrawn,
+                          isExpired: isOfferExpired,
+                          isPaid: isOfferPaid,
+                        });
+                        const mono = Platform.select({ ios: "Menlo", default: "monospace" });
+                        const showTapHint = !!customOfferAttachment.offer_id && !isOfferInactive;
                         return (
-                        <TouchableOpacity
-                          activeOpacity={0.85}
-                          onPress={() => customOfferAttachment.offer_id && openOfferDetail(customOfferAttachment.offer_id)}
+                        <View
                           style={{
                             marginTop: msg.content ? 10 : 0,
-                            borderRadius: 12,
-                            padding: 12,
-                            backgroundColor: isOfferInactive ? "rgba(107,114,128,0.24)" : "rgba(15,52,96,0.22)",
-                            borderWidth: 1,
-                            borderColor: isOfferInactive ? "rgba(156,163,175,0.6)" : "rgba(255,255,255,0.18)",
+                            maxWidth: 320,
+                            width: "100%",
+                            alignSelf: "stretch",
+                            opacity: cardMuted ? 0.88 : 1,
                           }}
                         >
-                          <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[700], fontSize: 11, fontWeight: "700", letterSpacing: 0.6 }}>
-                            {t("customer.chatScreen.customOfferTitle")}
-                          </Text>
-                          <Text style={{ color: isMe ? Colors.white : Colors.gray[900], marginTop: 6, fontSize: 18, fontWeight: "700" }}>
-                            {(customOfferAttachment.currency || "")}{" "}
-                            {typeof customOfferAttachment.price === "number"
-                              ? customOfferAttachment.price.toFixed(2)
-                              : t("customer.chatScreen.emDash")}
-                          </Text>
-                          <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[700], fontSize: 12, marginTop: 2 }}>
-                            {customOfferAttachment.duration_minutes
-                              ? t("customer.chatScreen.durationMinutesShort", {
-                                  count: customOfferAttachment.duration_minutes,
-                                })
-                              : t("customer.chatScreen.customOfferDurationFallback")}
-                          </Text>
-                          {expLabel ? (
-                            <Text style={{ color: isMe ? "rgba(255,255,255,0.75)" : "#92400E", fontSize: 11, marginTop: 6, fontWeight: "600" }}>
-                              {expLabel}
-                            </Text>
-                          ) : null}
-                          {isOfferWithdrawn ? (
-                            <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : "#B91C1C", fontSize: 12, marginTop: 8, fontWeight: "600" }}>
-                              {t("customer.chatScreen.customOfferWithdrawn")}
-                            </Text>
-                          ) : isOfferDeclined ? (
-                            <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : "#9D174D", fontSize: 12, marginTop: 8, fontWeight: "600" }}>
-                              {t("customer.chatScreen.customOfferDeclined")}
-                            </Text>
-                          ) : isOfferExpired ? (
-                            <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : "#B45309", fontSize: 12, marginTop: 8, fontWeight: "600" }}>
-                              {t("customer.chatScreen.customOfferExpired")}
-                            </Text>
-                          ) : null}
-                          {!isMe &&
-                          customOfferAttachment.offer_id &&
-                          !isOfferInactive &&
-                          customOfferAttachment.status !== "payment_pending" &&
-                          customOfferAttachment.status !== "paid" ? (
-                            <View style={{ marginTop: 10, gap: 8 }}>
-                              <TouchableOpacity
-                                onPress={() => openAcceptOfferOptions(customOfferAttachment.offer_id!)}
+                          <LinearGradient
+                            colors={[...gradientColors]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{
+                              borderRadius: 16,
+                              overflow: "hidden",
+                              borderWidth: 1,
+                              borderColor: "rgba(255,255,255,0.1)",
+                              shadowColor: "#000",
+                              shadowOffset: { width: 0, height: 4 },
+                              shadowOpacity: 0.2,
+                              shadowRadius: 8,
+                              elevation: 5,
+                            }}
+                          >
+                            {!cardMuted && !isOfferPaid ? (
+                              <View
                                 style={{
-                                  borderRadius: 10,
-                                  backgroundColor: Colors.primary,
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  paddingVertical: 10,
+                                  position: "absolute",
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  height: 40,
+                                  backgroundColor: "rgba(255,255,255,0.1)",
                                 }}
-                              >
-                                <Text style={{ color: Colors.white, fontSize: 13, fontWeight: "700" }}>{t("customer.chatScreen.customOfferAcceptPay")}</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                onPress={() => void declineCustomOffer(customOfferAttachment.offer_id!)}
-                                disabled={decliningOfferId === customOfferAttachment.offer_id}
-                                style={{
-                                  borderRadius: 10,
-                                  borderWidth: 1,
-                                  borderColor: isMe ? "rgba(255,255,255,0.45)" : Colors.gray[300],
-                                  backgroundColor: isMe ? "rgba(255,255,255,0.08)" : Colors.white,
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  paddingVertical: 10,
-                                }}
-                              >
-                                {decliningOfferId === customOfferAttachment.offer_id ? (
-                                  <ActivityIndicator size="small" color={isMe ? Colors.white : Colors.gray[700]} />
-                                ) : (
-                                  <Text style={{ color: isMe ? "rgba(255,255,255,0.95)" : Colors.gray[800], fontSize: 13, fontWeight: "700" }}>
-                                    {t("customer.chatScreen.declineOfferCta")}
+                                pointerEvents="none"
+                              />
+                            ) : null}
+                            <TouchableOpacity
+                              activeOpacity={0.92}
+                              onPress={() => customOfferAttachment.offer_id && openOfferDetail(customOfferAttachment.offer_id)}
+                              accessibilityRole="button"
+                              accessibilityLabel={t("customer.chatScreen.customOfferTitle")}
+                            >
+                              <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+                                <View
+                                  style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    marginBottom: 12,
+                                    gap: 8,
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      flex: 1,
+                                      fontSize: 11,
+                                      fontWeight: "600",
+                                      color: "rgba(255,255,255,0.88)",
+                                      letterSpacing: 2.4,
+                                    }}
+                                  >
+                                    {t("customer.chatScreen.customOfferTitle")}
                                   </Text>
-                                )}
-                              </TouchableOpacity>
-                            </View>
-                          ) : null}
-                          {!isMe && customOfferAttachment.status === "payment_pending" ? (
-                            <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
-                              <ActivityIndicator size="small" color={isMe ? Colors.white : Colors.primary} />
-                              <Text style={{ color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[700], fontSize: 12, fontWeight: "600" }}>
-                                {t("customer.chatScreen.customOfferPaymentPending")}
-                              </Text>
-                            </View>
-                          ) : null}
-                          {!isMe && customOfferAttachment.status === "paid" ? (
-                            <View style={{ marginTop: 10, alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "#DCFCE7" }}>
-                              <Text style={{ color: "#166534", fontSize: 12, fontWeight: "700" }}>
-                                {t("customer.chatScreen.customOfferPaid")}
-                              </Text>
-                            </View>
-                          ) : null}
-                          {!isOfferInactive && customOfferAttachment.status !== "payment_pending" && customOfferAttachment.status !== "paid" ? (
-                            <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, marginTop: 8, textAlign: "right" }}>
-                              {t("customer.chatScreen.customOfferTapForDetails")}
-                            </Text>
-                          ) : null}
-                        </TouchableOpacity>
+                                  {isOfferWithdrawn ? (
+                                    <View
+                                      style={{
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 3,
+                                        borderRadius: 999,
+                                        backgroundColor: "rgba(255,255,255,0.2)",
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 10, fontWeight: "600", color: "#fff", textTransform: "uppercase" }}>
+                                        {t("customer.chatScreen.customOfferBadgeWithdrawn")}
+                                      </Text>
+                                    </View>
+                                  ) : isOfferDeclined && !isOfferWithdrawn ? (
+                                    <View
+                                      style={{
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 3,
+                                        borderRadius: 999,
+                                        backgroundColor: "rgba(251,113,133,0.35)",
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 10, fontWeight: "600", color: "#ffe4e6", textTransform: "uppercase" }}>
+                                        {t("customer.chatScreen.customOfferBadgeDeclined")}
+                                      </Text>
+                                    </View>
+                                  ) : isOfferExpired && !isOfferWithdrawn ? (
+                                    <View
+                                      style={{
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 3,
+                                        borderRadius: 999,
+                                        backgroundColor: "rgba(251,191,36,0.35)",
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 10, fontWeight: "600", color: "#fef3c7", textTransform: "uppercase" }}>
+                                        {t("customer.chatScreen.customOfferBadgeExpired")}
+                                      </Text>
+                                    </View>
+                                  ) : isOfferPaid ? (
+                                    <View
+                                      style={{
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 3,
+                                        borderRadius: 999,
+                                        backgroundColor: "rgba(52,211,153,0.3)",
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 10, fontWeight: "600", color: "#d1fae5", textTransform: "uppercase" }}>
+                                        {t("customer.chatScreen.customOfferPaid")} ✓
+                                      </Text>
+                                    </View>
+                                  ) : isPaymentPending ? (
+                                    <View
+                                      style={{
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                        gap: 4,
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 3,
+                                        borderRadius: 999,
+                                        backgroundColor: "rgba(250,204,21,0.3)",
+                                      }}
+                                    >
+                                      <ActivityIndicator size="small" color="#fef9c3" />
+                                      <Text style={{ fontSize: 10, fontWeight: "600", color: "#fef9c3", textTransform: "uppercase" }}>
+                                        {t("customer.chatScreen.customOfferBadgeProcessing")}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                </View>
+                                <Text
+                                  style={{
+                                    fontFamily: mono,
+                                    fontSize: 24,
+                                    fontWeight: "700",
+                                    color: "#fff",
+                                    letterSpacing: 0.5,
+                                  }}
+                                >
+                                  {(customOfferAttachment.currency || "")}{" "}
+                                  {typeof customOfferAttachment.price === "number"
+                                    ? customOfferAttachment.price.toFixed(2)
+                                    : t("customer.chatScreen.emDash")}
+                                </Text>
+                                <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 4 }}>
+                                  {customOfferAttachment.duration_minutes
+                                    ? t("customer.chatScreen.durationMinutesShort", {
+                                        count: customOfferAttachment.duration_minutes,
+                                      })
+                                    : t("customer.chatScreen.customOfferDurationFallback")}
+                                </Text>
+                                {expLabel ? (
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10 }}>
+                                    <Ionicons name="time-outline" size={14} color="rgba(254,243,199,0.95)" />
+                                    <Text style={{ flex: 1, fontSize: 11, color: "rgba(254,243,199,0.95)", fontWeight: "500" }}>
+                                      {expLabel}
+                                    </Text>
+                                  </View>
+                                ) : null}
+                                {preferredLabel && !isOfferInactive ? (
+                                  <Text style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 8 }}>{preferredLabel}</Text>
+                                ) : null}
+                                {showTapHint ? (
+                                  <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.42)", marginTop: 10 }}>
+                                    {t("customer.chatScreen.customOfferTapForDetails")}
+                                  </Text>
+                                ) : null}
+                              </View>
+                            </TouchableOpacity>
+                            {!isMe && customOfferAttachment.offer_id && !isOfferInactive && isPaymentPending ? (
+                              <View
+                                style={{
+                                  paddingHorizontal: 16,
+                                  paddingBottom: 16,
+                                  paddingTop: 4,
+                                  borderTopWidth: 1,
+                                  borderTopColor: "rgba(255,255,255,0.1)",
+                                  gap: 10,
+                                }}
+                              >
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                  <ActivityIndicator size="small" color="#fde047" />
+                                  <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: "rgba(254,249,195,0.95)" }}>
+                                    {t("customer.chatScreen.customOfferPaymentPending")}
+                                  </Text>
+                                </View>
+                                <TouchableOpacity
+                                  onPress={() => openAcceptOfferOptions(customOfferAttachment.offer_id!)}
+                                  style={{
+                                    borderRadius: 10,
+                                    backgroundColor: Colors.primary,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    paddingVertical: 10,
+                                  }}
+                                >
+                                  <Text style={{ color: Colors.white, fontSize: 13, fontWeight: "700" }}>
+                                    {t("customer.chatScreen.customOfferResumePayment")}
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            ) : null}
+                            {!isMe &&
+                            customOfferAttachment.offer_id &&
+                            !isOfferInactive &&
+                            !isPaymentPending &&
+                            !isOfferPaid ? (
+                              <View
+                                style={{
+                                  paddingHorizontal: 16,
+                                  paddingBottom: 16,
+                                  paddingTop: 4,
+                                  borderTopWidth: 1,
+                                  borderTopColor: "rgba(255,255,255,0.1)",
+                                  gap: 8,
+                                }}
+                              >
+                                <TouchableOpacity
+                                  onPress={() => openAcceptOfferOptions(customOfferAttachment.offer_id!)}
+                                  style={{
+                                    borderRadius: 10,
+                                    backgroundColor: Colors.primary,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    paddingVertical: 10,
+                                  }}
+                                >
+                                  <Text style={{ color: Colors.white, fontSize: 13, fontWeight: "700" }}>
+                                    {t("customer.chatScreen.customOfferAcceptPay")}
+                                  </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={() => void declineCustomOffer(customOfferAttachment.offer_id!)}
+                                  disabled={decliningOfferId === customOfferAttachment.offer_id}
+                                  style={{
+                                    borderRadius: 10,
+                                    borderWidth: 1,
+                                    borderColor: "rgba(255,255,255,0.3)",
+                                    backgroundColor: "rgba(255,255,255,0.08)",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    paddingVertical: 10,
+                                  }}
+                                >
+                                  {decliningOfferId === customOfferAttachment.offer_id ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                  ) : (
+                                    <Text style={{ color: "#fff", fontSize: 13, fontWeight: "700" }}>
+                                      {t("customer.chatScreen.declineOfferCta")}
+                                    </Text>
+                                  )}
+                                </TouchableOpacity>
+                              </View>
+                            ) : null}
+                            {!isMe && isOfferPaid && customOfferAttachment.booking_id ? (
+                              <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    router.push({
+                                      pathname: "/(app)/booking-detail",
+                                      params: { id: customOfferAttachment.booking_id! },
+                                    })
+                                  }
+                                  style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: 8,
+                                    borderRadius: 10,
+                                    borderWidth: 1,
+                                    borderColor: "rgba(255,255,255,0.3)",
+                                    backgroundColor: "rgba(255,255,255,0.15)",
+                                    paddingVertical: 10,
+                                  }}
+                                >
+                                  <Ionicons name="open-outline" size={16} color="#fff" />
+                                  <Text style={{ color: "#fff", fontSize: 13, fontWeight: "700" }}>
+                                    {t("customer.chatScreen.customOfferPaidViewBooking")}
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            ) : null}
+                          </LinearGradient>
+                        </View>
                         );
                       })() : null}
                       {customOfferPaidAttachment ? (

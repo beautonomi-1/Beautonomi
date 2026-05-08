@@ -53,6 +53,8 @@ interface AuthContextType {
   isEmailVerified: boolean;
   /** Resend verification email for the current user (for signup confirmation). */
   resendVerificationEmail: () => Promise<void>;
+  /** Resend signup confirmation before the user is logged in (must match signUp emailRedirectTo). */
+  resendSignupConfirmationEmail: (email: string) => Promise<void>;
   signInWithOtp: (phone: string) => Promise<{ error: Error | null }>;
   verifyOtp: (phone: string, token: string) => Promise<{ error: Error | null }>;
   signInWithOtpEmail: (email: string) => Promise<{ error: Error | null }>;
@@ -363,6 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             phone: metadata.phone ?? null,
             role: "provider_owner",
           },
+          emailRedirectTo: getRedirectUrl(),
         },
       });
       if (error) return { error: new Error(error.message) };
@@ -426,9 +429,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.resend({
       type: "signup",
       email,
+      options: { emailRedirectTo: getRedirectUrl() },
     });
     if (error) throw error;
   }, [user?.email]);
+
+  const resendSignupConfirmationEmail = useCallback(async (emailAddr: string) => {
+    const trimmed = emailAddr.trim();
+    if (!trimmed) throw new Error("Email is required");
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: trimmed,
+      options: { emailRedirectTo: getRedirectUrl() },
+    });
+    if (error) throw error;
+  }, []);
 
   const contextValue = useMemo<AuthContextType>(
     () => ({
@@ -437,6 +452,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       isEmailVerified,
       resendVerificationEmail,
+      resendSignupConfirmationEmail,
       signInWithOtp,
       verifyOtp,
       signInWithOtpEmail,
@@ -452,6 +468,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       isEmailVerified,
       resendVerificationEmail,
+      resendSignupConfirmationEmail,
       signInWithOtp,
       verifyOtp,
       signInWithOtpEmail,

@@ -45,12 +45,35 @@ function formatPaymentMethod(method: string | null | undefined): string | null {
 }
 const RETURN_WINDOW_DAYS = 14;
 
+const RETURN_BLOCKING_STATUSES = new Set([
+  "pending",
+  "approved",
+  "item_received",
+  "refunded",
+  "escalated",
+  "resolved_by_admin",
+]);
+
 function isWithinReturnWindow(order: ProductOrder): boolean {
   const from = order.delivered_at || order.created_at;
   if (!from) return false;
   const delivered = new Date(from);
   const days = (Date.now() - delivered.getTime()) / (1000 * 60 * 60 * 24);
   return days <= RETURN_WINDOW_DAYS;
+}
+
+/** True if at least one line item can still open a new return (aligned with customer web API rules). */
+function customerHasReturnableLineItem(order: ProductOrder): boolean {
+  const items = order.items ?? [];
+  const returns = order.returns ?? [];
+  return items.some((item) => {
+    const blocked = returns.some((r) => {
+      if (!RETURN_BLOCKING_STATUSES.has(r.status)) return false;
+      const oid = r.order_item_id;
+      return oid == null || oid === item.id;
+    });
+    return !blocked;
+  });
 }
 
 function getStatusTimeline(fulfillmentType?: string) {
@@ -605,7 +628,8 @@ export default function ProductOrderDetailScreen() {
               const isReceived = ret.status === "item_received";
               const isEscalated = ret.status === "escalated";
               const isCancelled = ret.status === "cancelled";
-              
+              const isResolvedAdmin = ret.status === "resolved_by_admin";
+
               let statusColor = "#6B7280";
               let bgColor = "#F3F4F6";
               let iconName = "time-outline";
@@ -946,7 +970,9 @@ export default function ProductOrderDetailScreen() {
         )}
 
         {/* Return request action: only when delivered/ready_for_collection and within return window */}
-        {["delivered", "ready_for_collection"].includes(order.status) && isWithinReturnWindow(order) && (
+        {["delivered", "ready_for_collection"].includes(order.status) &&
+          isWithinReturnWindow(order) &&
+          customerHasReturnableLineItem(order) && (
           <View style={{ padding: contentPadding, backgroundColor: "#fff", marginTop: 12 }}>
             <TouchableOpacity
               onPress={() =>

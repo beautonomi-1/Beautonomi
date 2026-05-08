@@ -11,6 +11,7 @@ import {
   Modal,
   Pressable,
   FlatList,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -56,7 +57,7 @@ export default function SignupScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
-  const { signUpWithEmail } = useAuth();
+  const { signUpWithEmail, resendSignupConfirmationEmail } = useAuth();
   const formNarrow = isTablet || Platform.OS === "web";
   const formStyle = formNarrow ? { width: "100%" as const, maxWidth: Math.min(420, contentMaxWidth), alignSelf: "center" as const } : { width: "100%" as const };
   const scrollContentStyle = { flexGrow: 1, padding: screenPadding, paddingBottom: 48, ...(formNarrow ? { alignItems: "center" as const } : {}) };
@@ -72,7 +73,9 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [formSuccess, setFormSuccess] = useState<string | null>(null);
+  /** Email confirmation required — same intent as web LoginModal “check your email” panel. */
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const [signupSource, setSignupSource] = useState<string | null>(null);
   const [showSignupSourcePicker, setShowSignupSourcePicker] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -119,9 +122,25 @@ export default function SignupScreen() {
     return null;
   }
 
+  async function handleResendConfirmation() {
+    const addr = email.trim();
+    if (!addr) {
+      Alert.alert("Email required", "We need your email address to resend the link.");
+      return;
+    }
+    setResendLoading(true);
+    try {
+      await resendSignupConfirmationEmail(addr);
+      Alert.alert("Email sent", "Check your inbox and spam folder for the confirmation link.");
+    } catch (e: unknown) {
+      Alert.alert("Could not resend", e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setResendLoading(false);
+    }
+  }
+
   async function handleSignup() {
     setFormError(null);
-    setFormSuccess(null);
     const validationError = validate();
     if (validationError) {
       setFormError(validationError);
@@ -146,10 +165,8 @@ export default function SignupScreen() {
 
       if (result.requiresConfirmation) {
         if (signupSource) AsyncStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource).catch(() => {});
-        setFormSuccess(
-          "We've sent a confirmation link to your email. Please confirm to activate your account, then log in.",
-        );
-        setTimeout(() => router.replace("/(auth)/login" as never), 3000);
+        setPassword("");
+        setVerificationPending(true);
         return;
       }
 
@@ -196,6 +213,8 @@ export default function SignupScreen() {
           </View>
         </View>
 
+        {!verificationPending ? (
+          <>
         <Text
           style={{ textAlign: "center", fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 6 }}
           accessibilityRole="header"
@@ -206,7 +225,7 @@ export default function SignupScreen() {
           Join Beautonomi as a beauty professional
         </Text>
 
-        {/* Inline error / success feedback */}
+        {/* Inline error */}
         {formError ? (
           <View
             style={{
@@ -222,23 +241,6 @@ export default function SignupScreen() {
           >
             <Ionicons name="alert-circle" size={20} color="#DC2626" style={{ marginTop: 1, marginRight: 10 }} />
             <Text style={{ flex: 1, fontSize: 14, color: "#991B1B", lineHeight: 20 }}>{formError}</Text>
-          </View>
-        ) : null}
-        {formSuccess ? (
-          <View
-            style={{
-              backgroundColor: "#F0FDF4",
-              borderWidth: 1,
-              borderColor: "#BBF7D0",
-              borderRadius: 12,
-              padding: 14,
-              marginBottom: 16,
-              flexDirection: "row",
-              alignItems: "flex-start",
-            }}
-          >
-            <Ionicons name="checkmark-circle" size={20} color="#16A34A" style={{ marginTop: 1, marginRight: 10 }} />
-            <Text style={{ flex: 1, fontSize: 14, color: "#166534", lineHeight: 20 }}>{formSuccess}</Text>
           </View>
         ) : null}
 
@@ -556,6 +558,98 @@ export default function SignupScreen() {
             <Text style={{ fontWeight: "700", color: PRIMARY }}>Log In</Text>
           </Text>
         </TouchableOpacity>
+          </>
+        ) : (
+          <View style={{ width: "100%" }}>
+            <View style={{ alignItems: "center", marginBottom: 16 }}>
+              <View
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 28,
+                  backgroundColor: "#D1FAE5",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="mail-open-outline" size={28} color="#059669" />
+              </View>
+            </View>
+            <Text
+              style={{ textAlign: "center", fontSize: 24, fontWeight: "800", color: "#111827", marginBottom: 8 }}
+              accessibilityRole="header"
+            >
+              Check your email
+            </Text>
+            <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", marginBottom: 20 }}>
+              We sent a confirmation link to
+            </Text>
+            <Text
+              selectable
+              style={{
+                textAlign: "center",
+                fontSize: 15,
+                fontWeight: "700",
+                color: "#111827",
+                marginBottom: 20,
+                paddingHorizontal: 8,
+              }}
+            >
+              {email.trim()}
+            </Text>
+            <Text style={{ fontSize: 14, color: "#4B5563", lineHeight: 22, marginBottom: 24 }}>
+              Open the email and confirm your address. The link opens this app and signs you in so you can finish provider setup. If you do not see it, check spam.
+            </Text>
+            <TouchableOpacity
+              onPress={() => void handleResendConfirmation()}
+              disabled={resendLoading}
+              style={{
+                backgroundColor: "#FFF",
+                borderWidth: 1.5,
+                borderColor: "#A7F3D0",
+                borderRadius: 12,
+                paddingVertical: 14,
+                alignItems: "center",
+                marginBottom: 12,
+                opacity: resendLoading ? 0.7 : 1,
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Resend confirmation email"
+            >
+              {resendLoading ? (
+                <ActivityIndicator color={PRIMARY} />
+              ) : (
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#065F46" }}>Resend email</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push("/(auth)/login" as never)}
+              style={{
+                backgroundColor: PRIMARY,
+                borderRadius: 12,
+                paddingVertical: 16,
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Go to login"
+            >
+              <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>I&apos;ve verified — Log in</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setVerificationPending(false);
+                setFormError(null);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Edit email and try again"
+            >
+              <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", fontWeight: "600" }}>
+                Wrong email? Go back
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
         </View>
       </ScrollView>
 

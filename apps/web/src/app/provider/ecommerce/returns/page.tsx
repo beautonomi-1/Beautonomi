@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { fetcher } from "@/lib/http/fetcher";
@@ -7,6 +8,7 @@ import { Undo2, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 interface ReturnRequest {
   id: string;
+  order_id: string;
   product_name: string;
   reason: string;
   description: string | null;
@@ -171,6 +173,12 @@ export default function ProviderReturnsPage() {
                         >
                           {r.status.replace(/_/g, " ")}
                         </span>
+                        <Link
+                          href={`/provider/ecommerce/orders?order=${encodeURIComponent(r.order_id)}`}
+                          className="text-xs font-medium text-pink-600 hover:underline"
+                        >
+                          View order
+                        </Link>
                       </div>
                       <p className="text-sm text-gray-700 break-words">{r.product_name}</p>
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-gray-500">

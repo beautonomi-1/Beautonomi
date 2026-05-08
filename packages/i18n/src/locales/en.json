@@ -863,6 +863,11 @@
       "declineOfferFailed": "Could not decline this offer.",
       "customOfferAcceptPay": "Accept & Pay",
       "customOfferPaymentPending": "Payment in progress...",
+      "customOfferResumePayment": "Resume Payment",
+      "customOfferBadgeWithdrawn": "Withdrawn",
+      "customOfferBadgeDeclined": "Declined",
+      "customOfferBadgeExpired": "Expired",
+      "customOfferBadgeProcessing": "Processing",
       "customOfferPaid": "Booked",
       "customOfferPaidViewBooking": "View Booking",
       "payWithSavedCard": "Pay with saved card",
@@ -1391,7 +1396,10 @@
           "quantityLabel": "Quantity",
           "totalLabel": "Total",
           "payWithCard": "Pay with card",
-          "paymentRedirectHint": "You will be redirected to complete payment securely."
+          "paymentRedirectHint": "You will be redirected to complete payment securely.",
+          "codeRowLabel": "Your gift card code",
+          "codeRowLabelNumbered": "Gift card {{number}}",
+          "giftCardReadyBodyWithCodes": "Copy your code — use it at checkout or find it anytime under Payments."
         },
         "requestReturn": {
           "selectReasonTitle": "Select reason",
@@ -2153,6 +2161,7 @@
     "cash": "Cash",
     "giftCard": "Gift card",
     "giftCardCode": "Gift card code",
+    "yourGiftCredit": "Your Beautonomi gift credit",
     "giftCardApplied": "Gift card applied — {{currency}} {{amount}} available",
     "useWalletBalance": "Use wallet balance — {{amount}} available",
     "saveCardForFuture": "Save card for future payments",

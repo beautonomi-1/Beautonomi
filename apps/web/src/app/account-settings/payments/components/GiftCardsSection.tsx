@@ -21,6 +21,14 @@ interface GiftCard {
   created_at: string;
 }
 
+function unwrapGiftCardsResponse(res: unknown): GiftCard[] {
+  if (!res || typeof res !== "object") return [];
+  const r = res as Record<string, unknown>;
+  const inner = r.data && typeof r.data === "object" ? (r.data as Record<string, unknown>) : r;
+  const list = inner.gift_cards;
+  return Array.isArray(list) ? (list as GiftCard[]) : [];
+}
+
 function GiftCardsSection() {
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -34,11 +42,8 @@ function GiftCardsSection() {
   const loadGiftCards = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ gift_cards: GiftCard[] }>(
-        "/api/me/gift-cards",
-        { cache: "no-store" }
-      );
-      setGiftCards(response.gift_cards || []);
+      const response = await fetcher.get<unknown>("/api/me/gift-cards", { cache: "no-store" });
+      setGiftCards(unwrapGiftCardsResponse(response));
     } catch (error) {
       console.error("Failed to load gift cards:", error);
       // Don't show error, just show empty state

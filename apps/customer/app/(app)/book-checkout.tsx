@@ -681,6 +681,15 @@ export default function BookCheckoutScreen() {
   const [giftCardValidating, setGiftCardValidating] = useState(false);
   const [giftCardValid, setGiftCardValid] = useState<{ balance: number; currency: string } | null>(null);
   const [giftCardError, setGiftCardError] = useState<string | null>(null);
+  type OwnedGiftCardRow = {
+    id: string;
+    code: string;
+    balance: number;
+    currency: string;
+    is_active?: boolean;
+    expires_at?: string | null;
+  };
+  const [ownedGiftCards, setOwnedGiftCards] = useState<OwnedGiftCardRow[]>([]);
 
   const { cards: savedCards, loading: cardsLoading, defaultCard, refresh: refreshCards } = useSavedCards();
 
@@ -1556,6 +1565,42 @@ export default function BookCheckoutScreen() {
     };
   }, [user]);
 
+  useEffect(() => {
+    if (!user || !hold) {
+      setOwnedGiftCards([]);
+      return;
+    }
+    if (hold.gift_cards === false || !giftCardsFlagBundle) {
+      setOwnedGiftCards([]);
+      return;
+    }
+    let cancelled = false;
+    const bookingCur =
+      hold.booking_services_snapshot?.[0]?.currency?.trim() || getTenantDefaultCurrency();
+    (async () => {
+      try {
+        const res = await api.get<{ gift_cards?: OwnedGiftCardRow[] }>("/api/me/gift-cards");
+        if (cancelled || res.error || !res.data) return;
+        const list = Array.isArray(res.data.gift_cards) ? res.data.gift_cards : [];
+        const now = Date.now();
+        const usable = list.filter((c) => {
+          if (!c?.code || Number(c.balance) <= 0) return false;
+          if (c.is_active === false) return false;
+          const cur = (c.currency || bookingCur).trim();
+          if (cur !== bookingCur.trim()) return false;
+          if (c.expires_at && new Date(c.expires_at).getTime() < now) return false;
+          return true;
+        });
+        setOwnedGiftCards(usable);
+      } catch {
+        if (!cancelled) setOwnedGiftCards([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, hold, giftCardsFlagBundle]);
+
   const applyLoyaltyPoints = useCallback(async () => {
     if (!user) return;
     const raw = parseInt(loyaltyPointsInput.trim(), 10);
@@ -1620,8 +1665,8 @@ export default function BookCheckoutScreen() {
     }
   }, [user, loyaltyPointsInput, bookingSubtotalForLoyalty, minRedemptionPoints, t]);
 
-  const applyGiftCard = useCallback(async () => {
-    const code = giftCardCode.trim().toUpperCase();
+  const applyGiftCard = useCallback(async (codeOverride?: string) => {
+    const code = (codeOverride ?? giftCardCode).trim().toUpperCase();
     if (!code) return;
     setGiftCardError(null);
     setGiftCardValidating(true);
@@ -1637,6 +1682,7 @@ export default function BookCheckoutScreen() {
       }
       const data = res.data as any;
       if (data?.valid && data?.balance != null) {
+        setGiftCardCode(code);
         setGiftCardValid({ balance: Number(data.balance), currency: data.currency || getTenantDefaultCurrency() });
         haptic.success();
       } else {
@@ -3836,6 +3882,55 @@ export default function BookCheckoutScreen() {
               {/* Gift card code (when gift card selected) */}
               {paymentMethod === "giftcard" && (
                 <View style={{ marginBottom: 12 }}>
+                  {user && ownedGiftCards.length > 0 && !giftCardValid && (
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: "#374151", marginBottom: 8 }}>
+                        {t("checkout.yourGiftCredit")}
+                      </Text>
+                      {ownedGiftCards.map((gc) => (
+                        <TouchableOpacity
+                          key={gc.id}
+                          onPress={() => {
+                            setGiftCardCode(gc.code.trim().toUpperCase());
+                            setGiftCardValid(null);
+                            setGiftCardError(null);
+                            void applyGiftCard(gc.code);
+                          }}
+                          disabled={giftCardValidating}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            paddingVertical: 10,
+                            paddingHorizontal: 12,
+                            marginBottom: 8,
+                            backgroundColor: "#FFF",
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: "#E5E7EB",
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${t("checkout.apply")} ${gc.code}`}
+                        >
+                          <Text
+                            style={{
+                              flex: 1,
+                              marginRight: 10,
+                              fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+                              fontSize: 13,
+                              color: "#111827",
+                            }}
+                            selectable
+                          >
+                            {gc.code}
+                          </Text>
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>
+                            {formatCurrency(gc.balance, gc.currency)} · {t("checkout.apply")}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
                   <Text style={{ fontSize: 13, fontWeight: "500", color: "#374151", marginBottom: 8 }}>{t("checkout.giftCardCode")}</Text>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <TextInput
@@ -3862,7 +3957,7 @@ export default function BookCheckoutScreen() {
                       placeholderTextColor="#9CA3AF"
                     />
                     <TouchableOpacity
-                      onPress={applyGiftCard}
+                      onPress={() => void applyGiftCard()}
                       disabled={!giftCardCode.trim() || giftCardValidating}
                       style={{
                         backgroundColor: giftCardCode.trim() && !giftCardValidating ? Colors.primary : "#E5E7EB",

@@ -1,10 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import Link from "next/link";
 import { ChevronLeft, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  isProductReturnBlockingStatus,
+  isWithinProductReturnWindow,
+  PRODUCT_RETURN_WINDOW_DAYS,
+} from "@/lib/ecommerce/product-return-eligibility";
+
+interface OrderReturnRow {
+  id: string;
+  status: string;
+  order_item_id?: string | null;
+}
 
 interface OrderItem {
   id: string;
@@ -19,8 +30,11 @@ interface OrderData {
   id: string;
   order_number: string;
   status: string;
+  created_at: string;
+  delivered_at: string | null;
   items: OrderItem[];
   provider: { business_name: string };
+  returns?: OrderReturnRow[] | null;
 }
 
 const REASONS = [
@@ -32,6 +46,15 @@ const REASONS = [
   { value: "arrived_late", label: "Arrived late" },
   { value: "other", label: "Other" },
 ];
+
+function itemBlockedByReturns(returns: OrderReturnRow[] | null | undefined, itemId: string): boolean {
+  const list = returns ?? [];
+  return list.some(
+    (r) =>
+      isProductReturnBlockingStatus(r.status) &&
+      (r.order_item_id == null || r.order_item_id === itemId),
+  );
+}
 
 export default function RequestReturnPage() {
   const params = useParams();
@@ -52,47 +75,64 @@ export default function RequestReturnPage() {
     if (!orderId) return;
     (async () => {
       setLoading(true);
-      const res = await fetcher.get<{ data: { order: OrderData } }>(`/api/me/orders/${orderId}`, { cache: "no-store" });
-      if (res?.data?.order) {
-        setOrder(res.data.order);
-        if (res.data.order.items?.length === 1) {
-          setSelectedItem(res.data.order.items[0].id);
+      try {
+        const res = await fetcher.get<{ data?: { order: OrderData } }>(`/api/me/orders/${orderId}`, {
+          staleTimeMs: 0,
+        });
+        if (res?.data?.order) {
+          const o = res.data.order;
+          setOrder(o);
+          const available = (o.items ?? []).filter((i) => !itemBlockedByReturns(o.returns, i.id));
+          if (available.length === 1) {
+            setSelectedItem(available[0].id);
+          } else if (available.length > 0) {
+            setSelectedItem(available[0].id);
+          }
         }
+      } catch {
+        setOrder(null);
       }
       setLoading(false);
     })();
   }, [orderId]);
 
+  const availableItems = useMemo(() => {
+    if (!order?.items) return [];
+    return order.items.filter((i) => !itemBlockedByReturns(order.returns, i.id));
+  }, [order]);
+
   const handleSubmit = async () => {
-    if (!reason || !selectedItem || submitting) return;
+    if (!reason || !selectedItem || submitting || !order) return;
     setSubmitting(true);
     setError("");
 
-    const item = order?.items?.find((i) => i.id === selectedItem);
-    if (!item) {
-      setError("Please select an item");
+    const item = order.items?.find((i) => i.id === selectedItem);
+    if (!item || itemBlockedByReturns(order.returns, selectedItem)) {
+      setError("This item is not eligible for a new return.");
       setSubmitting(false);
       return;
     }
 
     try {
-      const res = await fetcher.post<{ data?: unknown; error?: string }>("/api/me/returns", {
+      const res = await fetcher.post<{ data?: unknown }>("/api/me/returns", {
         order_id: orderId,
         order_item_id: selectedItem,
         reason,
         description: description || undefined,
-        product_name: item.product_name,
         quantity: item.quantity,
-        refund_amount: Number(item.total_price),
       });
 
       if (res?.data) {
         setSuccess(true);
       } else {
-        setError(res?.error ?? "Failed to submit return request");
+        setError("Failed to submit return request");
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      if (err instanceof FetchError) {
+        setError(err.message || "Could not submit return request");
+      } else {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+      }
     }
     setSubmitting(false);
   };
@@ -135,9 +175,50 @@ export default function RequestReturnPage() {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center text-gray-400">
         <p className="mb-4">Order not found</p>
-        <button onClick={() => router.back()} className="text-pink-600 hover:underline">
+        <button type="button" onClick={() => router.back()} className="text-pink-600 hover:underline">
           Go back
         </button>
+      </div>
+    );
+  }
+
+  if (!["delivered", "ready_for_collection"].includes(order.status)) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <AlertCircle className="mx-auto mb-4 h-12 w-12 text-amber-500" />
+        <p className="mb-4 text-gray-700">Returns can only be requested after your order is delivered or ready for collection.</p>
+        <Link href={`/account-settings/orders/${orderId}`} className="text-pink-600 hover:underline">
+          Back to order
+        </Link>
+      </div>
+    );
+  }
+
+  if (!isWithinProductReturnWindow(order.delivered_at, order.created_at)) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <AlertCircle className="mx-auto mb-4 h-12 w-12 text-amber-500" />
+        <p className="mb-4 text-gray-700">
+          The {PRODUCT_RETURN_WINDOW_DAYS}-day return window from delivery has passed.
+        </p>
+        <Link href={`/account-settings/orders/${orderId}`} className="text-pink-600 hover:underline">
+          Back to order
+        </Link>
+      </div>
+    );
+  }
+
+  if (availableItems.length === 0) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <AlertCircle className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+        <p className="mb-2 font-medium text-gray-900">No items left to return</p>
+        <p className="mb-4 text-sm text-gray-600">
+          Every item in this order already has an active or completed return, or the full order is in a return.
+        </p>
+        <Link href={`/account-settings/orders/${orderId}`} className="text-pink-600 hover:underline">
+          Back to order
+        </Link>
       </div>
     );
   }
@@ -160,37 +241,46 @@ export default function RequestReturnPage() {
 
         <div className="space-y-6">
           {/* Select item */}
-          {order.items?.length > 1 && (
+          {order.items && order.items.length > 1 && (
             <div className="rounded-xl border bg-white p-6">
               <h3 className="mb-4 font-semibold text-gray-900">Which item are you returning?</h3>
               <div className="space-y-3">
-                {order.items.map((item) => (
-                  <label
-                    key={item.id}
-                    className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
-                      selectedItem === item.id
-                        ? "border-pink-500 bg-pink-50"
-                        : "border-gray-200 hover:bg-gray-50"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="item"
-                      checked={selectedItem === item.id}
-                      onChange={() => setSelectedItem(item.id)}
-                      className="accent-pink-600"
-                    />
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{item.product_name}</p>
-                      <p className="text-xs text-gray-500">
-                        {item.quantity} x R{Number(item.unit_price).toFixed(2)}
-                      </p>
-                    </div>
-                    <span className="font-semibold text-gray-900">
-                      R{Number(item.total_price).toFixed(2)}
-                    </span>
-                  </label>
-                ))}
+                {order.items.map((item) => {
+                  const blocked = itemBlockedByReturns(order.returns, item.id);
+                  return (
+                    <label
+                      key={item.id}
+                      className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${
+                        blocked
+                          ? "cursor-not-allowed border-gray-100 bg-gray-50 opacity-60"
+                          : selectedItem === item.id
+                            ? "cursor-pointer border-pink-500 bg-pink-50"
+                            : "cursor-pointer border-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="item"
+                        disabled={blocked}
+                        checked={selectedItem === item.id}
+                        onChange={() => !blocked && setSelectedItem(item.id)}
+                        className="accent-pink-600"
+                      />
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{item.product_name}</p>
+                        <p className="text-xs text-gray-500">
+                          {item.quantity} × R{Number(item.unit_price).toFixed(2)}
+                          {blocked && (
+                            <span className="ml-2 font-medium text-amber-700">Already in a return</span>
+                          )}
+                        </p>
+                      </div>
+                      <span className="font-semibold text-gray-900">
+                        R{Number(item.total_price).toFixed(2)}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -203,9 +293,7 @@ export default function RequestReturnPage() {
                 <label
                   key={r.value}
                   className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
-                    reason === r.value
-                      ? "border-pink-500 bg-pink-50"
-                      : "border-gray-200 hover:bg-gray-50"
+                    reason === r.value ? "border-pink-500 bg-pink-50" : "border-gray-200 hover:bg-gray-50"
                   }`}
                 >
                   <input
@@ -240,7 +328,7 @@ export default function RequestReturnPage() {
               <div className="text-sm text-amber-800">
                 <p className="font-medium mb-1">Return Policy</p>
                 <ul className="space-y-1 text-amber-700">
-                  <li>Returns must be requested within 14 days of delivery</li>
+                  <li>Returns must be requested within {PRODUCT_RETURN_WINDOW_DAYS} days of delivery</li>
                   <li>Items must be unused and in their original packaging</li>
                   <li>The provider will review your request and respond</li>
                   <li>If rejected, you can escalate to Beautonomi support</li>
@@ -255,15 +343,12 @@ export default function RequestReturnPage() {
 
           {/* Submit */}
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={!reason || !selectedItem || submitting}
             className="w-full rounded-xl bg-pink-600 py-4 font-bold text-white transition-colors hover:bg-pink-700 disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {submitting ? (
-              "Submitting…"
-            ) : (
-              "Submit Return Request"
-            )}
+            {submitting ? "Submitting…" : "Submit Return Request"}
           </button>
         </div>
       </div>

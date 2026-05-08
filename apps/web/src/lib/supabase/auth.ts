@@ -14,6 +14,34 @@ export interface SignUpData {
   fullName?: string;
   phone?: string;
   role?: UserRole;
+  /** Supabase sends this as `redirect_to` on confirmation links — must be allowed in Supabase Auth URL config. */
+  emailRedirectTo?: string;
+}
+
+/**
+ * Confirmation links from signup/resend should hit `/auth/callback` so the session is established
+ * and the user lands on the right screen (e.g. provider onboarding vs customer onboarding).
+ */
+export function buildEmailConfirmationRedirectUrl(params: {
+  redirectContext?: "provider" | "customer";
+  redirectUrl?: string | null;
+}): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const origin = window.location.origin;
+  let next = "/onboarding";
+  const raw = params.redirectUrl?.trim();
+  if (raw && raw.startsWith("/") && !raw.startsWith("//")) {
+    try {
+      const u = new URL(raw, origin);
+      const pathWithQuery = `${u.pathname}${u.search}`;
+      next = pathWithQuery || next;
+    } catch {
+      next = "/onboarding";
+    }
+  } else if (params.redirectContext === "provider") {
+    next = "/provider/onboarding";
+  }
+  return `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
 }
 
 export interface SignInData {
@@ -36,6 +64,7 @@ export async function signUp(data: SignUpData) {
         phone: data.phone,
         role: data.role || 'customer',
       },
+      ...(data.emailRedirectTo ? { emailRedirectTo: data.emailRedirectTo } : {}),
     },
   });
 
@@ -163,11 +192,12 @@ export async function getCurrentUser() {
  * Resend verification email for an unverified user
  * This can be called even when the user is not logged in
  */
-export async function resendVerificationEmail(email: string) {
+export async function resendVerificationEmail(email: string, emailRedirectTo?: string) {
   const supabase = getSupabaseClient();
   const { error } = await supabase.auth.resend({
     type: 'signup',
     email: email,
+    ...(emailRedirectTo ? { options: { emailRedirectTo } } : {}),
   });
 
   if (error) {
