@@ -3,8 +3,7 @@ import { differenceInMinutes } from "date-fns";
 import { formatDateKeyInTimeZone } from "@beautonomi/utils";
 import { parseApiDateTime, addCalendarDaysToDateKey } from "@/components/calendar/calendar-layout";
 import { paymentNeedsAttention } from "@/lib/calendar-payment-label";
-import { formatCurrency } from "@/lib/format";
-import { formatTimeInZone } from "@/lib/format";
+import { formatCurrency, formatTimeInZone } from "@/lib/format";
 import type { CalendarBooking } from "@/components/calendar/calendar-booking-types";
 
 interface UseProviderCalendarSummaryOptions {

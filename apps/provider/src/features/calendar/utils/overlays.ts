@@ -122,7 +122,6 @@ export function getCalendarBlocksForDay(opts: CalendarBlocksForDayOptions): Cale
     expandedApiTimeBlocks,
   } = opts;
 
-  const { wallClockInTimeZone } = require("@beautonomi/utils");
   const wc = wallClockInTimeZone(day, providerTimezone ?? "UTC");
   const pad = (n: number) => n.toString().padStart(2, "0");
   const dayStr = `${String(wc.year).padStart(4, "0")}-${pad(wc.month)}-${pad(wc.day)}`;

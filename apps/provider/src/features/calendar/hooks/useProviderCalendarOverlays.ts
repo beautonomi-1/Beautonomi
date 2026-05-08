@@ -1,7 +1,7 @@
 import { useMemo, useCallback } from "react";
 import { useApi } from "@/hooks/useApi";
 import { expandTimeBlocksForCalendarRange, resolveTimeBlockRecordId } from "@/lib/expand-time-blocks";
-import { mergeOperatingHours, mergeStaffWorkingHours } from "@beautonomi/utils";
+import { mergeOperatingHours } from "@beautonomi/utils";
 import { normalizeAvailabilityBlocksToSegments, availabilitySegmentToTimeBlock } from "@/features/calendar/utils/overlays";
 import type { AvailabilityBlockApi, CalendarOverlayTimeBlockLike } from "@/features/calendar/utils/overlays";
 

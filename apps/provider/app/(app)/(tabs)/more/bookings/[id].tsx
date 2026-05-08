@@ -732,6 +732,7 @@ export default function BookingDetailScreen() {
     data?.address?.latitude,
     data?.address?.longitude,
     providerProfile?.id,
+    data,
   ]);
 
   const rescheduleAvailableSlotsUrl = useMemo(() => {
@@ -872,9 +873,6 @@ export default function BookingDetailScreen() {
   const [qrPasteJson, setQrPasteJson] = useState("");
   const [isVerifyingQrArrival, setIsVerifyingQrArrival] = useState(false);
   const [showArrivalQrScanner, setShowArrivalQrScanner] = useState(false);
-
-  // At-salon check-in (Client arrived)
-  const [isCheckingIn, setIsCheckingIn] = useState(false);
 
   // Consent document upload
   const [uploadingConsentFormId, setUploadingConsentFormId] = useState<string | null>(null);
@@ -1255,16 +1253,6 @@ export default function BookingDetailScreen() {
 
   const isActive = ["pending", "booked", "confirmed", "waiting", "checked_in"].includes(b.status);
   const isStarted = ["started", "in_progress"].includes(b.status);
-  const clientArrivedAtSalon = isAtSalon && b.current_stage === "client_arrived";
-  const canCheckInAtSalon =
-    canEditAppointments &&
-    isAtSalon &&
-    (b.status === "confirmed" ||
-      b.status === "booked" ||
-      b.status === "pending" ||
-      b.db_status === "checked_in") &&
-    b.current_stage !== "client_arrived" &&
-    !isStarted;
   const totalAmount = b.total_amount ?? 0;
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
@@ -2036,41 +2024,6 @@ export default function BookingDetailScreen() {
       return;
     }
     await submitVerifyQrBody(body);
-  };
-
-  const handleClientArrived = async () => {
-    if (!id) return;
-    if (!canEditAppointments) {
-      Alert.alert("Permission", "You do not have permission to update this booking.");
-      return;
-    }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setIsCheckingIn(true);
-    try {
-      const version = (b as BookingDetail & { version?: number }).version;
-      const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
-        status: "checked_in",
-        current_stage: "client_arrived",
-        send_arrival_notification: true,
-        ...(version !== undefined && { version }),
-      });
-      if (err) {
-        if (isConflictError(err)) {
-          Alert.alert(
-            "Conflict",
-            "This booking was modified by another user. Please refresh and try again.",
-            [{ text: "Cancel", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
-          );
-        } else {
-          Alert.alert("Error", err);
-        }
-        return;
-      }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await refresh();
-    } finally {
-      setIsCheckingIn(false);
-    }
   };
 
   const openMapsUrl = () => {

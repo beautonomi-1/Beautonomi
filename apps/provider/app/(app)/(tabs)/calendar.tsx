@@ -89,7 +89,6 @@ import {
 } from "@/lib/format";
 import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { ProviderCalendarScreen } from "@/features/calendar/screens/ProviderCalendarScreen";
 import type { CalendarV2ChromeContext, CalendarV2Segment } from "@/features/calendar/types/calendar";
 import { WalkInPanel } from "@/features/calendar/screens/WalkInPanel";
@@ -1185,10 +1184,10 @@ export function CalendarScreenBody({
   }, []);
 
   // TZ-aware "today" key — matches the provider's wall-clock date, not the device's.
-  const providerTodayKey = useMemo(
-    () => formatDateKeyInTimeZone(new Date(), providerTz),
-    [providerTz, selectedDate, providerTodayTick],
-  );
+  const providerTodayKey = useMemo(() => {
+    void providerTodayTick;
+    return formatDateKeyInTimeZone(new Date(), providerTz);
+  }, [providerTz, providerTodayTick]);
   const isProviderToday = useCallback(
     (d: Date) => formatDateKeyInTimeZone(d, providerTz) === providerTodayKey,
     [providerTz, providerTodayKey],
@@ -1491,7 +1490,7 @@ export function CalendarScreenBody({
     );
     scrollRef.current?.scrollTo({ y: offset, animated: false });
     hasScrolledToNow.current = true;
-  }, [preferences.scrollToNow, startHour, SLOT_HEIGHT, provider?.timezone]);
+  }, [preferences.scrollToNow, startHour, SLOT_HEIGHT, GRID_TOP_PADDING, provider?.timezone]);
 
   useEffect(() => {
     hasScrolledToNow.current = false;
@@ -2587,6 +2586,7 @@ export function CalendarScreenBody({
     openWalkInBookingFromCalendar,
     openGroupBookingFromCalendar,
     openTimeBlockFormFromCalendar,
+    openRecurringBookingFromCalendar,
     openCalendarActionsMenu,
     router,
     navigateDate,

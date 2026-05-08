@@ -14,8 +14,8 @@ interface Props {
 }
 
 export function RescheduleSheet({ visible, booking, providerTimezone, onClose, onReschedule }: Props) {
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
+  const [date] = useState("");
+  const [time] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleConfirm = useCallback(async () => {
@@ -84,7 +84,7 @@ export function RescheduleSheet({ visible, booking, providerTimezone, onClose, o
         </View>
 
         <Text style={{ fontSize: 12, color: Colors.gray[400], marginBottom: 16 }}>
-          Availability is checked before rescheduling. You'll be notified of conflicts.
+          Availability is checked before rescheduling. You&apos;ll be notified of conflicts.
         </Text>
 
         <TouchableOpacity

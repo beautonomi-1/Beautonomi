@@ -506,7 +506,6 @@ export default function DashboardScreen() {
       if (refreshTimer) clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused, provider?.id]);
 
   const m = metrics;

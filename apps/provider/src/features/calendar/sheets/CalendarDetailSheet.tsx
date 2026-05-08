@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -317,7 +317,6 @@ export function CalendarDetailSheet({
                   icon="call-outline"
                   label="Call"
                   onPress={() => {
-                    const { Linking } = require("react-native");
                     Linking.openURL(`tel:${booking.customers!.phone}`);
                   }}
                 />

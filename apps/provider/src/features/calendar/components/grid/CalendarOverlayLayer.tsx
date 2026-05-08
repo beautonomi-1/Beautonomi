@@ -4,9 +4,8 @@
  * until the grid is fully extracted from calendar.tsx in a future PR.
  */
 
-import type { CalendarOverlayTimeBlockLike } from "@/features/calendar/utils/overlays";
+import type { AvailabilitySegment, CalendarOverlayTimeBlockLike } from "@/features/calendar/utils/overlays";
 import { availabilitySegmentToTimeBlock } from "@/features/calendar/utils/overlays";
-import type { AvailabilitySegment } from "@/features/calendar/utils/overlays";
 
 export interface CalendarOverlayLayerOptions {
   dayKey: string;

@@ -1,5 +1,4 @@
 import { View, Text } from "react-native";
-import { Colors } from "@/constants/colors";
 
 export function PackagePill() {
   return (

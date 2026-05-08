@@ -20,7 +20,7 @@ interface Props {
 }
 
 export function HousecallActionFlow({ visible, booking, onClose, onComplete }: Props) {
-  const { startJourney, arrive, loading } = useHousecallWorkflow();
+  const { arrive, loading } = useHousecallWorkflow();
 
   if (!booking) return null;
 

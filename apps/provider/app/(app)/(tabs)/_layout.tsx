@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { View, Platform, AppState, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { StackActions } from "@react-navigation/native";
+import { StackActions, type NavigationProp, type ParamListBase } from "@react-navigation/native";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
@@ -41,8 +41,7 @@ function makeHubTabListener(
   hubHref: `/(app)/(tabs)/${HubTab}`,
   exoRouter: Router,
 ) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return ({ navigation }: { navigation: any }) => ({
+  return ({ navigation }: { navigation: NavigationProp<ParamListBase> }) => ({
     tabPress: (e: { preventDefault: () => void }) => {
       const state = navigation.getState() as { routes: { name: string; state?: { index?: number; key?: string } }[]; index: number };
       const tabRoute = state.routes.find((r) => r.name === tabName) as
