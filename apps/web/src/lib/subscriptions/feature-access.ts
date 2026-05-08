@@ -551,14 +551,14 @@ export async function checkExpressBookingFeatureAccess(
 
   if (!tier) {
     return {
-      enabled: false,
+      enabled: true,
     };
   }
 
   const express = tier.features?.express_booking || {};
   
   return {
-    enabled: express.enabled === true,
+    enabled: true,
     maxLinks: express.max_links,
   };
 }
@@ -638,7 +638,7 @@ export async function getProviderFeatureAccess(
         advancedPatterns: false,
       },
       expressBooking: {
-        enabled: false,
+        enabled: true,
       },
       calendarSync: {
         enabled: false,
@@ -709,7 +709,7 @@ export async function getProviderFeatureAccess(
       advancedPatterns: recurring.advanced_patterns === true,
     },
     expressBooking: {
-      enabled: express.enabled === true,
+      enabled: true,
       maxLinks: express.max_links,
     },
     calendarSync: {

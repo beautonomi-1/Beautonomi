@@ -14,6 +14,7 @@ import {
 } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 import {
+  trackMarketAutoSwitch,
   trackMarketAutoSwitchSuppressed,
   trackMarketManualSwitch,
   trackMarketSwitchDeclined,
@@ -235,7 +236,16 @@ export default function MarketAvailabilityGate() {
           !dismissZaLong &&
           !sessionDismiss.current.za
         ) {
-          setPanel("za_suggest");
+          // Auto-switch silently to the recommended host
+          trackMarketAutoSwitch({
+            fromHost: activeHost,
+            toHost: switchHost,
+            source: routing?.marketSource ?? "unknown",
+            confidence: routing?.confidence ?? "unknown",
+            countryCode: (availability?.countryCode ?? "").toUpperCase(),
+          });
+          await persistPreferredHomeTenant(routing.recommendedTenantId ?? routing.defaultMarketTenantId);
+          await setRuntimeMarketHost(switchHost);
           return;
         }
 
@@ -245,7 +255,17 @@ export default function MarketAvailabilityGate() {
           !manualOverrideActive &&
           !sessionDismiss.current.unsupportedG
         ) {
-          setPanel("unsupported_global");
+          // Auto switch to default market
+          await setManualOverride(defaultMarketHost);
+          trackMarketAutoSwitch({
+            fromHost: activeHost,
+            toHost: defaultMarketHost,
+            source: routing?.marketSource ?? "unknown",
+            confidence: routing?.confidence ?? "unknown",
+            countryCode: (availability?.countryCode ?? "").toUpperCase(),
+          });
+          await persistPreferredHomeTenant(routing?.defaultMarketTenantId);
+          await setRuntimeMarketHost(defaultMarketHost);
           return;
         }
 
@@ -255,7 +275,8 @@ export default function MarketAvailabilityGate() {
           nextStatus === "unsupported" &&
           !sessionDismiss.current.regional
         ) {
-          setPanel("regional_foreign");
+          // Let them be or redirect to global? Just silently continue
+          return;
         }
       } catch {
         // best-effort only

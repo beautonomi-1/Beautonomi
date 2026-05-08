@@ -435,6 +435,23 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
 
   const auth = await resolvePublicAuthPolicyForTenant(tenantId);
 
+  const flagsWithCalV2: Record<string, ResolvedFlag> = {
+    ...flags,
+    // V2 is the new standard. Default to true. Can still be disabled per-tenant if an emergency rollback is needed.
+    ...(!flags.calendar_v2
+      ? {
+          calendar_v2: {
+            enabled: true,
+            rollout_percent: 100,
+            platforms_allowed: ["provider"],
+            roles_allowed: null,
+            min_app_version: null,
+            environments_allowed: null,
+          },
+        }
+      : {}),
+  };
+
   return {
     meta: {
       env: environment,
@@ -455,7 +472,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     third_party,
     branding,
     auth,
-    flags,
+    flags: flagsWithCalV2,
     modules: {
       on_demand,
       ai,

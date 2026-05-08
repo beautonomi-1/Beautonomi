@@ -15,6 +15,13 @@ export interface BookingService {
   guest_name?: string | null;
 }
 
+export interface BookingProduct {
+  id: string;
+  quantity: number;
+  total_price: number;
+  products?: { name: string } | null;
+}
+
 export interface Booking {
   id: string;
   booking_number: string;
@@ -32,6 +39,7 @@ export interface Booking {
   created_at?: string;
   notes?: string;
   services: BookingService[];
+  booking_products?: BookingProduct[] | null;
   customers: { full_name: string; phone: string } | null;
   locations: { id: string; name: string } | null;
   /** Salon branch; null/missing for at-home rows from some API shapes. */
@@ -41,6 +49,11 @@ export interface Booking {
   is_group_booking?: boolean;
   group_booking_id?: string | null;
   group_booking_ref?: string | null;
+  package_id?: string | null;
+  service_packages?: { id: string; name: string } | null;
+  recurring_series_id?: string | null;
+  recurring_appointments?: { recurrence_rule?: string } | null;
+  booking_source?: string;
   /** At-home lifecycle / verification (when returned by provider booking APIs). */
   current_stage?: string | null;
   arrival_otp_verified?: boolean;

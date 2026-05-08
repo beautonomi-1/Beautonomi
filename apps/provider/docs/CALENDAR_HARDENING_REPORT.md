@@ -2,6 +2,8 @@
 
 This document summarizes the calendar-focused audit pass and implementation aligned with `CALENDAR_MANUAL_VALIDATION.md` and automated tests.
 
+For a full **API, database, component, and flow** map of the provider app calendar (mobile tab), see [PROVIDER_CALENDAR_AUDIT_OUTCOME.md](./PROVIDER_CALENDAR_AUDIT_OUTCOME.md).
+
 ---
 
 ## A. Calendar flow map

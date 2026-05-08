@@ -147,6 +147,8 @@ export function AnnouncementBanner() {
           onPress={async () => {
             try {
               await AsyncStorage.setItem(`announcement_banner_dismissed_${row.id}`, "1");
+              // Mark as read on the backend so it doesn't reappear on reinstall
+              await api.post(`/api/me/notifications/${row.id}/read`, {});
             } catch {
               /* ignore */
             }
