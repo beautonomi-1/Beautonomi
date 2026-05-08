@@ -48,6 +48,7 @@ const SHADOW_LEDGER_ALLOWLIST = [
   "tax",
   "travel_fee",
   "wallet_payment",
+  "wallet_topup",
   "gift_card_payment",
   "loyalty_redemption",
   "promotion_discount",

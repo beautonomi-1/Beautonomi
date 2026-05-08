@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     let recent_transactions: { id: string; type: string; points: number; description: string; created_at: string }[] = [];
 
     // Try ledger path first (loyalty_points_ledger + config)
+    let ledgerConfigSuccess = false;
     try {
       const { data: config } = await supabase
         .from("loyalty_point_config")
@@ -44,13 +45,34 @@ export async function GET(request: NextRequest) {
         .limit(1)
         .maybeSingle();
 
+      if (config) ledgerConfigSuccess = true;
+
       const { data: balanceData } = await supabase
         .rpc("get_customer_available_points", { customer_uuid: user.id });
 
       available_balance = Number(balanceData) || 0;
-      redemption_rate = Number(config?.redemption_rate) || 10;
-      const parsedMinRedemption = Number(config?.min_redemption_points);
-      min_redemption_points = Number.isFinite(parsedMinRedemption) ? parsedMinRedemption : 50;
+
+      if (config) {
+        redemption_rate = Number(config.redemption_rate) || 10;
+        const parsedMinRedemption = Number(config.min_redemption_points);
+        min_redemption_points = Number.isFinite(parsedMinRedemption) ? parsedMinRedemption : 50;
+      } else {
+        // Fallback to legacy config
+        const { data: legacyRule } = await supabase
+          .from("loyalty_rules")
+          .select("redemption_rate, currency, min_redemption_points")
+          .eq("is_active", true)
+          .order("effective_from", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+          
+        if (legacyRule) {
+          redemption_rate = Number(legacyRule.redemption_rate) || 100;
+          currency = legacyRule.currency || lastResortCurrency;
+          const parsedMin = Number(legacyRule.min_redemption_points);
+          min_redemption_points = Number.isFinite(parsedMin) ? parsedMin : 50;
+        }
+      }
 
       const { data: balanceSummary } = await supabase
         .from("loyalty_points_balance")

@@ -6,8 +6,6 @@ import {
   Alert,
   ScrollView,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   useWindowDimensions,
   Switch,
@@ -1846,11 +1844,6 @@ export default function NewBookingScreen() {
   /* ---------------------------------------------------------------- */
 
   return (
-    <KeyboardAvoidingView
-      style={twStyle("flex-1 bg-white")}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
-    >
       <ScreenContainer>
         <ScreenHeader title={isWalkIn ? "Walk-in Booking" : "New Booking"} showBack />
 
@@ -3640,7 +3633,6 @@ export default function NewBookingScreen() {
           }
         />
       </ScreenContainer>
-    </KeyboardAvoidingView>
   );
 }
 

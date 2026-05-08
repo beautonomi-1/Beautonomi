@@ -11,10 +11,12 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
 import { apiBookingReviewPath } from "@/lib/customer-api-paths";
 import { useImagePicker } from "@/hooks/useImagePicker";
@@ -36,6 +38,7 @@ export default function ReviewWriteScreen() {
   const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const writeReviewStackTitle = t("customer.mobile.stackTitles.writeReview");
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const insets = useSafeAreaInsets();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const { bookingId, reviewId, rating: initRating, comment: initComment, provider_slug: providerSlugParam } =
     useLocalSearchParams<{
@@ -57,6 +60,7 @@ export default function ReviewWriteScreen() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [loadingContext, setLoadingContext] = useState(false);
+  const [androidKb, setAndroidKb] = useState(0);
   /** Set when `/api/me/reviews?booking_id=` returns a review (navigate with bookingId only). */
   const [hasExistingReview, setHasExistingReview] = useState(false);
   const { pickFromLibrary } = useImagePicker();
@@ -70,6 +74,19 @@ export default function ReviewWriteScreen() {
     }
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [services, rw]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const s = Keyboard.addListener("keyboardDidShow", (e) => {
+      const h = e.endCoordinates?.height;
+      setAndroidKb(typeof h === "number" && Number.isFinite(h) ? h : 0);
+    });
+    const h = Keyboard.addListener("keyboardDidHide", () => setAndroidKb(0));
+    return () => {
+      s.remove();
+      h.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (!bookingId) return;
@@ -272,8 +289,21 @@ export default function ReviewWriteScreen() {
   return (
     <>
       <Stack.Screen options={{ title: isEdit ? rw("editReviewTitle") : writeReviewStackTitle }} />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
-      <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 56 : 0}
+      >
+      <ScrollView
+        style={{ flex: 1, backgroundColor: Colors.white }}
+        contentContainerStyle={{
+          padding: contentPadding,
+          paddingBottom: Math.max(insets.bottom, 12) + 120 + (Platform.OS === "android" ? androidKb : 0),
+          ...constraint,
+        }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+      >
         <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{rw("ratingLabel")}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 8 }}>
           {[1, 2, 3, 4, 5].map((r) => (
@@ -301,6 +331,7 @@ export default function ReviewWriteScreen() {
           onChangeText={setComment}
           multiline
           numberOfLines={4}
+          textAlignVertical="top"
         />
         <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{rw("photosSectionLabel")}</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>

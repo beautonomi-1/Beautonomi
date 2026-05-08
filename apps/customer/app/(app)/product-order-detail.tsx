@@ -602,16 +602,19 @@ export default function ProductOrderDetailScreen() {
               const isRefunded = ret.status === "refunded";
               const isRejected = ret.status === "rejected";
               const isPending = ret.status === "pending";
+              const isReceived = ret.status === "item_received";
+              const isEscalated = ret.status === "escalated";
+              const isCancelled = ret.status === "cancelled";
               
               let statusColor = "#6B7280";
               let bgColor = "#F3F4F6";
               let iconName = "time-outline";
               
-              if (isApproved || isRefunded) {
+              if (isApproved || isRefunded || isReceived) {
                 statusColor = "#059669";
                 bgColor = "#D1FAE5";
                 iconName = "checkmark-circle-outline";
-              } else if (isRejected) {
+              } else if (isRejected || isEscalated) {
                 statusColor = "#DC2626";
                 bgColor = "#FEE2E2";
                 iconName = "close-circle-outline";
@@ -620,10 +623,18 @@ export default function ProductOrderDetailScreen() {
                 bgColor = "#FEF3C7";
               }
 
+              let title = "Return Request";
+              if (isRefunded) title = "Refund Processed";
+              else if (isApproved) title = "Return Approved";
+              else if (isReceived) title = "Item Received";
+              else if (isRejected) title = "Return Rejected";
+              else if (isEscalated) title = "Return Escalated";
+              else if (isCancelled) title = "Return Cancelled";
+
               return (
                 <View key={ret.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>Return Request</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>{title}</Text>
                     <View style={{ backgroundColor: bgColor, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, flexDirection: "row", alignItems: "center" }}>
                       <Ionicons name={iconName as any} size={14} color={statusColor} style={{ marginRight: 4 }} />
                       <Text style={{ fontSize: 12, fontWeight: "600", color: statusColor, textTransform: "capitalize" }}>

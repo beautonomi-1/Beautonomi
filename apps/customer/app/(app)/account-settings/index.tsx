@@ -305,7 +305,10 @@ export default function AccountSettingsScreen() {
           onPress={() =>
             router.push({
               pathname: "/(app)/in-app-browser",
-              params: { url: encodeURIComponent(`${APP_URL}/provider/onboarding`), title: t("customer.accountSettings.becomeProviderBrowserTitle") },
+              params: {
+                url: encodeURIComponent(`${APP_URL}/become-a-partner`),
+                title: t("customer.accountSettings.becomePartnerBrowserTitle"),
+              },
             })
           }
           style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], paddingHorizontal: 16, paddingVertical: 16, flexDirection: "row", alignItems: "center", marginBottom: 16 }}

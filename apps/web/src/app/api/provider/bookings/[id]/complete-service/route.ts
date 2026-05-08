@@ -189,33 +189,16 @@ export async function POST(
       if (loyaltyBaseAmount > 0 && customerId) {
         try {
           const supabaseAdmin = await getSupabaseAdmin();
-          const { calculateLoyaltyPoints } = await import("@/lib/loyalty/calculate-points");
-          const { data: existing } = await supabaseAdmin
-            .from("loyalty_point_transactions")
-            .select("id")
-            .eq("reference_id", id)
-            .eq("reference_type", "booking")
-            .eq("transaction_type", "earned")
-            .maybeSingle();
-          if (!existing) {
-            const currency = (updatedBooking as any).currency || lastResortCurrency;
-            const pointsEarned = await calculateLoyaltyPoints(loyaltyBaseAmount, supabaseAdmin, currency);
-            if (pointsEarned > 0) {
-              const { error: pointsInsertError } = await supabaseAdmin.from("loyalty_point_transactions").insert({
-                user_id: customerId,
-                transaction_type: "earned",
-                points: pointsEarned,
-                description: `Points earned for completed booking ${(updatedBooking as any).booking_number || id}`,
-                reference_id: id,
-                reference_type: "booking",
-                expires_at: null,
-              });
-              if (pointsInsertError) {
-                throw pointsInsertError;
-              }
-              await supabaseAdmin.from("bookings").update({ loyalty_points_earned: pointsEarned }).eq("id", id);
-            }
-          }
+          const { recordLoyaltyEarned } = await import("@/lib/loyalty/record-earned");
+          const currency = (updatedBooking as any).currency || lastResortCurrency;
+          
+          await recordLoyaltyEarned(supabaseAdmin, {
+            customerId,
+            baseAmount: loyaltyBaseAmount,
+            currency,
+            bookingId: id,
+            bookingNumber: (updatedBooking as any).booking_number,
+          });
         } catch (err) {
           console.error('Failed to award customer loyalty points on completion:', err);
         }

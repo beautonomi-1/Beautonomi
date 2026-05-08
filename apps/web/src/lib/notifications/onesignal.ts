@@ -1006,7 +1006,7 @@ export async function sendTemplateNotification(
       .in("user_id", userIds);
     if (options?.appType === "provider") {
       query = query.eq("app_type", "provider");
-    } else {
+    } else if (options?.appType === "customer") {
       query = query.or("app_type.eq.customer,app_type.is.null");
     }
     const { data: devices } = await query;

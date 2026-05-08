@@ -50,7 +50,7 @@ export async function refundRedeemedLoyaltyPoints(
     adminClient
       .from("loyalty_point_transactions")
       .select("id, transaction_type, points")
-      .eq("source_id", bookingId)
+      .eq("reference_id", bookingId)
       .eq("user_id", customerId)
       .in("transaction_type", ["adjusted", "earned"])
       .gt("points", 0)
@@ -85,8 +85,8 @@ export async function refundRedeemedLoyaltyPoints(
     user_id: customerId,
     points: pointsRedeemed,
     transaction_type: "adjusted",
-    source: "booking_refund",
-    source_id: bookingId,
+    reference_type: "booking_refund",
+    reference_id: bookingId,
     description: `Refund of ${pointsRedeemed} loyalty points (${reason})`,
   });
 

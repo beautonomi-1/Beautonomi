@@ -772,11 +772,17 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* ── Become a provider ── */}
+      {/* ── Become a partner (marketing landing; same as web /become-a-partner) ── */}
       <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
         <TouchableOpacity
           onPress={() =>
-            router.push({ pathname: "/(app)/in-app-browser", params: { url: encodeURIComponent(`${APP_URL}/provider/onboarding`), title: "Become a provider" } })
+            router.push({
+              pathname: "/(app)/in-app-browser",
+              params: {
+                url: encodeURIComponent(`${APP_URL}/become-a-partner`),
+                title: t("customer.accountSettings.becomePartnerBrowserTitle"),
+              },
+            })
           }
           activeOpacity={0.8}
           style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], padding: 16, flexDirection: "row", alignItems: "center" }}

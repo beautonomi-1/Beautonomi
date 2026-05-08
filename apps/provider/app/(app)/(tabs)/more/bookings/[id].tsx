@@ -3870,7 +3870,7 @@ export default function BookingDetailScreen() {
           setRateClientComment("");
         }}
         title="Rate this client"
-        snapHeight="half"
+        snapHeight="full"
       >
         <View style={twStyle("p-4")}>
           <Text style={twStyle("text-sm text-gray-600 mb-3")}>
@@ -3902,6 +3902,7 @@ export default function BookingDetailScreen() {
             onChangeText={setRateClientComment}
             multiline
             numberOfLines={2}
+            textAlignVertical="top"
             style={twStyle("border border-gray-200 rounded-lg p-3 text-gray-900 mb-4 min-h-[80px]")}
           />
           <ActionButton

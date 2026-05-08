@@ -1095,10 +1095,474 @@ export default function BookingsListScreen() {
     [currency, pendingIds, nextUpcomingId, openBooking, handleApplyStatus, router],
   );
 
+  /**
+   * Single scroll surface: filters + day strip live in SectionList header so the
+   * appointment list is not squeezed under fixed chrome on small iPhones.
+   */
+  const bookingsListHeader = useMemo(
+    () => (
+      <>
+        <AnnouncementBanner />
+
+        <AnimatedRe.View
+          style={[
+            twStyle("mx-4 mt-2 flex-row items-center rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5"),
+            flashAnimStyle,
+          ]}
+          pointerEvents={newBookingFlash ? "auto" : "none"}
+        >
+          <Ionicons name="calendar-outline" size={18} color="#4f46e5" style={{ marginRight: 8 }} />
+          <Text style={twStyle("flex-1 text-sm font-semibold text-indigo-900")}>New booking received</Text>
+          <TouchableOpacity
+            onPress={() => {
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setNewBookingFlash(false);
+            }}
+            accessibilityLabel="Dismiss"
+          >
+            <Ionicons name="close" size={20} color="#4f46e5" />
+          </TouchableOpacity>
+        </AnimatedRe.View>
+
+        <View style={{ marginTop: 8, marginBottom: 6 }}>
+          <FlatList<QuickActionTile>
+            {...horizontalFlatListPerf}
+            horizontal
+            data={[
+              { label: "New", sub: "Booking", icon: "calendar-outline", route: "/(app)/(tabs)/more/bookings/new", accent: true },
+              { label: "Walk-in", sub: "Queue", icon: "walk-outline", route: "/(app)/(tabs)/more/waiting-room" },
+              { label: "Group", sub: "Booking", icon: "people-outline", route: "/(app)/(tabs)/more/group-bookings" },
+              ...(provider?.offers_mobile_services
+                ? [
+                    {
+                      label: "House Call",
+                      sub: "Mobile",
+                      icon: "car-outline",
+                      route: "/(app)/(tabs)/more/bookings/new?location_type=at_home",
+                    } satisfies QuickActionTile,
+                  ]
+                : []),
+              { label: "Sale", sub: "Walk-in", icon: "bag-handle-outline", route: "/(app)/(tabs)/more/walk-in-sale" },
+              { label: "Block", sub: "Time", icon: "ban-outline", route: "/(app)/(tabs)/more/time-blocks" },
+            ]}
+            keyExtractor={(it: QuickActionTile) => it.label}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 0, gap: 8 }}
+            renderItem={({ item }: { item: QuickActionTile }) => (
+              <TouchableOpacity
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  router.push(item.route as never);
+                }}
+                style={[
+                  twStyle("min-h-[56px] min-w-[104px] flex-row items-center rounded-[14px] border border-gray-100 px-3 py-2.5"),
+                  item.accent ? { backgroundColor: "#eef2ff", borderColor: "#c7d2fe" } : { backgroundColor: "#f9fafb" },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.label} ${item.sub}`}
+              >
+                <View style={twStyle("mr-2 h-[30px] w-[30px] items-center justify-center rounded-full bg-white")}>
+                  <Ionicons name={item.icon} size={16} color={item.accent ? Colors.primary : "#374151"} />
+                </View>
+                <View>
+                  <Text style={twStyle("text-xs font-extrabold text-gray-900")}>{item.label}</Text>
+                  <Text style={twStyle("text-[10px] text-gray-500")}>{item.sub}</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+
+        <View style={[twStyle("mx-4 mb-2 flex-row rounded-xl border border-gray-200 bg-white p-1")]}>
+          {(["day", "overview"] as const).map((m) => {
+            const active = viewMode === m;
+            return (
+              <TouchableOpacity
+                key={m}
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  setViewMode(m);
+                }}
+                style={twStyle(`flex-1 rounded-lg py-2 ${active ? "bg-gray-900" : ""}`)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+              >
+                <Text
+                  style={twStyle(`text-center text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`)}
+                >
+                  {m === "day" ? "Day" : "Overview"}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {viewMode === "day" ? (
+          <>
+            <FlatList<Date>
+              horizontal
+              data={stripDays}
+              keyExtractor={(d: Date) => d.toISOString()}
+              showsHorizontalScrollIndicator={false}
+              initialScrollIndex={30}
+              initialNumToRender={40}
+              getItemLayout={(_item: Date | ArrayLike<Date> | null | undefined, index: number) => ({
+                length: 62,
+                offset: 62 * index,
+                index,
+              })}
+              contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 8 }}
+              renderItem={({ item: day }: { item: Date }) => {
+                const key = format(day, "yyyy-MM-dd");
+                const info = dateStripInfo.get(key);
+                const selected = isSameDay(day, selectedDate);
+                const todayCell = isToday(day);
+                const dotColor = info?.hasPending ? "#f59e0b" : "#6366f1";
+                return (
+                  <TouchableOpacity
+                    onPress={() => {
+                      void Haptics.selectionAsync();
+                      setSelectedDate(startOfDay(day));
+                    }}
+                    style={[
+                      { width: 56, alignItems: "center", borderRadius: 14, paddingVertical: 10, marginRight: 6 },
+                      selected ? { backgroundColor: "#6366f1" } : {},
+                      !selected && todayCell ? { borderWidth: 1.5, borderColor: "#6366f1" } : {},
+                      info?.isClosed && !selected ? { backgroundColor: "#f3f4f6" } : {},
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                  >
+                    <Text
+                      style={twStyle(`text-[11px] font-semibold ${selected ? "text-white" : "text-gray-500"}`)}
+                    >
+                      {format(day, "EEE")}
+                    </Text>
+                    <Text
+                      style={twStyle(`mt-0.5 text-[17px] font-bold ${selected ? "text-white" : info?.isClosed ? "text-gray-400" : "text-gray-900"}`)}
+                    >
+                      {format(day, "d")}
+                    </Text>
+                    {info?.isClosed && !selected ? (
+                      <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>×</Text>
+                    ) : null}
+                    {info && info.bookings + info.blocks > 0 && !selected ? (
+                      <View style={twStyle("mt-1 flex-row items-center gap-0.5")}>
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dotColor }} />
+                        {info.bookings + info.blocks > 1 ? (
+                          <Text style={[twStyle("text-[8px] font-bold"), { color: dotColor }]}>
+                            {info.bookings + info.blocks > 9 ? "9+" : info.bookings + info.blocks}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ) : info && info.blocks > 0 && info.bookings === 0 && !selected ? (
+                      <View style={twStyle("mt-1 h-1.5 w-1.5 rounded-full bg-gray-400")} />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+            <View style={twStyle("mx-4 mb-2 rounded-xl border border-gray-200 bg-white p-3")}>
+              <View style={twStyle("flex-row items-start justify-between")}>
+                <View>
+                  <Text style={twStyle("text-lg font-bold text-gray-900")}>{daySummary.label}</Text>
+                  <Text style={twStyle("text-sm text-gray-500")}>
+                    {daySummary.count} appointment{daySummary.count === 1 ? "" : "s"}
+                    {daySummary.blockCount > 0 ? ` · ${daySummary.blockCount} blocked` : ""}
+                  </Text>
+                </View>
+                <Text style={twStyle("text-base font-bold text-gray-900")}>
+                  {formatCurrency(daySummary.revenue, currency)}
+                </Text>
+              </View>
+              {daySummary.pending > 0 ? (
+                <View style={twStyle("mt-2 self-start rounded-full bg-amber-50 px-2 py-1")}>
+                  <Text style={twStyle("text-xs font-semibold text-amber-800")}>{daySummary.pending} pending</Text>
+                </View>
+              ) : null}
+              {(navCounts?.waiting_room ?? 0) > 0 ? (
+                <TouchableOpacity
+                  onPress={() => router.push("/(app)/(tabs)/more/waiting-room" as never)}
+                  style={twStyle("mt-2 flex-row items-center gap-1 self-start rounded-full border border-amber-200 bg-amber-50 px-2 py-1")}
+                >
+                  <Ionicons name="hourglass-outline" size={12} color="#b45309" />
+                  <Text style={twStyle("text-xs font-semibold text-amber-700")}>
+                    {navCounts?.waiting_room} in queue
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {daySummary.nextUp && isToday(selectedDate) && daySummary.nextUp.scheduled_at ? (
+                <Text style={twStyle("mt-2 text-xs font-semibold text-indigo-600")}>
+                  Next: {formatBookingTime(daySummary.nextUp.scheduled_at)} ·{" "}
+                  {daySummary.nextUp.customers?.full_name ?? "Customer"}
+                </Text>
+              ) : null}
+            </View>
+            {daySummary.isClosed ? (
+              <View
+                style={[
+                  twStyle("mx-4 mb-2 flex-row items-center rounded-xl border border-gray-200 px-3 py-3"),
+                  { backgroundColor: daySummary.hasBookingsOnClosed ? "#fffbeb" : "#f3f4f6", borderLeftWidth: 4, borderLeftColor: "#d1d5db" },
+                ]}
+              >
+                <Ionicons name="ban-outline" size={18} color="#9ca3af" style={{ marginRight: 10 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={twStyle("text-sm font-semibold text-gray-700")}>
+                    {daySummary.hasBookingsOnClosed ? "Closed day — bookings still scheduled" : "Closed"}
+                  </Text>
+                  <TouchableOpacity onPress={() => router.push("/(app)/(tabs)/more/settings/closed-periods" as never)}>
+                    <Text style={twStyle("mt-0.5 text-xs text-indigo-600")}>View closed periods</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+          </>
+        ) : null}
+
+        {viewMode === "overview" ? (
+          <View style={twStyle("mx-4 mt-1 mb-2")}>
+            <View style={twStyle("flex-row items-center justify-between mb-2")}>
+              <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-white p-1")}>
+                {(["today", "week", "month", "all"] as StatsRange[]).map((value) => {
+                  const active = statsRange === value;
+                  const label = value === "today" ? "Today" : value === "week" ? "Week" : value === "month" ? "Month" : "All";
+                  return (
+                    <TouchableOpacity
+                      key={value}
+                      onPress={() => setStatsRange(value)}
+                      style={twStyle(`rounded-lg px-2.5 py-1 ${active ? "bg-gray-900" : ""}`)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Text style={twStyle(`text-[11px] font-semibold ${active ? "text-white" : "text-gray-600"}`)}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {isLive && (
+                <View style={twStyle("flex-row items-center gap-1.5")}>
+                  <View style={[twStyle("rounded-full"), { height: 6, width: 6, backgroundColor: "#10b981" }]} />
+                  <Text style={twStyle("text-[10px] font-semibold text-emerald-600")}>LIVE</Text>
+                </View>
+              )}
+            </View>
+            <View style={twStyle("flex-row gap-2")}>
+              <View style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white p-2.5")}>
+                <View style={twStyle("flex-row items-center gap-1")}>
+                  <Ionicons name="calendar-outline" size={12} color="#6b7280" />
+                  <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-gray-500")}>{statsRangeLabel}</Text>
+                </View>
+                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.count}</Text>
+              </View>
+              <View
+                style={[
+                  twStyle("flex-1 rounded-xl p-2.5 border"),
+                  statsSnapshot.pendingCount > 0
+                    ? { backgroundColor: "#fffbeb", borderColor: "#fde68a" }
+                    : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
+                ]}
+              >
+                <View style={twStyle("flex-row items-center gap-1")}>
+                  <Ionicons name="time-outline" size={12} color={statsSnapshot.pendingCount > 0 ? "#b45309" : "#6b7280"} />
+                  <Text
+                    style={[
+                      twStyle("text-[10px] font-semibold uppercase tracking-wide"),
+                      { color: statsSnapshot.pendingCount > 0 ? "#b45309" : "#6b7280" },
+                    ]}
+                  >
+                    Pending
+                  </Text>
+                </View>
+                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.pendingCount}</Text>
+              </View>
+              <View
+                style={[
+                  twStyle("flex-1 rounded-xl p-2.5 border"),
+                  statsSnapshot.inProgressCount > 0
+                    ? { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe" }
+                    : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
+                ]}
+              >
+                <View style={twStyle("flex-row items-center gap-1")}>
+                  <Ionicons name="flash-outline" size={12} color={statsSnapshot.inProgressCount > 0 ? "#6d28d9" : "#6b7280"} />
+                  <Text
+                    style={[
+                      twStyle("text-[10px] font-semibold uppercase tracking-wide"),
+                      { color: statsSnapshot.inProgressCount > 0 ? "#6d28d9" : "#6b7280" },
+                    ]}
+                  >
+                    Active
+                  </Text>
+                </View>
+                <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.inProgressCount}</Text>
+              </View>
+              <View style={[twStyle("flex-[1.3] rounded-xl p-2.5 border"), { backgroundColor: "#fff0f7", borderColor: "#fbcfe8" }]}>
+                <View style={twStyle("flex-row items-center gap-1")}>
+                  <Ionicons name="cash-outline" size={12} color="#be185d" />
+                  <Text style={[twStyle("text-[10px] font-semibold uppercase tracking-wide"), { color: "#be185d" }]}>Revenue</Text>
+                </View>
+                <Text style={twStyle("mt-0.5 text-[15px] font-bold text-gray-900")} numberOfLines={1}>
+                  {formatCurrency(statsSnapshot.revenue, currency)}
+                </Text>
+              </View>
+            </View>
+            <View style={twStyle("mt-2 flex-row gap-2")}>
+              <View style={twStyle("flex-1 flex-row items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5")}>
+                <Ionicons name="checkmark-circle-outline" size={20} color="#059669" />
+                <View>
+                  <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-emerald-800")}>Completed</Text>
+                  <Text style={twStyle("text-lg font-bold text-gray-900")}>{statsSnapshot.completedCount}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
+        <View style={[twStyle("mx-4 mb-2"), { paddingHorizontal: 0 }]}>
+          <View style={twStyle("flex-row items-center rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5")}>
+            <Ionicons name="search-outline" size={16} color="#9ca3af" />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search customer, service, #number…"
+              placeholderTextColor="#9ca3af"
+              style={twStyle("ml-2 flex-1 text-sm text-gray-900")}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="none"
+              accessibilityLabel="Search bookings"
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch("")} accessibilityLabel="Clear search">
+                <Ionicons name="close-circle" size={16} color="#9ca3af" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {viewMode === "overview" ? (
+          <View style={{ marginBottom: 6 }}>
+            <FlatList<{ label: string; value: DateRange }>
+              {...horizontalFlatListPerf}
+              horizontal
+              data={DATE_RANGE_OPTIONS}
+              keyExtractor={(o: { label: string; value: DateRange }) => o.value}
+              contentContainerStyle={{ paddingHorizontal: 0, gap: 8 }}
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item: opt }: { item: { label: string; value: DateRange } }) => {
+                const active = dateRange === opt.value;
+                return (
+                  <TouchableOpacity
+                    onPress={() => setDateRange(opt.value)}
+                    style={[
+                      twStyle(`rounded-full px-3.5 py-2 ${active ? "bg-indigo-600" : "border border-gray-200 bg-white"}`),
+                      { minHeight: 44, justifyContent: "center" },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Filter by ${opt.label}`}
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`)}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        ) : null}
+
+        <View style={{ marginBottom: 6 }}>
+          <View style={[twStyle("flex-row gap-2"), { paddingHorizontal: 0 }]}>
+            {(
+              [
+                { key: "appointment" as const, label: "By appointment" },
+                { key: "booked_at" as const, label: "By date booked" },
+              ] as const
+            ).map((opt) => {
+              const active = listSort === opt.key;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  onPress={() => setListSort(opt.key)}
+                  style={[
+                    twStyle(`rounded-full px-3.5 py-2 ${active ? "bg-indigo-600" : "border border-gray-200 bg-white"}`),
+                    { minHeight: 44, justifyContent: "center" },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sort bookings ${opt.label}`}
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`)}>{opt.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={{ marginBottom: 10 }}>
+          <FlatList<(typeof STATUS_OPTIONS)[number]>
+            {...horizontalFlatListPerf}
+            horizontal
+            data={STATUS_OPTIONS}
+            keyExtractor={(o: (typeof STATUS_OPTIONS)[number]) => o.value || "all"}
+            contentContainerStyle={{ paddingHorizontal: 0, gap: 8 }}
+            showsHorizontalScrollIndicator={false}
+            renderItem={({ item: opt }: { item: (typeof STATUS_OPTIONS)[number] }) => {
+              const active = statusFilter === opt.value;
+              return (
+                <TouchableOpacity
+                  onPress={() => setStatusFilter(opt.value)}
+                  style={[
+                    twStyle(`rounded-full px-3.5 py-2 ${active ? "bg-gray-900" : "border border-gray-100 bg-white"}`),
+                    { minHeight: 44, justifyContent: "center" },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Filter by ${opt.label}`}
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={twStyle(`text-xs font-medium ${active ? "text-white" : "text-gray-600"}`)}>{opt.label}</Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      </>
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- header mirrors full bookings UI state
+    [
+      newBookingFlash,
+      flashAnimStyle,
+      provider?.offers_mobile_services,
+      router,
+      viewMode,
+      stripDays,
+      dateStripInfo,
+      selectedDate,
+      daySummary,
+      currency,
+      navCounts?.waiting_room,
+      daySummary.isClosed,
+      daySummary.hasBookingsOnClosed,
+      statsRange,
+      isLive,
+      statsRangeLabel,
+      statsSnapshot,
+      search,
+      dateRange,
+      listSort,
+      statusFilter,
+    ],
+  );
+
   if (listLoading && mergedBookingsData.length === 0) {
     return (
-      <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Bookings" showBack />
+      <ScreenContainer scrollable={false} noPadding>
+        <View style={{ paddingHorizontal: screenPadding }}>
+          <ScreenHeader title="Bookings" showBack />
+        </View>
         <View style={{ paddingHorizontal: screenPadding, paddingTop: 16, gap: 12 }}>
           {[0, 1, 2, 3].map((k) => (
             <Animated.View
@@ -1125,9 +1589,11 @@ export default function BookingsListScreen() {
 
   if (listError && mergedBookingsData.length === 0) {
     return (
-      <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Bookings" showBack />
-        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
+      <ScreenContainer scrollable={false} noPadding>
+        <View style={{ paddingHorizontal: screenPadding }}>
+          <ScreenHeader title="Bookings" showBack />
+        </View>
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: screenPadding }}>
           <ErrorState message={listError} onRetry={() => void refreshAllBookings()} />
         </View>
       </ScreenContainer>
@@ -1135,500 +1601,32 @@ export default function BookingsListScreen() {
   }
 
   return (
-    <ScreenContainer scrollable={false}>
-      <ScreenHeader
-        title="Bookings"
-        showBack
-        subtitle={`${viewMode === "day" ? daySummary.label : dateRangeLabel} · ${filtered.length}`}
-        rightAction={
-          <TouchableOpacity
-            onPress={() => router.push("/(app)/(tabs)/more/bookings/new" as never)}
-            style={twStyle("flex-row items-center rounded-xl bg-indigo-600 px-4 py-2")}
-            accessibilityLabel="New booking"
-            accessibilityRole="button"
-          >
-            <Ionicons name="add" size={18} color="#fff" />
-            <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>New</Text>
-          </TouchableOpacity>
-        }
-      />
-
-      <AnnouncementBanner />
-
-      <AnimatedRe.View
-        style={[
-          twStyle("mx-4 mt-2 flex-row items-center rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5"),
-          flashAnimStyle,
-        ]}
-        pointerEvents={newBookingFlash ? "auto" : "none"}
-      >
-        <Ionicons name="calendar-outline" size={18} color="#4f46e5" style={{ marginRight: 8 }} />
-        <Text style={twStyle("flex-1 text-sm font-semibold text-indigo-900")}>New booking received</Text>
-        <TouchableOpacity
-          onPress={() => {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            setNewBookingFlash(false);
-          }}
-          accessibilityLabel="Dismiss"
-        >
-          <Ionicons name="close" size={20} color="#4f46e5" />
-        </TouchableOpacity>
-      </AnimatedRe.View>
-
-      <View style={{ marginTop: 8, marginBottom: 6 }}>
-        <FlatList<QuickActionTile>
-          {...horizontalFlatListPerf}
-          horizontal
-          data={[
-            { label: "New", sub: "Booking", icon: "calendar-outline", route: "/(app)/(tabs)/more/bookings/new", accent: true },
-            { label: "Walk-in", sub: "Queue", icon: "walk-outline", route: "/(app)/(tabs)/more/waiting-room" },
-            { label: "Group", sub: "Booking", icon: "people-outline", route: "/(app)/(tabs)/more/group-bookings" },
-            ...(provider?.offers_mobile_services
-              ? [
-                  {
-                    label: "House Call",
-                    sub: "Mobile",
-                    icon: "car-outline",
-                    route: "/(app)/(tabs)/more/bookings/new?location_type=at_home",
-                  } satisfies QuickActionTile,
-                ]
-              : []),
-            { label: "Sale", sub: "Walk-in", icon: "bag-handle-outline", route: "/(app)/(tabs)/more/walk-in-sale" },
-            { label: "Block", sub: "Time", icon: "ban-outline", route: "/(app)/(tabs)/more/time-blocks" },
-          ]}
-          keyExtractor={(it: QuickActionTile) => it.label}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: screenPadding, gap: 8 }}
-          renderItem={({ item }: { item: QuickActionTile }) => (
+    <ScreenContainer scrollable={false} noPadding style={{ flex: 1 }}>
+      <View style={{ paddingHorizontal: screenPadding }}>
+        <ScreenHeader
+          title="Bookings"
+          showBack
+          subtitle={`${viewMode === "day" ? daySummary.label : dateRangeLabel} · ${filtered.length}`}
+          rightAction={
             <TouchableOpacity
-              onPress={() => {
-                void Haptics.selectionAsync();
-                router.push(item.route as never);
-              }}
-              style={[
-                twStyle("min-h-[56px] min-w-[104px] flex-row items-center rounded-[14px] border border-gray-100 px-3 py-2.5"),
-                item.accent ? { backgroundColor: "#eef2ff", borderColor: "#c7d2fe" } : { backgroundColor: "#f9fafb" },
-              ]}
+              onPress={() => router.push("/(app)/(tabs)/more/bookings/new" as never)}
+              style={twStyle("flex-row items-center rounded-xl bg-indigo-600 px-4 py-2")}
+              accessibilityLabel="New booking"
               accessibilityRole="button"
-              accessibilityLabel={`${item.label} ${item.sub}`}
             >
-              <View style={twStyle("mr-2 h-[30px] w-[30px] items-center justify-center rounded-full bg-white")}>
-                <Ionicons name={item.icon} size={16} color={item.accent ? Colors.primary : "#374151"} />
-              </View>
-              <View>
-                <Text style={twStyle("text-xs font-extrabold text-gray-900")}>{item.label}</Text>
-                <Text style={twStyle("text-[10px] text-gray-500")}>{item.sub}</Text>
-              </View>
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>New</Text>
             </TouchableOpacity>
-          )}
+          }
         />
       </View>
 
-      <View style={[twStyle("mx-4 mb-2 flex-row rounded-xl border border-gray-200 bg-white p-1")]}>
-        {(["day", "overview"] as const).map((m) => {
-          const active = viewMode === m;
-          return (
-            <TouchableOpacity
-              key={m}
-              onPress={() => {
-                void Haptics.selectionAsync();
-                setViewMode(m);
-              }}
-              style={twStyle(`flex-1 rounded-lg py-2 ${active ? "bg-gray-900" : ""}`)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-            >
-              <Text
-                style={twStyle(`text-center text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`)}
-              >
-                {m === "day" ? "Day" : "Overview"}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {viewMode === "day" ? (
-        <>
-          <FlatList<Date>
-            horizontal
-            data={stripDays}
-            keyExtractor={(d: Date) => d.toISOString()}
-            showsHorizontalScrollIndicator={false}
-            initialScrollIndex={30}
-            initialNumToRender={40}
-            getItemLayout={(_item: Date | ArrayLike<Date> | null | undefined, index: number) => ({
-              length: 62,
-              offset: 62 * index,
-              index,
-            })}
-            contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 8 }}
-            renderItem={({ item: day }: { item: Date }) => {
-              const key = format(day, "yyyy-MM-dd");
-              const info = dateStripInfo.get(key);
-              const selected = isSameDay(day, selectedDate);
-              const todayCell = isToday(day);
-              const dotColor = info?.hasPending ? "#f59e0b" : "#6366f1";
-              return (
-                <TouchableOpacity
-                  onPress={() => {
-                    void Haptics.selectionAsync();
-                    setSelectedDate(startOfDay(day));
-                  }}
-                  style={[
-                    { width: 56, alignItems: "center", borderRadius: 14, paddingVertical: 10, marginRight: 6 },
-                    selected ? { backgroundColor: "#6366f1" } : {},
-                    !selected && todayCell ? { borderWidth: 1.5, borderColor: "#6366f1" } : {},
-                    info?.isClosed && !selected ? { backgroundColor: "#f3f4f6" } : {},
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                >
-                  <Text
-                    style={twStyle(`text-[11px] font-semibold ${selected ? "text-white" : "text-gray-500"}`)}
-                  >
-                    {format(day, "EEE")}
-                  </Text>
-                  <Text
-                    style={twStyle(`mt-0.5 text-[17px] font-bold ${selected ? "text-white" : info?.isClosed ? "text-gray-400" : "text-gray-900"}`)}
-                  >
-                    {format(day, "d")}
-                  </Text>
-                  {info?.isClosed && !selected ? (
-                    <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>×</Text>
-                  ) : null}
-                  {info && info.bookings + info.blocks > 0 && !selected ? (
-                    <View style={twStyle("mt-1 flex-row items-center gap-0.5")}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dotColor }} />
-                      {info.bookings + info.blocks > 1 ? (
-                        <Text style={[twStyle("text-[8px] font-bold"), { color: dotColor }]}>
-                          {info.bookings + info.blocks > 9 ? "9+" : info.bookings + info.blocks}
-                        </Text>
-                      ) : null}
-                    </View>
-                  ) : info && info.blocks > 0 && info.bookings === 0 && !selected ? (
-                    <View style={twStyle("mt-1 h-1.5 w-1.5 rounded-full bg-gray-400")} />
-                  ) : null}
-                </TouchableOpacity>
-              );
-            }}
-          />
-          <View style={twStyle("mx-4 mb-2 rounded-xl border border-gray-200 bg-white p-3")}>
-            <View style={twStyle("flex-row items-start justify-between")}>
-              <View>
-                <Text style={twStyle("text-lg font-bold text-gray-900")}>{daySummary.label}</Text>
-                <Text style={twStyle("text-sm text-gray-500")}>
-                  {daySummary.count} appointment{daySummary.count === 1 ? "" : "s"}
-                  {daySummary.blockCount > 0 ? ` · ${daySummary.blockCount} blocked` : ""}
-                </Text>
-              </View>
-              <Text style={twStyle("text-base font-bold text-gray-900")}>
-                {formatCurrency(daySummary.revenue, currency)}
-              </Text>
-            </View>
-            {daySummary.pending > 0 ? (
-              <View style={twStyle("mt-2 self-start rounded-full bg-amber-50 px-2 py-1")}>
-                <Text style={twStyle("text-xs font-semibold text-amber-800")}>{daySummary.pending} pending</Text>
-              </View>
-            ) : null}
-            {(navCounts?.waiting_room ?? 0) > 0 ? (
-              <TouchableOpacity
-                onPress={() => router.push("/(app)/(tabs)/more/waiting-room" as never)}
-                style={twStyle("mt-2 flex-row items-center gap-1 self-start rounded-full border border-amber-200 bg-amber-50 px-2 py-1")}
-              >
-                <Ionicons name="hourglass-outline" size={12} color="#b45309" />
-                <Text style={twStyle("text-xs font-semibold text-amber-700")}>
-                  {navCounts?.waiting_room} in queue
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-            {daySummary.nextUp && isToday(selectedDate) && daySummary.nextUp.scheduled_at ? (
-              <Text style={twStyle("mt-2 text-xs font-semibold text-indigo-600")}>
-                Next: {formatBookingTime(daySummary.nextUp.scheduled_at)} ·{" "}
-                {daySummary.nextUp.customers?.full_name ?? "Customer"}
-              </Text>
-            ) : null}
-          </View>
-          {daySummary.isClosed ? (
-            <View
-              style={[
-                twStyle("mx-4 mb-2 flex-row items-center rounded-xl border border-gray-200 px-3 py-3"),
-                { backgroundColor: daySummary.hasBookingsOnClosed ? "#fffbeb" : "#f3f4f6", borderLeftWidth: 4, borderLeftColor: "#d1d5db" },
-              ]}
-            >
-              <Ionicons name="ban-outline" size={18} color="#9ca3af" style={{ marginRight: 10 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={twStyle("text-sm font-semibold text-gray-700")}>
-                  {daySummary.hasBookingsOnClosed ? "Closed day — bookings still scheduled" : "Closed"}
-                </Text>
-                <TouchableOpacity onPress={() => router.push("/(app)/(tabs)/more/settings/closed-periods" as never)}>
-                  <Text style={twStyle("mt-0.5 text-xs text-indigo-600")}>View closed periods</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : null}
-        </>
-      ) : null}
-
-      {/* ── Metrics snapshot strip (overview only) ── */}
-      {viewMode === "overview" ? (
-      <View style={twStyle("mx-4 mt-1 mb-2")}>
-        <View style={twStyle("flex-row items-center justify-between mb-2")}>
-          <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-white p-1")}>
-            {(["today", "week", "month", "all"] as StatsRange[]).map((value) => {
-              const active = statsRange === value;
-              const label = value === "today" ? "Today" : value === "week" ? "Week" : value === "month" ? "Month" : "All";
-              return (
-                <TouchableOpacity
-                  key={value}
-                  onPress={() => setStatsRange(value)}
-                  style={twStyle(
-                    `rounded-lg px-2.5 py-1 ${active ? "bg-gray-900" : ""}`,
-                  )}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                >
-                  <Text
-                    style={twStyle(
-                      `text-[11px] font-semibold ${active ? "text-white" : "text-gray-600"}`,
-                    )}
-                  >
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {isLive && (
-            <View style={twStyle("flex-row items-center gap-1.5")}>
-              <View
-                style={[
-                  twStyle("rounded-full"),
-                  { height: 6, width: 6, backgroundColor: "#10b981" },
-                ]}
-              />
-              <Text style={twStyle("text-[10px] font-semibold text-emerald-600")}>LIVE</Text>
-            </View>
-          )}
-        </View>
-        <View style={twStyle("flex-row gap-2")}>
-          <View style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white p-2.5")}>
-            <View style={twStyle("flex-row items-center gap-1")}>
-              <Ionicons name="calendar-outline" size={12} color="#6b7280" />
-              <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-gray-500")}>{statsRangeLabel}</Text>
-            </View>
-            <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.count}</Text>
-          </View>
-          <View
-            style={[
-              twStyle("flex-1 rounded-xl p-2.5 border"),
-              statsSnapshot.pendingCount > 0
-                ? { backgroundColor: "#fffbeb", borderColor: "#fde68a" }
-                : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
-            ]}
-          >
-            <View style={twStyle("flex-row items-center gap-1")}>
-              <Ionicons name="time-outline" size={12} color={statsSnapshot.pendingCount > 0 ? "#b45309" : "#6b7280"} />
-              <Text
-                style={[
-                  twStyle("text-[10px] font-semibold uppercase tracking-wide"),
-                  { color: statsSnapshot.pendingCount > 0 ? "#b45309" : "#6b7280" },
-                ]}
-              >
-                Pending
-              </Text>
-            </View>
-            <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.pendingCount}</Text>
-          </View>
-          <View
-            style={[
-              twStyle("flex-1 rounded-xl p-2.5 border"),
-              statsSnapshot.inProgressCount > 0
-                ? { backgroundColor: "#f5f3ff", borderColor: "#ddd6fe" }
-                : { backgroundColor: "#fff", borderColor: "#e5e7eb" },
-            ]}
-          >
-            <View style={twStyle("flex-row items-center gap-1")}>
-              <Ionicons name="flash-outline" size={12} color={statsSnapshot.inProgressCount > 0 ? "#6d28d9" : "#6b7280"} />
-              <Text
-                style={[
-                  twStyle("text-[10px] font-semibold uppercase tracking-wide"),
-                  { color: statsSnapshot.inProgressCount > 0 ? "#6d28d9" : "#6b7280" },
-                ]}
-              >
-                Active
-              </Text>
-            </View>
-            <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>{statsSnapshot.inProgressCount}</Text>
-          </View>
-          <View
-            style={[
-              twStyle("flex-[1.3] rounded-xl p-2.5 border"),
-              { backgroundColor: "#fff0f7", borderColor: "#fbcfe8" },
-            ]}
-          >
-            <View style={twStyle("flex-row items-center gap-1")}>
-              <Ionicons name="cash-outline" size={12} color="#be185d" />
-              <Text style={[twStyle("text-[10px] font-semibold uppercase tracking-wide"), { color: "#be185d" }]}>
-                Revenue
-              </Text>
-            </View>
-            <Text style={twStyle("mt-0.5 text-[15px] font-bold text-gray-900")} numberOfLines={1}>
-              {formatCurrency(statsSnapshot.revenue, currency)}
-            </Text>
-          </View>
-        </View>
-        <View style={twStyle("mt-2 flex-row gap-2")}>
-          <View style={twStyle("flex-1 flex-row items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5")}>
-            <Ionicons name="checkmark-circle-outline" size={20} color="#059669" />
-            <View>
-              <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-emerald-800")}>Completed</Text>
-              <Text style={twStyle("text-lg font-bold text-gray-900")}>{statsSnapshot.completedCount}</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-      ) : null}
-
-      {/* ── Search bar ── */}
-      <View style={[twStyle("mx-4 mb-2"), { paddingHorizontal: 0 }]}>
-        <View style={twStyle("flex-row items-center rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5")}>
-          <Ionicons name="search-outline" size={16} color="#9ca3af" />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search customer, service, #number…"
-            placeholderTextColor="#9ca3af"
-            style={twStyle("ml-2 flex-1 text-sm text-gray-900")}
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-            accessibilityLabel="Search bookings"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch("")} accessibilityLabel="Clear search">
-              <Ionicons name="close-circle" size={16} color="#9ca3af" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {/* ── Date range chips (overview only; day mode uses the strip) ── */}
-      {viewMode === "overview" ? (
-        <View style={{ marginBottom: 6 }}>
-          <FlatList<{ label: string; value: DateRange }>
-            {...horizontalFlatListPerf}
-            horizontal
-            data={DATE_RANGE_OPTIONS}
-            keyExtractor={(o: { label: string; value: DateRange }) => o.value}
-            contentContainerStyle={{ paddingHorizontal: screenPadding, gap: 8 }}
-            showsHorizontalScrollIndicator={false}
-            renderItem={({ item: opt }: { item: { label: string; value: DateRange } }) => {
-              const active = dateRange === opt.value;
-              return (
-                <TouchableOpacity
-                  onPress={() => setDateRange(opt.value)}
-                  style={[
-                    twStyle(
-                      `rounded-full px-3.5 py-2 ${active ? "bg-indigo-600" : "border border-gray-200 bg-white"}`,
-                    ),
-                    { minHeight: 44, justifyContent: "center" },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Filter by ${opt.label}`}
-                  accessibilityState={{ selected: active }}
-                >
-                  <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`)}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            }}
-          />
-        </View>
-      ) : null}
-
-      {/* ── Sort: appointment time vs date booked ── */}
-      <View style={{ marginBottom: 6 }}>
-        <View
-          style={[
-            twStyle("flex-row gap-2"),
-            { paddingHorizontal: screenPadding },
-          ]}
-        >
-          {(
-            [
-              { key: "appointment" as const, label: "By appointment" },
-              { key: "booked_at" as const, label: "By date booked" },
-            ] as const
-          ).map((opt) => {
-            const active = listSort === opt.key;
-            return (
-              <TouchableOpacity
-                key={opt.key}
-                onPress={() => setListSort(opt.key)}
-                style={[
-                  twStyle(
-                    `rounded-full px-3.5 py-2 ${active ? "bg-indigo-600" : "border border-gray-200 bg-white"}`,
-                  ),
-                  { minHeight: 44, justifyContent: "center" },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Sort bookings ${opt.label}`}
-                accessibilityState={{ selected: active }}
-              >
-                <Text
-                  style={twStyle(
-                    `text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`,
-                  )}
-                >
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      {/* ── Status filter chips ── */}
-      <View style={{ marginBottom: 10 }}>
-        <FlatList<(typeof STATUS_OPTIONS)[number]>
-          {...horizontalFlatListPerf}
-          horizontal
-          data={STATUS_OPTIONS}
-          keyExtractor={(o: (typeof STATUS_OPTIONS)[number]) => o.value || "all"}
-          contentContainerStyle={{ paddingHorizontal: screenPadding, gap: 8 }}
-          showsHorizontalScrollIndicator={false}
-          renderItem={({ item: opt }: { item: (typeof STATUS_OPTIONS)[number] }) => {
-            const active = statusFilter === opt.value;
-            return (
-              <TouchableOpacity
-                onPress={() => setStatusFilter(opt.value)}
-                style={[
-                  twStyle(
-                    `rounded-full px-3.5 py-2 ${active ? "bg-gray-900" : "border border-gray-100 bg-white"}`
-                  ),
-                  { minHeight: 44, justifyContent: "center" },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Filter by ${opt.label}`}
-                accessibilityState={{ selected: active }}
-              >
-                <Text style={twStyle(`text-xs font-medium ${active ? "text-white" : "text-gray-600"}`)}>
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          }}
-        />
-      </View>
-
-      {/* ── List ── */}
       <View style={{ flex: 1, minHeight: 0 }}>
         <SectionList<ScheduleItem>
           sections={listSections}
           keyExtractor={sectionKeyExtractor}
           renderItem={renderScheduleItem}
+          ListHeaderComponent={bookingsListHeader}
           renderSectionHeader={({ section }: { section: BookingsListSection }) =>
             section.title ? (
               <View style={twStyle("pt-2 pb-1")}>
@@ -1643,6 +1641,7 @@ export default function BookingsListScreen() {
           removeClippedSubviews={false}
           initialNumToRender={12}
           windowSize={7}
+          style={{ flex: 1 }}
           contentContainerStyle={{
             paddingHorizontal: screenPadding,
             paddingBottom: listBottomPadding,

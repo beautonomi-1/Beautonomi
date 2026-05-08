@@ -252,6 +252,8 @@ export interface SavedPaymentMethod {
   id: string;
   type: string;
   provider?: string;
+  /** Card network label when returned by Paystack / PSP (e.g. visa, mastercard). */
+  brand?: string;
   card_type?: string;
   last4?: string;
   expiry_month?: number;
